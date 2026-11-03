@@ -84,10 +84,10 @@ auto only_instantiation(clang::ParmVarDecl* param) -> clang::ParmVarDecl*;
 auto function_pattern(const clang::FunctionDecl& function) -> const clang::FunctionDecl*;
 
 /// The parameter `index` of each declaration of `function` that names it,
-/// then of each declaration of the one it was instantiated from: a name
-/// left out of one declaration is written in another (a definition, a
-/// forward declaration such as libstdc++'s `std::max`), and a definition may
-/// name differently what the documented declaration names.
+/// or of the one it was instantiated from: a name left out of one
+/// declaration is written in another (a definition, a forward declaration
+/// such as libstdc++'s `std::max`), and a definition may name differently
+/// what the documented declaration names.
 auto named_parameters(const clang::FunctionDecl& function, unsigned index)
     -> llvm::SmallVector<const clang::ParmVarDecl*, 2>;
 
