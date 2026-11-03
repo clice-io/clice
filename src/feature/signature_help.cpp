@@ -90,8 +90,11 @@ bool holds_point(clang::Sema& sema, clang::SourceLocation open) {
         }
         if(token.is(opening)) {
             depth += 1;
-        } else if(token.is(closing) && --depth == 0) {
-            return false;
+        } else if(token.is(closing)) {
+            depth -= 1;
+            if(depth == 0) {
+                return false;
+            }
         }
     }
     return true;
@@ -1037,7 +1040,9 @@ auto signature_help(CompilationParams params,
     complete_options.IncludeGlobals = false;
     complete_options.IncludeNamespaceLevelDecls = false;
     complete_options.IncludeBriefComments = false;
-    complete_options.LoadExternal = true;
+    // The names clang lists at an argument go unused: only the call's
+    // overloads are read.
+    complete_options.LoadExternal = false;
     complete_options.IncludeFixIts = false;
 
     auto offset = params.completion.offset;

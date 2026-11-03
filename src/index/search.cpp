@@ -279,19 +279,23 @@ Completables completables(const IndexQuery& index,
                           std::uint32_t limit) {
     // Of the kinds a namespace's names have: a class's members, which a
     // scope's subtree holds more of, would crowd them out of the ranking.
-    std::vector<SymbolKind> kinds = {
-        SymbolKind::Macro,
-        SymbolKind::Namespace,
-        SymbolKind::Class,
-        SymbolKind::Struct,
-        SymbolKind::Union,
-        SymbolKind::Enum,
-        SymbolKind::Type,
-        SymbolKind::EnumMember,
-        SymbolKind::Function,
-        SymbolKind::Variable,
-        SymbolKind::Concept,
-    };
+    // A directive's line names macros alone.
+    std::vector<SymbolKind> kinds = {SymbolKind::Macro};
+    if(!scope.directive) {
+        kinds.insert(kinds.end(),
+                     {
+                         SymbolKind::Namespace,
+                         SymbolKind::Class,
+                         SymbolKind::Struct,
+                         SymbolKind::Union,
+                         SymbolKind::Enum,
+                         SymbolKind::Type,
+                         SymbolKind::EnumMember,
+                         SymbolKind::Function,
+                         SymbolKind::Variable,
+                         SymbolKind::Concept,
+                     });
+    }
     SymbolQuery scoped{.absolute = scope.absolute,
                        .pattern = prefix.str(),
                        .kinds = kinds,
@@ -317,7 +321,7 @@ Completables completables(const IndexQuery& index,
         }
         /// A preamble's names, its own of internal linkage among them, are
         /// spelled through its own scopes.
-        llvm::DenseMap<SymbolHash, llvm::SmallVector<SymbolInfo, 4>> preamble_scopes;
+        llvm::DenseMap<SymbolHash, const TUIndex*> preamble_of;
         for(auto& pch_index: pchs) {
             auto& pch = *pch_index;
             auto found = pch.names().search(query, limit * 8, [](std::uint32_t) { return false; });
@@ -326,15 +330,10 @@ Completables completables(const IndexQuery& index,
                     continue;
                 }
                 if(auto identity = pch.find_symbol(hit.hash)) {
-                    auto symbol = SymbolInfo::from(hit.hash, *identity);
-                    preamble_scopes[hit.hash] =
-                        scope_chain(hit.hash, symbol.parent, [&](SymbolHash parent) {
-                            auto container = pch.find_symbol(parent);
-                            return container ? std::optional(SymbolInfo::from(parent, *container))
-                                             : std::nullopt;
-                        });
-                    ranked.hits.push_back(
-                        {.rank = hit.rank, .symbol = std::move(symbol), .anchor = {}});
+                    preamble_of[hit.hash] = &pch;
+                    ranked.hits.push_back({.rank = hit.rank,
+                                           .symbol = SymbolInfo::from(hit.hash, *identity),
+                                           .anchor = {}});
                 }
             }
             ranked.exhausted = ranked.exhausted && found.exhausted;
@@ -351,10 +350,18 @@ Completables completables(const IndexQuery& index,
                identity && identity->file != no_file) {
                 declared = Fid{identity->file};
             }
-            auto preamble = preamble_scopes.find(hit.symbol.hash);
-            auto chain = preamble != preamble_scopes.end()
-                             ? std::move(preamble->second)
-                             : index.container_chain(hit.symbol.hash, declared);
+            auto preamble = preamble_of.find(hit.symbol.hash);
+            auto chain =
+                preamble == preamble_of.end()
+                    ? index.container_chain(hit.symbol.hash, declared)
+                    : scope_chain(hit.symbol.hash,
+                                  hit.symbol.parent,
+                                  [&pch = *preamble->second](SymbolHash parent) {
+                                      auto container = pch.find_symbol(parent);
+                                      return container ? std::optional(
+                                                             SymbolInfo::from(parent, *container))
+                                                       : std::nullopt;
+                                  });
             std::string spelled;
             for(auto& container: chain) {
                 spelled += container.name;

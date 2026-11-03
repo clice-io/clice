@@ -222,6 +222,9 @@ std::unique_ptr<clang::CompilerInvocation>
             // The parse stops at the cursor, so a body the command defers
             // would never be parsed and nothing in it would complete.
             lang_opts.DelayedTemplateParsing = false;
+            // Typo correction of an undeclared name before the cursor reads
+            // every identifier of the PCH, for a fix nothing shows.
+            lang_opts.SpellChecking = false;
             break;
         }
     }
