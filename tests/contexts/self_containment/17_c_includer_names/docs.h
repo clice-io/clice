@@ -1,0 +1,1 @@
+DOC(usage, "usage: tool");

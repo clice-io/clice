@@ -1,6 +1,16 @@
 import { perf, regression } from "@clice/tools/ecosystem";
 
-regression();
+regression({
+    known: [
+        {
+            issue: "10-24#7",
+            why: "in templates and macro bodies the open file's highlights hold more than the unit's own",
+            kind: "disagree",
+            request: "highlights",
+            detail: /^(?![\s\S]*\n-\s+\{)/,
+        },
+    ],
+});
 
 perf("sessions", {}, async (p) => {
     const files = await p.pick({ sources: 10, headers: 5 });

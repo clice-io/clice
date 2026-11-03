@@ -201,7 +201,8 @@ void ServedProject::retry_after_save(Session& session) {
     if(selection.self_containment) {
         auto compiled = latest_at(path_id, session.version);
         bool leans =
-            !compiled || feature::missing_context_errors(compiled->output->diagnostics.own) > 0;
+            !compiled || feature::missing_context_diagnostics(compiled->output->diagnostics.own,
+                                                              session.text()) > 0;
         if(project.header_saved(*selection.self_containment,
                                 project.file_table.intern_version(path_id, session.hash),
                                 leans)) {
@@ -652,12 +653,13 @@ async::task<Result> ServedProject::CompileAttempt::run() {
             if(auto* pch = built.loaded ? project.built_pch(*built.loaded) : nullptr) {
                 inputs.append(pch->inputs.begin(), pch->inputs.end());
             }
+            bool leans = feature::missing_context_diagnostics(diagnostics, params.text) > 0;
             project.commit_self_containment(
                 *self_containment,
-                diagnostics,
+                !leans,
                 project.file_table.intern_version(path_id, session->hash),
                 std::move(inputs));
-            if(feature::missing_context_errors(diagnostics) > 0) {
+            if(leans) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", file_path);
                 continue;
             }

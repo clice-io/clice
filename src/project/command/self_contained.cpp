@@ -1,7 +1,6 @@
 module clice;
 
 import :command.file_kind;
-import :feature.diagnostics;
 import :project.command;
 import :project.project;
 import :vfs.disk_state;
@@ -33,14 +32,14 @@ std::optional<bool> Project::self_contained(const SelfContainmentKey& key, bool 
 }
 
 void Project::commit_self_containment(const SelfContainmentKey& key,
-                                      llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
+                                      bool self_contained,
                                       VersionID text,
                                       Inputs inputs) {
     auto disk = current_input(file_table, key.first);
     hosting.self_containment.commit(
         key,
         {
-            .self_contained = feature::missing_context_errors(diagnostics) == 0,
+            .self_contained = self_contained,
             .text = text,
             // A header gone from disk holds no result.
             .disk = disk && disk->version.valid() ? disk->version : text,
