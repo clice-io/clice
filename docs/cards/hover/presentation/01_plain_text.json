@@ -65,7 +65,7 @@
           "marker": "variable",
           "value": {
             "hover": {
-              "markdown": "**variable** `value`\n\n```cpp\nint value = answer(1)\n```\nValue: `42 (0x2a)`",
+              "markdown": "**variable** `value`\n\n```cpp\nint value = answer(1)\n```\n**Value:** `42 (0x2a)`",
               "range": {
                 "$place": "int ⟦value⟧ = answer(1);",
                 "path": "main.cpp",
@@ -88,7 +88,7 @@
           "marker": "field",
           "value": {
             "hover": {
-              "markdown": "**field** `second` · struct `Layout`\n\n```cpp\nint second\n```\nOffset: 4 bytes\nSize: 4 bytes, alignment 4 bytes",
+              "markdown": "**field** `second` · struct `Layout`\n\n```cpp\nint second\n```\n**Offset:** 4 bytes\n**Size:** 4 bytes\n**Alignment:** 4 bytes",
               "range": {
                 "$place": "int ⟦second⟧;",
                 "path": "main.cpp",
@@ -162,7 +162,7 @@
           "marker": "field",
           "value": {
             "hover": {
-              "plaintext": "field second · struct Layout\n\nint second\n\nOffset: 4 bytes\nSize: 4 bytes, alignment 4 bytes",
+              "plaintext": "field second · struct Layout\n\nint second\n\nOffset: 4 bytes\nSize: 4 bytes\nAlignment: 4 bytes",
               "range": {
                 "$place": "int ⟦second⟧;",
                 "path": "main.cpp",

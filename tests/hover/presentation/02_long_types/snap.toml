@@ -5,7 +5,7 @@ markdown = '''
 ```cpp
 Tuple<Row, Row, Row, Row> table
 ```
-`Tuple<Row, Row, Row, Row>` is `Tuple<Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>>`
+`Row` is `Tuple<int, long, unsigned int, char>`
 '''
 range = "Tuple<Row, Row, Row, Row> ⟦table⟧;"
 
@@ -17,6 +17,6 @@ markdown = '''
 void consume(Tuple<Row, Row, Row, Row> first, Tuple<Row, Row, Row, Row> second,
              Tuple<Row, Row, Row, Row> third)
 ```
-`Tuple<Row, Row, Row, Row>` is `Tuple<Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>>`
+`Row` is `Tuple<int, long, unsigned int, char>`
 '''
 range = "void ⟦consume⟧(Tuple<Row, Row, Row, Row> first, Tuple<Row, Row, Row, Row> second, Tuple<Row, Row, Row, Row> third);"

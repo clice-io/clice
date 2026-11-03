@@ -1,76 +1,103 @@
 [answers.instantiation.hover]
 markdown = '''
-**struct** `Cache<long, 4>` · namespace `instantiation_members`
+**struct** `Cache<…>` · namespace `instantiation_members`
 
 ```cpp
-template <> struct alignas(64) Cache<long, 4> final : Base {
+template <typename T, int Size> struct alignas(64) Cache final : Base {
   struct Node;
   enum Kind : int;
   enum class State : int;
-  using value_type = long;
+  using value_type = T;
   [[no_unique_address]] Empty tag;
-  alignas(32) long slots[4];
-  value_type *cursor;
+  alignas(32) T slots[Size];
+  value_type* cursor;
   State state = State::Idle;
 }
 ```
-Size: 128 bytes (80 bytes padding), alignment 64 bytes
+**Template arguments:**
+```cpp
+T = long
+Size = 4
+```
+**Size:** 128 bytes (80 bytes padding)
+**Alignment:** 64 bytes
 '''
 range = "⟦Cache⟧<long, 4> cache;"
 
 [answers.reserved_members.hover]
 markdown = '''
-**struct** `Hidden<int>` · namespace `instantiation_members`
+**struct** `Hidden<…>` · namespace `instantiation_members`
 
 ```cpp
-template <> struct Hidden<int> {
+template <typename T> struct Hidden {
   // ...
 }
 ```
-Size: 8 bytes, alignment 4 bytes
+**Template arguments:**
+```cpp
+T = int
+```
+**Size:** 8 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Hidden⟧<int> hidden;"
 
 [answers.nested_types.hover]
 markdown = '''
-**struct** `Wrapper<char>` · namespace `instantiation_members::inner`
+**struct** `Wrapper<…>` · namespace `instantiation_members::inner`
 
 ```cpp
-template <> struct Wrapper<char> {
+template <typename T> struct Wrapper {
   struct Item;
   Item item;
-  Item *next;
+  Item* next;
 }
 ```
-Size: 16 bytes (7 bytes padding), alignment 8 bytes
+**Template arguments:**
+```cpp
+T = char
+```
+**Size:** 16 bytes (7 bytes padding)
+**Alignment:** 8 bytes
 '''
 range = "inner::⟦Wrapper⟧<char> wrapper;"
 
 [answers.parameter_value.hover]
 markdown = '''
-**struct** `Constant<int, 7>` · namespace `instantiation_members`
+**struct** `Constant<…>` · namespace `instantiation_members`
 
 ```cpp
-template <> struct Constant<int, 7> {
-  static constexpr int value = 7;
+template <typename T, T Value> struct Constant {
+  static constexpr T value = Value;
   using size_type = unsigned long;
   size_type count = 0;
 }
 ```
-Size: 8 bytes, alignment 8 bytes
+**Template arguments:**
+```cpp
+T = int
+Value = 7
+```
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "⟦Constant⟧<int, 7> seven;"
 
 [answers.pack_size.hover]
 markdown = '''
-**struct** `Pack<int, long, char>` · namespace `instantiation_members`
+**struct** `Pack<…>` · namespace `instantiation_members`
 
 ```cpp
-template <> struct Pack<int, long, char> {
-  using Table = Slots<3>;
+template <typename... Ts> struct Pack {
+  using Table = Slots<sizeof...(Ts)>;
 }
 ```
-Size: 1 byte, alignment 1 byte
+**Template arguments:**
+```cpp
+Ts = int, long, char
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Pack⟧<int, long, char> pack;"
 
@@ -79,14 +106,20 @@ wrong = "clang instantiates the initializer only where the member is used, and i
 
 [answers.outer_parameter.hover]
 markdown = '''
-**struct** `Nested<2>` · struct `instantiation_members::Level<1>`
+**struct** `Nested<…>` · struct `instantiation_members::Level<…>`
 
 ```cpp
-template <> struct Nested<2> {
-  static constexpr int outer;
+template <int Inner> struct Nested {
+  static constexpr int outer = Outer;
 }
 ```
-Size: 1 byte, alignment 1 byte
+**Template arguments:**
+```cpp
+Outer = 1
+Inner = 2
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "Level<1>::⟦Nested⟧<2> nested;"
 
@@ -95,13 +128,18 @@ wrong = "clang instantiates the initializer only where the member is used, and i
 
 [answers.dependent_initializer.hover]
 markdown = '''
-**struct** `Doubled<4>` · namespace `instantiation_members`
+**struct** `Doubled<…>` · namespace `instantiation_members`
 
 ```cpp
-template <> struct Doubled<4> {
-  static constexpr int capacity;
+template <int Size> struct Doubled {
+  static constexpr int capacity = Size * 2;
 }
 ```
-Size: 1 byte, alignment 1 byte
+**Template arguments:**
+```cpp
+Size = 4
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Doubled⟧<4> doubled;"

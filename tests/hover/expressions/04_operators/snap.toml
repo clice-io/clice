@@ -3,7 +3,7 @@ markdown = '''
 **method** `operator new` · struct `custom_allocation::ArenaObject`
 
 ```cpp
-static void *operator new(unsigned long count)
+static void* operator new(unsigned long count)
 ```
 '''
 range = "ArenaObject* object = ⟦new⟧ ArenaObject;"
@@ -13,7 +13,7 @@ markdown = '''
 **method** `operator delete` · struct `custom_allocation::ArenaObject`
 
 ```cpp
-static void operator delete(void *memory) noexcept
+static void operator delete(void* memory) noexcept
 ```
 '''
 range = "⟦delete⟧ object;"
@@ -23,7 +23,7 @@ markdown = '''
 **function** `operator new`
 
 ```cpp
-void *operator new(unsigned long)
+void* operator new(unsigned long)
 ```
 '''
 range = "Record* record = ::⟦new⟧ Record(4);"
@@ -63,8 +63,8 @@ markdown = '''
 **method** `operator==` · struct `Revision`
 
 ```cpp
-bool operator==(const Revision &) const noexcept = default
+bool operator==(const Revision&) const noexcept = default
 ```
-Value: `true`
+**Value:** `true`
 '''
 range = "bool changed = Revision{2} ⟦!=⟧ Revision{3};"

@@ -28,6 +28,13 @@ struct Request {
     const display::Options& display;
 };
 
+/// A type the card states, laid out at the card's width.
+auto shown_type(clang::ASTContext& context, clang::QualType type, display::Options options)
+    -> display::Type {
+    options.width = card_width;
+    return display::type(context, type, options);
+}
+
 /// The function a call of the declaration runs: its own, or the call
 /// operator of the lambda a variable holds or refers to (not one it points
 /// to).
@@ -378,33 +385,108 @@ bool spells_type(const clang::ValueDecl& value) {
            spelled(declarator->getTypeSourceInfo()->getTypeLoc());
 }
 
-/// Note what an alias in the declaration stands for, once per alias: the
-/// alias alone, without the pointers, references, arrays and qualifiers
-/// around it.
+/// The aliases `type` is spelled with, outermost first: what an alias
+/// stands for is not looked into.
+void spelled_aliases(clang::QualType type, llvm::SmallVectorImpl<clang::QualType>& aliases) {
+    const auto* node = type.getTypePtr();
+    if(llvm::isa<clang::TypedefType, clang::UsingType>(node)) {
+        aliases.push_back(type.getUnqualifiedType());
+        return;
+    }
+    if(const auto* id = llvm::dyn_cast<clang::TemplateSpecializationType>(node)) {
+        if(id->isTypeAlias()) {
+            aliases.push_back(type.getUnqualifiedType());
+            return;
+        }
+        for(const auto& argument: id->template_arguments()) {
+            auto elements = argument.getKind() == clang::TemplateArgument::Pack
+                                ? argument.getPackAsArray()
+                                : llvm::ArrayRef(argument);
+            for(const auto& element: elements) {
+                if(element.getKind() == clang::TemplateArgument::Type) {
+                    spelled_aliases(element.getAsType(), aliases);
+                }
+            }
+        }
+        return;
+    }
+    if(const auto* function = llvm::dyn_cast<clang::FunctionProtoType>(node)) {
+        spelled_aliases(function->getReturnType(), aliases);
+        for(auto param: function->getParamTypes()) {
+            spelled_aliases(param, aliases);
+        }
+        return;
+    }
+    /// A parameter of array or function type is adjusted to a pointer.
+    if(const auto* adjusted = llvm::dyn_cast<clang::AdjustedType>(node)) {
+        spelled_aliases(adjusted->getOriginalType(), aliases);
+    } else if(const auto* pointer = llvm::dyn_cast<clang::PointerType>(node)) {
+        spelled_aliases(pointer->getPointeeType(), aliases);
+    } else if(const auto* reference = llvm::dyn_cast<clang::ReferenceType>(node)) {
+        spelled_aliases(reference->getPointeeTypeAsWritten(), aliases);
+    } else if(const auto* member = llvm::dyn_cast<clang::MemberPointerType>(node)) {
+        spelled_aliases(member->getPointeeType(), aliases);
+    } else if(const auto* array = llvm::dyn_cast<clang::ArrayType>(node)) {
+        spelled_aliases(array->getElementType(), aliases);
+    } else if(auto inner = node->getLocallyUnqualifiedSingleStepDesugaredType();
+              inner.getTypePtr() != node) {
+        /// Parentheses, a deduced placeholder, a substituted parameter.
+        spelled_aliases(inner, aliases);
+    }
+}
+
+/// Note what each alias the declaration spells stands for, once per alias.
 void add_alias(HoverInfo& info,
                clang::ASTContext& context,
                clang::QualType type,
                const display::Options& options) {
-    while(true) {
-        /// A parameter of array or function type is adjusted to a pointer.
-        if(const auto* adjusted = llvm::dyn_cast<clang::AdjustedType>(type.getTypePtr())) {
-            type = adjusted->getOriginalType();
-        } else if(const auto* pointer = llvm::dyn_cast<clang::PointerType>(type.getTypePtr())) {
-            type = pointer->getPointeeType();
-        } else if(const auto* reference = llvm::dyn_cast<clang::ReferenceType>(type.getTypePtr())) {
-            type = reference->getPointeeType();
-        } else if(const auto* array = llvm::dyn_cast<clang::ArrayType>(type.getTypePtr())) {
-            type = array->getElementType();
-        } else {
-            break;
+    if(options.readable) {
+        type =
+            options.readable->readable(type, options.scope, options.source, options.specialization);
+    }
+    llvm::SmallVector<clang::QualType> aliases;
+    spelled_aliases(type, aliases);
+    for(auto alias: aliases) {
+        auto shown = shown_type(context, alias, options);
+        if(shown.aka && ranges::none_of(info.aliases, [&](const display::Type& known) {
+               return known.text == shown.text;
+           })) {
+            info.aliases.push_back(std::move(shown));
         }
     }
-    auto shown = display::type(context, type.getUnqualifiedType(), options);
-    if(shown.aka && ranges::none_of(info.aliases, [&](const display::Type& known) {
-           return known.text == shown.text;
-       })) {
-        info.aliases.push_back(std::move(shown));
+}
+
+/// Whether C++ writes `type` inside out: a pointer or a reference to a
+/// function or an array, a member pointer, or a type holding one, which
+/// the card reads left to right. An alias spells it a name, which the card
+/// tells the meaning of on its own.
+bool tangled(clang::QualType type) {
+    const auto* node = type.getTypePtr();
+    if(llvm::isa<clang::TypedefType, clang::UsingType>(node)) {
+        return false;
     }
+    if(llvm::isa<clang::MemberPointerType>(node)) {
+        return true;
+    }
+    if(llvm::isa<clang::PointerType, clang::ReferenceType>(node)) {
+        auto pointee = node->getPointeeType();
+        if(llvm::isa<clang::TypedefType, clang::UsingType>(pointee.getTypePtr())) {
+            return false;
+        }
+        return pointee->isFunctionType() || pointee->isArrayType() || tangled(pointee);
+    }
+    if(const auto* array = llvm::dyn_cast<clang::ArrayType>(node)) {
+        return tangled(array->getElementType());
+    }
+    if(const auto* function = llvm::dyn_cast<clang::FunctionProtoType>(node)) {
+        return tangled(function->getReturnType()) ||
+               ranges::any_of(function->getParamTypes(), tangled);
+    }
+    if(auto inner = node->getLocallyUnqualifiedSingleStepDesugaredType();
+       inner.getTypePtr() != node) {
+        return tangled(inner);
+    }
+    return false;
 }
 
 /// The facts of a function: the aliases its signature spells, and its type
@@ -442,9 +524,12 @@ void add_function(HoverInfo& info,
                                            prototype->getParamTypes(),
                                            extra);
         }
-        info.type = display::type(context, type, options);
+        info.type = shown_type(context, type, options);
     } else {
         add_alias(info, context, function.getReturnType(), options);
+        if(tangled(function.getType())) {
+            info.type = shown_type(context, function.getType(), options);
+        }
     }
 }
 
@@ -482,14 +567,16 @@ auto written_text(CompilationUnit& unit, const clang::Decl* decl) -> std::option
 }
 
 /// Lay out code a card shows, a printed declaration or an expansion, in the
-/// LLVM style: it is printed as one line, not as anyone wrote it.
+/// LLVM style with `*` and `&` beside the type, as the card writes types: it
+/// is printed as one line, not as anyone wrote it.
 void reformat(std::string& code) {
     if(code.empty()) {
         return;
     }
-    auto replacements = clang::format::reformat(clang::format::getLLVMStyle(),
-                                                code,
-                                                {clang::tooling::Range(0, code.size())});
+    auto style = clang::format::getLLVMStyle();
+    style.PointerAlignment = clang::format::FormatStyle::PAS_Left;
+    auto replacements =
+        clang::format::reformat(style, code, {clang::tooling::Range(0, code.size())});
     auto formatted = clang::tooling::applyAllReplacements(code, replacements);
     if(!formatted) {
         llvm::consumeError(formatted.takeError());
@@ -553,6 +640,154 @@ auto accessed_specialization(const SelectionTree::Node& node, CompilationUnit& u
     return name->getQualifier().getAsType()->getAs<clang::TemplateSpecializationType>();
 }
 
+/// The template an instantiation was instantiated from, as a card shows it
+/// in its place, and the parameters it binds with their arguments.
+struct Instantiation {
+    const clang::Decl* pattern = nullptr;
+
+    std::vector<HoverInfo::Binding> bindings;
+
+    /// The class specialization whose arguments the bindings start with,
+    /// for a member of one.
+    const clang::ClassTemplateSpecializationDecl* owner = nullptr;
+};
+
+bool instantiated(clang::TemplateSpecializationKind kind) {
+    return kind == clang::TSK_ImplicitInstantiation ||
+           kind == clang::TSK_ExplicitInstantiationDeclaration ||
+           kind == clang::TSK_ExplicitInstantiationDefinition;
+}
+
+/// Each parameter of `params` with the argument of `arguments` it binds,
+/// but those its default gives and an empty pack.
+void add_bindings(std::vector<HoverInfo::Binding>& bindings,
+                  const clang::TemplateParameterList& params,
+                  llvm::ArrayRef<clang::TemplateArgument> arguments,
+                  clang::ASTContext& context,
+                  const display::Options& options) {
+    auto policy = display::printing_policy(context, options);
+    auto argument_text = [&](const clang::TemplateArgument& argument) {
+        if(argument.getKind() == clang::TemplateArgument::Type) {
+            return shown_type(context, argument.getAsType(), options).text;
+        }
+        /// A template name prints fully qualified, unlike the types beside it.
+        auto printed = policy;
+        printed.SuppressScope = argument.getKind() == clang::TemplateArgument::Template;
+        std::string text;
+        llvm::raw_string_ostream os(text);
+        argument.print(printed, os, /*IncludeType=*/false);
+        return text;
+    };
+    for(auto [index, param]: views::enumerate(params)) {
+        if(static_cast<std::size_t>(index) >= arguments.size()) {
+            break;
+        }
+        const auto& argument = arguments[index];
+        if(param->getName().empty() || argument.getIsDefaulted() ||
+           clang::isSubstitutedDefaultArgument(context,
+                                               argument,
+                                               param,
+                                               arguments.take_front(index),
+                                               params.getDepth())) {
+            continue;
+        }
+        std::string text;
+        if(argument.getKind() == clang::TemplateArgument::Pack) {
+            if(argument.pack_size() == 0) {
+                continue;
+            }
+            for(const auto& [position, element]: views::enumerate(argument.getPackAsArray())) {
+                text += (position == 0 ? "" : ", ") + argument_text(element);
+            }
+        } else {
+            text = argument_text(argument);
+        }
+        bindings.push_back({.parameter = param->getName().str(), .argument = std::move(text)});
+    }
+}
+
+/// The template `member`, a member template of a class template
+/// specialization, was written as.
+template <typename Template>
+auto written_template(const Template* member) -> const Template* {
+    while(const auto* from = member->getInstantiatedFromMemberTemplate()) {
+        member = from;
+    }
+    return member;
+}
+
+/// What `decl` was instantiated from: the class template or its partial
+/// specialization a class specialization instantiates, the function
+/// template or the member function of a class template a function
+/// instantiates; none for a declaration the code writes, an explicit
+/// specialization among them. A member of a class template specialization
+/// binds that specialization's arguments first.
+auto instantiation(const clang::NamedDecl& decl, const display::Options& options)
+    -> std::optional<Instantiation> {
+    auto& context = decl.getASTContext();
+    auto add_owner = [&](const clang::DeclContext* scope, Instantiation& result) {
+        const auto* owner = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(scope);
+        if(!owner || !instantiated(owner->getSpecializationKind())) {
+            return;
+        }
+        auto outer = instantiation(*owner, options);
+        if(outer) {
+            result.bindings = std::move(outer->bindings);
+            result.owner = owner;
+        }
+    };
+
+    if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(&decl)) {
+        if(!instantiated(spec->getSpecializationKind())) {
+            return std::nullopt;
+        }
+        Instantiation result;
+        auto from = spec->getSpecializedTemplateOrPartial();
+        if(const auto* partial =
+               llvm::dyn_cast_if_present<clang::ClassTemplatePartialSpecializationDecl*>(from)) {
+            result.pattern = partial;
+            add_bindings(result.bindings,
+                         *partial->getTemplateParameters(),
+                         spec->getTemplateInstantiationArgs().asArray(),
+                         context,
+                         options);
+        } else if(const auto* primary =
+                      llvm::dyn_cast_if_present<clang::ClassTemplateDecl*>(from)) {
+            result.pattern = written_template(primary);
+            if(result.pattern != primary) {
+                add_owner(spec->getDeclContext(), result);
+            }
+            add_bindings(result.bindings,
+                         *primary->getTemplateParameters(),
+                         spec->getTemplateArgs().asArray(),
+                         context,
+                         options);
+        }
+        return result.pattern ? std::optional(std::move(result)) : std::nullopt;
+    }
+
+    const auto* function = llvm::dyn_cast<clang::FunctionDecl>(&decl);
+    if(!function || !instantiated(function->getTemplateSpecializationKind())) {
+        return std::nullopt;
+    }
+    Instantiation result;
+    if(const auto* primary = function->getPrimaryTemplate()) {
+        result.pattern = written_template(primary);
+        if(result.pattern != primary) {
+            add_owner(function->getDeclContext(), result);
+        }
+        add_bindings(result.bindings,
+                     *primary->getTemplateParameters(),
+                     function->getTemplateSpecializationArgs()->asArray(),
+                     context,
+                     options);
+    } else if(const auto* from = function->getInstantiatedFromMemberFunction()) {
+        result.pattern = from;
+        add_owner(function->getDeclContext(), result);
+    }
+    return result.pattern ? std::optional(std::move(result)) : std::nullopt;
+}
+
 /// The card of a declaration.
 auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverInfo {
     HoverInfo info;
@@ -607,6 +842,24 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
             declaration = described;
         }
     }
+    /// A use of an instantiation shows the template it was instantiated
+    /// from and the arguments, which the title then leaves out.
+    if(auto from = instantiation(*decl, shown)) {
+        declaration = from->pattern;
+        info.template_arguments = std::move(from->bindings);
+        if(llvm::isa<clang::ClassTemplateSpecializationDecl>(decl)) {
+            info.name = display::name_of(decl, {.qualified = false}) + "<…>";
+        }
+        if(from->owner) {
+            clang::PrintingPolicy policy(context.getLangOpts());
+            policy.SuppressInlineNamespace =
+                llvm::to_underlying(clang::PrintingPolicy::SuppressInlineNamespaceMode::All);
+            info.scope.clear();
+            llvm::raw_string_ostream os(info.scope);
+            from->owner->printQualifiedName(os, policy);
+            info.scope += "<…>";
+        }
+    }
 
     if(const auto* using_decl = llvm::dyn_cast<clang::UsingDecl>(decl)) {
         /// The declarations it brings in, in the order they are declared,
@@ -638,18 +891,21 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
         add_function(info, entity, *function, shown);
     } else if(const auto* binding = llvm::dyn_cast<clang::BindingDecl>(entity)) {
         if(auto type = binding_type(*binding); !type.isNull()) {
-            info.type = display::type(context, type, shown);
+            info.type = shown_type(context, type, shown);
         }
     } else if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(entity)) {
         auto type = resolved_type(value, unit);
         if(!spells_type(*value)) {
-            info.type = display::type(context, type, shown);
+            info.type = shown_type(context, type, shown);
         } else if(type != value->getType()) {
             /// The resolver named what a dependent type stands for.
-            info.aliases.push_back({display::type(context, value->getType(), shown).text,
-                                    display::type(context, type, shown).text});
+            info.aliases.push_back({shown_type(context, value->getType(), shown).text,
+                                    shown_type(context, type, shown).text});
         } else if(!llvm::isa<clang::EnumConstantDecl>(value)) {
             add_alias(info, context, type, shown);
+            if(tangled(type)) {
+                info.type = shown_type(context, type, shown);
+            }
         }
     } else if(const auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(entity)) {
         /// The alias's own target: through the readable types, a standard
@@ -657,6 +913,9 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
         auto plain = shown;
         plain.readable = nullptr;
         add_alias(info, context, alias->getUnderlyingType(), plain);
+        if(tangled(alias->getUnderlyingType())) {
+            info.type = shown_type(context, alias->getUnderlyingType(), plain);
+        }
         const auto* tag = alias->getUnderlyingType()->getAsTagDecl();
         if(tag && tag->getDefinition() && tag->getTypedefNameForAnonDecl() != alias &&
            !llvm::isa<clang::ClassTemplateSpecializationDecl>(tag)) {
@@ -886,9 +1145,9 @@ void add_pass(const SelectionTree::Node& node, HoverInfo& info, const display::O
                 type.getNonReferenceType().isConstQualified() ? PassMode::ConstRef : PassMode::Ref;
         }
         if(converts(node, argument)) {
-            info.converted_to = display::type(param->getASTContext(),
-                                              type.getNonReferenceType().getUnqualifiedType(),
-                                              shown)
+            info.converted_to = shown_type(param->getASTContext(),
+                                           type.getNonReferenceType().getUnqualifiedType(),
+                                           shown)
                                     .text;
         }
         return;
@@ -927,7 +1186,7 @@ auto literal_hover(const SelectionTree::Node& node,
     /// The type alone: an alias is never what a literal is written with. An
     /// unevaluated string, as a `static_assert`'s message, has none.
     if(!literal.getType().isNull()) {
-        info.type.emplace(display::type(context, literal.getType(), request.display).text);
+        info.type.emplace(shown_type(context, literal.getType(), request.display).text);
     }
     if(const auto* string = llvm::dyn_cast<clang::StringLiteral>(&literal)) {
         info.kind = SymbolKind::String;
@@ -963,14 +1222,14 @@ auto predefined_hover(const clang::PredefinedExpr& expr,
         info.value.emplace();
         llvm::raw_string_ostream os(*info.value);
         name->outputString(os);
-        info.type = display::type(context, name->getType(), options);
+        info.type = shown_type(context, name->getType(), options);
     } else {
         /// Inside templates, the approximate type `const char[]` is still useful.
         clang::QualType string_type =
             context.getIncompleteArrayType(context.CharTy.withConst(),
                                            clang::ArraySizeModifier::Normal,
                                            /*IndexTypeQuals=*/0);
-        info.type = display::type(context, string_type, options);
+        info.type = shown_type(context, string_type, options);
     }
     return info;
 }
@@ -987,12 +1246,11 @@ auto this_hover(const clang::CXXThisExpr& expr,
     HoverInfo info;
     info.name = "this";
     info.definition =
-        display::type(context,
-                      context.getPointerType(
-                          clang::QualType(written.getTypePtr(), pointee.getCVRQualifiers())),
-                      options)
+        shown_type(context,
+                   context.getPointerType(
+                       clang::QualType(written.getTypePtr(), pointee.getCVRQualifiers())),
+                   options)
             .text;
-    reformat(info.definition);
     return info;
 }
 
@@ -1032,7 +1290,7 @@ auto expr_hover(const SelectionTree::Node& node, const clang::Expr& expr, const 
     auto shown = request.display;
     shown.scope = &node.decl_context();
     shown.source = &expr;
-    info.type = display::type(context, expr.getType(), shown);
+    info.type = shown_type(context, expr.getType(), shown);
     info.value = std::move(value);
     add_pass(node, info, request.display);
     return info;
@@ -1076,9 +1334,7 @@ auto deduced_hover(clang::QualType type,
     /// it was deduced from, as a placeholder's deduced type does.
     auto& context = request.unit.context();
     type = context.getAutoType(clang::DeducedKind::Deduced, type, clang::AutoTypeKeyword::Auto);
-    auto shown = display::type(context, type, options);
-    info.definition = shown.text;
-    reformat(info.definition);
+    info.definition = shown_type(context, type, options).text;
     add_alias(info, context, type, options);
     auto readable = options.readable->readable(type, scope, source);
     const clang::NamedDecl* named = nullptr;
@@ -1192,6 +1448,82 @@ auto macro_card(CompilationUnit& unit,
     return info;
 }
 
+/// The type and value of what the reference to `macro` named at `name`
+/// expands to, when that is one whole expression.
+void add_expansion_value(CompilationUnit& unit,
+                         const clang::MacroInfo& macro,
+                         clang::SourceLocation location,
+                         LocalSourceRange name,
+                         const display::Options& options,
+                         HoverInfo& info) {
+    auto focus = unit.focus_file();
+    auto& tokens = focus.tokens();
+    auto range = name;
+    if(macro.isFunctionLike()) {
+        /// Through the parenthesis closing its arguments.
+        auto spelled = tokens.spelled();
+        std::uint32_t depth = 0;
+        for(auto index = tokens.spelled_at_or_after(name.end); index < spelled.size(); index += 1) {
+            auto kind = spelled[index].kind;
+            if(kind == clang::tok::l_paren) {
+                depth += 1;
+            } else if(kind == clang::tok::r_paren && depth != 0) {
+                depth -= 1;
+                if(depth == 0) {
+                    range.end = spelled[index].range.end;
+                    break;
+                }
+            } else if(depth == 0 && kind != clang::tok::comment) {
+                break;
+            }
+        }
+    }
+
+    /// In another macro's arguments, the reference expands within that
+    /// macro's expansion, and its expression is the one it writes.
+    /// Expanded on its own, its expression takes in every token it expands
+    /// to, which may be an argument alone (`ECHO(x)`).
+    auto selected = range;
+    llvm::ArrayRef<clang::syntax::Token> expanded;
+    for(const auto& expansion: tokens.expansions_overlapping(tokens.spelled_touching(location))) {
+        LocalSourceRange invocation{expansion.spelled.front().range.begin,
+                                    expansion.spelled.back().range.end};
+        if(invocation == range) {
+            expanded = expansion.expanded;
+        }
+        selected.begin = std::min(selected.begin, invocation.begin);
+        selected.end = std::max(selected.end, invocation.end);
+    }
+    auto whole = [&](const clang::Expr& candidate) {
+        if(expanded.empty()) {
+            return focus.written_range(candidate.getSourceRange()) == range;
+        }
+        auto covered = tokens.expanded(candidate.getSourceRange());
+        return covered.data() == expanded.data() && covered.size() == expanded.size();
+    };
+    auto tree = SelectionTree::create_right(unit, selected);
+    const clang::Expr* expr = nullptr;
+    auto find = [&](this auto& self, const SelectionTree::Node* node) -> void {
+        if(const auto* found = node->get<clang::Expr>(); found && whole(*found)) {
+            expr = found->IgnoreImplicit();
+            return;
+        }
+        for(const auto* child: node->children) {
+            if(!expr) {
+                self(child);
+            }
+        }
+    };
+    if(const auto* root = tree.common_ancestor()) {
+        find(root);
+    }
+    if(!expr || expr->getType()->isVoidType()) {
+        return;
+    }
+    info.type = shown_type(unit.context(), expr->getType(), options);
+    info.value = display::expr_value(unit.context(), expr);
+}
+
 /// A macro name at the cursor, rendered from the preprocessor record —
 /// macro semantics never reach the AST. The card shows the `#define` text,
 /// plus a preview of the expanded tokens at expansion sites. A name a
@@ -1199,7 +1531,8 @@ auto macro_card(CompilationUnit& unit,
 /// `#ifndef` does, shows the definition that follows.
 auto macro_hover(CompilationUnit& unit,
                  std::uint32_t offset,
-                 const DocumentationOptions& documentation_options) -> std::optional<HoverInfo> {
+                 const DocumentationOptions& documentation_options,
+                 const display::Options& display_options) -> std::optional<HoverInfo> {
     auto focus = unit.focus_file();
     if(auto directives = unit.directives().find(focus.file());
        directives != unit.directives().end()) {
@@ -1216,6 +1549,7 @@ auto macro_hover(CompilationUnit& unit,
                 /// A conditional reference (#ifdef) expands nothing: no
                 /// expanded token comes from it.
                 info.expansion = expansion_preview(unit, macro.loc);
+                add_expansion_value(unit, *macro.macro, macro.loc, range, display_options, info);
             }
             return info;
         }
@@ -1404,11 +1738,6 @@ auto hover_info(CompilationUnit& unit,
         return info;
     }
 
-    if(auto info = macro_hover(unit, offset, documentation)) {
-        reformat(info->expansion);
-        return info;
-    }
-
     auto& context = unit.context();
     display::Options display_options = {
         .terse = true,
@@ -1421,6 +1750,11 @@ auto hover_info(CompilationUnit& unit,
     };
     display::ReadableTypes readable(context, display_options);
     display_options.readable = &readable;
+
+    if(auto info = macro_hover(unit, offset, documentation, display_options)) {
+        reformat(info->expansion);
+        return info;
+    }
     Request request{
         .unit = unit,
         .documentation = documentation,

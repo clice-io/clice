@@ -15,7 +15,8 @@ markdown = '''
 ```cpp
 bool on
 ```
-Offset: 0 bytes
-Size: 1 byte, alignment 1 byte
+**Offset:** 0 bytes
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "return is_on(flags) + flags.⟦on⟧;"

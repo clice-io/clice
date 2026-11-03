@@ -5,9 +5,11 @@ markdown = '''
 ```cpp
 #define lookup(key) ((key) + 100)
 ```
-Expands to:
+**Expands to:**
 ```cpp
 ((5) + 100)
 ```
+**Type:** `int`
+**Value:** `105 (0x69)`
 '''
 range = "int value = ⟦lookup⟧(5);"

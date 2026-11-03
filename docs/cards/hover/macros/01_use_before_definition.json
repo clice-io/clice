@@ -90,7 +90,7 @@
           "marker": "after",
           "value": {
             "hover": {
-              "markdown": "**macro** `LIMIT`\n\n```cpp\n#define LIMIT 8\n```\nExpands to:\n```cpp\n8\n```",
+              "markdown": "**macro** `LIMIT`\n\n```cpp\n#define LIMIT 8\n```\n**Expands to:**\n```cpp\n8\n```\n**Type:** `int`\n**Value:** `8`",
               "range": {
                 "$place": "int capacity = ⟦LIMIT⟧;",
                 "path": "main.cpp",

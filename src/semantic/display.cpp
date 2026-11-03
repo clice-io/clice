@@ -9,6 +9,7 @@ module clice;
 
 import :semantic.decls;
 import :semantic.display;
+import :semantic.type_lines;
 import :semantic.types;
 import :support.format;
 import :support.text;
@@ -634,10 +635,14 @@ auto type(clang::ASTContext& context,
     Type result;
     llvm::raw_string_ostream os(result.text);
 
-    if(auto scope = restored_scope(type, options)) {
-        scope.print(os, policy);
+    if(options.width != 0 && !type.isNull()) {
+        result.text = type_lines(context, type, policy, options.width);
+    } else {
+        if(auto scope = restored_scope(type, options)) {
+            scope.print(os, policy);
+        }
+        type.print(os, policy, declarator);
     }
-    type.print(os, policy, declarator);
 
     if(!type.isNull() && options.show_aka) {
         /// A placeholder prints as the type deduced for it, and only that
@@ -661,7 +666,9 @@ auto type(clang::ASTContext& context,
                 desugared =
                     options.readable->underlying(*desugared, options.scope, options.specialization);
             }
-            if(auto aka = desugared->getAsString(policy); aka != result.text) {
+            auto aka = options.width != 0 ? type_lines(context, *desugared, policy, options.width)
+                                          : desugared->getAsString(policy);
+            if(aka != result.text) {
                 result.aka = std::move(aka);
             }
         }

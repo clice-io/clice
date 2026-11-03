@@ -1,0 +1,111 @@
+[answers.primary.hover]
+markdown = '''
+**struct** `Store<…>` · namespace `instantiation_patterns`
+
+```cpp
+template <typename T, typename Alloc = void> struct Store {
+  T* items;
+}
+```
+**Template arguments:**
+```cpp
+T = int
+```
+**Size:** 8 bytes
+**Alignment:** 8 bytes
+'''
+range = "⟦Store⟧<int> numbers;"
+
+[answers.partial.hover]
+markdown = '''
+**struct** `Store<…>` · namespace `instantiation_patterns`
+
+```cpp
+template <typename T> struct Store<T*, void> {
+  T** slots;
+}
+```
+**Template arguments:**
+```cpp
+T = char
+```
+**Size:** 8 bytes
+**Alignment:** 8 bytes
+'''
+range = "⟦Store⟧<char*> names;"
+
+[answers.explicit.hover]
+markdown = '''
+**struct** `Store<bool>` · namespace `instantiation_patterns`
+
+```cpp
+template <> struct Store<bool> {
+  unsigned int bits;
+}
+```
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "⟦Store⟧<bool> flags;"
+
+[answers.member_function.hover]
+markdown = '''
+**method** `push` · struct `instantiation_patterns::Queue<…>`
+
+```cpp
+void push(const T& item)
+```
+**Template arguments:**
+```cpp
+T = long
+```
+'''
+range = "queue.⟦push⟧(1);"
+
+[answers.member_template.hover]
+markdown = '''
+**method** `convert` · struct `instantiation_patterns::Queue<…>`
+
+```cpp
+template <typename U> U convert() const
+```
+**Template arguments:**
+```cpp
+T = long
+U = double
+```
+'''
+range = "queue.⟦convert⟧<double>();"
+
+[answers.member_class_template.hover]
+markdown = '''
+**struct** `Ring<…>` · struct `instantiation_patterns::Queue<…>`
+
+```cpp
+template <int Capacity> struct Ring {
+  T items[Capacity];
+}
+```
+**Template arguments:**
+```cpp
+T = long
+Capacity = 8
+```
+**Size:** 64 bytes
+**Alignment:** 8 bytes
+'''
+range = "Queue<long>::⟦Ring⟧<8> ring;"
+
+[answers.empty_pack.hover]
+markdown = '''
+**function** `log` · namespace `instantiation_patterns`
+
+```cpp
+template <typename T, typename... Rest> void log(T first, Rest... rest)
+```
+**Template arguments:**
+```cpp
+T = int
+```
+'''
+range = "⟦log⟧(1);"

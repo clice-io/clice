@@ -5,7 +5,13 @@ markdown = '''
 Sums the elements of a range.
 
 ```cpp
-template <> int sum<Range>(Range &&r)
+template <typename R>
+  requires requires(R r) { r.size(); }
+int sum(R&& r)
+```
+**Template arguments:**
+```cpp
+R = Range
 ```
 '''
 range = "return ⟦sum⟧(Range{}) + pick(1);"
@@ -17,7 +23,11 @@ markdown = '''
 Picks one value.
 
 ```cpp
-template <> int pick<int, int>(int a)
+template <typename T, typename = decltype(T{})> T pick(T a)
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "return sum(Range{}) + ⟦pick⟧(1);"

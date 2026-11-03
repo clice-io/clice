@@ -1,5 +1,5 @@
 // A long declaration wraps in the definition block as clang-format lays it
-// out; the alias lines below it stay on one line each.
+// out; below it, each alias it spells is noted once.
 
 namespace clang_format_types {
 

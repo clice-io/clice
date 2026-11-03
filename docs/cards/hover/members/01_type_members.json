@@ -61,7 +61,7 @@
           "marker": "struct_type",
           "value": {
             "hover": {
-              "markdown": "**struct** `Point` · namespace `members`\n\n```cpp\nstruct Point {\n  using Scalar = double;\n  Scalar x;\n  Scalar y;\n}\n```\nSize: 16 bytes, alignment 8 bytes",
+              "markdown": "**struct** `Point` · namespace `members`\n\n```cpp\nstruct Point {\n  using Scalar = double;\n  Scalar x;\n  Scalar y;\n}\n```\n**Size:** 16 bytes\n**Alignment:** 8 bytes",
               "range": {
                 "$place": "struct ⟦Point⟧ {",
                 "path": "main.cpp",
@@ -117,7 +117,7 @@
           "marker": "struct_type",
           "value": {
             "hover": {
-              "markdown": "**struct** `Point` · namespace `members`\n\n```cpp\nstruct Point {\n  using Scalar = double;\n  Scalar x;\n  // ...\n}\n```\nSize: 16 bytes, alignment 8 bytes",
+              "markdown": "**struct** `Point` · namespace `members`\n\n```cpp\nstruct Point {\n  using Scalar = double;\n  Scalar x;\n  // ...\n}\n```\n**Size:** 16 bytes\n**Alignment:** 8 bytes",
               "range": {
                 "$place": "struct ⟦Point⟧ {",
                 "path": "main.cpp",
@@ -173,7 +173,7 @@
           "marker": "struct_type",
           "value": {
             "hover": {
-              "markdown": "**struct** `Point` · namespace `members`\n\n```cpp\nstruct Point\n```\nSize: 16 bytes, alignment 8 bytes",
+              "markdown": "**struct** `Point` · namespace `members`\n\n```cpp\nstruct Point\n```\n**Size:** 16 bytes\n**Alignment:** 8 bytes",
               "range": {
                 "$place": "struct ⟦Point⟧ {",
                 "path": "main.cpp",

@@ -5,8 +5,8 @@ markdown = '''
 ```cpp
 long identifier = 4
 ```
-Value: `4`
-Passed as `identifier` by value
+**Value:** `4`
+**Passed:** by value to `identifier`
 '''
 range = "auto record = construct<Record>(⟦identifier⟧);"
 
@@ -17,8 +17,8 @@ markdown = '''
 ```cpp
 int distance = 5
 ```
-Value: `5`
-Passed as `distance` by const reference, converted to `double`
+**Value:** `5`
+**Passed:** by const reference to `distance`, converted to `double`
 '''
 range = "measure(⟦distance⟧);"
 
@@ -29,8 +29,8 @@ markdown = '''
 ```cpp
 int distance = 6
 ```
-Value: `6`
-Passed as `distance` by const reference, converted to `double`
+**Value:** `6`
+**Passed:** by const reference to `distance`, converted to `double`
 '''
 range = "Measurement measurement(⟦distance⟧);"
 
@@ -38,9 +38,9 @@ range = "Measurement measurement(⟦distance⟧);"
 markdown = '''
 **literal** `8`
 
-Type: `int`
-Value: `8`
-Passed as `expected` by const reference, converted to `long`
+**Type:** `int`
+**Value:** `8`
+**Passed:** by const reference to `expected`, converted to `long`
 '''
 range = "compare(7, ⟦8⟧);"
 
@@ -48,9 +48,9 @@ range = "compare(7, ⟦8⟧);"
 markdown = '''
 **expression**
 
-Type: `int`
-Value: `17 (0x11)`
-Passed as `expected` by const reference, converted to `long`
+**Type:** `int`
+**Value:** `17 (0x11)`
+**Passed:** by const reference to `expected`, converted to `long`
 '''
 range = "compare(7, 8 ⟦+⟧ 9);"
 
@@ -58,9 +58,9 @@ range = "compare(7, 8 ⟦+⟧ 9);"
 markdown = '''
 **expression**
 
-Type: `int`
-Value: `5`
-Passed as `left` by value, converted to `long`
+**Type:** `int`
+**Value:** `5`
+**Passed:** by value to `left`, converted to `long`
 '''
 range = "return add(2 ⟦+⟧ 3, 4);"
 
@@ -68,9 +68,9 @@ range = "return add(2 ⟦+⟧ 3, 4);"
 markdown = '''
 **literal** `10`
 
-Type: `int`
-Value: `10 (0xa)`
-Passed as `distance` by const reference, converted to `double`
+**Type:** `int`
+**Value:** `10 (0xa)`
+**Passed:** by const reference to `distance`, converted to `double`
 '''
 range = "measure(⟦10⟧);"
 
@@ -78,9 +78,9 @@ range = "measure(⟦10⟧);"
 markdown = '''
 **literal** `true`
 
-Type: `bool`
-Value: `true`
-Passed as `enabled` by value
+**Type:** `bool`
+**Value:** `true`
+**Passed:** by value to `enabled`
 '''
 range = "configure(⟦true⟧, nullptr);"
 
@@ -88,9 +88,9 @@ range = "configure(⟦true⟧, nullptr);"
 markdown = '''
 **literal** `nullptr`
 
-Type: `std::nullptr_t`
-Value: `nullptr`
-Passed as `limit` by value
+**Type:** `std::nullptr_t`
+**Value:** `nullptr`
+**Passed:** by value to `limit`
 '''
 range = "configure(true, ⟦nullptr⟧);"
 
@@ -101,8 +101,8 @@ markdown = '''
 ```cpp
 long level = 2
 ```
-Value: `2`
-Passed as `level` by value
+**Value:** `2`
+**Passed:** by value to `level`
 '''
 range = "logger.write(⟦level⟧);"
 
@@ -113,7 +113,7 @@ markdown = '''
 ```cpp
 const int value = 11
 ```
-Value: `11 (0xb)`
-Passed as `key` by value, converted to `Key`
+**Value:** `11 (0xb)`
+**Passed:** by value to `key`, converted to `Key`
 '''
 range = "lookup(⟦value⟧);"

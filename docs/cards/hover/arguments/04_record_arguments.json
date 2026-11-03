@@ -32,7 +32,7 @@
           "marker": "record_arg",
           "value": {
             "hover": {
-              "markdown": "**variable** `t` · function `record_value_misleading::demo`\n\n```cpp\nTag t\n```\nPassed by value",
+              "markdown": "**variable** `t` · function `record_value_misleading::demo`\n\n```cpp\nTag t\n```\n**Passed:** by value",
               "range": {
                 "$place": "int r = rank(⟦t⟧);",
                 "path": "main.cpp",

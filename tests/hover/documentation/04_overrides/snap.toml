@@ -7,7 +7,7 @@ Renders the widget.
 ```cpp
 void draw() override
 ```
-Overrides: `inherit_docs::Base::draw`
+**Overrides:** `inherit_docs::Base::draw`
 '''
 range = "void ⟦draw⟧() override;"
 
@@ -18,6 +18,6 @@ markdown = '''
 ```cpp
 void draw() override
 ```
-Overrides: `inherit_docs::Base::draw`
+**Overrides:** `inherit_docs::Base::draw`
 '''
 range = "void ⟦draw⟧() override;"

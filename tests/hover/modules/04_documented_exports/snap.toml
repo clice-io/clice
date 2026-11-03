@@ -10,7 +10,8 @@ export struct Point {
   int y;
 }
 ```
-Size: 8 bytes, alignment 4 bytes
+**Size:** 8 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Point⟧ origin{0, 0};"
 

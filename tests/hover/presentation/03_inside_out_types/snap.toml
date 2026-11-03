@@ -1,0 +1,128 @@
+[answers.function_pointer.hover]
+markdown = '''
+**variable** `on_exit` · namespace `inside_out`
+
+```cpp
+void (*on_exit)(int)
+```
+**Type:** `((int) -> void)*`
+'''
+range = "void (*⟦on_exit⟧)(int);"
+
+[answers.array_reference.hover]
+markdown = '''
+**variable** `row` · namespace `inside_out`
+
+```cpp
+int (&row)[16] = storage
+```
+**Type:** `int[16]&`
+'''
+range = "int (&⟦row⟧)[16] = storage;"
+
+[answers.array_pointer.hover]
+markdown = '''
+**variable** `line` · namespace `inside_out`
+
+```cpp
+char (*line)[80]
+```
+**Type:** `char[80]*`
+'''
+range = "char (*⟦line⟧)[80];"
+
+[answers.pointer_array.hover]
+markdown = '''
+**variable** `handlers` · namespace `inside_out`
+
+```cpp
+void (*handlers[8])(int, const char*)
+```
+**Type:** `((int, const char*) -> void)*[8]`
+'''
+range = "void (*⟦handlers⟧[8])(int, const char*);"
+
+[answers.variadic.hover]
+markdown = '''
+**variable** `print` · namespace `inside_out`
+
+```cpp
+int (*print)(const char*, ...)
+```
+**Type:** `((const char*, ...) -> int)*`
+'''
+range = "int (*⟦print⟧)(const char*, ...);"
+
+[answers.member_function.hover]
+markdown = '''
+**variable** `scaler` · namespace `inside_out`
+
+```cpp
+double (Widget::*scaler)(double) const = &Widget::scale
+```
+**Type:** `Widget::-> (const (double) -> double)`
+**Value:** `&Widget::scale`
+'''
+range = "double (Widget::*⟦scaler⟧)(double) const = &Widget::scale;"
+
+[answers.qualified_member.hover]
+markdown = '''
+**variable** `resetter` · namespace `inside_out`
+
+```cpp
+void (Widget::*resetter)() & noexcept = &Widget::reset
+```
+**Type:** `Widget::-> (& noexcept () -> void)`
+**Value:** `&Widget::reset`
+'''
+range = "void (Widget::*⟦resetter⟧)() & noexcept = &Widget::reset;"
+
+[answers.member_data.hover]
+markdown = '''
+**variable** `field` · namespace `inside_out`
+
+```cpp
+int Widget::* field = &Widget::id
+```
+**Type:** `Widget::-> int`
+**Value:** `&Widget::id`
+'''
+range = "int Widget::*⟦field⟧ = &Widget::id;"
+
+[answers.member_array.hover]
+markdown = '''
+**variable** `table` · namespace `inside_out`
+
+```cpp
+void (*(Widget::*table)[4])(int) = &Widget::hooks
+```
+**Type:** `Widget::-> ((int) -> void)*[4]`
+**Value:** `&Widget::hooks`
+'''
+range = "void (*(Widget::*⟦table⟧)[4])(int) = &Widget::hooks;"
+
+[answers.returns_pointer.hover]
+markdown = '''
+**function** `signal` · namespace `inside_out`
+
+```cpp
+void (*signal(int, void (*)(int)))(int)
+```
+**Type:**
+```cpp
+(int, α) -> α
+  α = ((int) -> void)*
+```
+'''
+range = "void (*⟦signal⟧(int, void (*)(int)))(int);"
+
+[answers.alias.hover]
+markdown = '''
+**variable** `dispatch` · namespace `inside_out`
+
+```cpp
+Table dispatch
+```
+`Table` is `((int) -> void)*[8]`
+'''
+range = "Table ⟦dispatch⟧;"

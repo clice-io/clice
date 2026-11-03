@@ -8,7 +8,8 @@ struct Frame {
   long sequence;
 }
 ```
-Size: 16 bytes (7 bytes padding), alignment 8 bytes
+**Size:** 16 bytes (7 bytes padding)
+**Alignment:** 8 bytes
 '''
 range = "struct ⟦Frame⟧ {"
 
@@ -19,8 +20,9 @@ markdown = '''
 ```cpp
 char kind
 ```
-Offset: 0 bytes
-Size: 1 byte (+7 bytes padding), alignment 1 byte
+**Offset:** 0 bytes
+**Size:** 1 byte (+7 bytes padding)
+**Alignment:** 1 byte
 '''
 range = "char ⟦kind⟧;"
 
@@ -31,8 +33,9 @@ markdown = '''
 ```cpp
 long sequence
 ```
-Offset: 8 bytes
-Size: 8 bytes, alignment 8 bytes
+**Offset:** 8 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "long ⟦sequence⟧;"
 
@@ -43,8 +46,9 @@ markdown = '''
 ```cpp
 unsigned int enabled : 1
 ```
-Offset: 0 bytes
-Size: 1 bit, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 1 bit
+**Alignment:** 4 bytes
 '''
 range = "unsigned int ⟦enabled⟧ : 1;"
 
@@ -55,8 +59,9 @@ markdown = '''
 ```cpp
 unsigned int last : 1
 ```
-Offset: 0 bytes and 1 bit
-Size: 1 bit (+30 bits padding), alignment 4 bytes
+**Offset:** 0 bytes and 1 bit
+**Size:** 1 bit (+30 bits padding)
+**Alignment:** 4 bytes
 '''
 range = "unsigned int ⟦last⟧ : 1;"
 

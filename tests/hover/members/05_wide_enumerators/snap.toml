@@ -5,7 +5,7 @@ markdown = '''
 ```cpp
 constexpr Wide wide = Max
 ```
-Value: `Max (0xffffffffffffffff)`
+**Value:** `Max (0xffffffffffffffff)`
 '''
 range = "constexpr Wide ⟦wide⟧ = Max;"
 
@@ -16,7 +16,7 @@ markdown = '''
 ```cpp
 constexpr Narrow narrow = Small
 ```
-Value: `Small (0x5)`
+**Value:** `Small (0x5)`
 '''
 range = "constexpr Narrow ⟦narrow⟧ = Small;"
 
@@ -27,7 +27,7 @@ markdown = '''
 ```cpp
 constexpr Huge huge = Top
 ```
-Value: `Top`
+**Value:** `Top`
 '''
 range = "constexpr Huge ⟦huge⟧ = Top;"
 
@@ -38,6 +38,6 @@ markdown = '''
 ```cpp
 Max = 0xFFFFFFFFFFFFFFFFULL
 ```
-Value: `18446744073709551615`
+**Value:** `18446744073709551615`
 '''
 range = "⟦Max⟧ = 0xFFFFFFFFFFFFFFFFULL,"

@@ -8,11 +8,11 @@ Computes the area of a rectangle.
 int area(int width, int height)
 ```
 
-Parameters:
+**Parameters:**
 - `width` — The horizontal extent.
 - `height` — The vertical extent.
 
-Returns: The product of both sides.
+**Returns:** The product of both sides.
 '''
 range = "int ⟦area⟧(int width, int height);"
 
@@ -26,11 +26,11 @@ Computes the area of a rectangle.
 int area(int width, int height)
 ```
 
-Parameters:
+**Parameters:**
 - `width` — The horizontal extent.
 - `height` — The vertical extent.
 
-Returns: The product of both sides.
+**Returns:** The product of both sides.
 '''
 range = "int total = ⟦area⟧(3, 4);"
 
@@ -44,7 +44,7 @@ Opens the file.
 int open_file()
 ```
 
-Return values:
+**Returns:**
 - `0` — The file is open.
 - `-1` — It does not exist.
 '''

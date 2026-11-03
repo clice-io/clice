@@ -29,7 +29,7 @@ markdown = '''
 Write formatted output to stdout.
 
 ```cpp
-int print(const char *format, ...)
+int print(const char* format, ...)
 ```
 
 ---
@@ -49,7 +49,7 @@ Opens a device.
 int kernel_open(int minor)
 ```
 
-Parameters:
+**Parameters:**
 - `minor` — The minor number of the device.
 
 ---

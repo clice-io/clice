@@ -2,9 +2,9 @@
 markdown = '''
 **literal** `"hello"`
 
-Type: `const char[6]`
-Length: 5
-Size: 6 bytes
+**Type:** `const char[6]`
+**Length:** 5
+**Size:** 6 bytes
 '''
 range = 'const char *greeting = ⟦"hello"⟧;'
 
@@ -12,8 +12,8 @@ range = 'const char *greeting = ⟦"hello"⟧;'
 markdown = '''
 **literal** `42`
 
-Type: `int`
-Value: `42 (0x2a)`
+**Type:** `int`
+**Value:** `42 (0x2a)`
 '''
 range = "auto count = ⟦42⟧;"
 
@@ -21,7 +21,7 @@ range = "auto count = ⟦42⟧;"
 markdown = '''
 **literal** `3.14`
 
-Type: `double`
-Value: `3.14`
+**Type:** `double`
+**Value:** `3.14`
 '''
 range = "auto ratio = ⟦3.14⟧;"

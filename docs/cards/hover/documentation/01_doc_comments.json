@@ -100,7 +100,7 @@
           "marker": "spec_def",
           "value": {
             "hover": {
-              "markdown": "**struct** `Store<T *>` · namespace `reference_docs`\n\nStores an indirect value.\n\n```cpp\ntemplate <typename T> struct Store<T *> {}\n```",
+              "markdown": "**struct** `Store<T *>` · namespace `reference_docs`\n\nStores an indirect value.\n\n```cpp\ntemplate <typename T> struct Store<T*> {}\n```",
               "range": {
                 "$place": "template <typename T> struct ⟦Store⟧<T*> {};",
                 "path": "main.cpp",
@@ -123,7 +123,7 @@
           "marker": "primary_ref",
           "value": {
             "hover": {
-              "markdown": "**struct** `Store<long>` · namespace `reference_docs`\n\nStores an ordinary value.\n\n```cpp\ntemplate <> struct Store<long> {}\n```\nSize: 1 byte, alignment 1 byte",
+              "markdown": "**struct** `Store<…>` · namespace `reference_docs`\n\nStores an ordinary value.\n\n```cpp\ntemplate <typename T> struct Store {}\n```\n**Template arguments:**\n```cpp\nT = long\n```\n**Size:** 1 byte\n**Alignment:** 1 byte",
               "range": {
                 "$place": "⟦Store⟧<long> ordinary;",
                 "path": "main.cpp",
@@ -146,7 +146,7 @@
           "marker": "spec_ref",
           "value": {
             "hover": {
-              "markdown": "**struct** `Store<long *>` · namespace `reference_docs`\n\nStores an indirect value.\n\n```cpp\ntemplate <> struct Store<long *> {}\n```\nSize: 1 byte, alignment 1 byte",
+              "markdown": "**struct** `Store<…>` · namespace `reference_docs`\n\nStores an indirect value.\n\n```cpp\ntemplate <typename T> struct Store<T*> {}\n```\n**Template arguments:**\n```cpp\nT = long\n```\n**Size:** 1 byte\n**Alignment:** 1 byte",
               "range": {
                 "$place": "⟦Store⟧<long*> indirect;",
                 "path": "main.cpp",

@@ -29,33 +29,43 @@ markdown = '''
 Stores an indirect value.
 
 ```cpp
-template <typename T> struct Store<T *> {}
+template <typename T> struct Store<T*> {}
 ```
 '''
 range = "template <typename T> struct ⟦Store⟧<T*> {};"
 
 [answers.primary_ref.hover]
 markdown = '''
-**struct** `Store<long>` · namespace `reference_docs`
+**struct** `Store<…>` · namespace `reference_docs`
 
 Stores an ordinary value.
 
 ```cpp
-template <> struct Store<long> {}
+template <typename T> struct Store {}
 ```
-Size: 1 byte, alignment 1 byte
+**Template arguments:**
+```cpp
+T = long
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Store⟧<long> ordinary;"
 
 [answers.spec_ref.hover]
 markdown = '''
-**struct** `Store<long *>` · namespace `reference_docs`
+**struct** `Store<…>` · namespace `reference_docs`
 
 Stores an indirect value.
 
 ```cpp
-template <> struct Store<long *> {}
+template <typename T> struct Store<T*> {}
 ```
-Size: 1 byte, alignment 1 byte
+**Template arguments:**
+```cpp
+T = long
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Store⟧<long*> indirect;"

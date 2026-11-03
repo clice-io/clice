@@ -3,7 +3,7 @@
   "topic": "hover",
   "subtopic": "templates",
   "title": "Template arguments",
-  "summary": "A use of a template shows the arguments it is instantiated with",
+  "summary": "A use of a template shows the template and the arguments it is instantiated with",
   "prose": "",
   "status": "supported",
   "issues": [],
@@ -36,7 +36,7 @@
           "marker": "type_use",
           "value": {
             "hover": {
-              "markdown": "**struct** `Wrapper<int>` · namespace `instantiation_args`\n\n```cpp\ntemplate <> struct Wrapper<int> {\n  int value;\n}\n```\nSize: 4 bytes, alignment 4 bytes",
+              "markdown": "**struct** `Wrapper<…>` · namespace `instantiation_args`\n\n```cpp\ntemplate <typename T> struct Wrapper {\n  T value;\n}\n```\n**Template arguments:**\n```cpp\nT = int\n```\n**Size:** 4 bytes\n**Alignment:** 4 bytes",
               "range": {
                 "$place": "⟦Wrapper⟧<int> holder;",
                 "path": "main.cpp",
@@ -59,7 +59,7 @@
           "marker": "call",
           "value": {
             "hover": {
-              "markdown": "**function** `identity` · namespace `instantiation_args`\n\n```cpp\ntemplate <> int identity<int>(int x)\n```",
+              "markdown": "**function** `identity` · namespace `instantiation_args`\n\n```cpp\ntemplate <typename T> T identity(T x)\n```\n**Template arguments:**\n```cpp\nT = int\n```",
               "range": {
                 "$place": "int r = ⟦identity⟧(42);",
                 "path": "main.cpp",

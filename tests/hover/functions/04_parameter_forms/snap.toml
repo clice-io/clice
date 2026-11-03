@@ -5,6 +5,7 @@ markdown = '''
 ```cpp
 int attempt(int)
 ```
+**Type:** `((int) -> int)*`
 '''
 range = "void retry(int ⟦attempt⟧(int));"
 
@@ -15,6 +16,7 @@ markdown = '''
 ```cpp
 int attempt(int) noexcept
 ```
+**Type:** `(noexcept (int) -> int)*`
 '''
 range = "void retry_quietly(int ⟦attempt⟧(int) noexcept);"
 
@@ -24,6 +26,11 @@ markdown = '''
 
 ```cpp
 void (*handler(int))(double)
+```
+**Type:**
+```cpp
+((int) -> α)*
+  α = ((double) -> void)*
 ```
 '''
 range = "void install(void (*⟦handler⟧(int))(double));"
@@ -35,7 +42,7 @@ markdown = '''
 ```cpp
 Callback callback
 ```
-`Callback` is `void (int)`
+`Callback` is `(int) -> void`
 '''
 range = "void subscribe(Callback ⟦callback⟧);"
 
@@ -44,7 +51,7 @@ markdown = '''
 **parameter** `self` · method `explicit_object::Widget::resize`
 
 ```cpp
-this Widget &self
+this Widget& self
 ```
 '''
 range = "void resize(this Widget& ⟦self⟧, int width);"
@@ -54,7 +61,7 @@ markdown = '''
 **parameter** `self` · method `explicit_object::Widget::get`
 
 ```cpp
-this Self &&self
+this Self&& self
 ```
 '''
 range = "template <typename Self> auto& get(this Self&& ⟦self⟧);"

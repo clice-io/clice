@@ -3,9 +3,9 @@ markdown = '''
 **variable** `outer` · function `pointer_chain::inspect`
 
 ```cpp
-auto *outer = &pointer
+auto* outer = &pointer
 ```
-Type: `(lambda) **`
+**Type:** `(lambda)**`
 '''
 range = "auto* ⟦outer⟧ = &pointer;"
 
@@ -14,9 +14,9 @@ markdown = '''
 **parameter** `callable` · function `reference_parameter::invoke`
 
 ```cpp
-decltype(operation) &callable
+decltype(operation)& callable
 ```
-Type: `bool (long, bool)`
+**Type:** `(long, bool) -> bool`
 '''
 range = "⟦callable⟧(1, true); @+0"
 
@@ -27,7 +27,7 @@ markdown = '''
 ```cpp
 decltype(operation) callable
 ```
-Type: `bool (long, bool)`
+**Type:** `(long, bool) -> bool`
 '''
 range = "⟦callable⟧(1, true); @+0"
 
@@ -38,7 +38,7 @@ markdown = '''
 ```cpp
 auto above = [&threshold](int value) { ... }
 ```
-Type: `bool (int)`
+**Type:** `(int) -> bool`
 '''
 range = "return ⟦above⟧(9);"
 
@@ -49,6 +49,6 @@ markdown = '''
 ```cpp
 long local = 1
 ```
-Value: `1`
+**Value:** `1`
 '''
 range = "long ⟦local⟧ = 1;"

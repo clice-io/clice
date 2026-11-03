@@ -8,7 +8,8 @@ typedef struct {
   int y;
 } Point
 ```
-Size: 8 bytes, alignment 4 bytes
+**Size:** 8 bytes
+**Alignment:** 4 bytes
 '''
 range = "} ⟦Point⟧;"
 
@@ -22,7 +23,8 @@ using Size = struct {
   int height;
 }
 ```
-Size: 8 bytes, alignment 4 bytes
+**Size:** 8 bytes
+**Alignment:** 4 bytes
 '''
 range = "using ⟦Size⟧ = struct {"
 
@@ -53,6 +55,7 @@ struct Shape {
   Extent extent;
 }
 ```
-Size: 16 bytes, alignment 8 bytes
+**Size:** 16 bytes
+**Alignment:** 8 bytes
 '''
 range = "struct ⟦Shape⟧ {"

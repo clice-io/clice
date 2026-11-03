@@ -27,7 +27,8 @@ struct Registers {
   // ...
 }
 ```
-Size: 84 bytes, alignment 4 bytes
+**Size:** 84 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Registers⟧ registers; @+0"
 
@@ -59,7 +60,8 @@ struct Registers {
   int r19;
 }
 ```
-Size: 80 bytes, alignment 4 bytes
+**Size:** 80 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Registers⟧ registers; @+0"
 
@@ -126,7 +128,8 @@ struct Packet {
   // ...
 }
 ```
-Size: 80 bytes, alignment 4 bytes
+**Size:** 80 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Packet⟧ packet;"
 
@@ -142,7 +145,8 @@ struct Tables {
   inline static int small_static = 2;
 }
 ```
-Size: 1028 bytes, alignment 4 bytes
+**Size:** 1028 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Tables⟧ tables;"
 

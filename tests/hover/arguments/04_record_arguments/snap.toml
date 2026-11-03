@@ -5,6 +5,6 @@ markdown = '''
 ```cpp
 Tag t
 ```
-Passed by value
+**Passed:** by value
 '''
 range = "int r = rank(⟦t⟧);"

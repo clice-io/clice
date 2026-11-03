@@ -5,7 +5,7 @@ markdown = '''
 ```cpp
 long from_call = cube(3)
 ```
-Value: `27 (0x1b)`
+**Value:** `27 (0x1b)`
 '''
 range = "long ⟦from_call⟧ = cube(3);"
 
@@ -16,7 +16,7 @@ markdown = '''
 ```cpp
 long from_size = sizeof(double)
 ```
-Value: `8`
+**Value:** `8`
 '''
 range = "long ⟦from_size⟧ = sizeof(double);"
 
@@ -27,7 +27,7 @@ markdown = '''
 ```cpp
 Online = 6
 ```
-Value: `6`
+**Value:** `6`
 '''
 range = "State selected = State::⟦Online⟧;"
 
@@ -38,6 +38,6 @@ markdown = '''
 ```cpp
 long from_member = Product<4, 5>::value
 ```
-Value: `20 (0x14)`
+**Value:** `20 (0x14)`
 '''
 range = "long ⟦from_member⟧ = Product<4, 5>::value;"

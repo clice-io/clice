@@ -35,7 +35,8 @@ struct PACKED Header {
   int size;
 }
 ```
-Size: 5 bytes, alignment 1 byte
+**Size:** 5 bytes
+**Alignment:** 1 byte
 
 `PACKED` is `__attribute__((packed))`
 '''
@@ -82,7 +83,7 @@ markdown = '''
 ```cpp
 int counter [[maybe_unused]] = 0
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "int ⟦counter⟧ [[maybe_unused]] = 0;"
 
@@ -93,7 +94,7 @@ markdown = '''
 ```cpp
 int braced [[maybe_unused]]{0}
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "int ⟦braced⟧ [[maybe_unused]]{0};"
 
@@ -119,7 +120,8 @@ struct Holder {
   alignas(64) int counter;
 }
 ```
-Size: 128 bytes (116 bytes padding), alignment 64 bytes
+**Size:** 128 bytes (116 bytes padding)
+**Alignment:** 64 bytes
 '''
 range = "struct ⟦Holder⟧ {"
 

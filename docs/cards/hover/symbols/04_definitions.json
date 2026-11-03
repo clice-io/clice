@@ -59,7 +59,7 @@
           "marker": "var_ref",
           "value": {
             "hover": {
-              "markdown": "**variable** `max_retries` · namespace `retry`\n\n```cpp\nconstexpr int max_retries = 3\n```\nValue: `3`",
+              "markdown": "**variable** `max_retries` · namespace `retry`\n\n```cpp\nconstexpr int max_retries = 3\n```\n**Value:** `3`",
               "range": {
                 "$place": "return attempt * ⟦max_retries⟧;",
                 "path": "main.cpp",

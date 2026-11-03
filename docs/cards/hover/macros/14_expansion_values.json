@@ -1,0 +1,286 @@
+{
+  "id": "hover/macros/14_expansion_values",
+  "topic": "hover",
+  "subtopic": "macros",
+  "title": "Expansion values",
+  "summary": "A use of a macro that expands to an expression shows its type, and its value when it is a constant",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define NUM_C 12\n#define MASK(bits) ((1u << (bits)) - 1)\n#define GREETING \"hello\"\n#define DOUBLE(x) ((x) * 2.0)\n#define ECHO(x) x\n#define BEGIN {\n#define SUM(a, b) a + b\n\nint value = 3;\n\nint number = NUM_C;\nunsigned mask = MASK(4);\nconst char* text = GREETING;\ndouble twice = DOUBLE(value);\nint echoed = ECHO(NUM_C);\nunsigned nested = ECHO(MASK(3));\nint copied = ECHO(value);\nint product = SUM(1, 2) * 3;\n\nvoid run() BEGIN }\n",
+      "markers": [
+        {
+          "name": "object_like",
+          "begin": 200,
+          "end": 200,
+          "range": false
+        },
+        {
+          "name": "function_like",
+          "begin": 223,
+          "end": 223,
+          "range": false
+        },
+        {
+          "name": "string",
+          "begin": 251,
+          "end": 251,
+          "range": false
+        },
+        {
+          "name": "not_constant",
+          "begin": 276,
+          "end": 276,
+          "range": false
+        },
+        {
+          "name": "in_arguments",
+          "begin": 309,
+          "end": 309,
+          "range": false
+        },
+        {
+          "name": "nested_call",
+          "begin": 340,
+          "end": 340,
+          "range": false
+        },
+        {
+          "name": "argument_alone",
+          "begin": 363,
+          "end": 363,
+          "range": false
+        },
+        {
+          "name": "partial_expression",
+          "begin": 390,
+          "end": 390,
+          "range": false
+        },
+        {
+          "name": "statement",
+          "begin": 417,
+          "end": 417,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "object_like",
+          "marker": "object_like",
+          "value": {
+            "hover": {
+              "markdown": "**macro** `NUM_C`\n\n```cpp\n#define NUM_C 12\n```\n**Expands to:**\n```cpp\n12\n```\n**Type:** `int`\n**Value:** `12 (0xc)`",
+              "range": {
+                "$place": "int number = ⟦NUM_C⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 18
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "function_like",
+          "marker": "function_like",
+          "value": {
+            "hover": {
+              "markdown": "**macro** `MASK`\n\n```cpp\n#define MASK(bits) ((1u << (bits)) - 1)\n```\n**Expands to:**\n```cpp\n((1u << (4)) - 1)\n```\n**Type:** `unsigned int`\n**Value:** `15 (0xf)`",
+              "range": {
+                "$place": "unsigned mask = ⟦MASK⟧(4);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 16
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 20
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "string",
+          "marker": "string",
+          "value": {
+            "hover": {
+              "markdown": "**macro** `GREETING`\n\n```cpp\n#define GREETING \"hello\"\n```\n**Expands to:**\n```cpp\n\"hello\"\n```\n**Type:** `const char[6]`",
+              "range": {
+                "$place": "const char* text = ⟦GREETING⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 12,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 12,
+                    "character": 27
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "not_constant",
+          "marker": "not_constant",
+          "value": {
+            "hover": {
+              "markdown": "**macro** `DOUBLE`\n\n```cpp\n#define DOUBLE(x) ((x) * 2.0)\n```\n**Expands to:**\n```cpp\n((value) * 2.0)\n```\n**Type:** `double`",
+              "range": {
+                "$place": "double twice = ⟦DOUBLE⟧(value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 21
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "in_arguments",
+          "marker": "in_arguments",
+          "value": {
+            "hover": {
+              "markdown": "**macro** `NUM_C`\n\n```cpp\n#define NUM_C 12\n```\n**Expands to:**\n```cpp\n12\n```\n**Type:** `int`\n**Value:** `12 (0xc)`",
+              "range": {
+                "$place": "int echoed = ECHO(⟦NUM_C⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 14,
+                    "character": 18
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 23
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "nested_call",
+          "marker": "nested_call",
+          "value": {
+            "hover": {
+              "markdown": "**macro** `MASK`\n\n```cpp\n#define MASK(bits) ((1u << (bits)) - 1)\n```\n**Expands to:**\n```cpp\n((1u << (3)) - 1)\n```\n**Type:** `unsigned int`\n**Value:** `7`",
+              "range": {
+                "$place": "unsigned nested = ECHO(⟦MASK⟧(3));",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 23
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 27
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "argument_alone",
+          "marker": "argument_alone",
+          "value": {
+            "hover": {
+              "markdown": "**macro** `ECHO`\n\n```cpp\n#define ECHO(x) x\n```\n**Expands to:**\n```cpp\nvalue\n```\n**Type:** `int`",
+              "range": {
+                "$place": "int copied = ⟦ECHO⟧(value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 16,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 16,
+                    "character": 17
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "partial_expression",
+          "marker": "partial_expression",
+          "value": {
+            "hover": {
+              "markdown": "**macro** `SUM`\n\n```cpp\n#define SUM(a, b) a + b\n```\n**Expands to:**\n```cpp\n1 + 2\n```",
+              "range": {
+                "$place": "int product = ⟦SUM⟧(1, 2) * 3;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 17,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 17,
+                    "character": 17
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "statement",
+          "marker": "statement",
+          "value": {
+            "hover": {
+              "markdown": "**macro** `BEGIN`\n\n```cpp\n#define BEGIN {\n```\n**Expands to:**\n```cpp\n{\n```",
+              "range": {
+                "$place": "void run() ⟦BEGIN⟧ }",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 19,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 19,
+                    "character": 16
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

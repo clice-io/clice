@@ -16,7 +16,11 @@ markdown = '''
 ```cpp
 std::pmr::string
 ```
-`std::pmr::string` is `std::basic_string<char, std::pmr::polymorphic_allocator<char>>`
+`std::pmr::string` is
+```cpp
+std::basic_string<char, α>
+  α = std::pmr::polymorphic_allocator<char>
+```
 '''
 range = "⟦auto⟧& text = texts.front();"
 

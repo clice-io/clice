@@ -2,8 +2,8 @@
 markdown = '''
 **literal** `':'`
 
-Type: `char`
-Value: `58 (0x3a)`
+**Type:** `char`
+**Value:** `58 (0x3a)`
 '''
 range = "auto delimiter = ⟦':'⟧;"
 
@@ -11,9 +11,9 @@ range = "auto delimiter = ⟦':'⟧;"
 markdown = '''
 **literal** `"welcome"`
 
-Type: `const char[8]`
-Length: 7
-Size: 8 bytes
+**Type:** `const char[8]`
+**Length:** 7
+**Size:** 8 bytes
 '''
 range = 'auto greeting = ⟦"welcome"⟧;'
 
@@ -21,8 +21,8 @@ range = 'auto greeting = ⟦"welcome"⟧;'
 markdown = '''
 **expression**
 
-Type: `unsigned long`
-Value: `8`
+**Type:** `unsigned long`
+**Value:** `8`
 '''
 range = "(void)⟦sizeof⟧(long);"
 
@@ -30,8 +30,8 @@ range = "(void)⟦sizeof⟧(long);"
 markdown = '''
 **expression**
 
-Type: `unsigned long`
-Value: `8`
+**Type:** `unsigned long`
+**Value:** `8`
 '''
 range = "(void)⟦alignof⟧(double);"
 
@@ -59,8 +59,8 @@ range = "return 12_unit + ⟦12_unit⟧;"
 markdown = '''
 **literal** `3.5`
 
-Type: `double`
-Value: `3.5`
+**Type:** `double`
+**Value:** `3.5`
 '''
 range = "auto decimal = ⟦3.5⟧;"
 
@@ -68,8 +68,8 @@ range = "auto decimal = ⟦3.5⟧;"
 markdown = '''
 **literal** `6.0i`
 
-Type: `_Complex double`
-Value: `0+6i`
+**Type:** `_Complex double`
+**Value:** `0+6i`
 '''
 range = "auto imaginary = ⟦6.0i⟧;"
 
@@ -77,8 +77,8 @@ range = "auto imaginary = ⟦6.0i⟧;"
 markdown = '''
 **literal** `99`
 
-Type: `int`
-Value: `99 (0x63)`
+**Type:** `int`
+**Value:** `99 (0x63)`
 '''
 range = "auto integer = ⟦99⟧;"
 
@@ -86,8 +86,8 @@ range = "auto integer = ⟦99⟧;"
 markdown = '''
 **literal** `"int is four bytes"`
 
-Length: 17
-Size: 18 bytes
+**Length:** 17
+**Size:** 18 bytes
 '''
 range = 'static_assert(sizeof(int) == 4, ⟦"int is four bytes"⟧);'
 
@@ -95,9 +95,9 @@ range = 'static_assert(sizeof(int) == 4, ⟦"int is four bytes"⟧);'
 markdown = '''
 **literal** `"中文中文中文中文中文中文中...`
 
-Type: `const char[49]`
-Length: 48
-Size: 49 bytes
+**Type:** `const char[49]`
+**Length:** 48
+**Size:** 49 bytes
 '''
 range = 'auto long_text = ⟦"中文中文中文中文中文中文中文中文"⟧;'
 
@@ -108,6 +108,6 @@ markdown = '''
 ```cpp
 constexpr _Complex double conjugate = 1.0 - 2.0i
 ```
-Value: `1-2i`
+**Value:** `1-2i`
 '''
 range = "constexpr _Complex double ⟦conjugate⟧ = 1.0 - 2.0i;"

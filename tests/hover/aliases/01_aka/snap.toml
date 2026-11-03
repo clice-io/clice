@@ -6,7 +6,7 @@ markdown = '''
 Handle direct = 0
 ```
 `Handle` is `int`
-Value: `0`
+**Value:** `0`
 '''
 range = "Handle ⟦direct⟧ = 0;"
 
@@ -18,7 +18,7 @@ markdown = '''
 Alias chained = 0
 ```
 `Alias` is `int`
-Value: `0`
+**Value:** `0`
 '''
 range = "Alias ⟦chained⟧ = 0;"
 
@@ -29,7 +29,7 @@ markdown = '''
 ```cpp
 Handle direct = 0
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "Handle ⟦direct⟧ = 0;"
 
@@ -40,6 +40,6 @@ markdown = '''
 ```cpp
 Alias chained = 0
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "Alias ⟦chained⟧ = 0;"

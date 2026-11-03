@@ -5,8 +5,9 @@ markdown = '''
 ```cpp
 int row
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return point.⟦row⟧;"
 
@@ -17,8 +18,9 @@ markdown = '''
 ```cpp
 int value = 12
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return counter.⟦value⟧;"
 
@@ -39,7 +41,7 @@ markdown = '''
 ```cpp
 inline static int minimum = 1
 ```
-Value: `1`
+**Value:** `1`
 '''
 range = "return Limits::maximum + Limits::⟦minimum⟧;"
 
@@ -50,8 +52,9 @@ markdown = '''
 ```cpp
 int height
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "Window() : ⟦height⟧(480) {}"
 
@@ -62,8 +65,9 @@ markdown = '''
 ```cpp
 int column
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "Coordinates point = {⟦column⟧ : 3};"
 
@@ -74,8 +78,9 @@ markdown = '''
 ```cpp
 int column
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "Coordinates point = {.⟦column⟧ = 3, .row = 4};"
 

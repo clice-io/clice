@@ -15,9 +15,11 @@ markdown = '''
 ```cpp
 #define EARLY 1
 ```
-Expands to:
+**Expands to:**
 ```cpp
 1
 ```
+**Type:** `int`
+**Value:** `1`
 '''
 range = "int use = ⟦EARLY⟧;"

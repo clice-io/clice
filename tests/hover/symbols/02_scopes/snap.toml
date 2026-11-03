@@ -5,7 +5,7 @@ markdown = '''
 ```cpp
 int count = 0
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "int ⟦count⟧ = 0;"
 
@@ -16,7 +16,7 @@ markdown = '''
 ```cpp
 int workers = 4
 ```
-Value: `4`
+**Value:** `4`
 '''
 range = "int ⟦workers⟧ = 4;"
 
@@ -27,6 +27,6 @@ markdown = '''
 ```cpp
 int global = 1
 ```
-Value: `1`
+**Value:** `1`
 '''
 range = "int ⟦global⟧ = 1;"

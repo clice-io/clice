@@ -5,8 +5,8 @@ markdown = '''
 ```cpp
 int n = 0
 ```
-Value: `0`
-Passed as `x` by value, converted to `float`
+**Value:** `0`
+**Passed:** by value to `x`, converted to `float`
 '''
 range = "take_float(⟦n⟧);"
 
@@ -17,7 +17,7 @@ markdown = '''
 ```cpp
 int n = 0
 ```
-Value: `0`
-Passed as `w` by value, converted to `Wrapper`
+**Value:** `0`
+**Passed:** by value to `w`, converted to `Wrapper`
 '''
 range = "take_wrapper(⟦n⟧);"

@@ -5,8 +5,9 @@ markdown = '''
 ```cpp
 char layer
 ```
-Offset: 0 bytes
-Size: 1 byte (+7 bytes padding), alignment 1 byte
+**Offset:** 0 bytes
+**Size:** 1 byte (+7 bytes padding)
+**Alignment:** 1 byte
 '''
 range = "char ⟦layer⟧;"
 
@@ -17,7 +18,8 @@ markdown = '''
 ```cpp
 char channel
 ```
-Size: 1 byte (+7 bytes padding), alignment 1 byte
+**Size:** 1 byte (+7 bytes padding)
+**Alignment:** 1 byte
 '''
 range = "char ⟦channel⟧;"
 
@@ -28,8 +30,9 @@ markdown = '''
 ```cpp
 unsigned int read : 1
 ```
-Offset: 0 bytes
-Size: 1 bit (+31 bits padding), alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 1 bit (+31 bits padding)
+**Alignment:** 4 bytes
 '''
 range = "unsigned int ⟦read⟧ : 1;"
 
@@ -40,8 +43,9 @@ markdown = '''
 ```cpp
 unsigned int write : 1
 ```
-Offset: 1 byte
-Size: 1 bit (+23 bits padding), alignment 4 bytes
+**Offset:** 1 byte
+**Size:** 1 bit (+23 bits padding)
+**Alignment:** 4 bytes
 '''
 range = "unsigned int ⟦write⟧ : 1;"
 
@@ -52,7 +56,8 @@ markdown = '''
 ```cpp
 struct EmptyCanvas {}
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "struct ⟦EmptyCanvas⟧ {};"
 
@@ -63,8 +68,9 @@ markdown = '''
 ```cpp
 long count
 ```
-Offset: 16 bytes
-Size: 8 bytes, alignment 8 bytes
+**Offset:** 16 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "long ⟦count⟧;"
 
@@ -75,8 +81,9 @@ markdown = '''
 ```cpp
 int slots[4]
 ```
-Offset: 0 bytes
-Size: 16 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 16 bytes
+**Alignment:** 4 bytes
 '''
 range = "int ⟦slots⟧[4];"
 
@@ -87,8 +94,10 @@ markdown = '''
 ```cpp
 void (*notify)(int)
 ```
-Offset: 16 bytes
-Size: 8 bytes, alignment 8 bytes
+**Type:** `((int) -> void)*`
+**Offset:** 16 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "void (*⟦notify⟧)(int);"
 
@@ -99,7 +108,8 @@ markdown = '''
 ```cpp
 int raw
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "int ⟦raw⟧;"
 
@@ -110,7 +120,8 @@ markdown = '''
 ```cpp
 int bits
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "int ⟦bits⟧;"
 
@@ -123,7 +134,8 @@ struct Shape {
   char tag;
 }
 ```
-Size: 16 bytes (7 bytes padding), alignment 8 bytes
+**Size:** 16 bytes (7 bytes padding)
+**Alignment:** 8 bytes
 '''
 range = "struct ⟦Shape⟧ {"
 
@@ -136,6 +148,7 @@ struct Shared : virtual Shape {
   int id;
 }
 ```
-Size: 32 bytes, alignment 8 bytes
+**Size:** 32 bytes
+**Alignment:** 8 bytes
 '''
 range = "struct ⟦Shared⟧ : virtual Shape {"

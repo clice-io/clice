@@ -3,9 +3,9 @@ markdown = '''
 **variable** `command`
 
 ```cpp
-const char *command = "run `make`"
+const char* command = "run `make`"
 ```
-Value: ``"run `make`"``
+**Value:** ``"run `make`"``
 '''
 range = 'const char* ⟦command⟧ = "run `make`";'
 
@@ -14,8 +14,8 @@ markdown = '''
 **variable** `fence`
 
 ```cpp
-const char *fence = "``"
+const char* fence = "``"
 ```
-Value: ```"``"```
+**Value:** ```"``"```
 '''
 range = 'const char* ⟦fence⟧ = "``";'

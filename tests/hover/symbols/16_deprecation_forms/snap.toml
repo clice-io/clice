@@ -16,7 +16,8 @@ Deprecated
 ```cpp
 struct [[deprecated]] LegacyConfig {}
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦LegacyConfig⟧ config;"
 
@@ -28,7 +29,7 @@ Deprecated: use fast
 ```cpp
 safe
 ```
-Value: `1`
+**Value:** `1`
 '''
 range = "Mode mode = Mode::⟦safe⟧;"
 

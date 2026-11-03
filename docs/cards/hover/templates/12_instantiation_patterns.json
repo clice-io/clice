@@ -1,0 +1,228 @@
+{
+  "id": "hover/templates/12_instantiation_patterns",
+  "topic": "hover",
+  "subtopic": "templates",
+  "title": "Instantiation patterns",
+  "summary": "A use of an instantiation shows the template it was instantiated from, with the arguments it binds",
+  "prose": "A partial specialization shows itself, and a member of a class template its class's arguments first. Arguments a default gives and empty packs are left out; an explicit specialization shows as it is written.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace instantiation_patterns {\n\ntemplate <typename T, typename Alloc = void> struct Store {\n    T* items;\n};\n\ntemplate <typename T> struct Store<T*, void> {\n    T** slots;\n};\n\ntemplate <> struct Store<bool> {\n    unsigned bits;\n};\n\ntemplate <typename T> struct Queue {\n    void push(const T& item);\n\n    template <typename U> U convert() const;\n\n    template <int Capacity> struct Ring {\n        T items[Capacity];\n    };\n};\n\ntemplate <typename T, typename... Rest> void log(T first, Rest... rest);\n\nvoid use() {\n    Store<int> numbers;\n    Store<char*> names;\n    Store<bool> flags;\n\n    Queue<long> queue;\n    queue.push(1);\n    queue.convert<double>();\n    Queue<long>::Ring<8> ring;\n\n    log(1);\n}\n\n}\n",
+      "markers": [
+        {
+          "name": "primary",
+          "begin": 521,
+          "end": 521,
+          "range": false
+        },
+        {
+          "name": "partial",
+          "begin": 545,
+          "end": 545,
+          "range": false
+        },
+        {
+          "name": "explicit",
+          "begin": 569,
+          "end": 569,
+          "range": false
+        },
+        {
+          "name": "member_function",
+          "begin": 622,
+          "end": 622,
+          "range": false
+        },
+        {
+          "name": "member_template",
+          "begin": 641,
+          "end": 641,
+          "range": false
+        },
+        {
+          "name": "member_class_template",
+          "begin": 677,
+          "end": 677,
+          "range": false
+        },
+        {
+          "name": "empty_pack",
+          "begin": 696,
+          "end": 696,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "primary",
+          "marker": "primary",
+          "value": {
+            "hover": {
+              "markdown": "**struct** `Store<…>` · namespace `instantiation_patterns`\n\n```cpp\ntemplate <typename T, typename Alloc = void> struct Store {\n  T* items;\n}\n```\n**Template arguments:**\n```cpp\nT = int\n```\n**Size:** 8 bytes\n**Alignment:** 8 bytes",
+              "range": {
+                "$place": "⟦Store⟧<int> numbers;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 27,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 27,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "partial",
+          "marker": "partial",
+          "value": {
+            "hover": {
+              "markdown": "**struct** `Store<…>` · namespace `instantiation_patterns`\n\n```cpp\ntemplate <typename T> struct Store<T*, void> {\n  T** slots;\n}\n```\n**Template arguments:**\n```cpp\nT = char\n```\n**Size:** 8 bytes\n**Alignment:** 8 bytes",
+              "range": {
+                "$place": "⟦Store⟧<char*> names;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 28,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 28,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "explicit",
+          "marker": "explicit",
+          "value": {
+            "hover": {
+              "markdown": "**struct** `Store<bool>` · namespace `instantiation_patterns`\n\n```cpp\ntemplate <> struct Store<bool> {\n  unsigned int bits;\n}\n```\n**Size:** 4 bytes\n**Alignment:** 4 bytes",
+              "range": {
+                "$place": "⟦Store⟧<bool> flags;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 29,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 29,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "member_function",
+          "marker": "member_function",
+          "value": {
+            "hover": {
+              "markdown": "**method** `push` · struct `instantiation_patterns::Queue<…>`\n\n```cpp\nvoid push(const T& item)\n```\n**Template arguments:**\n```cpp\nT = long\n```",
+              "range": {
+                "$place": "queue.⟦push⟧(1);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 32,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 32,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "member_template",
+          "marker": "member_template",
+          "value": {
+            "hover": {
+              "markdown": "**method** `convert` · struct `instantiation_patterns::Queue<…>`\n\n```cpp\ntemplate <typename U> U convert() const\n```\n**Template arguments:**\n```cpp\nT = long\nU = double\n```",
+              "range": {
+                "$place": "queue.⟦convert⟧<double>();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 33,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 33,
+                    "character": 17
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "member_class_template",
+          "marker": "member_class_template",
+          "value": {
+            "hover": {
+              "markdown": "**struct** `Ring<…>` · struct `instantiation_patterns::Queue<…>`\n\n```cpp\ntemplate <int Capacity> struct Ring {\n  T items[Capacity];\n}\n```\n**Template arguments:**\n```cpp\nT = long\nCapacity = 8\n```\n**Size:** 64 bytes\n**Alignment:** 8 bytes",
+              "range": {
+                "$place": "Queue<long>::⟦Ring⟧<8> ring;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 34,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 34,
+                    "character": 21
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "empty_pack",
+          "marker": "empty_pack",
+          "value": {
+            "hover": {
+              "markdown": "**function** `log` · namespace `instantiation_patterns`\n\n```cpp\ntemplate <typename T, typename... Rest> void log(T first, Rest... rest)\n```\n**Template arguments:**\n```cpp\nT = int\n```",
+              "range": {
+                "$place": "⟦log⟧(1);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 36,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 36,
+                    "character": 7
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

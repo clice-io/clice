@@ -5,7 +5,7 @@ markdown = '''
 ```cpp
 std::vector<int>::iterator
 ```
-`std::vector<int>::iterator` is `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`
+`std::vector<int>::iterator` is `__gnu_cxx::__normal_iterator<int*, std::vector<int>>`
 '''
 range = "⟦auto⟧ it = values.begin();"
 
@@ -16,6 +16,7 @@ markdown = '''
 ```cpp
 auto it = values.begin()
 ```
-Type: `std::vector<int>::iterator` (aka `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`)
+**Type:** `std::vector<int>::iterator`
+**Aka:** `__gnu_cxx::__normal_iterator<int*, std::vector<int>>`
 '''
 range = "auto ⟦it⟧ = values.begin();"

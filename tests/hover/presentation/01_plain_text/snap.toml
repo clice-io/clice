@@ -17,7 +17,7 @@ markdown = '''
 ```cpp
 int value = answer(1)
 ```
-Value: `42 (0x2a)`
+**Value:** `42 (0x2a)`
 '''
 range = "int ⟦value⟧ = answer(1);"
 
@@ -28,8 +28,9 @@ markdown = '''
 ```cpp
 int second
 ```
-Offset: 4 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "int ⟦second⟧;"
 
@@ -60,7 +61,8 @@ field second · struct Layout
 int second
 
 Offset: 4 bytes
-Size: 4 bytes, alignment 4 bytes
+Size: 4 bytes
+Alignment: 4 bytes
 '''
 range = "int ⟦second⟧;"
 

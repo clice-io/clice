@@ -1,0 +1,80 @@
+[answers.shared.hover]
+markdown = '''
+**variable** `index` · namespace `long_types`
+
+```cpp
+auto index = Map<Vector<Tuple<Coordinate, Measurement>>,
+                 Optional<Tuple<Coordinate, Measurement>>> {}
+```
+**Type:**
+```cpp
+Map<α, Optional<Tuple<Coordinate, Measurement>>>
+  α = Vector<Tuple<Coordinate, Measurement>>
+```
+'''
+range = "auto ⟦index⟧ = Map<Vector<Tuple<Coordinate, Measurement>>, Optional<Tuple<Coordinate, Measurement>>>{};"
+
+[answers.wrapped.hover]
+markdown = '''
+**variable** `wide` · namespace `long_types`
+
+```cpp
+auto wide = Tuple<int, long, unsigned, char, short, double, float, bool,
+                  signed char, unsigned short> {}
+```
+**Type:**
+```cpp
+Tuple<int, long, unsigned int, char, short, double, float,
+      bool, signed char, unsigned short>
+```
+'''
+range = "auto ⟦wide⟧ = Tuple<int, long, unsigned, char, short, double, float, bool, signed char, unsigned short>{};"
+
+[answers.deduced.hover]
+markdown = '''
+**auto**
+
+```cpp
+Map<α, Optional<Tuple<Coordinate, Measurement>>>
+  α = Vector<Tuple<Coordinate, Measurement>>
+```
+'''
+range = "⟦auto⟧ copy = index;"
+
+[answers.repeated.hover]
+markdown = '''
+**variable** `pairs` · namespace `long_types`
+
+```cpp
+auto pairs = Map<Vector<Tuple<Coordinate, Measurement, Coordinate>>,
+                 Vector<Tuple<Coordinate, Measurement, Coordinate>>> {}
+```
+**Type:**
+```cpp
+Map<α, Vector<Tuple<Coordinate, Measurement, Coordinate>>>
+  α = Vector<Tuple<Coordinate, Measurement, Coordinate>>
+```
+'''
+range = "auto ⟦pairs⟧ = Map<Vector<Tuple<Coordinate, Measurement, Coordinate>>, Vector<Tuple<Coordinate, Measurement, Coordinate>>>{};"
+
+[answers.letters.hover]
+markdown = '''
+**variable** `dispatch` · namespace `long_types`
+
+```cpp
+Dispatch dispatch
+```
+`Dispatch` is
+```cpp
+((α, β, γ, δ, ε, ζ, η, θ, …) -> void)*
+  α = ((int) -> void)*
+  β = ((long) -> void)*
+  γ = ((char) -> void)*
+  δ = ((short) -> void)*
+  ε = ((float) -> void)*
+  ζ = ((double) -> void)*
+  η = ((bool) -> void)*
+  θ = ((unsigned int) -> void)*
+```
+'''
+range = "Dispatch ⟦dispatch⟧;"

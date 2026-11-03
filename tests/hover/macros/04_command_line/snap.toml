@@ -5,9 +5,11 @@ markdown = '''
 ```cpp
 #define FROM_CLI 7
 ```
-Expands to:
+**Expands to:**
 ```cpp
 7
 ```
+**Type:** `int`
+**Value:** `7`
 '''
 range = "int cli = ⟦FROM_CLI⟧;"

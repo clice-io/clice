@@ -27,7 +27,7 @@ markdown = '''
 template <typename T>
 concept Addable = requires(T a) { a + a; }
 ```
-Value: `true`
+**Value:** `true`
 '''
 range = "auto flag = ⟦Addable⟧<int>;"
 
@@ -48,7 +48,7 @@ markdown = '''
 ```cpp
 Addable auto total = 1
 ```
-Type: `int`
-Value: `1`
+**Type:** `int`
+**Value:** `1`
 '''
 range = "Addable auto ⟦total⟧ = 1;"

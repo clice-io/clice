@@ -77,7 +77,7 @@
           "marker": "use_site",
           "value": {
             "hover": {
-              "markdown": "**macro** `LIMIT`\n\n```cpp\n#define LIMIT 64\n```\nExpands to:\n```cpp\n64\n```",
+              "markdown": "**macro** `LIMIT`\n\n```cpp\n#define LIMIT 64\n```\n**Expands to:**\n```cpp\n64\n```\n**Type:** `int`\n**Value:** `64 (0x40)`",
               "range": {
                 "$place": "int use = ⟦LIMIT⟧;",
                 "path": "main.cpp",

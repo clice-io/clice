@@ -1,0 +1,136 @@
+[answers.object_like.hover]
+markdown = '''
+**macro** `NUM_C`
+
+```cpp
+#define NUM_C 12
+```
+**Expands to:**
+```cpp
+12
+```
+**Type:** `int`
+**Value:** `12 (0xc)`
+'''
+range = "int number = ⟦NUM_C⟧;"
+
+[answers.function_like.hover]
+markdown = '''
+**macro** `MASK`
+
+```cpp
+#define MASK(bits) ((1u << (bits)) - 1)
+```
+**Expands to:**
+```cpp
+((1u << (4)) - 1)
+```
+**Type:** `unsigned int`
+**Value:** `15 (0xf)`
+'''
+range = "unsigned mask = ⟦MASK⟧(4);"
+
+[answers.string.hover]
+markdown = '''
+**macro** `GREETING`
+
+```cpp
+#define GREETING "hello"
+```
+**Expands to:**
+```cpp
+"hello"
+```
+**Type:** `const char[6]`
+'''
+range = "const char* text = ⟦GREETING⟧;"
+
+[answers.not_constant.hover]
+markdown = '''
+**macro** `DOUBLE`
+
+```cpp
+#define DOUBLE(x) ((x) * 2.0)
+```
+**Expands to:**
+```cpp
+((value) * 2.0)
+```
+**Type:** `double`
+'''
+range = "double twice = ⟦DOUBLE⟧(value);"
+
+[answers.in_arguments.hover]
+markdown = '''
+**macro** `NUM_C`
+
+```cpp
+#define NUM_C 12
+```
+**Expands to:**
+```cpp
+12
+```
+**Type:** `int`
+**Value:** `12 (0xc)`
+'''
+range = "int echoed = ECHO(⟦NUM_C⟧);"
+
+[answers.nested_call.hover]
+markdown = '''
+**macro** `MASK`
+
+```cpp
+#define MASK(bits) ((1u << (bits)) - 1)
+```
+**Expands to:**
+```cpp
+((1u << (3)) - 1)
+```
+**Type:** `unsigned int`
+**Value:** `7`
+'''
+range = "unsigned nested = ECHO(⟦MASK⟧(3));"
+
+[answers.argument_alone.hover]
+markdown = '''
+**macro** `ECHO`
+
+```cpp
+#define ECHO(x) x
+```
+**Expands to:**
+```cpp
+value
+```
+**Type:** `int`
+'''
+range = "int copied = ⟦ECHO⟧(value);"
+
+[answers.partial_expression.hover]
+markdown = '''
+**macro** `SUM`
+
+```cpp
+#define SUM(a, b) a + b
+```
+**Expands to:**
+```cpp
+1 + 2
+```
+'''
+range = "int product = ⟦SUM⟧(1, 2) * 3;"
+
+[answers.statement.hover]
+markdown = '''
+**macro** `BEGIN`
+
+```cpp
+#define BEGIN {
+```
+**Expands to:**
+```cpp
+{
+```
+'''
+range = "void run() ⟦BEGIN⟧ }"

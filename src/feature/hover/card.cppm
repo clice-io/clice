@@ -2,7 +2,7 @@ module;
 
 /// The inside of hover its two sources share: the card of the file a
 /// directive names, which the AST and the index's document links both
-/// show.
+/// show, and how wide the card lays its types out.
 
 module clice:feature.hover.card;
 
@@ -13,6 +13,10 @@ import :support.text;
 import :syntax.token;
 
 namespace clice::feature {
+
+/// The columns a type the card shows takes at most before it goes on over
+/// more lines (display::Options::width).
+constexpr std::uint32_t card_width = 60;
 
 /// The card of the directive argument at `range` of `content`, whose
 /// target is `file`.

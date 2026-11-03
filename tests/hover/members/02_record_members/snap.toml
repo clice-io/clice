@@ -8,7 +8,7 @@ class Widget : public Base {
 
 public:
   using Size = unsigned long;
-  template <typename T> using Pointer = T *;
+  template <typename T> using Pointer = T*;
   static constexpr int limit = 4;
   enum class Kind : int;
   struct Node;
@@ -21,7 +21,8 @@ private:
   unsigned int flags : 3;
 }
 ```
-Size: 16 bytes (29 bits padding), alignment 4 bytes
+**Size:** 16 bytes (29 bits padding)
+**Alignment:** 4 bytes
 '''
 range = "⟦Widget⟧ widget;"
 
@@ -34,7 +35,8 @@ struct Node {
   int hidden;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "Widget::⟦Node⟧ node;"
 
@@ -45,7 +47,8 @@ markdown = '''
 ```cpp
 struct Service {}
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Service⟧ service;"
 
@@ -79,7 +82,8 @@ struct Value {
   } shared;
 }
 ```
-Size: 48 bytes (8 bytes padding), alignment 8 bytes
+**Size:** 48 bytes (8 bytes padding)
+**Alignment:** 8 bytes
 '''
 range = "⟦Value⟧ current;"
 
@@ -119,32 +123,42 @@ range = "template <typename T> void take(⟦Box⟧<T> box);"
 
 [answers.implicit_instantiation.hover]
 markdown = '''
-**struct** `Box<int>` · namespace `templates`
+**struct** `Box<…>` · namespace `templates`
 
 ```cpp
-template <> struct Box<int> {
-  using value_type = int;
-  int value;
+template <typename T> struct Box {
+  using value_type = T;
+  T value;
   static constexpr int limit = 4;
   template <typename U> static constexpr bool holds = false;
   template <typename U> struct Rebind;
   struct Inner;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Template arguments:**
+```cpp
+T = int
+```
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Box⟧<int> integer;"
 
 [answers.partial_specialization.hover]
 markdown = '''
-**struct** `Box<int *>` · namespace `templates`
+**struct** `Box<…>` · namespace `templates`
 
 ```cpp
-template <> struct Box<int *> {
-  int *pointer;
+template <typename T> struct Box<T*> {
+  T* pointer;
 }
 ```
-Size: 8 bytes, alignment 8 bytes
+**Template arguments:**
+```cpp
+T = int
+```
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "⟦Box⟧<int*> pointer;"
 
@@ -157,32 +171,38 @@ template <> struct Box<bool> {
   unsigned char bits;
 }
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Box⟧<bool> flag;"
 
 [answers.instantiated_unnamed.hover]
 markdown = '''
-**struct** `Expected<long>` · namespace `instantiated_unnamed`
+**struct** `Expected<…>` · namespace `instantiated_unnamed`
 
 ```cpp
-template <> struct Expected<long> {
+template <typename T> struct Expected {
   union {
-    long value;
+    T value;
     int error;
   };
   struct {
-    long low;
-    long high;
+    T low;
+    T high;
   } range, *last;
-  enum { capacity = 8 };
+  enum { capacity = sizeof(T) };
   struct {
-    // ...
-  } *lazy;
+    T* next;
+  }* lazy;
   bool has_error : 1;
 }
 ```
-Size: 48 bytes (63 bits padding), alignment 8 bytes
+**Template arguments:**
+```cpp
+T = long
+```
+**Size:** 48 bytes (63 bits padding)
+**Alignment:** 8 bytes
 '''
 range = "⟦Expected⟧<long> expected;"
 
@@ -200,13 +220,14 @@ struct Device {
     int hits;
   } cache;
   const struct Limits limits{0, 1};
-  typedef struct Handle *HandlePtr;
+  typedef struct Handle* HandlePtr;
   struct {
     int id;
   } queue[8], *head;
 }
 ```
-Size: 64 bytes (4 bytes padding), alignment 8 bytes
+**Size:** 64 bytes (4 bytes padding)
+**Alignment:** 8 bytes
 '''
 range = "⟦Device⟧ device;"
 
@@ -219,7 +240,8 @@ struct Later {
   int value;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Later⟧* later;"
 
@@ -231,10 +253,11 @@ markdown = '''
 class Tree {
   struct Node;
   template <typename T> struct Visitor;
-  Node *root;
+  Node* root;
 }
 ```
-Size: 8 bytes, alignment 8 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "⟦Tree⟧ tree;"
 
@@ -247,6 +270,7 @@ struct Square final : Shape {
   int length;
 }
 ```
-Size: 8 bytes, alignment 4 bytes
+**Size:** 8 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Square⟧ square;"

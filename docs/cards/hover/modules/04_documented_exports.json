@@ -41,7 +41,7 @@
           "marker": "type",
           "value": {
             "hover": {
-              "markdown": "**struct** `Point`\n\nA point on the plane.\n\n```cpp\nexport struct Point {\n  int x;\n  int y;\n}\n```\nSize: 8 bytes, alignment 4 bytes",
+              "markdown": "**struct** `Point`\n\nA point on the plane.\n\n```cpp\nexport struct Point {\n  int x;\n  int y;\n}\n```\n**Size:** 8 bytes\n**Alignment:** 4 bytes",
               "range": {
                 "$place": "⟦Point⟧ origin{0, 0};",
                 "path": "main.cpp",

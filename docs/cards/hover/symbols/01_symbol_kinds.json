@@ -95,7 +95,7 @@
           "marker": "struct",
           "value": {
             "hover": {
-              "markdown": "**struct** `Point` · namespace `kinds`\n\n```cpp\nstruct Point {\n  int x;\n}\n```\nSize: 4 bytes, alignment 4 bytes",
+              "markdown": "**struct** `Point` · namespace `kinds`\n\n```cpp\nstruct Point {\n  int x;\n}\n```\n**Size:** 4 bytes\n**Alignment:** 4 bytes",
               "range": {
                 "$place": "struct ⟦Point⟧ {",
                 "path": "main.cpp",
@@ -118,7 +118,7 @@
           "marker": "field",
           "value": {
             "hover": {
-              "markdown": "**field** `x` · struct `kinds::Point`\n\n```cpp\nint x\n```\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes",
+              "markdown": "**field** `x` · struct `kinds::Point`\n\n```cpp\nint x\n```\n**Offset:** 0 bytes\n**Size:** 4 bytes\n**Alignment:** 4 bytes",
               "range": {
                 "$place": "int ⟦x⟧;",
                 "path": "main.cpp",
@@ -141,7 +141,7 @@
           "marker": "union",
           "value": {
             "hover": {
-              "markdown": "**union** `Packet` · namespace `kinds`\n\n```cpp\nunion Packet {\n  int raw;\n}\n```\nSize: 4 bytes, alignment 4 bytes",
+              "markdown": "**union** `Packet` · namespace `kinds`\n\n```cpp\nunion Packet {\n  int raw;\n}\n```\n**Size:** 4 bytes\n**Alignment:** 4 bytes",
               "range": {
                 "$place": "union ⟦Packet⟧ {",
                 "path": "main.cpp",
@@ -187,7 +187,7 @@
           "marker": "enumerator",
           "value": {
             "hover": {
-              "markdown": "**enumerator** `Red` · enum `kinds::Color`\n\n```cpp\nRed\n```\nValue: `0`",
+              "markdown": "**enumerator** `Red` · enum `kinds::Color`\n\n```cpp\nRed\n```\n**Value:** `0`",
               "range": {
                 "$place": "⟦Red⟧,",
                 "path": "main.cpp",
@@ -210,7 +210,7 @@
           "marker": "typedef",
           "value": {
             "hover": {
-              "markdown": "**type** `Alias` · namespace `kinds`\n\n```cpp\nusing Alias = Point\n```\n```cpp\nstruct Point {\n  int x;\n}\n```\nSize: 4 bytes, alignment 4 bytes",
+              "markdown": "**type** `Alias` · namespace `kinds`\n\n```cpp\nusing Alias = Point\n```\n```cpp\nstruct Point {\n  int x;\n}\n```\n**Size:** 4 bytes\n**Alignment:** 4 bytes",
               "range": {
                 "$place": "using ⟦Alias⟧ = Point;",
                 "path": "main.cpp",

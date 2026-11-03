@@ -29,7 +29,7 @@ markdown = '''
 Trivial setter for `width`.
 
 ```cpp
-Builder &setWidth(double value)
+Builder& setWidth(double value)
 ```
 '''
 range = "Builder& ⟦setWidth⟧(double value) {"

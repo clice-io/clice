@@ -15,7 +15,7 @@ markdown = '''
 ```cpp
 typeof(1.) ratio()
 ```
-Type: `typeof (1.) ()` (aka `double ()`)
+**Type:** `() -> typeof (1.)` (aka `() -> double`)
 '''
 range = "__typeof__(1.0) ⟦ratio⟧();"
 

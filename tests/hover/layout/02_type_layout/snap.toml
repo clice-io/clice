@@ -8,6 +8,7 @@ struct Widget {
   double value;
 }
 ```
-Size: 16 bytes (4 bytes padding), alignment 8 bytes
+**Size:** 16 bytes (4 bytes padding)
+**Alignment:** 8 bytes
 '''
 range = "struct ⟦Widget⟧ {"

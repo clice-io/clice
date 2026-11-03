@@ -7,7 +7,8 @@ struct Widget {
   int value;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "struct ⟦Widget⟧ {"
 

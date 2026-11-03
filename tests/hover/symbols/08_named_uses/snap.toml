@@ -5,7 +5,8 @@ markdown = '''
 ```cpp
 struct Coordinate {}
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "model::⟦Coordinate⟧* current;"
 
@@ -16,7 +17,8 @@ markdown = '''
 ```cpp
 class Controller {}
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "model::⟦Controller⟧* current;"
 
@@ -30,7 +32,8 @@ union Storage {
   double decimal;
 }
 ```
-Size: 8 bytes, alignment 8 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "model::⟦Storage⟧ current;"
 
@@ -41,7 +44,8 @@ markdown = '''
 ```cpp
 class Session {}
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Session⟧* active();"
 
@@ -62,7 +66,7 @@ markdown = '''
 ```cpp
 High
 ```
-Value: `2`
+**Value:** `2`
 '''
 range = "Priority current = ⟦High⟧;"
 
@@ -73,7 +77,7 @@ markdown = '''
 ```cpp
 Write
 ```
-Value: `1`
+**Value:** `1`
 '''
 range = "Mode current = ⟦Write⟧;"
 
@@ -84,7 +88,7 @@ markdown = '''
 ```cpp
 Complete = 8
 ```
-Value: `8`
+**Value:** `8`
 '''
 range = "int state = ⟦Complete⟧;"
 
@@ -110,7 +114,8 @@ struct Payload {
   long size;
 }
 ```
-Size: 8 bytes, alignment 8 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "⟦Packet⟧ queued;"
 
@@ -131,8 +136,9 @@ markdown = '''
 ```cpp
 long total
 ```
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "metrics.⟦total⟧++;"
 
@@ -143,7 +149,8 @@ markdown = '''
 ```cpp
 long count
 ```
-Size: 8 bytes, alignment 8 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "result.data.⟦count⟧++;"
 
@@ -152,17 +159,25 @@ markdown = '''
 **function** `default_value` · namespace `function_template_use`
 
 ```cpp
-template <> long default_value<long>()
+template <typename T> T default_value()
+```
+**Template arguments:**
+```cpp
+T = long
 ```
 '''
 range = "long value = ⟦default_value⟧<long>();"
 
 [answers.template_method.hover]
 markdown = '''
-**method** `size` · struct `instantiated_method_use::Container<int>`
+**method** `size` · struct `instantiated_method_use::Container<…>`
 
 ```cpp
 long size()
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "auto size = Container<int>{}.⟦size⟧();"
@@ -179,12 +194,17 @@ range = "Wrapper<Wrapper<Wrapper<long>>> ⟦value⟧; @+0"
 
 [answers.nested_template_class.hover]
 markdown = '''
-**struct** `Wrapper<Wrapper<Wrapper<long>>>` · namespace `nested_instance_type`
+**struct** `Wrapper<…>` · namespace `nested_instance_type`
 
 ```cpp
-template <> struct Wrapper<Wrapper<Wrapper<long>>> {}
+template <typename T> struct Wrapper {}
 ```
-Size: 1 byte, alignment 1 byte
+**Template arguments:**
+```cpp
+T = Wrapper<Wrapper<long>>
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Wrapper⟧<Wrapper<Wrapper<long>>> value; @+0"
 

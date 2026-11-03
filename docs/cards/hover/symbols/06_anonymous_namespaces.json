@@ -38,7 +38,7 @@
           "marker": "anon_var",
           "value": {
             "hover": {
-              "markdown": "**variable** `hidden` · namespace `(anonymous)`\n\n```cpp\nint hidden = 1\n```\nValue: `1`",
+              "markdown": "**variable** `hidden` · namespace `(anonymous)`\n\n```cpp\nint hidden = 1\n```\n**Value:** `1`",
               "range": {
                 "$place": "int ⟦hidden⟧ = 1;",
                 "path": "main.cpp",
@@ -61,7 +61,7 @@
           "marker": "nested_anon_var",
           "value": {
             "hover": {
-              "markdown": "**variable** `nested` · namespace `outer::(anonymous)`\n\n```cpp\nint nested = 2\n```\nValue: `2`",
+              "markdown": "**variable** `nested` · namespace `outer::(anonymous)`\n\n```cpp\nint nested = 2\n```\n**Value:** `2`",
               "range": {
                 "$place": "int ⟦nested⟧ = 2;",
                 "path": "main.cpp",

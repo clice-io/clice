@@ -15,7 +15,7 @@ markdown = '''
 ```cpp
 void draw() override
 ```
-Overrides: `Base::draw`
+**Overrides:** `Base::draw`
 '''
 range = "void ⟦draw⟧() override; @+0"
 
@@ -26,7 +26,7 @@ markdown = '''
 ```cpp
 void draw() final
 ```
-Overrides: `Circle::draw`
+**Overrides:** `Circle::draw`
 '''
 range = "void ⟦draw⟧() final;"
 
@@ -37,7 +37,7 @@ markdown = '''
 ```cpp
 void draw()
 ```
-Overrides: `Base::draw`
+**Overrides:** `Base::draw`
 '''
 range = "void ⟦draw⟧();"
 
@@ -48,6 +48,6 @@ markdown = '''
 ```cpp
 void draw() override
 ```
-Overrides: `Base::draw`, `Printable::draw`
+**Overrides:** `Base::draw`, `Printable::draw`
 '''
 range = "void ⟦draw⟧() override; @+0"

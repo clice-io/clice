@@ -16,6 +16,6 @@ markdown = '''
 ```cpp
 auto count = values.size()
 ```
-Type: `std::vector<int>::size_type` (aka `unsigned long`)
+**Type:** `std::vector<int>::size_type` (aka `unsigned long`)
 '''
 range = "auto ⟦count⟧ = values.size();"

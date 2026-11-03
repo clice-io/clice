@@ -79,7 +79,7 @@
           "marker": "override_method",
           "value": {
             "hover": {
-              "markdown": "**method** `draw` · struct `Circle`\n\n```cpp\nvoid draw() override\n```\nOverrides: `Base::draw`",
+              "markdown": "**method** `draw` · struct `Circle`\n\n```cpp\nvoid draw() override\n```\n**Overrides:** `Base::draw`",
               "range": {
                 "$place": "void ⟦draw⟧() override; @+0",
                 "path": "main.cpp",
@@ -102,7 +102,7 @@
           "marker": "final_method",
           "value": {
             "hover": {
-              "markdown": "**method** `draw` · struct `Dot`\n\n```cpp\nvoid draw() final\n```\nOverrides: `Circle::draw`",
+              "markdown": "**method** `draw` · struct `Dot`\n\n```cpp\nvoid draw() final\n```\n**Overrides:** `Circle::draw`",
               "range": {
                 "$place": "void ⟦draw⟧() final;",
                 "path": "main.cpp",
@@ -125,7 +125,7 @@
           "marker": "implicit_override",
           "value": {
             "hover": {
-              "markdown": "**method** `draw` · struct `Square`\n\n```cpp\nvoid draw()\n```\nOverrides: `Base::draw`",
+              "markdown": "**method** `draw` · struct `Square`\n\n```cpp\nvoid draw()\n```\n**Overrides:** `Base::draw`",
               "range": {
                 "$place": "void ⟦draw⟧();",
                 "path": "main.cpp",
@@ -148,7 +148,7 @@
           "marker": "two_bases",
           "value": {
             "hover": {
-              "markdown": "**method** `draw` · struct `Label`\n\n```cpp\nvoid draw() override\n```\nOverrides: `Base::draw`, `Printable::draw`",
+              "markdown": "**method** `draw` · struct `Label`\n\n```cpp\nvoid draw() override\n```\n**Overrides:** `Base::draw`, `Printable::draw`",
               "range": {
                 "$place": "void ⟦draw⟧() override; @+0",
                 "path": "main.cpp",

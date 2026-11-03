@@ -38,7 +38,7 @@
           "marker": "typedef",
           "value": {
             "hover": {
-              "markdown": "**type** `Point`\n\nA 2-D point.\n\n```cpp\ntypedef struct {\n  int x;\n  int y;\n} Point\n```\nSize: 8 bytes, alignment 4 bytes",
+              "markdown": "**type** `Point`\n\nA 2-D point.\n\n```cpp\ntypedef struct {\n  int x;\n  int y;\n} Point\n```\n**Size:** 8 bytes\n**Alignment:** 4 bytes",
               "range": {
                 "$place": "} ⟦Point⟧;",
                 "path": "main.c",

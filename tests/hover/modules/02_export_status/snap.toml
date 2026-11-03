@@ -17,7 +17,8 @@ export struct Square {
   int side;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "struct ⟦Square⟧ {"
 
@@ -28,8 +29,9 @@ markdown = '''
 ```cpp
 int side
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "int ⟦side⟧;"
 
