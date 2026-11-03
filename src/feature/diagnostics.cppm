@@ -107,14 +107,15 @@ auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 /// undeclared name, a missing member or template of a namespace, a call to
 /// an undeclared C function, a name read as a declaration without a type
 /// (a list of the includer's names, a macro it defines), a struct or enum
-/// it defines that is named but incomplete (in a prototype, as a field or
-/// an array's elements), a macro of its after a declarator, an #error
-/// guarding against a standalone compile, a conditional the includer
-/// closes. A typo raises the same
-/// ones; the self-containment check runs when a header opens or its
-/// inputs change, never per edit, so one costs at most a compile under
-/// the includer's context.
-std::size_t missing_context_errors(llvm::ArrayRef<FileDiagnostic> diagnostics);
+/// it defines that is named but incomplete (in a prototype under -Werror,
+/// as a field or an array's elements), a macro of its after a declarator,
+/// an #error guarding against a standalone compile, a conditional the
+/// includer closes. A typo raises the same ones; the self-containment
+/// check runs when a header opens or its inputs change, never per edit, so
+/// one costs at most a compile under the includer's context. `text` is the
+/// file's the diagnostics are on.
+std::size_t missing_context_errors(llvm::ArrayRef<FileDiagnostic> diagnostics,
+                                   llvm::StringRef text);
 
 /// A warning from clice itself about the file as a whole, on its first
 /// character.

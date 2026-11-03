@@ -1,7 +1,6 @@
 module clice;
 
 import :compile.diagnostic;
-import :feature.diagnostics;
 import :index.database;
 import :index.format;
 import :project.project;
@@ -191,15 +190,14 @@ ZEST_CASE(SelfContainmentPersisted) {
         auto id = files.intern(Spelling::absolute(path));
         auto dep = files.intern(Spelling::absolute(dep_path));
         auto alone = files.intern(Spelling::absolute(alone_path));
-        feature::FileDiagnostic missing{
-            .level = DiagnosticLevel::Error,
-            .id = clang::diag::err_unknown_typename,
-        };
         f.project.commit_self_containment({id, 1},
-                                          {missing},
+                                          false,
                                           current_input(files, id)->version,
                                           {*current_input(files, dep)});
-        f.project.commit_self_containment({alone, 1}, {}, current_input(files, alone)->version, {});
+        f.project.commit_self_containment({alone, 1},
+                                          true,
+                                          current_input(files, alone)->version,
+                                          {});
         f.save();
     }
 

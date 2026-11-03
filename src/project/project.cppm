@@ -700,11 +700,12 @@ struct Project {
     /// again; otherwise while the disk holds the text the check compiled.
     std::optional<bool> self_contained(const SelfContainmentKey& key, bool open);
 
-    /// Remember what the self-containment check of `key` found: `diagnostics`,
-    /// what the header's compile without its includer's context raised over
-    /// `text`, having read `inputs`.
+    /// Remember what the self-containment check of `key` found: whether the
+    /// header's compile without its includer's context over `text`, having
+    /// read `inputs`, missed nothing an includer provides
+    /// (feature::missing_context_errors).
     void commit_self_containment(const SelfContainmentKey& key,
-                                 llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
+                                 bool self_contained,
                                  VersionID text,
                                  Inputs inputs);
 

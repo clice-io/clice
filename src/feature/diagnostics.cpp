@@ -672,7 +672,8 @@ protocol::Diagnostic to_protocol(
     return result;
 }
 
-std::size_t missing_context_errors(llvm::ArrayRef<FileDiagnostic> diagnostics) {
+std::size_t missing_context_errors(llvm::ArrayRef<FileDiagnostic> diagnostics,
+                                   llvm::StringRef text) {
     namespace diag = clang::diag;
     constexpr static unsigned ids[] = {
         diag::err_unknown_typename,
@@ -695,12 +696,21 @@ std::size_t missing_context_errors(llvm::ArrayRef<FileDiagnostic> diagnostics) {
         diag::warn_decl_in_param_list,
         diag::err_field_incomplete_or_sizeless,
         diag::err_array_incomplete_or_sizeless_type,
-        diag::err_expected_fn_body,
         diag::err_pp_hash_error,
         diag::err_pp_unterminated_conditional,
     };
     return ranges::count_if(diagnostics, [&](const FileDiagnostic& diagnostic) {
-        return diagnostic.level >= DiagnosticLevel::Error && ranges::contains(ids, diagnostic.id);
+        if(diagnostic.level < DiagnosticLevel::Error) {
+            return false;
+        }
+        // A name after a function's declarator is the includer's macro; a
+        // `;` missing before a `}` or the end raises the same error.
+        if(diagnostic.id == diag::err_expected_fn_body) {
+            auto at = diagnostic.range.begin;
+            return diagnostic.origin == DiagnosticOrigin::File && at < text.size() &&
+                   clang::isAsciiIdentifierStart(text[at]);
+        }
+        return ranges::contains(ids, diagnostic.id);
     });
 }
 
