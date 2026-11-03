@@ -178,11 +178,11 @@ struct FileTable {
     vfs::DiskState::CheckResult check_version(VersionID vid);
 };
 
-/// Whether every consumed version still matches the disk; see
-/// FileTable::check_version and Input for the
+/// Whether every consumed version but `except`'s still matches the disk;
+/// see FileTable::check_version and Input for the
 /// per-reference absent policy. Every dependency is looked at, so the
 /// changes one check finds cascade together.
-bool inputs_hold(FileTable& files, const Inputs& snap);
+bool inputs_hold(FileTable& files, const Inputs& snap, Fid except = {});
 
 /// Capture a staleness snapshot from a build's reported inputs, interning
 /// the consumed versions into the shared table.

@@ -23,13 +23,13 @@ public:
         Inputs inputs;
     };
 
-    /// The entry of `key` while its inputs hold.
-    Entry* lookup(FileTable& files, KeyRef key) {
+    /// The entry of `key` while its inputs but `unchecked` hold.
+    Entry* lookup(FileTable& files, KeyRef key, Fid unchecked = {}) {
         auto it = entries.find(key);
         if(it == entries.end()) {
             return nullptr;
         }
-        if(!inputs_hold(files, it->second.inputs)) {
+        if(!inputs_hold(files, it->second.inputs, unchecked)) {
             entries.erase(it);
             return nullptr;
         }
