@@ -195,6 +195,12 @@ auto type(clang::ASTContext& context,
           const Options& options = {},
           llvm::StringRef declarator = {}) -> Type;
 
+/// The elements of a pack, `int, long`, as type() writes a type with a
+/// width, without an aka.
+auto pack(clang::ASTContext& context,
+          llvm::ArrayRef<clang::TemplateArgument> elements,
+          const Options& options) -> std::string;
+
 /// Types as a reader knows them: a deduced `auto` gives way to the type it
 /// stands for; an alias the library keeps to itself (`_NonArray<int>`, a
 /// member of `__alloc_traits`) or one that computes its type as a trait

@@ -4,78 +4,102 @@
   "subtopic": "presentation",
   "title": "Types read left to right",
   "summary": "A type C++ writes inside out reads left to right: `*`, `&` and `[N]` follow what they apply to, a function reads `(params) -> R`, a member pointer `C::-> T`",
-  "prose": "A function or member pointer inside another is named by a Greek letter, spelled on the line below.",
+  "prose": "A function inside a function, or a member pointer inside a member pointer, is named by a Greek letter, spelled on the line below.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace inside_out {\n\nstruct Widget {\n    double scale(double factor) const;\n    void reset() & noexcept;\n    int id;\n    void (*hooks[4])(int);\n};\n\nint storage[16];\n\nvoid (*on_exit)(int);\nint (&row)[16] = storage;\nchar (*line)[80];\nvoid (*handlers[8])(int, const char*);\nint (*print)(const char*, ...);\ndouble (Widget::*scaler)(double) const = &Widget::scale;\nvoid (Widget::*resetter)() & noexcept = &Widget::reset;\nint Widget::*field = &Widget::id;\nvoid (*(Widget::*table)[4])(int) = &Widget::hooks;\n\nvoid (*signal(int, void (*)(int)))(int);\n\nusing Table = void (*[8])(int);\nTable dispatch;\n\n}\n",
+      "text": "namespace inside_out {\n\nstruct Widget {\n    double scale(double factor) const;\n    void reset() & noexcept;\n    int id;\n    void (*hooks[4])(int);\n};\n\nstruct Holder {\n    int Widget::* member;\n};\n\nint storage[16];\n\nvoid (*on_exit)(int);\nint (&row)[16] = storage;\nchar (*line)[80];\nvoid (*handlers[8])(int, const char*);\nint (*print)(const char*, ...);\nint (*any)(...);\nconst auto& view = storage;\ndouble (Widget::*scaler)(double) const = &Widget::scale;\nvoid (Widget::*resetter)() & noexcept = &Widget::reset;\nint Widget::*field = &Widget::id;\nvoid (*(Widget::*table)[4])(int) = &Widget::hooks;\nint Widget::* const fixed = &Widget::id;\nint Widget::* Holder::*chain = &Holder::member;\n\nvoid (*signal(int, void (*)(int)))(int);\n\nusing Table = void (*[8])(int);\nTable dispatch;\n\n}\n",
       "markers": [
         {
           "name": "function_pointer",
-          "begin": 176,
-          "end": 176,
+          "begin": 222,
+          "end": 222,
           "range": false
         },
         {
           "name": "array_reference",
-          "begin": 197,
-          "end": 197,
+          "begin": 243,
+          "end": 243,
           "range": false
         },
         {
           "name": "array_pointer",
-          "begin": 224,
-          "end": 224,
+          "begin": 270,
+          "end": 270,
           "range": false
         },
         {
           "name": "pointer_array",
-          "begin": 242,
-          "end": 242,
+          "begin": 288,
+          "end": 288,
           "range": false
         },
         {
           "name": "variadic",
-          "begin": 280,
-          "end": 280,
+          "begin": 326,
+          "end": 326,
+          "range": false
+        },
+        {
+          "name": "only_variadic",
+          "begin": 358,
+          "end": 358,
+          "range": false
+        },
+        {
+          "name": "const_array",
+          "begin": 381,
+          "end": 381,
           "range": false
         },
         {
           "name": "member_function",
-          "begin": 323,
-          "end": 323,
+          "begin": 414,
+          "end": 414,
           "range": false
         },
         {
           "name": "qualified_member",
-          "begin": 378,
-          "end": 378,
+          "begin": 469,
+          "end": 469,
           "range": false
         },
         {
           "name": "member_data",
-          "begin": 432,
-          "end": 432,
+          "begin": 523,
+          "end": 523,
           "range": false
         },
         {
           "name": "member_array",
-          "begin": 470,
-          "end": 470,
+          "begin": 561,
+          "end": 561,
+          "range": false
+        },
+        {
+          "name": "const_member",
+          "begin": 615,
+          "end": 615,
+          "range": false
+        },
+        {
+          "name": "member_in_member",
+          "begin": 659,
+          "end": 659,
           "range": false
         },
         {
           "name": "returns_pointer",
-          "begin": 512,
-          "end": 512,
+          "begin": 692,
+          "end": 692,
           "range": false
         },
         {
           "name": "alias",
-          "begin": 585,
-          "end": 585,
+          "begin": 765,
+          "end": 765,
           "range": false
         }
       ]
@@ -96,11 +120,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 11,
+                    "line": 15,
                     "character": 7
                   },
                   "end": {
-                    "line": 11,
+                    "line": 15,
                     "character": 14
                   }
                 }
@@ -119,11 +143,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 12,
+                    "line": 16,
                     "character": 6
                   },
                   "end": {
-                    "line": 12,
+                    "line": 16,
                     "character": 9
                   }
                 }
@@ -142,11 +166,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 13,
+                    "line": 17,
                     "character": 7
                   },
                   "end": {
-                    "line": 13,
+                    "line": 17,
                     "character": 11
                   }
                 }
@@ -165,11 +189,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 14,
+                    "line": 18,
                     "character": 7
                   },
                   "end": {
-                    "line": 14,
+                    "line": 18,
                     "character": 15
                   }
                 }
@@ -188,12 +212,58 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 15,
+                    "line": 19,
                     "character": 6
                   },
                   "end": {
-                    "line": 15,
+                    "line": 19,
                     "character": 11
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "only_variadic",
+          "marker": "only_variadic",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `any` · namespace `inside_out`\n\n```cpp\nint (*any)(...)\n```\n**Type:** `((...) -> int)*`",
+              "range": {
+                "$place": "int (*⟦any⟧)(...);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 20,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 20,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "const_array",
+          "marker": "const_array",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `view` · namespace `inside_out`\n\n```cpp\nconst auto& view = storage\n```\n**Type:** `const int[16]&`",
+              "range": {
+                "$place": "const auto& ⟦view⟧ = storage;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 21,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 21,
+                    "character": 16
                   }
                 }
               }
@@ -211,11 +281,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 16,
+                    "line": 22,
                     "character": 17
                   },
                   "end": {
-                    "line": 16,
+                    "line": 22,
                     "character": 23
                   }
                 }
@@ -234,11 +304,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 17,
+                    "line": 23,
                     "character": 15
                   },
                   "end": {
-                    "line": 17,
+                    "line": 23,
                     "character": 23
                   }
                 }
@@ -257,11 +327,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 18,
+                    "line": 24,
                     "character": 13
                   },
                   "end": {
-                    "line": 18,
+                    "line": 24,
                     "character": 18
                   }
                 }
@@ -280,12 +350,58 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 19,
+                    "line": 25,
                     "character": 17
                   },
                   "end": {
-                    "line": 19,
+                    "line": 25,
                     "character": 22
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "const_member",
+          "marker": "const_member",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `fixed` · namespace `inside_out`\n\n```cpp\nint Widget::* const fixed = &Widget::id\n```\n**Type:** `(Widget::-> int) const`\n**Value:** `&Widget::id`",
+              "range": {
+                "$place": "int Widget::* const ⟦fixed⟧ = &Widget::id;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 26,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 26,
+                    "character": 25
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "member_in_member",
+          "marker": "member_in_member",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `chain` · namespace `inside_out`\n\n```cpp\nint Widget::* Holder::* chain = &Holder::member\n```\n**Type:**\n```cpp\nHolder::-> α\n  α = Widget::-> int\n```\n**Value:** `&Holder::member`",
+              "range": {
+                "$place": "int Widget::* Holder::*⟦chain⟧ = &Holder::member;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 27,
+                    "character": 23
+                  },
+                  "end": {
+                    "line": 27,
+                    "character": 28
                   }
                 }
               }
@@ -303,11 +419,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 21,
+                    "line": 29,
                     "character": 7
                   },
                   "end": {
-                    "line": 21,
+                    "line": 29,
                     "character": 13
                   }
                 }
@@ -326,11 +442,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 24,
+                    "line": 32,
                     "character": 6
                   },
                   "end": {
-                    "line": 24,
+                    "line": 32,
                     "character": 14
                   }
                 }

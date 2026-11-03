@@ -57,6 +57,79 @@ Map<α, α>
 '''
 range = "auto ⟦pairs⟧ = Map<Vector<Tuple<Coordinate, Measurement, Coordinate>>, Vector<Tuple<Coordinate, Measurement, Coordinate>>>{};"
 
+[answers.long_alias.hover]
+markdown = '''
+**variable** `bundle` · namespace `long_types`
+
+```cpp
+Bundle<Map<Coordinate, Measurement>, Map<Measurement, Coordinate>,
+       Vector<Coordinate>> bundle
+```
+```cpp
+Bundle<α, Map<Measurement, Coordinate>, Vector<Coordinate>>
+  α = Map<Coordinate, Measurement>
+```
+is
+```cpp
+Tuple<α, Map<Measurement, Coordinate>, Vector<Coordinate>>
+  α = Map<Coordinate, Measurement>
+```
+'''
+range = "Bundle<Map<Coordinate, Measurement>, Map<Measurement, Coordinate>, Vector<Coordinate>> ⟦bundle⟧;"
+
+[answers.long_aka.hover]
+markdown = '''
+**variable** `packed` · namespace `long_types`
+
+```cpp
+auto packed =
+    Bundle<Map<Coordinate, Measurement>, Map<Measurement, Coordinate>> {}
+```
+**Type:**
+```cpp
+Bundle<α, Map<Measurement, Coordinate>>
+  α = Map<Coordinate, Measurement>
+```
+**Aka:**
+```cpp
+Tuple<α, Map<Measurement, Coordinate>>
+  α = Map<Coordinate, Measurement>
+```
+'''
+range = "auto ⟦packed⟧ = Bundle<Map<Coordinate, Measurement>, Map<Measurement, Coordinate>>{};"
+
+[answers.wrapped_parameters.hover]
+markdown = '''
+**variable** `visit` · namespace `long_types`
+
+```cpp
+void (*visit)(Coordinate, Measurement, Coordinate, Measurement, Coordinate,
+              Measurement)
+```
+**Type:**
+```cpp
+α*
+  α = (Coordinate, Measurement, Coordinate, Measurement,
+       Coordinate, Measurement) -> void
+```
+'''
+range = "void (*⟦visit⟧)(Coordinate, Measurement, Coordinate, Measurement, Coordinate, Measurement);"
+
+[answers.long_pack.hover]
+markdown = '''
+**function** `take` · namespace `long_types`
+
+```cpp
+template <typename... Ts> void take(Ts... values)
+```
+**Template arguments:**
+```cpp
+Ts = Map<α, Optional<Tuple<Coordinate, Measurement>>>, int
+       α = Vector<Tuple<Coordinate, Measurement>>
+```
+'''
+range = "⟦take⟧(Map<Vector<Tuple<Coordinate, Measurement>>, Optional<Tuple<Coordinate, Measurement>>>{}, 1);"
+
 [answers.letters.hover]
 markdown = '''
 **variable** `dispatch` · namespace `long_types`

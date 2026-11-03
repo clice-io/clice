@@ -676,6 +676,29 @@ auto type(clang::ASTContext& context,
     return result;
 }
 
+auto pack(clang::ASTContext& context,
+          llvm::ArrayRef<clang::TemplateArgument> elements,
+          const Options& options) -> std::string {
+    clang::PrintingPolicy policy = printing_policy(context, options);
+    std::optional<EnclosingScopes> scopes;
+    if(options.scope) {
+        policy.Callbacks = &scopes.emplace(options.scope);
+    }
+    llvm::SmallVector<clang::TemplateArgument> readable(elements);
+    if(options.readable) {
+        for(auto& element: readable) {
+            if(element.getKind() == clang::TemplateArgument::Type) {
+                element =
+                    clang::TemplateArgument(options.readable->readable(element.getAsType(),
+                                                                       options.scope,
+                                                                       options.source,
+                                                                       options.specialization));
+            }
+        }
+    }
+    return argument_lines(context, readable, policy, options.width);
+}
+
 namespace {
 
 /// Non-negative numbers are printed using min digits:

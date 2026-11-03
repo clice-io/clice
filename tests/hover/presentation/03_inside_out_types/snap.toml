@@ -53,6 +53,28 @@ int (*print)(const char*, ...)
 '''
 range = "int (*⟦print⟧)(const char*, ...);"
 
+[answers.only_variadic.hover]
+markdown = '''
+**variable** `any` · namespace `inside_out`
+
+```cpp
+int (*any)(...)
+```
+**Type:** `((...) -> int)*`
+'''
+range = "int (*⟦any⟧)(...);"
+
+[answers.const_array.hover]
+markdown = '''
+**variable** `view` · namespace `inside_out`
+
+```cpp
+const auto& view = storage
+```
+**Type:** `const int[16]&`
+'''
+range = "const auto& ⟦view⟧ = storage;"
+
 [answers.member_function.hover]
 markdown = '''
 **variable** `scaler` · namespace `inside_out`
@@ -100,6 +122,34 @@ void (*(Widget::*table)[4])(int) = &Widget::hooks
 **Value:** `&Widget::hooks`
 '''
 range = "void (*(Widget::*⟦table⟧)[4])(int) = &Widget::hooks;"
+
+[answers.const_member.hover]
+markdown = '''
+**variable** `fixed` · namespace `inside_out`
+
+```cpp
+int Widget::* const fixed = &Widget::id
+```
+**Type:** `(Widget::-> int) const`
+**Value:** `&Widget::id`
+'''
+range = "int Widget::* const ⟦fixed⟧ = &Widget::id;"
+
+[answers.member_in_member.hover]
+markdown = '''
+**variable** `chain` · namespace `inside_out`
+
+```cpp
+int Widget::* Holder::* chain = &Holder::member
+```
+**Type:**
+```cpp
+Holder::-> α
+  α = Widget::-> int
+```
+**Value:** `&Holder::member`
+'''
+range = "int Widget::* Holder::*⟦chain⟧ = &Holder::member;"
 
 [answers.returns_pointer.hover]
 markdown = '''

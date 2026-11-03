@@ -323,7 +323,7 @@ tests/hover/deduced_types/06_generic_lambdas
 
 The type of a variable keeps the alias its initializer names, but not a trait's result or one the library keeps to itself
 
-`values.size()` reads as `std::vector<int>::size_type` with what it stands for after it; the member alias of `__alloc_traits` that `front()` returns reads as `int &`, and a trait's result, `invoke_result_t<…>`, as what it computes. An alias over a class the library keeps to itself names that class after it: `std::vector<int>::iterator` is `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`. A binding of such a class takes the alias from its initializer: `position` of `ids.insert(1)` is a `std::set<int>::iterator`.
+`values.size()` reads as `std::vector<int>::size_type` with what it stands for after it; the member alias of `__alloc_traits` that `front()` returns reads as `int&`, and a trait's result, `invoke_result_t<…>`, as what it computes. An alias over a class the library keeps to itself names that class after it: `std::vector<int>::iterator` is `__gnu_cxx::__normal_iterator<int*, std::vector<int>>`. A binding of such a class takes the alias from its initializer: `position` of `ids.insert(1)` is a `std::set<int>::iterator`.
 
 ```case
 tests/hover/deduced_types/14_library_aliases
@@ -998,7 +998,7 @@ tests/hover/presentation/01_plain_text
 
 A type C++ writes inside out reads left to right: `*`, `&` and `[N]` follow what they apply to, a function reads `(params) -> R`, a member pointer `C::-> T`
 
-A function or member pointer inside another is named by a Greek letter, spelled on the line below.
+A function inside a function, or a member pointer inside a member pointer, is named by a Greek letter, spelled on the line below.
 
 ```case
 tests/hover/presentation/03_inside_out_types
@@ -1012,7 +1012,7 @@ tests/hover/presentation/03_inside_out_types
 
 A type too long for one line is written in lines of at most 60 columns
 
-A part that does not fit is named by a Greek letter and spelled on its own line below, two columns further in; a part written twice shares its letter. A list of arguments or parameters that still does not fit wraps after its bracket.
+A part that does not fit is named by a Greek letter and spelled on its own line below, two columns further in; a part written twice shares its letter. A list of arguments or parameters that still does not fit wraps, its lines aligned after the bracket opening it.
 
 ```case
 tests/hover/presentation/04_long_type_lines

@@ -121,6 +121,48 @@ markdown = '''
 '''
 range = "int product = ⟦SUM⟧(1, 2) * 3;"
 
+[answers.unevaluated.hover]
+markdown = '''
+**macro** `MESSAGE`
+
+```cpp
+#define MESSAGE "always holds"
+```
+**Expands to:**
+```cpp
+"always holds"
+```
+'''
+range = "static_assert(true, ⟦MESSAGE⟧);"
+
+[answers.void_expression.hover]
+markdown = '''
+**macro** `CHECK`
+
+```cpp
+#define CHECK(x) ((void)(x))
+```
+**Expands to:**
+```cpp
+((void)(value))
+```
+'''
+range = "⟦CHECK⟧(value);"
+
+[answers.dependent.hover]
+markdown = '''
+**macro** `ARGS`
+
+```cpp
+#define ARGS (1, 2)
+```
+**Expands to:**
+```cpp
+(1, 2)
+```
+'''
+range = "T made ⟦ARGS⟧;"
+
 [answers.statement.hover]
 markdown = '''
 **macro** `BEGIN`

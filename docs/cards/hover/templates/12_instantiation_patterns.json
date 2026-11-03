@@ -10,48 +10,66 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace instantiation_patterns {\n\ntemplate <typename T, typename Alloc = void> struct Store {\n    T* items;\n};\n\ntemplate <typename T> struct Store<T*, void> {\n    T** slots;\n};\n\ntemplate <> struct Store<bool> {\n    unsigned bits;\n};\n\ntemplate <typename T> struct Queue {\n    void push(const T& item);\n\n    template <typename U> U convert() const;\n\n    template <int Capacity> struct Ring {\n        T items[Capacity];\n    };\n};\n\ntemplate <typename T, typename... Rest> void log(T first, Rest... rest);\n\nvoid use() {\n    Store<int> numbers;\n    Store<char*> names;\n    Store<bool> flags;\n\n    Queue<long> queue;\n    queue.push(1);\n    queue.convert<double>();\n    Queue<long>::Ring<8> ring;\n\n    log(1);\n}\n\n}\n",
+      "text": "namespace instantiation_patterns {\n\ntemplate <typename T, typename Alloc = void> struct Store {\n    T* items;\n};\n\ntemplate <typename T> struct Store<T*, void> {\n    T** slots;\n};\n\ntemplate <> struct Store<bool> {\n    unsigned bits;\n};\n\ntemplate <typename T> struct Queue {\n    void push(const T& item);\n\n    template <typename U> U convert() const;\n\n    template <int Capacity> struct Ring {\n        T items[Capacity];\n    };\n};\n\ntemplate <> template <int Capacity> struct Queue<char>::Ring {\n    char spare[Capacity];\n};\n\ntemplate <typename T> struct List {\n    struct iterator {\n        T& operator*();\n    };\n};\n\ntemplate <typename T, typename... Rest> void log(T first, Rest... rest);\n\nvoid show(auto value);\n\nvoid use() {\n    Store<int> numbers;\n    Store<char*> names;\n    Store<bool> flags;\n\n    Queue<long> queue;\n    queue.push(1);\n    queue.convert<double>();\n    Queue<long>::Ring<8> ring;\n    Queue<char>::Ring<2> spare;\n\n    List<int>::iterator it;\n    it.operator*();\n\n    log(1);\n    show(1);\n}\n\n}\n",
       "markers": [
         {
           "name": "primary",
-          "begin": 521,
-          "end": 521,
+          "begin": 731,
+          "end": 731,
           "range": false
         },
         {
           "name": "partial",
-          "begin": 545,
-          "end": 545,
+          "begin": 755,
+          "end": 755,
           "range": false
         },
         {
           "name": "explicit",
-          "begin": 569,
-          "end": 569,
+          "begin": 779,
+          "end": 779,
           "range": false
         },
         {
           "name": "member_function",
-          "begin": 622,
-          "end": 622,
+          "begin": 832,
+          "end": 832,
           "range": false
         },
         {
           "name": "member_template",
-          "begin": 641,
-          "end": 641,
+          "begin": 851,
+          "end": 851,
           "range": false
         },
         {
           "name": "member_class_template",
-          "begin": 677,
-          "end": 677,
+          "begin": 887,
+          "end": 887,
+          "range": false
+        },
+        {
+          "name": "specialized_member",
+          "begin": 918,
+          "end": 918,
+          "range": false
+        },
+        {
+          "name": "nested_class_member",
+          "begin": 969,
+          "end": 969,
           "range": false
         },
         {
           "name": "empty_pack",
-          "begin": 696,
-          "end": 696,
+          "begin": 987,
+          "end": 987,
+          "range": false
+        },
+        {
+          "name": "abbreviated",
+          "begin": 999,
+          "end": 999,
           "range": false
         }
       ]
@@ -72,11 +90,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 27,
+                    "line": 39,
                     "character": 4
                   },
                   "end": {
-                    "line": 27,
+                    "line": 39,
                     "character": 9
                   }
                 }
@@ -95,11 +113,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 28,
+                    "line": 40,
                     "character": 4
                   },
                   "end": {
-                    "line": 28,
+                    "line": 40,
                     "character": 9
                   }
                 }
@@ -118,11 +136,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 29,
+                    "line": 41,
                     "character": 4
                   },
                   "end": {
-                    "line": 29,
+                    "line": 41,
                     "character": 9
                   }
                 }
@@ -141,11 +159,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 32,
+                    "line": 44,
                     "character": 10
                   },
                   "end": {
-                    "line": 32,
+                    "line": 44,
                     "character": 14
                   }
                 }
@@ -164,11 +182,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 33,
+                    "line": 45,
                     "character": 10
                   },
                   "end": {
-                    "line": 33,
+                    "line": 45,
                     "character": 17
                   }
                 }
@@ -187,12 +205,58 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 34,
+                    "line": 46,
                     "character": 17
                   },
                   "end": {
-                    "line": 34,
+                    "line": 46,
                     "character": 21
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "specialized_member",
+          "marker": "specialized_member",
+          "value": {
+            "hover": {
+              "markdown": "**struct** `Ring<…>` · struct `instantiation_patterns::Queue<char>`\n\n```cpp\ntemplate <int Capacity> struct Queue<char>::Ring {\n  char spare[Capacity];\n}\n```\n**Template arguments:**\n```cpp\nCapacity = 2\n```\n**Size:** 2 bytes\n**Alignment:** 1 byte",
+              "range": {
+                "$place": "Queue<char>::⟦Ring⟧<2> spare;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 47,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 47,
+                    "character": 21
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "nested_class_member",
+          "marker": "nested_class_member",
+          "value": {
+            "hover": {
+              "markdown": "**method** `operator*` · struct `instantiation_patterns::List<int>::iterator`\n\n```cpp\nT& operator*()\n```\n**Template arguments:**\n```cpp\nT = int\n```",
+              "range": {
+                "$place": "it.⟦operator⟧*();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 50,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 50,
+                    "character": 15
                   }
                 }
               }
@@ -210,12 +274,35 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 36,
+                    "line": 52,
                     "character": 4
                   },
                   "end": {
-                    "line": 36,
+                    "line": 52,
                     "character": 7
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "abbreviated",
+          "marker": "abbreviated",
+          "value": {
+            "hover": {
+              "markdown": "**function** `show` · namespace `instantiation_patterns`\n\n```cpp\nvoid show(auto value)\n```\n**Type:** `(int) -> void`",
+              "range": {
+                "$place": "⟦show⟧(1);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 53,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 53,
+                    "character": 8
                   }
                 }
               }

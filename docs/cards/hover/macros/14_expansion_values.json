@@ -10,60 +10,78 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "#define NUM_C 12\n#define MASK(bits) ((1u << (bits)) - 1)\n#define GREETING \"hello\"\n#define DOUBLE(x) ((x) * 2.0)\n#define ECHO(x) x\n#define BEGIN {\n#define SUM(a, b) a + b\n\nint value = 3;\n\nint number = NUM_C;\nunsigned mask = MASK(4);\nconst char* text = GREETING;\ndouble twice = DOUBLE(value);\nint echoed = ECHO(NUM_C);\nunsigned nested = ECHO(MASK(3));\nint copied = ECHO(value);\nint product = SUM(1, 2) * 3;\n\nvoid run() BEGIN }\n",
+      "text": "#define NUM_C 12\n#define MASK(bits) ((1u << (bits)) - 1)\n#define GREETING \"hello\"\n#define DOUBLE(x) ((x) * 2.0)\n#define ECHO(x) x\n#define BEGIN {\n#define SUM(a, b) a + b\n#define MESSAGE \"always holds\"\n#define CHECK(x) ((void)(x))\n#define ARGS (1, 2)\n\nint value = 3;\n\nint number = NUM_C;\nunsigned mask = MASK(4);\nconst char* text = GREETING;\ndouble twice = DOUBLE(value);\nint echoed = ECHO(NUM_C);\nunsigned nested = ECHO(MASK(3));\nint copied = ECHO(value);\nint product = SUM(1, 2) * 3;\nstatic_assert(true, MESSAGE);\n\nvoid check() {\n    CHECK(value);\n}\n\ntemplate <typename T> void make() {\n    T made ARGS;\n}\n\nvoid run() BEGIN }\n",
       "markers": [
         {
           "name": "object_like",
-          "begin": 200,
-          "end": 200,
+          "begin": 280,
+          "end": 280,
           "range": false
         },
         {
           "name": "function_like",
-          "begin": 223,
-          "end": 223,
+          "begin": 303,
+          "end": 303,
           "range": false
         },
         {
           "name": "string",
-          "begin": 251,
-          "end": 251,
+          "begin": 331,
+          "end": 331,
           "range": false
         },
         {
           "name": "not_constant",
-          "begin": 276,
-          "end": 276,
+          "begin": 356,
+          "end": 356,
           "range": false
         },
         {
           "name": "in_arguments",
-          "begin": 309,
-          "end": 309,
+          "begin": 389,
+          "end": 389,
           "range": false
         },
         {
           "name": "nested_call",
-          "begin": 340,
-          "end": 340,
+          "begin": 420,
+          "end": 420,
           "range": false
         },
         {
           "name": "argument_alone",
-          "begin": 363,
-          "end": 363,
+          "begin": 443,
+          "end": 443,
           "range": false
         },
         {
           "name": "partial_expression",
-          "begin": 390,
-          "end": 390,
+          "begin": 470,
+          "end": 470,
+          "range": false
+        },
+        {
+          "name": "unevaluated",
+          "begin": 505,
+          "end": 505,
+          "range": false
+        },
+        {
+          "name": "void_expression",
+          "begin": 535,
+          "end": 535,
+          "range": false
+        },
+        {
+          "name": "dependent",
+          "begin": 599,
+          "end": 599,
           "range": false
         },
         {
           "name": "statement",
-          "begin": 417,
-          "end": 417,
+          "begin": 619,
+          "end": 619,
           "range": false
         }
       ]
@@ -84,11 +102,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 10,
+                    "line": 13,
                     "character": 13
                   },
                   "end": {
-                    "line": 10,
+                    "line": 13,
                     "character": 18
                   }
                 }
@@ -107,11 +125,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 11,
+                    "line": 14,
                     "character": 16
                   },
                   "end": {
-                    "line": 11,
+                    "line": 14,
                     "character": 20
                   }
                 }
@@ -130,11 +148,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 12,
+                    "line": 15,
                     "character": 19
                   },
                   "end": {
-                    "line": 12,
+                    "line": 15,
                     "character": 27
                   }
                 }
@@ -153,11 +171,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 13,
+                    "line": 16,
                     "character": 15
                   },
                   "end": {
-                    "line": 13,
+                    "line": 16,
                     "character": 21
                   }
                 }
@@ -176,11 +194,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 14,
+                    "line": 17,
                     "character": 18
                   },
                   "end": {
-                    "line": 14,
+                    "line": 17,
                     "character": 23
                   }
                 }
@@ -199,11 +217,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 15,
+                    "line": 18,
                     "character": 23
                   },
                   "end": {
-                    "line": 15,
+                    "line": 18,
                     "character": 27
                   }
                 }
@@ -222,11 +240,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 16,
+                    "line": 19,
                     "character": 13
                   },
                   "end": {
-                    "line": 16,
+                    "line": 19,
                     "character": 17
                   }
                 }
@@ -245,12 +263,81 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 17,
+                    "line": 20,
                     "character": 14
                   },
                   "end": {
-                    "line": 17,
+                    "line": 20,
                     "character": 17
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "unevaluated",
+          "marker": "unevaluated",
+          "value": {
+            "hover": {
+              "markdown": "**macro** `MESSAGE`\n\n```cpp\n#define MESSAGE \"always holds\"\n```\n**Expands to:**\n```cpp\n\"always holds\"\n```",
+              "range": {
+                "$place": "static_assert(true, ⟦MESSAGE⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 21,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 21,
+                    "character": 27
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "void_expression",
+          "marker": "void_expression",
+          "value": {
+            "hover": {
+              "markdown": "**macro** `CHECK`\n\n```cpp\n#define CHECK(x) ((void)(x))\n```\n**Expands to:**\n```cpp\n((void)(value))\n```",
+              "range": {
+                "$place": "⟦CHECK⟧(value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 24,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 24,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "dependent",
+          "marker": "dependent",
+          "value": {
+            "hover": {
+              "markdown": "**macro** `ARGS`\n\n```cpp\n#define ARGS (1, 2)\n```\n**Expands to:**\n```cpp\n(1, 2)\n```",
+              "range": {
+                "$place": "T made ⟦ARGS⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 28,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 28,
+                    "character": 15
                   }
                 }
               }
@@ -268,11 +355,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 19,
+                    "line": 31,
                     "character": 11
                   },
                   "end": {
-                    "line": 19,
+                    "line": 31,
                     "character": 16
                   }
                 }

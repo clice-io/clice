@@ -321,7 +321,7 @@ tests/hover/deduced_types/06_generic_lambdas
 
 变量的类型保留初始化器写出的别名，但不保留类型特征的结果，也不保留库留给自己使用的别名
 
-`values.size()` 显示为 `std::vector<int>::size_type`，后面跟着它所代表的类型；`front()` 返回的 `__alloc_traits` 成员别名显示为 `int &`，类型特征的结果 `invoke_result_t<…>` 则显示为它计算出的类型。别名所代表的类若是库留给自己使用的，就在别名后写出这个类：`std::vector<int>::iterator` 即 `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`。这类类的结构化绑定从初始化器取得别名：`ids.insert(1)` 的 `position` 是 `std::set<int>::iterator`。
+`values.size()` 显示为 `std::vector<int>::size_type`，后面跟着它所代表的类型；`front()` 返回的 `__alloc_traits` 成员别名显示为 `int&`，类型特征的结果 `invoke_result_t<…>` 则显示为它计算出的类型。别名所代表的类若是库留给自己使用的，就在别名后写出这个类：`std::vector<int>::iterator` 即 `__gnu_cxx::__normal_iterator<int*, std::vector<int>>`。这类类的结构化绑定从初始化器取得别名：`ids.insert(1)` 的 `position` 是 `std::set<int>::iterator`。
 
 ```case
 tests/hover/deduced_types/14_library_aliases
@@ -993,7 +993,7 @@ tests/hover/presentation/01_plain_text
 
 C++ 由内向外书写的类型改为从左到右读：`*`、`&` 和 `[N]` 跟在它们所修饰的类型之后，函数读作 `(params) -> R`，成员指针读作 `C::-> T`
 
-嵌套在另一个函数或成员指针中的函数或成员指针用一个希腊字母代称，并在下一行写出。
+函数中嵌套的函数、成员指针中嵌套的成员指针用一个希腊字母代称，并在下一行写出。
 
 ```case
 tests/hover/presentation/03_inside_out_types
@@ -1007,7 +1007,7 @@ tests/hover/presentation/03_inside_out_types
 
 一行放不下的类型会分成多行书写，每行最多 60 列
 
-放不下的部分用一个希腊字母代称，并在下方单独一行写出，缩进多两列；出现两次的部分共用同一个字母。实参或形参列表仍然放不下时，在其左括号之后换行。
+放不下的部分用一个希腊字母代称，并在下方单独一行写出，缩进多两列；出现两次的部分共用同一个字母。实参或形参列表仍然放不下时会换行，各行与开头的括号之后对齐。
 
 ```case
 tests/hover/presentation/04_long_type_lines

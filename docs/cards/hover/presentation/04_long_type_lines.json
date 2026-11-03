@@ -4,13 +4,13 @@
   "subtopic": "presentation",
   "title": "Long types",
   "summary": "A type too long for one line is written in lines of at most 60 columns",
-  "prose": "A part that does not fit is named by a Greek letter and spelled on its own line below, two columns further in; a part written twice shares its letter. A list of arguments or parameters that still does not fit wraps after its bracket.",
+  "prose": "A part that does not fit is named by a Greek letter and spelled on its own line below, two columns further in; a part written twice shares its letter. A list of arguments or parameters that still does not fit wraps, its lines aligned after the bracket opening it.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace long_types {\n\ntemplate <typename... Ts> struct Tuple {};\ntemplate <typename K, typename V> struct Map {};\ntemplate <typename T> struct Vector {};\ntemplate <typename T> struct Optional {};\n\nstruct Coordinate {};\nstruct Measurement {};\n\nauto index = Map<Vector<Tuple<Coordinate, Measurement>>, Optional<Tuple<Coordinate, Measurement>>>{};\n\nauto wide = Tuple<int, long, unsigned, char, short, double, float, bool, signed char, unsigned short>{};\n\nauto copy = index;\n\nauto pairs = Map<Vector<Tuple<Coordinate, Measurement, Coordinate>>, Vector<Tuple<Coordinate, Measurement, Coordinate>>>{};\n\nusing Dispatch = void (*)(void (*)(int), void (*)(long), void (*)(char), void (*)(short), void (*)(float),\n                          void (*)(double), void (*)(bool), void (*)(unsigned), void (*)(signed char));\nDispatch dispatch;\n\n}\n",
+      "text": "namespace long_types {\n\ntemplate <typename... Ts> struct Tuple {};\ntemplate <typename K, typename V> struct Map {};\ntemplate <typename T> struct Vector {};\ntemplate <typename T> struct Optional {};\n\nstruct Coordinate {};\nstruct Measurement {};\n\nauto index = Map<Vector<Tuple<Coordinate, Measurement>>, Optional<Tuple<Coordinate, Measurement>>>{};\n\nauto wide = Tuple<int, long, unsigned, char, short, double, float, bool, signed char, unsigned short>{};\n\nauto copy = index;\n\nauto pairs = Map<Vector<Tuple<Coordinate, Measurement, Coordinate>>, Vector<Tuple<Coordinate, Measurement, Coordinate>>>{};\n\ntemplate <typename... Ts> using Bundle = Tuple<Ts...>;\n\nBundle<Map<Coordinate, Measurement>, Map<Measurement, Coordinate>, Vector<Coordinate>> bundle;\n\nauto packed = Bundle<Map<Coordinate, Measurement>, Map<Measurement, Coordinate>>{};\n\nvoid (*visit)(Coordinate, Measurement, Coordinate, Measurement, Coordinate, Measurement);\n\ntemplate <typename... Ts> void take(Ts... values);\n\nvoid use() {\n    take(Map<Vector<Tuple<Coordinate, Measurement>>, Optional<Tuple<Coordinate, Measurement>>>{}, 1);\n}\n\nusing Dispatch = void (*)(void (*)(int), void (*)(long), void (*)(char), void (*)(short), void (*)(float),\n                          void (*)(double), void (*)(bool), void (*)(unsigned), void (*)(signed char));\nDispatch dispatch;\n\n}\n",
       "markers": [
         {
           "name": "shared",
@@ -37,9 +37,33 @@
           "range": false
         },
         {
+          "name": "long_alias",
+          "begin": 742,
+          "end": 742,
+          "range": false
+        },
+        {
+          "name": "long_aka",
+          "begin": 756,
+          "end": 756,
+          "range": false
+        },
+        {
+          "name": "wrapped_parameters",
+          "begin": 843,
+          "end": 843,
+          "range": false
+        },
+        {
+          "name": "long_pack",
+          "begin": 996,
+          "end": 996,
+          "range": false
+        },
+        {
           "name": "letters",
-          "begin": 819,
-          "end": 819,
+          "begin": 1317,
+          "end": 1317,
           "range": false
         }
       ]
@@ -142,6 +166,98 @@
           }
         },
         {
+          "label": "long_alias",
+          "marker": "long_alias",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `bundle` · namespace `long_types`\n\n```cpp\nBundle<Map<Coordinate, Measurement>, Map<Measurement, Coordinate>,\n       Vector<Coordinate>> bundle\n```\n```cpp\nBundle<α, Map<Measurement, Coordinate>, Vector<Coordinate>>\n  α = Map<Coordinate, Measurement>\n```\nis\n```cpp\nTuple<α, Map<Measurement, Coordinate>, Vector<Coordinate>>\n  α = Map<Coordinate, Measurement>\n```",
+              "range": {
+                "$place": "Bundle<Map<Coordinate, Measurement>, Map<Measurement, Coordinate>, Vector<Coordinate>> ⟦bundle⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 20,
+                    "character": 87
+                  },
+                  "end": {
+                    "line": 20,
+                    "character": 93
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "long_aka",
+          "marker": "long_aka",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `packed` · namespace `long_types`\n\n```cpp\nauto packed =\n    Bundle<Map<Coordinate, Measurement>, Map<Measurement, Coordinate>> {}\n```\n**Type:**\n```cpp\nBundle<α, Map<Measurement, Coordinate>>\n  α = Map<Coordinate, Measurement>\n```\n**Aka:**\n```cpp\nTuple<α, Map<Measurement, Coordinate>>\n  α = Map<Coordinate, Measurement>\n```",
+              "range": {
+                "$place": "auto ⟦packed⟧ = Bundle<Map<Coordinate, Measurement>, Map<Measurement, Coordinate>>{};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 22,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 22,
+                    "character": 11
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "wrapped_parameters",
+          "marker": "wrapped_parameters",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `visit` · namespace `long_types`\n\n```cpp\nvoid (*visit)(Coordinate, Measurement, Coordinate, Measurement, Coordinate,\n              Measurement)\n```\n**Type:**\n```cpp\nα*\n  α = (Coordinate, Measurement, Coordinate, Measurement,\n       Coordinate, Measurement) -> void\n```",
+              "range": {
+                "$place": "void (*⟦visit⟧)(Coordinate, Measurement, Coordinate, Measurement, Coordinate, Measurement);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 24,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 24,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "long_pack",
+          "marker": "long_pack",
+          "value": {
+            "hover": {
+              "markdown": "**function** `take` · namespace `long_types`\n\n```cpp\ntemplate <typename... Ts> void take(Ts... values)\n```\n**Template arguments:**\n```cpp\nTs = Map<α, Optional<Tuple<Coordinate, Measurement>>>, int\n       α = Vector<Tuple<Coordinate, Measurement>>\n```",
+              "range": {
+                "$place": "⟦take⟧(Map<Vector<Tuple<Coordinate, Measurement>>, Optional<Tuple<Coordinate, Measurement>>>{}, 1);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 29,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 29,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
           "label": "letters",
           "marker": "letters",
           "value": {
@@ -152,11 +268,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 20,
+                    "line": 34,
                     "character": 9
                   },
                   "end": {
-                    "line": 20,
+                    "line": 34,
                     "character": 17
                   }
                 }

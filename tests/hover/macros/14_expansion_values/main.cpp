@@ -5,6 +5,9 @@
 #define ECHO(x) x
 #define BEGIN {
 #define SUM(a, b) a + b
+#define MESSAGE "always holds"
+#define CHECK(x) ((void)(x))
+#define ARGS (1, 2)
 
 int value = 3;
 
@@ -16,5 +19,14 @@ int echoed = ECHO(§(in_arguments)NUM_C);
 unsigned nested = ECHO(§(nested_call)MASK(3));
 int copied = §(argument_alone)ECHO(value);
 int product = §(partial_expression)SUM(1, 2) * 3;
+static_assert(true, §(unevaluated)MESSAGE);
+
+void check() {
+    §(void_expression)CHECK(value);
+}
+
+template <typename T> void make() {
+    T made §(dependent)ARGS;
+}
 
 void run() §(statement)BEGIN }

@@ -18,6 +18,8 @@ struct Shape {
         Function,
         /// A member pointer.
         Member,
+        /// Arguments, `int, long`.
+        List,
     };
 
     Kind kind = Kind::Named;
@@ -35,8 +37,8 @@ struct Shape {
     /// qualifiers.
     std::string after;
 
-    /// Template: its arguments. Pointer, Reference, Array, Member: what it
-    /// applies to. Function: its return type, then its parameters.
+    /// Template, List: its arguments. Pointer, Reference, Array, Member: what
+    /// it applies to. Function: its return type, then its parameters.
     std::vector<Shape> parts;
 
     /// Function: whether it takes C's variable arguments.
@@ -111,9 +113,11 @@ public:
             case clang::Type::IncompleteArray:
             case clang::Type::VariableArray:
             case clang::Type::DependentSizedArray: {
+                /// What qualifies an array qualifies its elements.
                 const auto* array = llvm::cast<clang::ArrayType>(node);
                 Shape shape{.kind = Kind::Array, .text = "[" + bound(*array) + "]"};
-                shape.parts.push_back(build(array->getElementType()));
+                shape.parts.push_back(
+                    build(context.getQualifiedType(array->getElementType(), qualifiers)));
                 return shape;
             }
             case clang::Type::FunctionProto: {
@@ -189,6 +193,14 @@ public:
             return std::move(*shape);
         }
         return named(type);
+    }
+
+    auto list(llvm::ArrayRef<clang::TemplateArgument> arguments) -> Shape {
+        Shape shape{.kind = Kind::List};
+        for(const auto& argument: arguments) {
+            shape.parts.push_back(part({argument, false}));
+        }
+        return shape;
     }
 
 private:
@@ -302,13 +314,16 @@ private:
             return named(type);
         }
         for(const auto& argument: arguments) {
-            if(argument.argument.getKind() == clang::TemplateArgument::Type) {
-                shape.parts.push_back(build(argument.argument.getAsType()));
-            } else {
-                shape.parts.push_back(Shape{.kind = Kind::Named, .text = print(argument)});
-            }
+            shape.parts.push_back(part(argument));
         }
         return shape;
+    }
+
+    auto part(const Argument& argument) -> Shape {
+        if(argument.argument.getKind() == clang::TemplateArgument::Type) {
+            return build(argument.argument.getAsType());
+        }
+        return Shape{.kind = Kind::Named, .text = print(argument)};
     }
 
     /// A type a specialization's scope names, `std::map<K, V>::iterator`:
@@ -332,7 +347,9 @@ private:
         return shape;
     }
 
+private:
     clang::ASTContext& context;
+
     const clang::PrintingPolicy& policy;
 };
 
@@ -401,6 +418,13 @@ auto render(const Shape& shape, const Names& names) -> std::string {
             return qualifiers + "(" + parameters(shape, names) + ") -> " +
                    render(shape.parts[0], names);
         }
+        case Kind::List: {
+            std::string text;
+            for(const auto& [index, argument]: views::enumerate(shape.parts)) {
+                text += (index == 0 ? "" : ", ") + render(argument, names);
+            }
+            return text;
+        }
     }
     std::unreachable();
 }
@@ -409,13 +433,10 @@ auto spelling(const Shape& shape) -> std::string {
     return render(shape, Names());
 }
 
-/// Greek letters no Latin one looks like.
-constexpr std::array<llvm::StringLiteral, 17> letters =
-    {"α", "β", "γ", "δ", "ε", "ζ", "η", "θ", "λ", "μ", "ξ", "π", "σ", "τ", "φ", "ψ", "ω"};
-
-/// The parts a type defines on lines of their own, at most; past them a
-/// part that does not fit is written `…`.
-constexpr std::size_t max_letters = 8;
+/// The letters a type writes parts as, as many as it defines on lines of
+/// their own; past them a part is written `…`. No Latin letter looks like
+/// them.
+constexpr std::array<llvm::StringLiteral, 8> letters = {"α", "β", "γ", "δ", "ε", "ζ", "η", "θ"};
 
 /// The columns a part takes before a line may write it as a letter: a
 /// shorter one saves less than the line its definition takes.
@@ -439,7 +460,7 @@ auto lifted(const Shape& root, std::size_t width) -> llvm::SmallVector<const Sha
             }
             nodes.push_back(node);
             auto parts = written_parts(*node);
-            for(const auto* part: llvm::reverse(parts)) {
+            for(const auto* part: views::reverse(parts)) {
                 parents[part] = node;
                 stack.push_back(part);
             }
@@ -481,7 +502,21 @@ auto lifted(const Shape& root, std::size_t width) -> llvm::SmallVector<const Sha
         }
     }
 
-    while(columns(render(root, names)) > width) {
+    /// The text `node` takes in the line as it stands.
+    auto written = [&](const Shape* node) {
+        const auto* parent = parents.lookup(node);
+        bool operand_of =
+            parent && (parent->kind == Kind::Pointer || parent->kind == Kind::Reference ||
+                       parent->kind == Kind::Array || parent->kind == Kind::Member);
+        return operand_of ? operand(*node, names) : render(*node, names);
+    };
+
+    /// Past as many parts as there are letters, a part lifted would read `…`.
+    for(std::size_t lifts = 0; lifts < letters.size(); lifts += 1) {
+        auto length = columns(render(root, names));
+        if(length <= width) {
+            break;
+        }
         llvm::SmallVector<const Shape*> candidates;
         for(const auto* node: shown(root)) {
             if(node != &root && columns(spelling(*node)) > worth_a_line) {
@@ -502,12 +537,10 @@ auto lifted(const Shape& root, std::size_t width) -> llvm::SmallVector<const Sha
         const Shape* pick = nullptr;
         std::size_t best = 0;
         for(const auto* candidate: candidates) {
-            names[candidate] = letters[0];
-            auto length = columns(render(root, names));
-            names.erase(candidate);
-            if(length <= width && length > best) {
+            auto remaining = length - columns(written(candidate)) + 1;
+            if(remaining <= width && remaining > best) {
                 pick = candidate;
-                best = length;
+                best = remaining;
             }
         }
         if(!pick) {
@@ -557,7 +590,10 @@ private:
         Entry entry{.shape = &shape, .lifted = lifted(shape, width > margin ? width - margin : 0)};
         for(const auto* part: entry.lifted) {
             if(defined.try_emplace(spelling(*part)).second) {
-                entry.children.push_back(plan(*part, indent + 2, 4));
+                /// One past the letters is written `…`, and so is all it lifts.
+                entry.children.push_back(defined.size() <= letters.size()
+                                             ? plan(*part, indent + 2, 4)
+                                             : Entry{.shape = part});
             }
         }
         return entry;
@@ -567,7 +603,7 @@ private:
     void assign(const Entry& entry, bool spent = false) {
         for(const auto& child: entry.children) {
             auto& letter = defined[spelling(*child.shape)];
-            spent = spent || next == max_letters;
+            spent = spent || next == letters.size();
             if(spent) {
                 letter = "…";
             } else {
@@ -603,14 +639,18 @@ private:
     static auto split(const Shape& shape, const Names& names, std::size_t room)
         -> llvm::SmallVector<std::string> {
         auto text = render(shape, names);
-        if(columns(text) <= room ||
-           (shape.kind != Kind::Template && shape.kind != Kind::Function)) {
+        if(columns(text) <= room || (shape.kind != Kind::Template && shape.kind != Kind::Function &&
+                                     shape.kind != Kind::List)) {
             return {text};
         }
         std::string head;
         std::string tail;
         llvm::SmallVector<std::string> items;
-        if(shape.kind == Kind::Template) {
+        if(shape.kind == Kind::List) {
+            for(const auto& argument: shape.parts) {
+                items.push_back(render(argument, names));
+            }
+        } else if(shape.kind == Kind::Template) {
             head = shape.before + shape.text + "<";
             tail = ">" + shape.after;
             for(const auto& argument: shape.parts) {
@@ -643,6 +683,7 @@ private:
         return pieces;
     }
 
+private:
     std::size_t width;
 
     /// The letter each part defined on its own line goes by, by its
@@ -661,6 +702,14 @@ auto type_lines(clang::ASTContext& context,
                 const clang::PrintingPolicy& policy,
                 std::uint32_t width) -> std::string {
     auto shape = Builder(context, policy).build(type);
+    return Lines(width).write(shape);
+}
+
+auto argument_lines(clang::ASTContext& context,
+                    llvm::ArrayRef<clang::TemplateArgument> arguments,
+                    const clang::PrintingPolicy& policy,
+                    std::uint32_t width) -> std::string {
+    auto shape = Builder(context, policy).list(arguments);
     return Lines(width).write(shape);
 }
 

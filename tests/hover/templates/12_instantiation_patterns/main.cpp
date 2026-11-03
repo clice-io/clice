@@ -22,7 +22,19 @@ template <typename T> struct Queue {
     };
 };
 
+template <> template <int Capacity> struct Queue<char>::Ring {
+    char spare[Capacity];
+};
+
+template <typename T> struct List {
+    struct iterator {
+        T& operator*();
+    };
+};
+
 template <typename T, typename... Rest> void log(T first, Rest... rest);
+
+void show(auto value);
 
 void use() {
     §(primary)Store<int> numbers;
@@ -33,8 +45,13 @@ void use() {
     queue.§(member_function)push(1);
     queue.§(member_template)convert<double>();
     Queue<long>::§(member_class_template)Ring<8> ring;
+    Queue<char>::§(specialized_member)Ring<2> spare;
+
+    List<int>::iterator it;
+    it.§(nested_class_member)operator*();
 
     §(empty_pack)log(1);
+    §(abbreviated)show(1);
 }
 
 }

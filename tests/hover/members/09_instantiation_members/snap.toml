@@ -62,6 +62,20 @@ T = char
 '''
 range = "inner::⟦Wrapper⟧<char> wrapper;"
 
+[answers.member_class.hover]
+markdown = '''
+**struct** `Item` · struct `instantiation_members::inner::Wrapper<char>`
+
+```cpp
+struct Item {
+  char value;
+}
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
+'''
+range = "inner::Wrapper<char>::⟦Item⟧ item;"
+
 [answers.parameter_value.hover]
 markdown = '''
 **struct** `Constant<…>` · namespace `instantiation_members`
@@ -83,6 +97,17 @@ Value = 7
 '''
 range = "⟦Constant⟧<int, 7> seven;"
 
+[answers.static_member.hover]
+markdown = '''
+**variable** `value` · struct `instantiation_members::Constant<int, 7>`
+
+```cpp
+static constexpr int value = 7
+```
+**Value:** `7`
+'''
+range = "int copied = Constant<int, 7>::⟦value⟧;"
+
 [answers.pack_size.hover]
 markdown = '''
 **struct** `Pack<…>` · namespace `instantiation_members`
@@ -100,9 +125,6 @@ Ts = int, long, char
 **Alignment:** 1 byte
 '''
 range = "⟦Pack⟧<int, long, char> pack;"
-
-[answers.outer_parameter]
-wrong = "clang instantiates the initializer only where the member is used, and it names a parameter of the template around"
 
 [answers.outer_parameter.hover]
 markdown = '''
@@ -122,9 +144,6 @@ Inner = 2
 **Alignment:** 1 byte
 '''
 range = "Level<1>::⟦Nested⟧<2> nested;"
-
-[answers.dependent_initializer]
-wrong = "clang instantiates the initializer only where the member is used, and it computes from the arguments"
 
 [answers.dependent_initializer.hover]
 markdown = '''

@@ -96,6 +96,38 @@ Capacity = 8
 '''
 range = "Queue<long>::⟦Ring⟧<8> ring;"
 
+[answers.specialized_member.hover]
+markdown = '''
+**struct** `Ring<…>` · struct `instantiation_patterns::Queue<char>`
+
+```cpp
+template <int Capacity> struct Queue<char>::Ring {
+  char spare[Capacity];
+}
+```
+**Template arguments:**
+```cpp
+Capacity = 2
+```
+**Size:** 2 bytes
+**Alignment:** 1 byte
+'''
+range = "Queue<char>::⟦Ring⟧<2> spare;"
+
+[answers.nested_class_member.hover]
+markdown = '''
+**method** `operator*` · struct `instantiation_patterns::List<int>::iterator`
+
+```cpp
+T& operator*()
+```
+**Template arguments:**
+```cpp
+T = int
+```
+'''
+range = "it.⟦operator⟧*();"
+
 [answers.empty_pack.hover]
 markdown = '''
 **function** `log` · namespace `instantiation_patterns`
@@ -109,3 +141,14 @@ T = int
 ```
 '''
 range = "⟦log⟧(1);"
+
+[answers.abbreviated.hover]
+markdown = '''
+**function** `show` · namespace `instantiation_patterns`
+
+```cpp
+void show(auto value)
+```
+**Type:** `(int) -> void`
+'''
+range = "⟦show⟧(1);"
