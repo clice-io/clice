@@ -510,6 +510,18 @@ public:
                 late->D->getAsFunction()->setRangeEnd(late->Toks.back().getLocation());
             }
         }
+        // A reader takes the last source location entry of the first AST
+        // file it loads to reach the end of the address space
+        // (SourceManager::isOffsetInFileID): were that entry the file's last
+        // macro expansion, an expression written as that macro would never
+        // end where the expansion does, and its spelling would be lost
+        // (Lexer::makeFileCharRange). An expansion of its own takes that place.
+        if(writes_output(unit.params.kind)) {
+            auto& sources = context.getSourceManager();
+            auto predefines = unit.instance->getPreprocessor().getPredefinesFileID();
+            auto start = sources.getLocForStartOfFile(predefines);
+            sources.createExpansionLoc(start, start, start, 1);
+        }
         clang::MultiplexConsumer::HandleTranslationUnit(context);
     }
 

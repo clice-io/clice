@@ -3,7 +3,7 @@ markdown = '''
 **variable** `value`
 
 ```cpp
-export constexpr int value = 1
+export constexpr int value = VALUE
 ```
 Value: `1`
 '''
@@ -14,7 +14,7 @@ markdown = '''
 **variable** `value`
 
 ```cpp
-export constexpr int value = 2
+export constexpr int value = VALUE
 ```
 Value: `2`
 '''
