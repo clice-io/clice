@@ -140,7 +140,19 @@ async function stop(zed: ChildProcess): Promise<void> {
     const exited =
         zed.exitCode === null && zed.signalCode === null ? once(zed, "exit") : Promise.resolve();
     if (process.platform === "win32") {
-        spawnSync("taskkill", ["/F", "/T", "/PID", String(zed.pid)]);
+        // taskkill returns before the processes it ends let go of their
+        // files and directories, which removing the root then cannot.
+        const killed = spawnSync("taskkill", ["/F", "/T", "/PID", String(zed.pid)], {
+            encoding: "utf8",
+        });
+        const pids = [...killed.stdout.matchAll(/process with PID (\d+)/g)].map(([, pid]) => pid);
+        if (pids.length > 0) {
+            spawnSync("powershell", [
+                "-NoProfile",
+                "-Command",
+                `Wait-Process -Id ${pids.join(",")} -Timeout 60 -ErrorAction SilentlyContinue`,
+            ]);
+        }
     } else {
         try {
             process.kill(-zed.pid!, "SIGKILL");

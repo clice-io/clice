@@ -8,7 +8,6 @@ module clice;
 
 import :command.table;
 import :compile.diagnostic;
-import :feature.diagnostics;
 import :index.project_index;
 import :index.tu_manifest;
 import :project.command;
@@ -1121,14 +1120,10 @@ ZEST_CASE(SelfContainmentFollowsItsInputs) {
     SelfContainmentKey key{header, 7};
     ZEXPECT(!p.project.self_contained(key, false).has_value());
 
-    feature::FileDiagnostic missing{
-        .level = DiagnosticLevel::Error,
-        .id = clang::diag::err_unknown_typename,
-    };
     // The result changes what the listing folds: one taken before is stale.
     auto epoch = p.project.context_epoch();
     p.project.commit_self_containment(key,
-                                      {missing},
+                                      false,
                                       current_input(files, header)->version,
                                       {*current_input(files, dep)});
     ZEXPECT(p.project.context_epoch() != epoch);
@@ -1140,7 +1135,7 @@ ZEST_CASE(SelfContainmentFollowsItsInputs) {
     // reader of the disk does not.
     SelfContainmentKey buffer{header, 9};
     p.project.commit_self_containment(buffer,
-                                      {},
+                                      true,
                                       files.intern_version(header, 42),
                                       {*current_input(files, dep)});
     ZEXPECT(p.project.self_contained(buffer, true) == true);
@@ -1154,7 +1149,7 @@ ZEST_CASE(SelfContainmentFollowsItsInputs) {
 
     SelfContainmentKey other{header, 10};
     p.project.commit_self_containment(other,
-                                      {},
+                                      true,
                                       current_input(files, header)->version,
                                       {*current_input(files, dep)});
     p.write("dep.h", "struct Widget {};\n");

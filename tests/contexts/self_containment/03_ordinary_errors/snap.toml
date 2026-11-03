@@ -8,3 +8,37 @@ diagnostics = [
         code = "err_expected_expression",
     },
 ]
+
+[test."semicolon.h"]
+diagnostics = [
+    {
+        at = "⟦}⟧",
+        severity = "error",
+        message = "expected function body after function declarator",
+        source = "clang",
+        code = "err_expected_fn_body",
+    },
+    { at = "}⟦⟧", severity = "error", message = "expected '}'", source = "clang", code = "err_expected" },
+]
+
+[test."last.h"]
+diagnostics = [
+    {
+        at = "void g()⟦⟧",
+        severity = "error",
+        message = "expected function body after function declarator",
+        source = "clang",
+        code = "err_expected_fn_body",
+    },
+]
+
+[test."keyword.h"]
+diagnostics = [
+    {
+        at = "⟦template⟧ <class T> void g(T);",
+        severity = "error",
+        message = "expected function body after function declarator",
+        source = "clang",
+        code = "err_expected_fn_body",
+    },
+]

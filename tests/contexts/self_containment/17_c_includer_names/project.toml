@@ -1,0 +1,5 @@
+# The pinned target keeps MSVC compatibility off on Windows hosts, which
+# reads an enum not defined yet as a complete one.
+[units]
+"main.c" = ["-std=c11", "--target=x86_64-unknown-linux-gnu"]
+"main.cpp" = ["-std=c++20", "--target=x86_64-unknown-linux-gnu"]

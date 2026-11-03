@@ -153,12 +153,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y mesa-vulkan-drivers libvulkan1 libxkbcommon-x11-0
-          curl -fsSL https://zed.dev/install.sh | sh
-          echo "ZED_EXECUTABLE=$HOME/.local/zed.app/libexec/zed-editor" >> "$GITHUB_ENV"
+          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/zed.tar.gz" \
+            "https://cloud.zed.dev/releases/stable/latest/download?asset=zed&arch=x86_64&os=linux"
+          tar -xzf "$RUNNER_TEMP/zed.tar.gz" -C "$RUNNER_TEMP"
+          echo "ZED_EXECUTABLE=$RUNNER_TEMP/zed.app/libexec/zed-editor" >> "$GITHUB_ENV"
       - name: Install Zed (Windows)
         if: runner.os == 'Windows'
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/zed-setup.exe" \
+          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/zed-setup.exe" \
             https://zed.dev/api/releases/stable/latest/Zed-x86_64.exe
           "$RUNNER_TEMP/zed-setup.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART //SP- //CURRENTUSER
           echo "ZED_EXECUTABLE=$LOCALAPPDATA/Programs/Zed/Zed.exe" >> "$GITHUB_ENV"
