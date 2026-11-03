@@ -265,7 +265,41 @@ ZEST_CASE(ClassNameOverConstructor) {
     ZASSERT(locate("outer::Widget::Widget").size() == 2U);
 }
 
-ZEST_CASE(CompletablesListEachOverloadOnce) {
+ZEST_CASE(OverloadsPastLimit) {
+    // The names ranked by the files using them: the second `tick` ranks
+    // after `tock`, which the limit leaves out, and joins its first all
+    // the same.
+    add_file("lib.h", R"(
+        namespace lib {
+        void tick(int);
+        void tock();
+        void tick(double);
+        }
+    )");
+    add_file("one.h", R"(
+        #include "lib.h"
+        inline void one() { lib::tick(1); lib::tock(); }
+    )");
+    add_file("two.h", R"(
+        #include "lib.h"
+        inline void two() { lib::tick(2); }
+    )");
+    add_focus("main.cpp", R"(
+        #include "one.h"
+        #include "two.h"
+    )");
+    index_workspace();
+
+    auto found = index::completables(query, "", {.qualifier = {"lib"}}, {}, 1);
+    std::vector<std::string> names;
+    for(auto& name: found.names) {
+        names.push_back(name.symbol.name);
+    }
+    ZEXPECT(names == (std::vector<std::string>{"tick", "tick"}));
+    ZEXPECT(!found.exhausted);
+}
+
+ZEST_CASE(OverloadsListedOnce) {
     // The names of any scope, which a using-directive in `lib` may bring
     // in, find `lib`'s own again.
     add_focus("main.cpp", R"(

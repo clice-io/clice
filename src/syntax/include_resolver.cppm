@@ -97,10 +97,19 @@ public:
 
 private:
     const SearchConfig& search;
+
     vfs::Scope& scope;
+
+    /// The including file's directory, which the quoted segment searches
+    /// first, and its identity.
     Spelling directory;
+
     CanonicalPath resolved_directory;
+
+    /// The identity of each of `search.dirs`, in its order.
     std::vector<CanonicalPath> resolved_dirs;
+
+    /// The answer for each header asked already.
     llvm::StringMap<std::optional<std::string>> known;
 };
 

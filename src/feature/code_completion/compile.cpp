@@ -840,13 +840,14 @@ public:
     }
 
     /// Sema's results, a function of the preamble's whose name the index
-    /// candidates leave out (from_index) with every overload: Sema lists
-    /// those of them something before the point read alone.
+    /// candidates leave out (from_index) with every overload the name finds
+    /// where it is completed: Sema lists those of them something before the
+    /// point read alone.
     llvm::SmallVector<clang::CodeCompletionResult>
         with_every_overload(clang::Sema& sema,
                             llvm::ArrayRef<clang::CodeCompletionResult> results) {
         llvm::SmallVector<clang::CodeCompletionResult> all(results);
-        if(!loaded) {
+        if(!loaded || (names.scope.qualified() && !*loaded)) {
             return all;
         }
         llvm::StringSet<> offered;
@@ -856,7 +857,7 @@ public:
         llvm::DenseSet<const clang::Decl*> listed;
         for(const auto& result: results) {
             if(result.Kind == clang::CodeCompletionResult::RK_Declaration) {
-                listed.insert(result.Declaration->getCanonicalDecl());
+                listed.insert(result.Declaration->getUnderlyingDecl()->getCanonicalDecl());
             }
         }
         llvm::StringSet<> looked_up;
@@ -876,13 +877,18 @@ public:
                                       {},
                                       clang::Sema::LookupOrdinaryName);
             found.suppressDiagnostics();
-            sema.LookupQualifiedName(found,
-                                     const_cast<clang::DeclContext*>(decl->getDeclContext()));
+            if(*loaded) {
+                sema.LookupQualifiedName(found, *loaded);
+            } else {
+                sema.LookupName(found, sema.getCurScope());
+            }
             for(auto* overload: found) {
-                if(listed.insert(overload->getCanonicalDecl()).second) {
-                    auto added = result;
-                    added.Declaration = overload;
-                    all.push_back(added);
+                auto* target = overload->getUnderlyingDecl();
+                if(listed.insert(target->getCanonicalDecl()).second) {
+                    all.emplace_back(target,
+                                     result.Priority,
+                                     result.Qualifier,
+                                     result.QualifierIsInformative);
                 }
             }
         }

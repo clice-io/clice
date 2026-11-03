@@ -22,3 +22,13 @@ test("a directive typed between the includes", async (t) => {
     await t.show("macros", s.completion(t.at("main.cpp", "#ifdef DIR_|")));
     await t.show("names", s.completion(t.at("main.cpp", "beta_|")));
 });
+
+// An #if line names the macros an #ifdef does, the preamble's from its
+// index.
+test("an #if typed after the includes", async (t) => {
+    const s = await t.start();
+    await s.diagnostics("main.cpp");
+    s.edit("main.cpp", { after: '#include "b.h"\n', insert: "#if DIR_\n#endif\n" });
+    await s.diagnostics("main.cpp");
+    await t.show("macros", s.completion(t.at("main.cpp", "#if DIR_|")));
+});

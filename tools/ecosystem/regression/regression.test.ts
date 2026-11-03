@@ -82,6 +82,7 @@ describe("sweep", () => {
         expect(
             acceptedDifference("completion", inspect, answer(["array", "vector"], true)),
         ).toBeUndefined();
+        expect(acceptedDifference("completion", inspect, answer([], true))).toBeUndefined();
         expect(
             acceptedDifference("signatureHelp", inspect, answer(["array"], true)),
         ).toBeUndefined();

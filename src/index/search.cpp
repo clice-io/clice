@@ -279,7 +279,6 @@ Completables completables(const IndexQuery& index,
                           std::uint32_t limit) {
     // Of the kinds a namespace's names have: a class's members, which a
     // scope's subtree holds more of, would crowd them out of the ranking.
-    // A directive's line names macros alone.
     std::vector<SymbolKind> kinds = {SymbolKind::Macro};
     if(!scope.directive) {
         kinds.insert(kinds.end(),

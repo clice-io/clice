@@ -132,7 +132,8 @@ bool in_order(llvm::ArrayRef<char> pattern, llvm::ArrayRef<char> name, bool one_
     }
     // Where the latest match of the characters after `missing` begins.
     std::size_t start = name.size();
-    for(auto missing = pattern.size(); missing-- > 0;) {
+    for(auto missing = pattern.size(); missing > 0;) {
+        missing -= 1;
         if(ends[missing] <= start) {
             return true;
         }
@@ -163,7 +164,9 @@ llvm::SmallVector<char, 32> pattern_letters(llvm::StringRef pattern) {
 /// a match may jump to from anywhere before them.
 struct NameWalk {
     llvm::StringRef name;
+
     llvm::SmallVector<CharRole, 64> roles;
+
     llvm::SmallVector<std::uint32_t, 32> anchors;
 
     explicit NameWalk(llvm::StringRef name) : name(name), roles(name.size()) {

@@ -60,7 +60,9 @@ bool object_written(clang::Sema& sema, clang::SourceLocation open_paren) {
 /// Whether the argument list `open` opens is still open at the completion
 /// point. Once the parse stopped there, clang still offers a call whose
 /// arguments fail to parse, as in a member function body it parses after
-/// the class, which names a member the stopped parse never declared.
+/// the class, which names a member the stopped parse never declared. A
+/// directive between them may leave out what the lexer reads: the call is
+/// taken as open.
 bool holds_point(clang::Sema& sema, clang::SourceLocation open) {
     auto& sources = sema.getSourceManager();
     auto [file, begin] = sources.getDecomposedLoc(sources.getFileLoc(open));
@@ -85,7 +87,8 @@ bool holds_point(clang::Sema& sema, clang::SourceLocation open) {
         return true;
     }
     for(unsigned depth = 1; !lexer.LexFromRawLexer(token);) {
-        if(sources.getFileOffset(token.getLocation()) >= point) {
+        if(sources.getFileOffset(token.getLocation()) >= point ||
+           (token.is(clang::tok::hash) && token.isAtStartOfLine())) {
             return true;
         }
         if(token.is(opening)) {
@@ -158,11 +161,12 @@ std::optional<llvm::SmallVector<std::uintptr_t, 8>> ranking_key(const clang::Fun
                     method->getRefQualifier()});
     }
     if(specialization) {
-        auto params = function.parameters();
+        // Partial ordering reads the template's parameters, a pack unexpanded.
+        auto params = function.getPrimaryTemplate()->getTemplatedDecl()->parameters();
         key.append({params.size(), !params.empty() && params.back()->isParameterPack()});
         return key;
     }
-    for(std::uint32_t i = 0; i < written; ++i) {
+    for(std::uint32_t i = 0; i < written; i += 1) {
         key.push_back(
             i < function.getNumParams()
                 ? reinterpret_cast<std::uintptr_t>(
@@ -173,7 +177,8 @@ std::optional<llvm::SmallVector<std::uintptr_t, 8>> ranking_key(const clang::Fun
 }
 
 /// Where a location stands in the translation unit: the line and column of
-/// each `#include` from the main file down to its file, then its own.
+/// each `#include` from the file the compile starts at down to its file,
+/// then its own.
 /// SourceManager::isBeforeInTranslationUnit orders the headers a preamble's
 /// PCH holds otherwise than a parse of them.
 using IncludedPosition = llvm::SmallVector<std::pair<unsigned, unsigned>, 8>;

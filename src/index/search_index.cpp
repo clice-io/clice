@@ -1159,9 +1159,14 @@ SearchResult SearchIndex::search(const SymbolQuery& query,
                 above = above.drop_back();
                 for(auto entry: segment.lower_range(llvm::StringRef(last.name).lower())) {
                     auto [spelled, current] = newest(segment, entry);
-                    if(segment.is_container(entry) &&
-                       args_match(last.args, spelled->arguments(current)) &&
-                       segments_match(above, scope_chain(segment, entry), query.absolute)) {
+                    if(!segment.is_container(entry) ||
+                       !args_match(last.args, spelled->arguments(current))) {
+                        continue;
+                    }
+                    auto chain = scope_chain(segment, entry);
+                    if(query.qualified_lookup && !query.absolute
+                           ? chain_ends_with(above, chain)
+                           : segments_match(above, chain, query.absolute)) {
                         containers.push_back(entry);
                     }
                 }

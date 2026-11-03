@@ -156,6 +156,11 @@ bool segments_match(llvm::ArrayRef<SymbolQuery::Segment> segments,
                     llvm::ArrayRef<ScopeEntry> chain,
                     bool exact);
 
+/// Whether a container chain ends with the scopes the segments name, each
+/// a member of the one before, as a qualified lookup finds them.
+bool chain_ends_with(llvm::ArrayRef<SymbolQuery::Segment> segments,
+                     llvm::ArrayRef<ScopeEntry> chain);
+
 /// Whether a symbol whose containers are `chain` (outermost first, inline
 /// namespaces left out) lies where the query looks: in exactly the
 /// scope's chain when absolute, else anywhere below a container the

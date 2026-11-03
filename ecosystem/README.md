@@ -103,11 +103,11 @@ regression({
   configurations: ["clang", "gcc"],
   known: [
     {
-      issue: "10-22#6",
-      configuration: "gcc",
+      issue: "10-21#17",
       kind: "disagree",
-      request: "signatureHelp",
-      why: "a declaration and its definition name a parameter differently",
+      request: "semanticTokens",
+      file: "absl/debugging/stacktrace.cc",
+      why: "the macro naming an #include's header in the preamble gets no macro token from the server",
     },
   ],
 });
