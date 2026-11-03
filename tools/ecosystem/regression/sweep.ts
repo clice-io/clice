@@ -103,16 +103,25 @@ export const REQUESTS: Request[] = [
 ];
 
 /// Whether the server cut its completion list short, kept some items, and
-/// every one is an item inspect, asked with no limit, lists too: the server
-/// ranks the names by how much the project uses them, inspect as clang
-/// finds them, so the two keep different ones.
+/// each is an item of its own that inspect, asked with no limit, lists too:
+/// the server ranks the names by how much the project uses them, inspect as
+/// clang finds them, so the two keep different ones.
 function cutFromInspect(inspect: string, server: string): boolean {
     const [all, cut] = [JSON.parse(inspect) as Completion, JSON.parse(server) as Completion];
     const key = (item: CompletionItem) =>
         JSON.stringify([item.label, item.kind, item.detail ?? "", item.deprecated === true]);
-    const listed = new Set(all.items.map(key));
+    const listed = new Map<string, number>();
+    for (const item of all.items) {
+        listed.set(key(item), (listed.get(key(item)) ?? 0) + 1);
+    }
     return (
-        cut.incomplete && cut.items.length > 0 && cut.items.every((item) => listed.has(key(item)))
+        cut.incomplete &&
+        cut.items.length > 0 &&
+        cut.items.every((item) => {
+            const left = listed.get(key(item)) ?? 0;
+            listed.set(key(item), left - 1);
+            return left > 0;
+        })
     );
 }
 

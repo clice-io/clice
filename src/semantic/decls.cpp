@@ -316,7 +316,8 @@ auto function_pattern(const clang::FunctionDecl& function) -> const clang::Funct
         return pattern;
     }
     if(const auto* described = function.getDescribedFunctionTemplate()) {
-        if(const auto* member = described->getInstantiatedFromMemberTemplate()) {
+        if(const auto* member = described->getInstantiatedFromMemberTemplate();
+           member && !described->isMemberSpecialization()) {
             return member->getTemplatedDecl();
         }
     }

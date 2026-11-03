@@ -2,7 +2,14 @@ template <class T>
 struct Text {
     void resize(int length);
     constexpr void reserve(int capacity);
+
+    template <class U>
+    void append(U);
 };
+
+template <>
+template <class U>
+void Text<int>::append(U piece) {}
 
 template <class T>
 void Text<T>::resize(int count) {}
