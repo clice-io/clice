@@ -1040,6 +1040,32 @@ ZEST_CASE(RepeatedHeaderChangeStales) {
     ZEXPECT(once->size() == 1u);
 };
 
+ZEST_CASE(HeaderTextKeepsTakenTree) {
+    /// A preprocess run's tree holds for a header whatever the header's own
+    /// text, as the index's does: it moves nothing above the header.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"h.h\"\n";
+    auto main = p.write("main.cpp", main_text);
+    auto header = p.write("h.h", "int h;\n");
+    p.project.dep_graph.set_includes(main, 0, {{header}});
+    p.project.dep_graph.build_reverse_map();
+    auto root = VersionID{p.version(main, main_text)};
+    auto entered = VersionID{p.version(header, "int h;\n")};
+    p.project.hosting.trees.commit(
+        p.tree(main).key,
+        {
+            .root = root,
+            .nodes = {{.file = entered.raw, .line = 1}},
+    },
+        {{.file = main, .version = root}, {.file = header, .version = entered}});
+
+    p.write("h.h", "int h = 1;\n");
+    p.project.file_table.disk.end_turn();
+    auto chains = p.chains(main, header);
+    ZASSERT(chains);
+    ZEXPECT(chains->size() == 1u);
+};
+
 ZEST_CASE(RankingSeesContributor) {
     /// A unit indexed after the ranking was taken names the header in its
     /// entries: the ranking read the index's manifests, and takes it in.
