@@ -14,7 +14,10 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # Once more when a download fails.
     - name: Setup Pixi
+      id: first
+      continue-on-error: true
       uses: prefix-dev/setup-pixi@v0.9.6
       with:
         pixi-version: v0.71.1
@@ -23,4 +26,14 @@ runs:
         cache: false
         locked: true
         # Runners are thrown away after the job.
+        post-cleanup: false
+    - name: Setup Pixi again
+      if: steps.first.outcome == 'failure'
+      uses: prefix-dev/setup-pixi@v0.9.6
+      with:
+        pixi-version: v0.71.1
+        environments: ${{ inputs.environments }}
+        activate-environment: ${{ inputs.activate-environment }}
+        cache: false
+        locked: true
         post-cleanup: false
