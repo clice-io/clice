@@ -117,6 +117,10 @@ auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 std::size_t missing_context_errors(llvm::ArrayRef<FileDiagnostic> diagnostics,
                                    llvm::StringRef text);
 
+/// Bumped whenever missing_context_errors counts otherwise: the
+/// self-containment results persisted before are dropped at load.
+constexpr inline std::uint32_t missing_context_scoring = 1;
+
 /// A warning from clice itself about the file as a whole, on its first
 /// character.
 FileDiagnostic file_warning(std::string message);
