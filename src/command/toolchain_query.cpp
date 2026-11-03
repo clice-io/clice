@@ -70,9 +70,9 @@ struct UnknownNames {
 
 UnknownNames unknown_names(const Job& job) {
     std::vector<std::string> cc1(job.args.begin() + 2, job.args.end());
-    auto parse_options = option::ParseOptions{.visibility = clang_options::CC1Option};
+    auto parse_options = cli::ParseOptions{.visibility = clang_options::CC1Option};
     UnknownNames result;
-    std::vector<option::ParsedArg> given;
+    std::vector<cli::ParsedArg> given;
     for(auto& parsed: clang_options::table().parse(cc1, parse_options)) {
         if(!parsed) {
             continue;
@@ -95,7 +95,7 @@ UnknownNames unknown_names(const Job& job) {
 /// Whether a driver option names one of `unknown`: the CPU of -mcpu,
 /// -march and AVR's -mmcu (`-mcpu=cortex-a72+crc` names cortex-a72,
 /// `native` this machine's), the tuning CPU of -mtune, the ABI of -mabi.
-bool names_unknown(const option::ParsedArg& arg,
+bool names_unknown(const cli::ParsedArg& arg,
                    const std::set<std::pair<unsigned, std::string>>& unknown) {
     unsigned given = 0;
     switch(arg.id) {
@@ -165,7 +165,7 @@ ClangReading read_as_clang(std::vector<std::string> args,
     if(family == CompilerFamily::Zig) {
         args.erase(args.begin() + 1);
     }
-    auto parse_options = option::ParseOptions{.visibility = family_visibility(family)};
+    auto parse_options = cli::ParseOptions{.visibility = family_visibility(family)};
     std::string named;
     std::vector<std::string> flags(args.begin() + 1, args.end());
     for(auto& parsed: clang_options::table().parse(flags, parse_options)) {

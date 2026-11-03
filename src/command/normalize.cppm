@@ -33,7 +33,7 @@ llvm::StringRef anchored(CommandTable& commands,
 /// Leading tokens forming a compiler-launcher prefix (ccache, distcc, ...,
 /// possibly chained), including the wrapper's own leading options. Zero when
 /// the command starts with the compiler itself.
-std::size_t wrapper_prefix_len(llvm::ArrayRef<const char*> argv);
+std::size_t wrapper_prefix_len(kotatsu::string_list_ref argv);
 
 /// Reads a raw compile command into the table, once: wrapper strip → driver
 /// info → @rsp expansion → nvcc translation → parse → classify → path
@@ -54,23 +54,24 @@ struct Normalizer {
 
     /// `file` is the entry's normalized path used to pick the input slot
     /// among the command's inputs; invalid synthesizes the slot at the end.
-    /// Nullopt when the arguments are no compile command: empty, or a
-    /// launcher with nothing to launch.
+    /// Nullopt when `command_line` is no compile command: empty, naming an
+    /// empty program, or a launcher with nothing to launch.
     std::optional<CommandID> normalize(const Spelling& directory,
                                        Fid file,
-                                       llvm::ArrayRef<const char*> arguments);
+                                       kotatsu::string_list_ref command_line);
 
     std::optional<CommandID> normalize(const Spelling& directory,
                                        Fid file,
                                        llvm::StringRef command);
 
-    /// Expand @file tokens, and an NVCC command's options files, in place,
-    /// driver-mode aware (CL commands tokenize with Windows rules).
-    void expand_response_files(llvm::SmallVectorImpl<const char*>& tokens,
-                               const Spelling& directory,
-                               CompilerFamily family,
-                               llvm::StringSaver& saver,
-                               unsigned depth = 0);
+    /// `arguments` with their response files read, and an NVCC command's
+    /// options files, driver-mode aware: CL commands tokenize with Windows
+    /// rules regardless of the server platform. Relative names resolve
+    /// against `directory`; contents may nest.
+    std::vector<std::string> expand_response_files(kotatsu::string_list_ref arguments,
+                                                   const Spelling& directory,
+                                                   CompilerFamily family,
+                                                   unsigned depth = 0);
 };
 
 /// The commands written by hand — a rule's default command, the builtin
@@ -81,10 +82,9 @@ public:
     WrittenCommands(CommandTable& commands, FileTable& files) : commands(commands), files(files) {}
 
     /// The command `arguments` spell, run from `directory`; nullopt (logged
-    /// once) when it is no compile command — blank, or a launcher with
-    /// nothing to launch.
-    std::optional<CommandID> intern(const Spelling& directory,
-                                    llvm::ArrayRef<const char*> arguments);
+    /// once) when it is no compile command — blank, naming an empty
+    /// program, or a launcher with nothing to launch.
+    std::optional<CommandID> intern(const Spelling& directory, kotatsu::string_list_ref arguments);
 
 private:
     CommandTable& commands;

@@ -544,8 +544,8 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
     return {.list = to_raw(completion.list), .include = completion.include};
 }
 
-static codec::RawValue handle_signature_help(const worker::SignatureHelpParams& params,
-                                             const std::shared_ptr<std::atomic_bool>& stop) {
+static codec::raw_value handle_signature_help(const worker::SignatureHelpParams& params,
+                                              const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
     CompilationParams cp{
@@ -686,7 +686,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         peer,
         worker::IncludeTreeResult{.success = false, .error = "Preprocessing cancelled"},
         &handle_include_tree);
-    const codec::RawValue cancelled_query{"null"};
+    const codec::raw_value cancelled_query{"null"};
     serve<worker::CompletionParams>(peer, worker::CompletionResult{}, &handle_completion);
     serve<worker::SignatureHelpParams>(peer, cancelled_query, &handle_signature_help);
     serve<worker::FormatParams>(

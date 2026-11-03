@@ -16,6 +16,7 @@ test(async (t) => {
         "symbol-search add main.cpp",
         "definition",
         "bogus",
+        "defintion add",
     ]) {
         await t.cli(`query ${question}`);
     }

@@ -60,7 +60,7 @@ static void publish_diagnostics(ipc::JSONPeer& peer,
     }
 }
 
-codec::RawValue full_report(std::vector<protocol::Diagnostic> items) {
+codec::raw_value full_report(std::vector<protocol::Diagnostic> items) {
     return to_raw(protocol::RelatedFullDocumentDiagnosticReport{.items = std::move(items)});
 }
 

@@ -20,58 +20,64 @@ struct Plan {
 
 /// Where a run writes, and whether it writes mirrors.
 struct OutputOptions {
-    DecoKV(help = "Directory to write the modules, macro headers, mirrors and prelude into",
-           required = false)
-    <std::string> out;
+    KANNOTATE(
+        &out,
+        description = "Directory to write the modules, macro headers, mirrors and prelude into")
+    std::optional<std::string> out;
 
-    DecoFlag(names = {"--no-mirrors"},
-             help =
-                 "Write no mirrors: what still includes a wrapped header parses it beside "
-                 "the import",
-             required = false)
-    no_mirrors;
+    KANNOTATE(&no_mirrors,
+              description =
+                  "Write no mirrors: what still includes a wrapped header parses it "
+                  "beside the import")
+    bool no_mirrors = false;
 };
 
-struct Options {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Merge, description = "Merge the wrappings of several build configurations");
+struct Merge {
+    KANNOTATE(&file,
+              cli::positional = true,
+              cli::meta_var = "<FILE>",
+              description =
+                  "JSON file listing the build configurations to merge, each a name, "
+                  "the preprocessor condition holding in its compilations alone and the "
+                  "--out directory a run for it wrote")
+    std::string file;
 
-    DecoKV(help =
-               "JSON file assigning modules by globs, first match wins; a module is wrapped, "
-               R"("textual": true stays headers, "external": true is std, "provides": )"
-               R"("std.compat" names who exports its names, "rewrite": true rewrites a )"
-               R"(program module into module units, its primary interface at "primary")",
-           required = false)
-    <std::string> partition;
+    OutputOptions output;
+    LogLevelOption log;
+};
 
-    DecoKV(help =
-               "A glob over paths relative to the project root, absolute ones outside it: "
-               "the files the partition and the program span",
-           required = false)
-    <std::vector<std::string>> scope;
+KANNOTATE_TYPE(struct Modularize,
+               description =
+                   "Wrap a partition's libraries as modules over their headers, rewrite "
+                   "its program modules into module units, or merge the wrappings of "
+                   "several build configurations");
+struct Modularize {
+    KANNOTATE(&partition,
+              description =
+                  "JSON file assigning modules by globs, first match wins; a module is wrapped, "
+                  R"("textual": true stays headers, "external": true is std, "provides": )"
+                  R"("std.compat" names who exports its names, "rewrite": true rewrites a )"
+                  R"(program module into module units, its primary interface at "primary")")
+    std::optional<std::string> partition;
 
-    DecoKV(help =
-               "libc++'s module sources (share/libc++/v1): the partition's std module is "
-               "imported as std.compat",
-           required = false)
-    <std::string> std;
+    KANNOTATE(&scope,
+              description =
+                  "A glob over paths relative to the project root, absolute ones "
+                  "outside it: the files the partition and the program span")
+    std::vector<std::string> scope;
+
+    KANNOTATE(&std,
+              description =
+                  "libc++'s module sources (share/libc++/v1): the partition's std "
+                  "module is imported as std.compat")
+    std::string std;
 
     OutputOptions output;
     ProjectOptions where;
     LogLevelOption log;
-};
-
-struct MergeOptions {
-    deco::decl::HelpOption help;
-
-    DecoInput(meta_var = "<FILE>",
-              help =
-                  "JSON file listing the build configurations to merge, each a name, the "
-                  "preprocessor condition holding in its compilations alone and the --out "
-                  "directory a run for it wrote")
-    <std::string> file;
-
-    OutputOptions output;
-    LogLevelOption log;
+    KANNOTATE(&operation, cli::meta_var = "<operation>")
+    std::optional<std::variant<Merge>> operation;
 };
 
 struct MergeFile {
@@ -190,11 +196,11 @@ std::expected<std::vector<analysis::Configuration>, std::string>
     return configurations;
 }
 
-int run_merge(const MergeOptions& opts) {
+int run(Merge& opts) {
     if(!opts.output.out) {
         return fail("modularize merge needs --out");
     }
-    auto configurations = read_configurations(*opts.file);
+    auto configurations = read_configurations(opts.file);
     if(!configurations) {
         return fail(configurations.error());
     }
@@ -210,11 +216,11 @@ int run_merge(const MergeOptions& opts) {
     return 0;
 }
 
-int run_modularize(const Options& opts) {
+int run(Modularize& opts) {
     if(!opts.partition || !opts.output.out) {
         return fail("modularize needs --partition and --out");
     }
-    auto libcxx = analysis::read_std_modules(opts.std.value_or(""));
+    auto libcxx = analysis::read_std_modules(opts.std);
     if(!libcxx) {
         return fail(libcxx.error());
     }
@@ -226,8 +232,7 @@ int run_modularize(const Options& opts) {
     if(!opened) {
         return fail(std::move(opened.error()));
     }
-    auto loaded =
-        analysis::load_facts((*opened)->project, opts.scope.value_or(std::vector<std::string>{}));
+    auto loaded = analysis::load_facts((*opened)->project, opts.scope);
     if(!loaded) {
         print_json(Failure{.error = std::move(loaded.error().message),
                            .stale = std::move(loaded.error().dropped)});
@@ -309,31 +314,7 @@ int run_modularize(const Options& opts) {
     return 0;
 }
 
-CommandHandler build() {
-    std::vector<Operation> operations;
-    operations.push_back({
-        .name = "merge",
-        .description = "Merge the wrappings of several build configurations",
-        .run = operation<MergeOptions>("clice modularize merge <FILE> [OPTIONS]",
-                                       "modularize",
-                                       Errors::JSON,
-                                       run_merge),
-    });
-    return with_operations("",
-                           std::move(operations),
-                           Errors::JSON,
-                           operation<Options>("clice modularize [OPTIONS]",
-                                              "modularize",
-                                              Errors::JSON,
-                                              run_modularize));
-}
-
-[[maybe_unused]] const bool registered = register_command(
-    Command::modularize,
-    {.description = "Wrap a partition's libraries as modules over their headers, rewrite its "
-                    "program modules into module units, or merge the wrappings of several build "
-                    "configurations",
-     .build = build});
+[[maybe_unused]] const bool added = cli::add_command<Subcommands>(dispatch<Modularize>);
 
 }  // namespace
 

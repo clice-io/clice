@@ -3,6 +3,7 @@ module clice;
 import :command.argument;
 import :command.toolchains.clang;
 import :support.logging;
+import :support.shell;
 import :vfs.file_system;
 
 namespace clice {
@@ -114,7 +115,7 @@ std::vector<std::string> flags_for_clang(llvm::ArrayRef<std::string> flags, Comp
     // (`-Xpreprocessor -Werror`) they stay that option's.
     std::vector<std::string> result;
     std::size_t next = 0;
-    auto parse_options = option::ParseOptions{.visibility = family_visibility(family)};
+    auto parse_options = cli::ParseOptions{.visibility = family_visibility(family)};
     for(auto& parsed: clang_options::table().parse(flags, parse_options)) {
         if(!parsed) {
             continue;
@@ -231,23 +232,19 @@ std::vector<std::string> parse_clang_job(llvm::StringRef output) {
         if(!line.starts_with('"')) {
             continue;
         }
-        llvm::SmallVector<const char*, 256> args;
-        llvm::BumpPtrAllocator allocator;
-        llvm::StringSaver saver(allocator);
-        llvm::cl::TokenizeGNUCommandLine(line, saver, args);
+        auto args = split_command(line, sys::cmd::Quoting::POSIX);
 
         // A multi-call llvm (LLVM_TOOL_LLVM_DRIVER_BUILD, as in xclang) runs
         // cc1 as `llvm clang -cc1`: the tool's name comes before -cc1.
         auto is_cc1 = [&](std::size_t i) {
-            return i < args.size() && llvm::StringRef(args[i]) == "-cc1";
+            return i < args.size() && args[i] == "-cc1";
         };
         std::size_t cc1 = is_cc1(1) ? 1 : is_cc1(2) ? 2 : 0;
         if(cc1 == 0) {
             continue;
         }
-        std::vector<std::string> job = {args[0]};
-        job.insert(job.end(), args.begin() + cc1, args.end());
-        return job;
+        args.erase(args.begin() + 1, args.begin() + cc1);
+        return args;
     }
     return {};
 }

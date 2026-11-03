@@ -37,11 +37,7 @@ std::vector<Fid> provisional_files(const Project& project) {
 /// The interned default command of `rule`; nullopt when it is not a compile
 /// command.
 std::optional<CommandID> command_of(Project& project, const CompiledRule& rule) {
-    llvm::SmallVector<const char*, 16> argv;
-    for(auto& arg: rule.default_command) {
-        argv.push_back(arg.c_str());
-    }
-    return project.written_commands.intern(rule.directory, argv);
+    return project.written_commands.intern(rule.directory, rule.default_command);
 }
 
 /// Whether the default command of `rule`, the first rule matching `path`

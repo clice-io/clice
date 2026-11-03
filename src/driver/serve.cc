@@ -7,24 +7,21 @@ namespace clice::driver {
 
 namespace {
 
-struct Options {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Serve, description = "Start LSP server");
+struct Serve {
     ServerOptions server;
-    ConfigurationOption configuration;
+    ConfigurationOption build;
     LogLevelOption log{.log_level = LogLevel::Info};
 };
 
-CommandHandler build() {
-    auto cmd = deco::cli::command<Options>("clice serve [OPTIONS]");
-    cmd.match_all([](Options opts) {
-        opts.log.apply();
-        return run_serve_mode(opts.server, opts.configuration.tag());
-    });
-    return cmd;
+/// Not through dispatch: the server installs a stderr logger of its own,
+/// which a client that does not drain stderr cannot block (run_serve_mode).
+int run_serve(Serve& serve) {
+    serve.log.apply();
+    return run_serve_mode(serve.server, serve.build.configuration);
 }
 
-[[maybe_unused]] const bool registered =
-    register_command(Command::serve, {.description = "Start LSP server", .build = build});
+[[maybe_unused]] const bool added = cli::add_command<Subcommands>(run_serve);
 
 }  // namespace
 

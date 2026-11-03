@@ -270,7 +270,7 @@ void Project::save_choices(llvm::ArrayRef<std::pair<Fid, const ContextChoice*>> 
             .base_hash = choice->base,
         });
     }
-    auto json = json::to_string<PathJsonConfig>(data);
+    auto json = json::to_string(data, path_json);
     if(!json) {
         LOG_WARN("Failed to serialize the context choices");
     }

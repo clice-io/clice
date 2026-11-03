@@ -12,30 +12,31 @@ import :syntax.source_text;
 namespace clice::feature {
 
 /// Corresponds to the `[semantic_tokens]` section in clice.toml.
+KANNOTATE_TYPE(struct SemanticTokensOptions, presence_all = optional);
 struct SemanticTokensOptions {
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Send the tokens an editor's own syntax highlighting colors as well: "
-                         "keywords, literals, comments, operators, preprocessor directives. "
-                         "When off, only what syntax cannot tell is sent: names by what they "
-                         "name, overloaded and declarator operators, template brackets, format "
-                         "specifiers, and the tokens of preprocessor-inactive code, kindless.")
-    <bool> lexical = true;
+    KANNOTATE(&lexical,
+              description =
+                  "Send the tokens an editor's own syntax highlighting colors as well: "
+                  "keywords, literals, comments, operators, preprocessor directives. "
+                  "When off, only what syntax cannot tell is sent: names by what they "
+                  "name, overloaded and declarator operators, template brackets, format "
+                  "specifiers, and the tokens of preprocessor-inactive code, kindless.")
+    bool lexical = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "The names a client or theme expects for clice's token kinds, as "
-                         "`field = \"property\"`; an empty name drops the kind, whose tokens "
-                         "are then not sent, and kinds given one name merge. Read when the "
-                         "server starts.")
-    <std::map<std::string, std::string>> kinds;
+    KANNOTATE(&kinds,
+              description =
+                  "The names a client or theme expects for clice's token kinds, as "
+                  "`field = \"property\"`; an empty name drops the kind, whose tokens "
+                  "are then not sent, and kinds given one name merge. Read when the "
+                  "server starts.")
+    std::map<std::string, std::string> kinds;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "The names a client or theme expects for clice's token modifiers; an "
-                         "empty name drops the modifier, and modifiers given one name merge. "
-                         "Read when the server starts.")
-    <std::map<std::string, std::string>> modifiers;
+    KANNOTATE(&modifiers,
+              description =
+                  "The names a client or theme expects for clice's token modifiers; an "
+                  "empty name drops the modifier, and modifiers given one name merge. "
+                  "Read when the server starts.")
+    std::map<std::string, std::string> modifiers;
 };
 
 struct SemanticToken {

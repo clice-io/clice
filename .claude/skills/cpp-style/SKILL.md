@@ -56,7 +56,7 @@ defending against ghosts.
   (`libc`) and the third-party module (`modules/`), and gives the namespaces
   clice writes their short names in `clice` — `ranges`, `views`, `chrono`,
   `this_thread`, `ipc`, `lsp`, `protocol`, `codec`, `json`, `fs`, `sys`,
-  `async`, `deco`, `meta`, `option`, `zest`. The primary interface
+  `async`, `cli`, `meta`, `zest`. The primary interface
   (`src/module.cppm`) re-exports it, which brings it to every implementation
   unit; every partition imports it. Code inside `clice` writes those names
   (`ranges::sort`, `protocol::Range`, `async::task`), never `std::ranges::`
@@ -272,6 +272,9 @@ Domain words with one meaning each — use them only in that meaning:
 
 ## Style
 
+- Definitions stand one blank line apart, which clang-format leaves to the
+  writer, so that a `KANNOTATE_TYPE` sits directly above the type it
+  annotates, the type's doc comment above both.
 - Prefer `[[maybe_unused]]` over `(void)` for intentionally unused variables or parameters.
 - Arithmetic counters step with `x += 1` / `x -= 1`, in `for` heads too — never `++`/`--`; split fused forms like `if(++x > n)` into two statements. Iterators and other types without `+=` are exempt. This applies to code you write or touch, not as a repository-wide sweep.
 

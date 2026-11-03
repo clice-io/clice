@@ -231,6 +231,7 @@
 #include "kotatsu/sys/dirs.h"
 #include "kotatsu/sys/env.h"
 #include "kotatsu/sys/info.h"
+#include "kotatsu/sys/cmd.h"
 #include "kotatsu/sys/process.h"
 #include "kotatsu/sys/spawn.h"
 #include "kotatsu/sys/windows.h"
@@ -242,9 +243,10 @@
 #include "kotatsu/codec/json/schema.h"
 #include "kotatsu/codec/macro.h"
 #include "kotatsu/codec/toml/toml.h"
-#include "kotatsu/codec/visit/config.h"
-#include "kotatsu/deco/deco.h"
-#include <kotatsu/deco/option.h>
+#include "kotatsu/codec/format.h"
+#include "kotatsu/codec/repr.h"
+#include "kotatsu/cli/cli.h"
+#include "kotatsu/cli/table.h"
 #include "kotatsu/ipc/codec/bincode.h"
 #include "kotatsu/ipc/codec/json.h"
 #include "kotatsu/ipc/lsp/position.h"
@@ -260,7 +262,6 @@
 #include "kotatsu/ipc/transport.h"
 #include "kotatsu/meta/annotation.h"
 #include "kotatsu/meta/enum.h"
-#include "kotatsu/meta/repr.h"
 #include "kotatsu/meta/struct.h"
 #include "kotatsu/support/glob_pattern.h"
 #include "kotatsu/zest/async.h"
@@ -297,12 +298,6 @@ using ::ssize_t;
     assert(true);
 }
 
-#ifdef DecoFlag
-#endif
-#ifdef DecoInput
-#endif
-#ifdef DecoKV
-#endif
 #ifdef EINTR
 #endif
 #ifdef EINVAL
@@ -315,7 +310,9 @@ using ::ssize_t;
 #endif
 #ifdef INT_MAX
 #endif
-#ifdef KOTATSU_ANNOTATE
+#ifdef KANNOTATE
+#endif
+#ifdef KANNOTATE_TYPE
 #endif
 #ifdef LLVM_BUILTIN_TRAP
 #endif

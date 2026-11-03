@@ -6,7 +6,6 @@
 #define	EINTR		 4	/* Interrupted system call */
 #define	EINVAL		22	/* Invalid argument */
 #define	EPIPE		32	/* Broken pipe */
-#define	ERANGE		34	/* Math result not representable */
 # define __ASSERT_VOID_CAST static_cast<void>
 # define assert(expr)		(__ASSERT_VOID_CAST (0))
 #define __bswap_constant_32(x)      ((((x) & 0xff000000u) >> 24) | (((x) & 0x00ff0000u) >>  8) |	            (((x) & 0x0000ff00u) <<  8) | (((x) & 0x000000ffu) << 24))

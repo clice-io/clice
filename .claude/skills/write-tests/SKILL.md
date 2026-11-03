@@ -140,8 +140,8 @@ and pin each difference that matters in a case.
   but the suite's destructor does not run — cleanup that must happen then
   goes in a `zest::FatalHook`. Under `--no-isolation` it ends the
   whole run.
-- Filter with `--test-filter=<name>`; a bare positional name exits 1
-  silently.
+- Filter with `--test-filter=<name>`; a bare positional name is a usage
+  error (exit 2).
 - `select("m")` looks up a point while `§(m)⟦...⟧` registers only a range:
   a test that needs both annotates both (`§(m)⟦§(m)foo⟧`).
 

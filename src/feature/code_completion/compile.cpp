@@ -780,7 +780,7 @@ public:
         clang::CodeCompleteOptions sema;
         sema.IncludeMacros = 1;
         sema.IncludeCodePatterns = 1;
-        sema.IncludeFixIts = options.dot_to_arrow.value;
+        sema.IncludeFixIts = options.dot_to_arrow;
         sema.LoadExternal = !from_index;
         return sema;
     }
@@ -2288,8 +2288,7 @@ auto code_complete(CompilationParams params,
         };
     }
 
-    Completion completion{
-        .list = completion_list(std::move(items), includes ? 0U : options.limit.value)};
+    Completion completion{.list = completion_list(std::move(items), includes ? 0U : options.limit)};
     completion.list.is_incomplete =
         completion.list.is_incomplete ||
         ((names.more_candidates || (names.more_elsewhere && brought_in)) && !member_access &&

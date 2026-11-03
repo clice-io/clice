@@ -53,7 +53,7 @@ std::vector<Spelling> SavedListings::provisional(const index::ProjectIndex& inde
 
 std::optional<std::string> SavedListings::serialize(const Blob& live, std::uint64_t provisional) {
     serialized_provisional = provisional;
-    auto json = json::to_string<PathJsonConfig>(live);
+    auto json = json::to_string(live, path_json);
     if(!json) {
         LOG_WARN("Failed to serialize the build's listings: {}", json.error().to_string());
     }

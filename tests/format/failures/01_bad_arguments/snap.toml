@@ -8,18 +8,18 @@ exit = 2
 
 ["an invalid log level"."$ clice format --log-level loud"]
 stderr = '''
-at argv[1]:
-  --log-level loud
-              ^~~~
+at argv[2]:
+  format --log-level loud
+                     ^~~~
   invalid enum value: loud (supported: trace, debug, info, warn, error, off)
 '''
 exit = 2
 
 ["an invalid job count"."$ clice format --jobs many"]
 stderr = '''
-at argv[1]:
-  --jobs many
-         ^~~~
+at argv[2]:
+  format --jobs many
+                ^~~~
   invalid integer value: many
 '''
 exit = 2

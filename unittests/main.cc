@@ -22,14 +22,17 @@ struct TestOptions {
 }  // namespace
 
 extern "C++" int main(int argc, const char** argv) {
-    auto args = kotatsu::deco::util::argvify(argc, argv);
-    auto parsed = kotatsu::deco::cli::parse<TestOptions>(args);
-
-    if(!parsed.has_value()) {
-        return kotatsu::deco::cli::parse_error_exit_code;
+    auto parsed = kotatsu::cli::parse<TestOptions>(std::span(argv, argc).subspan(1));
+    if(parsed.help()) {
+        kotatsu::cli::print_usage<TestOptions>("unittests");
+        return 0;
+    }
+    if(auto error = parsed.error()) {
+        kotatsu::cli::report(*error);
+        return 2;
     }
 
-    auto& opts = parsed->options;
+    auto& opts = *parsed;
 
     opts.log.apply();
     clice::logging::stderr_logger("test", clice::logging::options);

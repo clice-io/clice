@@ -46,7 +46,7 @@ ZEST_CASE(AliasAndDashDash) {
     ZASSERT(parse_first({"--std=c++20"}) == OPT_std_EQ);
 
     std::vector<std::string> args = {"-I", "/usr/include", "--", "main.cpp"};
-    auto options = option::ParseOptions{.dash_dash_parsing = true};
+    auto options = cli::ParseOptions{.dash_dash_parsing = true};
     unsigned count = 0;
     for(auto& result: clang_options::table().parse(args, options)) {
         if(result.has_value()) {
@@ -72,7 +72,7 @@ ZEST_CASE(CLVisibility) {
     auto gcc_vis = family_visibility(CompilerFamily::Clang);
 
     auto parse_with_vis = [](std::vector<std::string> args, unsigned vis) -> unsigned {
-        auto options = option::ParseOptions{.dash_dash_parsing = true, .visibility = vis};
+        auto options = cli::ParseOptions{.dash_dash_parsing = true, .visibility = vis};
         for(auto& result: clang_options::table().parse(args, options)) {
             if(result.has_value()) {
                 return result->id;
@@ -179,7 +179,7 @@ ZEST_CASE(EveryAliasRendersBack) {
     /// Every alias a GCC-style command can write renders back to itself:
     /// read again, the same option through the same alias, the same values.
     auto visibility = family_visibility(CompilerFamily::GCC);
-    auto parse_options = option::ParseOptions{.visibility = visibility};
+    auto parse_options = cli::ParseOptions{.visibility = visibility};
     llvm::BumpPtrAllocator allocator;
     llvm::StringSaver strings(allocator);
     std::size_t checked = 0;
@@ -190,11 +190,11 @@ ZEST_CASE(EveryAliasRendersBack) {
         std::string name(option.prefixed_name);
         std::vector<std::string> written;
         switch(option.kind) {
-            case option::Kind::Flag: written = {name}; break;
-            case option::Kind::Joined: written = {name + "1"}; break;
-            case option::Kind::CommaJoined: written = {name + "a,b"}; break;
-            case option::Kind::Separate:
-            case option::Kind::JoinedOrSeparate: written = {name, "1"}; break;
+            case cli::OptionKind::Flag: written = {name}; break;
+            case cli::OptionKind::Joined: written = {name + "1"}; break;
+            case cli::OptionKind::CommaJoined: written = {name + "a,b"}; break;
+            case cli::OptionKind::Separate:
+            case cli::OptionKind::JoinedOrSeparate: written = {name, "1"}; break;
             default: continue;
         }
         auto read = [&](std::vector<std::string>& args) -> std::optional<Arg> {

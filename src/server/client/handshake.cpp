@@ -148,7 +148,7 @@ void LSPClient::register_lifecycle() {
         if(params.capabilities.experimental.has_value() &&
            !params.capabilities.experimental->is_null()) {
             ext::ExperimentalCapabilities experimental;
-            if(codec::dyn::from_dyn<ipc::lsp_config>(*params.capabilities.experimental,
+            if(codec::dyn::from_dyn<ipc::lsp_format>(*params.capabilities.experimental,
                                                      experimental)) {
                 restart_server = experimental.restart_server;
             }
@@ -199,7 +199,7 @@ void LSPClient::register_lifecycle() {
            params.capabilities.text_document->folding_range.has_value()) {
             auto& folding = *params.capabilities.text_document->folding_range;
             folding_client = {
-                .line_folding_only = folding.line_folding_only,
+                .line_folding_only = folding.line_folding_only.value,
                 .collapsed_text = folding.folding_range && folding.folding_range->collapsed_text,
             };
         }
@@ -208,7 +208,7 @@ void LSPClient::register_lifecycle() {
            params.capabilities.text_document->document_symbol.has_value()) {
             auto& symbols = *params.capabilities.text_document->document_symbol;
             symbol_client = {
-                .hierarchical = symbols.hierarchical_document_symbol_support,
+                .hierarchical = symbols.hierarchical_document_symbol_support.value,
                 .all_kinds = symbols.symbol_kind && symbols.symbol_kind->value_set,
             };
         }
@@ -218,8 +218,8 @@ void LSPClient::register_lifecycle() {
            params.capabilities.text_document->completion->completion_item.has_value()) {
             auto& item = *params.capabilities.text_document->completion->completion_item;
             completion_client = {
-                .snippets = item.snippet_support,
-                .insert_replace = item.insert_replace_support,
+                .snippets = item.snippet_support.value,
+                .insert_replace = item.insert_replace_support.value,
                 .markdown = item.documentation_format &&
                             ranges::any_of(*item.documentation_format,
                                            [](const std::string& kind) {

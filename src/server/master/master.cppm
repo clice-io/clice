@@ -21,20 +21,20 @@ class LSPClient;
 enum class ServerMode : std::uint8_t { Pipe, Socket };
 
 struct ServerOptions {
-    DecoKV(help = "Server mode: pipe (default) or socket (debug)", required = false)
-    <ServerMode> mode = ServerMode::Pipe;
+    KANNOTATE(&mode, description = "Server mode: pipe, or socket (debug)")
+    ServerMode mode = ServerMode::Pipe;
 
-    DecoKV(help = "Socket mode address", required = false)
-    <std::string> host = "127.0.0.1";
+    KANNOTATE(&host, description = "Socket mode address")
+    std::string host = "127.0.0.1";
 
-    DecoKV(help = "Socket mode TCP port", required = false)
-    <int> port = 0;
+    KANNOTATE(&port, description = "Socket mode TCP port")
+    int port = 0;
 
-    DecoKV(help = "Record LSP input to file for replay testing", required = false)
-    <std::string> record;
+    KANNOTATE(&record, description = "Record LSP input to file for replay testing")
+    std::string record;
 
-    DecoKV(help = "Workspace root directory (optional, skips LSP initialize)", required = false)
-    <std::string> workspace;
+    KANNOTATE(&workspace, description = "Workspace root directory (optional, skips LSP initialize)")
+    std::string workspace;
 };
 
 enum class ServerLifecycle : std::uint8_t {

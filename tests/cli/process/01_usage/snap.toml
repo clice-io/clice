@@ -2,60 +2,79 @@
 stdout = '''
 A C++ development toolkit built on LLVM/Clang
 
+usage: clice [OPTIONS] <command>
+
+Options:
+  -h|--help                       display this help and exit
+  -v|--version                    Print the version and exit
+
 Subcommands:
-  serve       Start LSP server
+  analyze     Analyze the indexed project for refactoring
+  command     Show the commands a file compiles with, or convert compile commands
+  format      Format C++ source files
+  index       Index a project ahead of time
+  inspect     Run a feature on a source file and print raw results as JSON
+  lint        Lint C++ source files
+  modularize  Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
   query       Ask the persisted index about the project
   refactor    Rewrite the project's sources through the persisted index
-  index       Index a project ahead of time
-  lint        Lint C++ source files
-  format      Format C++ source files
-  inspect     Run a feature on a source file and print raw results as JSON
-  command     Show the commands a file compiles with, or convert compile commands
   scan        Scan the project's include and module dependencies
-  analyze     Analyze the indexed project for refactoring
-  modularize  Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
+  serve       Start LSP server
 '''
-exit = 0
+exit = 2
 
 ["root usage"."$ clice --help"]
 stdout = '''
 A C++ development toolkit built on LLVM/Clang
 
+usage: clice [OPTIONS] <command>
+
+Options:
+  -h|--help                       display this help and exit
+  -v|--version                    Print the version and exit
+
 Subcommands:
-  serve       Start LSP server
+  analyze     Analyze the indexed project for refactoring
+  command     Show the commands a file compiles with, or convert compile commands
+  format      Format C++ source files
+  index       Index a project ahead of time
+  inspect     Run a feature on a source file and print raw results as JSON
+  lint        Lint C++ source files
+  modularize  Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
   query       Ask the persisted index about the project
   refactor    Rewrite the project's sources through the persisted index
-  index       Index a project ahead of time
-  lint        Lint C++ source files
-  format      Format C++ source files
-  inspect     Run a feature on a source file and print raw results as JSON
-  command     Show the commands a file compiles with, or convert compile commands
   scan        Scan the project's include and module dependencies
-  analyze     Analyze the indexed project for refactoring
-  modularize  Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
+  serve       Start LSP server
 '''
 exit = 0
 
 ["command help"."$ clice serve --help"]
 stdout = '''
+Start LSP server
+
 usage: clice serve [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  --mode <pipe|socket>            Server mode: pipe (default) or socket (debug)
-  --host <value>                  Socket mode address
-  --port <value>                  Socket mode TCP port
+  --mode <pipe|socket>            Server mode: pipe, or socket (debug) [default: pipe]
+  --host <value>                  Socket mode address [default: 127.0.0.1]
+  --port <value>                  Socket mode TCP port [default: 0]
   --record <value>                Record LSP input to file for replay testing
   --workspace <value>             Workspace root directory (optional, skips LSP initialize)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level of stderr
+                                  Log level of stderr [default: info]
 '''
 exit = 0
 
 ["command help"."$ clice query --help"]
 stdout = '''
 Ask the persisted index about the project
+
+usage: clice query [OPTIONS] <question>
+
+Options:
+  -h|--help                       display this help and exit
 
 Subcommands:
   project-files     The build's files
@@ -77,6 +96,11 @@ exit = 0
 stdout = '''
 Rewrite the project's sources through the persisted index
 
+usage: clice refactor [OPTIONS] <refactoring>
+
+Options:
+  -h|--help                       display this help and exit
+
 Subcommands:
   rename  Rename symbols across the project
 '''
@@ -84,16 +108,18 @@ exit = 0
 
 ["command help"."$ clice index --help"]
 stdout = '''
-usage: clice index [OPTIONS]
+Index a project ahead of time
+
+usage: clice index [OPTIONS] [<operation>]
 
 Options:
   -h|--help                       display this help and exit
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count)
+  -j|--jobs <value>               How many units or files to work on at once; 0 for project.stateless_worker_count, or for index and format the CPU count [default: 0]
   --json                          Print the run's report as JSON on stdout instead of text
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level of stderr
+                                  Log level of stderr [default: warn]
 
 Subcommands:
   stats   What the persisted index holds: its sizes and how its records spread
@@ -105,6 +131,8 @@ exit = 0
 
 ["command help"."$ clice lint --help"]
 stdout = '''
+Lint C++ source files
+
 usage: clice lint [OPTIONS]
 
 Options:
@@ -112,15 +140,17 @@ Options:
   --index                         Also build and persist the project index from the same parses
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count)
+  -j|--jobs <value>               How many units or files to work on at once; 0 for project.stateless_worker_count, or for index and format the CPU count [default: 0]
   --json                          Print the run's report as JSON on stdout instead of text
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level of stderr
+                                  Log level of stderr [default: warn]
 '''
 exit = 0
 
 ["command help"."$ clice format --help"]
 stdout = '''
+Format C++ source files
+
 usage: clice format [<PATH>...] [OPTIONS]
 
 Options:
@@ -129,9 +159,9 @@ Options:
   --check                         Report the files that need formatting instead of rewriting them
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for index and format, the CPU count)
+  -j|--jobs <value>               How many units or files to work on at once; 0 for project.stateless_worker_count, or for index and format the CPU count [default: 0]
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level of stderr
+                                  Log level of stderr [default: warn]
 '''
 exit = 0
 
@@ -139,9 +169,15 @@ exit = 0
 stdout = '''
 Run a feature on a source file and print raw results as JSON
 
+usage: clice inspect [OPTIONS] <feature>
+
+Options:
+  -h|--help                       display this help and exit
+
 Subcommands:
   code-action         The code actions on a selection
   code-completion     The completions at a point
+  config-schema       The JSON schema of the clice configuration
   document-highlight  The places naming the symbol at a point
   document-links      The file's links
   document-symbols    The file's outline
@@ -151,13 +187,14 @@ Subcommands:
   selection-range     The selection ranges at a point
   semantic-tokens     The file's semantic tokens
   signature-help      The signature help at a point
-  config-schema       The JSON schema of the clice configuration
 '''
 exit = 0
 
 ["command help"."$ clice command --help"]
 stdout = '''
-usage: clice command <PATH> [OPTIONS]
+Show the commands a file compiles with, or convert compile commands
+
+usage: clice command [<PATH>] [OPTIONS] [<operation>]
 
 Options:
   -h|--help                       display this help and exit
@@ -166,7 +203,7 @@ Options:
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level of stderr
+                                  Log level of stderr [default: warn]
 
 Subcommands:
   convert  Convert a compilation database, or one command, to the commands clice compiles with
@@ -175,22 +212,29 @@ exit = 0
 
 ["command help"."$ clice scan --help"]
 stdout = '''
+Scan the project's include and module dependencies
+
 usage: clice scan [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
   --json                          Print every scanned file with what it includes, the includes no search found and the modules it provides
-  --runs <value>                  Time this many scans, each from a fresh start (cold) and again over what it kept (warm, as after a database reload)
+  --runs <value>                  Time this many scans, each from a fresh start (cold) and again over what it kept (warm, as after a database reload) [range: 1..]
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level of stderr
+                                  Log level of stderr [default: warn]
 '''
 exit = 0
 
 ["command help"."$ clice analyze --help"]
 stdout = '''
-Analyses whose facts an agent turns into refactoring decisions
+Analyze the indexed project for refactoring
+
+usage: clice analyze [OPTIONS] <analysis>
+
+Options:
+  -h|--help                       display this help and exit
 
 Subcommands:
   modules  Dependencies between directories, toward a module partition
@@ -199,7 +243,9 @@ exit = 0
 
 ["command help"."$ clice modularize --help"]
 stdout = '''
-usage: clice modularize [OPTIONS]
+Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
+
+usage: clice modularize [OPTIONS] [<operation>]
 
 Options:
   -h|--help                       display this help and exit
@@ -211,7 +257,7 @@ Options:
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level of stderr
+                                  Log level of stderr [default: warn]
 
 Subcommands:
   merge  Merge the wrappings of several build configurations
@@ -225,13 +271,15 @@ usage: clice worker [OPTIONS]
 Options:
   -h|--help                       display this help and exit
   --stateful                      Run as stateful worker (default: stateless)
-  --worker-name <value>           Name the worker logs under (default: worker)
+  --worker-name <value>           Name the worker logs under [default: worker]
   --log-dir <value>               Directory of the worker's log file (default: no log file)
 '''
 exit = 0
 
 ["operation help"."$ clice query references --help"]
 stdout = '''
+Every place naming a symbol
+
 usage: clice query references <LOCATOR> [OPTIONS]
 
 Options:
@@ -242,34 +290,38 @@ Options:
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --fresh                         Reindex the files whose content changed since they were indexed first, through the running server or a batch run of this command
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level of stderr
+                                  Log level of stderr [default: warn]
 '''
 exit = 0
 
 ["operation help"."$ clice index stats --help"]
 stdout = '''
+What the persisted index holds: its sizes and how its records spread
+
 usage: clice index stats [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  --limit <value>                 How many of the largest file shards to list (default 20)
+  --limit <value>                 How many of the largest file shards to list [default: 20]
   --variants                      Then every file shard with its variant count, one tab-separated line each
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level of stderr
+                                  Log level of stderr [default: warn]
 '''
 exit = 0
 
 ["operation help"."$ clice analyze modules --help"]
 stdout = '''
-usage: clice analyze modules [OPTIONS]
+Dependencies between directories, toward a module partition
+
+usage: clice analyze modules [OPTIONS] [<view>]
 
 Options:
   -h|--help                       display this help and exit
-  --limit <value>                 Most hotspots, move and split candidates to list (default 20)
+  --limit <value>                 Most hotspots, move and split candidates to list [default: 20]
   --scope <value>                 A glob over paths relative to the project root, absolute ones outside it: analyze only the files it matches (default: every indexed file under the project root outside a dot directory) (may be repeated)
-  --dir-depth <value>             Directory segments naming a file's default module (default 0: its whole directory)
+  --dir-depth <value>             Directory segments naming a file's default module (0: its whole directory) [default: 0]
   --partition <value>             JSON file assigning modules by globs, first match wins: {"modules": [{"name": "core", "files": ["src/support/**"]}]}
   --std <value>                   libc++'s module sources (share/libc++/v1), for a partition module provided by std.compat
   --move <value>                  A hypothetical move: <path>=<module> (may be repeated)
@@ -278,9 +330,9 @@ Options:
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --annotation <value>            An annotation file weighing the results: {"name": "compile_time", "unit": "s", "values": {"src/a.cpp": 1.5}} (may be repeated)
-  --churn-since <value>           git log --since value of the churn annotation (default 6.months; empty leaves it out)
+  --churn-since <value>           git log --since value of the churn annotation (empty leaves it out) [default: 6.months]
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level of stderr
+                                  Log level of stderr [default: warn]
 
 Subcommands:
   edge       Every entity an edge between two modules carries, and its uses
@@ -295,13 +347,15 @@ exit = 0
 
 ["operation help"."$ clice analyze modules edge --help"]
 stdout = '''
+Every entity an edge between two modules carries, and its uses
+
 usage: clice analyze modules edge <FROM> <TO> [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
   <FROM> <TO>                     The module whose files name the other's entities, and the module named
   --scope <value>                 A glob over paths relative to the project root, absolute ones outside it: analyze only the files it matches (default: every indexed file under the project root outside a dot directory) (may be repeated)
-  --dir-depth <value>             Directory segments naming a file's default module (default 0: its whole directory)
+  --dir-depth <value>             Directory segments naming a file's default module (0: its whole directory) [default: 0]
   --partition <value>             JSON file assigning modules by globs, first match wins: {"modules": [{"name": "core", "files": ["src/support/**"]}]}
   --std <value>                   libc++'s module sources (share/libc++/v1), for a partition module provided by std.compat
   --move <value>                  A hypothetical move: <path>=<module> (may be repeated)
@@ -310,12 +364,14 @@ Options:
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level of stderr
+                                  Log level of stderr [default: warn]
 '''
 exit = 0
 
 ["operation help"."$ clice inspect hover --help"]
 stdout = '''
+The hover card at a point
+
 usage: clice inspect hover <PATH> [OPTIONS]
 
 Options:
@@ -328,22 +384,53 @@ Options:
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level of stderr
+                                  Log level of stderr [default: warn]
 '''
 exit = 0
 
 ["operation help"."$ clice command convert --help"]
 stdout = '''
-usage: clice command convert [<DATABASE>] [OPTIONS] [-- <COMMAND>...]
+Convert a compilation database, or one command, to the commands clice compiles with
+
+usage: clice command convert (<DATABASE> | -- <COMMAND>...) [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  <DATABASE>                      The compile_commands.json to convert, relative to the current directory
-  --json                          Print the converted command as a database entry instead of text
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level of stderr
+                                  Log level of stderr [default: warn]
+
+Convert, one of: a database:
+  <DATABASE>                      The compile_commands.json to convert, relative to the current directory
+
+Convert, one of: a command:
+  -- <COMMAND>...                 The command to convert
+  --json                          Print the converted command as a database entry instead of text
+'''
+exit = 0
+
+["operation help"."$ clice refactor rename --help"]
+stdout = '''
+Rename symbols across the project
+
+usage: clice refactor rename (<LOCATOR> <NEW-NAME> | --spec <FILE>) [OPTIONS]
+
+Options:
+  -h|--help                       display this help and exit
+  --dry-run                       Answer with the planned edits without writing them
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
+  --fresh                         Reindex the files whose content changed since they were indexed first, through the running server or a batch run of this command
+  --log-level <trace|debug|info|warn|error|off>
+                                  Log level of stderr [default: warn]
+
+Rename, one of: one symbol:
+  <LOCATOR>                       The symbol, as a locator: its whole name, an answer's symbol, or file:line[:column]
+  <NEW-NAME>                      Its new name
+
+Rename, one of: a list of symbols:
+  --spec <FILE>                   A file listing renames to make at once, `<locator> => <new name>` a line; - reads them from stdin
 '''
 exit = 0
 
@@ -357,26 +444,36 @@ at argv[0]:
 exit = 2
 
 ["positional arguments"."$ clice index symbol"]
-stderr = "expected 1 input argument, got 0"
+stderr = '''
+at end of argv:
+  index symbol
+              ^
+  required argument <LOCATOR> is missing
+'''
 exit = 2
 
 ["positional arguments"."$ clice index file a.h b.h"]
 stderr = '''
-at argv[1]:
-  a.h b.h
-      ^~~
+at argv[3]:
+  index file a.h b.h
+                 ^~~
   unexpected input argument b.h: expected 1 input argument
 '''
 exit = 2
 
 ["positional arguments"."$ clice inspect hover"]
-stderr = "expected 1 input argument, got 0"
+stderr = '''
+at end of argv:
+  inspect hover
+               ^
+  required argument <PATH> is missing
+'''
 exit = 2
 
 ["positional arguments"."$ clice modularize merge"]
 stdout = '''
 {
-  "error": "expected 1 input argument, got 0",
+  "error": "required argument <FILE> is missing",
   "stale": []
 }
 '''
@@ -385,21 +482,37 @@ exit = 2
 ["positional arguments"."$ clice query references"]
 stdout = '''
 {
-  "error": "expected 1 input argument, got 0",
+  "error": "required argument <LOCATOR> is missing",
   "stale": []
 }
 '''
 exit = 2
 
 ["positional arguments"."$ clice command"]
-stderr = "expected 1 input argument, got 0"
+stdout = '''
+Show the commands a file compiles with, or convert compile commands
+
+usage: clice command [<PATH>] [OPTIONS] [<operation>]
+
+Options:
+  -h|--help                       display this help and exit
+  <PATH>                          The file, relative to the current directory or absolute
+  --json                          Print the commands as JSON on stdout instead of text
+  --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
+  --log-level <trace|debug|info|warn|error|off>
+                                  Log level of stderr [default: warn]
+
+Subcommands:
+  convert  Convert a compilation database, or one command, to the commands clice compiles with
+'''
 exit = 2
 
 ["positional arguments"."$ clice command a.cpp b.cpp"]
 stderr = '''
-at argv[1]:
-  a.cpp b.cpp
-        ^~~~~
+at argv[2]:
+  command a.cpp b.cpp
+                ^~~~~
   unexpected input argument b.cpp: expected 1 input argument
 '''
 exit = 2
@@ -407,7 +520,7 @@ exit = 2
 ["unknown option beside help"."$ clice analyze modules --bogus --help"]
 stdout = '''
 {
-  "error": "at argv[0]:\n  --bogus --help\n  ^~~~~~~\n  unknown option '--bogus'",
+  "error": "unknown option '--bogus'",
   "stale": []
 }
 '''
@@ -416,7 +529,7 @@ exit = 2
 ["unknown operation"."$ clice query bogus"]
 stdout = '''
 {
-  "error": "at argv[0]:\n  bogus\n  ^~~~~\n  unknown subcommand 'bogus'",
+  "error": "unknown subcommand 'bogus'",
   "stale": []
 }
 '''
@@ -424,9 +537,9 @@ exit = 2
 
 ["unknown operation"."$ clice index bogus"]
 stderr = '''
-at argv[0]:
-  bogus
-  ^~~~~
+at argv[1]:
+  index bogus
+        ^~~~~
   unknown subcommand 'bogus'
 '''
 exit = 2
@@ -434,7 +547,7 @@ exit = 2
 ["unknown operation"."$ clice analyze modules bogus"]
 stdout = '''
 {
-  "error": "at argv[0]:\n  bogus\n  ^~~~~\n  unknown subcommand 'bogus'",
+  "error": "unknown subcommand 'bogus'",
   "stale": []
 }
 '''
@@ -443,7 +556,25 @@ exit = 2
 ["unknown operation"."$ clice modularize bogus"]
 stdout = '''
 {
-  "error": "at argv[0]:\n  bogus\n  ^~~~~\n  unknown subcommand 'bogus'",
+  "error": "unknown subcommand 'bogus'",
+  "stale": []
+}
+'''
+exit = 2
+
+["own option before an operation"."$ clice index --workspace other stats"]
+stderr = '''
+at argv[3]:
+  index --workspace other stats
+                          ^~~~~
+  subcommand 'stats' cannot be used with --workspace <value>
+'''
+exit = 2
+
+["own option before an operation"."$ clice modularize --out out merge merge.json"]
+stdout = '''
+{
+  "error": "subcommand 'merge' cannot be used with --out <value>",
   "stale": []
 }
 '''
@@ -451,9 +582,9 @@ exit = 2
 
 ["unknown option"."$ clice serve --bogus"]
 stderr = '''
-at argv[0]:
-  --bogus
-  ^~~~~~~
+at argv[1]:
+  serve --bogus
+        ^~~~~~~
   unknown option '--bogus'
 '''
 exit = 2
@@ -461,7 +592,7 @@ exit = 2
 ["unknown option"."$ clice query --bogus"]
 stdout = '''
 {
-  "error": "at argv[0]:\n  --bogus\n  ^~~~~~~\n  unknown option '--bogus'",
+  "error": "unknown option '--bogus'",
   "stale": []
 }
 '''
@@ -470,7 +601,7 @@ exit = 2
 ["unknown option"."$ clice refactor --bogus"]
 stdout = '''
 {
-  "error": "at argv[0]:\n  --bogus\n  ^~~~~~~\n  unknown option '--bogus'",
+  "error": "unknown option '--bogus'",
   "stale": []
 }
 '''
@@ -478,54 +609,54 @@ exit = 2
 
 ["unknown option"."$ clice index --bogus"]
 stderr = '''
-at argv[0]:
-  --bogus
-  ^~~~~~~
+at argv[1]:
+  index --bogus
+        ^~~~~~~
   unknown option '--bogus'
 '''
 exit = 2
 
 ["unknown option"."$ clice lint --bogus"]
 stderr = '''
-at argv[0]:
-  --bogus
-  ^~~~~~~
+at argv[1]:
+  lint --bogus
+       ^~~~~~~
   unknown option '--bogus'
 '''
 exit = 2
 
 ["unknown option"."$ clice format --bogus"]
 stderr = '''
-at argv[0]:
-  --bogus
-  ^~~~~~~
+at argv[1]:
+  format --bogus
+         ^~~~~~~
   unknown option '--bogus'
 '''
 exit = 2
 
 ["unknown option"."$ clice inspect --bogus"]
 stderr = '''
-at argv[0]:
-  --bogus
-  ^~~~~~~
+at argv[1]:
+  inspect --bogus
+          ^~~~~~~
   unknown option '--bogus'
 '''
 exit = 2
 
 ["unknown option"."$ clice command --bogus"]
 stderr = '''
-at argv[0]:
-  --bogus
-  ^~~~~~~
+at argv[1]:
+  command --bogus
+          ^~~~~~~
   unknown option '--bogus'
 '''
 exit = 2
 
 ["unknown option"."$ clice scan --bogus"]
 stderr = '''
-at argv[0]:
-  --bogus
-  ^~~~~~~
+at argv[1]:
+  scan --bogus
+       ^~~~~~~
   unknown option '--bogus'
 '''
 exit = 2
@@ -533,7 +664,7 @@ exit = 2
 ["unknown option"."$ clice analyze --bogus"]
 stdout = '''
 {
-  "error": "at argv[0]:\n  --bogus\n  ^~~~~~~\n  unknown option '--bogus'",
+  "error": "unknown option '--bogus'",
   "stale": []
 }
 '''
@@ -542,7 +673,7 @@ exit = 2
 ["unknown option"."$ clice modularize --bogus"]
 stdout = '''
 {
-  "error": "at argv[0]:\n  --bogus\n  ^~~~~~~\n  unknown option '--bogus'",
+  "error": "unknown option '--bogus'",
   "stale": []
 }
 '''
@@ -550,9 +681,9 @@ exit = 2
 
 ["unknown option"."$ clice worker --bogus"]
 stderr = '''
-at argv[0]:
-  --bogus
-  ^~~~~~~
+at argv[1]:
+  worker --bogus
+         ^~~~~~~
   unknown option '--bogus'
 '''
 exit = 2

@@ -86,12 +86,10 @@ ZEST_CASE(InternedCommand) {
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
     Normalizer normalizer{.commands = commands, .files = file_table};
-    auto intern = [&](llvm::StringRef directory, llvm::ArrayRef<const char*> arguments) {
+    auto intern = [&](llvm::StringRef directory, kotatsu::string_list_ref arguments) {
         return normalizer.normalize(Spelling::absolute(directory), Fid{}, arguments);
     };
-    llvm::BumpPtrAllocator allocator;
-    llvm::StringSaver saver(allocator);
-    auto spelled = *intern("/ws", tokenize_command("clang++ -std=c++20 -Iinclude", saver));
+    auto spelled = *intern("/ws", split_command("clang++ -std=c++20 -Iinclude"));
     llvm::SmallVector<const char*> argv = {"clang++", "-std=c++20", "-Iinclude"};
     ZEXPECT(spelled == *intern("/ws", argv));
     ZEXPECT(spelled != *intern("/other", argv));

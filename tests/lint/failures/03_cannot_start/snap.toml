@@ -15,9 +15,9 @@ value = []
 
 ["invalid worker count"."$ clice lint --jobs many"]
 stderr = '''
-at argv[1]:
-  --jobs many
-         ^~~~
+at argv[2]:
+  lint --jobs many
+              ^~~~
   invalid integer value: many
 '''
 exit = 2

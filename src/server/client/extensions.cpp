@@ -107,7 +107,7 @@ template <typename Params>
 static std::expected<Params, ipc::Error> argument_of(const protocol::ExecuteCommandParams& params) {
     Params decoded;
     if(!params.arguments || params.arguments->size() != 1 ||
-       !codec::dyn::from_dyn<ipc::lsp_config>(params.arguments->front(), decoded)) {
+       !codec::dyn::from_dyn<ipc::lsp_format>(params.arguments->front(), decoded)) {
         return std::unexpected(ipc::Error{
             protocol::ErrorCode::InvalidParams,
             std::format("{} takes one argument, the parameters of its request", params.command)});

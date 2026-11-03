@@ -99,8 +99,8 @@ struct Records {
 
     /// Absent from the records a binary older than the self-containment
     /// checks wrote.
-    KOTATSU_ANNOTATE(defaulted = true)
-    <std::vector<SavedSelfContainment>> trials;
+    KANNOTATE(&trials, presence = optional)
+    std::vector<SavedSelfContainment> trials;
 };
 
 }  // namespace
@@ -262,7 +262,7 @@ std::string Project::serialize_precompiled_records() {
         data.trials.push_back(std::move(saved));
     });
 
-    auto json = json::to_string<PathJsonConfig>(data);
+    auto json = json::to_string(data, path_json);
     if(!json) {
         LOG_WARN("Failed to serialize the precompiled records");
         return {};

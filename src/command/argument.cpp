@@ -26,12 +26,12 @@ static_assert(OptionPrefixesTable[12].value() == 2, "pfx_slash_dash: 2 prefixes"
 
 constexpr std::span<const std::string_view> prefixes(unsigned offset) {
     switch(offset) {
-        case 0: return option::pfx_none;
-        case 1: return option::pfx_dash;
-        case 3: return option::pfx_dash_double;
-        case 6: return option::pfx_double;
-        case 8: return option::pfx_all;
-        case 12: return option::pfx_slash_dash;
+        case 0: return cli::pfx_none;
+        case 1: return cli::pfx_dash;
+        case 3: return cli::pfx_dash_double;
+        case 6: return cli::pfx_double;
+        case 8: return cli::pfx_all;
+        case 12: return cli::pfx_slash_dash;
         default: std::unreachable();
     }
 }
@@ -44,9 +44,9 @@ constexpr std::string_view str_at(unsigned offset) {
 /// Plain enum: Options.inc combines these with bitwise-or, which needs the
 /// implicit conversion an enum class forbids.
 enum ClangDriverFlag : unsigned {
-    HelpHidden = option::HelpHidden,
-    RenderAsInput = option::RenderAsInput,
-    RenderJoined = option::RenderJoined,
+    HelpHidden = cli::HelpHidden,
+    RenderAsInput = cli::RenderAsInput,
+    RenderJoined = cli::RenderJoined,
     Ignored = 1u << 4,
     LinkOption = 1u << 5,
     LinkerInput = 1u << 6,
@@ -58,13 +58,13 @@ enum ClangDriverFlag : unsigned {
 
 }  // namespace detail
 
-const option::OptTable& table() {
-    using enum option::Kind;
+const cli::OptTable& table() {
+    using enum cli::OptionKind;
     using enum detail::ClangDriverFlag;
     using detail::prefixes;
     using detail::str_at;
 
-    constexpr static option::Option option_infos[] = {
+    constexpr static cli::Option option_infos[] = {
 #define OPTION(PREFIXES_OFFSET,                                                                    \
                NAME_OFFSET,                                                                        \
                ID,                                                                                 \
@@ -80,7 +80,7 @@ const option::OptTable& table() {
                META_VAR,                                                                           \
                VALUES,                                                                             \
                SUBCOMMAND_IDS_OFFSET)                                                              \
-    option::Option{                                                                                \
+    cli::Option{                                                                                   \
         .prefixes = prefixes(PREFIXES_OFFSET),                                                     \
         .prefixed_name = str_at(NAME_OFFSET),                                                      \
         .id = OPT_##ID,                                                                            \
@@ -99,7 +99,7 @@ const option::OptTable& table() {
     };
 
     const static auto opt_table = [] {
-        auto t = option::OptTable(std::span(option_infos));
+        auto t = cli::OptTable(std::span(option_infos));
         t.tablegen_mode = true;
         return t;
     }();
@@ -317,7 +317,7 @@ bool is_xclang_option(unsigned id) {
 /// and -MMD take the file they write as their argument, which the table
 /// reads as an input.
 static bool dependency_options(llvm::ArrayRef<const char*> args) {
-    auto options = option::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
+    auto options = cli::ParseOptions{.visibility = family_visibility(CompilerFamily::GCC)};
     bool file_next = false;
     for(auto& parsed: clang_options::table().parse(args, options)) {
         if(!parsed) {
@@ -420,7 +420,7 @@ bool is_diagnostics_option(unsigned id) {
     return false;
 }
 
-std::uint16_t written_alias(const option::ParsedArg& parsed) {
+std::uint16_t written_alias(const cli::ParsedArg& parsed) {
     auto& options = clang_options::table().option_infos;
     auto written = [&](std::uint32_t id) {
         auto& option = options[id - 1];
@@ -455,7 +455,7 @@ void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
         }
         return;
     }
-    option::ParsedArg parsed;
+    cli::ParsedArg parsed;
     parsed.id = arg.opt_id;
     for(const char* value: arg.values) {
         parsed.add_value(value);
@@ -470,31 +470,31 @@ static void render_alias(const Arg& arg, llvm::function_ref<void(std::string_vie
     auto alias = clang_options::table().option(arg.alias);
     std::string name(alias->prefixed_name());
     // A flag alias implies its values (`-flto` is -flto=full).
-    if(alias->kind() == option::Kind::Flag) {
+    if(alias->kind() == cli::OptionKind::Flag) {
         cb(name);
         return;
     }
     switch(alias->render_style()) {
-        case option::RenderStyle::Joined:
+        case cli::RenderStyle::Joined:
             cb(name + arg.values[0]);
             for(const char* value: arg.values.drop_front()) {
                 cb(value);
             }
             return;
-        case option::RenderStyle::Separate:
+        case cli::RenderStyle::Separate:
             cb(name);
             for(const char* value: arg.values) {
                 cb(value);
             }
             return;
-        case option::RenderStyle::CommaJoined:
+        case cli::RenderStyle::CommaJoined:
             for(auto [i, value]: views::enumerate(arg.values)) {
                 name += i == 0 ? "" : ",";
                 name += value;
             }
             cb(name);
             return;
-        case option::RenderStyle::Values: std::unreachable();
+        case cli::RenderStyle::Values: std::unreachable();
     }
 }
 
@@ -518,7 +518,7 @@ void render_driver_arg(const Arg& arg,
     }
 
     auto reads_back = [&](std::vector<std::string>& fragments) {
-        auto parse_options = option::ParseOptions{.visibility = clang_options::CLOption};
+        auto parse_options = cli::ParseOptions{.visibility = clang_options::CLOption};
         std::size_t count = 0;
         bool same = true;
         for(auto& parsed: clang_options::table().parse(fragments, parse_options)) {
@@ -550,7 +550,7 @@ void render_driver_arg(const Arg& arg,
             continue;
         }
         std::vector<std::string> spelled{std::string(option.prefixed_name)};
-        if(option.kind != option::Kind::Flag) {
+        if(option.kind != cli::OptionKind::Flag) {
             if(arg.values.size() != 1) {
                 continue;
             }
@@ -583,13 +583,13 @@ std::string canonicalize(llvm::ArrayRef<std::string> args) {
     append(args[0]);
 
     std::vector<std::string> parse_args(args.begin() + 1, args.end());
-    auto options = option::ParseOptions{.dash_dash_parsing = true,
-                                        .visibility = family_visibility(driver_family(args[0]))};
+    auto options = cli::ParseOptions{.dash_dash_parsing = true,
+                                     .visibility = family_visibility(driver_family(args[0]))};
     for(auto& result: clang_options::table().parse(parse_args, options)) {
         /// Unparseable and unknown arguments are kept verbatim: dropping an
         /// option we don't understand could merge keys that must differ.
         if(!result || result->id == OPT_UNKNOWN) {
-            append(parse_args[result ? result->index : result.error().index]);
+            append(parse_args[result ? result->index : result.error().begin]);
             continue;
         }
         if(!is_discarded_option(result->id) && !is_codegen_option(result->id)) {

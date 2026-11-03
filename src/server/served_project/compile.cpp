@@ -33,7 +33,7 @@ namespace clice {
 static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TUIndex& preamble) {
     std::vector<feature::FileDiagnostic> diagnostics;
     [[maybe_unused]] auto status =
-        json::from_string<ipc::lsp_config>(preamble.preamble_diagnostics(), diagnostics);
+        json::from_string<ipc::lsp_format>(preamble.preamble_diagnostics(), diagnostics);
     return diagnostics;
 }
 

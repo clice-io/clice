@@ -27,9 +27,8 @@ namespace sys = kotatsu::sys;
 
 namespace async = kotatsu::async;
 
-namespace deco = kotatsu::deco;
+namespace cli = kotatsu::cli;
 namespace meta = kotatsu::meta;
-namespace option = kotatsu::option;
 namespace zest = kotatsu::zest;
 
 }  // namespace clice
