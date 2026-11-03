@@ -55,6 +55,10 @@ public:
     /// client held of it is forgotten.
     void retract(Fid path_id);
 
+    /// The document moved to another project, whose generations are its
+    /// own: its next compile there counts as one from changed inputs.
+    void moved(Fid path_id);
+
     /// The one refresh: the documents' results changed, so the client asks
     /// again for the semantic tokens, inlay hints and folding ranges it
     /// holds, each refresh it takes. Document links and the outline have no
@@ -179,7 +183,7 @@ private:
         std::optional<lsp::ProgressReporter<ipc::JSONPeer>> reporter;
     };
 
-    using RawResult = async::task<codec::RawValue, ipc::Error>;
+    using RawResult = async::task<codec::raw_value, ipc::Error>;
     using RequestContext = ipc::JSONPeer::RequestContext;
 
     // handshake.cpp
@@ -367,11 +371,26 @@ private:
     /// a client refuses to apply them to a buffer that moved on.
     bool versioned_edits = false;
 
-    /// Document version of each path's last compile output (see
-    /// push_output): an output arriving for the same version means the text
-    /// did not change, so the client's pulled results went stale without
-    /// any didChange to make it re-pull — the push path sends refreshes.
-    llvm::DenseMap<Fid, int> output_versions;
+    /// What push_output last pushed of each path's compile output.
+    struct Pushed {
+        /// The document version and the generation (DocumentCompile::
+        /// generation) of the last compile: one for the same version means
+        /// the text did not change, so with another generation the client's
+        /// pulled results went stale without any didChange to make it
+        /// re-pull — the push path sends refreshes; with the same one,
+        /// nothing it compiled from changed.
+        std::optional<int> version;
+
+        std::optional<std::uint64_t> generation;
+
+        /// For a client the server pushes diagnostics to, what it last
+        /// published: the version, the generation and the xxh3 of the
+        /// diagnostics.
+        std::optional<std::tuple<std::optional<int>, std::optional<std::uint64_t>, std::uint64_t>>
+            published;
+    };
+
+    llvm::DenseMap<Fid, Pushed> pushed;
 
     llvm::DenseMap<Fid, Pulled> pulled;
 
@@ -416,7 +435,7 @@ ext::ListConfigurationsResult list_configurations(const Project& project);
 std::optional<Spelling> uri_to_path(llvm::StringRef uri);
 
 /// The answer to a diagnostics pull.
-codec::RawValue full_report(std::vector<protocol::Diagnostic> items);
+codec::raw_value full_report(std::vector<protocol::Diagnostic> items);
 
 template <typename Params, typename Handler>
 void LSPClient::on_request(Handler handler) {
@@ -456,6 +475,7 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
                 return resolve_uri(params.text_document.uri);
             }
         }();
+        server.pool.used(document.path_id.raw);
         if(!options.closed && !document.session) {
             // A second name whose text parted from the first name's has no
             // answers until they agree again.
@@ -472,7 +492,7 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
                     co_return full_report(std::vector<protocol::Diagnostic>());
                 });
             } else {
-                return async::co_invoke([]() -> RawResult { co_return codec::RawValue{"null"}; });
+                return async::co_invoke([]() -> RawResult { co_return codec::raw_value{"null"}; });
             }
         }
         return answer(ctx, params, std::move(document));
@@ -480,22 +500,22 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
 }
 
 /// What `navigate`'s answer gives: the reply, or the error to answer with.
-using NavigationReply = std::expected<codec::RawValue, ipc::Error>;
+using NavigationReply = std::expected<codec::raw_value, ipc::Error>;
 
 /// Answer with what a gate decided instead (GateStop).
-async::task<codec::RawValue, ipc::Error> stop_reply(GateStop stop);
+async::task<codec::raw_value, ipc::Error> stop_reply(GateStop stop);
 
 /// A navigation request's answer from the symbol at its position,
 /// `answer`'s, once the compile gate passed (ServedProject::navigation_gate);
 /// `none` where no symbol is. A document not open is answered from the
 /// index alone.
 template <typename Answer>
-async::task<codec::RawValue, ipc::Error> navigate(ServedProject& project,
-                                                  const Ticket& ticket,
-                                                  Fid path_id,
-                                                  const protocol::Position& position,
-                                                  llvm::StringRef none,
-                                                  Answer answer) {
+async::task<codec::raw_value, ipc::Error> navigate(ServedProject& project,
+                                                   const Ticket& ticket,
+                                                   Fid path_id,
+                                                   const protocol::Position& position,
+                                                   llvm::StringRef none,
+                                                   Answer answer) {
     if(ticket.session) {
         if(auto stop = co_await project.navigation_gate(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
@@ -503,7 +523,7 @@ async::task<codec::RawValue, ipc::Error> navigate(ServedProject& project,
     }
     auto cursor = project.cursor_at(path_id, position);
     if(!cursor) {
-        co_return codec::RawValue{none.str()};
+        co_return codec::raw_value{none.str()};
     }
     auto reply = answer(*cursor);
     if(!reply) {

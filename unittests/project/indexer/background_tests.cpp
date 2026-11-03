@@ -142,7 +142,7 @@ ZEST_CASE(StartBooksOwed) {
     // nothing of and every outdated unit, DepsOnly, every unit owed the
     // variants a rebuild discarded, ContentChanged — and runs the pass.
     IndexerFixture f;
-    f.project.settings.project.idle_timeout_ms.value = 0;
+    f.project.settings.project.idle_timeout_ms = 0;
     auto unindexed = list_unit(f.project.cdb, "/fake/unindexed.cpp");
     auto outdated = list_unit(f.project.cdb, "/fake/outdated.cpp");
     auto owed = list_unit(f.project.cdb, "/fake/owed.cpp");
@@ -183,7 +183,7 @@ ZEST_CASE(ShutdownEndsPasses) {
     // what was booked stays booked for the next session, and nothing is
     // owed in this one.
     IndexerFixture f;
-    f.project.settings.project.idle_timeout_ms.value = 60'000;
+    f.project.settings.project.idle_timeout_ms = 60'000;
     auto unit = list_unit(f.project.cdb, "/fake/a.cpp");
     f.background.start();
     f.background.enqueue(unit, ReindexReason::ContentChanged);
@@ -193,7 +193,7 @@ ZEST_CASE(ShutdownEndsPasses) {
     ZEXPECT(f.queue.pending_reason(unit) == ReindexReason::ContentChanged);
     ZEXPECT(f.background.idle());
 
-    f.project.settings.project.idle_timeout_ms.value = 0;
+    f.project.settings.project.idle_timeout_ms = 0;
     f.background.schedule();
     f.background.schedule(/*immediate=*/true);
     f.loop.run();
@@ -435,7 +435,7 @@ ZEST_CASE(IndexFirstRearmsIdleTimer) {
     // it to fire now. Un-fixed, this test waits out the full idle window
     // below instead of finishing promptly.
     IndexerFixture f;
-    f.project.settings.project.idle_timeout_ms.value = 60'000;
+    f.project.settings.project.idle_timeout_ms = 60'000;
 
     auto id = list_unit(f.project.cdb, "/fake/a.cpp");
     f.background.enqueue(id, ReindexReason::ContentChanged);
@@ -500,7 +500,7 @@ ZEST_CASE(SaveStartsOwedPass) {
     tmp.touch("main.cpp", "int use() { return 0; }\n");
     IndexerFixture f;
     open_store(tmp, f.project);
-    f.project.settings.project.idle_timeout_ms.value = 0;
+    f.project.settings.project.idle_timeout_ms = 0;
     // The index started long before: its first pass is over.
     f.background.start();
     f.loop.run();
@@ -521,10 +521,10 @@ ZEST_CASE(SaveKeepsQueuedSchedule) {
     // armed: a save meanwhile owes it nothing.
     IndexerFixture f;
     // The index started: its first pass found nothing to index.
-    f.project.settings.project.idle_timeout_ms.value = 0;
+    f.project.settings.project.idle_timeout_ms = 0;
     f.background.start();
     f.loop.run();
-    f.project.settings.project.idle_timeout_ms.value = 60'000;
+    f.project.settings.project.idle_timeout_ms = 60'000;
 
     auto id = list_unit(f.project.cdb, "/fake/a.cpp");
     f.background.enqueue(id, ReindexReason::ContentChanged);
@@ -541,7 +541,7 @@ ZEST_CASE(IndexFirstSparesRunningPass) {
     // past the pass and leads the next one. Moved into the running pass,
     // it would run there a second time and push the pass's last file out.
     IndexerFixture f;
-    f.project.settings.project.idle_timeout_ms.value = 0;
+    f.project.settings.project.idle_timeout_ms = 0;
 
     llvm::SmallVector<Fid> files;
     for(auto name: {"/fake/a.cpp", "/fake/b.cpp", "/fake/c.cpp"}) {

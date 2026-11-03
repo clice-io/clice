@@ -14,6 +14,7 @@ import :support.logging;
 import :support.process;
 import :vfs.file_system;
 import :worker.probe;
+import :worker.resources;
 
 namespace clice {
 
@@ -104,29 +105,29 @@ void MasterServer::initialize() {
     pool_opts.min_stateless = 0;
     pool_opts.max_stateless = 0;
     bool unbounded = false;
+    auto machine_resident = default_max_resident(memory_state({}).limit);
+    std::size_t resident = 0;
     for(auto& project: projects) {
         auto& cfg = project->project.settings.project;
-        pool_opts.stateful_count =
-            std::max(pool_opts.stateful_count, cfg.stateful_worker_count.value);
-        pool_opts.stateless_count =
-            std::max(pool_opts.stateless_count, cfg.stateless_worker_count.value);
-        pool_opts.min_stateless =
-            std::max(pool_opts.min_stateless, cfg.min_stateless_worker_count.value);
-        pool_opts.max_stateless =
-            std::max(pool_opts.max_stateless, cfg.max_stateless_worker_count.value);
+        pool_opts.stateful_count = std::max(pool_opts.stateful_count, cfg.stateful_worker_count);
+        pool_opts.stateless_count = std::max(pool_opts.stateless_count, cfg.stateless_worker_count);
+        pool_opts.min_stateless = std::max(pool_opts.min_stateless, cfg.min_stateless_worker_count);
+        pool_opts.max_stateless = std::max(pool_opts.max_stateless, cfg.max_stateless_worker_count);
         // 0 leaves the ceiling to the core count, the largest one.
-        unbounded = unbounded || cfg.max_stateless_worker_count.value == 0;
+        unbounded = unbounded || cfg.max_stateless_worker_count == 0;
+        auto documents = cfg.max_resident_documents;
+        resident = std::max<std::size_t>(resident, documents == 0 ? machine_resident : documents);
     }
+    pool_opts.max_resident = resident;
     if(unbounded) {
         pool_opts.max_stateless = 0;
     }
     // Let integration tests hang a worker without waiting out the real
-    // deadline, and drive eviction through a real server.
+    // deadline.
     if(auto ms = env_integer("CLICE_TEST_REQUEST_DEADLINE_MS")) {
         pool_opts.build_deadline = pool_opts.query_deadline = pool_opts.stall_deadline =
             chrono::milliseconds(*ms);
     }
-    pool_opts.max_documents = env_integer("CLICE_TEST_MAX_DOCUMENTS");
 
     auto& first = projects.front()->project.settings.project;
     if(!first.logging_dir.empty()) {
@@ -145,12 +146,11 @@ void MasterServer::initialize() {
              pool_opts.stateful_count,
              pool_opts.stateless_count);
 
-    if(projects.front()->project.settings.project.test_hooks.value) {
+    if(projects.front()->project.settings.project.test_hooks) {
         pool.probe = &probe;
     }
     if(pool.start(pool_opts)) {
         lifecycle = ServerLifecycle::Ready;
-        route_pool_callbacks();
         for(auto& project: projects) {
             project->start();
         }
@@ -168,54 +168,6 @@ void MasterServer::initialize() {
     if(client) {
         client->publish_settings_diagnostics();
     }
-}
-
-void MasterServer::route_pool_callbacks() {
-    pool.on_crash = [this](const WorkerCrashInfo& info) {
-        // A stateless crash loses only in-flight requests, which fail back
-        // to their senders (see deliver). No state outlives the request, so
-        // there is nothing to invalidate.
-        if(!info.stateful)
-            return;
-        llvm::DenseMap<ServedProject*, llvm::SmallVector<Fid>> lost;
-        for(auto id: info.lost_documents) {
-            if(auto* document = find_document(Fid{id}); document && document->owner) {
-                lost[document->owner].push_back(Fid{id});
-            }
-        }
-        for(auto& [project, documents]: lost) {
-            project->asts_lost(documents);
-        }
-    };
-
-    pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
-        auto id = files.find(Spelling::absolute(path));
-        assert(id && "an evicted document the master never sent");
-        // Owner-table upkeep is pool-domain state and stays here; the
-        // document's side of it (the worker's AST is gone, same as a crash)
-        // goes to its owner. A live attempt's compile puts the document back
-        // on its owner — the worker evicted it before that compile arrived,
-        // or it would have kept it — so the eviction changes nothing. One
-        // that crossed the compile's reply over IPC leaves the master
-        // trusting a document the worker no longer holds: the next query
-        // hears document_unloaded and compiles it again (see ast_request).
-        auto* document = find_document(*id);
-        auto* project = document ? document->owner : nullptr;
-        if(project && project->compiling(*id)) {
-            LOG_INFO("Ignoring eviction of {}: a compile of it is under way", path);
-            return;
-        }
-        // Only the current owner's eviction counts: a copy left behind on
-        // a worker that lost ownership says nothing about the document the
-        // new owner still holds.
-        if(pool.remove_owner_from(id->raw, worker_index)) {
-            if(project) {
-                project->asts_lost({*id});
-            }
-        } else {
-            LOG_INFO("Ignoring eviction of {} from non-owner worker {}", path, worker_index);
-        }
-    };
 }
 
 void MasterServer::schedule_shutdown() {

@@ -61,15 +61,18 @@ export function commandsAndFlags(clice: string): { commands: string[]; flags: st
         const children = [...listed.matchAll(/^ {2,}([a-z][\w-]*) {2,}\S/gm)].map(
             (match) => match[1] ?? "",
         );
-        // A subcommand that runs without an operation prints its own usage
-        // above its operations.
-        if (path.length > 0 && (children.length === 0 || /^usage: /m.test(text))) {
+        const options = [...text.matchAll(/^ {2,}(?:-\w\|)?(--[a-z][\w-]*)/gm)]
+            .map((match) => match[1] ?? "")
+            .filter((option) => option !== "--help");
+        // A subcommand with options beside --help runs without an operation.
+        if (path.length > 0 && (children.length === 0 || options.length > 0)) {
             commands.push(path.join(" "));
         }
-        for (const match of text.matchAll(/^ {2,}(?:-\w\|)?(--[a-z][\w-]*)/gm)) {
-            if (match[1] !== "--help") {
-                flags.push(`${path.join(" ")} ${match[1] ?? ""}`);
-            }
+        // The root's own options are written before any command, as `*`
+        // says.
+        const owner = path.length > 0 ? path.join(" ") : "*";
+        for (const option of options) {
+            flags.push(`${owner} ${option}`);
         }
         for (const child of children) {
             visit([...path, child]);

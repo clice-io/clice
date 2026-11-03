@@ -18,4 +18,8 @@ MemoryState memory_state(std::span<const sys::ProcessStats> workers) {
     return {.headroom = memory->available, .reserve = reserve, .limit = memory->limit};
 }
 
+std::size_t default_max_resident(std::uint64_t limit) {
+    return std::clamp<std::uint64_t>(limit / 1'000'000'000, 8, 32);
+}
+
 }  // namespace clice

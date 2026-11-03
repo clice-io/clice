@@ -1,0 +1,5 @@
+[test."library host"]
+inactive_lines = ['⟦inline const char* backend() { return "app"; }⟧']
+
+[test."application host"]
+inactive_lines = ['⟦inline const char* backend() { return "lib"; }⟧']

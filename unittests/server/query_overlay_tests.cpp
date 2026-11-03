@@ -67,8 +67,8 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     compiled->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit)))));
     compiled->pch_key = "key";
+    compiled->generation = fx.generation(session->path_id);
     entry.latest = std::move(compiled);
-    entry.current = true;
 }
 
 index::SymbolHash hash_of(llvm::StringRef name,
@@ -481,8 +481,8 @@ int main() { return 0; }
     auto& other_entry = fx.entry(other->path_id);
     auto other_compiled = std::make_shared<DocumentCompile>();
     other_compiled->pch_key = "key";
+    other_compiled->generation = fx.generation(other->path_id);
     other_entry.latest = std::move(other_compiled);
-    other_entry.current = true;
 
     auto locations = relations("macro", RelationKind::Reference);
     ZASSERT(locations.size() == 1);
@@ -499,7 +499,7 @@ int main() { return 0; }
     // Body edits dirty the document but never move preamble entries: as
     // long as the buffer still starts with the blob's preamble text, the
     // entry keeps serving — the prefix comparison is the freshness check.
-    fx.entry(session->path_id).current = false;
+    fx.served->invalidate(session->path_id);
     session->set_text(session->text().str() + "int more;\n");
     ZEXPECT(index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition));
 }
@@ -584,7 +584,7 @@ ZEST_CASE(UnreadableBlobCleared) {
     st.index_path = dir.path("junk.pch.idx");
     ZEXPECT(st.load_index() == nullptr);
     // The cleared path makes the pair look incomplete, so the next
-    // ensure_pch round rebuilds it instead of retrying the mmap forever.
+    // PCH attempt rebuilds it instead of retrying the mmap forever.
     ZEXPECT(st.index_path.empty());
 }
 

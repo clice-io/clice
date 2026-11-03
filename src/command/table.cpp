@@ -79,11 +79,11 @@ const Command& CommandTable::get(CommandID id) const {
     return *commands.get(static_cast<std::uint32_t>(id));
 }
 
-LocalArg CommandTable::local_arg(const std::expected<option::ParsedArg, option::ParseError>& parsed,
+LocalArg CommandTable::local_arg(const std::expected<cli::ParsedArg, cli::Error>& parsed,
                                  llvm::ArrayRef<std::string> tokens) {
     if(!parsed || parsed->id == clang_options::OPT_UNKNOWN ||
        parsed->id == clang_options::OPT_INPUT) {
-        auto index = parsed ? parsed->index : parsed.error().index;
+        auto index = parsed ? parsed->index : parsed.error().begin;
         return {.opt_id = clang_options::OPT_UNKNOWN,
                 .cls = ArgClass::Unknown,
                 .spelling = strings.save(tokens[index]).data()};

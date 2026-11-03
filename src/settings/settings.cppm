@@ -44,151 +44,152 @@ using CommandSpelling = std::variant<std::string, std::vector<std::string>>;
 /// A file-pattern rule: where matching files take their compile commands
 /// from and how those commands are edited. Corresponds to `[[rules]]` in
 /// clice.toml.
+KANNOTATE_TYPE(struct Rule, presence_all = optional);
 struct Rule {
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Glob patterns selecting the files this rule applies "
-                         "to. A relative pattern is anchored at this "
-                         "configuration file's directory (`..` segments "
-                         "allowed), or at the project root for a rule passed "
-                         "through initializationOptions; an absolute pattern "
-                         "or one starting with `**` matches the file's "
-                         "absolute path. "
-                         "`*` matches within a path segment, `?` a single "
-                         "character, `**` any number of segments, `{a,b}` "
-                         "alternatives, `[0-9]` a character range, `[!...]` a "
-                         "negated range. Omitted means every file.")
-    <std::vector<std::string>> patterns;
+    KANNOTATE(&patterns,
+              description =
+                  "Glob patterns selecting the files this rule applies "
+                  "to. A relative pattern is anchored at this "
+                  "configuration file's directory (`..` segments "
+                  "allowed), or at the project root for a rule passed "
+                  "through initializationOptions; an absolute pattern "
+                  "or one starting with `**` matches the file's "
+                  "absolute path. "
+                  "`*` matches within a path segment, `?` a single "
+                  "character, `**` any number of segments, `{a,b}` "
+                  "alternatives, `[0-9]` a character range, `[!...]` a "
+                  "negated range. Omitted means every file.")
+    std::vector<std::string> patterns;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Build configuration tag. A tagged rule applies only "
-                         "while that configuration is active; an untagged rule "
-                         "always applies. The distinct tags form the "
-                         "configuration menu; `--configuration`, the persisted "
-                         "selection and `default_configuration` pick the active "
-                         "one, in that order.")
-    <std::string> configuration;
+    KANNOTATE(&configuration,
+              description =
+                  "Build configuration tag. A tagged rule applies only "
+                  "while that configuration is active; an untagged rule "
+                  "always applies. The distinct tags form the "
+                  "configuration menu; `--configuration`, the persisted "
+                  "selection and `default_configuration` pick the active "
+                  "one, in that order.")
+    std::string configuration;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Compilation databases, in priority order: a "
-                         "compile_commands.json or a directory containing one, "
-                         "relative to this configuration file (to the "
-                         "project root for a rule passed through "
-                         "initializationOptions). All of them load, and every "
-                         "entry applies to its own file "
-                         "whatever the patterns say; the patterns and the "
-                         "order decide which entry a file present in several "
-                         "databases gets by default. A rule without patterns "
-                         "names the project's databases. When no rule "
-                         "declares a source, every compile_commands.json in "
-                         "the project root and its immediate subdirectories "
-                         "loads, and so do the ones in the directories above "
-                         "a file when it is opened; a directory below the root "
-                         "with a clice.toml or .clice/config.toml of its own "
-                         "is another project, and none in it loads.")
-    <std::vector<std::string>> compile_commands;
+    KANNOTATE(&compile_commands,
+              description =
+                  "Compilation databases, in priority order: a "
+                  "compile_commands.json or a directory containing one, "
+                  "relative to this configuration file (to the "
+                  "project root for a rule passed through "
+                  "initializationOptions). All of them load, and every "
+                  "entry applies to its own file "
+                  "whatever the patterns say; the patterns and the "
+                  "order decide which entry a file present in several "
+                  "databases gets by default. A rule without patterns "
+                  "names the project's databases. When no rule "
+                  "declares a source, every compile_commands.json in "
+                  "the project root and its immediate subdirectories "
+                  "loads, and so do the ones in the directories above "
+                  "a file when it is opened; a directory below the root "
+                  "with a clice.toml or .clice/config.toml of its own "
+                  "is another project, and none in it loads.")
+    std::vector<std::string> compile_commands;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Whether builds are told apart by the real paths this "
-                         "rule's `compile_commands` resolve to, through symlinks "
-                         "and Windows junctions, rather than by the "
-                         "configuration's name: for a build system that selects "
-                         "a build by pointing a link at its directory. Each real "
-                         "path keeps an index of its own, and when the link is "
-                         "pointed elsewhere the server asks to be restarted on "
-                         "that build's index, which still holds what an earlier "
-                         "session indexed there. A configuration whose rules differ "
-                         "from this configuration's only in naming exactly "
-                         "those databases directly shares its index. The index "
-                         "of a build no longer used stays in the cache "
-                         "directory until deleted.")
-    <bool> resolve_symlinks = false;
+    KANNOTATE(&resolve_symlinks,
+              description =
+                  "Whether builds are told apart by the real paths this "
+                  "rule's `compile_commands` resolve to, through symlinks "
+                  "and Windows junctions, rather than by the "
+                  "configuration's name: for a build system that selects "
+                  "a build by pointing a link at its directory. Each real "
+                  "path keeps an index of its own, and when the link is "
+                  "pointed elsewhere the server asks to be restarted on "
+                  "that build's index, which still holds what an earlier "
+                  "session indexed there. A configuration whose rules differ "
+                  "from this configuration's only in naming exactly "
+                  "those databases directly shares its index. The index "
+                  "of a build no longer used stays in the cache "
+                  "directory until deleted.")
+    bool resolve_symlinks = false;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "The compile command for matching files without a "
-                         "database entry, without the source file: a string "
-                         "tokenized like a shell command line, or an argv "
-                         "array. It runs from the directory of the configuration "
-                         "file it was read from (the project root for a rule "
-                         "passed through initializationOptions), and the "
-                         "matching source files on disk "
-                         "join the background index (unless the rule turns "
-                         "`index` off) — enumerated at startup and again on "
-                         "every workspace poll, so a file created later "
-                         "compiles when opened and joins the index within a "
-                         "poll period. A file clang has no language for (an "
-                         "Arduino `.ino`, an extensionless tool) is a source "
-                         "only when the command forces a language (`-x c++`) "
-                         "and a pattern names its suffix (`*.ino`) or the file "
-                         "itself. Omitted means none.")
-    <CommandSpelling> default_command;
+    KANNOTATE(&default_command,
+              description =
+                  "The compile command for matching files without a "
+                  "database entry, without the source file: a string "
+                  "tokenized like a shell command line, or an argv "
+                  "array. It runs from the directory of the configuration "
+                  "file it was read from (the project root for a rule "
+                  "passed through initializationOptions), and the "
+                  "matching source files on disk "
+                  "join the background index (unless the rule turns "
+                  "`index` off) — enumerated at startup and again on "
+                  "every workspace poll, so a file created later "
+                  "compiles when opened and joins the index within a "
+                  "poll period. A file clang has no language for (an "
+                  "Arduino `.ino`, an extensionless tool) is a source "
+                  "only when the command forces a language (`-x c++`) "
+                  "and a pattern names its suffix (`*.ino`) or the file "
+                  "itself. Omitted means none.")
+    CommandSpelling default_command;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Compilation flags appended for matching files, e.g. "
-                         "`[\"-std=c++20\", \"-DNDEBUG\"]`.")
-    <std::vector<std::string>> append;
+    KANNOTATE(&append,
+              description =
+                  "Compilation flags appended for matching files, e.g. "
+                  "`[\"-std=c++20\", \"-DNDEBUG\"]`.")
+    std::vector<std::string> append;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Compilation flags removed for matching files, e.g. "
-                         "`[\"-Wall\"]`. A flag with a value removes that value "
-                         "(`-DDEBUG`), the next element being a separate value "
-                         "as on a command line; one with `*` for its value "
-                         "(`-I*`, `[\"-include\", \"*\"]`), or without one "
-                         "at the end of the list (`[\"-include\"]`), removes "
-                         "every value; a `*` right after a flag's name removes "
-                         "every flag of its kind spelled with that prefix "
-                         "(`-W*` takes `-Wall` and `-Wextra` too).")
-    <std::vector<std::string>> remove;
+    KANNOTATE(&remove,
+              description =
+                  "Compilation flags removed for matching files, e.g. "
+                  "`[\"-Wall\"]`. A flag with a value removes that value "
+                  "(`-DDEBUG`), the next element being a separate value "
+                  "as on a command line; one with `*` for its value "
+                  "(`-I*`, `[\"-include\", \"*\"]`), or without one "
+                  "at the end of the list (`[\"-include\"]`), removes "
+                  "every value; a `*` right after a flag's name removes "
+                  "every flag of its kind spelled with that prefix "
+                  "(`-W*` takes `-Wall` and `-Wextra` too).")
+    std::vector<std::string> remove;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Whether clice runs the compiler of matching files' "
-                         "commands to ask how it compiles them: its target, "
-                         "standard library and system headers, predefined "
-                         "macros and default language standard. `false` runs "
-                         "no compiler: clice's own clang reads the command as "
-                         "written, with clang's defaults for the compiler's "
-                         "name. Any matching rule saying `false` wins.")
-    <bool> query_toolchain = true;
+    KANNOTATE(&query_toolchain,
+              description =
+                  "Whether clice runs the compiler of matching files' "
+                  "commands to ask how it compiles them: its target, "
+                  "standard library and system headers, predefined "
+                  "macros and default language standard. `false` runs "
+                  "no compiler: clice's own clang reads the command as "
+                  "written, with clang's defaults for the compiler's "
+                  "name. Any matching rule saying `false` wins.")
+    bool query_toolchain = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Whether matching translation units join the "
-                         "background index. `false` keeps them out; they still "
-                         "compile when opened and still host the headers they "
-                         "include. Any matching rule saying `false` wins.")
-    <bool> index = true;
+    KANNOTATE(&index,
+              description =
+                  "Whether matching translation units join the "
+                  "background index. `false` keeps them out; they still "
+                  "compile when opened and still host the headers they "
+                  "include. Any matching rule saying `false` wins.")
+    bool index = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Whether `clice lint` checks matching files. `false` "
-                         "keeps them out: their findings are dropped and a "
-                         "translation unit they head is not parsed, unless "
-                         "`--index` needs it for the index. Files outside the "
-                         "project are never checked. Any matching rule "
-                         "saying `false` wins.")
-    <bool> lint = true;
+    KANNOTATE(&lint,
+              description =
+                  "Whether `clice lint` checks matching files. `false` "
+                  "keeps them out: their findings are dropped and a "
+                  "translation unit they head is not parsed, unless "
+                  "`--index` needs it for the index. Files outside the "
+                  "project are never checked. Any matching rule "
+                  "saying `false` wins.")
+    bool lint = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Whether `clice format` formats matching files. "
-                         "`false` keeps them out. Files outside the project "
-                         "are never formatted. Any matching rule saying "
-                         "`false` wins.")
-    <bool> format = true;
+    KANNOTATE(&format,
+              description =
+                  "Whether `clice format` formats matching files. "
+                  "`false` keeps them out. Files outside the project "
+                  "are never formatted. Any matching rule saying "
+                  "`false` wins.")
+    bool format = true;
 
     /// Where the rule's relative paths and patterns anchor and its default
     /// command runs: the directory of the configuration file it was read
     /// from; empty for a rule from initializationOptions, which anchors at
     /// the project root.
-    KOTATSU_ANNOTATE(skip = true)
-    <std::string> directory;
+    KANNOTATE(&directory, skip = true)
+    std::string directory;
 };
 
 /// How open files are served (`readonly`). Routing is not governed by this:
@@ -218,164 +219,177 @@ enum class ReadonlyMode : std::uint8_t {
 /// initializers are the defaults; `cache_dir` and `logging_dir` stay empty
 /// here because their defaults derive from the project root in
 /// finalize().
+KANNOTATE_TYPE(struct ProjectSettings, presence_all = optional);
 struct ProjectSettings {
     /// finalize() leaves it the directory's identity, empty for none;
     /// cache_identity names the directory.
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Directory for the unified on-disk cache (PCHs, PCMs and "
-                         "the index). Empty defaults to `${workspace}/.clice`, "
-                         "which keeps itself out of version control and backups via "
-                         "generated .gitignore and CACHEDIR.TAG markers (a "
-                         "`.clice/config.toml` stays visible to Git; backup tools "
-                         "honoring CACHEDIR.TAG skip the whole directory); an "
-                         "explicitly configured directory is never marked. The "
-                         "resolved path is printed at startup.")
-    <std::string> cache_dir;
+    KANNOTATE(&cache_dir,
+              description =
+                  "Directory for the unified on-disk cache (PCHs, PCMs and "
+                  "the index). Empty defaults to `${workspace}/.clice`, "
+                  "which keeps itself out of version control and backups via "
+                  "generated .gitignore and CACHEDIR.TAG markers (a "
+                  "`.clice/config.toml` stays visible to Git; backup tools "
+                  "honoring CACHEDIR.TAG skip the whole directory); an "
+                  "explicitly configured directory is never marked. The "
+                  "resolved path is printed at startup.")
+    std::string cache_dir;
 
     /// Whether finalize() derived cache_dir rather than the user setting
     /// it. Only such a dedicated root receives the self-ignore markers —
     /// a configured directory may be shared with other content.
-    KOTATSU_ANNOTATE(skip = true)
-    <bool> cache_dir_defaulted = false;
+    KANNOTATE(&cache_dir_defaulted, skip = true)
+    bool cache_dir_defaulted = false;
 
     /// The identity of cache_dir, empty for none: finalize() resolves it
     /// with cache_dir.
-    KOTATSU_ANNOTATE(skip = true)
-    <CanonicalPath> cache_identity;
+    KANNOTATE(&cache_identity, skip = true)
+    CanonicalPath cache_identity;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Directory for log files; empty derives `${cache_dir}/logs`. "
-                         "Each server session logs into its own timestamped "
-                         "subdirectory.")
-    <std::string> logging_dir;
+    KANNOTATE(&logging_dir,
+              description =
+                  "Directory for log files; empty derives `${cache_dir}/logs`. "
+                  "Each server session logs into its own timestamped "
+                  "subdirectory.")
+    std::string logging_dir;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Build the background index that serves cross-TU "
-                         "features (find references, workspace symbols, ...).")
-    <bool> enable_indexing = true;
+    KANNOTATE(&enable_indexing,
+              description =
+                  "Build the background index that serves cross-TU "
+                  "features (find references, workspace symbols, ...).")
+    bool enable_indexing = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Index what the standard library's own template "
-                         "instantiations and macros resolve inside the library — "
-                         "the comparator `std::sort` calls, the destructor "
-                         "`std::vector` runs — so references and the call "
-                         "hierarchy reach those places. Off by default: they are "
-                         "library internals, and walking them costs indexing time "
-                         "and space. Applies to the units indexed after a change.")
-    <bool> standard_library_instantiations = false;
+    KANNOTATE(&standard_library_instantiations,
+              description =
+                  "Index what the standard library's own template "
+                  "instantiations and macros resolve inside the library — "
+                  "the comparator `std::sort` calls, the destructor "
+                  "`std::vector` runs — so references and the call "
+                  "hierarchy reach those places. Off by default: they are "
+                  "library internals, and walking them costs indexing time "
+                  "and space. Applies to the units indexed after a change.")
+    bool standard_library_instantiations = false;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Skip the bodies of the functions in the headers an open "
-                         "file includes at its top, as clangd does, but those of "
-                         "templates forwarding their arguments (`make_unique`) and "
-                         "of `constexpr` and `auto` functions, which clang always "
-                         "parses. The file opens and rebuilds after an edit several "
-                         "times faster and holds less memory; the price is the "
-                         "errors and warnings inside those bodies, a header "
-                         "template's instantiated from the file among them, and "
-                         "whether a declaration is unused, which show only when "
-                         "the background index has compiled the file as it is "
-                         "saved. The background index and every command but "
-                         "`clice inspect` still compile the bodies.")
-    <bool> skip_header_bodies = true;
+    KANNOTATE(&skip_header_bodies,
+              description =
+                  "Skip the bodies of the functions in the headers an open "
+                  "file includes at its top, as clangd does, but those of "
+                  "templates forwarding their arguments (`make_unique`) and "
+                  "of `constexpr` and `auto` functions, which clang always "
+                  "parses. The file opens and rebuilds after an edit several "
+                  "times faster and holds less memory; the price is the "
+                  "errors and warnings inside those bodies, a header "
+                  "template's instantiated from the file among them, and "
+                  "whether a declaration is unused, which show only when "
+                  "the background index has compiled the file as it is "
+                  "saved. The background index and every command but "
+                  "`clice inspect` still compile the bodies.")
+    bool skip_header_bodies = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     enum_string = type<LowercaseName>,
-                     description =
-                         "Read-only serving for open files: \"off\" targets a "
-                         "full AST for every open file — builds are pulled by "
-                         "the first request that needs them, with the index "
-                         "answering in the meantime; \"on\" builds no "
-                         "preamble PCH — reads serve from the index alone (a "
-                         "cold file jumps the indexing queue), while completion "
-                         "and signature help still compile on demand without a "
-                         "preamble; \"auto\" starts every file as \"on\", "
-                         "switches it to \"off\" at the first edit intent "
-                         "(edit, completion, signature help, context switch), "
-                         "and falls back to \"off\" for a file the index "
-                         "cannot serve. Feature routing always answers from "
-                         "the best source currently available.")
-    <ReadonlyMode> readonly = ReadonlyMode::Off;
+    KANNOTATE(&readonly,
+              with = type<LowercaseNames>,
+              description =
+                  "Read-only serving for open files: \"off\" targets a "
+                  "full AST for every open file — builds are pulled by "
+                  "the first request that needs them, with the index "
+                  "answering in the meantime; \"on\" builds no "
+                  "preamble PCH — reads serve from the index alone (a "
+                  "cold file jumps the indexing queue), while completion "
+                  "and signature help still compile on demand without a "
+                  "preamble; \"auto\" starts every file as \"on\", "
+                  "switches it to \"off\" at the first edit intent "
+                  "(edit, completion, signature help, context switch), "
+                  "and falls back to \"off\" for a file the index "
+                  "cannot serve. Feature routing always answers from "
+                  "the best source currently available.")
+    ReadonlyMode readonly = ReadonlyMode::Off;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Idle delay in milliseconds before background indexing "
-                         "starts.")
-    <std::uint32_t> idle_timeout_ms = 3000;
+    KANNOTATE(&idle_timeout_ms,
+              description =
+                  "Idle delay in milliseconds before background indexing "
+                  "starts.")
+    std::uint32_t idle_timeout_ms = 3000;
 
     /// The hooks can generate load on demand (log floods).
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Enable the clice/internal test hooks used by the test "
-                         "harness.")
-    <bool> test_hooks = false;
+    KANNOTATE(&test_hooks,
+              description =
+                  "Enable the clice/internal test hooks used by the test "
+                  "harness.")
+    bool test_hooks = false;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     minimum = 1,
-                     description =
-                         "Number of stateful workers — they hold ASTs in memory "
-                         "and serve queries (hover, semantic tokens, ...); at "
-                         "least 1.")
-    <std::uint32_t> stateful_worker_count = 2;
+    KANNOTATE(&stateful_worker_count,
+              minimum = 1,
+              description =
+                  "Number of stateful workers — they hold ASTs in memory "
+                  "and serve queries (hover, semantic tokens, ...); at "
+                  "least 1.")
+    std::uint32_t stateful_worker_count = 2;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     schema_default = false,
-                     minimum = 1,
-                     description =
-                         "Number of stateless workers started — they handle "
-                         "ephemeral tasks (PCH/PCM builds, completion, signature "
-                         "help, background indexing) — and the most that "
-                         "background indexing keeps busy at once; defaults to "
-                         "half the machine's physical cores, at least 2. At "
-                         "least 1.")
-    <std::uint32_t> stateless_worker_count = default_stateless_worker_count();
+    KANNOTATE(&max_resident_documents,
+              description =
+                  "How many open documents keep their AST in the stateful "
+                  "workers. Past it, the document asked about least "
+                  "recently gives its AST up: it answers what its last "
+                  "compile's answers cover, and compiles again for the "
+                  "rest. `0` means one per GB of memory, at least 8 and "
+                  "at most 32, which is also the default.")
+    std::uint32_t max_resident_documents = 0;
+
+    KANNOTATE(&stateless_worker_count,
+              schema_default = false,
+              minimum = 1,
+              description =
+                  "Number of stateless workers started — they handle "
+                  "ephemeral tasks (PCH/PCM builds, completion, signature "
+                  "help, background indexing) — and the most that "
+                  "background indexing keeps busy at once; defaults to "
+                  "half the machine's physical cores, at least 2. At "
+                  "least 1.")
+    std::uint32_t stateless_worker_count = default_stateless_worker_count();
 
     /// See WorkerPoolOptions.
-    KOTATSU_ANNOTATE(defaulted = true,
-                     minimum = 1,
-                     description =
-                         "Lower bound for dynamic stateless-worker scaling; at "
-                         "least 1.")
-    <std::uint32_t> min_stateless_worker_count = 1;
+    KANNOTATE(&min_stateless_worker_count,
+              minimum = 1,
+              description =
+                  "Lower bound for dynamic stateless-worker scaling; at "
+                  "least 1.")
+    std::uint32_t min_stateless_worker_count = 1;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     schema_default = false,
-                     description =
-                         "Upper bound for dynamic stateless-worker scaling, which "
-                         "only interactive work that finds every worker busy "
-                         "reaches; `0` means the machine's physical cores, which "
-                         "is also the default.")
-    <std::uint32_t> max_stateless_worker_count = default_max_stateless_worker_count();
+    KANNOTATE(&max_stateless_worker_count,
+              schema_default = false,
+              description =
+                  "Upper bound for dynamic stateless-worker scaling, which "
+                  "only interactive work that finds every worker busy "
+                  "reaches; `0` means the machine's physical cores, which "
+                  "is also the default.")
+    std::uint32_t max_stateless_worker_count = default_max_stateless_worker_count();
 };
 
 /// Corresponds to the `[tracker]` section in clice.toml: how often files
 /// are looked at in the background (integration tests drive ticks through
 /// the clice/internal/poll hook instead).
+KANNOTATE_TYPE(struct TrackerSettings, presence_all = optional);
 struct TrackerSettings {
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Longest interval in seconds between two background looks at a "
-                         "workspace file: the interval doubles at every look that finds the "
-                         "file unchanged, up to this. 0 disables background polling, "
-                         "compilation databases included.")
-    <std::uint32_t> workspace_poll_seconds = 30;
+    KANNOTATE(&workspace_poll_seconds,
+              description =
+                  "Longest interval in seconds between two background looks at a "
+                  "workspace file: the interval doubles at every look that finds the "
+                  "file unchanged, up to this. 0 disables background polling, "
+                  "compilation databases included.")
+    std::uint32_t workspace_poll_seconds = 30;
 };
 
 /// Corresponds to the `[references]` section in clice.toml.
+KANNOTATE_TYPE(struct ReferencesSettings, presence_all = optional);
 struct ReferencesSettings {
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Maximum number of locations a references request "
-                         "answers with; `0` means no limit. A reply cut short "
-                         "keeps the locations in the file it is asked from "
-                         "before any other. `clice query references` lists "
-                         "every one.")
-    <std::uint32_t> limit = 2000;
+    KANNOTATE(&limit,
+              description =
+                  "Maximum number of locations a references request "
+                  "answers with; `0` means no limit. A reply cut short "
+                  "keeps the locations in the file it is asked from "
+                  "before any other. `clice query references` lists "
+                  "every one.")
+    std::uint32_t limit = 2000;
 };
 
 /// A rule after finalize(): patterns compiled, paths anchored.
@@ -463,75 +477,69 @@ struct SettingsIssue {
 /// and only touches the fields it names, nested sections merging per field.
 /// finalize() never fills option defaults; it only computes derived
 /// values from the merged result.
+KANNOTATE_TYPE(struct Settings, presence_all = optional);
 struct Settings {
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "The build configuration to fall back on when neither "
-                         "`--configuration` nor a persisted selection names one: "
-                         "a tag declared on rules; a name no rule declares is an "
-                         "error. Unset, the first declared tag is used.")
-    <std::string> default_configuration;
+    KANNOTATE(&default_configuration,
+              description =
+                  "The build configuration to fall back on when neither "
+                  "`--configuration` nor a persisted selection names one: "
+                  "a tag declared on rules; a name no rule declares is an "
+                  "error. Unset, the first declared tag is used.")
+    std::string default_configuration;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description = "The [project] section: project-wide server options.")
-    <ProjectSettings> project;
+    KANNOTATE(&project, description = "The [project] section: project-wide server options.")
+    ProjectSettings project;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description = "The [tracker] section: background polling of files.")
-    <TrackerSettings> tracker;
+    KANNOTATE(&tracker, description = "The [tracker] section: background polling of files.")
+    TrackerSettings tracker;
 
-    // The feature sections are the features' own options: `defaulted =
-    // true` lets a decode leave unmentioned fields at their initializers, so
-    // those are the single source of every default and a settings source only
-    // ever overlays what it names.
+    // The feature sections are the features' own options: their optional
+    // presence lets a decode leave unmentioned fields at their initializers,
+    // so those are the single source of every default and a settings source
+    // only ever overlays what it names.
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description = "The [diagnostics] section: diagnostic options.")
-    <feature::DiagnosticsOptions> diagnostics;
+    KANNOTATE(&diagnostics, description = "The [diagnostics] section: diagnostic options.")
+    feature::DiagnosticsOptions diagnostics;
 
-    KOTATSU_ANNOTATE(
-        defaulted = true,
-        description = "The [documentation] section: how documentation comments are read.")
-    <feature::DocumentationOptions> documentation;
+    KANNOTATE(&documentation,
+              description = "The [documentation] section: how documentation comments are read.")
+    feature::DocumentationOptions documentation;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description = "The [hover] section: hover rendering options.")
-    <feature::HoverOptions> hover;
+    KANNOTATE(&hover, description = "The [hover] section: hover rendering options.")
+    feature::HoverOptions hover;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description = "The [document_symbols] section: what the outline lists.")
-    <feature::DocumentSymbolsOptions> document_symbols;
+    KANNOTATE(&document_symbols,
+              description = "The [document_symbols] section: what the outline lists.")
+    feature::DocumentSymbolsOptions document_symbols;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description = "The [inlay_hints] section: inlay hint options.")
-    <feature::InlayHintsOptions> inlay_hints;
+    KANNOTATE(&inlay_hints, description = "The [inlay_hints] section: inlay hint options.")
+    feature::InlayHintsOptions inlay_hints;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "The [semantic_tokens] section: what the semantic tokens "
-                         "hold and the names they are sent by.")
-    <feature::SemanticTokensOptions> semantic_tokens;
+    KANNOTATE(&semantic_tokens,
+              description =
+                  "The [semantic_tokens] section: what the semantic tokens "
+                  "hold and the names they are sent by.")
+    feature::SemanticTokensOptions semantic_tokens;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description = "The [code_completion] section: code completion options.")
-    <feature::CodeCompletionOptions> code_completion;
+    KANNOTATE(&code_completion,
+              description = "The [code_completion] section: code completion options.")
+    feature::CodeCompletionOptions code_completion;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description = "The [signature_help] section: signature help options.")
-    <feature::SignatureHelpOptions> signature_help;
+    KANNOTATE(&signature_help,
+              description = "The [signature_help] section: signature help options.")
+    feature::SignatureHelpOptions signature_help;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description = "The [references] section: what find references answers.")
-    <ReferencesSettings> references;
+    KANNOTATE(&references, description = "The [references] section: what find references answers.")
+    ReferencesSettings references;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "File-pattern rules that adjust compilation flags "
-                         "([[rules]] in clice.toml).")
-    <std::vector<Rule>> rules;
+    KANNOTATE(&rules,
+              description =
+                  "File-pattern rules that adjust compilation flags "
+                  "([[rules]] in clice.toml).")
+    std::vector<Rule> rules;
 
-    KOTATSU_ANNOTATE(skip = true)
-    <std::vector<CompiledRule>> compiled_rules;
+    KANNOTATE(&compiled_rules, skip = true)
+    std::vector<CompiledRule> compiled_rules;
 
     /// Compute the values derived from the final merged settings: default
     /// cache/logging directories, ${workspace} substitution, path

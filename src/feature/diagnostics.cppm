@@ -10,30 +10,31 @@ import :syntax.token;
 namespace clice::feature {
 
 /// Corresponds to the `[diagnostics]` section in clice.toml.
+KANNOTATE_TYPE(struct DiagnosticsOptions, presence_all = optional);
 struct DiagnosticsOptions {
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Run clang-tidy on open files and offer its fixes, with "
-                         "the checks the nearest `.clang-tidy` configures (a "
-                         "small default set without one). Checks too slow for "
-                         "an editor, and those unreliable on code being edited, "
-                         "are left out; files `clice lint` does not check get "
-                         "none. `NOLINT` comments also silence compiler warnings "
-                         "only while this runs.")
-    <bool> clang_tidy = true;
+    KANNOTATE(&clang_tidy,
+              description =
+                  "Run clang-tidy on open files and offer its fixes, with "
+                  "the checks the nearest `.clang-tidy` configures (a "
+                  "small default set without one). Checks too slow for "
+                  "an editor, and those unreliable on code being edited, "
+                  "are left out; files `clice lint` does not check get "
+                  "none. `NOLINT` comments also silence compiler warnings "
+                  "only while this runs.")
+    bool clang_tidy = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Diagnostics open files do not show, by their code: a "
-                         "compiler warning's option (`-Wunused-variable`), "
-                         "clang's name for any other diagnostic "
-                         "(`err_undeclared_var_use`), a clang-tidy check, or "
-                         "one of clice's own warnings "
-                         "(`toolchain-query-failed`). "
-                         "For code clang gets wrong: everything else works on "
-                         "the file as before, and `clice lint` still reports "
-                         "them.")
-    <std::vector<std::string>> suppress;
+    KANNOTATE(&suppress,
+              description =
+                  "Diagnostics open files do not show, by their code: a "
+                  "compiler warning's option (`-Wunused-variable`), "
+                  "clang's name for any other diagnostic "
+                  "(`err_undeclared_var_use`), a clang-tidy check, or "
+                  "one of clice's own warnings "
+                  "(`toolchain-query-failed`). "
+                  "For code clang gets wrong: everything else works on "
+                  "the file as before, and `clice lint` still reports "
+                  "them.")
+    std::vector<std::string> suppress;
 };
 
 /// Where a diagnostic shown on a file was raised, when not in the file's
@@ -102,14 +103,23 @@ auto diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 /// declarations, which it also raises for those only a skipped body uses.
 auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 
-/// How many errors name what an includer would have provided: an
+/// How many diagnostics name what an includer would have provided: an
 /// undeclared name, a missing member or template of a namespace, a call to
-/// an undeclared C function, an #error guarding against a standalone
-/// compile, a conditional the includer closes. A typo raises the same
-/// ones; the self-containment check runs when a header opens or its
-/// inputs change, never per edit, so one costs at most a compile under
-/// the includer's context.
-std::size_t missing_context_errors(llvm::ArrayRef<FileDiagnostic> diagnostics);
+/// an undeclared C function, a name read as a declaration without a type
+/// (a list of the includer's names, a macro it defines), a struct or enum
+/// it defines that is named but incomplete (in a prototype, as a field or
+/// an array's elements), a macro of its after a declarator, an #error
+/// guarding against a standalone compile, a conditional the includer
+/// closes. A typo raises the same ones; the self-containment check runs
+/// when a header opens or its inputs change, never per edit, so one costs
+/// at most a compile under the includer's context. `text` is the file's
+/// the diagnostics are on.
+std::size_t missing_context_diagnostics(llvm::ArrayRef<FileDiagnostic> diagnostics,
+                                        llvm::StringRef text);
+
+/// Bumped whenever missing_context_diagnostics counts otherwise: the
+/// self-containment results persisted before are dropped at load.
+constexpr inline std::uint32_t missing_context_scoring = 1;
 
 /// A warning from clice itself about the file as a whole, on its first
 /// character.

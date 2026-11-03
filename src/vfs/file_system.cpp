@@ -192,48 +192,53 @@ TextCache& texts() {
     return cache;
 }
 
-/// Mappings of the files keep_mapped() named, most recently named
-/// first. A mapping is used while the file stats as it did when mapped.
+/// The mappings keep_mapped() made: one per file while anything holds it —
+/// a compile's buffer, an open document, a stateless worker's last
+/// requests. A mapping serves while the file stats as it did when mapped.
 class Mappings {
 public:
-    void keep(llvm::StringRef path) {
-        auto key = spelling(path);
-        std::lock_guard lock(mutex);
-        auto it = ranges::find(entries, key, &Entry::path);
-        if(it == entries.end()) {
-            entries.insert(entries.begin(), Entry{.path = std::move(key)});
-            if(entries.size() > capacity) {
-                entries.pop_back();
-            }
-        } else {
-            std::rotate(entries.begin(), it, it + 1);
-        }
-    }
-
-    /// The mapping of `file`, open at `path`, kept when `path` was named;
-    /// nullptr when it was not.
-    std::shared_ptr<const llvm::MemoryBuffer> map(llvm::StringRef path,
-                                                  const fs::File& file,
-                                                  const fs::Status& status) {
-        auto key = spelling(path);
-        std::lock_guard lock(mutex);
-        auto it = ranges::find(entries, key, &Entry::path);
-        if(it == entries.end()) {
+    std::shared_ptr<const llvm::MemoryBuffer> keep(llvm::StringRef path) {
+        auto file = fs::File::open(path);
+        if(!file) {
             return nullptr;
         }
-        if(!it->buffer || Stamp::of(it->status) != Stamp::of(status)) {
-            auto mapped = llvm::MemoryBuffer::getOpenFile(file.native_handle(),
+        auto status = file->status();
+        if(!status) {
+            return nullptr;
+        }
+        auto key = spelling(path);
+        std::lock_guard lock(mutex);
+        auto mapping = held(key, *status);
+        if(!mapping) {
+            auto mapped = llvm::MemoryBuffer::getOpenFile(file->native_handle(),
                                                           path,
-                                                          status.size,
+                                                          status->size,
                                                           /*RequiresNullTerminator=*/false,
                                                           /*IsVolatile=*/false);
             if(!mapped) {
                 return nullptr;
             }
-            it->status = status;
-            it->buffer = std::move(*mapped);
+            mapping = std::move(*mapped);
+            llvm::SmallVector<std::string> released;
+            for(auto& entry: entries) {
+                if(entry.second.buffer.expired()) {
+                    released.push_back(entry.first().str());
+                }
+            }
+            for(auto& path: released) {
+                entries.erase(path);
+            }
+            entries[key] = {.status = *status, .buffer = mapping};
         }
-        return it->buffer;
+        return mapping;
+    }
+
+    /// The mapping of `path` while one is held and the file stats as
+    /// `status`; nullptr else.
+    std::shared_ptr<const llvm::MemoryBuffer> find(llvm::StringRef path, const fs::Status& status) {
+        auto key = spelling(path);
+        std::lock_guard lock(mutex);
+        return held(key, status);
     }
 
 private:
@@ -246,17 +251,23 @@ private:
         return key;
     }
 
+    std::shared_ptr<const llvm::MemoryBuffer> held(llvm::StringRef key, const fs::Status& status) {
+        auto it = entries.find(key);
+        if(it == entries.end() || Stamp::of(it->second.status) != Stamp::of(status)) {
+            return nullptr;
+        }
+        return it->second.buffer.lock();
+    }
+
     struct Entry {
-        std::string path;
         fs::Status status;
-        std::shared_ptr<const llvm::MemoryBuffer> buffer;
+        std::weak_ptr<const llvm::MemoryBuffer> buffer;
     };
 
-    /// PCHs of the documents a worker serves in turn.
-    constexpr static std::size_t capacity = 8;
-
+private:
     std::mutex mutex;
-    std::vector<Entry> entries;
+
+    llvm::StringMap<Entry> entries;
 };
 
 Mappings& mapped() {
@@ -327,7 +338,7 @@ public:
         if(!is_text) {
             if(!requires_terminator && !is_volatile) {
                 if(auto status = file.status()) {
-                    if(auto kept = mapped().map(key, file, *status)) {
+                    if(auto kept = mapped().find(key, *status)) {
                         return std::make_unique<SharedBuffer>(std::move(kept), false);
                     }
                 }
@@ -554,8 +565,8 @@ llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& pa
                                       text);
 }
 
-void keep_mapped(llvm::StringRef path) {
-    mapped().keep(path);
+std::shared_ptr<const llvm::MemoryBuffer> keep_mapped(llvm::StringRef path) {
+    return mapped().keep(path);
 }
 
 bool stable_mtime(std::int64_t mtime_ns) {

@@ -1,7 +1,7 @@
 import { test } from "@clice/tools/testing";
 
-/// In the order of the root usage, then worker, which the server spawns
-/// and the root usage leaves out.
+/// Every subcommand, then worker, which the server spawns and the root usage
+/// leaves out.
 const COMMANDS = [
     "serve",
     "query",
@@ -29,7 +29,8 @@ test("command help", async (t) => {
 });
 
 // One of each way a command takes operations: words only, a job of its
-// own beside them, and one level further down.
+// own beside them, and one level further down; and forms that exclude each
+// other.
 test("operation help", async (t) => {
     for (const operation of [
         "query references",
@@ -38,6 +39,7 @@ test("operation help", async (t) => {
         "analyze modules edge",
         "inspect hover",
         "command convert",
+        "refactor rename",
     ]) {
         await t.cli([...operation.split(" "), "--help"]);
     }
@@ -71,6 +73,13 @@ test("unknown operation", async (t) => {
     for (const command of ["query", "index", "analyze modules", "modularize"]) {
         await t.cli([...command.split(" "), "bogus"]);
     }
+});
+
+// A command's own option before an operation's word is none of the
+// operation's.
+test("own option before an operation", async (t) => {
+    await t.cli("index --workspace other stats");
+    await t.cli("modularize --out out merge merge.json");
 });
 
 test("unknown option", async (t) => {

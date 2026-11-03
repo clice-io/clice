@@ -27,7 +27,7 @@ exit = 1
 [test."$ clice analyze modules nope"]
 stdout = '''
 {
-  "error": "at argv[0]:\n  nope\n  ^~~~\n  unknown subcommand 'nope'",
+  "error": "unknown subcommand 'nope'",
   "stale": []
 }
 '''
@@ -36,7 +36,7 @@ exit = 2
 [test."$ clice analyze modules edge core"]
 stdout = '''
 {
-  "error": "at end of argv:\n  core\n      ^\n  expected 2 input arguments, got 1",
+  "error": "expected 2 input arguments, got 1",
   "stale": []
 }
 '''
@@ -110,7 +110,7 @@ exit = 1
 [test."$ clice analyze modules --dir-depth deep"]
 stdout = '''
 {
-  "error": "at argv[1]:\n  --dir-depth deep\n              ^~~~\n  invalid integer value: deep",
+  "error": "invalid integer value: deep",
   "stale": []
 }
 '''

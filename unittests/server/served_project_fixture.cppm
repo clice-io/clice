@@ -2,6 +2,7 @@ module clice:unittests.server.served_project_fixture;
 
 import :command.database;
 import :project.command;
+import :project.graph.task_graph;
 import :server.master;
 import :server.served_project;
 import :server.session;
@@ -61,43 +62,62 @@ struct ServedProjectFixture {
         return *document;
     }
 
-    // Accessors of the compile tests (compile_tests.cpp).
-
-    void set_pch_keys(Fid path_id,
-                      std::optional<std::string> pch_key,
-                      std::optional<std::string> base_pch_key) {
-        served->set_pch_keys(path_id, std::move(pch_key), std::move(base_pch_key));
+    /// The generation of the document's graph node: every invalidation of
+    /// it moves it on.
+    std::uint64_t generation(Fid path_id) const {
+        return served->project.graph.generation(ast_node(path_id));
     }
 
-    void set_output(Fid path_id, CompileOutput output) {
-        served->set_output(path_id, std::move(output));
+    /// Whether an attempt of the document's compile is live.
+    bool compiling(Fid path_id) const {
+        return served->project.graph.is_compiling(ast_node(path_id));
+    }
+
+    // Accessors of the compile tests (compile_tests.cpp).
+
+    void update_latest(Fid path_id, llvm::function_ref<void(DocumentCompile&)> edit) {
+        served->update_latest(path_id, edit);
+    }
+
+    /// The document's latest compile describes its buffer, as one that ran
+    /// at its node's generation now does.
+    void compiled_now(Fid path_id) {
+        update_latest(path_id, [&](DocumentCompile& compiled) {
+            compiled.generation = generation(path_id);
+        });
     }
 
     bool attribute_crash(const std::shared_ptr<Session>& session, bool tidy, ipc::Error error) {
         return served->attribute_crash(session, tidy, std::nullopt, error);
     }
 
-    /// The project's PCH adoption step (ServedProject::ensure_pch) under the
-    /// builtin command: whether a request on the session's buffer, taken at
-    /// `generation` and the document's `epoch`, compiles against a PCH.
-    async::task<bool> ensure_pch(const std::shared_ptr<Session>& session,
-                                 std::uint64_t generation,
-                                 std::uint64_t epoch,
-                                 const std::string& directory,
-                                 const std::vector<std::string>& arguments) {
+    /// The PCH step of a request's own parse (completion, signature help)
+    /// under the builtin command: build what a request on the session's
+    /// buffer loads, then let the document adopt it as a request taken at
+    /// `ticket` and the node's `generation` would (ServedProject::adopt_pch).
+    /// Whether the request compiles against a PCH.
+    async::task<bool> build_pch(const std::shared_ptr<Session>& session,
+                                std::uint64_t ticket,
+                                std::uint64_t generation,
+                                const std::string& directory,
+                                const std::vector<std::string>& arguments) {
         auto& project = served->project;
         Resolution resolution;
         resolution.ref = {
             .command = project.fallback_command(project.file_table.resolve(session->path_id))};
         resolution.directory = directory;
         resolution.arguments = arguments;
-        auto key = co_await served->ensure_pch(Ticket{session, generation},
-                                               epoch,
-                                               session->text(),
-                                               std::nullopt,
-                                               resolution,
-                                               {});
-        co_return key.has_value();
+        auto built = co_await project.build_pch(session->path_id,
+                                                session->text(),
+                                                std::nullopt,
+                                                resolution,
+                                                {},
+                                                {});
+        if(!built) {
+            co_return false;
+        }
+        served->adopt_pch(Ticket{session, ticket}, generation, *built);
+        co_return built->loaded.has_value();
     }
 
     // Accessors of the change tests (changes_tests.cpp, databases_tests.cpp).

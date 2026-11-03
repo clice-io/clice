@@ -9,21 +9,20 @@ namespace clice::driver {
 
 namespace {
 
-struct Options {
-    deco::decl::HelpOption help;
+KANNOTATE_TYPE(struct Scan, description = "Scan the project's include and module dependencies");
+struct Scan {
+    KANNOTATE(&json,
+              description =
+                  "Print every scanned file with what it includes, the includes no "
+                  "search found and the modules it provides")
+    bool json = false;
 
-    DecoFlag(names = {"--json"},
-             help =
-                 "Print every scanned file with what it includes, the includes no search "
-                 "found and the modules it provides",
-             required = false)
-    json;
-
-    DecoKV(help =
-               "Time this many scans, each from a fresh start (cold) and again over what "
-               "it kept (warm, as after a database reload)",
-           required = false)
-    <std::uint32_t> runs;
+    KANNOTATE(&runs,
+              minimum = 1,
+              description =
+                  "Time this many scans, each from a fresh start (cold) and again "
+                  "over what it kept (warm, as after a database reload)")
+    std::optional<std::uint32_t> runs;
 
     ProjectOptions where;
     LogLevelOption log;
@@ -147,13 +146,9 @@ void time_scans(std::unique_ptr<OpenedProject> first,
                     warm_median);
 }
 
-int run_scan(const Options& opts) {
-    if(opts.runs && static_cast<bool>(opts.json)) {
+int run(Scan& opts) {
+    if(opts.runs && opts.json) {
         LOG_ERROR("--runs prints times, --json the graph: pass one of them");
-        return 1;
-    }
-    if(opts.runs && *opts.runs == 0) {
-        LOG_ERROR("--runs takes a count of at least 1");
         return 1;
     }
     auto read = read_project(opts.where);
@@ -167,7 +162,7 @@ int run_scan(const Options& opts) {
         return 1;
     }
     auto output = describe(*first);
-    if(static_cast<bool>(opts.json)) {
+    if(opts.json) {
         print_json(output);
         return 0;
     }
@@ -178,13 +173,7 @@ int run_scan(const Options& opts) {
     return 0;
 }
 
-CommandHandler build() {
-    return operation<Options>("clice scan [OPTIONS]", "scan", Errors::Text, run_scan);
-}
-
-[[maybe_unused]] const bool registered = register_command(
-    Command::scan,
-    {.description = "Scan the project's include and module dependencies", .build = build});
+[[maybe_unused]] const bool added = cli::add_command<Subcommands>(dispatch<Scan>);
 
 }  // namespace
 

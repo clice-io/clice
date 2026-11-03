@@ -8,30 +8,26 @@ namespace {
 
 ZEST_SUITE(Shell) {
 
-std::vector<std::string> tokenize(llvm::StringRef command) {
-    llvm::BumpPtrAllocator allocator;
-    llvm::StringSaver saver(allocator);
-    std::vector<std::string> arguments;
-    for(const char* argument: tokenize_command(command, saver)) {
-        arguments.emplace_back(argument);
-    }
-    return arguments;
-}
-
 ZEST_CASE(SingleQuotesLiteral, skip = Windows) {
     // sh keeps every backslash inside single quotes.
-    ZEXPECT(tokenize(R"(cc '-DS="a\\b"' x.c)") ==
+    ZEXPECT(split_command(R"(cc '-DS="a\\b"' x.c)") ==
             (std::vector<std::string>{"cc", R"(-DS="a\\b")", "x.c"}));
 }
 
 ZEST_CASE(EscapesOutsideSingleQuotes, skip = Windows) {
-    ZEXPECT(tokenize(R"(cc -DS=\"a\\b\" "-I a\"b"	x.c '')") ==
+    ZEXPECT(split_command(R"(cc -DS=\"a\\b\" "-I a\"b"	x.c '')") ==
             (std::vector<std::string>{"cc", R"(-DS="a\b")", R"(-I a"b)", "x.c", ""}));
+}
+
+ZEST_CASE(BlanksBeforeProgram) {
+    std::vector<std::string> expected = {"cc", "-c", "x.c"};
+    ZEXPECT(split_command("  cc -c x.c", sys::cmd::Quoting::Windows) == expected);
+    ZEXPECT(split_command("\tcc -c x.c", sys::cmd::Quoting::POSIX) == expected);
 }
 
 ZEST_CASE(JoinedReadsBack) {
     std::vector<std::string> arguments = {"cc", "-DS=\"a b\"", R"(-I C:\x)", "", "it's"};
-    ZEXPECT(tokenize(join_command(arguments)) == arguments);
+    ZEXPECT(split_command(join_command(arguments)) == arguments);
 }
 
 ZEST_CASE(PrintArgv) {

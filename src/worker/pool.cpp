@@ -119,10 +119,6 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(std::size_t 
     opts.args = {"worker"};
     if(stateful) {
         opts.args.push_back("--stateful");
-        if(options.max_documents) {
-            opts.args.push_back("--max-documents");
-            opts.args.push_back(std::to_string(*options.max_documents));
-        }
     }
     opts.args.push_back("--worker-name");
     opts.args.push_back(name);
@@ -181,26 +177,6 @@ async::task<> WorkerPool::run_peer(std::shared_ptr<ipc::BincodePeer> peer,
     }
 }
 
-void WorkerPool::install_evict_handler(WorkerProcess& worker, std::size_t index) {
-    worker.peer->on_notification(
-        [this, index, gen = worker.generation](const worker::EvictedParams& params) {
-            // A buffered eviction from a dead peer can drain after the slot
-            // respawned and reacquired the same path; matching by slot index
-            // alone would unseat the new owner. A same-generation ABA (an
-            // eviction of a closed copy draining after a reopen assigned the
-            // path back to the same worker) is accepted: the notification
-            // carries no ownership epoch, the window is one notification
-            // drain, and the cost is one spurious invalidation-recompile —
-            // not corrupted state.
-            if(stateful_workers[index].generation != gen) {
-                return;
-            }
-            if(on_evicted) {
-                on_evicted(params.path, index);
-            }
-        });
-}
-
 void WorkerPool::install_gate_handler(WorkerProcess& worker) {
     worker.peer->on_notification(
         [this](const worker::GateParkedParams& params) { probe->gate_parked(params.id); });
@@ -224,8 +200,6 @@ bool WorkerPool::spawn_worker(bool stateful) {
         .spawn_time = chrono::steady_clock::now(),
     });
 
-    if(stateful)
-        install_evict_handler(workers[index], index);
     install_gate_handler(workers[index]);
     worker_tasks.spawn(monitor_worker(index, stateful));
     serving(index, stateful);
@@ -243,7 +217,6 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     w.peer = std::move(spawned->peer);
     w.stderr_tail = std::move(spawned->stderr_tail);
     w.state = SlotState::Alive;
-    w.owned_documents = 0;
     w.retiring = false;
     w.preempted = false;
     w.memory = 0;
@@ -253,8 +226,6 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     // generation was bumped at death; crash_streak carries across restarts
     // until a healthy uptime resets it.
 
-    if(stateful)
-        install_evict_handler(w, index);
     install_gate_handler(w);
     worker_tasks.spawn(monitor_worker(index, stateful));
     serving(index, stateful);
@@ -274,6 +245,8 @@ void WorkerPool::serving(std::size_t index, bool stateful) {
 bool WorkerPool::start(const WorkerPoolOptions& opts) {
     options = opts;
     log_dir = opts.log_dir;
+    auto max_resident = options.max_resident.value_or(default_max_resident(memory_state({}).limit));
+    residency = Residency(max_resident);
 
     if(options.max_stateless == 0)
         options.max_stateless = default_max_stateless_worker_count();
@@ -314,9 +287,10 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
     worker_tasks.spawn(monitor_loop());
 
     started = true;
-    LOG_INFO("WorkerPool started: {} stateless, {} stateful workers",
+    LOG_INFO("WorkerPool started: {} stateless, {} stateful workers keeping {} documents compiled",
              stateless_workers.size(),
-             stateful_workers.size());
+             stateful_workers.size(),
+             max_resident);
     return true;
 }
 
@@ -369,57 +343,50 @@ async::task<> WorkerPool::kill_stragglers() {
             w.proc.kill();
 }
 
-std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {
-    if(stop_scope.cancelled()) {
-        return SIZE_MAX;
+std::optional<Residency::Assignment> WorkerPool::assign_worker(std::uint32_t path_id,
+                                                               llvm::StringRef path) {
+    if(auto assignment = residency.assignment(path_id)) {
+        return assignment;
     }
-
-    auto it = owner.find(path_id);
-    if(it != owner.end()) {
-        return it->second;
-    }
-
-    // New assignment: pick the least-loaded live worker.
-    auto selected = pick_least_loaded();
-    if(selected == SIZE_MAX)
-        return SIZE_MAX;
-    owner[path_id] = selected;
-    stateful_workers[selected].owned_documents += 1;
-    set_oom_score(stateful_workers[selected], true);
-    return selected;
-}
-
-std::size_t WorkerPool::pick_least_loaded() {
-    std::size_t best = SIZE_MAX;
+    std::optional<std::size_t> fewest;
     for(std::size_t i = 0; i < stateful_workers.size(); i += 1) {
-        auto& w = stateful_workers[i];
-        if(w.state != SlotState::Alive)
-            continue;
-        if(best == SIZE_MAX || w.owned_documents < stateful_workers[best].owned_documents) {
-            best = i;
+        if(stateful_workers[i].state == SlotState::Alive &&
+           (!fewest || residency.documents_on(i) < residency.documents_on(*fewest))) {
+            fewest = i;
         }
     }
-    return best;
+    if(!fewest) {
+        return std::nullopt;
+    }
+    set_oom_score(stateful_workers[*fewest], true);
+    return residency.assign(path_id, *fewest, path);
 }
 
-void WorkerPool::remove_owner(std::uint32_t path_id) {
-    auto it = owner.find(path_id);
-    if(it == owner.end())
-        return;
-
-    auto worker_idx = it->second;
-    stateful_workers[worker_idx].owned_documents -= 1;
-    owner.erase(it);
+void WorkerPool::forget_document(std::uint32_t path_id) {
+    if(auto eviction = residency.forget(path_id)) {
+        send_evict(std::move(*eviction));
+    }
 }
 
-bool WorkerPool::remove_owner_from(std::uint32_t path_id, std::size_t worker_index) {
-    auto it = owner.find(path_id);
-    if(it == owner.end() || it->second != worker_index)
-        return false;
+void WorkerPool::evict_over_limit() {
+    for(auto& eviction: residency.evictions()) {
+        LOG_DEBUG("Evicting {} from {}", eviction.path, stateful_workers[eviction.worker].name);
+        send_evict(std::move(eviction));
+    }
+}
 
-    stateful_workers[worker_index].owned_documents -= 1;
-    owner.erase(it);
-    return true;
+void WorkerPool::send_evict(Residency::Eviction eviction) {
+    auto& w = stateful_workers[eviction.worker];
+    w.peer->send_notification(worker::EvictParams{std::move(eviction.path)});
+}
+
+DocumentHold::DocumentHold(WorkerPool& pool, std::uint32_t path_id) : pool(pool), path_id(path_id) {
+    pool.residency.hold(path_id);
+}
+
+DocumentHold::~DocumentHold() {
+    pool.residency.release(path_id);
+    pool.evict_over_limit();
 }
 
 void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_process) {
@@ -439,13 +406,7 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
         w.death->alone = scheduler.runs_alone(index);
     }
     if(stateful) {
-        for(auto& [path_id, widx]: owner) {
-            if(widx == index)
-                w.lost_documents.push_back(path_id);
-        }
-        for(auto path_id: w.lost_documents) {
-            remove_owner(path_id);
-        }
+        w.death->documents = residency.worker_died(index);
     }
     if(w.peer) {
         w.peer->close();
@@ -672,7 +633,7 @@ bool WorkerPool::process_crash(std::size_t index,
     // running requests or holding documents counts: none of them is blamed
     // when several were in flight, or when none was, and only the budget
     // slows a load that keeps getting killed.
-    bool idle_kill = exit_signal == sigkill && death.in_flight == 0 && w.lost_documents.empty();
+    bool idle_kill = exit_signal == sigkill && death.in_flight == 0 && death.documents == 0;
     if(death.culprits.empty() && !death.out_of_memory && !terminated && !idle_kill) {
         w.crash_streak += 1;
         w.counted_deaths.push_back(w.generation - 1);
@@ -685,10 +646,6 @@ bool WorkerPool::process_crash(std::size_t index,
     info.exit_signal = exit_signal;
     info.crash_streak = w.crash_streak;
     info.will_restart = w.crash_streak <= options.max_crash_streak;
-
-    if(stateful) {
-        info.lost_documents = std::exchange(w.lost_documents, {});
-    }
 
     if(!info.will_restart) {
         LOG_ERROR("Worker {} exceeded crash budget ({} consecutive), giving up",
@@ -826,7 +783,7 @@ std::uint64_t WorkerPool::PendingStateless::finish() {
     if(slot) {
         auto& w = pool.stateless_workers[*slot];
         if(w.generation == generation) {
-            pool.set_oom_score(w, pool.holds_work(w, *slot, false));
+            pool.set_oom_score(w, pool.holds_work(*slot, false));
         }
     }
     pool.execute();
@@ -1008,8 +965,9 @@ void WorkerPool::sample() {
     }
 }
 
-bool WorkerPool::holds_work(const WorkerProcess& w, std::size_t index, bool stateful) const {
-    return scheduler.running_on(index, stateful) > 0 || (stateful && w.owned_documents > 0);
+bool WorkerPool::holds_work(std::size_t index, bool stateful) const {
+    return scheduler.running_on(index, stateful) > 0 ||
+           (stateful && residency.documents_on(index) > 0);
 }
 
 void WorkerPool::tick_oom_scores(std::uint64_t memory_limit) {
@@ -1026,7 +984,7 @@ void WorkerPool::tick_oom_scores(std::uint64_t memory_limit) {
     for(bool stateful: {false, true}) {
         auto& workers = stateful ? stateful_workers : stateless_workers;
         for(std::size_t index = 0; index < workers.size(); index += 1) {
-            set_oom_score(workers[index], holds_work(workers[index], index, stateful));
+            set_oom_score(workers[index], holds_work(index, stateful));
         }
     }
 }

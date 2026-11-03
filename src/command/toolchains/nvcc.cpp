@@ -6,6 +6,7 @@ import :command.toolchains.clang;
 import :command.toolchains.gcc;
 import :command.toolchains.nvcc;
 import :support.process;
+import :support.shell;
 import :vfs.path;
 
 namespace clice {
@@ -146,7 +147,7 @@ bool is_nvcc_query_flag(llvm::StringRef arg) {
            arg.starts_with(target_directory_prefix) || arg.starts_with(gpu_arch_prefix);
 }
 
-std::optional<llvm::SmallVector<std::string>> options_files(llvm::ArrayRef<const char*> arguments,
+std::optional<llvm::SmallVector<std::string>> options_files(llvm::ArrayRef<std::string> arguments,
                                                             std::size_t& i) {
     llvm::StringRef arg = arguments[i];
     llvm::SmallVector<std::string> files;
@@ -563,13 +564,11 @@ std::vector<std::string> translate_nvcc_flags(Normalizer& normalizer,
     if(flags.empty()) {
         return {};
     }
-    llvm::BumpPtrAllocator allocator;
-    llvm::StringSaver saver(allocator);
+    auto expanded = normalizer.expand_response_files(flags, anchor, CompilerFamily::NVCC);
     llvm::SmallVector<const char*, 32> argv = {driver};
-    for(auto& flag: flags) {
+    for(auto& flag: expanded) {
         argv.push_back(flag.c_str());
     }
-    normalizer.expand_response_files(argv, anchor, CompilerFamily::NVCC, saver);
     auto translated = translate_nvcc_command(argv, anchor, edit);
     return {std::make_move_iterator(translated.begin() + 1),
             std::make_move_iterator(translated.end())};
@@ -657,9 +656,9 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
     NVCCDryrun info;
     llvm::StringRef nvvm_dir;
     llvm::SmallVector<ArchToken> cicc_archs;
-    llvm::SmallVector<const char*, 64> first_command;
+    std::vector<std::string> first_command;
 
-    auto harvest_include_dirs = [&](llvm::ArrayRef<const char*> tokens) {
+    auto harvest_include_dirs = [&](llvm::ArrayRef<std::string> tokens) {
         for(std::size_t i = 0; i < tokens.size(); i += 1) {
             llvm::StringRef token = tokens[i];
             if(!token.consume_front("-I") && !token.consume_front("-isystem")) {
@@ -673,7 +672,7 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
         }
     };
 
-    auto harvest_defines = [](llvm::ArrayRef<const char*> tokens, std::vector<std::string>& out) {
+    auto harvest_defines = [](llvm::ArrayRef<std::string> tokens, std::vector<std::string>& out) {
         for(llvm::StringRef token: tokens) {
             if(!token.consume_front("-D"))
                 continue;
@@ -683,9 +682,6 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
             out.emplace_back(token);
         }
     };
-
-    llvm::BumpPtrAllocator alloc;
-    llvm::StringSaver saver(alloc);
 
     llvm::SmallVector<llvm::StringRef> lines;
     output.split(lines, '\n', -1, false);
@@ -720,8 +716,7 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
         if(head.contains('='))
             continue;
 
-        llvm::SmallVector<const char*, 64> tokens;
-        llvm::cl::TokenizeGNUCommandLine(line, saver, tokens);
+        auto tokens = split_command(line, sys::cmd::Quoting::POSIX);
         if(tokens.empty())
             continue;
 
@@ -752,9 +747,9 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
         auto tail = llvm::ArrayRef(tokens).drop_front();
 
         if(first_command.empty())
-            first_command.assign(tokens.begin(), tokens.end());
+            first_command = tokens;
 
-        bool is_preprocess = ranges::contains(tail, llvm::StringRef("-E"));
+        bool is_preprocess = ranges::contains(tail, std::string_view("-E"));
         if(!is_preprocess)
             continue;
 

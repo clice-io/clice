@@ -60,7 +60,7 @@ static void publish_diagnostics(ipc::JSONPeer& peer,
     }
 }
 
-codec::RawValue full_report(std::vector<protocol::Diagnostic> items) {
+codec::raw_value full_report(std::vector<protocol::Diagnostic> items) {
     return to_raw(protocol::RelatedFullDocumentDiagnosticReport{.items = std::move(items)});
 }
 
@@ -179,7 +179,7 @@ void LSPClient::retract(Fid path_id) {
     // LSP versions are scoped to an open document: a reopen restarts
     // them, so a stale entry would misread the fresh document's first
     // compile as an unchanged-text recompile.
-    output_versions.erase(path_id);
+    pushed.erase(path_id);
     pulled.erase(path_id);
     sent_tokens.erase(path_id);
     index_served.erase(path_id);
@@ -191,6 +191,12 @@ void LSPClient::retract(Fid path_id) {
                             protocol::PublishDiagnosticsParams{
                                 .uri = feature::to_uri(server.files.display(path_id)),
                             });
+    }
+}
+
+void LSPClient::moved(Fid path_id) {
+    if(auto it = pushed.find(path_id); it != pushed.end()) {
+        it->second.generation.reset();
     }
 }
 
@@ -234,6 +240,7 @@ void LSPClient::push_output(ServedProject& project, const Session& session, bool
         return;
     }
     auto& output = *latest->output;
+    auto& last = pushed[session.path_id];
 
     if(pull_diagnostics) {
         if(auto it = pulled.find(session.path_id);
@@ -252,25 +259,34 @@ void LSPClient::push_output(ServedProject& project, const Session& session, bool
         params.diagnostics = to_client(project.shown_diagnostics(session, output),
                                        server.files.display(session.path_id),
                                        output.text->positions());
-        publish_diagnostics(peer, params);
-        if(auto* document = server.find_document(session.path_id)) {
-            publish_second_names(*document);
+        // A compile of the same text from the same inputs, as after an
+        // eviction, shows what the client holds.
+        auto published = std::tuple(output.version,
+                                    latest->generation,
+                                    llvm::xxh3_64bits(full_report(params.diagnostics).data));
+        if(std::exchange(last.published, published) != published) {
+            publish_diagnostics(peer, params);
+            if(auto* document = server.find_document(session.path_id)) {
+                publish_second_names(*document);
+            }
         }
     }
 
     // Two cases make the client re-pull whole-document results it already
     // holds: results computed from the index served while this compile was pending
-    // (their answers just got better), and a compile that finished for
-    // unchanged text — a context switch or a changed dependency reshapes
+    // (their answers just got better), and a compile of unchanged text from
+    // changed inputs — a context switch or a changed dependency reshapes
     // tokens (including their inactive regions), hints and folds with no
     // didChange to trigger the client's own re-pull. Edit-driven compiles
     // need neither: the client re-pulls on didChange and that pull awaits
-    // the fresh AST. A compile that failed before parsing reshaped nothing.
+    // the fresh AST; nor does a compile of the same text from the same
+    // inputs, as after an eviction. A compile that failed before parsing
+    // reshaped nothing.
     if(compiled && output.version.has_value() && !output.failed) {
-        auto [it, inserted] = output_versions.try_emplace(session.path_id, *output.version);
-        bool same_text = !inserted && it->second == *output.version;
-        it->second = *output.version;
-        if(index_served.contains(session.path_id) || same_text) {
+        bool reshaped = last.version == output.version && last.generation != latest->generation;
+        last.version = output.version;
+        last.generation = latest->generation;
+        if(index_served.contains(session.path_id) || reshaped) {
             refresh();
         }
     }

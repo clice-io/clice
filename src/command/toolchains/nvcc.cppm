@@ -24,7 +24,7 @@ bool is_nvcc_query_flag(llvm::StringRef arg);
 /// a separate value; nullopt when the argument is no such option. Their
 /// arguments splice in where it stood, like a response file's (CMake
 /// routes long CUDA include lists through one).
-std::optional<llvm::SmallVector<std::string>> options_files(llvm::ArrayRef<const char*> arguments,
+std::optional<llvm::SmallVector<std::string>> options_files(llvm::ArrayRef<std::string> arguments,
                                                             std::size_t& i);
 
 /// Rewrite an nvcc driver command into flags clang's option table parses,

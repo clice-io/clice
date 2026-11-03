@@ -4,6 +4,8 @@ import :support.logging;
 import :support.prelude;
 import :worker.probe;
 import :worker.protocol;
+import :worker.residency;
+import :worker.resources;
 import :worker.scheduler;
 
 namespace clice {
@@ -32,10 +34,6 @@ struct WorkerCrashInfo {
 
     /// Whether the pool will attempt to respawn this worker.
     bool will_restart = false;
-
-    /// Stateful only: path_ids of documents owned by the crashed worker.
-    /// The on_crash handler should mark these dirty for recompilation.
-    std::vector<std::uint32_t> lost_documents;
 };
 
 /// How one worker incarnation died, shared with every request in flight on
@@ -76,6 +74,12 @@ struct WorkerDeath {
     /// request is held against a request only when it ran alone: among
     /// several, nothing tells which one killed the worker.
     std::size_t in_flight = 0;
+
+    /// Stateful only: the documents assigned to it, taken off the
+    /// residency table the moment the death is declared — a request routed
+    /// to the corpse in the window before the crash report would fail
+    /// instead of moving on.
+    std::size_t documents = 0;
 };
 
 /// The last lines a worker wrote to stderr, kept for its crash report:
@@ -151,9 +155,9 @@ struct WorkerPoolOptions {
     /// time stands still this long.
     chrono::milliseconds stall_deadline{chrono::minutes(5)};
 
-    /// Documents a stateful worker holds before evicting; unset leaves the
-    /// worker's default.
-    std::optional<std::size_t> max_documents;
+    /// The documents the stateful workers keep compiled at once; unset
+    /// leaves it to the machine's memory (default_max_resident).
+    std::optional<std::size_t> max_resident;
 
     /// Dynamic scaling bounds for stateless workers.
     /// min_stateless: floor — never retire below this count.
@@ -169,6 +173,25 @@ struct StatelessReport {
     std::uint64_t peak = 0;
 };
 
+class WorkerPool;
+
+/// A request's hold on an open document: while one lives, the pool evicts
+/// none of the document's AST, a worker's death notwithstanding.
+class [[nodiscard]] DocumentHold {
+public:
+    DocumentHold(WorkerPool& pool, std::uint32_t path_id);
+
+    DocumentHold(const DocumentHold&) = delete;
+    DocumentHold& operator=(const DocumentHold&) = delete;
+
+    ~DocumentHold();
+
+private:
+    WorkerPool& pool;
+
+    std::uint32_t path_id;
+};
+
 /// Multi-process scheduler for clice worker processes.
 ///
 /// Two kinds of workers are managed:
@@ -176,8 +199,10 @@ struct StatelessReport {
 ///     indexing, completion, formatting); which runs when is the
 ///     WorkerScheduler's decision (worker/scheduler.cppm), which the pool
 ///     carries out.
-///   - Stateful workers keep per-document ASTs; each open document is pinned
-///     to one worker (path_id affinity), balanced by document count.
+///   - Stateful workers keep per-document ASTs; a document compiled is
+///     assigned to one worker, the one holding the fewest documents, and
+///     the pool keeps at most max_resident ASTs, evicting the least recently
+///     used one nobody holds (Residency).
 ///
 /// Responsibility contract — the pool is mechanism, callers are policy:
 ///
@@ -224,7 +249,10 @@ public:
         return stateful_inflight > 0;
     }
 
-    /// Send a request to a stateful worker with path_id affinity routing.
+    /// Send a request to the stateful worker the document is assigned to,
+    /// holding the document while it flies. A compile assigns it if it is
+    /// not; a query of a document whose AST no worker holds — gone with its
+    /// worker since its compile — fails as worker_lost without being sent.
     template <typename Params>
     RequestResult<Params> send_stateful(std::uint32_t path_id,
                                         const Params& params,
@@ -250,20 +278,20 @@ public:
                                          StatelessReport* report = nullptr,
                                          llvm::function_ref<bool()> admitted = {});
 
-    /// Send a notification to the stateful worker owning path_id (if any).
-    template <typename Params>
-    void notify_stateful(std::uint32_t path_id, const Params& params);
+    /// Whether a stateful worker holds the document's AST.
+    bool resident(std::uint32_t path_id) const {
+        return residency.resident(path_id);
+    }
 
-    /// Remove path_id from ownership tracking (e.g. when the master learns a
-    /// document was evicted).
-    void remove_owner(std::uint32_t path_id);
+    /// A request about the document arrived: whatever answers it, the
+    /// editor shows the document, which is evicted the later for it.
+    void used(std::uint32_t path_id) {
+        residency.used(path_id);
+    }
 
-    /// Remove path_id from ownership only if worker_index is its current
-    /// owner. Returns whether it was removed — false means the eviction
-    /// concerns a copy the master already let go of (the document closed,
-    /// or reopened on another worker) and the current owner's state is
-    /// untouched.
-    bool remove_owner_from(std::uint32_t path_id, std::size_t worker_index);
+    /// The document closed or moved to another project: its worker drops
+    /// its AST, and a compile of it still running leaves none behind.
+    void forget_document(std::uint32_t path_id);
 
     /// Wait until a worker of the kind can take a request. False when none
     /// ever will again: the pool is stopping, or every slot gave up with
@@ -314,14 +342,9 @@ public:
     /// holds (see BuildProbe).
     BuildProbe* probe = nullptr;
 
-    /// Callback invoked when a stateful worker sends an EvictedParams
-    /// notification, with the slot index of the evicting worker. The master
-    /// translates the path to a path_id and calls remove_owner_from() so an
-    /// eviction of a copy the master already let go of cannot unseat the
-    /// current owner.
-    std::function<void(const std::string& path, std::size_t worker_index)> on_evicted;
-
 private:
+    friend class DocumentHold;
+
     /// Lifecycle of a worker slot. The generation counter is bumped on every
     /// transition out of Alive, so stale references (an in-flight request's
     /// slot guard, a dispatched-but-cancelled waiter) can detect that their
@@ -364,9 +387,6 @@ private:
         /// Bumped on every death; see SlotState.
         unsigned generation = 0;
 
-        /// Stateful only: number of documents routed to this worker.
-        std::size_t owned_documents = 0;
-
         /// True when this worker is being intentionally shut down (scale-down),
         /// as opposed to an unexpected crash.
         bool retiring = false;
@@ -388,12 +408,6 @@ private:
         /// The death record of the current incarnation, fresh at every
         /// spawn; senders hold it across their await.
         std::shared_ptr<WorkerDeath> death = std::make_shared<WorkerDeath>();
-
-        /// Stateful only: the documents the dead incarnation owned, taken
-        /// off the owner table the moment the death is declared — a request
-        /// routed to the corpse in the window before the crash report
-        /// would fail instead of moving on — and reported with the crash.
-        std::vector<std::uint32_t> lost_documents;
 
         chrono::steady_clock::time_point spawn_time{};
 
@@ -495,14 +509,16 @@ private:
     /// retires the slot.
     void retire_worker(std::size_t index);
 
-    /// Returns the worker owning path_id, assigning the least-loaded live
-    /// worker on first use. SIZE_MAX when no stateful worker is alive, or
-    /// once the pool stops: its workers are still Alive then, but their
-    /// links are closed, and a request failing on one would read as a
-    /// nameless death and be blamed. An owner is always alive: a death
-    /// takes its documents off the table.
-    std::size_t assign_worker(std::uint32_t path_id);
-    std::size_t pick_least_loaded();
+    /// The document's assignment, or a new one to the live worker holding
+    /// the fewest documents. None when no stateful worker is alive. An
+    /// assigned worker is always alive: a death takes its documents off the
+    /// table.
+    std::optional<Residency::Assignment> assign_worker(std::uint32_t path_id, llvm::StringRef path);
+
+    /// Tell the workers to drop the ASTs the residency table evicts.
+    void evict_over_limit();
+
+    void send_evict(Residency::Eviction eviction);
 
     /// Stateless slots that are not permanently vacant (Dead/Retired):
     /// alive ones plus those dying or awaiting respawn.
@@ -562,7 +578,7 @@ private:
     /// Whether the worker holds work, and with it memory: a request in
     /// flight, or documents (whose last one can close while its compile
     /// still runs).
-    bool holds_work(const WorkerProcess& w, std::size_t index, bool stateful) const;
+    bool holds_work(std::size_t index, bool stateful) const;
 
     /// Rank each worker for the kernel's OOM killer (Linux): one holding a
     /// request or documents just above the master, which holds every
@@ -615,8 +631,6 @@ private:
     /// After `revive_after`, grant a given-up slot a fresh crash budget
     /// and respawn it: the pool never stays at zero workers forever.
     async::task<> revive_slot(std::size_t index, bool stateful);
-
-    void install_evict_handler(WorkerProcess& worker, std::size_t index);
 
     /// Hand the worker's gate parks (a test gate, see BuildProbe::gate) to
     /// the probe.
@@ -675,8 +689,9 @@ private:
     /// waits on it.
     async::event capacity_returned;
 
-    // Stateful routing: each open document (path_id) is pinned to one worker.
-    llvm::DenseMap<std::uint32_t, std::size_t> owner;  // path_id -> worker index
+    /// Which documents' ASTs the stateful workers keep; the limit is set at
+    /// start.
+    Residency residency{default_max_resident(0)};
 
     std::size_t stateful_inflight = 0;
 
@@ -786,16 +801,33 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
         }
     } inflight_guard{stateful_inflight};
 
-    auto idx = assign_worker(path_id);
-    if(idx == SIZE_MAX) {
+    // Once the pool stops its workers are still Alive, but their links are
+    // closed: a request failing on one would read as a nameless death and
+    // be blamed.
+    constexpr bool compile = std::same_as<Params, worker::CompileParams>;
+    std::optional<Residency::Assignment> assignment;
+    if(!stop_scope.cancelled()) {
+        if constexpr(compile) {
+            assignment = assign_worker(path_id, params.path);
+        } else if(residency.resident(path_id)) {
+            assignment = residency.assignment(path_id);
+        } else {
+            co_await async::fail(ipc::Error{worker::dispatch_errc::worker_lost,
+                                            "The document's AST died with its worker"});
+        }
+    }
+    if(!assignment) {
         scheduler.user_activity(now());
         execute();
         co_await async::fail(
             ipc::Error{worker::dispatch_errc::worker_unavailable, "No stateful workers available"});
     }
+    DocumentHold flight(*this, path_id);
+    residency.used(path_id);
 
     // Own a peer reference across the await: the slot drops its copy the
     // moment the worker dies.
+    auto idx = assignment->worker;
     auto& assigned = stateful_workers[idx];
     auto peer = assigned.peer;
     auto gen = assigned.generation;
@@ -823,6 +855,11 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
     auto result = co_await peer->send_request(params, opts);
     if(gate) {
         probe->answered(*gate);
+    }
+    if constexpr(compile) {
+        residency.compiled(path_id,
+                           assignment->id,
+                           result.has_value() && result->status == worker::CompileStatus::Done);
     }
     if(result.has_value() || !worker::is_transport_error(result.error()))
         co_return std::move(result);
@@ -936,17 +973,6 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         co_await async::fail(
             death_error(*death, inflight.tag, worker::death_identity(idx, gen, false)));
     }
-}
-
-template <typename Params>
-void WorkerPool::notify_stateful(std::uint32_t path_id, const Params& params) {
-    auto it = owner.find(path_id);
-    if(it == owner.end())
-        return;
-    auto& assigned = stateful_workers[it->second];
-    if(assigned.state != SlotState::Alive)
-        return;
-    assigned.peer->send_notification(params);
 }
 
 /// Send a request through the worker deaths that are not its own doing.

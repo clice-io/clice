@@ -2,6 +2,7 @@ module clice;
 
 import :server.master;
 import :server.served_project;
+import :support.process;
 import :worker.probe;
 
 namespace clice {
@@ -20,13 +21,18 @@ async::task<> MasterServer::poll_task() {
                 probe.happened(LoopEvent::DiskChange);
             }
             for(auto& project: projects) {
-                if(project->project.settings.tracker.workspace_poll_seconds.value > 0 &&
+                if(project->project.settings.tracker.workspace_poll_seconds > 0 &&
                    project->reload_databases(false) > 0) {
                     probe.happened(LoopEvent::DatabaseChange);
                 }
             }
         }
         look_at_settings();
+        if(std::exchange(memory_freed, false)) {
+            // On this thread, whose heap held the documents: mimalloc
+            // collects only the calling thread's heap.
+            release_free_memory();
+        }
     }
 }
 

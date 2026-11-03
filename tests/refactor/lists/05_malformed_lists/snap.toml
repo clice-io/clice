@@ -55,7 +55,7 @@ exit = 1
 [test."$ clice refactor rename compute evaluate --spec -"]
 stdout = '''
 {
-  "error": "--spec lists the renames; <LOCATOR> <NEW-NAME> names one",
+  "error": "--spec <FILE> cannot be used with <LOCATOR>",
   "stale": []
 }
 '''

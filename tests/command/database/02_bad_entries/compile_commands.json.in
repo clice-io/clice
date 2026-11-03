@@ -13,6 +13,11 @@
   },
   {
     "directory": "${WS}",
+    "file": "no_program.cpp",
+    "arguments": ["", "no_program.cpp"]
+  },
+  {
+    "directory": "${WS}",
     "file": "good.cpp",
     "arguments": ["missing-clang++", "-std=c++20", "good.cpp"]
   },
@@ -31,6 +36,11 @@
     "directory": "${WS}",
     "file": "spaces.cpp",
     "command": "   "
+  },
+  {
+    "directory": "${WS}",
+    "file": "leading_blank.cpp",
+    "command": " missing-clang++ leading_blank.cpp"
   },
   {
     "directory": "${WS}",

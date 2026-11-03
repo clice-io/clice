@@ -33,23 +33,25 @@ using ipc::RequestResult;
 using RequestContext = ipc::BincodePeer::RequestContext;
 
 struct DocumentEntry {
-    int version = 0;
-    std::string text;
-
     /// The AST of the last compile that completed; null while a compile
     /// runs, and after one that did not complete.
     std::unique_ptr<CompilationUnit> unit;
+
+    /// The mapping of the PCH the AST loads, held while the document stays
+    /// here: its next compile reads the same one (vfs::keep_mapped).
+    std::shared_ptr<const llvm::MemoryBuffer> pch_mapping;
 
     // Signaled when the first compilation finishes. Feature handlers
     // co_await this before accessing the AST.
     async::event ast_ready{false};
 
-    // Compilation context (from CompileParams)
-    std::string directory;
-    std::vector<std::string> arguments;
-    std::pair<std::string, uint32_t> pch;
-    std::unordered_map<std::string, std::string> pcms;
+    /// The bound of the PCH the AST loads.
+    std::uint32_t pch_bound = 0;
+
+    /// The conditional stack the PCH's preamble left open.
     std::vector<std::uint8_t> open_conditionals;
+
+    /// The inactive regions of the PCH's preamble.
     std::vector<std::uint32_t> preamble_inactive_regions;
 
     /// The preamble share from the compile params, then the own scan past
@@ -57,44 +59,30 @@ struct DocumentEntry {
     /// open.
     std::vector<std::uint32_t> inactive_regions() {
         auto regions = preamble_inactive_regions;
-        auto scan = feature::inactive_regions(*unit, open_conditionals, pch.second);
+        auto scan = feature::inactive_regions(*unit, open_conditionals, pch_bound);
         regions.insert(regions.end(), scan.regions.begin(), scan.regions.end());
         return regions;
     }
 
     // Per-document serialization mutex
     async::mutex strand;
-
-    // Requests holding the entry: a compile queued on or running under the
-    // strand, a query waiting for or reading the AST. The LRU passes such
-    // an entry over — evicting it would tell the master the document is
-    // gone before the compile's own reply, and the master's recompile
-    // would evict the next one.
-    unsigned pending = 0;
 };
 
-/// A request's hold on a document entry: keeps it alive through an Evict,
-/// and counts in DocumentEntry::pending. Taken as the request is
-/// dispatched, then moved into the task that serves it; a moved-from guard
-/// holds nothing.
-struct [[nodiscard]] PendingGuard {
+/// A request's hold on a document entry: keeps it alive through an Evict.
+/// Taken as the request is dispatched, then moved into the task that
+/// serves it; a moved-from hold holds nothing.
+struct [[nodiscard]] EntryHold {
     std::shared_ptr<DocumentEntry> doc;
 
-    explicit PendingGuard(std::shared_ptr<DocumentEntry> entry) : doc(std::move(entry)) {
-        doc->pending += 1;
-    }
+    explicit EntryHold(std::shared_ptr<DocumentEntry> entry) : doc(std::move(entry)) {}
 
-    PendingGuard(PendingGuard&&) noexcept = default;
-    PendingGuard& operator=(PendingGuard&&) = delete;
+    EntryHold(EntryHold&&) noexcept = default;
+    EntryHold& operator=(EntryHold&&) = delete;
 
-    ~PendingGuard() {
-        if(!doc) {
-            return;
-        }
-        doc->pending -= 1;
+    ~EntryHold() {
         // The last hold on an evicted entry frees its AST: return the memory
         // as the eviction would have.
-        if(doc.use_count() == 1) {
+        if(doc && doc.use_count() == 1) {
             doc.reset();
             release_free_memory();
         }
@@ -107,62 +95,26 @@ struct [[nodiscard]] PendingGuard {
 /// hang every later query for the document (they observe no unit and
 /// return their missing value; the next Compile sets a real AST).
 struct [[nodiscard]] CompileGuard {
-    PendingGuard pending;
+    EntryHold hold;
 
-    explicit CompileGuard(std::shared_ptr<DocumentEntry> entry) : pending(std::move(entry)) {}
+    explicit CompileGuard(std::shared_ptr<DocumentEntry> entry) : hold(std::move(entry)) {}
 
     CompileGuard(CompileGuard&&) noexcept = default;
     CompileGuard& operator=(CompileGuard&&) = delete;
 
     ~CompileGuard() {
-        if(pending.doc) {
-            pending.doc->ast_ready.set();
+        if(hold.doc) {
+            hold.doc->ast_ready.set();
         }
     }
 };
 
+/// The worker keeps the documents the master's pool sends it, until the
+/// pool evicts them (WorkerPool, worker::EvictParams).
 class StatefulWorker {
     ipc::BincodePeer& peer;
-    std::size_t max_documents;
 
     llvm::StringMap<std::shared_ptr<DocumentEntry>> documents;
-
-    // LRU tracking — owns keys so they don't dangle after request handler returns
-    std::list<std::string> lru;
-    llvm::StringMap<std::list<std::string>::iterator> lru_index;
-
-    void touch_lru(llvm::StringRef path) {
-        auto it = lru_index.find(path);
-        if(it != lru_index.end()) {
-            lru.erase(it->second);
-        }
-        lru.emplace_front(path.str());
-        lru_index[path] = lru.begin();
-    }
-
-    /// Evict least recently used idle documents down to the cap. Busy
-    /// ones stay, so the cap is exceeded while more documents than it are
-    /// in flight at once; the calls after their requests finish catch up.
-    void shrink_if_over_limit() {
-        bool evicted = false;
-        auto it = lru.end();
-        while(documents.size() > max_documents && it != lru.begin()) {
-            it = std::prev(it);
-            if(documents.lookup(*it)->pending > 0) {
-                continue;
-            }
-            auto path = *it;
-            LOG_DEBUG("Evicting document: {}", path);
-            peer.send_notification(worker::EvictedParams{path});
-            documents.erase(path);
-            lru_index.erase(path);
-            it = lru.erase(it);
-            evicted = true;
-        }
-        if(evicted) {
-            release_free_memory();
-        }
-    }
 
     std::shared_ptr<DocumentEntry> get_or_create(llvm::StringRef path) {
         auto [it, inserted] = documents.try_emplace(path, nullptr);
@@ -175,30 +127,21 @@ class StatefulWorker {
 
     /// Look up the document as the request is dispatched, then wait for its
     /// AST, lock its strand and run fn(doc) on the thread pool. Answers
-    /// `missing` if the AST is unusable, document_unloaded if the document
-    /// is not held at all — an eviction the master has not learned of yet,
-    /// which must not pass for an empty answer. `kind` discriminates the
-    /// perf series: query kinds have very different costs and must not
-    /// collapse into one distribution.
+    /// `missing` if the AST is unusable. `kind` discriminates the perf
+    /// series: query kinds have very different costs and must not collapse
+    /// into one distribution.
     template <typename Params, typename R, typename F>
     async::task<R, ipc::Error>
         with_ast_or(llvm::StringRef kind, const Params& params, R missing, F fn) {
         auto it = documents.find(params.path);
-        if(it == documents.end()) {
-            return kotatsu::outcome_error(
-                ipc::Error{worker::dispatch_errc::document_unloaded, "Document is not loaded"});
-        }
-        touch_lru(params.path);
-        return serve_ast(kind, PendingGuard(it->second), params, std::move(missing), std::move(fn));
+        assert(it != documents.end() && "the pool queries only documents it holds resident here");
+        return serve_ast(kind, EntryHold(it->second), params, std::move(missing), std::move(fn));
     }
 
     template <typename Params, typename R, typename F>
-    async::task<R, ipc::Error> serve_ast(llvm::StringRef kind,
-                                         PendingGuard pending,
-                                         const Params& params,
-                                         R missing,
-                                         F fn) {
-        auto& doc = *pending.doc;
+    async::task<R, ipc::Error>
+        serve_ast(llvm::StringRef kind, EntryHold hold, const Params& params, R missing, F fn) {
+        auto& doc = *hold.doc;
         ScopedTimer timer;
         co_await doc.ast_ready.wait();
         auto strand = co_await doc.strand.scoped_lock();
@@ -232,7 +175,6 @@ class StatefulWorker {
                  acquire_ms,
                  compute_ms,
                  timer.ms_f());
-        shrink_if_over_limit();
         co_return result;
     }
 
@@ -240,28 +182,15 @@ class StatefulWorker {
                                                        const worker::CompileParams& params);
 
 public:
-    StatefulWorker(ipc::BincodePeer& peer, std::size_t max_documents) :
-        peer(peer), max_documents(max_documents) {}
+    explicit StatefulWorker(ipc::BincodePeer& peer) : peer(peer) {}
 
     void register_handlers();
 };
 
 RequestResult<worker::CompileParams>
     StatefulWorker::serve_compile(CompileGuard guard, const worker::CompileParams& params) {
-    auto doc = guard.pending.doc;
+    auto doc = guard.hold.doc;
     auto strand = co_await doc->strand.scoped_lock();
-
-    // Copy params to doc AFTER acquiring the strand lock, so that
-    // concurrent Compile requests waiting on the strand don't
-    // overwrite our fields before we use them.
-    doc->version = params.version;
-    doc->text = params.text;
-    doc->directory = params.directory;
-    doc->arguments = params.arguments;
-    doc->pch = params.pch;
-    doc->open_conditionals = params.open_conditionals;
-    doc->preamble_inactive_regions = params.preamble_inactive_regions;
-    doc->pcms = params.pcms;
 
     // The old AST describes the text this request just replaced: drop
     // it before the cancellable await, or a cancellation arriving while
@@ -286,8 +215,8 @@ RequestResult<worker::CompileParams>
 
             CompilationParams cp{
                 .kind = CompilationKind::Content,
-                .input = {.arguments = doc->arguments,
-                          .directory = doc->directory,
+                .input = {.arguments = params.arguments,
+                          .directory = params.directory,
                           .project_root = params.project_root,
                           .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
                 .tidy = params.tidy,
@@ -295,14 +224,14 @@ RequestResult<worker::CompileParams>
                 .preamble_inactive_regions = params.preamble_inactive_regions,
                 .stop = stop,
             };
-            use_precompiled(cp.input, doc->pch, doc->pcms);
-            cp.input.add_focus(params.path, doc->text);
+            auto pch_mapping = use_precompiled(cp.input, params.pch, params.pcms);
+            cp.input.add_focus(params.path, params.text);
             cp.input.add_synthesized(params.synthesized);
 
             auto unit = compile(std::move(cp));
 
             worker::CompileResult result;
-            result.version = doc->version;
+            result.version = params.version;
 
             // A failed parse whose diagnostics point at the consumed PCH: either a
             // diagnostic names the blob's path outright, or it is an
@@ -316,16 +245,16 @@ RequestResult<worker::CompileParams>
             // failure it did not cause. An anonymous read error with PCMs
             // in play is ambiguous; suspecting the PCH costs at most one
             // retracted pair per attempt and self-corrects on the retry.
-            if((!unit->completed() || unit->fatal_error()) && !doc->pch.first.empty()) {
+            if((!unit->completed() || unit->fatal_error()) && !params.pch.first.empty()) {
                 auto points_at_pch = [&](const Diagnostic& diag) {
                     llvm::StringRef message = diag.message;
-                    if(message.contains(doc->pch.first)) {
+                    if(message.contains(params.pch.first)) {
                         return true;
                     }
                     if(!diag.id.is_deserialization_error()) {
                         return false;
                     }
-                    return ranges::none_of(doc->pcms, [&](auto& entry) {
+                    return ranges::none_of(params.pcms, [&](auto& entry) {
                         return message.contains(entry.second);
                     });
                 };
@@ -339,7 +268,7 @@ RequestResult<worker::CompileParams>
                 result.started_at = unit->started_at().count();
                 result.deps = unit->deps();
 
-                index_error = hand_over_index(
+                index_error = send_index(
                     index::build_tu_index(*unit,
                                           {.known_instantiations = params.known_instantiations,
                                            .standard_library_instantiations =
@@ -360,6 +289,10 @@ RequestResult<worker::CompileParams>
                          unit->fatal_error());
                 result.diagnostics = std::move(diags);
                 doc->unit = std::move(unit);
+                doc->pch_mapping = std::move(pch_mapping);
+                doc->pch_bound = params.pch.second;
+                doc->open_conditionals = params.open_conditionals;
+                doc->preamble_inactive_regions = params.preamble_inactive_regions;
             } else {
                 result.status = unit->setup_fail() ? worker::CompileStatus::SetupFail
                                                    : worker::CompileStatus::Cancelled;
@@ -375,13 +308,12 @@ RequestResult<worker::CompileParams>
                 // be replaced on disk, so holding it would block the
                 // master's rebuild of a retracted pair.
                 unit.reset();
+                doc->pch_mapping.reset();
             }
             release_free_memory();
             return result;
         },
         [stop] { stop->store(true, std::memory_order_relaxed); });
-
-    shrink_if_over_limit();
 
     co_return compile_result;
 }
@@ -393,7 +325,6 @@ void StatefulWorker::register_handlers() {
                const worker::CompileParams& params) -> RequestResult<worker::CompileParams> {
             LOG_INFO("Compile request: path={}, version={}", params.path, params.version);
             CompileGuard guard(get_or_create(params.path));
-            touch_lru(params.path);
             return serve_compile(std::move(guard), params);
         });
 
@@ -482,12 +413,6 @@ void StatefulWorker::register_handlers() {
     // === Evict ===
     peer.on_notification([this](const worker::EvictParams& params) {
         LOG_DEBUG("Evict notification: path={}", params.path);
-
-        auto it = lru_index.find(params.path);
-        if(it != lru_index.end()) {
-            lru.erase(it->second);
-            lru_index.erase(it);
-        }
         documents.erase(params.path);
         release_free_memory();
     });
@@ -508,9 +433,7 @@ void StatefulWorker::register_handlers() {
         });
 }
 
-int run_stateful_worker_mode(const std::string& worker_name,
-                             const std::string& log_dir,
-                             std::size_t max_documents) {
+int run_stateful_worker_mode(const std::string& worker_name, const std::string& log_dir) {
     logging::stderr_logger(worker_name, logging::options);
     if(!log_dir.empty()) {
         // File only: worker stderr is reserved for crash/unexpected output,
@@ -533,7 +456,7 @@ int run_stateful_worker_mode(const std::string& worker_name,
     ipc::BincodePeer peer(loop, std::move(*transport_result));
     install_test_gates(peer, loop);
 
-    StatefulWorker worker(peer, max_documents);
+    StatefulWorker worker(peer);
     worker.register_handlers();
 
     LOG_INFO("Stateful worker ready, waiting for requests");

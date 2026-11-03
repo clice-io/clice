@@ -103,9 +103,9 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
     // field's born-valid default meanwhile.
     ProjectSettings defaults;
     auto reject_zero = [&](auto& field, const auto& fallback, llvm::StringRef name) {
-        if(field.value == 0) {
+        if(field == 0) {
             problem("a worker count must be at least 1", {"project", name.str()});
-            field = fallback.value;
+            field = fallback;
         }
     };
     reject_zero(p.stateful_worker_count, defaults.stateful_worker_count, "stateful_worker_count");
@@ -188,10 +188,7 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
         // A string spelling is tokenized before `${workspace}` is
         // substituted, so a root with spaces stays one argument.
         if(auto* spelling = std::get_if<std::string>(&rule.default_command)) {
-            llvm::BumpPtrAllocator allocator;
-            llvm::StringSaver saver(allocator);
-            auto arguments = tokenize_command(*spelling, saver);
-            compiled.default_command.assign(arguments.begin(), arguments.end());
+            compiled.default_command = split_command(*spelling);
         } else {
             compiled.default_command = std::get<std::vector<std::string>>(rule.default_command);
         }
@@ -271,13 +268,6 @@ llvm::StringRef Settings::fallback_configuration() const {
     auto tags = configurations();
     return tags.empty() ? llvm::StringRef() : tags.front();
 }
-
-/// Codec config the published schema is generated under, for its
-/// `additionalProperties: false`: a key load() warns about as unknown is
-/// one the schema rejects — the same typo is reported both ways.
-struct DenyUnknownKeys {
-    constexpr static bool deny_unknown_fields = true;
-};
 
 /// The end of the key or value below `node` that starts at `begin`, the
 /// innermost one: an array of tables starts where its first table does.
@@ -569,7 +559,9 @@ void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef root) {
 }
 
 std::expected<std::string, std::string> Settings::json_schema() {
-    auto schema = json::schema_string<Settings, DenyUnknownKeys>(/*pretty=*/true);
+    // `additionalProperties: false` throughout: a key load() warns about as
+    // unknown is one the schema rejects — the same typo is reported both ways.
+    auto schema = json::schema_string<Settings>({.deny_unknown_fields = true, .pretty = true});
     if(!schema) {
         return std::unexpected(schema.error().message);
     }

@@ -6,7 +6,6 @@
 #define	EINTR		 4	/* Interrupted system call */
 #define	EINVAL		22	/* Invalid argument */
 #define	EPIPE		32	/* Broken pipe */
-#define	ERANGE		34	/* Math result not representable */
 # define __ASSERT_VOID_CAST static_cast<void>
 # define assert(expr)							  ((expr)								   ? __ASSERT_VOID_CAST (0)						   : __assert_fail (__STRING(expr), __FILE__, __LINE__, __ASSERT_FUNCTION))
 #   define __ASSERT_FUNCTION	__PRETTY_FUNCTION__

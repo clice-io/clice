@@ -126,13 +126,14 @@ private:
 /// Warns of a directory fs::walk could not read, unless it is missing.
 void warn_unreadable(const fs::Walk::Error& error);
 
-/// Keep the mapping of a PCH from clice's store for the process's later
-/// compiles: Windows pages every fresh mapping in fault by fault, on every
-/// compile. The store gives each PCH build a name of its own and never
-/// rewrites one, so a kept mapping stays the file's bytes. Nothing else
-/// qualifies — a PCM is rebuilt under the name it had — since on Windows a
-/// held mapping stops anyone from replacing the file.
-void keep_mapped(llvm::StringRef path);
+/// Map a PCH from clice's store for the process's compiles: while the
+/// mapping returned lives, every compile opening the file reads it, where
+/// Windows would page a fresh mapping in fault by fault, on every compile.
+/// The store gives each PCH build a name of its own and never rewrites one,
+/// so a kept mapping stays the file's bytes. Nothing else qualifies — a PCM
+/// is rebuilt under the name it had — since on Windows a held mapping stops
+/// anyone from replacing the file. Null when the file does not map.
+std::shared_ptr<const llvm::MemoryBuffer> keep_mapped(llvm::StringRef path);
 
 /// The files on disk that the compiles of one command do not see, by the
 /// search directory holding them.

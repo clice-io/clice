@@ -45,7 +45,6 @@
 #define EINTR           4               /* Interrupted system call */
 #define EINVAL          22              /* Invalid argument */
 #define EPIPE           32              /* Broken pipe */
-#define ERANGE          34              /* Result too large */
 #define SIGHUP  1       /* hangup */
 #define SIGINT  2       /* interrupt */
 #define SIGPIPE 13      /* write on a pipe with no one to read it */

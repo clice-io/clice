@@ -64,7 +64,7 @@ llvm::StringRef anchored(CommandTable& commands,
     return commands.intern(spelled(value, anchor, mounts).str());
 }
 
-std::size_t wrapper_prefix_len(llvm::ArrayRef<const char*> argv) {
+std::size_t wrapper_prefix_len(kotatsu::string_list_ref argv) {
     std::size_t i = 0;
     while(i < argv.size() && is_wrapper_name(path::filename(argv[i]))) {
         i += 1;
@@ -78,21 +78,24 @@ std::size_t wrapper_prefix_len(llvm::ArrayRef<const char*> argv) {
 
 std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
                                                Fid file,
-                                               llvm::ArrayRef<const char*> arguments) {
-    if(arguments.empty()) {
+                                               kotatsu::string_list_ref command_line) {
+    if(command_line.empty()) {
         return std::nullopt;
     }
 
     /// Wrapper stripping: the prefix is entry provenance, not command
     /// identity — `ccache clang++ X` and `clang++ X` dedupe to one command.
-    std::size_t wrapper_len = wrapper_prefix_len(arguments);
-    if(wrapper_len > 0) {
-        if(wrapper_len >= arguments.size()) {
-            LOG_WARN("Compiler launcher without a compiler: {}", print_argv(arguments));
-            return std::nullopt;
-        }
-        arguments = arguments.drop_front(wrapper_len);
+    std::size_t wrapper_len = wrapper_prefix_len(command_line);
+    if(wrapper_len >= command_line.size()) {
+        LOG_WARN("Compiler launcher without a compiler: {}", print_argv(command_line));
+        return std::nullopt;
     }
+    llvm::SmallVector<std::string_view, 32> written(command_line.begin() + wrapper_len,
+                                                    command_line.end());
+    if(written.front().empty()) {
+        return std::nullopt;
+    }
+    llvm::ArrayRef<std::string_view> arguments = written;
 
     Command command;
     command.directory = commands.intern(directory).data();
@@ -109,14 +112,14 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
 
     /// zig cc / zig c++: the two tokens together are the driver identity.
     if(command.family == CompilerFamily::Zig && !arguments.empty() &&
-       (llvm::StringRef(arguments[0]) == "cc" || llvm::StringRef(arguments[0]) == "c++")) {
+       (arguments[0] == "cc" || arguments[0] == "c++")) {
         command.subcommand = commands.intern(arguments[0]).data();
         arguments = arguments.drop_front();
     }
     /// --driver-mode may also arrive from inside a response file (clang
     /// interprets it post-expansion); the pre-expansion scan only picks the
     /// response tokenization style.
-    auto scan_driver_mode = [&](llvm::ArrayRef<const char*> argv) {
+    auto scan_driver_mode = [&](const auto& argv) {
         for(llvm::StringRef token: argv) {
             if(token.consume_front("--driver-mode=")) {
                 command.family =
@@ -126,48 +129,33 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     };
     scan_driver_mode(arguments);
 
-    /// Response-file expansion, driver-mode aware: CL commands tokenize
-    /// with Windows rules regardless of the server platform. Relative
-    /// @paths resolve against the entry directory; contents may nest.
-    llvm::BumpPtrAllocator local_alloc;
-    llvm::StringSaver local_saver(local_alloc);
-    llvm::SmallVector<const char*, 32> tokens(arguments.begin(), arguments.end());
-    expand_response_files(tokens, directory, command.family, local_saver);
-    scan_driver_mode(tokens);
+    auto parse_args = expand_response_files(arguments, directory, command.family);
+    scan_driver_mode(parse_args);
 
     /// ccache's --ccache-skip guards the NEXT token from ccache's own
     /// processing; the token itself belongs to the compiler command.
     if(wrapper_len > 0) {
-        tokens.erase(ranges::remove_if(tokens,
-                                       [](const char* token) {
-                                           return llvm::StringRef(token) == "--ccache-skip";
-                                       })
-                         .begin(),
-                     tokens.end());
+        std::erase(parse_args, "--ccache-skip");
     }
 
     /// nvcc spellings are rewritten into clang's before the table parse —
     /// the table cannot parse them, and unparsed tokens keep no semantics.
-    std::vector<std::string> nvcc_translated;
     if(command.family == CompilerFamily::NVCC) {
-        llvm::SmallVector<const char*, 32> argv;
-        argv.push_back(command.driver);
-        argv.append(tokens.begin(), tokens.end());
-        nvcc_translated = translate_nvcc_command(argv, directory);
-        tokens.clear();
-        for(auto& token: llvm::ArrayRef(nvcc_translated).drop_front()) {
-            tokens.push_back(token.c_str());
+        llvm::SmallVector<const char*, 32> argv = {command.driver};
+        for(auto& argument: parse_args) {
+            argv.push_back(argument.c_str());
         }
+        parse_args = translate_nvcc_command(argv, directory);
+        parse_args.erase(parse_args.begin());
     }
 
-    std::vector<std::string> parse_args(tokens.begin(), tokens.end());
-    auto parse_options = option::ParseOptions{.dash_dash_parsing = true,
-                                              .visibility = family_visibility(command.family)};
+    auto parse_options = cli::ParseOptions{.dash_dash_parsing = true,
+                                           .visibility = family_visibility(command.family)};
 
     /// Two passes: the staging pass keeps every parse result alive, so the
     /// classification pass can decide input pairing (which /Tc-/Tp names
     /// the entry file) before it lays down arguments.
-    std::vector<std::expected<option::ParsedArg, option::ParseError>> staged;
+    std::vector<std::expected<cli::ParsedArg, cli::Error>> staged;
     for(auto& parsed: clang_options::table().parse(parse_args, parse_options)) {
         staged.push_back(parsed);
     }
@@ -321,32 +309,20 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
 std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
                                                Fid file,
                                                llvm::StringRef command) {
-    llvm::BumpPtrAllocator local;
-    llvm::StringSaver saver(local);
     // A database written inside Cygwin or MSYS2 quotes its commands for sh.
     return normalize(directory,
                      file,
-                     mounts ? tokenize_sh_command(command, saver)
-                            : tokenize_command(command, saver));
+                     split_command(command, mounts ? sys::cmd::Quoting::POSIX : host_quoting));
 }
 
-void Normalizer::expand_response_files(llvm::SmallVectorImpl<const char*>& tokens,
-                                       const Spelling& directory,
-                                       CompilerFamily family,
-                                       llvm::StringSaver& saver,
-                                       unsigned depth) {
-    /// Depth cap breaks @a → @b → @a cycles.
-    if(depth >= 8) {
-        return;
-    }
-
-    llvm::SmallVector<const char*, 32> expanded;
-
-    /// Splice the arguments of the file `name`, false when it cannot be
-    /// read. Read or not, it is among the load's inputs.
-    auto splice = [&](llvm::StringRef name) {
-        auto full = spelled(name, directory, mounts);
-        auto file = files.intern(full);
+std::vector<std::string> Normalizer::expand_response_files(kotatsu::string_list_ref arguments,
+                                                           const Spelling& directory,
+                                                           CompilerFamily family,
+                                                           unsigned depth) {
+    /// The text of the file `name`, which is among the load's inputs, read
+    /// or not.
+    auto read = [&](kotatsu::buffer_ref out, std::string_view name) -> std::error_code {
+        auto file = files.intern(spelled(name, directory, mounts));
         auto observed = vfs::read_observed(files.resolve(file));
         if(observed) {
             files.disk.observe(file, observed->obs);
@@ -357,70 +333,48 @@ void Normalizer::expand_response_files(llvm::SmallVectorImpl<const char*>& token
                  .hash = observed ? std::optional(observed->obs.hash) : std::nullopt});
         }
         if(!observed) {
-            return false;
+            return observed.error();
         }
-
-        /// UTF-16 response files (MSVC tooling emits them) convert first.
-        llvm::StringRef text = observed->text;
-        std::string utf8;
-        if(text.size() >= 2 &&
-           ((text[0] == '\xff' && text[1] == '\xfe') || (text[0] == '\xfe' && text[1] == '\xff'))) {
-            // Copied: a string's bytes need not be aligned for UTF-16 (libc++
-            // keeps a short one at an odd address).
-            llvm::SmallVector<llvm::UTF16, 256> units(text.size() / 2);
-            std::memcpy(units.data(), text.data(), units.size() * sizeof(llvm::UTF16));
-            if(text.size() % 2 != 0 || !llvm::convertUTF16ToUTF8String(units, utf8)) {
-                LOG_WARN("Cannot decode UTF-16 response file {}", full);
-                return false;
-            }
-            text = utf8;
-        }
-
-        llvm::SmallVector<const char*, 32> inner;
-        if(cl_mode(family)) {
-            for(auto argument:
-                sys::windows::split_command_line(text, sys::windows::CommandLineRules::LLVM)) {
-                inner.push_back(saver.save(llvm::StringRef(argument)).data());
-            }
-        } else {
-            llvm::cl::TokenizeGNUCommandLine(text, saver, inner);
-        }
-        expand_response_files(inner, directory, family, saver, depth + 1);
-        expanded.append(inner.begin(), inner.end());
-        return true;
+        out.assign(observed->text);
+        return {};
     };
+    auto quoting = cl_mode(family) ? sys::cmd::Quoting::Windows : sys::cmd::Quoting::POSIX;
+    /// An unreadable response file stays as written: the real compile fails
+    /// the same way.
+    auto expanded =
+        ranges::to<std::vector<std::string>>(sys::cmd::expand(arguments, quoting, read));
+    if(family != CompilerFamily::NVCC) {
+        return expanded;
+    }
 
-    for(std::size_t i = 0; i < tokens.size(); i += 1) {
-        llvm::StringRef token(tokens[i]);
-        if(token.consume_front("@")) {
-            /// Unreadable response file: the token survives verbatim (the
-            /// real compile would fail the same way).
-            if(!splice(token)) {
-                expanded.push_back(tokens[i]);
-            }
+    /// nvcc's options files splice in where they stand. A cycle of them
+    /// stops 8 files deep.
+    std::vector<std::string> spliced;
+    for(std::size_t i = 0; i < expanded.size(); i += 1) {
+        auto names = depth < 8 ? options_files(expanded, i) : std::nullopt;
+        if(!names) {
+            spliced.push_back(std::move(expanded[i]));
             continue;
         }
-        if(family == CompilerFamily::NVCC) {
-            if(auto names = options_files(tokens, i)) {
+        for(auto& name: *names) {
+            std::string text;
+            if(read(text, name)) {
                 /// nvcc warns about an options file it cannot read and
                 /// compiles without it.
-                for(auto& name: *names) {
-                    if(!splice(name)) {
-                        LOG_WARN("Cannot read nvcc options file {}", name);
-                    }
-                }
+                LOG_WARN("Cannot read nvcc options file {}", name);
                 continue;
             }
+            spliced.append_range(
+                expand_response_files(split_command(text, quoting), directory, family, depth + 1));
         }
-        expanded.push_back(tokens[i]);
     }
-    tokens = std::move(expanded);
+    return spliced;
 }
 
 std::optional<CommandID> WrittenCommands::intern(const Spelling& directory,
-                                                 llvm::ArrayRef<const char*> arguments) {
+                                                 kotatsu::string_list_ref arguments) {
     std::string key = directory.str();
-    for(const char* argument: arguments) {
+    for(auto argument: arguments) {
         key += '\0';
         key += argument;
     }

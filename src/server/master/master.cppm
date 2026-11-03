@@ -21,20 +21,20 @@ class LSPClient;
 enum class ServerMode : std::uint8_t { Pipe, Socket };
 
 struct ServerOptions {
-    DecoKV(help = "Server mode: pipe (default) or socket (debug)", required = false)
-    <ServerMode> mode = ServerMode::Pipe;
+    KANNOTATE(&mode, description = "Server mode: pipe, or socket (debug)")
+    ServerMode mode = ServerMode::Pipe;
 
-    DecoKV(help = "Socket mode address", required = false)
-    <std::string> host = "127.0.0.1";
+    KANNOTATE(&host, description = "Socket mode address")
+    std::string host = "127.0.0.1";
 
-    DecoKV(help = "Socket mode TCP port", required = false)
-    <int> port = 0;
+    KANNOTATE(&port, description = "Socket mode TCP port")
+    int port = 0;
 
-    DecoKV(help = "Record LSP input to file for replay testing", required = false)
-    <std::string> record;
+    KANNOTATE(&record, description = "Record LSP input to file for replay testing")
+    std::string record;
 
-    DecoKV(help = "Workspace root directory (optional, skips LSP initialize)", required = false)
-    <std::string> workspace;
+    KANNOTATE(&workspace, description = "Workspace root directory (optional, skips LSP initialize)")
+    std::string workspace;
 };
 
 enum class ServerLifecycle : std::uint8_t {
@@ -123,6 +123,16 @@ public:
 
     async::cancellation_token shutdown_token() const {
         return shutdown_source.token();
+    }
+
+    /// The master let go of what a document or a project held (a close, a
+    /// move, a project stopped): the next tick of its polling returns the
+    /// freed memory to the system (release_free_memory), with what else
+    /// went meanwhile. The allocators keep freed pages until a collect asks
+    /// for them, and the workers collect after each request; the master has
+    /// no such point of its own.
+    void return_freed_memory() {
+        memory_freed = true;
     }
 
     // projects.cpp
@@ -329,6 +339,9 @@ public:
     /// (ServedProject::reload_databases): set once a project polls the disk.
     bool polling_files = false;
 
+    /// What return_freed_memory() asks of the next poll tick.
+    bool memory_freed = false;
+
     /// The workers every project compiles and indexes on.
     WorkerPool pool;
 
@@ -396,9 +409,6 @@ public:
 
 private:
     // lifecycle.cpp
-
-    /// The pool's callbacks, routed to the projects owning the documents.
-    void route_pool_callbacks();
 
     /// Dump every configuration layer of a project — the configuration file verbatim,
     /// the client's initializationOptions overlay, and the merged result after

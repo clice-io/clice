@@ -191,15 +191,14 @@ ZEST_CASE(SelfContainmentPersisted) {
         auto id = files.intern(Spelling::absolute(path));
         auto dep = files.intern(Spelling::absolute(dep_path));
         auto alone = files.intern(Spelling::absolute(alone_path));
-        feature::FileDiagnostic missing{
-            .level = DiagnosticLevel::Error,
-            .id = clang::diag::err_unknown_typename,
-        };
         f.project.commit_self_containment({id, 1},
-                                          {missing},
+                                          false,
                                           current_input(files, id)->version,
                                           {*current_input(files, dep)});
-        f.project.commit_self_containment({alone, 1}, {}, current_input(files, alone)->version, {});
+        f.project.commit_self_containment({alone, 1},
+                                          true,
+                                          current_input(files, alone)->version,
+                                          {});
         f.save();
     }
 
@@ -220,6 +219,42 @@ ZEST_CASE(SelfContainmentPersisted) {
     f.load();
     auto id = f.project.file_table.intern(Spelling::absolute(path));
     ZEXPECT(!f.project.self_contained({id, 1}, false).has_value());
+}
+
+ZEST_CASE(SelfContainmentRescored) {
+    // A result judged under another scoring of the check's diagnostics, an
+    // older binary's, is dropped: the header is checked again.
+    TempDir tmp;
+    tmp.touch("alone.h", "int y;\n");
+    auto path = tmp.path("alone.h");
+    std::string records;
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        auto& files = f.project.file_table;
+        auto alone = files.intern(Spelling::absolute(path));
+        f.project.commit_self_containment({alone, 1},
+                                          true,
+                                          current_input(files, alone)->version,
+                                          {});
+        records = f.project.serialize_precompiled_records();
+    }
+    auto scoring = std::format(R"("trials_scoring":{})", feature::missing_context_scoring);
+    auto at = records.find(scoring);
+    ZASSERT(at != std::string::npos);
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.project.load_precompiled_records(records);
+    auto alone = f.project.file_table.intern(Spelling::absolute(path));
+    ZEXPECT(f.project.self_contained({alone, 1}, false) == true);
+
+    records.replace(at, scoring.size(), R"("trials_scoring":0)");
+    IndexerFixture older;
+    open_store(tmp, older.project);
+    older.project.load_precompiled_records(records);
+    alone = older.project.file_table.intern(Spelling::absolute(path));
+    ZEXPECT(!older.project.self_contained({alone, 1}, false).has_value());
 }
 
 };  // ZEST_SUITE(PrecompiledRecords)

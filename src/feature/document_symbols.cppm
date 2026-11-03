@@ -12,18 +12,19 @@ import :syntax.source_text;
 namespace clice::feature {
 
 /// Corresponds to the `[document_symbols]` section in clice.toml.
+KANNOTATE_TYPE(struct DocumentSymbolsOptions, presence_all = optional);
 struct DocumentSymbolsOptions {
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "List the `#define`s the file writes; an include guard's never "
-                         "lists.")
-    <bool> macros = true;
+    KANNOTATE(&macros,
+              description =
+                  "List the `#define`s the file writes; an include guard's never "
+                  "lists.")
+    bool macros = true;
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "List what a function's body declares: its variables, types and "
-                         "lambdas, under the function.")
-    <bool> locals = true;
+    KANNOTATE(&locals,
+              description =
+                  "List what a function's body declares: its variables, types and "
+                  "lambdas, under the function.")
+    bool locals = true;
 };
 
 struct DocumentSymbol {

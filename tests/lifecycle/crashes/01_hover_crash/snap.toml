@@ -14,15 +14,8 @@ pushes = [
     ],
 ]
 
-["hover alone pauses"."hover while paused".hover]
-markdown = '''
-**function** `add`
-
-```cpp
-int add(int a, int b)
-```
-'''
-range = "int ⟦add⟧(int a, int b) {"
+["hover alone pauses"."hover while paused"]
+hover = {}
 
 ["hover alone pauses".highlights]
 highlights = [

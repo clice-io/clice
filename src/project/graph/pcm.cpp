@@ -4,6 +4,7 @@ import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
 import :project.graph.precompiled;
+import :project.graph.task_graph;
 import :project.project;
 import :support.logging;
 import :syntax.header_context;
@@ -211,7 +212,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // importer explains its diagnostics from it meanwhile.
     auto resolved = imports.resolved();
     Fid failed_import;
-    switch(co_await project.wait_modules(attempt, resolved, [&](Fid module) {
+    switch(co_await project.wait_modules(&attempt, resolved, [&](Fid module) {
         if(!failed_import.valid()) {
             failed_import = module;
         }
@@ -543,56 +544,80 @@ const FailureRecord* Project::build_crash(Fid module) {
     return failed && failed->record.crashed() ? &failed->record : nullptr;
 }
 
-async::task<std::optional<Imports>> Project::build_imports(NodeId consumer,
-                                                           Fid path_id,
-                                                           const Resolution& resolution,
-                                                           llvm::StringRef content) {
-    // Resolved fresh on every call — a stale list must never outlive a
-    // CDB change. The consumer's edges must live in the graph: a saved
-    // module (or a provider appearing for an unresolved import) cascades to
-    // the open TUs importing it through them. Declared even when empty, so
-    // a removed import stops cascading.
-    auto imports =
-        co_await scan_imports(path_id, resolution, std::optional<llvm::StringRef>(content));
-    graph.set_edges(consumer, imports.declared);
-    // A user request waits on these builds: foreground, so the background
-    // budget cannot throttle them. A module that did not build is the
-    // compile's to report; waiting through stale attempts, only a shutdown
-    // ends one Stale. Waiting again only helps while every one built.
-    auto resolved = imports.resolved();
-    for(int pass = 0; pass < import_passes; pass += 1) {
-        std::vector<async::task<Result>> waits;
-        for(auto dep: resolved) {
-            waits.push_back(graph.join(module_node(dep),
-                                       module_work(dep),
-                                       {.foreground = true, .retry = [] { return true; }}));
+async::task<std::optional<BuiltImports>> Project::build_imports(Fid file,
+                                                                llvm::StringRef text,
+                                                                const Resolution& resolution,
+                                                                BuildOptions options) {
+    // Resolved fresh on every call, from the text the parse will consume
+    // under the command it compiles with: a context choice or a header's
+    // host cannot enable an import the scan missed, and a stale list never
+    // outlives a CDB change. An unsaved `import m;` builds its PCM now; the
+    // module names still resolve against the on-disk module map, a module
+    // unit being somebody else's saved file. The scan runs even for an empty
+    // buffer: the command's injected -include prefix can still import.
+    BuiltImports built{
+        .imports = co_await scan_imports(file, resolution, std::optional<llvm::StringRef>(text)),
+    };
+    graph.set_edges(ast_node(file), built.imports.declared);
+    // Still an edge when refused: the declaration above keeps it, so a later
+    // build of the module, by a parse that may retry it, re-dirties this one.
+    llvm::SmallVector<Fid> waited;
+    for(auto module: built.imports.resolved()) {
+        if(auto* crash = build_crash(module)) {
+            if(!options.retry_crashed) {
+                built.refused.push_back(*crash);
+                continue;
+            }
+            forget_build_failure(module);
         }
-        auto results = co_await async::when_all(std::move(waits));
-        if(ranges::contains(results, Result::Stale)) {
-            co_return std::nullopt;
-        }
-        if(ranges::contains(results, Result::Failed) || imports_present(resolved)) {
-            break;
-        }
+        waited.push_back(module);
     }
-    co_return imports;
+    auto waits = co_await wait_modules(options.attempt, waited, [&](Fid module) {
+        LOG_INFO("Import {} of {} failed to build; the parse reports it",
+                 file_table.resolve(module),
+                 file_table.resolve(file));
+        built.failed.push_back(module);
+    });
+    if(waits == Result::Stale) {
+        co_return std::nullopt;
+    }
+    co_return built;
 }
 
-async::task<Result> Project::wait_modules(Attempt& attempt,
+async::task<Result> Project::wait_modules(Attempt* attempt,
                                           llvm::ArrayRef<Fid> modules,
                                           llvm::function_ref<void(Fid)> failed) {
     for(int pass = 0; pass < import_passes; pass += 1) {
+        std::vector<Result> results;
+        if(attempt) {
+            for(auto module: modules) {
+                results.push_back(
+                    co_await attempt->depend(module_node(module), module_work(module)));
+                if(results.back() == Result::Stale) {
+                    co_return Result::Stale;
+                }
+            }
+        } else {
+            std::vector<async::task<Result>> waits;
+            for(auto module: modules) {
+                waits.push_back(graph.join(module_node(module),
+                                           module_work(module),
+                                           {.foreground = true, .retry = [] { return true; }}));
+            }
+            auto joined = co_await async::when_all(std::move(waits));
+            results.assign(joined.begin(), joined.end());
+            // Waiting through stale attempts, only a shutdown ends one Stale.
+            if(ranges::contains(results, Result::Stale)) {
+                co_return Result::Stale;
+            }
+        }
         bool built = true;
-        for(auto module: modules) {
-            switch(co_await attempt.depend(module_node(module), module_work(module))) {
-                case Result::Success: break;
-                case Result::Stale: co_return Result::Stale;
-                case Result::Failed:
-                    built = false;
-                    if(failed) {
-                        failed(module);
-                    }
-                    break;
+        for(auto [module, result]: views::zip(modules, results)) {
+            if(result == Result::Failed) {
+                built = false;
+                if(failed) {
+                    failed(module);
+                }
             }
         }
         if(!built) {

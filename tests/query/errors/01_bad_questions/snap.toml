@@ -72,7 +72,7 @@ exit = 1
 [test."$ clice query definition add main.cpp"]
 stdout = '''
 {
-  "error": "at argv[1]:\n  add main.cpp\n      ^~~~~~~~\n  unexpected input argument main.cpp: expected 1 input argument",
+  "error": "unexpected input argument main.cpp: expected 1 input argument",
   "stale": []
 }
 '''
@@ -81,7 +81,7 @@ exit = 2
 [test."$ clice query symbol-search add main.cpp"]
 stdout = '''
 {
-  "error": "at argv[1]:\n  add main.cpp\n      ^~~~~~~~\n  unexpected input argument main.cpp: expected 1 input argument",
+  "error": "unexpected input argument main.cpp: expected 1 input argument",
   "stale": []
 }
 '''
@@ -90,7 +90,7 @@ exit = 2
 [test."$ clice query definition"]
 stdout = '''
 {
-  "error": "expected 1 input argument, got 0",
+  "error": "required argument <LOCATOR> is missing",
   "stale": []
 }
 '''
@@ -99,7 +99,16 @@ exit = 2
 [test."$ clice query bogus"]
 stdout = '''
 {
-  "error": "at argv[0]:\n  bogus\n  ^~~~~\n  unknown subcommand 'bogus'",
+  "error": "unknown subcommand 'bogus'",
+  "stale": []
+}
+'''
+exit = 2
+
+[test."$ clice query defintion add"]
+stdout = '''
+{
+  "error": "unknown subcommand 'defintion'; did you mean 'definition'?",
   "stale": []
 }
 '''

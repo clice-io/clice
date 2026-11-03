@@ -11,13 +11,10 @@ namespace clice::driver {
 
 namespace {
 
-struct Options {
-    deco::decl::HelpOption help;
-
-    DecoFlag(names = {"--index"},
-             help = "Also build and persist the project index from the same parses",
-             required = false)
-    index;
+KANNOTATE_TYPE(struct Lint, description = "Lint C++ source files");
+struct Lint {
+    KANNOTATE(&index, description = "Also build and persist the project index from the same parses")
+    bool index = false;
 
     ProjectOptions where;
     JobsOption jobs;
@@ -392,20 +389,11 @@ int run_lint(const ProjectOptions& where, std::uint32_t jobs, bool with_index, b
     return result.exit_code;
 }
 
-CommandHandler build() {
-    return operation<Options>("clice lint [OPTIONS]",
-                              "lint",
-                              Errors::Text,
-                              [](const Options& opts) {
-                                  return run_lint(opts.where,
-                                                  opts.jobs.jobs.value_or(0),
-                                                  static_cast<bool>(opts.index),
-                                                  static_cast<bool>(opts.report.json));
-                              });
+int run(Lint& lint) {
+    return run_lint(lint.where, lint.jobs.jobs, lint.index, lint.report.json);
 }
 
-[[maybe_unused]] const bool registered =
-    register_command(Command::lint, {.description = "Lint C++ source files", .build = build});
+[[maybe_unused]] const bool added = cli::add_command<Subcommands>(dispatch<Lint>);
 
 }  // namespace
 

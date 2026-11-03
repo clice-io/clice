@@ -188,6 +188,16 @@ Number of stateful workers — they hold ASTs in memory and serve queries (hover
 
 | Option                   | Type     | Default |
 | ------------------------ | -------- | ------- |
+| `max_resident_documents` | `uint32` | `0`     |
+
+How many open documents keep their AST in the stateful workers. Past it, the document asked about least recently gives its AST up: it answers what its last compile's answers cover, and compiles again for the rest. `0` means one per GB of memory, at least 8 and at most 32, which is also the default.
+
+</div>
+
+<div class="config-option">
+
+| Option                   | Type     | Default |
+| ------------------------ | -------- | ------- |
 | `stateless_worker_count` | `uint32` | —       |
 
 Number of stateless workers started — they handle ephemeral tasks (PCH/PCM builds, completion, signature help, background indexing) — and the most that background indexing keeps busy at once; defaults to half the machine's physical cores, at least 2. At least 1.

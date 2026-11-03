@@ -108,18 +108,18 @@ struct DefinitionResult {
     std::optional<LocationEntry> definition;
 };
 
-/// "instantiation" or "expansion" for what only a template instantiation or
-/// a macro expansion resolves, which the written code leaves open; absent
-/// for the written code.
-using Via = meta::annotation<std::string, meta::behavior::skip_if<meta::pred::empty>>;
-
 struct ReferenceEntry {
     std::string file;
     int line = 0;
     std::string context;
     /// The qualified name of the function it lies in; null outside any.
     std::optional<std::string> function;
-    Via via;
+
+    /// "instantiation" or "expansion" for what only a template instantiation
+    /// or a macro expansion resolves, which the written code leaves open;
+    /// absent for the written code.
+    KANNOTATE(&via, presence = omit_if_default)
+    std::string via;
 };
 
 struct ReferencesResult {
@@ -139,9 +139,10 @@ struct GraphEntry {
     std::string file;
     int line = 0;
     std::string symbol;
-    /// For a caller or a callee, set when only instantiations make the
-    /// call.
-    Via via;
+    /// For a caller or a callee, "instantiation" when only instantiations
+    /// make the call; absent otherwise.
+    KANNOTATE(&via, presence = omit_if_default)
+    std::string via;
 };
 
 struct CallGraphResult {

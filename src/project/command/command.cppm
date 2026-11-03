@@ -110,7 +110,7 @@ struct TreeRequest {
 
 /// What a self-containment check found of a header under the command it
 /// borrows: whether it compiles alone, or misses names its includer
-/// provides (missing_context_errors) and needs the includer's context.
+/// provides (missing_context_diagnostics) and needs the includer's context.
 struct SelfContainment {
     bool self_contained = false;
 

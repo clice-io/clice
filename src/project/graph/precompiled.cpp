@@ -1,5 +1,6 @@
 module clice;
 
+import :feature.diagnostics;
 import :index.format;
 import :project.command;
 import :project.graph.precompiled;
@@ -99,8 +100,13 @@ struct Records {
 
     /// Absent from the records a binary older than the self-containment
     /// checks wrote.
-    KOTATSU_ANNOTATE(defaulted = true)
-    <std::vector<SavedSelfContainment>> trials;
+    KANNOTATE(&trials, presence = optional)
+    std::vector<SavedSelfContainment> trials;
+
+    /// The missing_context_scoring the trials were judged under; absent
+    /// from the records of a binary before it.
+    KANNOTATE(&trials_scoring, presence = optional)
+    std::uint32_t trials_scoring = 0;
 };
 
 }  // namespace
@@ -200,6 +206,7 @@ async::task<std::expected<worker::PrecompiledBuildResult, Result>>
 std::string Project::serialize_precompiled_records() {
     Records data;
     data.pch_index_format = index::index_format_version;
+    data.trials_scoring = feature::missing_context_scoring;
     llvm::StringMap<std::uint32_t> index_map;
 
     auto intern = [&](Fid fid) -> std::uint32_t {
@@ -262,7 +269,7 @@ std::string Project::serialize_precompiled_records() {
         data.trials.push_back(std::move(saved));
     });
 
-    auto json = json::to_string<PathJsonConfig>(data);
+    auto json = json::to_string(data, path_json);
     if(!json) {
         LOG_WARN("Failed to serialize the precompiled records");
         return {};
@@ -354,6 +361,9 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
         st.inputs = load_deps(entry.deps);
     }
 
+    if(data.trials_scoring != feature::missing_context_scoring) {
+        data.trials.clear();
+    }
     for(auto& saved: data.trials) {
         auto header = file_of(saved.header);
         if(!header) {

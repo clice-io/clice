@@ -328,18 +328,6 @@ void ServedProject::recheck_choices() {
     }
 }
 
-void ServedProject::asts_lost(llvm::ArrayRef<Fid> lost) {
-    // Compile inputs did not change, so self-containment results stay
-    // untouched. A live attempt sends a compile of its own,
-    // which puts the AST back on a worker — invalidating it would only make
-    // it finish stale and compile twice.
-    for(auto path_id: lost) {
-        if(find_document(path_id) && !compiling(path_id)) {
-            invalidate(path_id);
-        }
-    }
-}
-
 bool ServedProject::knows(Fid path_id) {
     if(broken()) {
         return false;

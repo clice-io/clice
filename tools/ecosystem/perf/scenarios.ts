@@ -26,7 +26,16 @@ import {
 } from "../script.ts";
 import { SERVERS, type RunResult, type ServerName } from "./results.ts";
 import { cacheMB, dropFileCache, indexToken, isClice, wipeCache } from "./servers.ts";
-import { bounded, median, nowMs, pause, Session, sizeOf, type PerfContext } from "./session.ts";
+import {
+    bounded,
+    median,
+    nowMs,
+    pause,
+    Session,
+    sizeOf,
+    VISIBLE,
+    type PerfContext,
+} from "./session.ts";
 
 /// A file a scenario opens: its path alone, or with its request positions.
 export type FileArg = string | PerfFile;
@@ -492,12 +501,7 @@ export class Perf {
                 for (const file of shuffled(files, cycle)) {
                     const uri = uris.get(file) ?? "";
                     await s.measure("switch_semantic_tokens", () => client.semanticTokensFull(uri));
-                    await s.measure("switch_inlay_hint", () =>
-                        client.inlayHints(uri, {
-                            start: { line: 0, character: 0 },
-                            end: { line: 100, character: 0 },
-                        }),
-                    );
+                    await s.measure("switch_inlay_hint", () => client.inlayHints(uri, VISIBLE));
                     s.record("switch_edit", (await s.edit(uri)).diagnostics);
                 }
             }

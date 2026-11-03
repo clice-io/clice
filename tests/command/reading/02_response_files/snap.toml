@@ -13,3 +13,35 @@ error: Toolchain query failed: Cannot find driver: missing-clang++
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
+
+[expanded."$ clice command convert -- missing-clang++ @bom.rsp main.cpp"]
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++23 -D FROM_BOM=1 ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The command stays a driver command: Cannot find driver: missing-clang++
+'''
+exit = 1
+
+[expanded."$ clice command convert --json -- missing-clang++ @quoted.rsp main.cpp"]
+stdout = '''
+{
+  "directory": "${WS}",
+  "file": "${WS}/main.cpp",
+  "arguments": [
+    "missing-clang++",
+    "-fno-delayed-template-parsing",
+    "-resource-dir",
+    "${RESOURCE}",
+    "-D",
+    "NAME='ok'",
+    "-I",
+    "${WS}/include",
+    "${WS}/main.cpp"
+  ]
+}
+'''
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The command stays a driver command: Cannot find driver: missing-clang++
+'''
+exit = 1

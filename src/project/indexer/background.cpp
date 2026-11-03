@@ -368,6 +368,10 @@ async::task<> BackgroundIndex::run_pass() {
                                                   : index::SearchRebuild::Behind);
     // The pass's merge buffers are freed by now; glibc would keep their
     // pages, and the master its pass's peak, for the rest of the session.
+    // On the pool, where the save built the search index and wrote the
+    // batch: mimalloc collects only the calling thread's heap, and an idle
+    // pool thread never collects its own, while the loop thread's
+    // allocations collect it as they go.
     co_await async::queue([] { release_free_memory(); });
 
     // The pass owns the "active" gate through its save: releasing it
@@ -523,7 +527,7 @@ void BackgroundIndex::schedule(bool immediate) {
     // a crashed file's retry must not owe an extra idle window on top of
     // the pass boundary it already waited out.
     idle_timer->start(
-        chrono::milliseconds(immediate ? 0 : project.settings.project.idle_timeout_ms.value) +
+        chrono::milliseconds(immediate ? 0 : project.settings.project.idle_timeout_ms) +
         test_jitter());
 
     [[maybe_unused]] bool spawned = tasks.spawn(run_pass());

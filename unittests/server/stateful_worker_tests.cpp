@@ -285,28 +285,6 @@ ZEST_CASE(CancelledQueryFreesStrand) {
     ZASSERT(test_done);
 }
 
-ZEST_CASE(HoverWithoutCompile) {
-    WorkerHandle w;
-    ZASSERT(w.spawn(true));
-
-    bool test_done = false;
-
-    w.run([&]() -> async::task<> {
-        worker::HoverParams params;
-        params.path = "/tmp/nonexistent.cpp";
-        params.offset = 0;
-
-        auto result = co_await w.peer->send_request(params);
-        // An unknown document is no empty answer: the master hears it was
-        // evicted (or never sent) and compiles it again.
-        ZASSERT(!result.has_value());
-        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
-        test_done = true;
-    });
-
-    ZASSERT(test_done);
-}
-
 ZEST_CASE(CompileThenHover) {
     std::string text = "int foo() { return 42; }\nint main() { return foo(); }\n";
     TempDir tmp;
@@ -386,120 +364,6 @@ ZEST_CASE(InvalidUTF8Replaced) {
     ZEXPECT(
         hover.contains("caf"
                        "\xef\xbf\xbd"));
-}
-
-ZEST_CASE(CodeActionWithoutCompile) {
-    WorkerHandle w;
-    ZASSERT(w.spawn(true));
-
-    bool test_done = false;
-
-    w.run([&]() -> async::task<> {
-        worker::CodeActionParams params;
-        params.path = "/tmp/test.cpp";
-        params.range = {0, 0};
-
-        auto result = co_await w.peer->send_request(params);
-        ZASSERT(!result.has_value());
-        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
-        test_done = true;
-    });
-
-    ZASSERT(test_done);
-}
-
-ZEST_CASE(SemanticTokensWithoutCompile) {
-    WorkerHandle w;
-    ZASSERT(w.spawn(true));
-
-    bool test_done = false;
-
-    w.run([&]() -> async::task<> {
-        worker::SemanticTokensParams params;
-        params.path = "/tmp/nonexistent.cpp";
-
-        auto result = co_await w.peer->send_request(params);
-        ZASSERT(!result.has_value());
-        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
-        test_done = true;
-    });
-
-    ZASSERT(test_done);
-}
-
-ZEST_CASE(FoldingRangeWithoutCompile) {
-    WorkerHandle w;
-    ZASSERT(w.spawn(true));
-
-    bool test_done = false;
-
-    w.run([&]() -> async::task<> {
-        worker::FoldingRangeParams params;
-        params.path = "/tmp/nonexistent.cpp";
-
-        auto result = co_await w.peer->send_request(params);
-        ZASSERT(!result.has_value());
-        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
-        test_done = true;
-    });
-
-    ZASSERT(test_done);
-}
-
-ZEST_CASE(DocumentSymbolWithoutCompile) {
-    WorkerHandle w;
-    ZASSERT(w.spawn(true));
-
-    bool test_done = false;
-
-    w.run([&]() -> async::task<> {
-        worker::DocumentSymbolParams params;
-        params.path = "/tmp/nonexistent.cpp";
-
-        auto result = co_await w.peer->send_request(params);
-        ZASSERT(!result.has_value());
-        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
-        test_done = true;
-    });
-
-    ZASSERT(test_done);
-}
-
-ZEST_CASE(DocumentLinkWithoutCompile) {
-    WorkerHandle w;
-    ZASSERT(w.spawn(true));
-
-    bool test_done = false;
-
-    w.run([&]() -> async::task<> {
-        worker::DocumentLinkParams params;
-        params.path = "/tmp/nonexistent.cpp";
-
-        auto result = co_await w.peer->send_request(params);
-        ZASSERT(!result.has_value());
-        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
-        test_done = true;
-    });
-
-    ZASSERT(test_done);
-}
-
-ZEST_CASE(InlayHintsWithoutCompile) {
-    WorkerHandle w;
-    ZASSERT(w.spawn(true));
-
-    bool test_done = false;
-
-    w.run([&]() -> async::task<> {
-        worker::InlayHintParams params{.path = "/tmp/nonexistent.cpp"};
-
-        auto result = co_await w.peer->send_request(params);
-        ZASSERT(!result.has_value());
-        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
-        test_done = true;
-    });
-
-    ZASSERT(test_done);
 }
 
 ZEST_CASE(MultipleSequentialRequests) {
@@ -613,19 +477,23 @@ ZEST_CASE(EvictNotification) {
     bool test_done = false;
 
     w.run([&]() -> async::task<> {
-        // Send an evict notification — worker should remove the document without crashing.
+        // Evicting a document the worker does not hold changes nothing.
         worker::EvictParams ep;
         ep.path = "/tmp/evict_test.cpp";
         w.peer->send_notification(ep);
 
-        // Hover on the evicted document reports it unloaded.
-        worker::HoverParams hp;
-        hp.path = "/tmp/evict_test.cpp";
-        hp.offset = 0;
+        worker::CompileParams cp;
+        cp.path = "/tmp/evict_test.cpp";
+        cp.version = 1;
+        cp.text = "int x = 1;\n";
+        cp.directory = "/tmp";
+        cp.arguments = make_args(cp.path);
+        ZEXPECT(co_await w.peer->send_request(cp));
 
-        auto result = co_await w.peer->send_request(hp);
-        ZASSERT(!result.has_value());
-        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
+        worker::HoverParams hp;
+        hp.path = cp.path;
+        hp.offset = 4;
+        ZEXPECT(co_await w.peer->send_request(hp));
 
         test_done = true;
     });
@@ -633,100 +501,54 @@ ZEST_CASE(EvictNotification) {
     ZASSERT(test_done);
 }
 
-ZEST_CASE(DocumentLimitEvicts) {
+ZEST_CASE(EvictsOnlyWhenTold) {
+    // The worker keeps every document the master's pool sends it until it
+    // is told to evict one; an evicted document compiles again.
     TempDir tmp;
     std::vector<std::string> paths;
-    std::vector<std::string> texts;
-    for(int i = 0; i < 3; i++) {
-        auto name = "evict_" + std::to_string(i) + ".cpp";
-        auto text = "int var_" + std::to_string(i) + " = " + std::to_string(i) + ";\n";
-        tmp.touch(name, text);
+    for(int i = 0; i < 20; i += 1) {
+        auto name = std::format("kept_{}.cpp", i);
+        tmp.touch(name, std::format("int var_{} = {};\n", i, i));
         paths.push_back(tmp.path(name));
-        texts.push_back(text);
     }
 
     WorkerHandle w;
-    ZASSERT(w.spawn(true, /*max_documents=*/2));
-
-    std::vector<std::string> evicted;
-    w.peer->on_notification(
-        [&](const worker::EvictedParams& params) { evicted.push_back(params.path); });
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
-
     w.run([&]() -> async::task<> {
-        for(int i = 0; i < 3; i++) {
+        auto compile = [&](std::size_t i) -> async::task<bool> {
             worker::CompileParams cp;
             cp.path = paths[i];
             cp.version = 1;
-            cp.text = texts[i];
+            cp.text = std::format("int var_{} = {};\n", i, i);
             cp.directory = "/tmp";
             cp.arguments = make_args(paths[i]);
-
             auto result = co_await w.peer->send_request(cp);
-            ZEXPECT(result);
+            co_return result.has_value() && result->status == worker::CompileStatus::Done;
+        };
+        auto hover = [&](std::size_t i) -> async::task<bool> {
+            worker::HoverParams hp;
+            hp.path = paths[i];
+            hp.offset = 4;  // 'var_N'
+            auto result = co_await w.peer->send_request(hp);
+            co_return result.has_value() && result->has_value();
+        };
+        for(std::size_t i = 0; i < paths.size(); i += 1) {
+            ZEXPECT(co_await compile(i));
+        }
+        for(std::size_t i = 0; i < paths.size(); i += 1) {
+            ZEXPECT(co_await hover(i));
         }
 
-        // The third compile overflowed the 2-document cap: the least
-        // recently used document was evicted and announced to the master.
-        worker::HoverParams hp;
-        hp.path = paths[0];
-        hp.offset = 4;  // 'var_0'
-
-        auto result = co_await w.peer->send_request(hp);
-        ZASSERT(!result.has_value());
-        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
+        w.peer->send_notification(worker::EvictParams{paths[0]});
+        ZEXPECT(co_await compile(0));
+        ZEXPECT(co_await hover(0));
 
         test_done = true;
     });
 
     ZASSERT(test_done);
-    ZASSERT(evicted == std::vector<std::string>{paths[0]});
-}
-
-ZEST_CASE(BusyDocumentsStay) {
-    // A document in flight is never evicted: the master would hear of the
-    // eviction while the compile is still to finish and compile it again.
-    // The large document's compile is still running when the small one's
-    // finishes over the cap; only the small one, idle by the time the large
-    // one finishes, may go.
-    TempDir tmp;
-    std::string large = "#include <vector>\n";
-    for(int i = 0; i < 5000; i += 1) {
-        large += std::format("std::vector<int> v_{};\n", i);
-    }
-    tmp.touch("large.cpp", large);
-    tmp.touch("small.cpp", "int x;\n");
-    std::vector<std::pair<std::string, std::string>> documents = {
-        {tmp.path("large.cpp"), large     },
-        {tmp.path("small.cpp"), "int x;\n"},
-    };
-
-    WorkerHandle w;
-    ZASSERT(w.spawn(true, /*max_documents=*/1));
-
-    std::vector<std::string> evicted;
-    w.peer->on_notification(
-        [&](const worker::EvictedParams& params) { evicted.push_back(params.path); });
-
-    bool test_done = false;
-    w.run([&]() -> async::task<> {
-        auto compile = [&](std::size_t i) -> async::task<> {
-            worker::CompileParams cp;
-            cp.path = documents[i].first;
-            cp.version = 1;
-            cp.text = documents[i].second;
-            cp.directory = "/tmp";
-            cp.arguments = make_args(cp.path);
-            auto result = co_await w.peer->send_request(cp);
-            ZEXPECT(result);
-        };
-        co_await async::when_all(compile(0), compile(1));
-        test_done = true;
-    });
-
-    ZASSERT(test_done);
-    ZASSERT(evicted == std::vector<std::string>{documents[1].first});
 }
 
 };  // ZEST_SUITE(StatefulWorker)

@@ -5232,6 +5232,8 @@ export namespace kotatsu::async::detail {
 using ::kotatsu::async::detail::BasicGuard;
 using ::kotatsu::async::detail::CancellationNode;
 using ::kotatsu::async::detail::CancellationState;
+using ::kotatsu::async::detail::LoopRunScope;
+using ::kotatsu::async::detail::ResumptionScope;
 using ::kotatsu::async::detail::ScopedAwaiter;
 using ::kotatsu::async::detail::aggregate_result_t;
 using ::kotatsu::async::detail::async_range;
@@ -5321,34 +5323,190 @@ using ::kotatsu::async::fs::utime;
 using ::kotatsu::async::fs::write;
 }
 
+export namespace kotatsu::cli {
+using ::kotatsu::cli::Alias;
+using ::kotatsu::cli::ArgNum;
+using ::kotatsu::cli::ArgSpec;
+using ::kotatsu::cli::CommandInfo;
+using ::kotatsu::cli::Commands;
+using ::kotatsu::cli::DriverFlag;
+using ::kotatsu::cli::DriverVisibility;
+using ::kotatsu::cli::Error;
+using ::kotatsu::cli::Given;
+using ::kotatsu::cli::Help;
+using ::kotatsu::cli::KVStyle;
+using ::kotatsu::cli::OptTable;
+using ::kotatsu::cli::Option;
+using ::kotatsu::cli::OptionKind;
+using ::kotatsu::cli::OptionRef;
+using ::kotatsu::cli::ParseIter;
+using ::kotatsu::cli::ParseOptions;
+using ::kotatsu::cli::Parsed;
+using ::kotatsu::cli::ParsedArg;
+using ::kotatsu::cli::RenderStyle;
+using ::kotatsu::cli::Style;
+using ::kotatsu::cli::UsageEntry;
+using ::kotatsu::cli::__kotatsu__type_annotation;
+using ::kotatsu::cli::add_command;
+using ::kotatsu::cli::arg_num;
+using ::kotatsu::cli::comma;
+using ::kotatsu::cli::count;
+using ::kotatsu::cli::exclusive;
+using ::kotatsu::cli::format;
+using ::kotatsu::cli::forward;
+using ::kotatsu::cli::global;
+using ::kotatsu::cli::hidden;
+using ::kotatsu::cli::hidden_sub;
+using ::kotatsu::cli::meta_var;
+using ::kotatsu::cli::names;
+using ::kotatsu::cli::parse;
+using ::kotatsu::cli::parse_into;
+using ::kotatsu::cli::pfx_all;
+using ::kotatsu::cli::pfx_dash;
+using ::kotatsu::cli::pfx_dash_double;
+using ::kotatsu::cli::pfx_double;
+using ::kotatsu::cli::pfx_none;
+using ::kotatsu::cli::pfx_slash_dash;
+using ::kotatsu::cli::positional;
+using ::kotatsu::cli::print_usage;
+using ::kotatsu::cli::report;
+using ::kotatsu::cli::rest;
+using ::kotatsu::cli::stop;
+using ::kotatsu::cli::style;
+using ::kotatsu::cli::style_for;
+using ::kotatsu::cli::to_argv;
+using ::kotatsu::cli::usage;
+using ::kotatsu::cli::usage_entries;
+using enum ::kotatsu::cli::DriverFlag;
+using enum ::kotatsu::cli::DriverVisibility;
+}
+
+export namespace kotatsu::cli::detail {
+using ::kotatsu::cli::detail::Command;
+using ::kotatsu::cli::detail::CommandDeleter;
+using ::kotatsu::cli::detail::CommandEntry;
+using ::kotatsu::cli::detail::CommandPtr;
+using ::kotatsu::cli::detail::CommandRegistry;
+using ::kotatsu::cli::detail::CommandSet;
+using ::kotatsu::cli::detail::DeclarationCheck;
+using ::kotatsu::cli::detail::ElementWriter;
+using ::kotatsu::cli::detail::FieldUse;
+using ::kotatsu::cli::detail::FieldWriter;
+using ::kotatsu::cli::detail::NameForm;
+using ::kotatsu::cli::detail::Node;
+using ::kotatsu::cli::detail::Path;
+using ::kotatsu::cli::detail::Reader;
+using ::kotatsu::cli::detail::Reading;
+using ::kotatsu::cli::detail::Shape;
+using ::kotatsu::cli::detail::Spelling;
+using ::kotatsu::cli::detail::Subcommands;
+using ::kotatsu::cli::detail::Writer;
+using ::kotatsu::cli::detail::all_prefixes;
+using ::kotatsu::cli::detail::build_command;
+using ::kotatsu::cli::detail::check_declaration;
+using ::kotatsu::cli::detail::command_of;
+using ::kotatsu::cli::detail::dash_double_prefixes;
+using ::kotatsu::cli::detail::dash_prefixes;
+using ::kotatsu::cli::detail::decode_error;
+using ::kotatsu::cli::detail::defaults_of;
+using ::kotatsu::cli::detail::double_prefixes;
+using ::kotatsu::cli::detail::enum_from_text;
+using ::kotatsu::cli::detail::enum_key;
+using ::kotatsu::cli::detail::enum_text;
+using ::kotatsu::cli::detail::has_style;
+using ::kotatsu::cli::detail::holds;
+using ::kotatsu::cli::detail::invalid_enum_value;
+using ::kotatsu::cli::detail::joined_name;
+using ::kotatsu::cli::detail::kebab;
+using ::kotatsu::cli::detail::name_forms;
+using ::kotatsu::cli::detail::path_of;
+using ::kotatsu::cli::detail::read;
+using ::kotatsu::cli::detail::read_bool;
+using ::kotatsu::cli::detail::read_number;
+using ::kotatsu::cli::detail::registry;
+using ::kotatsu::cli::detail::repeats;
+using ::kotatsu::cli::detail::sealed_registry;
+using ::kotatsu::cli::detail::slash_dash_prefixes;
+using ::kotatsu::cli::detail::subcommand_name;
+using ::kotatsu::cli::detail::usage;
+using ::kotatsu::cli::detail::usage_entries;
+using ::kotatsu::cli::detail::use_of;
+using ::kotatsu::cli::detail::write_args;
+using ::kotatsu::cli::detail::write_options;
+using ::kotatsu::cli::detail::write_out;
+}
+
 export namespace kotatsu::codec {
-using ::kotatsu::codec::FieldName;
 using ::kotatsu::codec::MapKeyReader;
 using ::kotatsu::codec::MapKeyWriter;
-using ::kotatsu::codec::RawValue;
 using ::kotatsu::codec::StringKeySink;
 using ::kotatsu::codec::UnknownFields;
-using ::kotatsu::codec::apply_enum_rename;
+using ::kotatsu::codec::array_type_info;
+using ::kotatsu::codec::attribute;
 using ::kotatsu::codec::char_from_utf8;
 using ::kotatsu::codec::char_to_utf8;
-using ::kotatsu::codec::decode_struct_fields;
+using ::kotatsu::codec::compare_numbers;
+using ::kotatsu::codec::declared_repr_t;
+using ::kotatsu::codec::decode_options;
 using ::kotatsu::codec::decode_value;
-using ::kotatsu::codec::decode_variant;
-using ::kotatsu::codec::default_config;
 using ::kotatsu::codec::deserialize_visit;
-using ::kotatsu::codec::encode_struct_fields;
+using ::kotatsu::codec::dynamic;
+using ::kotatsu::codec::effective_presence;
+using ::kotatsu::codec::encode_options;
 using ::kotatsu::codec::encode_value;
-using ::kotatsu::codec::enum_repr;
+using ::kotatsu::codec::enum_names;
+using ::kotatsu::codec::enum_type_info;
+using ::kotatsu::codec::extend;
+using ::kotatsu::codec::extends;
+using ::kotatsu::codec::field;
+using ::kotatsu::codec::field_info;
+using ::kotatsu::codec::field_slot;
+using ::kotatsu::codec::field_spec;
+using ::kotatsu::codec::field_spec_of;
+using ::kotatsu::codec::fields_distinct;
+using ::kotatsu::codec::format;
+using ::kotatsu::codec::format_of_t;
+using ::kotatsu::codec::has_repr;
 using ::kotatsu::codec::invalid_char_message;
 using ::kotatsu::codec::invalid_utf8;
-using ::kotatsu::codec::is_human_readable;
 using ::kotatsu::codec::layout_computed;
-using ::kotatsu::codec::nan_repr;
+using ::kotatsu::codec::map_type_info;
+using ::kotatsu::codec::members_format;
+using ::kotatsu::codec::members_format_t;
+using ::kotatsu::codec::named_field;
+using ::kotatsu::codec::names_enum;
+using ::kotatsu::codec::node_format_t;
+using ::kotatsu::codec::omits_unstated_defaults;
+using ::kotatsu::codec::optional_type_info;
+using ::kotatsu::codec::presence_checked;
+using ::kotatsu::codec::presence_kind;
+using ::kotatsu::codec::raw_value;
+using ::kotatsu::codec::repr;
+using ::kotatsu::codec::repr_for;
+using ::kotatsu::codec::resolve_tag_names;
+using ::kotatsu::codec::resolved_repr_t;
+using ::kotatsu::codec::resolves_to_tagged_variant;
 using ::kotatsu::codec::rich_error;
+using ::kotatsu::codec::schema_number;
 using ::kotatsu::codec::scoped_context;
 using ::kotatsu::codec::serialize_visit;
+using ::kotatsu::codec::spec_of;
+using ::kotatsu::codec::struct_spec;
+using ::kotatsu::codec::struct_type_info;
+using ::kotatsu::codec::tag_mode;
+using ::kotatsu::codec::tuple_type_info;
+using ::kotatsu::codec::type_info;
+using ::kotatsu::codec::type_info_fn;
+using ::kotatsu::codec::variant_type_info;
+using ::kotatsu::codec::virtual_schema;
 using ::kotatsu::codec::writes_every_field;
 using ::kotatsu::codec::writes_utf8;
+}
+
+export namespace kotatsu::codec::behavior {
+using ::kotatsu::codec::behavior::as;
+using ::kotatsu::codec::behavior::omit_if;
+using ::kotatsu::codec::behavior::with;
 }
 
 export namespace kotatsu::codec::bincode {
@@ -5423,61 +5581,132 @@ using ::kotatsu::codec::debug::to_string;
 }
 
 export namespace kotatsu::codec::detail {
-using ::kotatsu::codec::detail::FieldAt;
-using ::kotatsu::codec::detail::assert_human_readable_allowed;
+using ::kotatsu::codec::detail::ProbeBody;
+using ::kotatsu::codec::detail::assert_internal_alternative;
 using ::kotatsu::codec::detail::assert_internal_tag_fits;
+using ::kotatsu::codec::detail::build_fields;
+using ::kotatsu::codec::detail::build_slots_from_seq;
+using ::kotatsu::codec::detail::build_slots_t;
+using ::kotatsu::codec::detail::built_fields_t;
 using ::kotatsu::codec::detail::check_required_fields;
 using ::kotatsu::codec::detail::construct_and_visit;
+using ::kotatsu::codec::detail::current_decode_options;
+using ::kotatsu::codec::detail::current_encode_options;
 using ::kotatsu::codec::detail::data_driven;
+using ::kotatsu::codec::detail::declared_repr_impl;
 using ::kotatsu::codec::detail::decode_adjacently_tagged;
 using ::kotatsu::codec::detail::decode_enum_name;
 using ::kotatsu::codec::detail::decode_externally_tagged;
 using ::kotatsu::codec::detail::decode_field_value;
 using ::kotatsu::codec::detail::decode_internally_tagged;
 using ::kotatsu::codec::detail::decode_one_field;
+using ::kotatsu::codec::detail::decode_plain;
 using ::kotatsu::codec::detail::decode_step;
+using ::kotatsu::codec::detail::decode_struct_fields;
+using ::kotatsu::codec::detail::decode_tagged_variant;
+using ::kotatsu::codec::detail::decode_under;
 using ::kotatsu::codec::detail::decode_untagged_variant;
 using ::kotatsu::codec::detail::decode_with_attrs;
-using ::kotatsu::codec::detail::empty_config_base;
+using ::kotatsu::codec::detail::deny_layer;
+using ::kotatsu::codec::detail::dispatch_attr_v;
+using ::kotatsu::codec::detail::dispatch_attrs;
+using ::kotatsu::codec::detail::distinct_fields;
+using ::kotatsu::codec::detail::encode_enum_name;
 using ::kotatsu::codec::detail::encode_one_field;
+using ::kotatsu::codec::detail::encode_plain;
+using ::kotatsu::codec::detail::encode_struct_fields;
 using ::kotatsu::codec::detail::encode_tagged_variant;
 using ::kotatsu::codec::detail::encode_text;
+using ::kotatsu::codec::detail::encode_under;
 using ::kotatsu::codec::detail::encode_untagged_variant;
 using ::kotatsu::codec::detail::encode_with_attrs;
 using ::kotatsu::codec::detail::ensure_allocated;
+using ::kotatsu::codec::detail::enum_info_node;
+using ::kotatsu::codec::detail::enum_names_of;
+using ::kotatsu::codec::detail::enum_names_policy_t;
 using ::kotatsu::codec::detail::fail_unknown_tag;
 using ::kotatsu::codec::detail::fail_unnamed_enum;
 using ::kotatsu::codec::detail::fail_unusable_tag;
+using ::kotatsu::codec::detail::field_name_in;
+using ::kotatsu::codec::detail::fill_field;
 using ::kotatsu::codec::detail::find_field_slot;
 using ::kotatsu::codec::detail::find_tag_index;
+using ::kotatsu::codec::detail::format_of_impl;
 using ::kotatsu::codec::detail::has_field_named;
 using ::kotatsu::codec::detail::has_native_variant;
 using ::kotatsu::codec::detail::has_peek_kind;
 using ::kotatsu::codec::detail::has_try_read;
-using ::kotatsu::codec::detail::human_readable_allowed;
+using ::kotatsu::codec::detail::info_node;
 using ::kotatsu::codec::detail::kind_compatible;
 using ::kotatsu::codec::detail::kind_compatible_impl;
+using ::kotatsu::codec::detail::make_field_info;
 using ::kotatsu::codec::detail::match_field;
 using ::kotatsu::codec::detail::nested_alternative_pass;
-using ::kotatsu::codec::detail::no_tag;
+using ::kotatsu::codec::detail::on_chain;
 using ::kotatsu::codec::detail::pass_unknown_field;
 using ::kotatsu::codec::detail::peek_tag_index;
 using ::kotatsu::codec::detail::prepend_step;
+using ::kotatsu::codec::detail::presence_code;
+using ::kotatsu::codec::detail::presence_layer;
 using ::kotatsu::codec::detail::probes_as_untagged_variant;
+using ::kotatsu::codec::detail::rename_in;
+using ::kotatsu::codec::detail::rename_layer;
 using ::kotatsu::codec::detail::repr_decode;
 using ::kotatsu::codec::detail::repr_encode;
+using ::kotatsu::codec::detail::repr_lookup;
 using ::kotatsu::codec::detail::required_mask;
 using ::kotatsu::codec::detail::reserve_for;
+using ::kotatsu::codec::detail::resolve_node;
+using ::kotatsu::codec::detail::resolve_repr;
+using ::kotatsu::codec::detail::resolved_repr;
 using ::kotatsu::codec::detail::run_decode;
 using ::kotatsu::codec::detail::run_encode;
-using ::kotatsu::codec::detail::skipped;
-using ::kotatsu::codec::detail::slot_required;
+using ::kotatsu::codec::detail::scope;
+using ::kotatsu::codec::detail::scoped_format;
+using ::kotatsu::codec::detail::single_field_slots;
+using ::kotatsu::codec::detail::struct_info;
+using ::kotatsu::codec::detail::tag_policy;
 using ::kotatsu::codec::detail::taggable;
+using ::kotatsu::codec::detail::takes_scope;
 using ::kotatsu::codec::detail::trace_path;
-using ::kotatsu::codec::detail::try_read_callable;
+using ::kotatsu::codec::detail::tuple_info_node;
+using ::kotatsu::codec::detail::type_names;
+using ::kotatsu::codec::detail::unset_spec;
 using ::kotatsu::codec::detail::untagged_variant_pass;
-using ::kotatsu::codec::detail::visit_variant_callable;
+using ::kotatsu::codec::detail::value_initialized;
+using ::kotatsu::codec::detail::variant_info_node;
 using ::kotatsu::codec::detail::with_index;
+}
+
+export namespace kotatsu::codec::dsl {
+using ::kotatsu::codec::dsl::alias;
+using ::kotatsu::codec::dsl::as;
+using ::kotatsu::codec::dsl::choices;
+using ::kotatsu::codec::dsl::content;
+using ::kotatsu::codec::dsl::deny_unknown_fields;
+using ::kotatsu::codec::dsl::description;
+using ::kotatsu::codec::dsl::flatten;
+using ::kotatsu::codec::dsl::maximum;
+using ::kotatsu::codec::dsl::minimum;
+using ::kotatsu::codec::dsl::number_proxy;
+using ::kotatsu::codec::dsl::omit_if_component;
+using ::kotatsu::codec::dsl::presence;
+using ::kotatsu::codec::dsl::presence_all;
+using ::kotatsu::codec::dsl::presence_proxy;
+using ::kotatsu::codec::dsl::rename;
+using ::kotatsu::codec::dsl::rename_all;
+using ::kotatsu::codec::dsl::rename_all_proxy;
+using ::kotatsu::codec::dsl::representation_component;
+using ::kotatsu::codec::dsl::representation_proxy;
+using ::kotatsu::codec::dsl::schema_default;
+using ::kotatsu::codec::dsl::skip;
+using ::kotatsu::codec::dsl::tag;
+using ::kotatsu::codec::dsl::tag_names;
+using ::kotatsu::codec::dsl::tagged;
+using ::kotatsu::codec::dsl::tagged_component;
+using ::kotatsu::codec::dsl::tagged_proxy;
+using ::kotatsu::codec::dsl::type;
+using ::kotatsu::codec::dsl::with;
 }
 
 export namespace kotatsu::codec::dyn {
@@ -5509,7 +5738,7 @@ using ::kotatsu::codec::json::Source;
 using ::kotatsu::codec::json::StringBuilder;
 using ::kotatsu::codec::json::StructWriter;
 using ::kotatsu::codec::json::ValueWriter;
-using ::kotatsu::codec::json::enum_rename_fn;
+using ::kotatsu::codec::json::encode_options;
 using ::kotatsu::codec::json::format;
 using ::kotatsu::codec::json::from_padded_string;
 using ::kotatsu::codec::json::from_string;
@@ -5524,28 +5753,23 @@ using ::kotatsu::codec::json::to_string;
 }
 
 export namespace kotatsu::codec::json::detail {
-using ::kotatsu::codec::json::detail::DefaultAnnotator;
-using ::kotatsu::codec::json::detail::FreshDefaults;
+using ::kotatsu::codec::json::detail::DefaultDocuments;
 using ::kotatsu::codec::json::detail::ParsedDocument;
 using ::kotatsu::codec::json::detail::SchemaEmitter;
-using ::kotatsu::codec::json::detail::alternative_marker;
 using ::kotatsu::codec::json::detail::collect_fresh;
-using ::kotatsu::codec::json::detail::collect_fresh_alternatives;
-using ::kotatsu::codec::json::detail::collect_fresh_slots;
 using ::kotatsu::codec::json::detail::copy_bytes;
 using ::kotatsu::codec::json::detail::count_lines;
 using ::kotatsu::codec::json::detail::decoder_reads_directly;
-using ::kotatsu::codec::json::detail::default_document_config;
+using ::kotatsu::codec::json::detail::default_document_format;
 using ::kotatsu::codec::json::detail::doc_iter_ptr;
 using ::kotatsu::codec::json::detail::doc_iter_tag;
 using ::kotatsu::codec::json::detail::escape_to;
 using ::kotatsu::codec::json::detail::escaped_bytes;
 using ::kotatsu::codec::json::detail::escaped_size;
+using ::kotatsu::codec::json::detail::fresh_document;
 using ::kotatsu::codec::json::detail::is_control;
 using ::kotatsu::codec::json::detail::member_key;
 using ::kotatsu::codec::json::detail::needs_escape;
-using ::kotatsu::codec::json::detail::options_of;
-using ::kotatsu::codec::json::detail::schema_config;
 using ::kotatsu::codec::json::detail::short_escape;
 using ::kotatsu::codec::json::detail::simdjson_error;
 using ::kotatsu::codec::json::detail::steal;
@@ -5566,13 +5790,11 @@ export namespace kotatsu::codec::toml {
 using ::kotatsu::codec::toml::Array;
 using ::kotatsu::codec::toml::ArraySeqWriter;
 using ::kotatsu::codec::toml::ArraySink;
-using ::kotatsu::codec::toml::ArrayValueWriter;
 using ::kotatsu::codec::toml::MapWriter;
 using ::kotatsu::codec::toml::Node;
 using ::kotatsu::codec::toml::RootSink;
 using ::kotatsu::codec::toml::Table;
 using ::kotatsu::codec::toml::TableSink;
-using ::kotatsu::codec::toml::TableValueWriter;
 using ::kotatsu::codec::toml::TableWriter;
 using ::kotatsu::codec::toml::ValueReader;
 using ::kotatsu::codec::toml::ValueWriter;
@@ -5591,245 +5813,6 @@ using ::kotatsu::codec::toml::detail::node_type_name;
 using ::kotatsu::codec::toml::detail::nullable_root_v;
 using ::kotatsu::codec::toml::detail::root_table_v;
 using ::kotatsu::codec::toml::detail::select_root_node;
-}
-
-export namespace kotatsu::comptime {
-using ::kotatsu::comptime::ComptimeMemoryResource;
-using ::kotatsu::comptime::ComptimeVector;
-using ::kotatsu::comptime::Record;
-using ::kotatsu::comptime::counting_flag;
-}
-
-export namespace kotatsu::deco {
-namespace backend = ::kotatsu::option;
-namespace refl = ::kotatsu::meta;
-using ::kotatsu::deco::ParsedArgOwning;
-}
-
-export namespace kotatsu::deco::cli {
-using ::kotatsu::deco::cli::AfterStep;
-using ::kotatsu::deco::cli::Command;
-using ::kotatsu::deco::cli::Invocation;
-using ::kotatsu::deco::cli::ParseError;
-using ::kotatsu::deco::cli::ParsedResult;
-using ::kotatsu::deco::cli::SubCommandError;
-using ::kotatsu::deco::cli::SubCommandMatch;
-using ::kotatsu::deco::cli::SubCommander;
-using ::kotatsu::deco::cli::check_valid;
-using ::kotatsu::deco::cli::command;
-using ::kotatsu::deco::cli::invoke;
-using ::kotatsu::deco::cli::parse;
-using ::kotatsu::deco::cli::parse_error_exit_code;
-using ::kotatsu::deco::cli::parse_with_callback;
-using ::kotatsu::deco::cli::runtime_callable_t;
-using ::kotatsu::deco::cli::write_usage_for;
-}
-
-export namespace kotatsu::deco::cli::detail {
-using ::kotatsu::deco::cli::detail::access_member_path;
-using ::kotatsu::deco::cli::detail::exit_code_of;
-using ::kotatsu::deco::cli::detail::help_requested;
-using ::kotatsu::deco::cli::detail::input_args_text;
-using ::kotatsu::deco::cli::detail::make_usage_document;
-using ::kotatsu::deco::cli::detail::member_object_pointer_traits;
-using ::kotatsu::deco::cli::detail::member_path_result;
-using ::kotatsu::deco::cli::detail::member_path_result_t;
-using ::kotatsu::deco::cli::detail::member_path_step;
-using ::kotatsu::deco::cli::detail::resolve_alias_forward;
-using ::kotatsu::deco::cli::detail::resolve_static_alias_forward;
-using ::kotatsu::deco::cli::detail::run_parse_session;
-}
-
-export namespace kotatsu::deco::cli::text {
-using ::kotatsu::deco::cli::text::CompatibleRenderer;
-using ::kotatsu::deco::cli::text::CompatibleRendererConfig;
-using ::kotatsu::deco::cli::text::Diagnostic;
-using ::kotatsu::deco::cli::text::ModernRenderer;
-using ::kotatsu::deco::cli::text::ModernRendererConfig;
-using ::kotatsu::deco::cli::text::PositionStyle;
-using ::kotatsu::deco::cli::text::Renderer;
-using ::kotatsu::deco::cli::text::SubCommandDocument;
-using ::kotatsu::deco::cli::text::SubCommandEntry;
-using ::kotatsu::deco::cli::text::SubCommandStyle;
-using ::kotatsu::deco::cli::text::TextStyle;
-using ::kotatsu::deco::cli::text::UsageDocument;
-using ::kotatsu::deco::cli::text::UsageEntry;
-using ::kotatsu::deco::cli::text::UsageGroup;
-using ::kotatsu::deco::cli::text::UsageStyle;
-using ::kotatsu::deco::cli::text::clear_default_renderer;
-using ::kotatsu::deco::cli::text::default_renderer;
-using ::kotatsu::deco::cli::text::diagnostic_at;
-using ::kotatsu::deco::cli::text::diagnostic_message;
-using ::kotatsu::deco::cli::text::explicit_default_renderer;
-using ::kotatsu::deco::cli::text::looks_like_rendered_diagnostic;
-using ::kotatsu::deco::cli::text::render_diagnostic;
-using ::kotatsu::deco::cli::text::render_subcommands;
-using ::kotatsu::deco::cli::text::render_usage;
-using ::kotatsu::deco::cli::text::render_usage_entry;
-using ::kotatsu::deco::cli::text::resolve_renderer;
-using ::kotatsu::deco::cli::text::set_default_renderer;
-}
-
-export namespace kotatsu::deco::config {
-using ::kotatsu::deco::config::BuiltInRenderConfig;
-using ::kotatsu::deco::config::CompatibleRendererConfig;
-using ::kotatsu::deco::config::Config;
-using ::kotatsu::deco::config::ConfigOverride;
-using ::kotatsu::deco::config::EnumMetaVarConfig;
-using ::kotatsu::deco::config::ModernRendererConfig;
-using ::kotatsu::deco::config::PositionStyle;
-using ::kotatsu::deco::config::SubCommandStyle;
-using ::kotatsu::deco::config::TextStyle;
-using ::kotatsu::deco::config::UsageStyle;
-using ::kotatsu::deco::config::get;
-using ::kotatsu::deco::config::merge;
-using ::kotatsu::deco::config::set;
-using ::kotatsu::deco::config::set_enum_meta_var;
-using ::kotatsu::deco::config::set_render;
-}
-
-export namespace kotatsu::deco::decl {
-using ::kotatsu::deco::decl::AliasFields;
-using ::kotatsu::deco::decl::AliasForwardField;
-using ::kotatsu::deco::decl::AliasForwardFn;
-using ::kotatsu::deco::decl::AliasForwardFnWithContext;
-using ::kotatsu::deco::decl::AliasForwardResult;
-using ::kotatsu::deco::decl::ArgNum;
-using ::kotatsu::deco::decl::Category;
-using ::kotatsu::deco::decl::CategoryRef;
-using ::kotatsu::deco::decl::CommaJoinedAliasFields;
-using ::kotatsu::deco::decl::CommaJoinedFields;
-using ::kotatsu::deco::decl::CommonOptionFields;
-using ::kotatsu::deco::decl::ConfigFields;
-using ::kotatsu::deco::decl::ConfigOverrideField;
-using ::kotatsu::deco::decl::DecoFields;
-using ::kotatsu::deco::decl::DecoOption;
-using ::kotatsu::deco::decl::DecoOptionBase;
-using ::kotatsu::deco::decl::DecoType;
-using ::kotatsu::deco::decl::ErasedParseCallback;
-using ::kotatsu::deco::decl::FlagAliasFields;
-using ::kotatsu::deco::decl::FlagFields;
-using ::kotatsu::deco::decl::FlagOption;
-using ::kotatsu::deco::decl::HelpOption;
-using ::kotatsu::deco::decl::InputFields;
-using ::kotatsu::deco::decl::InputOption;
-using ::kotatsu::deco::decl::IntoContext;
-using ::kotatsu::deco::decl::KVAliasFields;
-using ::kotatsu::deco::decl::KVFields;
-using ::kotatsu::deco::decl::KVOption;
-using ::kotatsu::deco::decl::KVStyle;
-using ::kotatsu::deco::decl::MetaVarField;
-using ::kotatsu::deco::decl::MultiAliasFields;
-using ::kotatsu::deco::decl::MultiFields;
-using ::kotatsu::deco::decl::NamedOptionFields;
-using ::kotatsu::deco::decl::OptionCallbackField;
-using ::kotatsu::deco::decl::OptionDeclaration;
-using ::kotatsu::deco::decl::PackFields;
-using ::kotatsu::deco::decl::ParseControl;
-using ::kotatsu::deco::decl::ParseStep;
-using ::kotatsu::deco::decl::ScalarOption;
-using ::kotatsu::deco::decl::SubCommand;
-using ::kotatsu::deco::decl::VectorOption;
-using ::kotatsu::deco::decl::default_category;
-using ::kotatsu::deco::decl::help_names;
-using ::kotatsu::deco::decl::input_arg_num;
-using ::kotatsu::deco::decl::invalid_input_arg_num;
-using ::kotatsu::deco::decl::is_alias_placeholder_name;
-using enum ::kotatsu::deco::decl::KVStyle;
-}
-
-export namespace kotatsu::deco::decl::detail {
-using ::kotatsu::deco::decl::detail::append_vector;
-using ::kotatsu::deco::decl::detail::assign_scalar;
-using ::kotatsu::deco::decl::detail::assign_vector;
-using ::kotatsu::deco::decl::detail::format_invalid_enum_value;
-using ::kotatsu::deco::decl::detail::generated_option_name;
-using ::kotatsu::deco::decl::detail::has_kv_style;
-using ::kotatsu::deco::decl::detail::iequals_ascii;
-using ::kotatsu::deco::decl::detail::is_joined_kv_name;
-using ::kotatsu::deco::decl::detail::parse_primitive_scalar;
-using ::kotatsu::deco::decl::detail::takes_value_after_equals;
-}
-
-export namespace kotatsu::deco::desc {
-using ::kotatsu::deco::desc::from_deco_option;
-}
-
-export namespace kotatsu::deco::desc::detail {
-using ::kotatsu::deco::desc::detail::active_config;
-using ::kotatsu::deco::desc::detail::base_meta_name;
-using ::kotatsu::deco::desc::detail::category_desc;
-using ::kotatsu::deco::desc::detail::comma_joined_alias;
-using ::kotatsu::deco::desc::detail::enum_meta_var_token;
-using ::kotatsu::deco::desc::detail::has_help_text;
-using ::kotatsu::deco::desc::detail::inferred_enum_meta_var_type;
-using ::kotatsu::deco::desc::detail::inferred_enum_meta_var_type_t;
-using ::kotatsu::deco::desc::detail::inferred_meta_var_token;
-using ::kotatsu::deco::desc::detail::is_repeatable;
-using ::kotatsu::deco::desc::detail::join_aliases;
-using ::kotatsu::deco::desc::detail::join_strings;
-using ::kotatsu::deco::desc::detail::kv_usage_text;
-using ::kotatsu::deco::desc::detail::meta_var_token;
-using ::kotatsu::deco::desc::detail::named_aliases;
-using ::kotatsu::deco::desc::detail::placeholder_name;
-using ::kotatsu::deco::desc::detail::repeated_meta_vars;
-using ::kotatsu::deco::desc::detail::usage_entry;
-using ::kotatsu::deco::desc::detail::usage_text;
-using ::kotatsu::deco::desc::detail::usage_text_for_field;
-}
-
-export namespace kotatsu::deco::detail {
-using ::kotatsu::deco::detail::DecoStructConsumer;
-using ::kotatsu::deco::detail::LLVMOptGenerator;
-using ::kotatsu::deco::detail::SizedGenerator;
-using ::kotatsu::deco::detail::StrPool;
-using ::kotatsu::deco::detail::build_record;
-using ::kotatsu::deco::detail::generator_of;
-using ::kotatsu::deco::detail::prefixes_of;
-using ::kotatsu::deco::detail::same_option_name;
-}
-
-export namespace kotatsu::deco::ser {
-using ::kotatsu::deco::ser::Serializer;
-using ::kotatsu::deco::ser::to_argv;
-}
-
-export namespace kotatsu::deco::trait {
-using ::kotatsu::deco::trait::BaseResultTy;
-using ::kotatsu::deco::trait::BorrowedStringResultType;
-using ::kotatsu::deco::trait::CustomStringResultTy;
-using ::kotatsu::deco::trait::CustomStringResultTyWithContext;
-using ::kotatsu::deco::trait::CustomStringVectorResultTy;
-using ::kotatsu::deco::trait::CustomStringVectorResultTyWithContext;
-using ::kotatsu::deco::trait::FlagResultType;
-using ::kotatsu::deco::trait::OptionalResultType;
-using ::kotatsu::deco::trait::OptionalTrait;
-using ::kotatsu::deco::trait::OwnedStringResultType;
-using ::kotatsu::deco::trait::PrimitiveScalarResultType;
-using ::kotatsu::deco::trait::PrimitiveVectorResultType;
-using ::kotatsu::deco::trait::ScalarResultType;
-using ::kotatsu::deco::trait::StringResultType;
-using ::kotatsu::deco::trait::ValueResultType;
-using ::kotatsu::deco::trait::VectorResultType;
-}
-
-export namespace kotatsu::deco::ty {
-using ::kotatsu::deco::ty::alias_ty_of;
-using ::kotatsu::deco::ty::base_ty;
-using ::kotatsu::deco::ty::cfg_ty_of;
-using ::kotatsu::deco::ty::deco_option_like;
-using ::kotatsu::deco::ty::dyn_cast;
-using ::kotatsu::deco::ty::field_ty_of;
-using ::kotatsu::deco::ty::is_alias_field;
-using ::kotatsu::deco::ty::is_config_field;
-using ::kotatsu::deco::ty::is_deco_field;
-using ::kotatsu::deco::ty::is_deco_field_or_option;
-using ::kotatsu::deco::ty::is_decoed;
-using ::kotatsu::deco::ty::is_option_field;
-}
-
-export namespace kotatsu::deco::util {
-using ::kotatsu::deco::util::argvify;
 }
 
 export namespace kotatsu::detail {
@@ -5982,7 +5965,7 @@ using ::kotatsu::ipc::UnansweredRequest;
 using ::kotatsu::ipc::ViolationPolicy;
 using ::kotatsu::ipc::basic_request_context;
 using ::kotatsu::ipc::frame_header;
-using ::kotatsu::ipc::lsp_config;
+using ::kotatsu::ipc::lsp_format;
 using ::kotatsu::ipc::request_options;
 }
 
@@ -6003,7 +5986,6 @@ using ::kotatsu::ipc::detail::validate_request_callback_signature;
 }
 
 export namespace kotatsu::ipc::lsp {
-namespace protocol = ::kotatsu::ipc::protocol;
 using ::kotatsu::ipc::lsp::OffsetRange;
 using ::kotatsu::ipc::lsp::PositionEncoding;
 using ::kotatsu::ipc::lsp::ProgressReporter;
@@ -6509,6 +6491,7 @@ using ::kotatsu::ipc::protocol::WorkspaceSymbolOptions;
 using ::kotatsu::ipc::protocol::WorkspaceSymbolParams;
 using ::kotatsu::ipc::protocol::WorkspaceSymbolRegistrationOptions;
 using ::kotatsu::ipc::protocol::WorkspaceUnchangedDocumentDiagnosticReport;
+using ::kotatsu::ipc::protocol::__kotatsu__type_annotation;
 using ::kotatsu::ipc::protocol::boolean;
 using ::kotatsu::ipc::protocol::decimal;
 using ::kotatsu::ipc::protocol::integer;
@@ -6524,11 +6507,9 @@ using ::kotatsu::ipc::protocol::variant;
 }
 
 export namespace kotatsu::ipc::protocol::detail {
+using ::kotatsu::ipc::protocol::detail::HoldsNothing;
 using ::kotatsu::ipc::protocol::detail::LiteralText;
-using ::kotatsu::ipc::protocol::detail::present_optional;
-using ::kotatsu::ipc::protocol::detail::skip_default_tag;
-using ::kotatsu::ipc::protocol::detail::skip_none_defaulted_tag;
-using ::kotatsu::ipc::protocol::detail::skip_none_tag;
+using ::kotatsu::ipc::protocol::detail::base_assigns;
 }
 
 export namespace kotatsu::mem {
@@ -6555,144 +6536,84 @@ using ::kotatsu::mem::detail::copy_bytes;
 }
 
 export namespace kotatsu::meta {
-using ::kotatsu::meta::annotate;
-using ::kotatsu::meta::annotated_type;
-using ::kotatsu::meta::annotated_underlying_t;
-using ::kotatsu::meta::annotated_value;
-using ::kotatsu::meta::annotation;
-using ::kotatsu::meta::apply_rename_policy;
-using ::kotatsu::meta::array_type_info;
+using ::kotatsu::meta::attribute_traits;
+using ::kotatsu::meta::attrs_of_t;
 using ::kotatsu::meta::bool_like;
 using ::kotatsu::meta::bytes_like;
 using ::kotatsu::meta::char_like;
-using ::kotatsu::meta::compare_numbers;
-using ::kotatsu::meta::declared_repr_t;
-using ::kotatsu::meta::default_config;
-using ::kotatsu::meta::dynamic;
-using ::kotatsu::meta::empty_field_spec;
-using ::kotatsu::meta::empty_struct_spec;
+using ::kotatsu::meta::derived_variant;
+using ::kotatsu::meta::enum_index;
 using ::kotatsu::meta::enum_name;
-using ::kotatsu::meta::enum_strings;
 using ::kotatsu::meta::enum_type;
-using ::kotatsu::meta::enum_type_info;
 using ::kotatsu::meta::enum_value;
 using ::kotatsu::meta::eq;
 using ::kotatsu::meta::eq_t;
-using ::kotatsu::meta::evaluate_skip_predicate;
-using ::kotatsu::meta::evaluate_skip_when;
 using ::kotatsu::meta::field;
 using ::kotatsu::meta::field_addr_of;
+using ::kotatsu::meta::field_annotated;
+using ::kotatsu::meta::field_attrs_t;
 using ::kotatsu::meta::field_count;
-using ::kotatsu::meta::field_info;
 using ::kotatsu::meta::field_name;
 using ::kotatsu::meta::field_names;
 using ::kotatsu::meta::field_of;
 using ::kotatsu::meta::field_offset;
 using ::kotatsu::meta::field_refs;
-using ::kotatsu::meta::field_slot;
-using ::kotatsu::meta::field_spec;
-using ::kotatsu::meta::field_spec_of;
 using ::kotatsu::meta::field_type;
 using ::kotatsu::meta::floating_like;
 using ::kotatsu::meta::for_each;
-using ::kotatsu::meta::format_config;
-using ::kotatsu::meta::format_of_t;
 using ::kotatsu::meta::ge;
 using ::kotatsu::meta::ge_t;
 using ::kotatsu::meta::gt;
 using ::kotatsu::meta::gt_t;
-using ::kotatsu::meta::has_repr;
-using ::kotatsu::meta::inherit_type;
-using ::kotatsu::meta::inherit_use_type;
 using ::kotatsu::meta::int_like;
-using ::kotatsu::meta::is_behavior_attr_v;
-using ::kotatsu::meta::is_behavior_provider;
 using ::kotatsu::meta::is_floating_kind;
 using ::kotatsu::meta::is_integer_kind;
-using ::kotatsu::meta::is_object_kind;
 using ::kotatsu::meta::is_pair_v;
-using ::kotatsu::meta::is_sequence_kind;
-using ::kotatsu::meta::is_signed_integer_kind;
-using ::kotatsu::meta::is_spec_attr;
-using ::kotatsu::meta::is_struct_spec_attr;
 using ::kotatsu::meta::is_tuple_v;
-using ::kotatsu::meta::is_unsigned_integer_kind;
 using ::kotatsu::meta::kind_of;
 using ::kotatsu::meta::le;
 using ::kotatsu::meta::le_t;
 using ::kotatsu::meta::lt;
 using ::kotatsu::meta::lt_t;
 using ::kotatsu::meta::make_annotation;
-using ::kotatsu::meta::make_spec;
-using ::kotatsu::meta::make_struct_spec;
-using ::kotatsu::meta::map_enum_to_string;
-using ::kotatsu::meta::map_string_to_enum;
-using ::kotatsu::meta::map_type_info;
 using ::kotatsu::meta::member_name;
-using ::kotatsu::meta::merged_config_t;
+using ::kotatsu::meta::name_key;
 using ::kotatsu::meta::name_list;
 using ::kotatsu::meta::ne;
 using ::kotatsu::meta::ne_t;
-using ::kotatsu::meta::node_config_t;
 using ::kotatsu::meta::null_like;
-using ::kotatsu::meta::operator==;
-using ::kotatsu::meta::optional_type_info;
 using ::kotatsu::meta::pointer_name;
 using ::kotatsu::meta::reflectable_class;
 using ::kotatsu::meta::reflection;
-using ::kotatsu::meta::repr;
-using ::kotatsu::meta::repr_for;
-using ::kotatsu::meta::resolve_tag_names;
-using ::kotatsu::meta::resolved_config_t;
-using ::kotatsu::meta::resolved_repr_t;
-using ::kotatsu::meta::resolves_to_tagged_variant;
-using ::kotatsu::meta::schema_number;
+using ::kotatsu::meta::runtime_shaped;
 using ::kotatsu::meta::schema_opaque;
-using ::kotatsu::meta::skip_when;
-using ::kotatsu::meta::spec_of;
-using ::kotatsu::meta::spec_result;
+using ::kotatsu::meta::spec_attr;
+using ::kotatsu::meta::spec_attr_t;
+using ::kotatsu::meta::spec_base;
+using ::kotatsu::meta::spec_in;
+using ::kotatsu::meta::spec_key;
+using ::kotatsu::meta::spec_ref;
+using ::kotatsu::meta::spec_refs_of;
+using ::kotatsu::meta::spec_value;
 using ::kotatsu::meta::str_like;
-using ::kotatsu::meta::struct_spec;
-using ::kotatsu::meta::struct_spec_of;
-using ::kotatsu::meta::struct_spec_tag;
-using ::kotatsu::meta::struct_type_info;
-using ::kotatsu::meta::tag_mode;
 using ::kotatsu::meta::tuple_like;
-using ::kotatsu::meta::tuple_type_info;
-using ::kotatsu::meta::type_info;
-using ::kotatsu::meta::type_info_fn;
-using ::kotatsu::meta::type_info_of;
 using ::kotatsu::meta::type_kind;
 using ::kotatsu::meta::type_name;
-using ::kotatsu::meta::type_tag;
 using ::kotatsu::meta::uint_like;
-using ::kotatsu::meta::variant_type_info;
-using ::kotatsu::meta::virtual_schema;
-using ::kotatsu::meta::wrap_type;
-}
-
-export namespace kotatsu::meta::attrs {
-using ::kotatsu::meta::attrs::spec;
-using ::kotatsu::meta::attrs::struct_spec;
-}
-
-export namespace kotatsu::meta::behavior {
-using ::kotatsu::meta::behavior::as;
-using ::kotatsu::meta::behavior::enum_string;
-using ::kotatsu::meta::behavior::skip_if;
-using ::kotatsu::meta::behavior::with;
+using ::kotatsu::meta::variant_base_t;
 }
 
 export namespace kotatsu::meta::detail {
-using ::kotatsu::meta::detail::annotated_field;
+using ::kotatsu::meta::detail::__kotatsu__field_annotation;
+using ::kotatsu::meta::detail::__kotatsu__type_annotation;
+using ::kotatsu::meta::detail::added_attr;
+using ::kotatsu::meta::detail::annotated_in_class;
+using ::kotatsu::meta::detail::annotated_out_of_class;
 using ::kotatsu::meta::detail::any;
-using ::kotatsu::meta::detail::any_component;
-using ::kotatsu::meta::detail::apply_rename_cx;
 using ::kotatsu::meta::detail::as_variant;
-using ::kotatsu::meta::detail::build_fields;
-using ::kotatsu::meta::detail::build_slots_from_seq;
-using ::kotatsu::meta::detail::build_slots_t;
-using ::kotatsu::meta::detail::built_fields_t;
+using ::kotatsu::meta::detail::attributes_unique;
+using ::kotatsu::meta::detail::bundle_attributes;
+using ::kotatsu::meta::detail::check_specs;
 using ::kotatsu::meta::detail::compare_eq;
 using ::kotatsu::meta::detail::compare_ge;
 using ::kotatsu::meta::detail::compare_gt;
@@ -6709,65 +6630,68 @@ using ::kotatsu::meta::detail::compare_range_lt;
 using ::kotatsu::meta::detail::compare_sequence_eq;
 using ::kotatsu::meta::detail::compare_sequence_lt;
 using ::kotatsu::meta::detail::compare_set_eq_unordered;
-using ::kotatsu::meta::detail::component_attr;
-using ::kotatsu::meta::detail::component_kinds_unique;
-using ::kotatsu::meta::detail::config_defaults_fields;
-using ::kotatsu::meta::detail::config_denies_unknown;
+using ::kotatsu::meta::detail::compose_attributes;
+using ::kotatsu::meta::detail::compose_bundles;
+using ::kotatsu::meta::detail::composed_attributes_t;
+using ::kotatsu::meta::detail::composed_tag;
 using ::kotatsu::meta::detail::count_valid;
-using ::kotatsu::meta::detail::declared_repr_impl;
-using ::kotatsu::meta::detail::defaulted_layer;
-using ::kotatsu::meta::detail::deny_layer;
-using ::kotatsu::meta::detail::effective_field_count;
-using ::kotatsu::meta::detail::effective_field_rename;
-using ::kotatsu::meta::detail::effective_field_rename_t;
-using ::kotatsu::meta::detail::enum_info_node;
+using ::kotatsu::meta::detail::direct_attributes;
 using ::kotatsu::meta::detail::enum_probe;
 using ::kotatsu::meta::detail::enum_probe_name;
 using ::kotatsu::meta::detail::enum_probe_value;
 using ::kotatsu::meta::detail::eq_op;
 using ::kotatsu::meta::detail::ext;
 using ::kotatsu::meta::detail::extract_identifier;
-using ::kotatsu::meta::detail::field_attr_flags;
+using ::kotatsu::meta::detail::field_annotation;
+using ::kotatsu::meta::detail::field_annotation_attributes;
+using ::kotatsu::meta::detail::field_annotation_found;
+using ::kotatsu::meta::detail::field_annotation_t;
 using ::kotatsu::meta::detail::field_count;
-using ::kotatsu::meta::detail::fill_field;
-using ::kotatsu::meta::detail::filter_runtime_attrs;
-using ::kotatsu::meta::detail::filter_runtime_attrs_t;
-using ::kotatsu::meta::detail::finalize_struct_spec;
+using ::kotatsu::meta::detail::field_key_text;
 using ::kotatsu::meta::detail::find_last_top_level_scope;
+using ::kotatsu::meta::detail::find_spec_attr;
 using ::kotatsu::meta::detail::findable_in;
-using ::kotatsu::meta::detail::format_of_impl;
 using ::kotatsu::meta::detail::ge_op;
 using ::kotatsu::meta::detail::gt_op;
+using ::kotatsu::meta::detail::has_field_keyed;
+using ::kotatsu::meta::detail::has_type_annotation;
 using ::kotatsu::meta::detail::integer_like;
 using ::kotatsu::meta::detail::integer_value;
-using ::kotatsu::meta::detail::is_runtime_spec_attr_v;
-using ::kotatsu::meta::detail::is_runtime_struct_spec_attr_v;
+using ::kotatsu::meta::detail::is_bundle_v;
+using ::kotatsu::meta::detail::is_spec_attr_v;
+using ::kotatsu::meta::detail::kept_attribute;
+using ::kotatsu::meta::detail::kept_spec_value;
+using ::kotatsu::meta::detail::kept_spec_values;
+using ::kotatsu::meta::detail::key_of;
+using ::kotatsu::meta::detail::kind_type_t;
+using ::kotatsu::meta::detail::kinds_comparable;
+using ::kotatsu::meta::detail::layered_attrs;
+using ::kotatsu::meta::detail::layered_attrs_t;
 using ::kotatsu::meta::detail::le_op;
 using ::kotatsu::meta::detail::lt_op;
 using ::kotatsu::meta::detail::make_candidate_names;
 using ::kotatsu::meta::detail::make_candidate_valid;
 using ::kotatsu::meta::detail::make_candidate_values;
-using ::kotatsu::meta::detail::make_field_info;
 using ::kotatsu::meta::detail::make_scan_values;
 using ::kotatsu::meta::detail::map_entries_contained_in;
-using ::kotatsu::meta::detail::merge_config_impl;
-using ::kotatsu::meta::detail::merged_config;
+using ::kotatsu::meta::detail::member_key;
+using ::kotatsu::meta::detail::member_key_t;
+using ::kotatsu::meta::detail::member_name;
+using ::kotatsu::meta::detail::member_probe;
+using ::kotatsu::meta::detail::no_annotation;
 using ::kotatsu::meta::detail::op_comparable_with;
+using ::kotatsu::meta::detail::optional_like;
+using ::kotatsu::meta::detail::overrides;
 using ::kotatsu::meta::detail::range_ref_t;
 using ::kotatsu::meta::detail::range_value_op_comparable;
 using ::kotatsu::meta::detail::reflectable_pair;
-using ::kotatsu::meta::detail::rename_layer;
-using ::kotatsu::meta::detail::rename_with;
-using ::kotatsu::meta::detail::renamed_name_static;
-using ::kotatsu::meta::detail::repr_for_impl;
-using ::kotatsu::meta::detail::resolve_field_name;
-using ::kotatsu::meta::detail::resolve_node;
-using ::kotatsu::meta::detail::resolve_repr;
-using ::kotatsu::meta::detail::resolved_repr;
+using ::kotatsu::meta::detail::same_attribute;
 using ::kotatsu::meta::detail::scan_values;
 using ::kotatsu::meta::detail::set_entries_contained_in;
-using ::kotatsu::meta::detail::single_field_count;
-using ::kotatsu::meta::detail::single_field_slots;
+using ::kotatsu::meta::detail::sets_spec;
+using ::kotatsu::meta::detail::spec_from;
+using ::kotatsu::meta::detail::spec_tag_t;
+using ::kotatsu::meta::detail::spec_types;
 using ::kotatsu::meta::detail::standard_integer;
 using ::kotatsu::meta::detail::takeover_for_range;
 using ::kotatsu::meta::detail::takeover_range_eq;
@@ -6778,69 +6702,32 @@ using ::kotatsu::meta::detail::takeover_range_lt;
 using ::kotatsu::meta::detail::test;
 using ::kotatsu::meta::detail::tuple_gettable;
 using ::kotatsu::meta::detail::tuple_gettable_impl;
-using ::kotatsu::meta::detail::tuple_info_node;
-using ::kotatsu::meta::detail::type_instance;
-using ::kotatsu::meta::detail::type_instance_impl;
+using ::kotatsu::meta::detail::type_annotation;
+using ::kotatsu::meta::detail::type_annotation_t;
+using ::kotatsu::meta::detail::type_attributes;
 using ::kotatsu::meta::detail::uninitialized;
 using ::kotatsu::meta::detail::unqualify_type_name;
-using ::kotatsu::meta::detail::unwrap_annotated;
 using ::kotatsu::meta::detail::unwrap_wrapper_value;
-using ::kotatsu::meta::detail::validate_attrs;
-using ::kotatsu::meta::detail::validate_spec;
-using ::kotatsu::meta::detail::variant_info_node;
+using ::kotatsu::meta::detail::variant_base_of;
 using ::kotatsu::meta::detail::variant_like;
-using ::kotatsu::meta::detail::variant_of;
-using ::kotatsu::meta::detail::variant_of_t;
 using ::kotatsu::meta::detail::variant_pair;
 using ::kotatsu::meta::detail::wrapper;
 }
 
 export namespace kotatsu::meta::dsl {
-using ::kotatsu::meta::dsl::alias;
-using ::kotatsu::meta::dsl::as;
-using ::kotatsu::meta::dsl::aspect;
-using ::kotatsu::meta::dsl::choices;
-using ::kotatsu::meta::dsl::content;
-using ::kotatsu::meta::dsl::defaulted;
-using ::kotatsu::meta::dsl::defaulted_fields;
-using ::kotatsu::meta::dsl::deny_unknown_fields;
-using ::kotatsu::meta::dsl::description;
-using ::kotatsu::meta::dsl::enum_string;
-using ::kotatsu::meta::dsl::flatten;
-using ::kotatsu::meta::dsl::idx;
-using ::kotatsu::meta::dsl::is_type_component_v;
-using ::kotatsu::meta::dsl::maximum;
-using ::kotatsu::meta::dsl::minimum;
+using ::kotatsu::meta::dsl::component;
+using ::kotatsu::meta::dsl::member_proxy;
 using ::kotatsu::meta::dsl::name_list_proxy;
-using ::kotatsu::meta::dsl::number_proxy;
-using ::kotatsu::meta::dsl::rename;
-using ::kotatsu::meta::dsl::rename_all;
-using ::kotatsu::meta::dsl::schema_default;
-using ::kotatsu::meta::dsl::skip;
-using ::kotatsu::meta::dsl::skip_if;
-using ::kotatsu::meta::dsl::skip_if_proxy;
-using ::kotatsu::meta::dsl::spec_component;
-using ::kotatsu::meta::dsl::tag;
-using ::kotatsu::meta::dsl::tag_names;
-using ::kotatsu::meta::dsl::tagged;
-using ::kotatsu::meta::dsl::tagged_component;
-using ::kotatsu::meta::dsl::tagged_proxy;
+using ::kotatsu::meta::dsl::names_component;
 using ::kotatsu::meta::dsl::type;
-using ::kotatsu::meta::dsl::type_component;
-using ::kotatsu::meta::dsl::type_proxy;
 using ::kotatsu::meta::dsl::value_component;
 using ::kotatsu::meta::dsl::value_proxy;
-using ::kotatsu::meta::dsl::with;
-}
-
-export namespace kotatsu::meta::pred {
-using ::kotatsu::meta::pred::default_value;
-using ::kotatsu::meta::pred::empty;
-using ::kotatsu::meta::pred::optional_none;
 }
 
 export namespace kotatsu::naming {
 using ::kotatsu::naming::Casing;
+using ::kotatsu::naming::casing_fn;
+using ::kotatsu::naming::distinct;
 using ::kotatsu::naming::is_alnum;
 using ::kotatsu::naming::is_alpha;
 using ::kotatsu::naming::is_digit;
@@ -6849,15 +6736,21 @@ using ::kotatsu::naming::is_non_ascii;
 using ::kotatsu::naming::is_upper;
 using ::kotatsu::naming::normalize_identifier;
 using ::kotatsu::naming::normalize_to_lower_snake;
-using ::kotatsu::naming::rename_policy_t;
+using ::kotatsu::naming::rename_fn;
+using ::kotatsu::naming::rename_policy_of_t;
+using ::kotatsu::naming::renamed;
+using ::kotatsu::naming::renames;
 using ::kotatsu::naming::snake_to_camel;
 using ::kotatsu::naming::snake_to_upper;
+using ::kotatsu::naming::spell_with;
 using ::kotatsu::naming::to_lower;
 using ::kotatsu::naming::to_upper;
 }
 
 export namespace kotatsu::naming::detail {
-using ::kotatsu::naming::detail::casing_policy;
+using ::kotatsu::naming::detail::fn_policy;
+using ::kotatsu::naming::detail::policy_of;
+using ::kotatsu::naming::detail::renamed_table;
 }
 
 export namespace kotatsu::naming::rename_policy {
@@ -6866,37 +6759,6 @@ using ::kotatsu::naming::rename_policy::lower_camel;
 using ::kotatsu::naming::rename_policy::lower_snake;
 using ::kotatsu::naming::rename_policy::upper_camel;
 using ::kotatsu::naming::rename_policy::upper_snake;
-}
-
-export namespace kotatsu::option {
-using ::kotatsu::option::ArgsRef;
-using ::kotatsu::option::DriverFlag;
-using ::kotatsu::option::DriverVisibility;
-using ::kotatsu::option::Kind;
-using ::kotatsu::option::OptTable;
-using ::kotatsu::option::Option;
-using ::kotatsu::option::OptionRef;
-using ::kotatsu::option::ParseError;
-using ::kotatsu::option::ParseIter;
-using ::kotatsu::option::ParseOptions;
-using ::kotatsu::option::ParsedArg;
-using ::kotatsu::option::RenderStyle;
-using ::kotatsu::option::pfx_all;
-using ::kotatsu::option::pfx_dash;
-using ::kotatsu::option::pfx_dash_double;
-using ::kotatsu::option::pfx_double;
-using ::kotatsu::option::pfx_none;
-using ::kotatsu::option::pfx_slash_dash;
-using enum ::kotatsu::option::DriverFlag;
-using enum ::kotatsu::option::DriverVisibility;
-}
-
-export namespace kotatsu::option::detail {
-using ::kotatsu::option::detail::all_prefixes;
-using ::kotatsu::option::detail::dash_double_prefixes;
-using ::kotatsu::option::detail::dash_prefixes;
-using ::kotatsu::option::detail::double_prefixes;
-using ::kotatsu::option::detail::slash_dash_prefixes;
 }
 
 export namespace kotatsu::sys {
@@ -6960,13 +6822,17 @@ using ::kotatsu::sys::uptime;
 using ::kotatsu::sys::write_console;
 }
 
+export namespace kotatsu::sys::cmd {
+using ::kotatsu::sys::cmd::Quoting;
+using ::kotatsu::sys::cmd::expand;
+using ::kotatsu::sys::cmd::expand_view;
+using ::kotatsu::sys::cmd::join;
+using ::kotatsu::sys::cmd::split;
+using ::kotatsu::sys::cmd::split_view;
+}
+
 export namespace kotatsu::sys::windows {
-using ::kotatsu::sys::windows::CommandLineRules;
-using ::kotatsu::sys::windows::join_command_line;
 using ::kotatsu::sys::windows::ntstatus_name;
-using ::kotatsu::sys::windows::quote_argument;
-using ::kotatsu::sys::windows::split_command_line;
-using ::kotatsu::sys::windows::split_command_line_view;
 }
 
 export namespace kotatsu::zest {

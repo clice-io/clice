@@ -351,8 +351,8 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
     auto forwarded_from = forwarded_start(tokens, command);
     // An external clang may be newer than the linked one: a flag our cc1
     // does not know parses as unknown, and its values as inputs; both go.
-    auto parse_options = option::ParseOptions{.visibility = clang_options::CC1Option};
-    std::vector<option::ParsedArg> kept;
+    auto parse_options = cli::ParseOptions{.visibility = clang_options::CC1Option};
+    std::vector<cli::ParsedArg> kept;
     llvm::StringRef triple;
     llvm::StringRef job_resource_dir;
     for(auto& parsed: clang_options::table().parse(tokens, parse_options)) {
