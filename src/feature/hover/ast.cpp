@@ -490,10 +490,13 @@ bool tangled(clang::QualType type) {
 }
 
 /// The facts of a function: the aliases its signature spells, and its type
-/// when it is a lambda or names its return type through an expression.
+/// when it is a lambda or names its return type through an expression, or
+/// through a placeholder the card shows undeduced, as the template of an
+/// instantiation has it.
 void add_function(HoverInfo& info,
                   const clang::Decl* decl,
                   const clang::FunctionDecl& function,
+                  bool template_shown,
                   const display::Options& options) {
     auto& context = function.getASTContext();
     for(const auto* param: function.parameters()) {
@@ -511,8 +514,9 @@ void add_function(HoverInfo& info,
     /// Clang prints the type a placeholder deduces in place of the
     /// placeholder.
     auto returned = function.getFunctionTypeLoc();
-    if(llvm::isa<clang::VarDecl>(decl) || (returned && !spelled(returned.getReturnLoc()) &&
-                                           !function.getReturnType()->getContainedDeducedType())) {
+    if(llvm::isa<clang::VarDecl>(decl) ||
+       (returned && !spelled(returned.getReturnLoc()) &&
+        (template_shown || !function.getReturnType()->getContainedDeducedType()))) {
         /// A lambda's call operator is `const`, which says nothing of calling
         /// it. A C function may have no prototype, `int f()`.
         auto type = function.getType();
@@ -844,7 +848,8 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
     }
     /// A use of an instantiation shows the template it was instantiated
     /// from and the arguments, which the title then leaves out.
-    if(auto from = instantiation(*decl, shown)) {
+    auto from = instantiation(*decl, shown);
+    if(from) {
         declaration = from->pattern;
         info.template_arguments = std::move(from->bindings);
         if(llvm::isa<clang::ClassTemplateSpecializationDecl>(decl)) {
@@ -888,7 +893,7 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
             info.target_definition += layout(std::move(definition), false) + ";";
         }
     } else if(const auto* function = underlying_function(entity)) {
-        add_function(info, entity, *function, shown);
+        add_function(info, entity, *function, from.has_value(), shown);
     } else if(const auto* binding = llvm::dyn_cast<clang::BindingDecl>(entity)) {
         if(auto type = binding_type(*binding); !type.isNull()) {
             info.type = shown_type(context, type, shown);
