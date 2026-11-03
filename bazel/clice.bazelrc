@@ -3,6 +3,8 @@ common --enable_platform_specific_config
 # registry, the rest from the Bazel Central Registry.
 common --registry=https://bazel.clice.io/
 common --registry=https://bcr.bazel.build/
+# Downloads from them and from GitHub drop at times.
+common --experimental_repository_downloader_retries=10 --http_timeout_scaling=2
 # The C++ toolchain is xclang's (MODULE.bazel), on every platform; rules_cc's
 # detection of another is off.
 common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1

@@ -30,7 +30,7 @@ jobs:
       - name: Install neovim (stable)
         if: runner.os == 'Linux'
         run: |
-          curl -fsSL -o /tmp/nvim.tar.gz \
+          curl -fsSL --retry 5 --retry-all-errors -o /tmp/nvim.tar.gz \
             https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.tar.gz
           sudo tar -xzf /tmp/nvim.tar.gz -C /opt
           echo "/opt/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
