@@ -353,7 +353,7 @@ tests/hover/templates/01_template_parameters
 
 **模板实参**
 
-模板的使用处会显示实例化时采用的实参
+模板的使用处会显示该模板及实例化时采用的实参
 
 ```case
 tests/hover/templates/02_instantiation_arguments
@@ -395,6 +395,20 @@ tests/hover/templates/04_concept_constraints
 
 ```case
 tests/hover/templates/10_library_specialization_members
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**实例化来源**
+
+实例化的使用处会显示它由哪个模板实例化而来，以及它绑定的实参
+
+从偏特化实例化而来时显示该偏特化本身，类模板的成员则先显示所属类的实参。由默认值给出的实参和空参数包不会显示；显式特化按代码中的写法显示。
+
+```case
+tests/hover/templates/12_instantiation_patterns
 ```
 
 <!-- END CAPABILITY -->
@@ -587,6 +601,18 @@ tests/hover/macros/04_command_line
 
 ```case
 tests/hover/macros/05_nested_arguments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**展开值**
+
+展开为表达式的宏，其使用处会显示该表达式的类型；表达式为常量时还会显示其值
+
+```case
+tests/hover/macros/14_expansion_values
 ```
 
 <!-- END CAPABILITY -->
@@ -957,6 +983,34 @@ tests/hover/no_card/01_meaningless_tokens
 
 ```case
 tests/hover/presentation/01_plain_text
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**从左到右读的类型**
+
+C++ 由内向外书写的类型改为从左到右读：`*`、`&` 和 `[N]` 跟在它们所修饰的类型之后，函数读作 `(params) -> R`，成员指针读作 `C::-> T`
+
+嵌套在另一个函数或成员指针中的函数或成员指针用一个希腊字母代称，并在下一行写出。
+
+```case
+tests/hover/presentation/03_inside_out_types
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**长类型**
+
+一行放不下的类型会分成多行书写，每行最多 60 列
+
+放不下的部分用一个希腊字母代称，并在下方单独一行写出，缩进多两列；出现两次的部分共用同一个字母。实参或形参列表仍然放不下时，在其左括号之后换行。
+
+```case
+tests/hover/presentation/04_long_type_lines
 ```
 
 <!-- END CAPABILITY -->
