@@ -3,7 +3,7 @@
   "topic": "signature_help",
   "subtopic": "parameters",
   "title": "Names of an instantiated member",
-  "summary": "A class template's member is named as its definition names it, whether or not the compile has instantiated that definition yet",
+  "summary": "A class template's member is named as the class declares it, whether or not the compile has instantiated its definition, which names it otherwise",
   "prose": "",
   "status": "supported",
   "issues": [],
