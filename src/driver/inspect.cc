@@ -627,7 +627,8 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
             auto& files = project.file_table;
             project.commit_self_containment(
                 *resolution.self_containment,
-                feature::missing_context_errors(feature::diagnostics(*unit), file.content) == 0,
+                feature::missing_context_diagnostics(feature::diagnostics(*unit), file.content) ==
+                    0,
                 files.intern_version(path_id, llvm::xxh3_64bits(file.content)),
                 intern_inputs(files, unit->deps(), unit->started_at().count()));
             resolution = resolve();

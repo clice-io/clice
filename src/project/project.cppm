@@ -703,7 +703,7 @@ struct Project {
     /// Remember what the self-containment check of `key` found: whether the
     /// header's compile without its includer's context over `text`, having
     /// read `inputs`, missed nothing an includer provides
-    /// (feature::missing_context_errors).
+    /// (feature::missing_context_diagnostics).
     void commit_self_containment(const SelfContainmentKey& key,
                                  bool self_contained,
                                  VersionID text,
