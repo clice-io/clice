@@ -552,7 +552,7 @@ ZEST_CASE(EvictsOnlyWhenTold) {
 }
 
 /// A file whose only error is raised where clang instantiates at its end.
-constexpr llvm::StringRef instantiated = R"(template <typename T>
+constexpr static llvm::StringRef instantiated = R"(template <typename T>
 int field(T t) {
     return t.x;
 }
