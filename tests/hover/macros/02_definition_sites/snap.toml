@@ -15,10 +15,12 @@ markdown = '''
 ```cpp
 #define LIMIT 64
 ```
-Expands to:
+**Expands to:**
 ```cpp
 64
 ```
+**Type:** `int`
+**Value:** `64 (0x40)`
 '''
 range = "int use = ⟦LIMIT⟧;"
 

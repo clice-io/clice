@@ -1,0 +1,489 @@
+{
+  "id": "hover/presentation/03_inside_out_types",
+  "topic": "hover",
+  "subtopic": "presentation",
+  "title": "Types read left to right",
+  "summary": "A type C++ writes inside out reads left to right: `*`, `&` and `[N]` follow what they apply to, a function reads `(params) -> R`, a member pointer `C::-> T`",
+  "prose": "A function inside a function, or a member pointer inside a member pointer, is named by a Greek letter, spelled on the line below.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace inside_out {\n\nstruct Widget {\n    double scale(double factor) const;\n    void reset() & noexcept;\n    int id;\n    void (*hooks[4])(int);\n};\n\nstruct Holder {\n    int Widget::* member;\n};\n\nint storage[16];\n\nvoid (*on_exit)(int);\nint (&row)[16] = storage;\nchar (*line)[80];\nvoid (*handlers[8])(int, const char*);\nint (*print)(const char*, ...);\nint (*any)(...);\nconst auto& view = storage;\ndouble (Widget::*scaler)(double) const = &Widget::scale;\nvoid (Widget::*resetter)() & noexcept = &Widget::reset;\nint Widget::*field = &Widget::id;\nvoid (*(Widget::*table)[4])(int) = &Widget::hooks;\nint Widget::* const fixed = &Widget::id;\nint Widget::* Holder::*chain = &Holder::member;\n\nvoid (*signal(int, void (*)(int)))(int);\n\nvoid __attribute__((ms_abi)) native(int);\nauto entry = &native;\n\nusing Table = void (*[8])(int);\nTable dispatch;\n\n}\n",
+      "markers": [
+        {
+          "name": "function_pointer",
+          "begin": 222,
+          "end": 222,
+          "range": false
+        },
+        {
+          "name": "array_reference",
+          "begin": 243,
+          "end": 243,
+          "range": false
+        },
+        {
+          "name": "array_pointer",
+          "begin": 270,
+          "end": 270,
+          "range": false
+        },
+        {
+          "name": "pointer_array",
+          "begin": 288,
+          "end": 288,
+          "range": false
+        },
+        {
+          "name": "variadic",
+          "begin": 326,
+          "end": 326,
+          "range": false
+        },
+        {
+          "name": "only_variadic",
+          "begin": 358,
+          "end": 358,
+          "range": false
+        },
+        {
+          "name": "const_array",
+          "begin": 381,
+          "end": 381,
+          "range": false
+        },
+        {
+          "name": "member_function",
+          "begin": 414,
+          "end": 414,
+          "range": false
+        },
+        {
+          "name": "qualified_member",
+          "begin": 469,
+          "end": 469,
+          "range": false
+        },
+        {
+          "name": "member_data",
+          "begin": 523,
+          "end": 523,
+          "range": false
+        },
+        {
+          "name": "member_array",
+          "begin": 561,
+          "end": 561,
+          "range": false
+        },
+        {
+          "name": "const_member",
+          "begin": 615,
+          "end": 615,
+          "range": false
+        },
+        {
+          "name": "member_in_member",
+          "begin": 659,
+          "end": 659,
+          "range": false
+        },
+        {
+          "name": "returns_pointer",
+          "begin": 692,
+          "end": 692,
+          "range": false
+        },
+        {
+          "name": "attributed",
+          "begin": 774,
+          "end": 774,
+          "range": false
+        },
+        {
+          "name": "alias",
+          "begin": 830,
+          "end": 830,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "function_pointer",
+          "marker": "function_pointer",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `on_exit` · namespace `inside_out`\n\n```cpp\nvoid (*on_exit)(int)\n```\n**Type:** `((int) -> void)*`",
+              "range": {
+                "$place": "void (*⟦on_exit⟧)(int);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "array_reference",
+          "marker": "array_reference",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `row` · namespace `inside_out`\n\n```cpp\nint (&row)[16] = storage\n```\n**Type:** `int[16]&`",
+              "range": {
+                "$place": "int (&⟦row⟧)[16] = storage;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 16,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 16,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "array_pointer",
+          "marker": "array_pointer",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `line` · namespace `inside_out`\n\n```cpp\nchar (*line)[80]\n```\n**Type:** `char[80]*`",
+              "range": {
+                "$place": "char (*⟦line⟧)[80];",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 17,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 17,
+                    "character": 11
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "pointer_array",
+          "marker": "pointer_array",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `handlers` · namespace `inside_out`\n\n```cpp\nvoid (*handlers[8])(int, const char*)\n```\n**Type:** `((int, const char*) -> void)*[8]`",
+              "range": {
+                "$place": "void (*⟦handlers⟧[8])(int, const char*);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 18,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 18,
+                    "character": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "variadic",
+          "marker": "variadic",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `print` · namespace `inside_out`\n\n```cpp\nint (*print)(const char*, ...)\n```\n**Type:** `((const char*, ...) -> int)*`",
+              "range": {
+                "$place": "int (*⟦print⟧)(const char*, ...);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 19,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 19,
+                    "character": 11
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "only_variadic",
+          "marker": "only_variadic",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `any` · namespace `inside_out`\n\n```cpp\nint (*any)(...)\n```\n**Type:** `((...) -> int)*`",
+              "range": {
+                "$place": "int (*⟦any⟧)(...);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 20,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 20,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "const_array",
+          "marker": "const_array",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `view` · namespace `inside_out`\n\n```cpp\nconst auto& view = storage\n```\n**Type:** `const int[16]&`",
+              "range": {
+                "$place": "const auto& ⟦view⟧ = storage;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 21,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 21,
+                    "character": 16
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "member_function",
+          "marker": "member_function",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `scaler` · namespace `inside_out`\n\n```cpp\ndouble (Widget::*scaler)(double) const = &Widget::scale\n```\n**Type:** `Widget::-> (const (double) -> double)`\n**Value:** `&Widget::scale`",
+              "range": {
+                "$place": "double (Widget::*⟦scaler⟧)(double) const = &Widget::scale;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 22,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 22,
+                    "character": 23
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "qualified_member",
+          "marker": "qualified_member",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `resetter` · namespace `inside_out`\n\n```cpp\nvoid (Widget::*resetter)() & noexcept = &Widget::reset\n```\n**Type:** `Widget::-> (& noexcept () -> void)`\n**Value:** `&Widget::reset`",
+              "range": {
+                "$place": "void (Widget::*⟦resetter⟧)() & noexcept = &Widget::reset;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 23,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 23,
+                    "character": 23
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "member_data",
+          "marker": "member_data",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `field` · namespace `inside_out`\n\n```cpp\nint Widget::* field = &Widget::id\n```\n**Type:** `Widget::-> int`\n**Value:** `&Widget::id`",
+              "range": {
+                "$place": "int Widget::*⟦field⟧ = &Widget::id;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 24,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 24,
+                    "character": 18
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "member_array",
+          "marker": "member_array",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `table` · namespace `inside_out`\n\n```cpp\nvoid (*(Widget::*table)[4])(int) = &Widget::hooks\n```\n**Type:** `Widget::-> ((int) -> void)*[4]`\n**Value:** `&Widget::hooks`",
+              "range": {
+                "$place": "void (*(Widget::*⟦table⟧)[4])(int) = &Widget::hooks;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 25,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 25,
+                    "character": 22
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "const_member",
+          "marker": "const_member",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `fixed` · namespace `inside_out`\n\n```cpp\nint Widget::* const fixed = &Widget::id\n```\n**Type:** `(Widget::-> int) const`\n**Value:** `&Widget::id`",
+              "range": {
+                "$place": "int Widget::* const ⟦fixed⟧ = &Widget::id;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 26,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 26,
+                    "character": 25
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "member_in_member",
+          "marker": "member_in_member",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `chain` · namespace `inside_out`\n\n```cpp\nint Widget::* Holder::* chain = &Holder::member\n```\n**Type:**\n```cpp\nHolder::-> α\n  α = Widget::-> int\n```\n**Value:** `&Holder::member`",
+              "range": {
+                "$place": "int Widget::* Holder::*⟦chain⟧ = &Holder::member;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 27,
+                    "character": 23
+                  },
+                  "end": {
+                    "line": 27,
+                    "character": 28
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "returns_pointer",
+          "marker": "returns_pointer",
+          "value": {
+            "hover": {
+              "markdown": "**function** `signal` · namespace `inside_out`\n\n```cpp\nvoid (*signal(int, void (*)(int)))(int)\n```\n**Type:**\n```cpp\n(int, α) -> α\n  α = ((int) -> void)*\n```",
+              "range": {
+                "$place": "void (*⟦signal⟧(int, void (*)(int)))(int);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 29,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 29,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "attributed",
+          "marker": "attributed",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `entry` · namespace `inside_out`\n\n```cpp\nauto entry = &native\n```\n**Type:** `(__attribute__((ms_abi)) (int) -> void)*`",
+              "range": {
+                "$place": "auto ⟦entry⟧ = &native;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 32,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 32,
+                    "character": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "alias",
+          "marker": "alias",
+          "value": {
+            "hover": {
+              "markdown": "**variable** `dispatch` · namespace `inside_out`\n\n```cpp\nTable dispatch\n```\n`Table` is `((int) -> void)*[8]`",
+              "range": {
+                "$place": "Table ⟦dispatch⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 35,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 35,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

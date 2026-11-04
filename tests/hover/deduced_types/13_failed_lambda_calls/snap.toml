@@ -3,9 +3,9 @@ markdown = '''
 **parameter** `e` · lambda in function `payroll`
 
 ```cpp
-auto &e
+auto& e
 ```
-Type: `Employee &`
+**Type:** `Employee&`
 '''
 range = "auto pay = [](auto& ⟦e⟧) { @+0"
 
@@ -14,8 +14,8 @@ markdown = '''
 **parameter** `e` · lambda in function `failed`
 
 ```cpp
-auto &e
+auto& e
 ```
-Type: `int &`
+**Type:** `int&`
 '''
 range = "auto pay = [](auto& ⟦e⟧) { @+0"

@@ -10,12 +10,17 @@ range = "Bundle<long, char, bool> ⟦bundle⟧{7};"
 
 [answers.implicit_instantiation.hover]
 markdown = '''
-**class** `Sequence<long>` · namespace `implicit_instance`
+**class** `Sequence<…>` · namespace `implicit_instance`
 
 ```cpp
-template <> class Sequence<long> {}
+template <typename T> class Sequence {}
 ```
-Size: 1 byte, alignment 1 byte
+**Template arguments:**
+```cpp
+T = long
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Sequence⟧<long> values;"
 
@@ -36,7 +41,13 @@ markdown = '''
 **function** `register_type` · namespace `function_template_call`
 
 ```cpp
-template <> void register_type<Policy, char, 4L, true>()
+template <template <typename, bool...> class Strategy, typename Value = char,
+          long Size = 4, bool Enabled = true, typename... Rest>
+void register_type()
+```
+**Template arguments:**
+```cpp
+Strategy = Policy
 ```
 '''
 range = "⟦register_type⟧<Policy>();"
@@ -56,7 +67,7 @@ markdown = '''
 **class** `Container<T *>` · namespace `partial_specialization_declaration`
 
 ```cpp
-template <typename T> class Container<T *> {}
+template <typename T> class Container<T*> {}
 ```
 '''
 range = "template <typename T> class ⟦Container⟧<T*> {};"
@@ -180,12 +191,17 @@ range = "Owner<⟦Allocator⟧> owner;"
 
 [answers.ctad.hover]
 markdown = '''
-**struct** `Wrapper<long>` · namespace `deduction_placeholder`
+**struct** `Wrapper<…>` · namespace `deduction_placeholder`
 
 ```cpp
-template <> struct Wrapper<long> {}
+template <typename T> struct Wrapper {}
 ```
-Size: 1 byte, alignment 1 byte
+**Template arguments:**
+```cpp
+T = long
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Wrapper⟧ wrapper(9L);"
 
@@ -205,7 +221,7 @@ markdown = '''
 
 ```cpp
 template <typename T> struct Link {
-  Link *next;
+  Link* next;
 }
 ```
 '''
@@ -213,12 +229,18 @@ range = "⟦Link⟧* next;"
 
 [answers.pack_class.hover]
 markdown = '''
-**struct** `Bundle<long, char, bool>` · namespace `pack_arguments`
+**struct** `Bundle<…>` · namespace `pack_arguments`
 
 ```cpp
-template <> struct Bundle<long, char, bool> {}
+template <typename T, typename... Rest> struct Bundle {}
 ```
-Size: 1 byte, alignment 1 byte
+**Template arguments:**
+```cpp
+T = long
+Rest = char, bool
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Bundle⟧<long, char, bool> bundle;"
 
@@ -227,7 +249,11 @@ markdown = '''
 **function** `log` · namespace `pack_arguments`
 
 ```cpp
-template <> void log<int, double>(int args, double args)
+template <typename... Args> void log(Args... args)
+```
+**Template arguments:**
+```cpp
+Args = int, double
 ```
 '''
 range = "⟦log⟧(1, 2.5);"

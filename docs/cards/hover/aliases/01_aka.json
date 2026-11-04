@@ -36,7 +36,7 @@
           "marker": "alias",
           "value": {
             "hover": {
-              "markdown": "**variable** `direct` · namespace `aka_desugar`\n\n```cpp\nHandle direct = 0\n```\n`Handle` is `int`\nValue: `0`",
+              "markdown": "**variable** `direct` · namespace `aka_desugar`\n\n```cpp\nHandle direct = 0\n```\n`Handle` is `int`\n**Value:** `0`",
               "range": {
                 "$place": "Handle ⟦direct⟧ = 0;",
                 "path": "main.cpp",
@@ -59,7 +59,7 @@
           "marker": "alias_chain",
           "value": {
             "hover": {
-              "markdown": "**variable** `chained` · namespace `aka_desugar`\n\n```cpp\nAlias chained = 0\n```\n`Alias` is `int`\nValue: `0`",
+              "markdown": "**variable** `chained` · namespace `aka_desugar`\n\n```cpp\nAlias chained = 0\n```\n`Alias` is `int`\n**Value:** `0`",
               "range": {
                 "$place": "Alias ⟦chained⟧ = 0;",
                 "path": "main.cpp",
@@ -92,7 +92,7 @@
           "marker": "alias",
           "value": {
             "hover": {
-              "markdown": "**variable** `direct` · namespace `aka_desugar`\n\n```cpp\nHandle direct = 0\n```\nValue: `0`",
+              "markdown": "**variable** `direct` · namespace `aka_desugar`\n\n```cpp\nHandle direct = 0\n```\n**Value:** `0`",
               "range": {
                 "$place": "Handle ⟦direct⟧ = 0;",
                 "path": "main.cpp",
@@ -115,7 +115,7 @@
           "marker": "alias_chain",
           "value": {
             "hover": {
-              "markdown": "**variable** `chained` · namespace `aka_desugar`\n\n```cpp\nAlias chained = 0\n```\nValue: `0`",
+              "markdown": "**variable** `chained` · namespace `aka_desugar`\n\n```cpp\nAlias chained = 0\n```\n**Value:** `0`",
               "range": {
                 "$place": "Alias ⟦chained⟧ = 0;",
                 "path": "main.cpp",

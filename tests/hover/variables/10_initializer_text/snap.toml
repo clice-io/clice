@@ -5,7 +5,7 @@ markdown = '''
 ```cpp
 int spread = 1 + 2 + 3
 ```
-Value: `6`
+**Value:** `6`
 '''
 range = "int ⟦spread⟧ = 1 +"
 
@@ -14,10 +14,10 @@ markdown = '''
 **variable** `raw` · namespace `initializer_text`
 
 ```cpp
-const char *raw = R"(a "quoted"
+const char* raw = R"(a "quoted"
 line)"
 ```
-Value: `"a \"quoted\"\nline"`
+**Value:** `"a \"quoted\"\nline"`
 '''
 range = 'const char* ⟦raw⟧ = R"(a "quoted"'
 
@@ -26,10 +26,10 @@ markdown = '''
 **variable** `raw_splice` · namespace `initializer_text`
 
 ```cpp
-const char *raw_splice = R"(a\
+const char* raw_splice = R"(a\
 b)"
 ```
-Value: `"a\\\nb"`
+**Value:** `"a\\\nb"`
 '''
 range = 'const char* ⟦raw_splice⟧ = R"(a\'
 
@@ -40,7 +40,7 @@ markdown = '''
 ```cpp
 int continued = TWICE(4) + 1
 ```
-Value: `9`
+**Value:** `9`
 '''
 range = 'int ⟦continued⟧ = TWICE(4) \'
 
@@ -51,7 +51,7 @@ markdown = '''
 ```cpp
 int parenthesized(5)
 ```
-Value: `5`
+**Value:** `5`
 '''
 range = "int ⟦parenthesized⟧(5);"
 
@@ -72,7 +72,7 @@ markdown = '''
 ```cpp
 auto square = [](int value) { ... }
 ```
-Type: `int (int)`
+**Type:** `(int) -> int`
 '''
 range = "auto ⟦square⟧ = [](int value) {"
 
@@ -83,8 +83,10 @@ markdown = '''
 ```cpp
 int (*callback)(int) = [](int value) { ... }
 ```
-Offset: 0 bytes
-Size: 8 bytes, alignment 8 bytes
+**Type:** `((int) -> int)*`
+**Offset:** 0 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "int (*⟦callback⟧)(int) = [](int value) { return value + 1; };"
 
@@ -95,6 +97,6 @@ markdown = '''
 ```cpp
 int configured[2]
 ```
-Value: `{1, 3}`
+**Value:** `{1, 3}`
 '''
 range = "int ⟦configured⟧[] = {"

@@ -3,7 +3,7 @@ markdown = '''
 **this**
 
 ```cpp
-this_hover::Widget *
+this_hover::Widget*
 ```
 '''
 range = "return ⟦this⟧; @+0"
@@ -13,7 +13,7 @@ markdown = '''
 **this**
 
 ```cpp
-const this_hover::Box<T> *
+const this_hover::Box<T>*
 ```
 '''
 range = "return ⟦this⟧; @+0"

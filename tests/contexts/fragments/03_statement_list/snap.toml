@@ -8,7 +8,7 @@ markdown = '''
 ```cpp
 alpha
 ```
-Value: `0`
-Passed by value, converted to `int`
+**Value:** `0`
+**Passed:** by value, converted to `int`
 '''
 range = "X(⟦alpha⟧)"

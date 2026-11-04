@@ -15,10 +15,12 @@ markdown = '''
 ```cpp
 #define CLAMP(x) ((x) < LIMIT ? (x) : LIMIT)
 ```
-Expands to:
+**Expands to:**
 ```cpp
 ((10) < 64 ? (10) : 64)
 ```
+**Type:** `int`
+**Value:** `10 (0xa)`
 '''
 range = "int use_function = ⟦CLAMP⟧(10);"
 
@@ -29,10 +31,12 @@ markdown = '''
 ```cpp
 #define WRAP(x) CLAMP(x)
 ```
-Expands to:
+**Expands to:**
 ```cpp
 ((3) < 64 ? (3) : 64)
 ```
+**Type:** `int`
+**Value:** `3`
 '''
 range = "int use_nested = ⟦WRAP⟧(3);"
 
@@ -75,10 +79,12 @@ markdown = '''
 #define MULTI(x) \
     ((x) + 1)
 ```
-Expands to:
+**Expands to:**
 ```cpp
 ((2) + 1)
 ```
+**Type:** `int`
+**Value:** `3`
 '''
 range = "int folded = ⟦MULTI⟧(2);"
 
@@ -101,10 +107,12 @@ markdown = '''
 #define SPLIT_\
 NAME 7
 ```
-Expands to:
+**Expands to:**
 ```cpp
 7
 ```
+**Type:** `int`
+**Value:** `7`
 '''
 range = "int spliced_use = ⟦SPLIT_NAME⟧;"
 
@@ -115,10 +123,11 @@ markdown = '''
 ```cpp
 #define ECHO(x) x
 ```
-Expands to:
+**Expands to:**
 ```cpp
 joined_name
 ```
+**Type:** `int`
 '''
 range = 'int continued = ⟦ECHO⟧(joined_\'
 
@@ -129,7 +138,7 @@ markdown = '''
 ```cpp
 #define A2048 CAT(A1024, A1024)
 ```
-Expands to:
+**Expands to:**
 ```cpp
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...
 ```
@@ -143,10 +152,11 @@ markdown = '''
 ```cpp
 #define SPREAD(a, b) combine(a, b, a + b, a * b, a - b, a / b, a % b)
 ```
-Expands to:
+**Expands to:**
 ```cpp
 combine(100000, 200000, 100000 + 200000, 100000 * 200000, 100000 - 200000,
         100000 / 200000, 100000 % 200000)
 ```
+**Type:** `int`
 '''
 range = "int spread = ⟦SPREAD⟧(100000, 200000);"

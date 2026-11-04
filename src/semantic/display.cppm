@@ -65,6 +65,11 @@ struct Options {
     /// type(): attach the desugared form as `aka` when it differs.
     bool show_aka = false;
 
+    /// type(): write the type and its aka for a card, read left to right in
+    /// lines of at most `width` columns (type_lines); 0 writes each as C++
+    /// does, on one line.
+    std::uint32_t width = 0;
+
     /// type(): name a class template inside it as code there does, `Box`,
     /// not by its own specialization (`Box<T>`, whose unnamed parameters
     /// print canonically, `value-parameter-0-2`).
@@ -189,6 +194,12 @@ auto type(clang::ASTContext& context,
           clang::QualType type,
           const Options& options = {},
           llvm::StringRef declarator = {}) -> Type;
+
+/// The elements of a pack, `int, long`, as type() writes a type with a
+/// width, without an aka.
+auto pack(clang::ASTContext& context,
+          llvm::ArrayRef<clang::TemplateArgument> elements,
+          const Options& options) -> std::string;
 
 /// Types as a reader knows them: a deduced `auto` gives way to the type it
 /// stands for; an alias the library keeps to itself (`_NonArray<int>`, a

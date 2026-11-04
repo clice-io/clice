@@ -3,7 +3,7 @@ markdown = '''
 **parameter** `pointer` · function `check`
 
 ```cpp
-int *pointer
+int* pointer
 ```
 '''
 range = "int ok = CHECK(⟦pointer⟧ != nullptr);"
@@ -15,6 +15,6 @@ markdown = '''
 ```cpp
 int limit = 4
 ```
-Value: `4`
+**Value:** `4`
 '''
 range = "return MAX(ok, ⟦limit⟧);"

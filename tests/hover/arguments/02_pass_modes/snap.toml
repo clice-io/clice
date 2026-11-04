@@ -5,8 +5,8 @@ markdown = '''
 ```cpp
 long count = 1
 ```
-Value: `1`
-Passed as `value` by value
+**Value:** `1`
+**Passed:** by value to `value`
 '''
 range = "consume(⟦count⟧);"
 
@@ -17,8 +17,8 @@ markdown = '''
 ```cpp
 long count = 1
 ```
-Value: `1`
-Passed as `value` by reference
+**Value:** `1`
+**Passed:** by reference to `value`
 '''
 range = "mutate(⟦count⟧);"
 
@@ -29,7 +29,7 @@ markdown = '''
 ```cpp
 long count = 1
 ```
-Value: `1`
-Passed as `value` by const reference
+**Value:** `1`
+**Passed:** by const reference to `value`
 '''
 range = "observe(⟦count⟧);"

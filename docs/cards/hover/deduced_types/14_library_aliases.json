@@ -4,7 +4,7 @@
   "subtopic": "deduced_types",
   "title": "Library aliases",
   "summary": "The type of a variable keeps the alias its initializer names, but not a trait's result or one the library keeps to itself",
-  "prose": "`values.size()` reads as `std::vector<int>::size_type` with what it stands for after it; the member alias of `__alloc_traits` that `front()` returns reads as `int &`, and a trait's result, `invoke_result_t<…>`, as what it computes. An alias over a class the library keeps to itself names that class after it: `std::vector<int>::iterator` is `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`. A binding of such a class takes the alias from its initializer: `position` of `ids.insert(1)` is a `std::set<int>::iterator`.",
+  "prose": "`values.size()` reads as `std::vector<int>::size_type` with what it stands for after it; the member alias of `__alloc_traits` that `front()` returns reads as `int&`, and a trait's result, `invoke_result_t<…>`, as what it computes. An alias over a class the library keeps to itself names that class after it: `std::vector<int>::iterator` is `__gnu_cxx::__normal_iterator<int*, std::vector<int>>`. A binding of such a class takes the alias from its initializer: `position` of `ids.insert(1)` is a `std::set<int>::iterator`.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -60,7 +60,7 @@
           "marker": "count",
           "value": {
             "hover": {
-              "markdown": "**variable** `count` · function `use`\n\n```cpp\nauto count = values.size()\n```\nType: `std::vector<int>::size_type` (aka `unsigned long`)",
+              "markdown": "**variable** `count` · function `use`\n\n```cpp\nauto count = values.size()\n```\n**Type:** `std::vector<int>::size_type` (aka `unsigned long`)",
               "range": {
                 "$place": "auto ⟦count⟧ = values.size();",
                 "path": "main.cpp",
@@ -83,7 +83,7 @@
           "marker": "first",
           "value": {
             "hover": {
-              "markdown": "**variable** `first` · function `use`\n\n```cpp\nauto &first = values.front()\n```\nType: `int &`",
+              "markdown": "**variable** `first` · function `use`\n\n```cpp\nauto& first = values.front()\n```\n**Type:** `int&`",
               "range": {
                 "$place": "auto& ⟦first⟧ = values.front();",
                 "path": "main.cpp",
@@ -106,7 +106,7 @@
           "marker": "iterator",
           "value": {
             "hover": {
-              "markdown": "**variable** `it` · function `use`\n\n```cpp\nauto it = values.begin()\n```\nType: `std::vector<int>::iterator` (aka `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`)",
+              "markdown": "**variable** `it` · function `use`\n\n```cpp\nauto it = values.begin()\n```\n**Type:** `std::vector<int>::iterator`\n**Aka:** `__gnu_cxx::__normal_iterator<int*, std::vector<int>>`",
               "range": {
                 "$place": "auto ⟦it⟧ = values.begin();",
                 "path": "main.cpp",
@@ -129,7 +129,7 @@
           "marker": "result",
           "value": {
             "hover": {
-              "markdown": "**variable** `result` · function `use`\n\n```cpp\nauto result = std::invoke(answer)\n```\nType: `int`",
+              "markdown": "**variable** `result` · function `use`\n\n```cpp\nauto result = std::invoke(answer)\n```\n**Type:** `int`",
               "range": {
                 "$place": "auto ⟦result⟧ = std::invoke(answer);",
                 "path": "main.cpp",
@@ -175,7 +175,7 @@
           "marker": "binding",
           "value": {
             "hover": {
-              "markdown": "**variable** `position` · function `use`\n\n```cpp\nauto [position, added] = ids.insert(1)\n```\nType: `std::set<int>::iterator` (aka `std::__tree_iterator<int>`)",
+              "markdown": "**variable** `position` · function `use`\n\n```cpp\nauto [position, added] = ids.insert(1)\n```\n**Type:** `std::set<int>::iterator` (aka `std::__tree_iterator<int>`)",
               "range": {
                 "$place": "auto [⟦position⟧, added] = ids.insert(1);",
                 "path": "main.cpp",

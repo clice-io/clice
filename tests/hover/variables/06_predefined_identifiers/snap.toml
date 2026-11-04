@@ -4,8 +4,8 @@ markdown = '''
 
 Name of the current function (predefined variable)
 
-Type: `const char[8]`
-Value: `"current"`
+**Type:** `const char[8]`
+**Value:** `"current"`
 '''
 range = "const char* name = ⟦__func__⟧; @+0"
 
@@ -15,6 +15,6 @@ markdown = '''
 
 Name of the current function (predefined variable)
 
-Type: `const char[]`
+**Type:** `const char[]`
 '''
 range = "const char* name = ⟦__func__⟧; @+0"

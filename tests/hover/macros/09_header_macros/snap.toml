@@ -5,10 +5,12 @@ markdown = '''
 ```cpp
 #define BUFFER_SIZE 64
 ```
-Expands to:
+**Expands to:**
 ```cpp
 64
 ```
+**Type:** `int`
+**Value:** `64 (0x40)`
 '''
 range = "char buffer[⟦BUFFER_SIZE⟧];"
 
@@ -19,9 +21,11 @@ markdown = '''
 ```cpp
 #define SQUARE(x) ((x) * (x))
 ```
-Expands to:
+**Expands to:**
 ```cpp
 ((64) * (64))
 ```
+**Type:** `int`
+**Value:** `4096 (0x1000)`
 '''
 range = "int area = ⟦SQUARE⟧(BUFFER_SIZE);"

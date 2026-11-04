@@ -19,7 +19,8 @@ struct Point {
   Scalar y;
 }
 ```
-Size: 16 bytes, alignment 8 bytes
+**Size:** 16 bytes
+**Alignment:** 8 bytes
 '''
 range = "struct ⟦Point⟧ {"
 
@@ -48,7 +49,8 @@ struct Point {
   // ...
 }
 ```
-Size: 16 bytes, alignment 8 bytes
+**Size:** 16 bytes
+**Alignment:** 8 bytes
 '''
 range = "struct ⟦Point⟧ {"
 
@@ -69,6 +71,7 @@ markdown = '''
 ```cpp
 struct Point
 ```
-Size: 16 bytes, alignment 8 bytes
+**Size:** 16 bytes
+**Alignment:** 8 bytes
 '''
 range = "struct ⟦Point⟧ {"

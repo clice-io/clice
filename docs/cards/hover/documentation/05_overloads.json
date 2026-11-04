@@ -38,7 +38,7 @@
           "marker": "first",
           "value": {
             "hover": {
-              "markdown": "**function** `open` · namespace `overloads`\n\nOpens a file.\n\n```cpp\nvoid open(const char *path)\n```",
+              "markdown": "**function** `open` · namespace `overloads`\n\nOpens a file.\n\n```cpp\nvoid open(const char* path)\n```",
               "range": {
                 "$place": "void ⟦open⟧(const char* path);",
                 "path": "main.cpp",
@@ -61,7 +61,7 @@
           "marker": "second",
           "value": {
             "hover": {
-              "markdown": "**function** `open` · namespace `overloads`\n\n```cpp\nvoid open(const char *path, int flags)\n```",
+              "markdown": "**function** `open` · namespace `overloads`\n\n```cpp\nvoid open(const char* path, int flags)\n```",
               "range": {
                 "$place": "void ⟦open⟧(const char* path, int flags);",
                 "path": "main.cpp",

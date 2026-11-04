@@ -3,7 +3,11 @@ markdown = '''
 **function** `identity`
 
 ```cpp
-template <> int identity<int>(int x)
+template <typename T> T identity(T x)
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "return ⟦identity⟧(42) + pair_sum(1, 2L);"
@@ -13,7 +17,13 @@ markdown = '''
 **function** `pair_sum`
 
 ```cpp
-template <> long pair_sum<int, long>(int a, long b)
+template <typename T, typename U> auto pair_sum(T a, U b)
 ```
+**Template arguments:**
+```cpp
+T = int
+U = long
+```
+**Type:** `(int, long) -> long`
 '''
 range = "return identity(42) + ⟦pair_sum⟧(1, 2L);"

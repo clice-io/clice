@@ -1,13 +1,18 @@
 [answers.type_use.hover]
 markdown = '''
-**struct** `Wrapper<int>` · namespace `instantiation_args`
+**struct** `Wrapper<…>` · namespace `instantiation_args`
 
 ```cpp
-template <> struct Wrapper<int> {
-  int value;
+template <typename T> struct Wrapper {
+  T value;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Template arguments:**
+```cpp
+T = int
+```
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Wrapper⟧<int> holder;"
 
@@ -16,7 +21,11 @@ markdown = '''
 **function** `identity` · namespace `instantiation_args`
 
 ```cpp
-template <> int identity<int>(int x)
+template <typename T> T identity(T x)
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "int r = ⟦identity⟧(42);"

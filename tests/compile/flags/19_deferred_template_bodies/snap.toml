@@ -6,7 +6,11 @@ markdown = '''
 **function** `scaled`
 
 ```cpp
-template <> int scaled<int>(int value)
+template <class T> int scaled(T value)
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "return ⟦scaled⟧(21);"

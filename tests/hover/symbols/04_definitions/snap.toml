@@ -15,6 +15,6 @@ markdown = '''
 ```cpp
 constexpr int max_retries = 3
 ```
-Value: `3`
+**Value:** `3`
 '''
 range = "return attempt * ⟦max_retries⟧;"

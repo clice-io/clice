@@ -5,8 +5,9 @@ markdown = '''
 ```cpp
 int balance
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "int ⟦balance⟧;"
 
@@ -17,8 +18,9 @@ markdown = '''
 ```cpp
 int limit
 ```
-Offset: 4 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "int ⟦limit⟧;"
 
@@ -29,7 +31,8 @@ markdown = '''
 ```cpp
 int pin
 ```
-Offset: 8 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 8 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "int ⟦pin⟧;"

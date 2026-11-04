@@ -188,7 +188,7 @@
           "marker": "from_pointer",
           "value": {
             "hover": {
-              "markdown": "**auto**\n\n```cpp\nlong *\n```",
+              "markdown": "**auto**\n\n```cpp\nlong*\n```",
               "range": {
                 "$place": "⟦auto⟧ fifth = &source;",
                 "path": "main.cpp",

@@ -3,9 +3,9 @@ markdown = '''
 **variable** `cursor` · namespace `inventory`
 
 ```cpp
-int *cursor = &stock
+int* cursor = &stock
 ```
-Value: `&stock`
+**Value:** `&stock`
 '''
 range = "int *⟦cursor⟧ = &stock;"
 
@@ -14,7 +14,7 @@ markdown = '''
 **variable** `view` · namespace `inventory`
 
 ```cpp
-const int &view = stock
+const int& view = stock
 ```
 '''
 range = "const int &⟦view⟧ = stock;"
@@ -26,6 +26,6 @@ markdown = '''
 ```cpp
 int shelves[3] {}
 ```
-Value: `{}`
+**Value:** `{}`
 '''
 range = "int ⟦shelves⟧[3]{};"

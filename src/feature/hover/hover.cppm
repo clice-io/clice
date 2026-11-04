@@ -102,9 +102,21 @@ struct HoverInfo {
     /// The file a header or a module name resolves to.
     std::string file;
 
-    /// The type, when the declaration does not spell it: a deduced `auto`,
+    /// A parameter of the template a use instantiates, and the argument it
+    /// was instantiated with.
+    struct Binding {
+        std::string parameter;
+        std::string argument;
+    };
+
+    /// For a use of an instantiation: the parameters of the declaration
+    /// shown, the template it was instantiated from, with their arguments;
+    /// a member's class's first.
+    std::vector<Binding> template_arguments;
+
+    /// The type, when the declaration does not spell it — a deduced `auto`,
     /// a structured binding, a function whose return type is deduced, an
-    /// expression.
+    /// expression — or spells it inside out (a pointer to a function).
     std::optional<display::Type> type;
 
     /// The aliases the declaration spells, each with what it stands for.

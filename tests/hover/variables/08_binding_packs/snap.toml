@@ -5,6 +5,6 @@ markdown = '''
 ```cpp
 auto [head, ... tail] = value
 ```
-Type: `<dependent type>`
+**Type:** `<dependent type>`
 '''
 range = "auto [⟦head⟧, ...tail] = value;"

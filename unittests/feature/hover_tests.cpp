@@ -398,7 +398,7 @@ ZEST_CASE(all_no_crash) {
              hi.kind = SymbolKind::Variable;
              hi.scope_kind = "function";
              hi.scope = "test";
-             hi.definition = "Test &&test = {}";
+             hi.definition = "Test&& test = {}";
          }},
         {R"cpp(// Shouldn't crash when evaluating the initializer.
             struct Bar {}; // error-ok
@@ -458,7 +458,7 @@ ZEST_CASE(parameter_defaults) {
         )cpp");
     ZASSERT(info);
     ZEXPECT(!info->value.has_value());
-    ZEXPECT(info->definition == "Foo *param = nullptr");
+    ZEXPECT(info->definition == "Foo* param = nullptr");
 }
 
 ZEST_CASE(disable_show_aka) {

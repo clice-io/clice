@@ -76,7 +76,7 @@
           "label": "hover",
           "value": {
             "hover": {
-              "markdown": "**enumerator** `NotFound` · enum `Code`\n\n```cpp\nNotFound = 404\n```\nValue: `404`",
+              "markdown": "**enumerator** `NotFound` · enum `Code`\n\n```cpp\nNotFound = 404\n```\n**Value:** `404`",
               "range": {
                 "$place": "ERROR(⟦NotFound⟧, 404)",
                 "path": "errors.def",

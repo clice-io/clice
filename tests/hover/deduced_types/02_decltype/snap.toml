@@ -23,7 +23,7 @@ markdown = '''
 **decltype**
 
 ```cpp
-long &
+long&
 ```
 '''
 range = "⟦decltype⟧(auto) third = reference;"
@@ -43,7 +43,7 @@ markdown = '''
 **decltype**
 
 ```cpp
-long &
+long&
 ```
 '''
 range = "⟦decltype⟧((value)) fifth = value;"
@@ -53,7 +53,7 @@ markdown = '''
 **decltype**
 
 ```cpp
-long &&
+long&&
 ```
 '''
 range = "⟦decltype⟧(static_cast<long&&>(value)) sixth = static_cast<long&&>(value);"
@@ -65,7 +65,7 @@ markdown = '''
 ```cpp
 decltype(source) copy = source
 ```
-Type: `long`
+**Type:** `long`
 '''
 range = "decltype(source) ⟦copy⟧ = source;"
 

@@ -1,11 +1,16 @@
 [answers.extern_class_directive.hover]
 markdown = '''
-**struct** `Box<Item>` · namespace `explicit_instantiation`
+**struct** `Box<…>` · namespace `explicit_instantiation`
 
 ```cpp
-template <> struct Box<Item> {}
+template <typename T> struct Box {}
 ```
-Size: 1 byte, alignment 1 byte
+**Template arguments:**
+```cpp
+T = Item
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "extern template struct ⟦Box⟧<Item>;"
 
@@ -16,18 +21,24 @@ markdown = '''
 ```cpp
 struct Item {}
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "extern template struct Box<⟦Item⟧>;"
 
 [answers.class_directive.hover]
 markdown = '''
-**struct** `Box<Item>` · namespace `explicit_instantiation`
+**struct** `Box<…>` · namespace `explicit_instantiation`
 
 ```cpp
-template <> struct Box<Item> {}
+template <typename T> struct Box {}
 ```
-Size: 1 byte, alignment 1 byte
+**Template arguments:**
+```cpp
+T = Item
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "template struct ⟦Box⟧<Item>;"
 
@@ -36,7 +47,11 @@ markdown = '''
 **function** `run` · namespace `explicit_instantiation`
 
 ```cpp
-template <> void run<long>(long)
+template <typename T> void run(T)
+```
+**Template arguments:**
+```cpp
+T = long
 ```
 '''
 range = "template void ⟦run⟧<long>(long);"
@@ -48,6 +63,6 @@ markdown = '''
 ```cpp
 long zero = 0
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "template long ⟦zero⟧<long>;"

@@ -7,8 +7,9 @@ The horizontal coordinate.
 ```cpp
 int x
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return p.⟦x⟧ + p.y + static_cast<int>(Color::Green) + limit;"
 
@@ -21,8 +22,9 @@ The vertical coordinate.
 ```cpp
 int y
 ```
-Offset: 4 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return p.x + p.⟦y⟧ + static_cast<int>(Color::Green) + limit;"
 
@@ -35,7 +37,7 @@ The green channel.
 ```cpp
 Green
 ```
-Value: `1`
+**Value:** `1`
 '''
 range = "return p.x + p.y + static_cast<int>(Color::⟦Green⟧) + limit;"
 
@@ -48,6 +50,6 @@ The largest coordinate.
 ```cpp
 int limit = 4
 ```
-Value: `4`
+**Value:** `4`
 '''
 range = "return p.x + p.y + static_cast<int>(Color::Green) + ⟦limit⟧;"

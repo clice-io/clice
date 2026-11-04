@@ -5,9 +5,11 @@ markdown = '''
 ```cpp
 #define INNER_VAL 99
 ```
-Expands to:
+**Expands to:**
 ```cpp
 99
 ```
+**Type:** `int`
+**Value:** `99 (0x63)`
 '''
 range = "int nested = ECHO(⟦INNER_VAL⟧);"

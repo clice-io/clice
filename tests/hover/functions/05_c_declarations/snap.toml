@@ -8,6 +8,28 @@ int legacy()
 '''
 range = "int ⟦legacy⟧();"
 
+[answers.unprototyped_pointer.hover]
+markdown = '''
+**variable** `callback`
+
+```cpp
+int (*callback)()
+```
+**Type:** `int (*)()`
+'''
+range = "int (*⟦callback⟧)();"
+
+[answers.prototyped_pointer.hover]
+markdown = '''
+**variable** `handler`
+
+```cpp
+int (*handler)(void)
+```
+**Type:** `(() -> int)*`
+'''
+range = "int (*⟦handler⟧)(void);"
+
 [answers.typeof_return.hover]
 markdown = '''
 **function** `ratio`
@@ -15,7 +37,7 @@ markdown = '''
 ```cpp
 typeof(1.) ratio()
 ```
-Type: `typeof (1.) ()` (aka `double ()`)
+**Type:** `typeof (1.) ()` (aka `double ()`)
 '''
 range = "__typeof__(1.0) ⟦ratio⟧();"
 

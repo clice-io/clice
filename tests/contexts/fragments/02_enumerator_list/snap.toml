@@ -14,6 +14,6 @@ markdown = '''
 ```cpp
 NotFound = 404
 ```
-Value: `404`
+**Value:** `404`
 '''
 range = "ERROR(⟦NotFound⟧, 404)"

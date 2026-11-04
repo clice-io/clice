@@ -23,7 +23,7 @@ markdown = '''
 **method** `operator==` · struct `Vec`
 
 ```cpp
-bool operator==(const Vec &other) const
+bool operator==(const Vec& other) const
 ```
 '''
 range = "bool ⟦operator⟧==(const Vec& other) const;"
@@ -33,7 +33,7 @@ markdown = '''
 **method** `operator==` · struct `Vec`
 
 ```cpp
-bool operator==(const Vec &other) const
+bool operator==(const Vec& other) const
 ```
 '''
 range = "bool operator⟦==⟧(const Vec& other) const;"
@@ -43,7 +43,7 @@ markdown = '''
 **method** `operator Handle *` · struct `Vec`
 
 ```cpp
-operator Handle *() const
+operator Handle*() const
 ```
 '''
 range = "⟦operator⟧ Handle*() const;"
@@ -55,7 +55,8 @@ markdown = '''
 ```cpp
 struct Handle {}
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "operator ⟦Handle⟧*() const;"
 
@@ -106,6 +107,7 @@ markdown = '''
 ```cpp
 class SelfConversion {}
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "operator ⟦SelfConversion⟧();"

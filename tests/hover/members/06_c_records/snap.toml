@@ -16,7 +16,8 @@ struct Point {
   enum { Small = 0, Large = 1 } scale;
 }
 ```
-Size: 20 bytes, alignment 4 bytes
+**Size:** 20 bytes
+**Alignment:** 4 bytes
 '''
 range = "struct ⟦Point⟧ point;"
 
@@ -26,12 +27,13 @@ markdown = '''
 
 ```cpp
 struct ops {
-  int (*open)(struct inode *, struct file *);
-  const struct item *first;
+  int (*open)(struct inode*, struct file*);
+  const struct item* first;
   int count;
 }
 ```
-Size: 24 bytes (4 bytes padding), alignment 8 bytes
+**Size:** 24 bytes (4 bytes padding)
+**Alignment:** 8 bytes
 '''
 range = "struct ⟦ops⟧ table;"
 
@@ -43,12 +45,13 @@ markdown = '''
 struct Packed {
   char raw[16];
   typeof(struct { int t; }) typed;
-  void (*callback)(struct { int x; } *);
+  void (*callback)(struct { int x; }*);
   _Atomic(struct { int value; }) atomic;
   int tail;
 }
 ```
-Size: 40 bytes (4 bytes padding), alignment 8 bytes
+**Size:** 40 bytes (4 bytes padding)
+**Alignment:** 8 bytes
 '''
 range = "struct ⟦Packed⟧ packed;"
 
@@ -59,8 +62,9 @@ markdown = '''
 ```cpp
 int x
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return point->⟦x⟧;"
 
@@ -74,7 +78,8 @@ struct Message {
   char text[];
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "struct ⟦Message⟧ {"
 
@@ -85,6 +90,7 @@ markdown = '''
 ```cpp
 char text[]
 ```
-Offset: 4 bytes
+**Offset:** 4 bytes
+**Alignment:** 1 byte
 '''
 range = "char ⟦text⟧[];"

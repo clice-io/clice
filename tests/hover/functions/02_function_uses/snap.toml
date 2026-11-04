@@ -33,7 +33,7 @@ markdown = '''
 **function** `consume` · namespace `default_template_argument`
 
 ```cpp
-template <> void consume<long>(const long &)
+template <typename T = long> void consume(const T& = T())
 ```
 '''
 range = "⟦consume⟧<>(4L);"

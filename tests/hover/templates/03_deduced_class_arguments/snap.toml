@@ -1,11 +1,16 @@
 [answers.ctad_type.hover]
 markdown = '''
-**struct** `Box<int>` · namespace `ctad_arguments`
+**struct** `Box<…>` · namespace `ctad_arguments`
 
 ```cpp
-template <> struct Box<int> {}
+template <typename T> struct Box {}
 ```
-Size: 1 byte, alignment 1 byte
+**Template arguments:**
+```cpp
+T = int
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Box⟧ picked(42);"
 
@@ -16,6 +21,6 @@ markdown = '''
 ```cpp
 Box picked(42)
 ```
-Type: `Box<int>`
+**Type:** `Box<int>`
 '''
 range = "Box ⟦picked⟧(42);"

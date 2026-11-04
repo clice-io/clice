@@ -38,7 +38,7 @@
           "marker": "ctad_type",
           "value": {
             "hover": {
-              "markdown": "**struct** `Box<int>` · namespace `ctad_arguments`\n\n```cpp\ntemplate <> struct Box<int> {}\n```\nSize: 1 byte, alignment 1 byte",
+              "markdown": "**struct** `Box<…>` · namespace `ctad_arguments`\n\n```cpp\ntemplate <typename T> struct Box {}\n```\n**Template arguments:**\n```cpp\nT = int\n```\n**Size:** 1 byte\n**Alignment:** 1 byte",
               "range": {
                 "$place": "⟦Box⟧ picked(42);",
                 "path": "main.cpp",
@@ -61,7 +61,7 @@
           "marker": "ctad_var",
           "value": {
             "hover": {
-              "markdown": "**variable** `picked` · namespace `ctad_arguments`\n\n```cpp\nBox picked(42)\n```\nType: `Box<int>`",
+              "markdown": "**variable** `picked` · namespace `ctad_arguments`\n\n```cpp\nBox picked(42)\n```\n**Type:** `Box<int>`",
               "range": {
                 "$place": "Box ⟦picked⟧(42);",
                 "path": "main.cpp",

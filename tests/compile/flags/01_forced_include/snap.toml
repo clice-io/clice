@@ -5,10 +5,12 @@ markdown = '''
 ```cpp
 #define FORCED 1
 ```
-Expands to:
+**Expands to:**
 ```cpp
 1
 ```
+**Type:** `int`
+**Value:** `1`
 '''
 range = "return ⟦FORCED⟧;"
 

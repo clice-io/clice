@@ -5,10 +5,14 @@ highlights = [
 
 [features.run.hover]
 markdown = '''
-**method** `run` · struct `Lazy<int>`
+**method** `run` · struct `Lazy<…>`
 
 ```cpp
 int run() const
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "int total = lazy.⟦run⟧() + square(2) + base_run() + top_run();"
@@ -25,7 +29,7 @@ markdown = '''
 ```cpp
 inline auto square = [](int x) { ... }
 ```
-Type: `int (int)`
+**Type:** `(int) -> int`
 '''
 range = "int total = lazy.run() + ⟦square⟧(2) + base_run() + top_run();"
 
@@ -166,10 +170,14 @@ references = [
 
 [locations.run.hover]
 markdown = '''
-**method** `run` · struct `Lazy<int>`
+**method** `run` · struct `Lazy<…>`
 
 ```cpp
 int run() const
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "int total = lazy.⟦run⟧() + square(2) + base_run() + top_run();"
@@ -189,7 +197,7 @@ markdown = '''
 ```cpp
 inline auto square = [](int x) { ... }
 ```
-Type: `int (int)`
+**Type:** `(int) -> int`
 '''
 range = "int total = lazy.run() + ⟦square⟧(2) + base_run() + top_run();"
 
@@ -240,10 +248,14 @@ references = [
 
 ["indexed locations".run.hover]
 markdown = '''
-**method** `run` · struct `Lazy<int>`
+**method** `run` · struct `Lazy<…>`
 
 ```cpp
 int run() const
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "int total = lazy.⟦run⟧() + square(2) + base_run() + top_run();"
@@ -263,7 +275,7 @@ markdown = '''
 ```cpp
 inline auto square = [](int x) { ... }
 ```
-Type: `int (int)`
+**Type:** `(int) -> int`
 '''
 range = "int total = lazy.run() + ⟦square⟧(2) + base_run() + top_run();"
 

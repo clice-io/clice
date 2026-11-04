@@ -5,7 +5,7 @@ markdown = '''
 ```cpp
 int after = 1
 ```
-Value: `1`
+**Value:** `1`
 '''
 range = 'const char* label = "caf�"; int ⟦after⟧ = 1;'
 

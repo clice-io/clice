@@ -50,10 +50,6 @@ auto documentation(const index::IndexQuery& query,
                    Fid anchor,
                    const DocumentationOptions& options) -> Documentation;
 
-/// Write after an entry — a parameter, a return value, an exception — what
-/// a documentation says of it: its direction, then its text.
-void describe(markup::Paragraph& entry, llvm::StringRef direction, llvm::StringRef text);
-
 /// Add what a card shows of a documentation first: that the entity is
 /// deprecated, with the message of its attribute (`attribute`) or of its
 /// comment, then the brief.
@@ -61,17 +57,11 @@ void add_summary(markup::Document& output,
                  const Documentation& documentation,
                  std::optional<llvm::StringRef> attribute);
 
-/// Add the parameters a comment documents under `title`, each with what it
-/// says of it; nothing when it documents none.
-void add_parameters(markup::Document& output,
-                    llvm::StringRef title,
-                    llvm::ArrayRef<Documentation::Param> documented);
-
-/// Add what a documentation says of the values a function returns or the
-/// exceptions it throws, as a list under `title` (none when empty).
-void add_entries(markup::Document& output,
-                 llvm::StringRef title,
-                 llvm::ArrayRef<Documentation::Entry> entries);
+/// Add what a documentation says of the template parameters, the
+/// parameters, what the function returns — in general, then value by value
+/// — and the exceptions it throws, each under its title; nothing for what
+/// it says nothing of.
+void add_sections(markup::Document& output, const Documentation& documentation);
 
 /// Add what a card shows of a documentation last: its details, then what
 /// it refers to (`@see`).

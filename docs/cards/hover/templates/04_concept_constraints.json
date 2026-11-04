@@ -100,7 +100,7 @@
           "marker": "concept_ref",
           "value": {
             "hover": {
-              "markdown": "**concept** `Addable` · namespace `concept_constraints`\n\n```cpp\ntemplate <typename T>\nconcept Addable = requires(T a) { a + a; }\n```\nValue: `true`",
+              "markdown": "**concept** `Addable` · namespace `concept_constraints`\n\n```cpp\ntemplate <typename T>\nconcept Addable = requires(T a) { a + a; }\n```\n**Value:** `true`",
               "range": {
                 "$place": "auto flag = ⟦Addable⟧<int>;",
                 "path": "main.cpp",
@@ -146,7 +146,7 @@
           "marker": "constrained_var",
           "value": {
             "hover": {
-              "markdown": "**variable** `total` · namespace `concept_constraints`\n\n```cpp\nAddable auto total = 1\n```\nType: `int`\nValue: `1`",
+              "markdown": "**variable** `total` · namespace `concept_constraints`\n\n```cpp\nAddable auto total = 1\n```\n**Type:** `int`\n**Value:** `1`",
               "range": {
                 "$place": "Addable auto ⟦total⟧ = 1;",
                 "path": "main.cpp",

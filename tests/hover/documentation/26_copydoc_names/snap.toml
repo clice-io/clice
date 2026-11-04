@@ -8,10 +8,10 @@ Draws the shape.
 bool qualified(double scale)
 ```
 
-Parameters:
+**Parameters:**
 - `scale` — How much larger.
 
-Returns: Whether it drew.
+**Returns:** Whether it drew.
 '''
 range = "bool ⟦qualified⟧(double scale);"
 
@@ -25,10 +25,10 @@ Draws the shape.
 bool hash(double scale)
 ```
 
-Parameters:
+**Parameters:**
 - `scale` — How much larger.
 
-Returns: Whether it drew.
+**Returns:** Whether it drew.
 '''
 range = "bool ⟦hash⟧(double scale);"
 
@@ -114,9 +114,9 @@ Draws twice as large.
 bool details(double scale)
 ```
 
-Parameters:
+**Parameters:**
 - `scale` — How much larger.
 
-Returns: Whether it drew.
+**Returns:** Whether it drew.
 '''
 range = "bool ⟦details⟧(double scale);"

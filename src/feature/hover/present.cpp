@@ -2,6 +2,7 @@ module clice;
 
 import :feature.documentation;
 import :feature.hover;
+import :feature.hover.card;
 import :semantic.display;
 import :semantic.symbol;
 import :support.markup;
@@ -25,6 +26,21 @@ auto format_offset(std::uint64_t bits) -> std::string {
         offset += " and " + format_size(bits % 8);
     }
     return offset;
+}
+
+/// A line of the card stating one fact, its label in bold.
+auto add_fact(markup::Document& output, llvm::StringRef label) -> markup::Paragraph& {
+    return output.add_paragraph().append_strong(label).append_space();
+}
+
+/// Write `type` at the end of `line`, or as code below it when it is laid
+/// out over several lines.
+void add_type(markup::Document& output, markup::Paragraph& line, llvm::StringRef type) {
+    if(type.contains('\n')) {
+        output.add_code_block(type.str());
+    } else {
+        line.append_code(type);
+    }
 }
 
 /// Plain reStructuredText with its inline markup taken out: backslash
@@ -314,34 +330,61 @@ markup::Document HoverInfo::present() const {
         output.add_code_block(target_definition);
     }
     if(!expansion.empty()) {
-        output.add_paragraph().append_text("Expands to:");
+        output.add_paragraph().append_strong("Expands to:");
         output.add_code_block(expansion);
     }
     if(!file.empty()) {
         output.add_paragraph().append_code(file);
     }
 
+    if(!template_arguments.empty()) {
+        output.add_paragraph().append_strong("Template arguments:");
+        std::string block;
+        for(const auto& [parameter, argument]: template_arguments) {
+            auto lead = parameter + " = ";
+            llvm::SmallVector<llvm::StringRef> lines;
+            llvm::StringRef(argument).split(lines, '\n');
+            for(const auto& [index, line]: views::enumerate(lines)) {
+                block += (index == 0 ? lead : std::string(lead.size(), ' ')) + line.str() + "\n";
+            }
+        }
+        block.pop_back();
+        output.add_code_block(std::move(block));
+    }
     if(type) {
-        auto& line = output.add_paragraph().append_text("Type: ").append_code(type->text);
-        if(type->aka) {
+        auto& line = add_fact(output, "Type:");
+        bool short_aka = type->aka && !llvm::StringRef(type->text).contains('\n') &&
+                         !llvm::StringRef(*type->aka).contains('\n') &&
+                         type->text.size() + type->aka->size() + 7 <= card_width;
+        add_type(output, line, type->text);
+        if(short_aka) {
             line.append_text(" (aka ").append_code(*type->aka).append_text(")");
+        } else if(type->aka) {
+            add_type(output, add_fact(output, "Aka:"), *type->aka);
         }
     }
     for(const auto& alias: aliases) {
-        output.add_paragraph().append_code(alias.text).append_text(" is ").append_code(*alias.aka);
+        if(llvm::StringRef(alias.text).contains('\n')) {
+            output.add_code_block(alias.text);
+            add_type(output, output.add_paragraph().append_text("is "), *alias.aka);
+        } else {
+            add_type(output,
+                     output.add_paragraph().append_code(alias.text).append_text(" is "),
+                     *alias.aka);
+        }
     }
     if(value) {
-        output.add_paragraph().append_text("Value: ").append_code(*value);
+        add_fact(output, "Value:").append_code(*value);
     }
     if(length) {
-        output.add_paragraph().append_text(llvm::formatv("Length: {0}", *length).str());
+        add_fact(output, "Length:").append_text(std::to_string(*length));
     }
     if(defined_on_line) {
         output.add_paragraph().append_text(
             llvm::formatv("Not defined yet here: defined on line {0}", *defined_on_line).str());
     }
     if(!overrides.empty()) {
-        auto& line = output.add_paragraph().append_text("Overrides: ");
+        auto& line = add_fact(output, "Overrides:");
         for(auto [index, overridden]: views::enumerate(overrides)) {
             if(index != 0) {
                 line.append_text(", ");
@@ -350,10 +393,10 @@ markup::Document HoverInfo::present() const {
         }
     }
     if(offset) {
-        output.add_paragraph().append_text("Offset: " + format_offset(*offset));
+        add_fact(output, "Offset:").append_text(format_offset(*offset));
     }
     if(size) {
-        auto& line = output.add_paragraph().append_text("Size: " + format_size(*size));
+        auto& line = add_fact(output, "Size:").append_text(format_size(*size));
         if(padding && *padding != 0) {
             /// A field's padding follows it; a class's is spread inside it.
             line.append_text(
@@ -361,24 +404,24 @@ markup::Document HoverInfo::present() const {
                               format_size(*padding))
                     .str());
         }
-        if(align) {
-            line.append_text(", alignment " + format_size(*align));
-        }
+    }
+    if(align) {
+        add_fact(output, "Alignment:").append_text(format_size(*align));
     }
     if(callee_arg_info) {
         assert(pass_mode);
-        auto& line = output.add_paragraph().append_text("Passed ");
-        if(callee_arg_info->name) {
-            line.append_text("as ").append_code(*callee_arg_info->name);
-        }
+        auto& line = add_fact(output, "Passed:");
         switch(*pass_mode) {
-            case PassMode::Value: line.append_text(" by value"); break;
-            case PassMode::Ref: line.append_text(" by reference"); break;
-            case PassMode::ConstRef: line.append_text(" by const reference"); break;
-            case PassMode::RValueRef: line.append_text(" by rvalue reference"); break;
+            case PassMode::Value: line.append_text("by value"); break;
+            case PassMode::Ref: line.append_text("by reference"); break;
+            case PassMode::ConstRef: line.append_text("by const reference"); break;
+            case PassMode::RValueRef: line.append_text("by rvalue reference"); break;
+        }
+        if(callee_arg_info->name) {
+            line.append_text(" to ").append_code(*callee_arg_info->name);
         }
         if(converted_to) {
-            line.append_text(", converted to ").append_code(*converted_to);
+            add_type(output, line.append_text(", converted to "), *converted_to);
         }
     }
 
@@ -387,13 +430,7 @@ markup::Document HoverInfo::present() const {
        !documentation.throws.empty()) {
         output.add_spacing();
     }
-    add_parameters(output, "Template parameters: ", documentation.template_params);
-    add_parameters(output, "Parameters: ", documentation.params);
-    if(!documentation.returns.empty()) {
-        output.add_paragraph().append_text("Returns: ").append_markdown(documentation.returns);
-    }
-    add_entries(output, "Return values: ", documentation.retvals);
-    add_entries(output, "Throws: ", documentation.throws);
+    add_sections(output, documentation);
 
     if(!attribute_documentation.empty()) {
         output.add_ruler();

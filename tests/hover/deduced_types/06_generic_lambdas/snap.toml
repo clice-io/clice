@@ -15,7 +15,7 @@ markdown = '''
 ```cpp
 auto point
 ```
-Type: `Point`
+**Type:** `Point`
 '''
 range = "auto norm = [](auto ⟦point⟧) {"
 
@@ -26,7 +26,7 @@ markdown = '''
 ```cpp
 auto point
 ```
-Type: `Point`
+**Type:** `Point`
 '''
 range = "return ⟦point⟧.x + point.y;"
 
@@ -37,8 +37,9 @@ markdown = '''
 ```cpp
 int x
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return point.⟦x⟧ + point.y;"
 
@@ -49,6 +50,6 @@ markdown = '''
 ```cpp
 auto value
 ```
-Type: `auto`
+**Type:** `auto`
 '''
 range = "auto echo = [](auto ⟦value⟧) {"

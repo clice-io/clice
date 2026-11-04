@@ -53,7 +53,7 @@
           "marker": "push_back",
           "value": {
             "hover": {
-              "markdown": "**method** `push_back` · struct `lib::vector<Point<T>>`\n\n```cpp\nvoid push_back(const value_type &__x)\n```\n`value_type` is `Point<T>`",
+              "markdown": "**method** `push_back` · struct `lib::vector<Point<T>>`\n\n```cpp\nvoid push_back(const value_type& __x)\n```\n`value_type` is `Point<T>`",
               "range": {
                 "$place": "pts.⟦push_back⟧(Point<T>{});",
                 "path": "main.cpp",
@@ -76,7 +76,7 @@
           "marker": "append",
           "value": {
             "hover": {
-              "markdown": "**method** `append` · struct `lib::vector<Point<T>>`\n\n```cpp\nlib::vector<Point<T>> &append(const lib::vector<Point<T>> &__other)\n```",
+              "markdown": "**method** `append` · struct `lib::vector<Point<T>>`\n\n```cpp\nlib::vector<Point<T>>& append(const lib::vector<Point<T>>& __other)\n```",
               "range": {
                 "$place": "pts.⟦append⟧(pts);",
                 "path": "main.cpp",

@@ -11,6 +11,7 @@ class Test {
   struct Setup_should_be_spelled_SetUp;
 }
 ```
-Size: 24 bytes (4 bytes padding), alignment 8 bytes
+**Size:** 24 bytes (4 bytes padding)
+**Alignment:** 8 bytes
 '''
 range = "class ParsedTest : public ⟦Test⟧ {};"

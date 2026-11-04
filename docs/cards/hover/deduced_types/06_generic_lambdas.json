@@ -80,7 +80,7 @@
           "marker": "parameter",
           "value": {
             "hover": {
-              "markdown": "**parameter** `point` · lambda in namespace `lambda_auto_params`\n\n```cpp\nauto point\n```\nType: `Point`",
+              "markdown": "**parameter** `point` · lambda in namespace `lambda_auto_params`\n\n```cpp\nauto point\n```\n**Type:** `Point`",
               "range": {
                 "$place": "auto norm = [](auto ⟦point⟧) {",
                 "path": "main.cpp",
@@ -103,7 +103,7 @@
           "marker": "parameter_use",
           "value": {
             "hover": {
-              "markdown": "**parameter** `point` · lambda in namespace `lambda_auto_params`\n\n```cpp\nauto point\n```\nType: `Point`",
+              "markdown": "**parameter** `point` · lambda in namespace `lambda_auto_params`\n\n```cpp\nauto point\n```\n**Type:** `Point`",
               "range": {
                 "$place": "return ⟦point⟧.x + point.y;",
                 "path": "main.cpp",
@@ -126,7 +126,7 @@
           "marker": "member_use",
           "value": {
             "hover": {
-              "markdown": "**field** `x` · struct `lambda_auto_params::Point`\n\n```cpp\nint x\n```\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes",
+              "markdown": "**field** `x` · struct `lambda_auto_params::Point`\n\n```cpp\nint x\n```\n**Offset:** 0 bytes\n**Size:** 4 bytes\n**Alignment:** 4 bytes",
               "range": {
                 "$place": "return point.⟦x⟧ + point.y;",
                 "path": "main.cpp",
@@ -149,7 +149,7 @@
           "marker": "several",
           "value": {
             "hover": {
-              "markdown": "**parameter** `value` · lambda in namespace `lambda_auto_params`\n\n```cpp\nauto value\n```\nType: `auto`",
+              "markdown": "**parameter** `value` · lambda in namespace `lambda_auto_params`\n\n```cpp\nauto value\n```\n**Type:** `auto`",
               "range": {
                 "$place": "auto echo = [](auto ⟦value⟧) {",
                 "path": "main.cpp",

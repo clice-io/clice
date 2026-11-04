@@ -124,7 +124,7 @@
           "marker": "ref",
           "value": {
             "hover": {
-              "markdown": "**decltype**\n\n```cpp\nlong &\n```",
+              "markdown": "**decltype**\n\n```cpp\nlong&\n```",
               "range": {
                 "$place": "⟦decltype⟧(auto) third = reference;",
                 "path": "main.cpp",
@@ -170,7 +170,7 @@
           "marker": "of_paren",
           "value": {
             "hover": {
-              "markdown": "**decltype**\n\n```cpp\nlong &\n```",
+              "markdown": "**decltype**\n\n```cpp\nlong&\n```",
               "range": {
                 "$place": "⟦decltype⟧((value)) fifth = value;",
                 "path": "main.cpp",
@@ -193,7 +193,7 @@
           "marker": "of_rvalue",
           "value": {
             "hover": {
-              "markdown": "**decltype**\n\n```cpp\nlong &&\n```",
+              "markdown": "**decltype**\n\n```cpp\nlong&&\n```",
               "range": {
                 "$place": "⟦decltype⟧(static_cast<long&&>(value)) sixth = static_cast<long&&>(value);",
                 "path": "main.cpp",
@@ -216,7 +216,7 @@
           "marker": "var_type",
           "value": {
             "hover": {
-              "markdown": "**variable** `copy` · namespace `declared_types`\n\n```cpp\ndecltype(source) copy = source\n```\nType: `long`",
+              "markdown": "**variable** `copy` · namespace `declared_types`\n\n```cpp\ndecltype(source) copy = source\n```\n**Type:** `long`",
               "range": {
                 "$place": "decltype(source) ⟦copy⟧ = source;",
                 "path": "main.cpp",

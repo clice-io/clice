@@ -5,7 +5,7 @@ markdown = '''
 ```cpp
 int value = VALUE
 ```
-Value: `3`
+**Value:** `3`
 '''
 range = "int ⟦value⟧ = VALUE;"
 

@@ -5,7 +5,7 @@ markdown = '''
 Opens a file.
 
 ```cpp
-void open(const char *path)
+void open(const char* path)
 ```
 '''
 range = "void ⟦open⟧(const char* path);"
@@ -15,7 +15,7 @@ markdown = '''
 **function** `open` · namespace `overloads`
 
 ```cpp
-void open(const char *path, int flags)
+void open(const char* path, int flags)
 ```
 '''
 range = "void ⟦open⟧(const char* path, int flags);"

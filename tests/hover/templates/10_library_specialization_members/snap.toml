@@ -3,7 +3,7 @@ markdown = '''
 **method** `push_back` · struct `lib::vector<Point<T>>`
 
 ```cpp
-void push_back(const value_type &__x)
+void push_back(const value_type& __x)
 ```
 `value_type` is `Point<T>`
 '''
@@ -14,7 +14,7 @@ markdown = '''
 **method** `append` · struct `lib::vector<Point<T>>`
 
 ```cpp
-lib::vector<Point<T>> &append(const lib::vector<Point<T>> &__other)
+lib::vector<Point<T>>& append(const lib::vector<Point<T>>& __other)
 ```
 '''
 range = "pts.⟦append⟧(pts);"

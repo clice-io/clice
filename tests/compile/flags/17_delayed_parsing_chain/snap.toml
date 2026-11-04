@@ -6,7 +6,11 @@ markdown = '''
 **function** `base_template`
 
 ```cpp
-template <> int base_template<Other>(Other t)
+template <class T> int base_template(T t)
+```
+**Template arguments:**
+```cpp
+T = Other
 ```
 '''
 range = "return top_template(Other{2}) + ⟦base_template⟧(Other{3}) + use_base();"

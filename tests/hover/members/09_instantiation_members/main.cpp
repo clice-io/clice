@@ -1,5 +1,6 @@
-// The member summary of an implicit instantiation, printed from its members
-// as the instantiation has them.
+// A use of an implicit instantiation shows the template's member summary
+// and the arguments; a member class or a static member of the instantiation
+// shows as the instantiation has it.
 
 namespace instantiation_members {
 struct Empty {};
@@ -39,6 +40,7 @@ template <typename T> struct Wrapper {
 }
 
 inner::§(nested_types)Wrapper<char> wrapper;
+inner::Wrapper<char>::§(member_class)Item item;
 
 template <typename T, T Value> struct Constant {
     static constexpr T value = Value;
@@ -47,6 +49,7 @@ template <typename T, T Value> struct Constant {
 };
 
 §(parameter_value)Constant<int, 7> seven;
+int copied = Constant<int, 7>::§(static_member)value;
 
 template <int Count> struct Slots {};
 

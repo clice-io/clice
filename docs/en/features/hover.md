@@ -323,7 +323,7 @@ tests/hover/deduced_types/06_generic_lambdas
 
 The type of a variable keeps the alias its initializer names, but not a trait's result or one the library keeps to itself
 
-`values.size()` reads as `std::vector<int>::size_type` with what it stands for after it; the member alias of `__alloc_traits` that `front()` returns reads as `int &`, and a trait's result, `invoke_result_t<…>`, as what it computes. An alias over a class the library keeps to itself names that class after it: `std::vector<int>::iterator` is `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`. A binding of such a class takes the alias from its initializer: `position` of `ids.insert(1)` is a `std::set<int>::iterator`.
+`values.size()` reads as `std::vector<int>::size_type` with what it stands for after it; the member alias of `__alloc_traits` that `front()` returns reads as `int&`, and a trait's result, `invoke_result_t<…>`, as what it computes. An alias over a class the library keeps to itself names that class after it: `std::vector<int>::iterator` is `__gnu_cxx::__normal_iterator<int*, std::vector<int>>`. A binding of such a class takes the alias from its initializer: `position` of `ids.insert(1)` is a `std::set<int>::iterator`.
 
 ```case
 tests/hover/deduced_types/14_library_aliases
@@ -355,7 +355,7 @@ tests/hover/templates/01_template_parameters
 
 **Template arguments**
 
-A use of a template shows the arguments it is instantiated with
+A use of a template shows the template and the arguments it is instantiated with
 
 ```case
 tests/hover/templates/02_instantiation_arguments
@@ -397,6 +397,20 @@ Over `lib::vector<Point<T>>`, `push_back` belongs to `lib::vector<Point<T>>` and
 
 ```case
 tests/hover/templates/10_library_specialization_members
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Instantiation patterns**
+
+A use of an instantiation shows the template it was instantiated from, with the arguments it binds
+
+A partial specialization shows itself, and a member of a class template its class's arguments first. Arguments a default gives and empty packs are left out; an explicit specialization shows as it is written.
+
+```case
+tests/hover/templates/12_instantiation_patterns
 ```
 
 <!-- END CAPABILITY -->
@@ -589,6 +603,18 @@ A macro inside another macro's arguments shows its definition and what it expand
 
 ```case
 tests/hover/macros/05_nested_arguments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Expansion values**
+
+A use of a macro that expands to an expression shows its type, and its value when it is a constant
+
+```case
+tests/hover/macros/14_expansion_values
 ```
 
 <!-- END CAPABILITY -->
@@ -962,6 +988,34 @@ An editor says which it can show when it starts, and the card follows.
 
 ```case
 tests/hover/presentation/01_plain_text
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Types read left to right**
+
+A type C++ writes inside out reads left to right: `*`, `&` and `[N]` follow what they apply to, a function reads `(params) -> R`, a member pointer `C::-> T`
+
+A function inside a function, or a member pointer inside a member pointer, is named by a Greek letter, spelled on the line below.
+
+```case
+tests/hover/presentation/03_inside_out_types
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Long types**
+
+A type too long for one line is written in lines of at most 60 columns
+
+A part that does not fit is named by a Greek letter and spelled on its own line below, two columns further in; a part written twice shares its letter. A list of arguments or parameters that still does not fit wraps, its lines aligned after the bracket opening it.
+
+```case
+tests/hover/presentation/04_long_type_lines
 ```
 
 <!-- END CAPABILITY -->

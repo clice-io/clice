@@ -12,14 +12,19 @@ range = "⟦auto⟧ packet = Packet<long>();"
 
 [answers.class_ref_doc.hover]
 markdown = '''
-**class** `Packet<long>` · namespace `template_docs`
+**class** `Packet<…>` · namespace `template_docs`
 
 Holds one payload.
 
 ```cpp
-template <> class Packet<long> {}
+template <typename T> class Packet {}
 ```
-Size: 1 byte, alignment 1 byte
+**Template arguments:**
+```cpp
+T = long
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Packet⟧<long> other;"
 
@@ -30,7 +35,11 @@ markdown = '''
 Sends one payload.
 
 ```cpp
-template <> void send<long>()
+template <typename T> void send()
+```
+**Template arguments:**
+```cpp
+T = long
 ```
 '''
 range = "⟦send⟧<long>();"
@@ -80,7 +89,8 @@ Integer storage.
 ```cpp
 template <> class Storage<int> {}
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "template <> class ⟦Storage⟧<int> {};"
 
@@ -93,7 +103,8 @@ Integer storage.
 ```cpp
 template <> class Storage<int> {}
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "⟦Storage⟧<int> integer;"
 
@@ -104,7 +115,7 @@ markdown = '''
 Pointer channel.
 
 ```cpp
-template <> class Channel<long *>
+template <> class Channel<long*>
 ```
 '''
 range = "⟦Channel⟧<long*>* channel;"

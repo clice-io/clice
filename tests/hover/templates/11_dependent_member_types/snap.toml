@@ -3,7 +3,7 @@ markdown = '''
 **field** `field` · struct `Box<T &>`
 
 ```cpp
-T &field
+T& field
 ```
 '''
 range = "box.⟦field⟧;"
@@ -25,7 +25,7 @@ markdown = '''
 ```cpp
 auto size() -> decltype(this->value.size())
 ```
-Type: `auto () -> decltype(this->value.size())`
+**Type:** `() -> decltype(this->value.size())`
 '''
 range = "wrapper.⟦size⟧();"
 

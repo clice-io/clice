@@ -5,10 +5,12 @@ markdown = '''
 ```cpp
 #define SCALE 3
 ```
-Expands to:
+**Expands to:**
 ```cpp
 3
 ```
+**Type:** `int`
+**Value:** `3`
 '''
 range = "return ⟦SCALE⟧ * 2;"
 
@@ -22,10 +24,12 @@ markdown = '''
 ```cpp
 #define SCALE 3
 ```
-Expands to:
+**Expands to:**
 ```cpp
 3
 ```
+**Type:** `int`
+**Value:** `3`
 '''
 range = "return ⟦SCALE⟧ * 2;"
 
@@ -36,9 +40,11 @@ markdown = '''
 ```cpp
 #define SCALE 4
 ```
-Expands to:
+**Expands to:**
 ```cpp
 4
 ```
+**Type:** `int`
+**Value:** `4`
 '''
 range = "return ⟦SCALE⟧ * 2;"

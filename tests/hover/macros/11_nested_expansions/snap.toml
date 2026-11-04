@@ -5,10 +5,12 @@ markdown = '''
 ```cpp
 #define TWICE(x) x + x
 ```
-Expands to:
+**Expands to:**
 ```cpp
 99 + 99
 ```
+**Type:** `int`
+**Value:** `198 (0xc6)`
 '''
 range = "int twice = ⟦TWICE⟧(LIMIT);"
 
@@ -19,10 +21,12 @@ markdown = '''
 ```cpp
 #define LIMIT 99
 ```
-Expands to:
+**Expands to:**
 ```cpp
 99
 ```
+**Type:** `int`
+**Value:** `99 (0x63)`
 '''
 range = "int twice = TWICE(⟦LIMIT⟧);"
 
@@ -33,10 +37,12 @@ markdown = '''
 ```cpp
 #define SCALE(v) (v * 2)
 ```
-Expands to:
+**Expands to:**
 ```cpp
 (3 * 2)
 ```
+**Type:** `int`
+**Value:** `6`
 '''
 range = "int scaled = ECHO(⟦SCALE⟧(3));"
 
@@ -47,10 +53,12 @@ markdown = '''
 ```cpp
 #define LIMIT 99
 ```
-Expands to:
+**Expands to:**
 ```cpp
 99
 ```
+**Type:** `int`
+**Value:** `99 (0x63)`
 '''
 range = "int deep = ECHO(ECHO(⟦LIMIT⟧));"
 
@@ -61,9 +69,11 @@ markdown = '''
 ```cpp
 #define DOUBLE_LIMIT LIMIT * 2
 ```
-Expands to:
+**Expands to:**
 ```cpp
 99 * 2
 ```
+**Type:** `int`
+**Value:** `198 (0xc6)`
 '''
 range = "int chained = ECHO(⟦DOUBLE_LIMIT⟧);"

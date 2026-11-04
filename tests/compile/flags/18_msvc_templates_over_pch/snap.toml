@@ -6,7 +6,11 @@ markdown = '''
 **function** `thrice`
 
 ```cpp
-template <> int thrice<int>(int value)
+template <class T> T thrice(T value)
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "return ⟦thrice⟧(3);"
@@ -27,7 +31,11 @@ markdown = '''
 **function** `thrice`
 
 ```cpp
-template <> int thrice<int>(int value)
+template <class T> T thrice(T value)
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "return ⟦thrice⟧(3);"

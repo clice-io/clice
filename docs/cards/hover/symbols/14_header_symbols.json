@@ -41,7 +41,7 @@
           "marker": "type",
           "value": {
             "hover": {
-              "markdown": "**struct** `Point` · namespace `geometry`\n\nA point in the plane.\n\n```cpp\nstruct Point {\n  int x;\n  int y;\n}\n```\nSize: 8 bytes, alignment 4 bytes",
+              "markdown": "**struct** `Point` · namespace `geometry`\n\nA point in the plane.\n\n```cpp\nstruct Point {\n  int x;\n  int y;\n}\n```\n**Size:** 8 bytes\n**Alignment:** 4 bytes",
               "range": {
                 "$place": "geometry::⟦Point⟧ corner{3, 4};",
                 "path": "main.cpp",

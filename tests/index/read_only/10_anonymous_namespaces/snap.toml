@@ -15,7 +15,7 @@ markdown = '''
 ```cpp
 int hidden = 1
 ```
-Value: `1`
+**Value:** `1`
 '''
 range = "int ⟦hidden⟧ = 1;"
 
@@ -36,8 +36,9 @@ markdown = '''
 ```cpp
 int count
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "int ⟦count⟧;"
 
@@ -58,7 +59,8 @@ markdown = '''
 ```cpp
 int raw
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "int ⟦raw⟧;"
 
@@ -79,7 +81,7 @@ markdown = '''
 ```cpp
 int nested = 2
 ```
-Value: `2`
+**Value:** `2`
 '''
 range = "int ⟦nested⟧ = 2;"
 
@@ -100,6 +102,6 @@ markdown = '''
 ```cpp
 int deep = 3
 ```
-Value: `3`
+**Value:** `3`
 '''
 range = "int ⟦deep⟧ = 3;"

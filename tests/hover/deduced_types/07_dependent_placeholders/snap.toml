@@ -15,7 +15,7 @@ markdown = '''
 ```cpp
 auto copy = value
 ```
-Type: `T`
+**Type:** `T`
 '''
 range = "auto ⟦copy⟧ = value;"
 
@@ -44,7 +44,7 @@ markdown = '''
 **auto**
 
 ```cpp
-T &
+T&
 ```
 '''
 range = "⟦auto⟧&& forwarded = value;"
@@ -56,6 +56,6 @@ markdown = '''
 ```cpp
 Wrapper wrapper { value }
 ```
-Type: `Wrapper`
+**Type:** `Wrapper`
 '''
 range = "Wrapper ⟦wrapper⟧{value};"

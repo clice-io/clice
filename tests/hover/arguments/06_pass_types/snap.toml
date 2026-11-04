@@ -2,9 +2,9 @@
 markdown = '''
 **literal** `456`
 
-Type: `int`
-Value: `456 (0x1c8)`
-Passed as `value` by value
+**Type:** `int`
+**Value:** `456 (0x1c8)`
+**Passed:** by value to `value`
 '''
 range = "take_int(⟦456⟧);"
 
@@ -12,9 +12,9 @@ range = "take_int(⟦456⟧);"
 markdown = '''
 **literal** `456`
 
-Type: `int`
-Value: `456 (0x1c8)`
-Passed as `value` by const reference
+**Type:** `int`
+**Value:** `456 (0x1c8)`
+**Passed:** by const reference to `value`
 '''
 range = "view_int(⟦456⟧);"
 
@@ -22,9 +22,9 @@ range = "view_int(⟦456⟧);"
 markdown = '''
 **literal** `456`
 
-Type: `int`
-Value: `456 (0x1c8)`
-Passed as `value` by rvalue reference
+**Type:** `int`
+**Value:** `456 (0x1c8)`
+**Passed:** by rvalue reference to `value`
 '''
 range = "move_int(⟦456⟧);"
 
@@ -33,9 +33,9 @@ markdown = '''
 **variable** `code_ref` · function `exercise_pass_types`
 
 ```cpp
-int &code_ref = code
+int& code_ref = code
 ```
-Passed as `value` by value
+**Passed:** by value to `value`
 '''
 range = "take_int(⟦code_ref⟧);"
 
@@ -44,9 +44,9 @@ markdown = '''
 **variable** `code_ref` · function `exercise_pass_types`
 
 ```cpp
-int &code_ref = code
+int& code_ref = code
 ```
-Passed as `value` by const reference
+**Passed:** by const reference to `value`
 '''
 range = "view_int(⟦code_ref⟧);"
 
@@ -55,9 +55,9 @@ markdown = '''
 **variable** `code_view` · function `exercise_pass_types`
 
 ```cpp
-const int &code_view = code
+const int& code_view = code
 ```
-Passed as `value` by const reference
+**Passed:** by const reference to `value`
 '''
 range = "view_int(⟦code_view⟧);"
 
@@ -68,7 +68,7 @@ markdown = '''
 ```cpp
 Message message
 ```
-Passed as `value` by reference
+**Passed:** by reference to `value`
 '''
 range = "borrow_message(⟦message⟧);"
 
@@ -79,7 +79,7 @@ markdown = '''
 ```cpp
 Message message
 ```
-Passed as `value` by const reference
+**Passed:** by const reference to `value`
 '''
 range = "view_message(⟦message⟧);"
 
@@ -88,9 +88,9 @@ markdown = '''
 **variable** `message_view` · function `exercise_pass_types`
 
 ```cpp
-const Message &message_view = message
+const Message& message_view = message
 ```
-Passed as `value` by const reference
+**Passed:** by const reference to `value`
 '''
 range = "view_message(⟦message_view⟧);"
 
@@ -101,7 +101,7 @@ markdown = '''
 ```cpp
 Message message
 ```
-Passed as `value` by value
+**Passed:** by value to `value`
 '''
 range = "take_message(⟦message⟧);"
 
@@ -110,9 +110,9 @@ markdown = '''
 **variable** `message_view` · function `exercise_pass_types`
 
 ```cpp
-const Message &message_view = message
+const Message& message_view = message
 ```
-Passed as `value` by value
+**Passed:** by value to `value`
 '''
 range = "take_message(⟦message_view⟧);"
 
@@ -123,7 +123,7 @@ markdown = '''
 ```cpp
 Alert alert
 ```
-Passed as `value` by reference
+**Passed:** by reference to `value`
 '''
 range = "borrow_message(⟦alert⟧);"
 
@@ -134,7 +134,7 @@ markdown = '''
 ```cpp
 Alert alert
 ```
-Passed as `value` by const reference
+**Passed:** by const reference to `value`
 '''
 range = "view_message(⟦alert⟧);"
 
@@ -145,7 +145,7 @@ markdown = '''
 ```cpp
 Alert alert
 ```
-Passed as `value` by value
+**Passed:** by value to `value`
 '''
 range = "take_message(⟦alert⟧);"
 
@@ -156,7 +156,7 @@ markdown = '''
 ```cpp
 Message message
 ```
-Passed as `message` by const reference
+**Passed:** by const reference to `message`
 '''
 range = "Envelope first(⟦message⟧);"
 
@@ -167,7 +167,7 @@ markdown = '''
 ```cpp
 Message message
 ```
-Passed as `message` by const reference
+**Passed:** by const reference to `message`
 '''
 range = "auto* second = new Envelope(⟦message⟧);"
 
@@ -178,8 +178,8 @@ markdown = '''
 ```cpp
 int code = 7
 ```
-Value: `7`
-Passed as `code` by reference
+**Value:** `7`
+**Passed:** by reference to `code`
 '''
 range = "Envelope third(⟦code⟧);"
 
@@ -190,8 +190,8 @@ markdown = '''
 ```cpp
 int code = 7
 ```
-Value: `7`
-Passed as `priority` by value
+**Value:** `7`
+**Passed:** by value to `priority`
 '''
 range = "Envelope fourth(code, ⟦code⟧);"
 
@@ -202,8 +202,8 @@ markdown = '''
 ```cpp
 int code = 7
 ```
-Value: `7`
-Passed as `value` by value, converted to `double`
+**Value:** `7`
+**Passed:** by value to `value`, converted to `double`
 '''
 range = "take_double(⟦code⟧);"
 
@@ -212,9 +212,9 @@ markdown = '''
 **variable** `code_ref` · function `exercise_pass_types`
 
 ```cpp
-int &code_ref = code
+int& code_ref = code
 ```
-Passed as `value` by value, converted to `double`
+**Passed:** by value to `value`, converted to `double`
 '''
 range = "take_double(⟦code_ref⟧);"
 
@@ -223,9 +223,9 @@ markdown = '''
 **variable** `code_view` · function `exercise_pass_types`
 
 ```cpp
-const int &code_view = code
+const int& code_view = code
 ```
-Passed as `value` by value, converted to `double`
+**Passed:** by value to `value`, converted to `double`
 '''
 range = "take_double(⟦code_view⟧);"
 
@@ -233,9 +233,9 @@ range = "take_double(⟦code_view⟧);"
 markdown = '''
 **literal** `456.0`
 
-Type: `double`
-Value: `456`
-Passed as `value` by value
+**Type:** `double`
+**Value:** `456`
+**Passed:** by value to `value`
 '''
 range = "take_double(⟦456.0⟧);"
 
@@ -243,9 +243,9 @@ range = "take_double(⟦456.0⟧);"
 markdown = '''
 **literal** `456`
 
-Type: `int`
-Value: `456 (0x1c8)`
-Passed as `value` by value, converted to `double`
+**Type:** `int`
+**Value:** `456 (0x1c8)`
+**Passed:** by value to `value`, converted to `double`
 '''
 range = "take_double(⟦456⟧);"
 
@@ -256,8 +256,8 @@ markdown = '''
 ```cpp
 int code = 7
 ```
-Value: `7`
-Passed as `value` by value, converted to `Envelope`
+**Value:** `7`
+**Passed:** by value to `value`, converted to `Envelope`
 '''
 range = "take_envelope(⟦code⟧);"
 
@@ -268,8 +268,8 @@ markdown = '''
 ```cpp
 double weight = 2.5
 ```
-Value: `2.5`
-Passed as `value` by value, converted to `Envelope`
+**Value:** `2.5`
+**Passed:** by value to `value`, converted to `Envelope`
 '''
 range = "take_envelope(⟦weight⟧);"
 
@@ -280,6 +280,6 @@ markdown = '''
 ```cpp
 Message message
 ```
-Passed as `value` by value, converted to `Envelope`
+**Passed:** by value to `value`, converted to `Envelope`
 '''
 range = "take_envelope(⟦message⟧);"

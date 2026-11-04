@@ -8,7 +8,7 @@ markdown = '''
 **function** `move` · namespace `geo`
 
 ```cpp
-void move(Point &point, int dx)
+void move(Point& point, int dx)
 ```
 '''
 range = "geo::⟦move⟧(point, 3);"
@@ -23,7 +23,7 @@ markdown = '''
 **function** `move` · namespace `geo`
 
 ```cpp
-void move(Point &point, long dx)
+void move(Point& point, long dx)
 ```
 '''
 range = "⟦move⟧(point, 4L);"
@@ -59,7 +59,7 @@ markdown = '''
 ```cpp
 red
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "geo::Color color = geo::Color::⟦red⟧;"
 
@@ -93,7 +93,8 @@ struct Size {
   int height;
 }
 ```
-Size: 8 bytes, alignment 4 bytes
+**Size:** 8 bytes
+**Alignment:** 4 bytes
 '''
 range = "geo::⟦Size⟧ size{2, 3};"
 
@@ -109,8 +110,9 @@ markdown = '''
 ```cpp
 int x
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "int total = scaled + point.⟦x⟧ + geo::counter2 + static_cast<int>(color);"
 
@@ -141,7 +143,7 @@ markdown = '''
 ```cpp
 double area() const override
 ```
-Overrides: `geo::Shape::area`
+**Overrides:** `geo::Shape::area`
 '''
 range = "total += static_cast<int>(circle.⟦area⟧()) + base_area(size);"
 
@@ -155,7 +157,7 @@ markdown = '''
 **function** `base_area`
 
 ```cpp
-inline int base_area(const geo::Size &size)
+inline int base_area(const geo::Size& size)
 ```
 '''
 range = "total += static_cast<int>(circle.area()) + ⟦base_area⟧(size);"
@@ -172,7 +174,7 @@ markdown = '''
 ```cpp
 int count = 0
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "total += geo::Registry::⟦count⟧ + geo::Registry::limit;"
 
@@ -188,7 +190,7 @@ markdown = '''
 ```cpp
 static constexpr int limit = 8
 ```
-Value: `8`
+**Value:** `8`
 '''
 range = "total += geo::Registry::count + geo::Registry::⟦limit⟧;"
 
@@ -468,7 +470,7 @@ markdown = '''
 **function** `move` · namespace `geo`
 
 ```cpp
-void move(Point &point, int dx)
+void move(Point& point, int dx)
 ```
 '''
 range = "geo::⟦move⟧(point, 3);"
@@ -483,7 +485,7 @@ markdown = '''
 **function** `move` · namespace `geo`
 
 ```cpp
-void move(Point &point, long dx)
+void move(Point& point, long dx)
 ```
 '''
 range = "⟦move⟧(point, 4L);"
@@ -525,7 +527,7 @@ markdown = '''
 ```cpp
 red
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "geo::Color color = geo::Color::⟦red⟧;"
 
@@ -568,7 +570,8 @@ struct Size {
   int height;
 }
 ```
-Size: 8 bytes, alignment 4 bytes
+**Size:** 8 bytes
+**Alignment:** 4 bytes
 '''
 range = "geo::⟦Size⟧ size{2, 3};"
 
@@ -584,8 +587,9 @@ markdown = '''
 ```cpp
 int x
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "int total = scaled + point.⟦x⟧ + geo::counter2 + static_cast<int>(color);"
 
@@ -605,7 +609,7 @@ markdown = '''
 ```cpp
 double area() const override
 ```
-Overrides: `geo::Shape::area`
+**Overrides:** `geo::Shape::area`
 '''
 range = "total += static_cast<int>(circle.⟦area⟧()) + base_area(size);"
 
@@ -622,7 +626,7 @@ markdown = '''
 **function** `base_area`
 
 ```cpp
-inline int base_area(const geo::Size &size)
+inline int base_area(const geo::Size& size)
 ```
 '''
 range = "total += static_cast<int>(circle.area()) + ⟦base_area⟧(size);"
@@ -643,7 +647,7 @@ markdown = '''
 ```cpp
 int count = 0
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "total += geo::Registry::⟦count⟧ + geo::Registry::limit;"
 
@@ -662,7 +666,7 @@ markdown = '''
 ```cpp
 static constexpr int limit = 8
 ```
-Value: `8`
+**Value:** `8`
 '''
 range = "total += geo::Registry::count + geo::Registry::⟦limit⟧;"
 
@@ -728,7 +732,7 @@ markdown = '''
 **function** `move` · namespace `geo`
 
 ```cpp
-void move(Point &point, int dx)
+void move(Point& point, int dx)
 ```
 '''
 range = "geo::⟦move⟧(point, 3);"
@@ -743,7 +747,7 @@ markdown = '''
 **function** `move` · namespace `geo`
 
 ```cpp
-void move(Point &point, long dx)
+void move(Point& point, long dx)
 ```
 '''
 range = "⟦move⟧(point, 4L);"
@@ -785,7 +789,7 @@ markdown = '''
 ```cpp
 red
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "geo::Color color = geo::Color::⟦red⟧;"
 
@@ -828,7 +832,8 @@ struct Size {
   int height;
 }
 ```
-Size: 8 bytes, alignment 4 bytes
+**Size:** 8 bytes
+**Alignment:** 4 bytes
 '''
 range = "geo::⟦Size⟧ size{2, 3};"
 
@@ -844,8 +849,9 @@ markdown = '''
 ```cpp
 int x
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "int total = scaled + point.⟦x⟧ + geo::counter2 + static_cast<int>(color);"
 
@@ -865,7 +871,7 @@ markdown = '''
 ```cpp
 double area() const override
 ```
-Overrides: `geo::Shape::area`
+**Overrides:** `geo::Shape::area`
 '''
 range = "total += static_cast<int>(circle.⟦area⟧()) + base_area(size);"
 
@@ -882,7 +888,7 @@ markdown = '''
 **function** `base_area`
 
 ```cpp
-inline int base_area(const geo::Size &size)
+inline int base_area(const geo::Size& size)
 ```
 '''
 range = "total += static_cast<int>(circle.area()) + ⟦base_area⟧(size);"
@@ -903,7 +909,7 @@ markdown = '''
 ```cpp
 int count = 0
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "total += geo::Registry::⟦count⟧ + geo::Registry::limit;"
 
@@ -922,7 +928,7 @@ markdown = '''
 ```cpp
 static constexpr int limit = 8
 ```
-Value: `8`
+**Value:** `8`
 '''
 range = "total += geo::Registry::count + geo::Registry::⟦limit⟧;"
 

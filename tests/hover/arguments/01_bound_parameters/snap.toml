@@ -5,8 +5,8 @@ markdown = '''
 ```cpp
 long height = 720
 ```
-Value: `720 (0x2d0)`
-Passed as `height` by value
+**Value:** `720 (0x2d0)`
+**Passed:** by value to `height`
 '''
 range = "resize(⟦height⟧, previous, 2);"
 
@@ -17,8 +17,8 @@ markdown = '''
 ```cpp
 long previous = 0
 ```
-Value: `0`
-Passed as `previous` by reference
+**Value:** `0`
+**Passed:** by reference to `previous`
 '''
 range = "resize(height, ⟦previous⟧, 2);"
 
@@ -26,8 +26,8 @@ range = "resize(height, ⟦previous⟧, 2);"
 markdown = '''
 **literal** `2`
 
-Type: `int`
-Value: `2`
-Passed as `flags` by value, converted to `long`
+**Type:** `int`
+**Value:** `2`
+**Passed:** by value to `flags`, converted to `long`
 '''
 range = "resize(height, previous, ⟦2⟧);"

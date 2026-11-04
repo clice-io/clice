@@ -5,8 +5,9 @@ markdown = '''
 ```cpp
 Options defaults = {}
 ```
-Offset: 0 bytes
-Size: 1 byte, alignment 1 byte
+**Offset:** 0 bytes
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "Options ⟦defaults⟧ = {};"
 
@@ -17,7 +18,8 @@ markdown = '''
 ```cpp
 Options tuned = {2, true}
 ```
-Offset: 1 byte
-Size: 1 byte, alignment 1 byte
+**Offset:** 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "Options ⟦tuned⟧ = {2, true};"

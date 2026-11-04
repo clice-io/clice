@@ -5,7 +5,7 @@ markdown = '''
 ```cpp
 Status source = Status::Idle
 ```
-Value: `Idle (0xfffffffc)`
+**Value:** `Idle (0xfffffffc)`
 '''
 range = "Status copy = ⟦source⟧;"
 
@@ -16,7 +16,7 @@ markdown = '''
 ```cpp
 static constexpr long value = 16
 ```
-Value: `16 (0x10)`
+**Value:** `16 (0x10)`
 '''
 range = "long result = Offset<10>::⟦value⟧;"
 
@@ -28,7 +28,7 @@ markdown = '''
 constexpr count_type total()
 ```
 `count_type` is `long`
-Value: `18 (0x12)`
+**Value:** `18 (0x12)`
 '''
 range = "long result = ⟦total⟧();"
 
@@ -37,9 +37,9 @@ markdown = '''
 **variable** `message` · namespace `pointer_value`
 
 ```cpp
-const char *message = "ready"
+const char* message = "ready"
 ```
-Value: `"ready"`
+**Value:** `"ready"`
 '''
 range = 'const char* ⟦message⟧ = "ready";'
 
@@ -60,7 +60,8 @@ markdown = '''
 ```cpp
 class Response {}
 ```
-Size: 1 byte, alignment 1 byte
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "product::api::detail::⟦Response⟧ response;"
 
@@ -81,7 +82,7 @@ markdown = '''
 ```cpp
 inline int shared = 4
 ```
-Value: `4`
+**Value:** `4`
 '''
 range = "inline int ⟦shared⟧ = 4;"
 
@@ -92,7 +93,7 @@ markdown = '''
 ```cpp
 constexpr char bytes[] = {1, 'a', 0}
 ```
-Value: `"\001a"`
+**Value:** `"\001a"`
 '''
 range = "constexpr char ⟦bytes⟧[] = {1, 'a', 0};"
 
@@ -103,7 +104,7 @@ markdown = '''
 ```cpp
 constexpr char16_t face[] = u"\U0001F600!"
 ```
-Value: `u"😀!"`
+**Value:** `u"😀!"`
 '''
 range = 'constexpr char16_t ⟦face⟧[] = u"\U0001F600!";'
 
@@ -115,7 +116,7 @@ markdown = '''
 constexpr char16_t lone[] = u"\xD800"
                             "A"
 ```
-Value: `u"\xd800\101"`
+**Value:** `u"\xd800\101"`
 '''
 range = 'constexpr char16_t ⟦lone⟧[] = u"\xD800" "A";'
 
@@ -126,7 +127,7 @@ markdown = '''
 ```cpp
 constexpr char raw[] = "\xff\xfe"
 ```
-Value: `"\377\376"`
+**Value:** `"\377\376"`
 '''
 range = 'constexpr char ⟦raw⟧[] = "\xff\xfe";'
 
@@ -137,7 +138,7 @@ markdown = '''
 ```cpp
 constexpr unsigned char table[] = {0, 10, 20}
 ```
-Value: `{0, 10, 20}`
+**Value:** `{0, 10, 20}`
 '''
 range = "constexpr unsigned char ⟦table⟧[] = {0, 10, 20};"
 
@@ -146,9 +147,9 @@ markdown = '''
 **variable** `opaque` · namespace `string_values`
 
 ```cpp
-constexpr const void *opaque = u"\U0001F600"
+constexpr const void* opaque = u"\U0001F600"
 ```
-Value: `u"😀"`
+**Value:** `u"😀"`
 '''
 range = 'constexpr const void* ⟦opaque⟧ = u"\U0001F600";'
 
@@ -157,9 +158,9 @@ markdown = '''
 **variable** `greeting` · namespace `string_values`
 
 ```cpp
-const char *greeting = "你好，世界"
+const char* greeting = "你好，世界"
 ```
-Value: `"你好，世界"`
+**Value:** `"你好，世界"`
 '''
 range = 'const char* ⟦greeting⟧ = "你好，世界";'
 
@@ -170,6 +171,6 @@ markdown = '''
 ```cpp
 constexpr double total = 1500.0
 ```
-Value: `1500`
+**Value:** `1500`
 '''
 range = "constexpr double ⟦total⟧ = 1500.0;"

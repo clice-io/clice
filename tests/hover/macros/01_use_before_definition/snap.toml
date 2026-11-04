@@ -27,9 +27,11 @@ markdown = '''
 ```cpp
 #define LIMIT 8
 ```
-Expands to:
+**Expands to:**
 ```cpp
 8
 ```
+**Type:** `int`
+**Value:** `8`
 '''
 range = "int capacity = ⟦LIMIT⟧;"

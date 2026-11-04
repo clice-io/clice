@@ -14,7 +14,8 @@ struct Plain {
   int a;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Plain⟧ other = plain;"
 
@@ -30,7 +31,7 @@ markdown = '''
 ```cpp
 Wrap wrapped{"text"}
 ```
-Type: `Wrap<Name>`
+**Type:** `Wrap<Name>`
 '''
 range = 'Wrap ⟦wrapped⟧{"text"};'
 
@@ -48,7 +49,8 @@ struct Item {
   int weight;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Item⟧ item{4};"
 
@@ -109,10 +111,14 @@ highlights = [
 
 [features.cell.hover]
 markdown = '''
-**method** `get` · struct `Cell<int>`
+**method** `get` · struct `Cell<…>`
 
 ```cpp
-int get() const
+T get() const
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "int total = peek(token) + ::peek(token) + cell.⟦get⟧();"
@@ -129,8 +135,9 @@ markdown = '''
 ```cpp
 int weight
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return total + item.⟦weight⟧ + other.a + copy_plain(plain).a;"
 
@@ -147,8 +154,9 @@ markdown = '''
 ```cpp
 int a
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return total + item.weight + other.⟦a⟧ + copy_plain(plain).a;"
 
@@ -294,7 +302,8 @@ struct Plain {
   int a;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Plain⟧ other = plain;"
 
@@ -310,7 +319,7 @@ markdown = '''
 ```cpp
 Wrap wrapped{"text"}
 ```
-Type: `Wrap<Name>`
+**Type:** `Wrap<Name>`
 '''
 range = 'Wrap ⟦wrapped⟧{"text"};'
 
@@ -328,7 +337,8 @@ struct Item {
   int weight;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Item⟧ item{4};"
 
@@ -401,10 +411,14 @@ references = ["include/base.h │ T ⟦get⟧() const {", "int total = peek(toke
 
 [locations.cell.hover]
 markdown = '''
-**method** `get` · struct `Cell<int>`
+**method** `get` · struct `Cell<…>`
 
 ```cpp
-int get() const
+T get() const
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "int total = peek(token) + ::peek(token) + cell.⟦get⟧();"
@@ -421,8 +435,9 @@ markdown = '''
 ```cpp
 int weight
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return total + item.⟦weight⟧ + other.a + copy_plain(plain).a;"
 
@@ -442,8 +457,9 @@ markdown = '''
 ```cpp
 int a
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return total + item.weight + other.⟦a⟧ + copy_plain(plain).a;"
 
@@ -480,7 +496,8 @@ struct Plain {
   int a;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Plain⟧ other = plain;"
 
@@ -496,7 +513,7 @@ markdown = '''
 ```cpp
 Wrap wrapped{"text"}
 ```
-Type: `Wrap<Name>`
+**Type:** `Wrap<Name>`
 '''
 range = 'Wrap ⟦wrapped⟧{"text"};'
 
@@ -514,7 +531,8 @@ struct Item {
   int weight;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Item⟧ item{4};"
 
@@ -587,10 +605,14 @@ references = ["include/base.h │ T ⟦get⟧() const {", "int total = peek(toke
 
 ["indexed locations".cell.hover]
 markdown = '''
-**method** `get` · struct `Cell<int>`
+**method** `get` · struct `Cell<…>`
 
 ```cpp
-int get() const
+T get() const
+```
+**Template arguments:**
+```cpp
+T = int
 ```
 '''
 range = "int total = peek(token) + ::peek(token) + cell.⟦get⟧();"
@@ -607,8 +629,9 @@ markdown = '''
 ```cpp
 int weight
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return total + item.⟦weight⟧ + other.a + copy_plain(plain).a;"
 
@@ -628,8 +651,9 @@ markdown = '''
 ```cpp
 int a
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return total + item.weight + other.⟦a⟧ + copy_plain(plain).a;"
 

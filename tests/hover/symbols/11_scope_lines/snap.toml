@@ -5,7 +5,7 @@ markdown = '''
 ```cpp
 int counter = 0
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "⟦counter⟧ = 3;"
 
@@ -16,7 +16,7 @@ markdown = '''
 ```cpp
 long position = 0
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "⟦position⟧ = 8;"
 
@@ -27,7 +27,7 @@ markdown = '''
 ```cpp
 static int requests = 4
 ```
-Value: `4`
+**Value:** `4`
 '''
 range = "⟦requests⟧++;"
 
@@ -38,7 +38,7 @@ markdown = '''
 ```cpp
 static long long bytes = -36637162602497
 ```
-Value: `-36637162602497 (0xffffdeadbeefffff)`
+**Value:** `-36637162602497 (0xffffdeadbeefffff)`
 '''
 range = "metrics::⟦bytes⟧++;"
 
@@ -83,7 +83,7 @@ markdown = '''
 ```cpp
 int brushes = 0
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "int ⟦brushes⟧ = 0;"
 
@@ -94,8 +94,9 @@ markdown = '''
 ```cpp
 char mode
 ```
-Offset: 0 bytes
-Size: 1 byte, alignment 1 byte
+**Offset:** 0 bytes
+**Size:** 1 byte
+**Alignment:** 1 byte
 '''
 range = "char ⟦mode⟧;"
 
@@ -106,6 +107,6 @@ markdown = '''
 ```cpp
 int attempts = 1
 ```
-Value: `1`
+**Value:** `1`
 '''
 range = "int ⟦attempts⟧ = 1;"

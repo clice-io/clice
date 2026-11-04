@@ -8,10 +8,10 @@ Computes the area of a rectangle.
 int area(int width, int height)
 ```
 
-Parameters:
+**Parameters:**
 - `width` — The horizontal extent.
 
-Returns: The product of both sides.
+**Returns:** The product of both sides.
 '''
 range = "return ⟦area⟧(2, 3) + shape.sides + LIMIT + calls;"
 
@@ -168,7 +168,7 @@ A fixed buffer.
 using self = Buffer
 ```
 
-Template parameters:
+**Template parameters:**
 - `Size` — Its capacity.
 '''
 range = "using ⟦self⟧ = Buffer;"

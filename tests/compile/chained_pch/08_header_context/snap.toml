@@ -14,7 +14,8 @@ struct Host {
   int h;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "⟦Host⟧ host;"
 
@@ -31,7 +32,8 @@ struct Point {
   int y;
 }
 ```
-Size: 8 bytes, alignment 4 bytes
+**Size:** 8 bytes
+**Alignment:** 4 bytes
 '''
 range = "geo::⟦Point⟧ origin;"
 
@@ -58,8 +60,9 @@ markdown = '''
 ```cpp
 int x
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return widget.origin.⟦x⟧ * widget.size + geo::scale(1);"
 
@@ -73,7 +76,8 @@ markdown = '''
 ```cpp
 int size
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return widget.origin.x * widget.⟦size⟧ + geo::scale(1);"

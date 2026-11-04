@@ -5,7 +5,8 @@ markdown = '''
 ```cpp
 export class Shape {}
 ```
-Size: 8 bytes, alignment 8 bytes
+**Size:** 8 bytes
+**Alignment:** 8 bytes
 '''
 range = "export class Circle : public ⟦Shape⟧ {"
 
@@ -16,7 +17,7 @@ markdown = '''
 ```cpp
 int area() const override
 ```
-Overrides: `Shape::area`
+**Overrides:** `Shape::area`
 '''
 range = "int ⟦area⟧() const override {"
 
@@ -29,7 +30,8 @@ export class Circle : public Shape {
   int r;
 }
 ```
-Size: 16 bytes (4 bytes padding), alignment 8 bytes
+**Size:** 16 bytes (4 bytes padding)
+**Alignment:** 8 bytes
 '''
 range = "⟦Circle⟧ circle(2);"
 
@@ -40,6 +42,6 @@ markdown = '''
 ```cpp
 int area() const override
 ```
-Overrides: `Shape::area`
+**Overrides:** `Shape::area`
 '''
 range = "return circle.⟦area⟧();"

@@ -48,7 +48,7 @@
           "marker": "call",
           "value": {
             "hover": {
-              "markdown": "**function** `scaled`\n\n```cpp\ntemplate <> int scaled<int>(int value)\n```",
+              "markdown": "**function** `scaled`\n\n```cpp\ntemplate <class T> int scaled(T value)\n```\n**Template arguments:**\n```cpp\nT = int\n```",
               "range": {
                 "$place": "return ⟦scaled⟧(21);",
                 "path": "main.cpp",

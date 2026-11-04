@@ -11,7 +11,7 @@ markdown = '''
 ```cpp
 int distinct_0 = 0
 ```
-Value: `0`
+**Value:** `0`
 '''
 range = "int use_0() { return ⟦distinct_0⟧; }"
 

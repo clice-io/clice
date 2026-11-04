@@ -9,7 +9,8 @@ struct Square {
   int side;
 }
 ```
-Size: 4 bytes, alignment 4 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "inline int area(⟦Square⟧ square) {"
 
@@ -20,7 +21,8 @@ markdown = '''
 ```cpp
 int side
 ```
-Offset: 0 bytes
-Size: 4 bytes, alignment 4 bytes
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
 '''
 range = "return square.⟦side⟧ * square.side;"

@@ -42,7 +42,7 @@
           "marker": "value",
           "value": {
             "hover": {
-              "markdown": "**variable** `count` · function `argument_transfer::apply`\n\n```cpp\nlong count = 1\n```\nValue: `1`\nPassed as `value` by value",
+              "markdown": "**variable** `count` · function `argument_transfer::apply`\n\n```cpp\nlong count = 1\n```\n**Value:** `1`\n**Passed:** by value to `value`",
               "range": {
                 "$place": "consume(⟦count⟧);",
                 "path": "main.cpp",
@@ -65,7 +65,7 @@
           "marker": "ref",
           "value": {
             "hover": {
-              "markdown": "**variable** `count` · function `argument_transfer::apply`\n\n```cpp\nlong count = 1\n```\nValue: `1`\nPassed as `value` by reference",
+              "markdown": "**variable** `count` · function `argument_transfer::apply`\n\n```cpp\nlong count = 1\n```\n**Value:** `1`\n**Passed:** by reference to `value`",
               "range": {
                 "$place": "mutate(⟦count⟧);",
                 "path": "main.cpp",
@@ -88,7 +88,7 @@
           "marker": "const_ref",
           "value": {
             "hover": {
-              "markdown": "**variable** `count` · function `argument_transfer::apply`\n\n```cpp\nlong count = 1\n```\nValue: `1`\nPassed as `value` by const reference",
+              "markdown": "**variable** `count` · function `argument_transfer::apply`\n\n```cpp\nlong count = 1\n```\n**Value:** `1`\n**Passed:** by const reference to `value`",
               "range": {
                 "$place": "observe(⟦count⟧);",
                 "path": "main.cpp",

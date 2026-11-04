@@ -8,10 +8,10 @@ Scales a value.
 template <typename T> T scale(T value, T factor)
 ```
 
-Template parameters:
+**Template parameters:**
 - `T` — The arithmetic type.
 
-Parameters:
+**Parameters:**
 - `value` — The value to scale.
 - `factor` — How much to scale by.
 '''
@@ -24,10 +24,10 @@ markdown = '''
 Copies bytes.
 
 ```cpp
-void copy(char *destination, int __count)
+void copy(char* destination, int __count)
 ```
 
-Parameters:
+**Parameters:**
 - `to` — Where they go.
 - `__count` — How many.
 '''
@@ -43,7 +43,7 @@ Moves a point.
 void step(int z, int x)
 ```
 
-Parameters:
+**Parameters:**
 - `x` — The horizontal step.
 - `y` — The vertical step.
 '''

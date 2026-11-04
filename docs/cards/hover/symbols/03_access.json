@@ -42,7 +42,7 @@
           "marker": "public_field",
           "value": {
             "hover": {
-              "markdown": "**field** `balance` · class `Account`\n\n```cpp\nint balance\n```\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes",
+              "markdown": "**field** `balance` · class `Account`\n\n```cpp\nint balance\n```\n**Offset:** 0 bytes\n**Size:** 4 bytes\n**Alignment:** 4 bytes",
               "range": {
                 "$place": "int ⟦balance⟧;",
                 "path": "main.cpp",
@@ -65,7 +65,7 @@
           "marker": "protected_field",
           "value": {
             "hover": {
-              "markdown": "**protected field** `limit` · class `Account`\n\n```cpp\nint limit\n```\nOffset: 4 bytes\nSize: 4 bytes, alignment 4 bytes",
+              "markdown": "**protected field** `limit` · class `Account`\n\n```cpp\nint limit\n```\n**Offset:** 4 bytes\n**Size:** 4 bytes\n**Alignment:** 4 bytes",
               "range": {
                 "$place": "int ⟦limit⟧;",
                 "path": "main.cpp",
@@ -88,7 +88,7 @@
           "marker": "private_field",
           "value": {
             "hover": {
-              "markdown": "**private field** `pin` · class `Account`\n\n```cpp\nint pin\n```\nOffset: 8 bytes\nSize: 4 bytes, alignment 4 bytes",
+              "markdown": "**private field** `pin` · class `Account`\n\n```cpp\nint pin\n```\n**Offset:** 8 bytes\n**Size:** 4 bytes\n**Alignment:** 4 bytes",
               "range": {
                 "$place": "int ⟦pin⟧;",
                 "path": "main.cpp",

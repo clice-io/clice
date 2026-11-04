@@ -3,7 +3,7 @@ markdown = '''
 **function** `step`
 
 ```cpp
-export int step(pch::Counter &counter)
+export int step(pch::Counter& counter)
 ```
 '''
 range = "⟦step⟧(counter);"
@@ -13,7 +13,7 @@ markdown = '''
 **function** `step`
 
 ```cpp
-export int step(pch::Counter &counter)
+export int step(pch::Counter& counter)
 ```
 '''
 range = "return ⟦step⟧(counter) + twice();"

@@ -42,7 +42,7 @@
           "marker": "function",
           "value": {
             "hover": {
-              "markdown": "**function** `area`\n\nComputes the area of a rectangle.\n\n```cpp\nint area(int width, int height)\n```\n\nParameters:\n- `width` — The horizontal extent.\n- `height` — The vertical extent.\n\nReturns: The product of both sides.",
+              "markdown": "**function** `area`\n\nComputes the area of a rectangle.\n\n```cpp\nint area(int width, int height)\n```\n\n**Parameters:**\n- `width` — The horizontal extent.\n- `height` — The vertical extent.\n\n**Returns:** The product of both sides.",
               "range": {
                 "$place": "int ⟦area⟧(int width, int height);",
                 "path": "main.cpp",
@@ -65,7 +65,7 @@
           "marker": "call",
           "value": {
             "hover": {
-              "markdown": "**function** `area`\n\nComputes the area of a rectangle.\n\n```cpp\nint area(int width, int height)\n```\n\nParameters:\n- `width` — The horizontal extent.\n- `height` — The vertical extent.\n\nReturns: The product of both sides.",
+              "markdown": "**function** `area`\n\nComputes the area of a rectangle.\n\n```cpp\nint area(int width, int height)\n```\n\n**Parameters:**\n- `width` — The horizontal extent.\n- `height` — The vertical extent.\n\n**Returns:** The product of both sides.",
               "range": {
                 "$place": "int total = ⟦area⟧(3, 4);",
                 "path": "main.cpp",
@@ -88,7 +88,7 @@
           "marker": "return_values",
           "value": {
             "hover": {
-              "markdown": "**function** `open_file`\n\nOpens the file.\n\n```cpp\nint open_file()\n```\n\nReturn values:\n- `0` — The file is open.\n- `-1` — It does not exist.",
+              "markdown": "**function** `open_file`\n\nOpens the file.\n\n```cpp\nint open_file()\n```\n\n**Returns:**\n- `0` — The file is open.\n- `-1` — It does not exist.",
               "range": {
                 "$place": "int ⟦open_file⟧();",
                 "path": "main.cpp",

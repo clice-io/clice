@@ -6,7 +6,7 @@ markdown = '''
 static const byte embedded[630]
 ```
 `byte` is `unsigned char`
-Value: `{84, 104, 101, 32, 113, 117, 105, 99, 107, 32, ...}`
+**Value:** `{84, 104, 101, 32, 113, 117, 105, 99, 107, 32, ...}`
 '''
 range = "static const byte ⟦embedded⟧[] = {"
 
@@ -17,7 +17,7 @@ markdown = '''
 ```cpp
 const char literal[601]
 ```
-Value: `"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx..."`
+**Value:** `"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx..."`
 '''
 range = 'const char ⟦literal⟧[] = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";'
 
@@ -28,7 +28,7 @@ markdown = '''
 ```cpp
 int values[128]
 ```
-Value: `{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...}`
+**Value:** `{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...}`
 '''
 range = "int ⟦values⟧[] = {DUPLICATE_64(3), DUPLICATE_64(3)};"
 
@@ -49,6 +49,6 @@ markdown = '''
 ```cpp
 auto sum = [](int x) { ... }
 ```
-Type: `int (int)`
+**Type:** `(int) -> int`
 '''
 range = "auto ⟦sum⟧ = [](int x) { return SUM_SIXTEEN(x) + SUM_SIXTEEN(x) + SUM_SIXTEEN(x) + SUM_SIXTEEN(x); };"
