@@ -149,6 +149,11 @@ void Project::merge_build_index(Fid unit,
                                 const worker::PrecompiledBuildResult& built,
                                 const Inputs& before,
                                 std::uint64_t command) {
+    // One the build stopped compiling while it ran left the index with its
+    // entries.
+    if(!is_unit(unit)) {
+        return;
+    }
     auto path = file_table.resolve(unit);
     auto tu_index = transfer.receive(built.tu_index_data, built.index_in_file);
     if(!tu_index) {

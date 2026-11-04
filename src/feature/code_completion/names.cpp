@@ -200,9 +200,13 @@ LoadedNames load_names(clang::Sema& sema, const CompileCompletion& names) {
     if(names.prefix->empty()) {
         // Every identifier matches: the index's most used names stand for a
         // scope it holds more of than a completion takes, and one it holds
-        // no more of — small, or not indexed — costs little read whole.
+        // no more of — small, or not indexed — costs little read whole,
+        // with the macros where no qualifier was written.
         if(!names.more_candidates) {
             read_names(space ? space : ast.getTranslationUnitDecl());
+            if(!space) {
+                sema.getPreprocessor().macros(/*IncludeExternalMacros=*/true);
+            }
         }
         return loaded;
     }
