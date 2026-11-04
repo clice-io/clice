@@ -1236,6 +1236,8 @@ async::task<> ServedProject::finish_compile(Unfinished unfinished) {
     auto path_id = session->path_id;
     auto current = finishing[path_id];
     auto ended = llvm::make_scope_exit([&] {
+        // Before the waiters wake: they find the evictions it held back made.
+        unfinished.hold.reset();
         current->done.set();
         if(auto it = finishing.find(path_id); it != finishing.end() && it->second == current) {
             finishing.erase(it);
