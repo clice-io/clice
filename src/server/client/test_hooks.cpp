@@ -159,6 +159,30 @@ void LSPClient::register_test_hooks() {
             co_return to_raw(ext::ReleaseResult{});
         });
 
+    on_request<ext::SettleParams>(
+        "clice/internal/settle",
+        [this](RequestContext& ctx, const ext::SettleParams& params) -> RawResult {
+            auto& srv = this->server;
+            if(!srv.test_hooks()) {
+                co_await async::fail(hooks_off());
+            }
+            auto path = uri_to_path(params.uri);
+            if(!path) {
+                co_await async::fail(
+                    ipc::Error{protocol::ErrorCode::InvalidParams, "a settle names a file URI"});
+            }
+            auto path_id = srv.files.intern(*path);
+            if(auto* open = srv.find_document(path_id); open && open->owner) {
+                auto owner = open->owner->shared_from_this();
+                auto session = open->session;
+                if(owner->serving_of(*session) == ServingMode::Escalated) {
+                    co_await owner->ensure_compiled(session, {.ast = false});
+                }
+                co_await owner->finished(path_id);
+            }
+            co_return to_raw(ext::SettleResult{});
+        });
+
     on_request<ext::WatchParams>(
         "clice/internal/watch",
         [this](RequestContext& ctx, const ext::WatchParams& params) -> RawResult {

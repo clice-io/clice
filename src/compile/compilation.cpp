@@ -145,9 +145,8 @@ std::unique_ptr<clang::CompilerInvocation>
     front_opts.PrintSupportedCPUs = false;
     front_opts.PrintEnabledExtensions = false;
     front_opts.PrintSupportedExtensions = false;
-    front_opts.SkipFunctionBodies = params.skip_bodies ||
-                                    params.kind == CompilationKind::Completion ||
-                                    params.instantiating.has_value();
+    front_opts.SkipFunctionBodies =
+        params.kind == CompilationKind::Completion || params.instantiating.has_value();
 
     /// Compiler flags (like gcc/clang's -M, -MD, -MMD, -H, or msvc's /showIncludes)
     /// can generate dependency files or print included headers to stdout/stderr.
@@ -414,15 +413,42 @@ public:
         }
 
         if(unit.params.stop->load()) {
+            // Past the parse, Sema hands over each definition it instantiates
+            // and goes on with the rest: they are dropped, and the checks
+            // clang still runs at the end would judge an AST cut short.
+            if(unit.parse_ended) {
+                auto& sema = unit.instance->getSema();
+                sema.PendingInstantiations.clear();
+                sema.PendingLocalImplicitInstantiations.clear();
+                // A recursive instantiation set the outer queues aside; they
+                // come back once it ends.
+                for(auto& saved: sema.SavedPendingInstantiations) {
+                    saved.clear();
+                }
+                unit.instance->getDiagnostics().setSuppressAllDiagnostics(true);
+            }
             return false;
         }
 
         return clang::MultiplexConsumer::HandleTopLevelDecl(group) && !instantiation_found;
     }
 
-    /// Asked under CompilationParams::skip_bodies and instantiating, and by
-    /// every completion's parse, which skips each body but the one holding
-    /// the point.
+    void InitializeSema(clang::Sema& sema) final;
+
+    /// The parse reached the end of the focus file, before the
+    /// instantiations there (CompilationParams::Phases::parsed).
+    void end_parse(clang::ASTContext& context) {
+        collect_explicit_instantiations(context);
+        if(unit.collected_tokens) {
+            unit.collected_tokens->finish(unit.focus_file().lexical().tokens);
+        }
+        unit.parse_ended = true;
+        unit.params.phases.parsed(unit);
+    }
+
+    /// Asked under CompilationParams::instantiating, and by every
+    /// completion's parse, which skips each body but the one holding the
+    /// point.
     bool shouldSkipFunctionBody(clang::Decl* decl) final {
         if(unit.kind() == CompilationKind::Completion) {
             return clang::MultiplexConsumer::shouldSkipFunctionBody(decl);
@@ -476,18 +502,8 @@ public:
         clang::MultiplexConsumer::HandleTagDeclDefinition(decl);
     }
 
-    // Sema adds an explicit instantiation directive's decl to its declaration
-    // context and never hands it to the consumer, so the ones at file scope
-    // are picked up here (a namespace block brings its own along).
-    // noload_decls leaves a preamble's declarations on disk.
     void HandleTranslationUnit(clang::ASTContext& context) final {
-        if(unit.params.kind == CompilationKind::Content) {
-            for(auto* decl: context.getTranslationUnitDecl()->noload_decls()) {
-                if(llvm::isa<clang::ExplicitInstantiationDecl>(decl)) {
-                    collect_decl(decl);
-                }
-            }
-        }
+        collect_explicit_instantiations(context);
         // The PCH writer stores each import with the location where the
         // preprocessor made its module visible, and the reader skips the
         // imports without one; a C++20 import is made visible by Sema alone.
@@ -529,6 +545,22 @@ public:
     }
 
 private:
+    // Sema adds an explicit instantiation directive's decl to its declaration
+    // context and never hands it to the consumer, so the ones at file scope
+    // are picked up once the parse ends (a namespace block brings its own
+    // along). noload_decls leaves a preamble's declarations on disk.
+    void collect_explicit_instantiations(clang::ASTContext& context) {
+        if(unit.params.kind != CompilationKind::Content || explicit_collected) {
+            return;
+        }
+        explicit_collected = true;
+        for(auto* decl: context.getTranslationUnitDecl()->noload_decls()) {
+            if(llvm::isa<clang::ExplicitInstantiationDecl>(decl)) {
+                collect_decl(decl);
+            }
+        }
+    }
+
     /// Whether the body of `decl` the parse stands before holds the point
     /// or names one of instantiating_names (names), read raw from its `{` to the
     /// matching `}`. One starting otherwise, at a constructor's
@@ -612,7 +644,70 @@ private:
 
     /// A call past the point instantiated the template looked for.
     bool instantiation_found = false;
+
+    /// See collect_explicit_instantiations.
+    bool explicit_collected = false;
 };
+
+/// Where the parse of the focus file ends and clang's instantiations at its
+/// end begin (CompilationParams::Phases): Sema asks its external sources
+/// for the instantiations they hold pending right before it performs them.
+/// They run here instead, one with what it instantiates in turn at a time,
+/// for the AST between two of them is whole.
+class CompilationUnit::EndOfFile final : public clang::ExternalSemaSource {
+public:
+    EndOfFile(CompilationUnit& unit, ParseConsumer& consumer) : unit(unit), consumer(consumer) {}
+
+    void ReadPendingInstantiations(
+        llvm::SmallVectorImpl<std::pair<clang::ValueDecl*, clang::SourceLocation>>& pending) final {
+        auto& pp = unit.instance->getPreprocessor();
+        // A private module fragment ends the public one where the parse
+        // goes on; the lexer is gone only past the end of the file.
+        if(unit.parse_ended || pp.getCurrentLexer()) {
+            return;
+        }
+        auto& sema = unit.instance->getSema();
+        // What the reader holds pending comes first, as Sema would order it.
+        for(auto [decl, point]: pending) {
+            if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+                function->setInstantiationIsPending(true);
+            }
+        }
+        sema.PendingInstantiations.insert(sema.PendingInstantiations.begin(),
+                                          pending.begin(),
+                                          pending.end());
+        pending.clear();
+
+        consumer.end_parse(sema.getASTContext());
+
+        std::deque<clang::Sema::PendingImplicitInstantiation> rest;
+        while(!sema.PendingInstantiations.empty() && !unit.params.stop->load()) {
+            unit.params.phases.pause();
+            rest.swap(sema.PendingInstantiations);
+            sema.PendingInstantiations.push_back(rest.front());
+            rest.pop_front();
+            sema.PerformPendingInstantiations();
+            sema.PendingInstantiations.swap(rest);
+        }
+        if(unit.params.stop->load()) {
+            sema.PendingInstantiations.clear();
+            unit.instance->getDiagnostics().setSuppressAllDiagnostics(true);
+        }
+    }
+
+private:
+    CompilationUnit& unit;
+
+    ParseConsumer& consumer;
+};
+
+void CompilationUnit::ParseConsumer::InitializeSema(clang::Sema& sema) {
+    clang::MultiplexConsumer::InitializeSema(sema);
+    if(auto& phases = unit.params.phases; phases.parsed) {
+        assert(phases.pause && "a compile telling where its parse ends tells where it pauses");
+        sema.addExternalSource(llvm::makeIntrusiveRefCnt<EndOfFile>(unit, *this));
+    }
+}
 
 class CompilationUnit::ParseAction final : public clang::WrapperFrontendAction {
 public:
@@ -931,7 +1026,9 @@ CompilationStatus CompilationUnit::run() {
         output_ready = !instance->getDiagnostics().hasErrorOccurred();
     }
 
-    if(collected_tokens) {
+    if(parse_ended) {
+        params.phases.pause();
+    } else if(collected_tokens) {
         collected_tokens->finish(focus_file().lexical().tokens);
     }
 
@@ -967,9 +1064,9 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .output_file = built.output_file,
             .completion = std::move(built.completion),
             .tidy = built.tidy,
-            .skip_bodies = built.skip_bodies,
             .instantiating = built.instantiating,
             .stop = built.stop,
+            .phases = std::move(built.phases),
         };
         again.input.pch = {};
         unit.reset();
@@ -990,7 +1087,6 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .input = built.input,
             .output_file = built.output_file,
             .tidy = built.tidy,
-            .skip_bodies = built.skip_bodies,
             .instantiating = built.instantiating,
             .stop = built.stop,
         };
@@ -1005,8 +1101,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
 std::vector<std::string> collect_errors(CompilationUnit& unit) {
     std::vector<std::string> errors;
     for(auto& diag: unit.diagnostics()) {
-        if(diag.id.level >= DiagnosticLevel::Error &&
-           !(unit.skips_bodies() && ranges::contains(unused_declaration_warnings, diag.id.value))) {
+        if(diag.id.level >= DiagnosticLevel::Error) {
             errors.push_back(diag.message);
         }
     }

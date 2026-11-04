@@ -81,7 +81,7 @@ ZEST_CASE(QueryFailureWarns) {
 
 ZEST_CASE(RelocatedShownOnce) {
     /// Of the diagnostics moved to one #include, the first error and the
-    /// first warning show; the skipped ones follow the compile's own.
+    /// first warning show.
     auto moved = [](std::string message, DiagnosticLevel level) {
         auto diagnostic = error_at(4, std::move(message));
         diagnostic.level = level;
@@ -93,13 +93,11 @@ ZEST_CASE(RelocatedShownOnce) {
             .own = {moved("first error", DiagnosticLevel::Error),
                     moved("second error", DiagnosticLevel::Error),
                     moved("a warning", DiagnosticLevel::Warning)},
-            .skipped = {error_at(20, "from the full compile")},
     },
         {});
-    ZASSERT(diagnostics.size() == 3u);
+    ZASSERT(diagnostics.size() == 2u);
     ZEXPECT(diagnostics[0].message == "first error");
     ZEXPECT(diagnostics[1].message == "a warning");
-    ZEXPECT(diagnostics[2].message == "from the full compile");
 }
 
 ZEST_CASE(PreambleFirstOnce) {
@@ -112,32 +110,6 @@ ZEST_CASE(PreambleFirstOnce) {
     ZEXPECT(diagnostics[0].message == "preamble");
     ZEXPECT(diagnostics[1].message == "command line");
     ZEXPECT(diagnostics[2].message == "body");
-}
-
-ZEST_CASE(SkippedConfirmed) {
-    /// A compile skipping header bodies holds its unused-declaration
-    /// warnings back; the full compile's report confirms one it also
-    /// raised, and adds what the compile did not raise itself.
-    std::vector<feature::FileDiagnostic> raised{
-        error_at(3, "unused function 'f'", clang::diag::warn_unused_function),
-        error_at(9, "own error"),
-    };
-    auto unconfirmed = feature::take_unconfirmed(raised);
-    ZASSERT(unconfirmed.size() == 1u);
-    ZASSERT(raised.size() == 1u);
-
-    feature::CompileDiagnostics compiled{.own = raised, .unconfirmed = unconfirmed};
-    auto shown = feature::confirmed_skipped(
-        {
-            error_at(3, "unused function 'f'", clang::diag::warn_unused_function),
-            error_at(5, "unused function 'g'", clang::diag::warn_unused_function),
-            error_at(9, "own error"),
-            error_at(12, "in an instantiation"),
-        },
-        compiled);
-    ZASSERT(shown.size() == 2u);
-    ZEXPECT(shown[0].message == "unused function 'f'");
-    ZEXPECT(shown[1].message == "in an instantiation");
 }
 
 ZEST_CASE(FailedImportExplained) {

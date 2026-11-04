@@ -96,13 +96,6 @@ struct FileDiagnostic {
 /// The diagnostics a compile shows on its focus file.
 auto diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 
-/// Of the diagnostics of a compile parsing every body, those a compile
-/// skipping the bodies of the headers (CompilationParams::skip_bodies) can
-/// get wrong: what is raised outside the focus file's text or inside an
-/// instantiation, which it may miss, and the warnings about unused
-/// declarations, which it also raises for those only a skipped body uses.
-auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
-
 /// How many diagnostics name what an includer would have provided: an
 /// undeclared name, a missing member or template of a namespace, a call to
 /// an undeclared C function, a name read as a declaration without a type
@@ -137,16 +130,6 @@ struct CompileDiagnostics {
     /// parsing, why it failed.
     std::vector<FileDiagnostic> own;
 
-    /// The warnings of unused declarations the compile raised while it
-    /// skipped the function bodies of the headers (take_unconfirmed), held
-    /// back for the background index's compile to confirm.
-    std::vector<FileDiagnostic> unconfirmed;
-
-    /// What the background index's compile of the same text reported that
-    /// this one cannot report or has held back (confirmed_skipped), shown
-    /// after the compile's own.
-    std::vector<FileDiagnostic> skipped;
-
     /// The host whose includer context the compile needed but could not
     /// rebuild, as the user knows it; empty otherwise.
     std::string unmatched_host;
@@ -156,12 +139,11 @@ struct CompileDiagnostics {
     std::string query_failure;
 };
 
-/// The diagnostics a file shows of its compile: its own, then the skipped
-/// ones, less those `options` suppress and, of those moved to one place
-/// from elsewhere, all but the first error and the first warning; behind
-/// the warnings at its top saying what they may miss: a command clice
-/// guessed, an includer context it could not rebuild, a compiler it could
-/// not query.
+/// The diagnostics a file shows of its compile: its own, less those
+/// `options` suppress and, of those moved to one place from elsewhere, all
+/// but the first error and the first warning; behind the warnings at its
+/// top saying what they may miss: a command clice guessed, an includer
+/// context it could not rebuild, a compiler it could not query.
 auto shown_diagnostics(const CompileDiagnostics& diagnostics, const DiagnosticsOptions& options)
     -> std::vector<FileDiagnostic>;
 
@@ -169,22 +151,6 @@ auto shown_diagnostics(const CompileDiagnostics& diagnostics, const DiagnosticsO
 /// preamble, which the parse consuming the PCH never raises again — those
 /// of the command line it does, and they appear once.
 auto with_preamble(std::vector<FileDiagnostic> own, std::vector<FileDiagnostic> preamble)
-    -> std::vector<FileDiagnostic>;
-
-/// The warnings a compile skipping the function bodies of the headers
-/// cannot trust: those of unused declarations, which a use in a skipped
-/// body would silence; taken out of `diagnostics`.
-auto take_unconfirmed(std::vector<FileDiagnostic>& diagnostics) -> std::vector<FileDiagnostic>;
-
-/// Whether two diagnostics show the same: one message at one place.
-bool same_diagnostic(const FileDiagnostic& left, const FileDiagnostic& right);
-
-/// Of the diagnostics a full compile of the same text reported that a
-/// compile skipping the bodies of the headers can get wrong
-/// (skipped_diagnostics), those the file shows beside that compile's: an
-/// unused declaration's warning it held back, now confirmed, and the rest
-/// it did not raise itself.
-auto confirmed_skipped(llvm::ArrayRef<FileDiagnostic> skipped, const CompileDiagnostics& compiled)
     -> std::vector<FileDiagnostic>;
 
 /// Why an imported module did not build: from the imported module down,

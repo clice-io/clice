@@ -18,7 +18,7 @@ test("the pchs index template bodies", async (t) => {
     // indexes of the target's PCH and of main.cpp's preamble, inside
     // templates nothing instantiates, which keep the bodies they read.
     const s = await t.start({
-        config: { project: { enable_indexing: false, skip_header_bodies: false } },
+        config: { project: { enable_indexing: false } },
     });
     await s.diagnostics("src/main.cpp");
     await t.show("one", s.references(t.marker("use")));

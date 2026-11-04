@@ -342,28 +342,6 @@ auto diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic> {
     return result;
 }
 
-auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic> {
-    std::vector<FileDiagnostic> result;
-    auto focus = unit.focus_file();
-    Presenter presenter(unit);
-    for(const auto& main: unit.diagnostics()) {
-        bool skippable = !focus.contains(main.fid) ||
-                         ranges::any_of(main.notes,
-                                        [](const Diagnostic& note) {
-                                            return instantiation_note(note.id.value);
-                                        }) ||
-                         (main.id.source == DiagnosticSource::Clang &&
-                          ranges::contains(unused_declaration_warnings, main.id.value));
-        if(!skippable) {
-            continue;
-        }
-        if(auto diagnostic = presenter.present(main)) {
-            result.push_back(std::move(*diagnostic));
-        }
-    }
-    return result;
-}
-
 FileDiagnostic file_warning(std::string message) {
     return {.message = std::move(message)};
 }
@@ -384,7 +362,6 @@ auto shown_diagnostics(const CompileDiagnostics& compiled, const DiagnosticsOpti
     // would pile up on its #include.
     std::set<std::pair<std::uint32_t, bool>> relocated;
     auto diagnostics = compiled.own;
-    diagnostics.append_range(compiled.skipped);
     std::erase_if(diagnostics, [&](const FileDiagnostic& diagnostic) {
         return ranges::contains(options.suppress, diagnostic.code) ||
                (diagnostic.origin != DiagnosticOrigin::File &&
@@ -454,39 +431,6 @@ auto with_preamble(std::vector<FileDiagnostic> own, std::vector<FileDiagnostic> 
     });
     ranges::move(own, std::back_inserter(preamble));
     return preamble;
-}
-
-auto take_unconfirmed(std::vector<FileDiagnostic>& diagnostics) -> std::vector<FileDiagnostic> {
-    auto unused = [](const FileDiagnostic& diagnostic) {
-        return ranges::contains(unused_declaration_warnings, diagnostic.id);
-    };
-    std::vector<FileDiagnostic> unconfirmed;
-    ranges::copy_if(diagnostics, std::back_inserter(unconfirmed), unused);
-    std::erase_if(diagnostics, unused);
-    return unconfirmed;
-}
-
-bool same_diagnostic(const FileDiagnostic& left, const FileDiagnostic& right) {
-    return left.range.begin == right.range.begin && left.message == right.message;
-}
-
-auto confirmed_skipped(llvm::ArrayRef<FileDiagnostic> skipped, const CompileDiagnostics& compiled)
-    -> std::vector<FileDiagnostic> {
-    std::vector<FileDiagnostic> result;
-    for(const auto& diagnostic: skipped) {
-        auto same = [&](const FileDiagnostic& own) {
-            return same_diagnostic(own, diagnostic);
-        };
-        if(ranges::contains(unused_declaration_warnings, diagnostic.id)) {
-            if(auto own = ranges::find_if(compiled.unconfirmed, same);
-               own != compiled.unconfirmed.end()) {
-                result.push_back(*own);
-            }
-        } else if(ranges::none_of(compiled.own, same)) {
-            result.push_back(diagnostic);
-        }
-    }
-    return result;
 }
 
 void explain_failed_imports(std::vector<FileDiagnostic>& diagnostics,

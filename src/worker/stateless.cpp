@@ -179,7 +179,6 @@ static worker::PrecompiledBuildResult
                   .project_root = params.project_root,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .output_file = *output,
-        .skip_bodies = params.skip_bodies,
         .stop = stop,
     };
     if(!params.whole_file) {
@@ -491,10 +490,6 @@ static worker::CompileUnitResult
     }
     if(params.errors) {
         result.errors = located_errors(*unit);
-    }
-    if(params.skipped_diagnostics) {
-        result.skipped_diagnostics = feature::skipped_diagnostics(*unit);
-        result.text_hash = llvm::xxh3_64bits(unit->focus_file().content());
     }
 
     // AST teardown for a large TU is material work that belongs to this

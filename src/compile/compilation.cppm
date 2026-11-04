@@ -203,21 +203,16 @@ struct CompilationParams {
     /// the shape the kind picks (see CompilationKind).
     std::optional<tidy::TidyParams> tidy;
 
-    /// Skip the bodies of the functions in the files the focus file's
-    /// preamble enters (CompilationUnit::in_preamble), but those of
-    /// templates likely to forward their arguments: the editor's compiles.
-    /// Nothing in a skipped body is reported or instantiated, and so
-    /// neither is a declaration being unused, which such a body may use. A
-    /// completion skips every body but the one holding the point regardless.
-    bool skip_bodies = false;
-
     /// A compile looking only for how the focus file's templates are
-    /// instantiated: with `names`, it skips the focus file's function bodies
-    /// as well, but those of templates and of a class's members, the one
-    /// holding `point`, and those naming one of `names` or a template whose
-    /// body does. Once a call past the point instantiates the template
-    /// declared at `templated` it skips every body, and stops after the
-    /// declaration holding the call.
+    /// instantiated: it skips the bodies of the functions in the files the
+    /// focus file's preamble enters (CompilationUnit::in_preamble), but
+    /// those of templates likely to forward their arguments; with `names`,
+    /// it skips the focus file's function bodies as well, but those of
+    /// templates and of a class's members, the one holding `point`, and
+    /// those naming one of `names` or a template whose body does. Once a
+    /// call past the point instantiates the template declared at
+    /// `templated` it skips every body, and stops after the declaration
+    /// holding the call.
     struct Instantiating {
         std::uint32_t point = 0;
         std::optional<llvm::StringSet<>> names;
@@ -232,6 +227,25 @@ struct CompilationParams {
 
     /// Set to stop the compile, an old one a newer request replaces.
     std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
+
+    /// Content: past the end of the focus file clang instantiates the
+    /// templates the file uses, which can take longer than the parse. The
+    /// AST answers the file's requests without them; the compile tells its
+    /// caller, on the compile's thread, where they begin and where it may
+    /// read the AST while they run.
+    struct Phases {
+        /// The parse reached the end of the focus file: the AST and the
+        /// tokens are whole, but for the instantiations still to come.
+        /// Called once.
+        std::function<void(CompilationUnit&)> parsed;
+
+        /// Between two instantiations and before what runs after them,
+        /// where nothing is changing the AST: a caller may read it until
+        /// this returns.
+        std::function<void()> pause;
+    };
+
+    Phases phases;
 };
 
 /// Whether `word`, as `pp` has its macros, is a macro whose expansion
@@ -292,8 +306,10 @@ public:
         return params.kind;
     }
 
-    bool skips_bodies() {
-        return params.skip_bodies;
+    /// Content: the parse ended and the instantiations past it began
+    /// (CompilationParams::Phases).
+    bool parsed() {
+        return parse_ended;
     }
 
     bool completed() {
@@ -549,6 +565,7 @@ private:
     class DirectiveRecorder;
     class ParseConsumer;
     class ParseAction;
+    class EndOfFile;
 
     explicit CompilationUnit(CompilationParams params);
 
@@ -626,6 +643,9 @@ private:
     /// Preamble and PrecompiledHeader: how many errors clang had raised
     /// when the parse reached the end of the focus file.
     std::optional<unsigned> errors_at_end;
+
+    /// Content: the parse ended and CompilationParams::Phases::parsed ran.
+    bool parse_ended = false;
 
     /// When the compile started.
     chrono::milliseconds build_time;
@@ -737,29 +757,12 @@ private:
 /// How compile() builds a PCH: its inputs are checked by size alone when
 /// it is loaded, the templates its preamble uses are instantiated in it
 /// unless that raises an error, template bodies are deferred only when the
-/// command asks, function bodies are skipped under skip_bodies, and an
-/// expansion of its own ends it. Keys of cached PCHs include it, so a blob
-/// built under another rule is never reused.
-constexpr llvm::StringRef pch_build_rule(bool skip_bodies) {
-    return skip_bodies ? "size,instantiated,undeferred,ended,skipped"
-                       : "size,instantiated,undeferred,ended";
-}
-
-/// The warnings that a declaration is unused: a use in a body skip_bodies
-/// skipped goes unseen, so a compile under it raises them for the
-/// declarations only such a body uses too.
-constexpr inline std::array<unsigned, 6> unused_declaration_warnings = {
-    clang::diag::warn_unused_function,
-    clang::diag::warn_unused_member_function,
-    clang::diag::warn_unused_template,
-    clang::diag::warn_unneeded_internal_decl,
-    clang::diag::warn_unneeded_static_internal_decl,
-    clang::diag::warn_unneeded_member_function,
-};
+/// command asks, and an expansion of its own ends it. Keys of cached PCHs
+/// include it, so a blob built under another rule is never reused.
+constexpr inline llvm::StringRef pch_build_rule = "size,instantiated,undeferred,ended";
 
 /// The messages of a finished compilation's error-level diagnostics, in
-/// the order clang raised them, but for the unused declarations a compile
-/// skipping bodies raises, which -Werror may have made errors.
+/// the order clang raised them.
 std::vector<std::string> collect_errors(CompilationUnit& unit);
 
 }  // namespace clice

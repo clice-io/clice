@@ -156,6 +156,10 @@ struct CompileParams {
     /// See CompileUnitParams::index_output_path.
     std::string index_output_path;
 
+    /// Where the index goes once the instantiations past the parse ran, as
+    /// index_output_path the parse's (CompileResult::unfinished).
+    std::string finished_index_output_path;
+
     /// See CompileUnitParams::known_instantiations.
     std::vector<std::uint64_t> known_instantiations;
 
@@ -164,9 +168,6 @@ struct CompileParams {
 
     /// Run clang-tidy over the parse with this frozen configuration.
     std::optional<tidy::TidyParams> tidy;
-
-    /// See CompilationParams::skip_bodies.
-    bool skip_bodies = false;
 };
 
 /// Status of a stateful compile. Anything but `Done` is a non-result: the
@@ -208,6 +209,20 @@ struct CompileResult {
 
     /// See CompileUnitResult::index_in_file.
     bool index_in_file = false;
+
+    /// The reply of the parse alone: the AST answers requests while the
+    /// instantiations at the end of the file still run, and the reply to
+    /// FinishCompileParams brings their diagnostics and the index with them.
+    bool unfinished = false;
+};
+
+/// The rest of a compile its reply left unfinished (CompileResult::
+/// unfinished): answered once the instantiations past the parse ran, with
+/// every diagnostic of the compile; Cancelled when a newer compile of the
+/// document stopped them.
+struct FinishCompileParams {
+    std::string path;
+    int version;
 };
 
 /// Build a PCH (and its paired pch.idx index) from preamble content, or
@@ -241,9 +256,6 @@ struct BuildPCHParams {
     /// Every built module's PCM (module name -> PCM path), where the
     /// preamble's imports load theirs from.
     std::unordered_map<std::string, std::string> pcms;
-
-    /// See CompilationParams::skip_bodies.
-    bool skip_bodies = false;
 
     /// Tmp path allocated by the master's store; the master commits
     /// (fsync + atomic rename) after the worker reports success.
@@ -294,12 +306,10 @@ struct CompileUnitParams {
     /// clice; empty for none.
     std::string pch;
 
-    /// Products of the run: the index, the errors the compile reports, the
-    /// diagnostics an editor skipping header bodies misses, and a clang-tidy
-    /// pass under this frozen configuration.
+    /// Products of the run: the index, the errors the compile reports, and
+    /// a clang-tidy pass under this frozen configuration.
     bool index = false;
     bool errors = false;
-    bool skipped_diagnostics = false;
     std::optional<tidy::TidyParams> tidy;
 
     /// Variant identities the master stores for the files this TU is
@@ -466,14 +476,6 @@ struct CompileUnitResult {
 
     /// Findings of the tidy pass (plan product `tidy`).
     std::vector<TidyDiagnostic> tidy_diagnostics;
-
-    /// The diagnostics a compile skipping the function bodies of the
-    /// headers can get wrong (feature::skipped_diagnostics) (plan product
-    /// `skipped_diagnostics`).
-    std::vector<feature::FileDiagnostic> skipped_diagnostics;
-
-    /// The hash of the text skipped_diagnostics describe.
-    std::uint64_t text_hash = 0;
 };
 
 /// Preprocess a unit for its include tree: where its compile enters each
@@ -607,6 +609,12 @@ template <>
 struct RequestTraits<clice::worker::CompileParams> {
     using Result = clice::worker::CompileResult;
     constexpr inline static std::string_view method = "clice/worker/compile";
+};
+
+template <>
+struct RequestTraits<clice::worker::FinishCompileParams> {
+    using Result = clice::worker::CompileResult;
+    constexpr inline static std::string_view method = "clice/worker/finishCompile";
 };
 
 template <>

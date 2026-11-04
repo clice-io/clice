@@ -39,17 +39,14 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
     // deduplicate cascade storms — may take the shortcut.
     bool content_changed = reindexes.pending_reason(path_id) == ReindexReason::ContentChanged;
     bool served = !content_changed && serving && serving->compiled_by_session(path_id);
-    bool skipped = serving && project.settings.project.skip_header_bodies;
-    if(!served && (content_changed || (skipped && serving->lacks_skipped_diagnostics(path_id)) ||
-                   project.index.needs_reindex(path_id) ||
+    if(!served && (content_changed || project.index.needs_reindex(path_id) ||
                    project.index.indexed_command(path_id) != project.command_identity(path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
         auto result = co_await project.compile_unit(
             path_id,
-            {.index = true,
-             .errors = errors,
-             .skipped_diagnostics = skipped,
-             .outdated = [this, taken] { return reindexes.outdated(taken); }});
+            {.index = true, .errors = errors, .outdated = [this, taken] {
+                 return reindexes.outdated(taken);
+             }});
         if(!result) {
             // The graph shut down: nothing ran, so the reindex
             // stays booked for the final snapshot and the next session;
@@ -67,12 +64,6 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
         switch(result->status) {
             case Status::Completed: {
                 record(path_id, {.errors = std::move(result->errors)});
-                if(auto pending = reindexes.peek(path_id);
-                   skipped && pending && pending->seq == taken.seq) {
-                    serving->report_skipped_diagnostics(path_id,
-                                                        result->text_hash,
-                                                        std::move(result->skipped_diagnostics));
-                }
                 indexed_units += 1;
                 LOG_PERF("index",
                          "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",

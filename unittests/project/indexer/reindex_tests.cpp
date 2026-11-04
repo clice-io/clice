@@ -61,11 +61,10 @@ ZEST_CASE(consumed_pass_owns_reindex) {
     queue.record(Fid{1}, ReindexReason::ContentChanged);
     auto taken = take();
     ZASSERT(taken);
-    ZEXPECT(queue.in_flight(Fid{1}));
+    ZEXPECT(queue.queued() == 0u);
 
     queue.record(Fid{1}, ReindexReason::DepsOnly);
     ZEXPECT(queue.queued() == 1u);
-    ZEXPECT(!queue.in_flight(Fid{1}));
     ZEXPECT(queue.pending_reason(Fid{1}) == ReindexReason::DepsOnly);
 }
 

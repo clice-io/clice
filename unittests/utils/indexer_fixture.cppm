@@ -2,7 +2,6 @@ module clice:unittests.utils.indexer_fixture;
 
 import :command.table;
 import :compile.compilation;
-import :feature.diagnostics;
 import :index.database;
 import :index.indexer;
 import :index.project_index;
@@ -39,14 +38,6 @@ struct RecordingServing final : ServingSide {
 
     bool compiled_by_session(Fid file) const override {
         return served && served(file);
-    }
-
-    void report_skipped_diagnostics(Fid,
-                                    std::uint64_t,
-                                    std::vector<feature::FileDiagnostic>) override {}
-
-    bool lacks_skipped_diagnostics(Fid) const override {
-        return false;
     }
 
     void attempt_finished(Fid) override {}

@@ -309,7 +309,7 @@ const std::shared_ptr<index::TUIndex>& PCHEntry::load_index() {
     return index;
 }
 
-PCHRequest Project::declared_pch_request(const CommandRef& unit, bool skip_bodies) {
+PCHRequest Project::declared_pch_request(const CommandRef& unit) {
     // The key names the build but the file's content, which the build's
     // inputs cover, its own source among them.
     auto rendered = render(unit);
@@ -318,12 +318,11 @@ PCHRequest Project::declared_pch_request(const CommandRef& unit, bool skip_bodie
                    .directory = std::move(rendered.directory),
                    .arguments = std::move(rendered.arguments),
                    .hidden = std::move(rendered.hidden),
-                   .whole_file = true,
-                   .skip_bodies = skip_bodies},
+                   .whole_file = true},
     };
     auto& params = request.params;
     request.pch_key = cache_key({clang::getClangFullVersion(),
-                                 pch_build_rule(skip_bodies),
+                                 pch_build_rule,
                                  database_key.str(),
                                  params.directory,
                                  params.file,
@@ -427,9 +426,8 @@ PreamblePCH Project::preamble_pch(Fid path_id,
         base_blob = it->second.blob;
     }
     auto own_path = preamble_uses_macros(text, bound) ? llvm::StringRef(path) : llvm::StringRef();
-    bool skip_bodies = settings.project.skip_header_bodies;
     auto pch_key = cache_key({clang::getClangFullVersion(),
-                              pch_build_rule(skip_bodies),
+                              pch_build_rule,
                               database_key.str(),
                               resolution.directory,
                               path::parent(path),
@@ -451,7 +449,6 @@ PreamblePCH Project::preamble_pch(Fid path_id,
                         .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
                         .content = std::string(text),
                         .preamble_bound = bound,
-                        .skip_bodies = skip_bodies,
                     }, .base = base.str(),
                        },
         .partial = partial,
@@ -502,12 +499,9 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
     // The precompiled header the build declares for the command: the
     // preamble's PCH is built over it, and with none the parse loads it
     // itself. One that did not build leaves the header the command forces
-    // in to parse what it holds. The editor's build skips function bodies,
-    // but for a modular parse, which reads the index's, the one every PCM is
-    // built over.
+    // in to parse what it holds.
     if(auto unit = pch_writer(file, resolution)) {
-        auto request =
-            declared_pch_request(*unit, settings.project.skip_header_bodies && !imports.modular());
+        auto request = declared_pch_request(*unit);
         auto key = request.pch_key;
         switch(co_await wait(std::move(request))) {
             case Result::Success:

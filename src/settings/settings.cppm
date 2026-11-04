@@ -270,22 +270,6 @@ struct ProjectSettings {
                   "and space. Applies to the units indexed after a change.")
     bool standard_library_instantiations = false;
 
-    KANNOTATE(&skip_header_bodies,
-              description =
-                  "Skip the bodies of the functions in the headers an open "
-                  "file includes at its top, as clangd does, but those of "
-                  "templates forwarding their arguments (`make_unique`) and "
-                  "of `constexpr` and `auto` functions, which clang always "
-                  "parses. The file opens and rebuilds after an edit several "
-                  "times faster and holds less memory; the price is the "
-                  "errors and warnings inside those bodies, a header "
-                  "template's instantiated from the file among them, and "
-                  "whether a declaration is unused, which show only when "
-                  "the background index has compiled the file as it is "
-                  "saved. The background index and every command but "
-                  "`clice inspect` still compile the bodies.")
-    bool skip_header_bodies = true;
-
     KANNOTATE(&readonly,
               with = type<LowercaseNames>,
               description =

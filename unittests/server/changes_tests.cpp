@@ -37,18 +37,11 @@ index::Shard shard_of(llvm::StringRef content) {
     return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
 }
 
-/// The served project the changes are handed to. Its open documents'
-/// compiles parse the bodies of their headers and serve their index, so
-/// that a dependency change splits open files from closed ones
-/// (SkippedBodiesReindexOpen covers the default).
+/// The served project the changes are handed to.
 struct Harness {
     ServedProjectFixture fixture;
     ServedProject& served = *fixture.served;
     Project& project = served.project;
-
-    Harness() {
-        project.settings.project.skip_header_bodies = false;
-    }
 
     /// Whether a change invalidated the open document's compile: every
     /// invalidation moves its node's generation on.
@@ -224,27 +217,6 @@ ZEST_CASE(SaveMarksDependents) {
     ZASSERT(invalidated(open_tu));
     ZASSERT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_tu});
     ZASSERT(queued(ReindexReason::ContentChanged).empty());
-}
-
-ZEST_CASE(SkippedBodiesReindexOpen) {
-    auto header = fixture.intern("/proj/h.h");
-    auto open_tu = list_unit(project.cdb, "/proj/a.cpp");
-    fixture.open("/proj/a.cpp", "");
-    auto closed_tu = list_unit(project.cdb, "/proj/b.cpp");
-    project.dep_graph.set_includes(open_tu, 0, {{header}});
-    project.dep_graph.set_includes(closed_tu, 0, {{header}});
-    project.dep_graph.build_reverse_map();
-    project.settings.project.skip_header_bodies = true;
-
-    served.disk_changed({header});
-
-    // An open file's compile skipping the bodies of its headers serves no
-    // index of what they hold: the open dependent reindexes too.
-    ZASSERT(invalidated(open_tu));
-    llvm::SmallVector<Fid> reindexed{open_tu, closed_tu};
-    ranges::sort(reindexed);
-    ZASSERT(queued(ReindexReason::DepsOnly) == reindexed);
-    ZASSERT(!served.compiled_by_session(open_tu));
 }
 
 ZEST_CASE(TransitiveDependentsEnqueue) {

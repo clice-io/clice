@@ -29,6 +29,7 @@ import {
     ReleaseRequest,
     ResetContextRequest,
     RestartServerRequest,
+    SettleRequest,
     StatsRequest,
     SwitchConfigurationRequest,
     SwitchContextRequest,
@@ -1147,6 +1148,13 @@ export class CliceClient {
     /// left, or at the deadline with the work still pending.
     sync(params: SyncParams = {}): Promise<SyncResult> {
         return this.sendRequest(SyncRequest, params);
+    }
+
+    /// clice/internal/settle (test hook): answers once the open document's
+    /// compile of the text sent last ran to its end, the instantiations past
+    /// its parse included.
+    async settle(uri: string): Promise<void> {
+        await this.sendRequest(SettleRequest, { uri });
     }
 
     /// clice/internal/hold (test hook): park the next reply of a `kind`

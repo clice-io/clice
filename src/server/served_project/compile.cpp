@@ -80,6 +80,91 @@ static std::vector<feature::ModuleChoice> module_choices(const Imports& imports,
     return choices;
 }
 
+namespace {
+
+/// What clice knows of how a compile ran, added to what it raised: the
+/// preamble's diagnostics, the imports that failed or that several modules
+/// provide, a clang-tidy configuration that does not parse. Taken once per
+/// attempt: the reply of the instantiations past the parse gets the same.
+struct DiagnosticAdditions {
+    std::optional<std::vector<feature::FileDiagnostic>> preamble;
+
+    std::vector<feature::ModuleFailure> failed_imports;
+
+    std::vector<feature::FileDiagnostic> ambiguous_modules;
+
+    std::optional<feature::FileDiagnostic> tidy_config;
+
+    void apply(std::vector<feature::FileDiagnostic>& diagnostics) const {
+        if(preamble) {
+            diagnostics = feature::with_preamble(std::move(diagnostics), *preamble);
+        }
+        feature::explain_failed_imports(diagnostics, failed_imports);
+        diagnostics.append_range(ambiguous_modules);
+        if(tidy_config) {
+            diagnostics.insert(diagnostics.begin(), *tidy_config);
+        }
+    }
+};
+
+}  // namespace
+
+/// The index a compile reply carries, inline or in the transfer file; null
+/// when it carries none. Why it cannot be read joins the diagnostics.
+static std::shared_ptr<index::TUIndex>
+    read_index(const worker::CompileResult& reply,
+               const std::optional<CacheStore::PendingEntry>& transfer,
+               std::vector<feature::FileDiagnostic>& diagnostics) {
+    if(reply.index_in_file) {
+        auto& tmp_path = transfer->tmp_path;
+        // Copied, not mapped: the index outlives the transfer file.
+        auto file = fs::File::open(tmp_path);
+        auto read = file ? llvm::MemoryBuffer::getOpenFile(file->native_handle(),
+                                                           tmp_path,
+                                                           /*FileSize=*/-1,
+                                                           /*RequiresNullTerminator=*/false,
+                                                           /*IsVolatile=*/true)
+                         : file.error();
+        if(read) {
+            return std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(std::move(*read)));
+        }
+        diagnostics.push_back(
+            feature::index_unavailable(std::format("reading this file's index from {} failed: {}",
+                                                   tmp_path,
+                                                   read.getError().message())));
+        return nullptr;
+    }
+    if(!reply.tu_index_data.empty()) {
+        return std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
+            llvm::MemoryBuffer::getMemBufferCopy(as_chars(reply.tu_index_data))));
+    }
+    return nullptr;
+}
+
+/// The rest of a compile whose reply its parse made: what the reply of the
+/// instantiations past it needs (worker::CompileResult::unfinished).
+struct ServedProject::Unfinished {
+    std::shared_ptr<Session> session;
+
+    /// The compile the parse committed: its node's generation, the document
+    /// version and the session's generation.
+    std::uint64_t generation = 0;
+
+    int version = 0;
+
+    std::uint64_t session_generation = 0;
+
+    std::optional<CacheStore::PendingEntry> transfer;
+
+    DiagnosticAdditions additions;
+
+    /// clang-tidy runs past the parse too.
+    bool tidy = false;
+
+    /// The PCH pair the parse loaded.
+    std::optional<std::string> consumed;
+};
+
 void ServedProject::record_crash(const std::shared_ptr<Session>& session,
                                  feature::RequestKind kind,
                                  llvm::StringRef death,
@@ -251,50 +336,6 @@ void ServedProject::retry_after_save(Session& session) {
     if(retry) {
         invalidate(path_id);
     }
-}
-
-std::vector<feature::FileDiagnostic>
-    ServedProject::shown_skipped_diagnostics(const Session& session,
-                                             const CompileOutput& output) const {
-    auto it = skipped.find(session.path_id);
-    if(it == skipped.end() || it->second.text_hash != session.hash ||
-       output.diagnostics.source != CommandSource::Database || active_choice(session.path_id)) {
-        return {};
-    }
-    return feature::confirmed_skipped(it->second.diagnostics, output.diagnostics);
-}
-
-bool ServedProject::lacks_skipped_diagnostics(Fid path_id) const {
-    auto* document = find_document(path_id);
-    if(!document || document->serving != ServingMode::Escalated ||
-       project.entries(path_id).empty()) {
-        return false;
-    }
-    auto it = skipped.find(path_id);
-    return it == skipped.end() || it->second.text_hash != document->session->hash;
-}
-
-void ServedProject::report_skipped_diagnostics(Fid path_id,
-                                               std::uint64_t text_hash,
-                                               std::vector<feature::FileDiagnostic> diagnostics) {
-    skipped[path_id] = {.text_hash = text_hash, .diagnostics = std::move(diagnostics)};
-    // A compile owed shows them as it commits (CompileAttempt::commit).
-    if(!current(path_id)) {
-        return;
-    }
-    auto& session = *find_document(path_id)->session;
-    auto compiled = latest_at(path_id, session.version);
-    if(!compiled) {
-        return;
-    }
-    auto shown = shown_skipped_diagnostics(session, *compiled->output);
-    if(ranges::equal(compiled->output->diagnostics.skipped, shown, feature::same_diagnostic)) {
-        return;
-    }
-    update_latest(path_id, [&](DocumentCompile& compiled) {
-        compiled.output->diagnostics.skipped = std::move(shown);
-    });
-    push_output(session, false);
 }
 
 void ServedProject::each_input(Fid path_id, llvm::function_ref<void(const Inputs&)> visit) const {
@@ -602,6 +643,11 @@ struct ServedProject::CompileAttempt {
     /// Where a worker writes an index too large for its reply.
     std::optional<CacheStore::PendingEntry> transfer;
 
+    /// The same, for the reply of the instantiations past the parse.
+    std::optional<CacheStore::PendingEntry> finished_transfer;
+
+    DiagnosticAdditions additions;
+
     /// The pair the parse could not read was retracted, and sent once more.
     bool pch_resent = false;
 };
@@ -664,7 +710,20 @@ async::task<Result> ServedProject::CompileAttempt::run() {
                 continue;
             }
         }
-        co_return commit(reply);
+        auto result = commit(reply);
+        if(result == Result::Success && reply.unfinished) {
+            served.finish_later({
+                .session = session,
+                .generation = attempt.generation(),
+                .version = session->version,
+                .session_generation = ticket.generation,
+                .transfer = std::move(finished_transfer),
+                .additions = std::move(additions),
+                .tidy = tidy_dispatch.has_value(),
+                .consumed = built.loaded,
+            });
+        }
+        co_return result;
     }
     // Every arm of the two-send loop commits or returns; the check's
     // continue only fires on the first send, the PCH resend only once.
@@ -676,7 +735,6 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::command(bool f
     params.known_instantiations = known_instantiations;
     params.standard_library_instantiations =
         project.settings.project.standard_library_instantiations;
-    params.skip_bodies = project.settings.project.skip_header_bodies;
     params.path = file_path;
     params.version = session->version;
     params.text = session->text().str();
@@ -832,6 +890,8 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
     if(project.store) {
         transfer = project.store->begin_transfer();
         params.index_output_path = transfer->tmp_path;
+        finished_transfer = project.store->begin_transfer();
+        params.finished_index_output_path = finished_transfer->tmp_path;
     }
     auto& pool = served.server.pool;
     auto result = co_await deliver(
@@ -955,18 +1015,18 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
 }
 
 void ServedProject::CompileAttempt::assemble(std::vector<feature::FileDiagnostic>& diagnostics) {
+    additions = {};
     if(preamble_index && preamble_index->matches_preamble(params.text)) {
-        diagnostics =
-            feature::with_preamble(std::move(diagnostics), preamble_diagnostics(*preamble_index));
+        additions.preamble = preamble_diagnostics(*preamble_index);
     }
-    feature::explain_failed_imports(diagnostics,
-                                    module_failures(imports.imports.resolved(), project));
+    additions.failed_imports = module_failures(imports.imports.resolved(), project);
     for(auto& choice: module_choices(imports.imports, project)) {
-        diagnostics.push_back(feature::ambiguous_module(choice, session->text()));
+        additions.ambiguous_modules.push_back(feature::ambiguous_module(choice, session->text()));
     }
     if(tidy_config && !tidy_config->error.empty()) {
-        diagnostics.insert(diagnostics.begin(), feature::invalid_tidy_config(tidy_config->error));
+        additions.tidy_config = feature::invalid_tidy_config(tidy_config->error);
     }
+    additions.apply(diagnostics);
 }
 
 Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
@@ -997,33 +1057,9 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     // produced no index data (no AST, or an index it could not send) must
     // therefore drop the previous buffer's index rather than leave it posing
     // as current: an honest gap over yesterday's offsets.
-    if(reply.index_in_file) {
-        auto& tmp_path = transfer->tmp_path;
-        // Copied, not mapped: the index outlives the transfer file.
-        auto file = fs::File::open(tmp_path);
-        auto read = file ? llvm::MemoryBuffer::getOpenFile(file->native_handle(),
-                                                           tmp_path,
-                                                           /*FileSize=*/-1,
-                                                           /*RequiresNullTerminator=*/false,
-                                                           /*IsVolatile=*/true)
-                         : file.error();
-        if(read) {
-            next->index =
-                std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(std::move(*read)));
-        } else {
-            diagnostics.push_back(feature::index_unavailable(
-                std::format("reading this file's index from {} failed: {}",
-                            tmp_path,
-                            read.getError().message())));
-        }
-    } else if(!reply.tu_index_data.empty()) {
-        next->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
-            llvm::MemoryBuffer::getMemBufferCopy(as_chars(reply.tu_index_data))));
-    }
+    next->index = read_index(reply, transfer, diagnostics);
 
     LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());
-    auto unconfirmed = params.skip_bodies ? feature::take_unconfirmed(diagnostics)
-                                          : std::vector<feature::FileDiagnostic>();
     next->output = CompileOutput{
         .version = session->version,
         .text = session->source,
@@ -1031,14 +1067,12 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
             {
                           .source = resolution.ref.source,
                           .own = std::move(diagnostics),
-                          .unconfirmed = std::move(unconfirmed),
                           .unmatched_host = resolution.unmatched_host.valid()
                                       ? project.file_table.display(resolution.unmatched_host)
                                       : std::string(),
                           .query_failure = resolution.query_failure,
                           },
     };
-    next->output->diagnostics.skipped = served.shown_skipped_diagnostics(*session, *next->output);
 
     // The fresh ticket the send checked holds the document here: a move bumps
     // the generation, and nothing suspends since.
@@ -1061,7 +1095,8 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     auto& suspects = session->suspects;
     suspects.pch.clear();
     auto tidy_crash = std::exchange(suspects.tidy, std::nullopt);
-    if(tidy_dispatch) {
+    // clang-tidy runs past the parse: the rest of the compile tells.
+    if(tidy_dispatch && !reply.unfinished) {
         session->succeeded(Tidy, ticket.generation);
     } else if(tidy_crash) {
         served.record_crash(session, Tidy, worker::death_of(*tidy_crash), tidy_crash->message);
@@ -1079,6 +1114,102 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     }
     project.background_index.schedule();
     return still_current ? Result::Success : Result::Stale;
+}
+
+void ServedProject::finish_later(Unfinished unfinished) {
+    auto path_id = unfinished.session->path_id;
+    auto& done = finishing[path_id];
+    if(done) {
+        done->set();
+    }
+    done = std::make_shared<async::event>(false);
+    if(!started_compiles.spawn(finish_compile(std::move(unfinished)))) {
+        LOG_WARN("finish_later: task group stopped, dropping the rest of the compile");
+        done->set();
+        finishing.erase(path_id);
+    }
+}
+
+async::task<> ServedProject::finished(Fid path_id) {
+    if(auto it = finishing.find(path_id); it != finishing.end()) {
+        auto done = it->second;
+        co_await done->wait();
+    }
+}
+
+async::task<> ServedProject::finish_compile(Unfinished unfinished) {
+    auto& session = unfinished.session;
+    auto path_id = session->path_id;
+    auto done = finishing[path_id];
+    auto ended = llvm::make_scope_exit([&] {
+        done->set();
+        if(auto it = finishing.find(path_id); it != finishing.end() && it->second == done) {
+            finishing.erase(it);
+        }
+    });
+    auto file_path = std::string(project.file_table.resolve(path_id));
+    // The rest still belongs to the compile the document shows.
+    auto shown = [&] {
+        auto compiled = latest(path_id);
+        return owns(*session) && session->generation == unfinished.session_generation && compiled &&
+               compiled->generation == unfinished.generation && compiled->output &&
+               compiled->output->version == unfinished.version;
+    };
+    // An edit, a choice change or a stop interrupts it, as it does a parse.
+    auto interrupt = std::make_unique<async::cancellation_source>();
+    auto interrupt_token = interrupt->token();
+    auto* own_interrupt = interrupt.get();
+    compile_interrupts[path_id] = std::move(interrupt);
+    auto release_interrupt = llvm::make_scope_exit([&] {
+        auto it = compile_interrupts.find(path_id);
+        if(it != compile_interrupts.end() && it->second.get() == own_interrupt) {
+            compile_interrupts.erase(it);
+        }
+    });
+
+    bool retry_without_suspect = false;
+    worker::FinishCompileParams params{.path = file_path, .version = unfinished.version};
+    auto result = co_await deliver(
+        server.pool,
+        true,
+        [&]() -> RequestResult<worker::FinishCompileParams> {
+            if(!shown()) {
+                co_await async::fail(
+                    ipc::Error{worker::dispatch_errc::cancelled, "Compile outdated"});
+            }
+            co_return co_await server.pool.send_stateful(path_id.raw,
+                                                         params,
+                                                         {.token = interrupt_token});
+        },
+        [&](const ipc::Error& error) {
+            retry_without_suspect =
+                attribute_crash(session, unfinished.tidy, unfinished.consumed, error);
+        });
+    if(retry_without_suspect) {
+        if(owns(*session)) {
+            invalidate(path_id);
+            request_compile(session);
+        }
+        co_return;
+    }
+    if(!result.has_value() || result->status != worker::CompileStatus::Done || !shown()) {
+        co_return;
+    }
+
+    auto& diagnostics = result->diagnostics;
+    auto index = read_index(*result, unfinished.transfer, diagnostics);
+    unfinished.additions.apply(diagnostics);
+    update_latest(path_id, [&](DocumentCompile& compiled) {
+        compiled.index = std::move(index);
+        compiled.output->diagnostics.own = std::move(diagnostics);
+    });
+    if(unfinished.tidy) {
+        session->succeeded(feature::RequestKind::Tidy, unfinished.session_generation);
+    }
+    // The instantiations change what the compile raised, not what its AST
+    // answers.
+    push_output(*session, false);
+    project.background_index.schedule();
 }
 
 async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {

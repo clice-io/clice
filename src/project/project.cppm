@@ -69,19 +69,6 @@ struct ServingSide {
     /// closes.
     virtual bool compiled_by_session(Fid file) const = 0;
 
-    /// Under `skip_header_bodies`, every index run also brings back the
-    /// diagnostics an editor can get wrong on its file
-    /// (UnitRequest::skipped_diagnostics), handed here with the hash of the
-    /// text they describe — unless a reindex booked during the run says
-    /// they describe inputs that changed.
-    virtual void report_skipped_diagnostics(Fid file,
-                                            std::uint64_t text_hash,
-                                            std::vector<feature::FileDiagnostic> diagnostics) = 0;
-
-    /// Whether the serving side lacks those diagnostics for the file: its
-    /// run goes ahead even when its index is current.
-    virtual bool lacks_skipped_diagnostics(Fid file) const = 0;
-
     /// An index attempt of the file finished with no retry pending, before
     /// its waiters wake (contract 15): the serving side decides whether the
     /// finished state can ever serve an open session and escalates it
@@ -783,9 +770,8 @@ struct Project {
 
     /// The request for clice's own build of the precompiled header the command
     /// of `unit` writes (Project::pch_writer): the unit's whole file, under that
-    /// command. The editor's build skips function bodies, the index's keeps
-    /// them: they are two PCHs.
-    PCHRequest declared_pch_request(const CommandRef& unit, bool skip_bodies);
+    /// command.
+    PCHRequest declared_pch_request(const CommandRef& unit);
 
     /// The PCH of the preamble of `text`, the buffer of `file` compiled under
     /// `arguments` from `directory` as `resolution` resolved them, with

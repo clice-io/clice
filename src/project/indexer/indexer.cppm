@@ -170,12 +170,6 @@ public:
         return entries.count(id);
     }
 
-    /// Whether an attempt took the file's pending reindex and runs still,
-    /// with no newer recording queued after it.
-    bool in_flight(Fid id) const {
-        return entries.count(id) && !queued_files.contains(id);
-    }
-
     /// Forget a file's pending reindex (file removed from disk, or given
     /// up): nothing is left to reindex, and a lingering ContentChanged
     /// reason would suppress its deliberately still-serving shard forever.

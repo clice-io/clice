@@ -552,7 +552,7 @@ std::expected<std::unique_ptr<OpenedProject>, ProjectError> load_inspected(const
 }
 
 /// clice's build of the precompiled header the command reads, as the server
-/// builds it for the editor: under its writer's command the header set holds what the
+/// builds it: under its writer's command the header set holds what the
 /// compiler compiled, which the unit's own flags may not (a target reusing
 /// another target's PCH). Empty when it does not build, or when it reads
 /// `file` itself, whose text its guard would then skip.
@@ -575,7 +575,6 @@ std::string build_pch(Project& project,
                   .project_root = project_root.str(),
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
         .output_file = output,
-        .skip_bodies = project.settings.project.skip_header_bodies,
     });
     // The writer's own source is no dep of its unit, but the PCH holds it.
     auto& files = project.file_table;
@@ -621,7 +620,6 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
         auto unit = clice::compile({
             .kind = CompilationKind::Content,
             .input = std::move(alone),
-            .skip_bodies = project.settings.project.skip_header_bodies,
         });
         if(unit->completed()) {
             auto& files = project.file_table;
@@ -662,20 +660,15 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
 /// pass, deliberately without the preamble PCH the server uses: a shared
 /// snapshot pins that the PCH split does not change feature results, so any
 /// divergence between the two paths shows as a snapshot mismatch instead of
-/// hiding in the preamble. It skips the function bodies the server's
-/// preamble leaves out, and loads the precompiled header the build declares
-/// (build_pch). With `diagnostics.clang_tidy` the compile runs the file's
-/// clang-tidy configuration as the server's does.
+/// hiding in the preamble. The precompiled header the build declares it
+/// loads (build_pch). With `diagnostics.clang_tidy` the compile runs the
+/// file's clang-tidy configuration as the server's does.
 void run_feature(FileEntry& entry,
                  const FeatureSpec& spec,
                  const SourceFile& file,
                  const CompilationInput& input,
                  const Settings& settings) {
-    CompilationParams params{
-        .kind = CompilationKind::Content,
-        .input = input,
-        .skip_bodies = settings.project.skip_header_bodies,
-    };
+    CompilationParams params{.kind = CompilationKind::Content, .input = input};
     if(settings.diagnostics.clang_tidy) {
         auto resolution = tidy::resolve_tidy_params(file.path);
         if(!resolution.error.empty()) {

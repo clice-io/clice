@@ -66,10 +66,6 @@ async::task<UnitResult>
     // the build leaves the unit's index recorded under the old one, and the
     // unit owed.
     auto command = project.command_identity(path_id);
-    // The editor shows them for a file of its own database entry only
-    // (ServedProject::shown_skipped_diagnostics).
-    params.skipped_diagnostics =
-        request.skipped_diagnostics && resolved.ref.source == CommandSource::Database;
 
     // A unit waits on the PCMs of its imports: the PCMs handed to the worker
     // below would otherwise race a cold build and parse without the module
@@ -108,7 +104,7 @@ async::task<UnitResult>
     if(auto unit = project.pch_writer(path_id, resolved, extra);
        unit &&
        (scanned.modular() || project.rules.indexable(project.file_table.resolve(unit->file)))) {
-        auto request = project.declared_pch_request(*unit, /*skip_bodies=*/false);
+        auto request = project.declared_pch_request(*unit);
         auto key = request.pch_key;
         if(history().crashed_over_pch == key) {
             left_out_pch = key;
@@ -203,8 +199,6 @@ async::task<UnitResult>
         result.status = Status::Completed;
         result.tidy_diagnostics = std::move(value.tidy_diagnostics);
         result.errors = std::move(value.errors);
-        result.skipped_diagnostics = std::move(value.skipped_diagnostics);
-        result.text_hash = value.text_hash;
         result.perf = {.bytes = index_bytes.size(), .index_ms = run_ms, .merge_ms = 0};
         if(request.index) {
             // A newer content-level invalidation during this build (or a
