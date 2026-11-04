@@ -17,7 +17,7 @@
   // expected: "In main.cpp → utils.h → detail/impl.h: expected ';'"
   ```
 
-- [x] Diagnostics for template instantiation errors in preamble headers, once the background index has compiled the file ([clangd#137](https://github.com/clangd/clangd/issues/137))
+- [x] Diagnostics for template instantiation errors in preamble headers ([clangd#137](https://github.com/clangd/clangd/issues/137))
 
 ## Errors in Included Headers
 
@@ -39,16 +39,16 @@ tests/diagnostics/headers/01_errors_on_include
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Errors in headers' function bodies**
 
-An error inside a function body of a header shows once the background index has compiled the file as saved
+An error inside a function body of a header shows on the file that instantiates it, as the file is edited
 
-The editor's compile of a file skips the bodies of the functions in the headers it includes at its top, as clangd does: the file opens and rebuilds after an edit several times faster. The background index compiles those bodies, and what it finds in them, an inline function's errors, a template's for the arguments the file instantiates it with, or those of the file's own generic lambda such a template calls, shows on the file while the file holds the text it compiled: an edit takes them down until the file is saved and compiled again. `skip_header_bodies = false` in `[project]` parses the bodies in the editor too.
+The editor's compile parses the function bodies of the headers a file includes, and instantiates the templates the file uses: an inline function's errors, a template's for the arguments the file instantiates it with, or those of the file's own generic lambda such a template calls, show on the file as it is edited. The parse's own diagnostics come first: the file answers its requests while clang still instantiates, and what the instantiations raise follows.
 
 ```case
-tests/diagnostics/headers/09_skipped_bodies
+tests/diagnostics/headers/09_header_bodies
 ```
 
 <!-- END CAPABILITY -->
@@ -67,7 +67,7 @@ An error or a warning inside a template is reported on the code that instantiate
 
 An error inside a template shows where the code asks for the instantiation
 
-When a template fails for the arguments it is instantiated with, the error is reported on the code that requested the instantiation, not inside the template. Its notes lead through the chain of instantiations to the place in the template where it failed. A template in a header the file includes at its top is instantiated by the background index, not by the editor's compile, which skips the header's function bodies: its errors show once the index has compiled the file as saved.
+When a template fails for the arguments it is instantiated with, the error is reported on the code that requested the instantiation, not inside the template. Its notes lead through the chain of instantiations to the place in the template where it failed.
 
 ```case
 tests/diagnostics/templates/01_instantiation_errors
@@ -186,7 +186,7 @@ tests/diagnostics/suppression/01_by_code
   // should NOT warn "unused function" when checking header standalone
   ```
 
-- [x] No false `-Wunused-function` or `-Wunused-member-function` for a declaration used only inside a header's function body, which the editor skips: the background index reports the unused ones ([clangd#363](https://github.com/clangd/clangd/issues/363), [clangd#636](https://github.com/clangd/clangd/issues/636))
+- [x] No false `-Wunused-function` or `-Wunused-member-function` for a declaration used only inside a header's function body ([clangd#363](https://github.com/clangd/clangd/issues/363), [clangd#636](https://github.com/clangd/clangd/issues/636))
 - [ ] Propagate `-Wpadded` and similar layout warnings from headers ([clangd#1429](https://github.com/clangd/clangd/issues/1429))
 - [ ] Suppress false `-Wempty-translation-unit` from preamble optimization ([clangd#2358](https://github.com/clangd/clangd/issues/2358))
 - [ ] Thread safety analysis across header boundaries ([clangd#2386](https://github.com/clangd/clangd/issues/2386))
