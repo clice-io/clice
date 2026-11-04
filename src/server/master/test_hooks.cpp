@@ -27,6 +27,7 @@ async::task<> MasterServer::wait_idle(const ipc::JSONPeer& editor) {
                ranges::none_of(projects,
                                [](auto& project) {
                                    return !project->project.graph.compiling().empty() ||
+                                          !project->finishing_documents().empty() ||
                                           indexing(*project);
                                }) &&
                ranges::all_of(removed_projects, [](auto& weak) { return weak.expired(); });
@@ -86,6 +87,9 @@ std::vector<std::string> MasterServer::pending_work(const ipc::JSONPeer& editor)
                 case NodeKind::PCM: lines.push_back(std::format("pcm {}", file())); break;
                 case NodeKind::PCH: lines.push_back(std::format("pch #{}", id.key)); break;
             }
+        }
+        for(auto file: project->finishing_documents()) {
+            lines.push_back(std::format("compile {} past its parse", files.display(file)));
         }
         if(indexing(*project)) {
             auto& background = project->project.background_index;

@@ -18,5 +18,11 @@ items = []
 
 [completion.fragment.completion]
 items = [
-    { label = "clamp", kind = "Function" },
+    {
+        label = "clamp",
+        kind = "Function",
+        edits = [
+            { at = "⟦⟧import math;", text = '#include "limits.h"' },
+        ],
+    },
 ]

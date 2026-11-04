@@ -1,0 +1,128 @@
+["as edited".opened]
+diagnostics = [
+    {
+        at = "return ⟦area⟧(Square{2}) + unit();",
+        severity = "error",
+        message = "In template: no member named 'width' in 'Square'",
+        source = "clang",
+        code = "err_no_member",
+        related = [
+            { at = "shapes.h │ return shape.⟦width⟧ * shape.height;", message = "error occurred here" },
+            {
+                at = "return ⟦area⟧(Square{2}) + unit();",
+                message = "in instantiation of function template specialization 'area<Square>' requested here",
+            },
+        ],
+    },
+    {
+        at = "return apply([](auto value) { return value⟦.⟧size(); });",
+        severity = "error",
+        message = "member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+        related = [
+            {
+                at = "shapes.h │ return ⟦f⟧(1);",
+                message = "in instantiation of function template specialization 'count()::(lambda)::operator()<int>' requested here",
+            },
+            {
+                at = "return ⟦apply⟧([](auto value) { return value.size(); });",
+                message = "in instantiation of function template specialization 'apply<(lambda at ${WS}/main.cpp:12:18)>' requested here",
+            },
+        ],
+    },
+]
+
+["as edited".edited]
+diagnostics = [
+    {
+        at = "return ⟦area⟧(Square{3}) + unit();",
+        severity = "error",
+        message = "In template: no member named 'width' in 'Square'",
+        source = "clang",
+        code = "err_no_member",
+    },
+    {
+        at = "return apply([](auto value) { return value⟦.⟧size(); });",
+        severity = "error",
+        message = "member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+    },
+]
+
+["while instantiating".parsed]
+diagnostics = []
+
+["while instantiating".hover.hover]
+plaintext = '''
+function area
+
+template <typename T> int area(const T& shape)
+
+Template arguments:
+
+T = Square
+'''
+range = "return ⟦area⟧(Square{3}) + unit();"
+
+["while instantiating".instantiated]
+diagnostics = [
+    {
+        at = "return ⟦area⟧(Square{3}) + unit();",
+        severity = "error",
+        message = "In template: no member named 'width' in 'Square'",
+        source = "clang",
+        code = "err_no_member",
+    },
+    {
+        at = "return apply([](auto value) { return value⟦.⟧size(); });",
+        severity = "error",
+        message = "member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+    },
+]
+
+["a saved header"."saved header"]
+diagnostics = [
+    {
+        at = '#include ⟦"shapes.h"⟧',
+        severity = "error",
+        message = "In included file: use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+    {
+        at = "return ⟦area⟧(Square{2}) + unit();",
+        severity = "error",
+        message = "In template: no member named 'width' in 'Square'",
+        source = "clang",
+        code = "err_no_member",
+    },
+    {
+        at = "return apply([](auto value) { return value⟦.⟧size(); });",
+        severity = "error",
+        message = "member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+    },
+]
+
+["a saved header"."fixed header"]
+diagnostics = [
+    {
+        at = "return ⟦area⟧(Square{2}) + unit();",
+        severity = "error",
+        message = "In template: no member named 'width' in 'Square'",
+        source = "clang",
+        code = "err_no_member",
+    },
+    {
+        at = "return apply([](auto value) { return value⟦.⟧size(); });",
+        severity = "error",
+        message = "member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+    },
+]

@@ -1,0 +1,197 @@
+{
+  "id": "modules/units/08_indexed_by_its_build",
+  "topic": "modules",
+  "subtopic": "units",
+  "title": "A module unit compiled once",
+  "summary": "A module unit is compiled once, into the module file its importers read, and that compile indexes it too",
+  "prose": "The background index takes the index the build of the module file wrote for a compile of its own, and a file importing the module completes the names the module exports from it, as it does the names of its precompiled preamble.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "limits.h",
+      "text": "#pragma once\n\ninline int clamp(int value) {\n    return value > 100 ? 100 : value;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "import math;\n\nint total = math::add(1, 2) + math::twice(3);\n",
+      "markers": [
+        {
+          "name": "use",
+          "begin": 32,
+          "end": 32,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "math.cppm",
+      "text": "module;\n\n#include \"limits.h\"\n\nexport module math;\n\nexport namespace math {\n\nint add(int a, int b) {\n    return clamp(a + b);\n}\n\nint twice(int a) {\n    return add(a, a);\n}\n\n}  // namespace math\n\nint hidden() {\n    return 0;\n}\n",
+      "markers": [
+        {
+          "name": "add",
+          "begin": 80,
+          "end": 80,
+          "range": false
+        },
+        {
+          "name": "call",
+          "begin": 158,
+          "end": 158,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "one compile",
+      "blocks": [
+        {
+          "label": "references",
+          "value": {
+            "references": [
+              {
+                "$place": "main.cpp │ int total = math::⟦add⟧(1, 2) + math::twice(3);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 18
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 21
+                  }
+                }
+              },
+              {
+                "$place": "int ⟦add⟧(int a, int b) {",
+                "path": "math.cppm",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 7
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦add⟧(a, a);",
+                "path": "math.cppm",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 14
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "header",
+          "value": {
+            "references": [
+              {
+                "$place": "inline int ⟦clamp⟧(int value) {",
+                "path": "limits.h",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "math.cppm │ return ⟦clamp⟧(a + b);",
+                "path": "math.cppm",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 16
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "completion",
+      "blocks": [
+        {
+          "label": "qualified",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "twice(int a)",
+                  "kind": "Function",
+                  "detail": "int"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "unexported",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "fragment",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "clamp",
+                  "kind": "Function",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧import math;",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 0,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 0,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"limits.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

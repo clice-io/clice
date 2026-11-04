@@ -385,6 +385,11 @@ public:
     /// compile runs again, without the pass it crashed in.
     async::task<bool> finished(Fid path_id);
 
+    /// The documents whose compile runs past its parse (finish_later).
+    llvm::SmallVector<Fid> finishing_documents() const {
+        return llvm::to_vector(llvm::make_first_range(finishing));
+    }
+
     /// Whether the document's compile is current, with what it read looked
     /// at: an evicted document's answers must show a header changed while
     /// it was out, which polling or indexing off would not report.
