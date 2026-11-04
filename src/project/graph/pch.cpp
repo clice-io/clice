@@ -150,9 +150,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     // Build via a stateless worker: it writes the PCH, and a preamble's
     // pch.idx index, to the tmp paths allocated here; the store commits
     // (fsync + rename) both on success, primary first. A whole file's build
-    // that is its writing unit's compile sends the unit's index instead,
-    // taken with the command it compiles under: one changing during the
-    // build leaves the index recorded under the old one.
+    // that is its writing unit's compile sends the unit's index instead.
     auto blob = new_blob(pch_key);
     auto pending = project.store->begin_store("pch", blob);
     auto& bp = request.params;
@@ -160,14 +158,12 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     bp.output_path = pending.tmp_path;
     std::optional<CacheStore::PendingEntry> pending_idx;
     IndexTransfer transfer;
-    std::uint64_t command = 0;
     if(!bp.whole_file) {
         pending_idx = project.store->begin_store_aux("pch", blob);
         bp.index_output_path = pending_idx->tmp_path;
     } else if(request.writer) {
         bp.index = true;
-        transfer = project.request_index(*request.writer, bp);
-        command = project.command_identity(*request.writer);
+        transfer = project.request_index(request.writer->unit, bp);
     }
 
     // What the imported modules' PCMs and the PCH built over were built
@@ -214,7 +210,11 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         co_return built.error();
     }
     if(request.writer) {
-        project.merge_build_index(*request.writer, transfer, *built, before, command);
+        project.merge_build_index(request.writer->unit,
+                                  transfer,
+                                  *built,
+                                  before,
+                                  request.writer->command);
     }
 
     // Commit on the thread pool as one job: the fsyncs stay off the event
@@ -357,7 +357,7 @@ PCHRequest Project::declared_pch_request(const CommandRef& unit) {
     // A consumer's rules may edit the writing unit's command otherwise than
     // the unit's own do: that build is no compile of the unit.
     if(declared(select_command(unit.file).ref).pch_key == request.pch_key) {
-        request.writer = unit.file;
+        request.writer = PCHRequest::Writer{unit.file, command_identity(unit.file)};
     }
     return request;
 }

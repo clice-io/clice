@@ -816,7 +816,7 @@ public:
         if(names_pending) {
             names_pending = false;
             auto& sema = unit.sema();
-            auto names_loaded = load_names(sema, names, scope_candidate_limit);
+            auto names_loaded = load_names(sema, names);
             loaded = names_loaded.space;
             more_loaded = names_loaded.more;
             brought_in =

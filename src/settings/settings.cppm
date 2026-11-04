@@ -163,7 +163,10 @@ struct Rule {
                   "Whether matching translation units join the "
                   "background index. `false` keeps them out; they still "
                   "compile when opened and still host the headers they "
-                  "include. Any matching rule saying `false` wins.")
+                  "include. A module unit, or the unit writing a "
+                  "precompiled header, is indexed all the same by the build "
+                  "of its module or header, for the files reading it. Any "
+                  "matching rule saying `false` wins.")
     bool index = true;
 
     KANNOTATE(&lint,

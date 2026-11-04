@@ -1093,7 +1093,8 @@ struct Project {
     SavedListings::Blob listed();
 
     /// Bring the loaded index in line with the live build: a unit a rule
-    /// keeps out of the index leaves it, and so does one the build stopped
+    /// keeps out of the index leaves it, but for one a build compiles
+    /// (compiled_by_build), and so does one the build stopped
     /// compiling — every database that listed it is healthy and lists it no
     /// more, or the default command that covered it is gone — while one a
     /// database that failed to load listed keeps serving its last-known

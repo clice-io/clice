@@ -8,7 +8,6 @@ module;
 module clice:feature.code_completion.names;
 
 import :feature.code_completion;
-import :index.search;
 import :support.prelude;
 
 namespace clice::feature {
@@ -25,12 +24,12 @@ struct LoadedNames {
 /// Loads, of the files the compile loads, what Sema lists at the point
 /// while it reads no other names of namespaces (CompileCompletion::
 /// by_name): the candidates' names and, of the identifiers the typed name
-/// matches, the best `limit` that name something there — the declarations
+/// matches, the best scope_candidate_limit that name something there — the declarations
 /// unqualified lookup finds, or those of the namespace a qualifier names,
 /// and the macros. With nothing typed, a scope the index holds no more of
 /// than the candidates is read whole, and so is a namespace the index
 /// searched under another name, through an alias.
-LoadedNames load_names(clang::Sema& sema, const CompileCompletion& names, std::size_t limit);
+LoadedNames load_names(clang::Sema& sema, const CompileCompletion& names);
 
 /// Whether qualified lookup in `space` finds names the index files under
 /// other scopes: those a using-declaration or using-directive brings in,

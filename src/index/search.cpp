@@ -3,6 +3,7 @@ module clice;
 import :index.query;
 import :index.search;
 import :index.search_index;
+import :index.tu_index;
 import :support.logging;
 import :support.timer;
 

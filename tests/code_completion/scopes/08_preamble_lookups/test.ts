@@ -51,11 +51,10 @@ test("an include added before the compile", async (t) => {
 });
 
 // A namespace's using-declaration may bring in any name: past the names the
-// index offers, its list would be incomplete. With nothing typed, one the
-// index holds few names of is read whole, the names it brings in among
-// them, as one bringing in none is.
+// index offers, its list is incomplete, unlike one bringing in none.
 test("a namespace bringing in names", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start();
+    await s.indexed();
     await s.diagnostics("main.cpp");
     await t.show("brings in", s.completion(t.at("main.cpp", "return app::|helper")), {
         parts: ["insert"],

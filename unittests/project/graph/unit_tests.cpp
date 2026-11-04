@@ -1,7 +1,6 @@
 module clice;
 
 import :compile.compilation;
-import :index.project_index;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :project.graph.unit;
@@ -146,7 +145,7 @@ ZEST_CASE(OutdatedRerunsInFull) {
     ZEXPECT(f.project.index.shard(x2_id) != nullptr);
 }
 
-ZEST_CASE(ModulesIndexedByTheirBuilds) {
+ZEST_CASE(BuildsIndexModules) {
     // A unit providing a module is indexed by its PCM build, and its run
     // compiles nothing more: the interface and an implementation partition
     // build theirs, the implementation unit provides none and compiles, over
@@ -222,7 +221,7 @@ ZEST_CASE(ModulesIndexedByTheirBuilds) {
     }
 }
 
-ZEST_CASE(ExcludedModuleIndexedByItsBuild) {
+ZEST_CASE(ExcludedModuleStillIndexed) {
     // A module unit a rule keeps out of the index is still indexed by the
     // PCM build its importer waits on, as a header the rule covers is by
     // its includers, and that index survives the next load.
@@ -286,6 +285,56 @@ ZEST_CASE(ExcludedModuleIndexedByItsBuild) {
     setup(f);
     f.load();
     ZEXPECT(f.project.index.indexed(id(f, "vendor/m.cppm")));
+}
+
+ZEST_CASE(BrokenModuleCompilesItself) {
+    // A module interface whose PCM fails to build on its errors is indexed
+    // by its own compile, in spite of them.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int mv() { return undeclared; }\nint ok();\n");
+
+    IndexerFixture f;
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"), {}},
+    }));
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ZASSERT(store);
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    f.project.store.emplace(std::move(*store));
+
+    auto id = f.project.file_table.intern(Spelling::absolute(tmp.path("m.cppm")));
+    std::optional<UnitResult> result;
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(f.pool.start(opts));
+
+        UnitRequest request;
+        request.index = true;
+        result = co_await f.project.compile_unit(id, std::move(request));
+
+        co_await f.project.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(done);
+
+    ZASSERT(result.has_value());
+    ZEXPECT(result->status == UnitResult::Status::Completed);
+    ZEXPECT(result->perf.bytes != 0u);
+    ZEXPECT(f.project.built_pcm(id) == nullptr);
+    ZEXPECT(f.project.index.shard(id) != nullptr);
 }
 
 ZEST_CASE(FailedImportWaitsOnce) {
@@ -583,7 +632,7 @@ ZEST_CASE(CrashCountsOnPCH) {
     logging::reset_anomaly_for_testing();
 }
 
-ZEST_CASE(WriterIndexedByItsPCH) {
+ZEST_CASE(PCHBuildIndexesWriter) {
     // The build of a precompiled header a target declares is the compile of
     // the unit writing it: the header's declarations are indexed with that
     // unit by the build a unit loading the header waits on, and the

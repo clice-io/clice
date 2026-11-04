@@ -70,7 +70,7 @@ struct CodeCompletionOptions {
                   "namespaces is offered once per namespace. Names the "
                   "file reaches already are offered as they are; for the "
                   "others see `insert_includes` and `insert_imports`. "
-                  "Needs the index for names the file does not reach.")
+                  "The names of other namespaces come from the index.")
     bool all_scopes = true;
 
     KANNOTATE(&insert_includes,
@@ -108,8 +108,8 @@ struct CompletionClient {
     bool markdown = false;
 };
 
-/// A name completion may offer from the index, its preamble's or the
-/// project's: the completion looks it up to tell whether the file reaches
+/// A name completion may offer from the project's index: the completion
+/// looks it up to tell whether the file reaches
 /// it already, and offers one it does not reach with the qualifier, the
 /// include or the import that does (CodeCompletionOptions::all_scopes).
 struct ScopeCandidate {
@@ -314,8 +314,7 @@ using CompletionStart = std::variant<NoCompletion, protocol::CompletionList, Com
 /// `import ` opens module suggestions, the others for include paths and
 /// member or scope access, and any other use of them completes nothing. A
 /// directive name, an include path and a module name are completed here;
-/// other code by a compile, which offer_names gives the index's names once
-/// the PCH it loads is known.
+/// other code by a compile, which offer_names gives the index's names.
 auto start_completion(const CompletionInputs& inputs) -> CompletionStart;
 
 }  // namespace clice::feature

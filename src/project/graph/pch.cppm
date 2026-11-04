@@ -96,8 +96,14 @@ struct PCHRequest {
 
     /// The unit writing the precompiled header the build declares, when the
     /// build compiles it under the unit's own command: the build is the
-    /// unit's compile, and its index the unit's. None for a preamble's.
-    std::optional<Fid> writer;
+    /// unit's compile, and its index the unit's, recorded under the identity
+    /// of that command as the request rendered it. None for a preamble's.
+    struct Writer {
+        Fid unit;
+        std::uint64_t command = 0;
+    };
+
+    std::optional<Writer> writer;
 };
 
 /// The PCH of a document's preamble (Project::preamble_pch): the request

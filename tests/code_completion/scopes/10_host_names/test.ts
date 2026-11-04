@@ -1,8 +1,8 @@
 import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
-// The header compiles after what main.cpp declares and includes first: the
-// index of its PCH, built behind that text, names those too.
+// The header compiles after what main.cpp declares and includes first: its
+// PCH, built behind that text, names those too.
 test("names of the host", async (t) => {
     const s = await t.start({ config: { project: { enable_indexing: false } } });
     expect(await s.errors("main.cpp")).toEqual([]);

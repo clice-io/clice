@@ -8,7 +8,6 @@ module clice:index.search;
 import :index.query;
 import :index.symbol;
 import :index.symbol_query;
-import :index.tu_index;
 import :support.prelude;
 
 namespace clice::index {

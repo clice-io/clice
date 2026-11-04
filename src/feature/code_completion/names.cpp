@@ -4,6 +4,8 @@ import :feature.code_completion.names;
 import :feature.code_completion;
 import :index.search;
 import :support.fuzzy_matcher;
+import :support.logging;
+import :support.timer;
 
 namespace clice::feature {
 
@@ -111,11 +113,20 @@ std::vector<llvm::StringRef> matching_identifiers(clang::ASTContext& ast, llvm::
             continue;
         }
         // The matcher's cost would add up over every identifier of a large
-        // preamble: a name missing a typed character, in order, is none of
-        // its matches.
+        // preamble: a name is none of its matches when the typed characters
+        // are not in it in order, the first on what may begin a word — its
+        // start, past a separator, an uppercase letter.
         std::size_t next = 0;
-        for(char c: name) {
-            next += next < lower.size() && llvm::toLower(c) == lower[next];
+        for(std::size_t i = 0; i < name.size() && next < lower.size(); i += 1) {
+            char c = name[i];
+            if(llvm::toLower(c) != lower[next]) {
+                continue;
+            }
+            if(next == 0 && i != 0 && llvm::isAlnum(lower[0]) && llvm::isAlnum(name[i - 1]) &&
+               !llvm::isUpper(c)) {
+                continue;
+            }
+            next += 1;
         }
         if(next != lower.size()) {
             continue;
@@ -135,7 +146,7 @@ std::vector<llvm::StringRef> matching_identifiers(clang::ASTContext& ast, llvm::
 
 }  // namespace
 
-LoadedNames load_names(clang::Sema& sema, const CompileCompletion& names, std::size_t limit) {
+LoadedNames load_names(clang::Sema& sema, const CompileCompletion& names) {
     auto& ast = sema.getASTContext();
     auto& scope = names.scope;
     LoadedNames loaded;
@@ -163,11 +174,11 @@ LoadedNames load_names(clang::Sema& sema, const CompileCompletion& names, std::s
         }
     }
     // An identifier comes with the macro the loaded files define by its
-    // name. Whether it names something where it is looked up: a keyword
-    // names nothing, and a builtin's lookup would declare it.
+    // name. Whether it names something where it is looked up; a keyword
+    // names nothing.
     auto load = [&](llvm::StringRef name, bool macro) {
         auto* identifier = &ast.Idents.get(name);
-        if(identifier->getBuiltinID() != 0 || identifier->isKeyword(sema.getLangOpts())) {
+        if(identifier->isKeyword(sema.getLangOpts())) {
             return false;
         }
         clang::LookupResult found(sema, identifier, {}, clang::Sema::LookupOrdinaryName);
@@ -196,18 +207,30 @@ LoadedNames load_names(clang::Sema& sema, const CompileCompletion& names, std::s
         return loaded;
     }
     // Most identifiers name nothing here: members, parameters, names of
-    // other namespaces. They are looked up best first until `limit` name
-    // something, a bounded number of them.
+    // other namespaces. They are looked up best first until as many name
+    // something as a completion takes from the index, a bounded number of
+    // them.
+    ScopedTimer scan_timer;
+    auto matching = matching_identifiers(ast, *names.prefix);
+    auto scan_ms = scan_timer.ms_f();
+    ScopedTimer lookup_timer;
     std::size_t found = 0;
     std::size_t tried = 0;
-    for(auto name: matching_identifiers(ast, *names.prefix)) {
-        if(found == limit || tried == limit * 40) {
+    for(auto name: matching) {
+        if(found == scope_candidate_limit || tried == scope_candidate_limit * 40) {
             loaded.more = true;
             break;
         }
         tried += 1;
         found += load(name, false);
     }
+    LOG_PERF("completion",
+             "op=names matched={} tried={} found={} scan_ms={:.2f} lookup_ms={:.2f}",
+             matching.size(),
+             tried,
+             found,
+             scan_ms,
+             lookup_timer.ms_f());
     return loaded;
 }
 
