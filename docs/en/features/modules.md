@@ -101,7 +101,7 @@ tests/modules/units/03_global_fragment
 
 A module unit is compiled once, into the module file its importers read, and that compile indexes it too
 
-The background index takes the index the build of the module file wrote for a compile of its own, and a file importing the module completes the names the module exports from it, as it does the names of its precompiled preamble.
+The build of the module file merges the unit's index into the project's, which the background index then finds current, and a file importing the module completes the names the module exports from the module file its compile loads.
 
 ```case
 tests/modules/units/08_indexed_by_its_build
