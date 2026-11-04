@@ -7,9 +7,9 @@ test(async (t) => {
     const s = await t.start({
         config: { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } },
         crash: { request: "compile", file: "poison.cpp", pragma: true },
-        // One thread to compile on: the healthy compile queues behind the
-        // poisoned one and is in flight when the worker dies.
-        env: { UV_THREADPOOL_SIZE: "1" },
+        // Two threads, one compile at a time: the healthy compile queues
+        // behind the poisoned one and is in flight when the worker dies.
+        env: { UV_THREADPOOL_SIZE: "2" },
     });
     await t.show("healthy", s.diagnostics("healthy.cpp"));
     for (const round of [1, 2, 3]) {

@@ -17,6 +17,7 @@ import :feature.selection_ranges;
 import :feature.semantic_tokens;
 import :index.indexer;
 import :index.tu_index;
+import :support.environment;
 import :support.json;
 import :support.logging;
 import :support.process;
@@ -245,15 +246,13 @@ struct [[nodiscard]] CompileGuard {
     }
 };
 
-/// The threads of the worker's pool: its compiles and the requests reading
-/// their ASTs run there.
-constexpr int pool_threads = 4;
-
 /// The worker keeps the documents the master's pool sends it, until the
 /// pool evicts them (WorkerPool, worker::EvictParams).
 class StatefulWorker {
 public:
-    StatefulWorker(ipc::BincodePeer& peer, async::event_loop& loop) : peer(peer), loop(loop) {}
+    /// `threads` the pool has, two at least.
+    StatefulWorker(ipc::BincodePeer& peer, async::event_loop& loop, std::uint64_t threads) :
+        peer(peer), loop(loop), compile_slots(static_cast<std::ptrdiff_t>(threads - 1)) {}
 
     void register_handlers();
 
@@ -355,7 +354,7 @@ private:
     /// The compiles running at once: a thread of the pool fewer than it
     /// has, so a request reading the AST a compile paused for always finds
     /// a thread to run on.
-    async::semaphore compile_slots{pool_threads - 1};
+    async::semaphore compile_slots;
 };
 
 /// What a compile replies: the parse's AST, its diagnostics and its index,
@@ -717,12 +716,15 @@ void StatefulWorker::register_handlers() {
 }
 
 int run_stateful_worker_mode(const std::string& worker_name, const std::string& log_dir) {
-    // Must be set before any async::queue call.
-    auto threads = std::to_string(pool_threads);
+    // The compiles and the requests reading their ASTs share the pool, which
+    // needs a thread beside one compile at least (StatefulWorker::
+    // compile_slots). Must be set before any async::queue call.
+    auto threads = std::max<std::uint64_t>(env_integer("UV_THREADPOOL_SIZE").value_or(4), 2);
+    auto size = std::to_string(threads);
 #ifdef _WIN32
-    _putenv_s("UV_THREADPOOL_SIZE", threads.c_str());
+    _putenv_s("UV_THREADPOOL_SIZE", size.c_str());
 #else
-    ::setenv("UV_THREADPOOL_SIZE", threads.c_str(), 1);
+    ::setenv("UV_THREADPOOL_SIZE", size.c_str(), 1);
 #endif
 
     logging::stderr_logger(worker_name, logging::options);
@@ -747,7 +749,7 @@ int run_stateful_worker_mode(const std::string& worker_name, const std::string& 
     ipc::BincodePeer peer(loop, std::move(*transport_result));
     install_test_gates(peer, loop);
 
-    StatefulWorker worker(peer, loop);
+    StatefulWorker worker(peer, loop, threads);
     worker.register_handlers();
 
     LOG_INFO("Stateful worker ready, waiting for requests");

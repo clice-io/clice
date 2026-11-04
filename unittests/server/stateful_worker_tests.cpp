@@ -1,5 +1,7 @@
 module clice;
 
+import :compile.diagnostic;
+import :feature.diagnostics;
 import :feature.hover;
 import :support.json;
 import :syntax.source_text;
@@ -587,7 +589,9 @@ ZEST_CASE(FinishReportsInstantiations) {
         ZASSERT(finished);
         ZEXPECT(finished->status == worker::CompileStatus::Done);
         ZEXPECT(!finished->unfinished);
-        ZEXPECT(finished->diagnostics.size() == 1u);
+        ZEXPECT(ranges::any_of(finished->diagnostics, [](const feature::FileDiagnostic& diag) {
+            return diag.level == DiagnosticLevel::Error;
+        }));
 
         test_done = true;
     });

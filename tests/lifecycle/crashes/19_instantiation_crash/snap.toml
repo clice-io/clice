@@ -1,0 +1,12 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = '⟦⟧#include "shapes.h"',
+        severity = "warning",
+        message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.",
+        source = "clice",
+    },
+]
+
+[test.crashes]
+value = 2

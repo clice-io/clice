@@ -272,6 +272,104 @@
       ]
     },
     {
+      "name": "pushed",
+      "blocks": [
+        {
+          "label": "pushes",
+          "value": {
+            "pushes": [
+              [],
+              [
+                {
+                  "at": {
+                    "$place": "return ⟦area⟧(Square{3}) + unit();",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 7,
+                        "character": 11
+                      },
+                      "end": {
+                        "line": 7,
+                        "character": 15
+                      }
+                    }
+                  },
+                  "severity": "error",
+                  "message": "In template: no member named 'width' in 'Square'",
+                  "source": "clang",
+                  "code": "err_no_member"
+                },
+                {
+                  "at": {
+                    "$place": "return apply([](auto value) { return value⟦.⟧size(); });",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 11,
+                        "character": 46
+                      },
+                      "end": {
+                        "line": 11,
+                        "character": 47
+                      }
+                    }
+                  },
+                  "severity": "error",
+                  "message": "member reference base type 'int' is not a structure or union",
+                  "source": "clang",
+                  "code": "err_typecheck_member_reference_struct_union"
+                }
+              ],
+              [],
+              [
+                {
+                  "at": {
+                    "$place": "return ⟦area⟧(Square{3}) + unit();",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 7,
+                        "character": 11
+                      },
+                      "end": {
+                        "line": 7,
+                        "character": 15
+                      }
+                    }
+                  },
+                  "severity": "error",
+                  "message": "In template: no member named 'width' in 'Square'",
+                  "source": "clang",
+                  "code": "err_no_member"
+                },
+                {
+                  "at": {
+                    "$place": "return apply([](auto value) { return value⟦.⟧size(); });",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 11,
+                        "character": 46
+                      },
+                      "end": {
+                        "line": 11,
+                        "character": 47
+                      }
+                    }
+                  },
+                  "severity": "error",
+                  "message": "member reference base type 'int' is not a structure or union",
+                  "source": "clang",
+                  "code": "err_typecheck_member_reference_struct_union"
+                }
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "a saved header",
       "blocks": [
         {
