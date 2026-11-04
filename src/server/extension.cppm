@@ -368,16 +368,6 @@ struct ReleaseParams {
     std::uint64_t id = 0;
 };
 
-/// clice/internal/settle — TEST-ONLY, present while project.test_hooks is on.
-/// Answers once the open document's compile of the text sent last ran to its
-/// end, the instantiations past its parse included: a pull then reads every
-/// diagnostic of that text.
-struct SettleParams {
-    std::string uri;
-};
-
-struct SettleResult {};
-
 struct ReleaseResult {};
 
 /// Notification: the hold parked a reply, the gate a request's work, or the

@@ -590,7 +590,8 @@ public:
     void append_open_inputs(llvm::SmallVectorImpl<Fid>& files) const;
 
     /// Whether an open document's own compile serves the file's index
-    /// (ServingSide::compiled_by_session): an escalated document's does.
+    /// (ServingSide::compiled_by_session): an escalated document's does when
+    /// it loads no PCH.
     bool compiled_by_session(Fid path_id) const override;
 
     /// The project's context choices hold again or no longer do after the

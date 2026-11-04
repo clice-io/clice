@@ -571,6 +571,10 @@ struct ServedProject::CompileAttempt {
     /// attempt.
     async::task<std::optional<Result>> send(worker::CompileResult& reply, bool& resend);
 
+    /// Wait for the rest of the compile the reply left unfinished, and take
+    /// the whole compile's reply into `reply`.
+    async::task<std::optional<Result>> finish(worker::CompileResult& reply);
+
     /// What the reply raised, with what clice knows of how the parse ran:
     /// the preamble's diagnostics, the imports that failed or that several
     /// modules provide, a clang-tidy configuration that does not parse.
@@ -686,6 +690,13 @@ async::task<Result> ServedProject::CompileAttempt::run() {
         if(resend) {
             send -= 1;
             continue;
+        }
+        // The check reads every diagnostic of the compile: the one a type
+        // left incomplete raises at the end of a C file comes past the parse.
+        if(self_containment && reply.unfinished) {
+            if(auto stop = co_await finish(reply)) {
+                co_return *stop;
+            }
         }
 
         auto& diagnostics = reply.diagnostics;
@@ -1011,6 +1022,51 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
         LOG_INFO("Discarding invalidated self-containment check for {}", file_path);
         co_return Result::Stale;
     }
+    co_return std::nullopt;
+}
+
+async::task<std::optional<Result>>
+    ServedProject::CompileAttempt::finish(worker::CompileResult& reply) {
+    auto interrupt = std::make_unique<async::cancellation_source>();
+    auto interrupt_token = interrupt->token();
+    auto* own_interrupt = interrupt.get();
+    served.compile_interrupts[path_id] = std::move(interrupt);
+    auto release_interrupt = llvm::make_scope_exit([&] {
+        auto it = served.compile_interrupts.find(path_id);
+        if(it != served.compile_interrupts.end() && it->second.get() == own_interrupt) {
+            served.compile_interrupts.erase(it);
+        }
+    });
+    bool retry_without_suspect = false;
+    worker::FinishCompileParams rest{.path = params.path, .version = params.version};
+    auto& pool = served.server.pool;
+    auto result = co_await deliver(
+        pool,
+        true,
+        [&]() -> RequestResult<worker::FinishCompileParams> {
+            if(!ticket.fresh()) {
+                co_await async::fail(
+                    ipc::Error{worker::dispatch_errc::cancelled, "Compile outdated"});
+            }
+            co_return co_await pool.send_stateful(path_id.raw, rest, {.token = interrupt_token});
+        },
+        [&](const ipc::Error& error) {
+            retry_without_suspect =
+                served.attribute_crash(session, params.tidy.has_value(), built.loaded, error);
+        });
+    if(retry_without_suspect || !ticket.fresh()) {
+        co_return Result::Stale;
+    }
+    if(!result.has_value()) {
+        co_return Result::Failed;
+    }
+    // The worker stopped the rest: a compile of the document replaces this one.
+    if(result->status != worker::CompileStatus::Done) {
+        co_return Result::Stale;
+    }
+    reply = std::move(*result);
+    // The index came with the rest.
+    std::swap(transfer, finished_transfer);
     co_return std::nullopt;
 }
 

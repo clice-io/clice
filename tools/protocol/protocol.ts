@@ -386,17 +386,6 @@ export type ReleaseResult = Record<string, never>;
 export const ReleaseRequest = new RequestType<ReleaseParams, ReleaseResult, void>(
     "clice/internal/release",
 );
-
-export interface SettleParams {
-    uri: string;
-}
-
-export type SettleResult = Record<string, never>;
-
-export const SettleRequest = new RequestType<SettleParams, SettleResult, void>(
-    "clice/internal/settle",
-);
-
 export interface HeldParams {
     id: number;
 }

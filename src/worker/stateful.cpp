@@ -36,7 +36,7 @@ using RequestContext = ipc::BincodePeer::RequestContext;
 /// uses (CompilationParams::Phases), and the requests reading its AST
 /// meanwhile: a request holds the compile where it pauses, where nothing
 /// changes the AST, and lets it go on once it read it.
-struct CompileRun {
+struct CompileRun : std::enable_shared_from_this<CompileRun> {
     CompileRun(int version, async::event_loop& loop) :
         version(version), relay(loop.create_relay()) {}
 
@@ -48,6 +48,77 @@ struct CompileRun {
         /// The compile no longer reads the AST.
         Done,
     };
+
+    /// On the compile's thread: wait while a request reads the AST.
+    void pause() {
+        std::unique_lock lock(mutex);
+        if(!held) {
+            return;
+        }
+        state = State::Paused;
+        signal();
+        resumed.wait(lock, [&] { return state == State::Running; });
+    }
+
+    /// On the compile's thread, as the instantiations begin: `begin` runs
+    /// paused, where a request may read the AST, and the compile goes on
+    /// once none does.
+    void begin_instantiations(llvm::function_ref<void()> begin) {
+        {
+            std::lock_guard lock(mutex);
+            state = State::Paused;
+            beginning = true;
+            signal();
+        }
+        begin();
+        std::unique_lock lock(mutex);
+        resumed.wait(lock, [&] { return !held; });
+        beginning = false;
+        state = State::Running;
+    }
+
+    /// On the compile's thread, its last touch of the AST.
+    void done() {
+        std::lock_guard lock(mutex);
+        state = State::Done;
+        signal();
+    }
+
+    /// Hold the compile where nothing changes the AST.
+    async::task<> hold() {
+        while(true) {
+            {
+                std::lock_guard lock(mutex);
+                held = true;
+                if(state != State::Running) {
+                    co_return;
+                }
+            }
+            co_await changed.wait();
+            changed.reset();
+        }
+    }
+
+    /// Let the compile go on.
+    void release() {
+        std::lock_guard lock(mutex);
+        held = false;
+        if(state == State::Paused) {
+            if(!beginning) {
+                state = State::Running;
+            }
+            resumed.notify_one();
+        }
+    }
+
+    /// From the compile's thread: the state left Running.
+    void signal() {
+        relay.send([self = weak_from_this()] {
+            if(auto run = self.lock()) {
+                run->changed.set();
+            }
+        });
+    }
 
     int version;
 
@@ -82,80 +153,6 @@ struct CompileRun {
 
     /// The AST, from the end of the parse on.
     CompilationUnit* unit = nullptr;
-
-    /// On the compile's thread: wait while a request reads the AST.
-    void pause(std::weak_ptr<CompileRun> self) {
-        std::unique_lock lock(mutex);
-        if(!held) {
-            return;
-        }
-        state = State::Paused;
-        relay.send([self] {
-            if(auto run = self.lock()) {
-                run->changed.set();
-            }
-        });
-        resumed.wait(lock, [&] { return state == State::Running; });
-    }
-
-    /// On the compile's thread, as the instantiations begin: `begin` runs
-    /// paused, where a request may read the AST, and the compile goes on
-    /// once none does.
-    void begin_instantiations(std::weak_ptr<CompileRun> self, llvm::function_ref<void()> begin) {
-        {
-            std::lock_guard lock(mutex);
-            state = State::Paused;
-            beginning = true;
-            relay.send([self] {
-                if(auto run = self.lock()) {
-                    run->changed.set();
-                }
-            });
-        }
-        begin();
-        std::unique_lock lock(mutex);
-        resumed.wait(lock, [&] { return !held; });
-        beginning = false;
-        state = State::Running;
-    }
-
-    /// On the compile's thread, its last touch of the AST.
-    void done(std::weak_ptr<CompileRun> self) {
-        std::lock_guard lock(mutex);
-        state = State::Done;
-        relay.send([self] {
-            if(auto run = self.lock()) {
-                run->changed.set();
-            }
-        });
-    }
-
-    /// Hold the compile where nothing changes the AST.
-    async::task<> hold() {
-        while(true) {
-            {
-                std::lock_guard lock(mutex);
-                held = true;
-                if(state != State::Running) {
-                    co_return;
-                }
-            }
-            co_await changed.wait();
-            changed.reset();
-        }
-    }
-
-    /// Let the compile go on.
-    void release() {
-        std::lock_guard lock(mutex);
-        held = false;
-        if(state == State::Paused) {
-            if(!beginning) {
-                state = State::Running;
-            }
-            resumed.notify_one();
-        }
-    }
 };
 
 struct DocumentEntry {
@@ -371,8 +368,7 @@ static worker::CompileResult result_of(CompilationUnit& unit,
     // failure it did not cause. An anonymous read error with PCMs
     // in play is ambiguous; suspecting the PCH costs at most one
     // retracted pair per attempt and self-corrects on the retry.
-    bool usable = unit.completed() || unit.parsed();
-    if((!usable || unit.fatal_error()) && !params.pch.first.empty()) {
+    if((!unit.completed() || unit.fatal_error()) && !params.pch.first.empty()) {
         auto points_at_pch = [&](const Diagnostic& diag) {
             llvm::StringRef message = diag.message;
             if(message.contains(params.pch.first)) {
@@ -389,7 +385,7 @@ static worker::CompileResult result_of(CompilationUnit& unit,
         });
     }
 
-    if(!usable || stopped) {
+    if(!unit.completed() || stopped) {
         result.status =
             unit.setup_fail() ? worker::CompileStatus::SetupFail : worker::CompileStatus::Cancelled;
         if(unit.setup_fail()) {
@@ -498,11 +494,11 @@ async::task<> StatefulWorker::run_compile(std::shared_ptr<DocumentEntry> doc,
                             });
                             // A test gate parks the instantiations
                             // here, while the AST answers.
-                            run->begin_instantiations(self, [&] {
+                            run->begin_instantiations([&] {
                                 finishing.emplace(worker::crash_tag(
                                     worker::FinishCompileParams{.path = params.path}));
                             });
-                        }, .pause = [&] { run->pause(self); },
+                        }, .pause = [&] { run->pause(); },
                           },
             };
             pch_mapping = use_precompiled(cp.input, params.pch, params.pcms);
@@ -521,7 +517,7 @@ async::task<> StatefulWorker::run_compile(std::shared_ptr<DocumentEntry> doc,
                      timer.ms(),
                      result.diagnostics.size(),
                      static_cast<int>(result.status));
-            run->done(self);
+            run->done();
             return result;
         },
         [stop = run->stop] { stop->store(true, std::memory_order_relaxed); });

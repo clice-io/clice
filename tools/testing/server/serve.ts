@@ -353,21 +353,16 @@ export class Serve extends Client {
 
     /// The diagnostics of `file` as it stands, opening it first if needed:
     /// a pull waits for the compile of the version sent last, and its answer
-    /// is what a push carries. The pull waits for the instantiations past
-    /// the parse too, unless `settled` is false: it then reads what the
-    /// parse alone raised while they still run.
-    diagnostics(file: string, options: { settled?: false } = {}): Promise<Diagnostic[]> {
+    /// is what a push carries.
+    diagnostics(file: string): Promise<Diagnostic[]> {
         const reply = this.steps.run(`diagnostics ${file}`, async () => {
             if (!this.documents.has(file)) {
                 this.open(file, { pull: false });
             }
             const version = this.document(file).version;
-            const pulled = await this.ask(`pull ${file} v${version}`, async (client) => {
-                if (options.settled !== false) {
-                    await client.settle(this.uri(file));
-                }
-                return client.pullDiagnostics(this.uri(file));
-            });
+            const pulled = await this.ask(`pull ${file} v${version}`, (client) =>
+                client.pullDiagnostics(this.uri(file)),
+            );
             return this.context().diagnostics(file, pulled);
         });
         return shown(reply, "diagnostics", (diagnostics, { parts }) =>

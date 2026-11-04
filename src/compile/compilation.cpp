@@ -443,6 +443,9 @@ public:
             unit.collected_tokens->finish(unit.focus_file().lexical().tokens);
         }
         unit.parse_ended = true;
+        // Whole but for the instantiations, the AST answers as a parse that
+        // completed; a stop past here still cancels the compile.
+        unit.status = CompilationStatus::Completed;
         unit.params.phases.parsed(unit);
     }
 

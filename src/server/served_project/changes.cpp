@@ -58,7 +58,9 @@ void push_moved(llvm::ArrayRef<Fid> files,
 
 bool ServedProject::compiled_by_session(Fid path_id) const {
     auto* document = find_document(path_id);
-    return document && document->serving == ServingMode::Escalated;
+    // A compile over a PCH indexes nothing of the headers the PCH holds.
+    return document && document->serving == ServingMode::Escalated && document->latest &&
+           !document->latest->loaded_pch();
 }
 
 void ServedProject::mark_stale(Fid path_id, bool& refresh) {
