@@ -50,6 +50,7 @@ ZEST_CASE(BuildPCMThenCompileWithImport) {
                             iface};
         params.module_name = "Hello";
         params.output_path = tmp.path("Hello.pcm");
+        params.index_output_path = tmp.path("Hello.pcm.idx");
 
         auto result = co_await sl.peer->send_request(params);
         ZASSERT(result);
@@ -138,6 +139,7 @@ ZEST_CASE(BuildPCMChainThenCompile) {
                                 mod_a};
             params.module_name = "A";
             params.output_path = tmp.path("A.pcm");
+            params.index_output_path = tmp.path("A.pcm.idx");
 
             auto result = co_await sl.peer->send_request(params);
             ZASSERT((result.has_value() && result.value().success));
@@ -157,6 +159,7 @@ ZEST_CASE(BuildPCMChainThenCompile) {
                                 mod_b};
             params.module_name = "B";
             params.output_path = tmp.path("B.pcm");
+            params.index_output_path = tmp.path("B.pcm.idx");
             params.pcms = {
                 {"A", pcm_a}
             };
@@ -241,6 +244,7 @@ ZEST_CASE(ModuleImplementationUnitWithWorker) {
                             iface};
         params.module_name = "Calc";
         params.output_path = tmp.path("Calc.pcm");
+        params.index_output_path = tmp.path("Calc.pcm.idx");
 
         auto result = co_await sl.peer->send_request(params);
         ZASSERT((result.has_value() && result.value().success));
@@ -311,6 +315,7 @@ ZEST_CASE(BuildPCMFirstError) {
                             iface};
         params.module_name = "Broken";
         params.output_path = tmp.path("Broken.pcm");
+        params.index_output_path = tmp.path("Broken.pcm.idx");
 
         auto result = co_await sl.peer->send_request(params);
         ZASSERT(result);

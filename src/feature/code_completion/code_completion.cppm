@@ -168,11 +168,12 @@ struct CompileCompletion {
     bool more_elsewhere = false;
 
     /// The candidates stand in for the namespaces' names the precompiled
-    /// preamble declares, and its macros: the compile reads no others of
-    /// them (clang's LoadExternal off), none after a member access. Not in
-    /// a directive, where reading the PCH's macros costs less than ranking
-    /// the index's, nor where the compile loads no PCH whose index is at
-    /// hand: the compile reads them all then.
+    /// preamble and the imported modules declare, and the preamble's macros:
+    /// the compile reads no others of them (clang's LoadExternal off), none
+    /// after a member access. Not in a directive, where reading the PCH's
+    /// macros costs less than ranking the index's, nor where the compile
+    /// loads no PCH or module, or one whose index is not at hand: the
+    /// compile reads them all then.
     bool from_index = false;
 
     /// The name typed so far, empty before its first character, whose
@@ -216,12 +217,12 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
 constexpr inline std::size_t scope_candidate_limit = 100;
 
 /// The names the index offers where `compile` completes (ScopeCandidate),
-/// with whether it holds more: the project's and those of `pchs`, the
-/// indexes of the PCHs the compile loads, which stand in for the rest of
-/// their names when there are any (from_index).
+/// with whether it holds more: the project's and those of `precompiled`,
+/// the indexes of the PCHs and the modules the compile loads, which stand
+/// in for the rest of their names when there are any (from_index).
 void offer_names(const index::IndexQuery& query,
                  const DependencyGraph& graph,
-                 llvm::ArrayRef<std::shared_ptr<index::TUIndex>> pchs,
+                 llvm::ArrayRef<std::shared_ptr<index::TUIndex>> precompiled,
                  CompileCompletion& compile);
 
 /// A completion's reply finished (Completion): an item naming what the

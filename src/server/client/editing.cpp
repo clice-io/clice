@@ -189,10 +189,12 @@ void LSPClient::register_editing() {
             co_return to_raw(*list);
         }
         auto& compile = std::get<feature::CompileCompletion>(start);
-        auto offer = [&](worker::CompletionParams& completion, llvm::StringRef pch_key) {
+        auto offer = [&](worker::CompletionParams& completion,
+                         llvm::StringRef pch_key,
+                         llvm::ArrayRef<Fid> modules) {
             feature::offer_names(query,
                                  project.project.dep_graph,
-                                 project.project.pch_indexes(pch_key),
+                                 project.project.precompiled_indexes(pch_key, modules),
                                  compile);
             completion.names = compile;
         };

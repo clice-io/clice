@@ -1,22 +1,14 @@
 module clice:project.graph.pch;
 
-import :index.tu_index;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :support.failure_record;
 import :support.prelude;
 import :syntax.header_context;
-import :vfs.file_system;
 import :vfs.ids;
 import :worker.protocol;
 
 namespace clice {
-
-/// Open a PCH's `.pch.idx` index (memory-mapped). Returns nullptr when
-/// the file is unreadable, structurally invalid, of a different format
-/// version, or any embedded shard blob fails verification — callers treat
-/// all of these as a PCH cache miss.
-std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path);
 
 /// A PCH the cache holds, in Project::pchs under its key (hex of
 /// xxh3_128bits over preamble text + directories + canonical flags), so
@@ -38,22 +30,9 @@ struct PCHEntry : Precompiled<FailureRecord> {
     /// load.
     std::string base_blob;
 
-    /// Path of the paired pch.idx index.
-    std::string index_path;
-
-    /// Lazily opened blob; shared so a consumer holding it across an await
-    /// survives concurrent entry replacement or eviction.
-    std::shared_ptr<index::TUIndex> index;
-
     /// The parses that died reading the key's pairs or found them unreadable
     /// (Project::pch_consume_failed); none since one read them.
     std::optional<FailureRecord> consumes;
-
-    /// Open the blob on first use (memory-mapped, no deserialization).
-    /// Returns nullptr when the blob is missing or unreadable — consumers
-    /// degrade (no overlay, no preamble links) and the next PCH attempt
-    /// treats the incomplete pair as a cache miss.
-    const std::shared_ptr<index::TUIndex>& load_index();
 };
 
 /// One acquisition of a preamble's PCH (a PCH and its pch.idx index,

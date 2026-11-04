@@ -2,6 +2,7 @@ module clice;
 
 import :compile.tidy;
 import :index.project_index;
+import :index.tu_index;
 import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
@@ -133,6 +134,63 @@ async::task<UnitResult>
     // their paths: one rebuilt while the parse runs is no input of it.
     auto imports = project.module_inputs(modules);
     merge_inputs(imports, {&precompiled});
+
+    RequestCost cost;
+    if(history().cost) {
+        cost = *history().cost;
+    } else if(auto manifest = project.index.manifest(path_id)) {
+        cost.peak = manifest->peak;
+    }
+
+    // Merges the unit's index into `result`; its run reached `peak`.
+    auto merge = [&](llvm::StringRef index_bytes, std::uint64_t peak, UnitResult result) {
+        // A newer content-level invalidation during this build (or a
+        // removal clearing the entry) means this result describes text
+        // that no longer exists. Drop the merge; the follow-up attempt
+        // redoes it.
+        if(request.outdated && request.outdated()) {
+            LOG_INFO("Discarding outdated index result for {}", file_path);
+            return UnitResult{.status = Status::Skipped};
+        }
+        ScopedTimer merge_timer;
+        auto report = project.index.merge(index_bytes, imports, command, peak);
+        if(!report) {
+            if(report.error() == index::MergeError::Outdated) {
+                history().send_in_full = true;
+                return UnitResult{.status = Status::Preempted,
+                                  .error = "a variant the result named by hash is not stored"};
+            }
+            // Rejected wholesale: the file's index is missing or stale,
+            // which is a failure, not a completed index.
+            return UnitResult{.status = Status::Failed,
+                              .error = "the TUIndex result failed verification"};
+        }
+        project.take_report(*report);
+        result.perf.merge_ms = merge_timer.ms();
+        return result;
+    };
+
+    // A module unit's PCM build indexes the unit as its compile does: that
+    // index stands for the compile's when the run wants nothing else of it.
+    // A unit whose PCM fails to build is left to the compile, which indexes
+    // it in spite of its errors.
+    if(request.index && !params.tidy && !params.skipped_diagnostics &&
+       !project.dep_graph.module_of(path_id).empty()) {
+        ScopedTimer timer;
+        if(co_await project.wait_modules(&attempt, {path_id}) == Result::Stale) {
+            co_return UnitResult{.status = Status::Preempted};
+        }
+        if(auto index = project.module_index(path_id)) {
+            auto bytes = index->bytes();
+            co_return merge(bytes,
+                            cost.peak,
+                            {
+                                .status = Status::Completed,
+                                .perf = {.bytes = bytes.size(), .index_ms = timer.ms()}
+            });
+        }
+    }
+
     if(request.index && !std::exchange(history().send_in_full, false)) {
         auto include_closure = project.dep_graph.include_closure(path_id);
         params.known_variants = project.index.known_variants(path_id, include_closure);
@@ -148,12 +206,6 @@ async::task<UnitResult>
         params.index_output_path = transfer->tmp_path;
     }
 
-    RequestCost cost;
-    if(history().cost) {
-        cost = *history().cost;
-    } else if(auto manifest = project.index.manifest(path_id)) {
-        cost.peak = manifest->peak;
-    }
     StatelessReport measured;
     ScopedTimer timer;
     auto reply = co_await project.pool->send_stateless(params,
@@ -206,36 +258,12 @@ async::task<UnitResult>
         result.skipped_diagnostics = std::move(value.skipped_diagnostics);
         result.text_hash = value.text_hash;
         result.perf = {.bytes = index_bytes.size(), .index_ms = run_ms, .merge_ms = 0};
-        if(request.index) {
-            // A newer content-level invalidation during this build (or a
-            // removal clearing the entry) means this result describes text
-            // that no longer exists. Drop the merge; the follow-up attempt
-            // redoes it.
-            if(request.outdated && request.outdated()) {
-                LOG_INFO("Discarding outdated index result for {}", file_path);
-                co_return UnitResult{.status = Status::Skipped};
-            }
-            ScopedTimer merge_timer;
-            // A run shorter than a sample interval measured nothing: the
-            // earlier peak stands.
-            auto report =
-                project.index.merge(index_bytes, imports, command, peak != 0 ? peak : cost.peak);
-            if(!report) {
-                if(report.error() == index::MergeError::Outdated) {
-                    history().send_in_full = true;
-                    co_return UnitResult{.status = Status::Preempted,
-                                         .error =
-                                             "a variant the result named by hash is not stored"};
-                }
-                // Rejected wholesale: the file's index is missing or stale,
-                // which is a failure, not a completed index.
-                co_return UnitResult{.status = Status::Failed,
-                                     .error = "the TUIndex result failed verification"};
-            }
-            project.take_report(*report);
-            result.perf.merge_ms = merge_timer.ms();
+        if(!request.index) {
+            co_return result;
         }
-        co_return result;
+        // A run shorter than a sample interval measured nothing: the
+        // earlier peak stands.
+        co_return merge(index_bytes, peak != 0 ? peak : cost.peak, std::move(result));
     }
 
     if(reply.has_value()) {

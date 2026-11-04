@@ -93,6 +93,20 @@ tests/modules/units/03_global_fragment
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**只编译一次的模块单元**
+
+模块单元只编译一次，编译成导入它的文件所读取的模块文件，这次编译也同时为它建立索引
+
+后台索引直接采用构建模块文件时写下的索引，不再单独编译一次；导入该模块的文件也从这份索引中补全模块导出的名字，就像补全其预编译 Preamble 中的名字一样。
+
+```case
+tests/modules/units/08_indexed_by_its_build
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 编辑
