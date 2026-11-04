@@ -1,5 +1,6 @@
 module clice;
 
+import :compile.diagnostic;
 import :feature.diagnostics;
 import :feature.hover;
 import :feature.inlay_hints;
@@ -1597,8 +1598,9 @@ ZEST_CASE(StaleDepsNoAdopt) {
 
 ZEST_CASE(EvictedDocumentRecompiles) {
     // The pool keeps one AST: compiling the second document evicts the
-    // first. The first stays current — none of its inputs changed — and its
-    // query compiles it again at the generation it had, and answers.
+    // first once its instantiations ended. The first stays current — none of
+    // its inputs changed — and its query compiles it again at the generation
+    // it had, and answers.
     TempDir tmp;
     tmp.touch("a.cpp", "");
     tmp.touch("b.cpp", "");
@@ -1620,6 +1622,8 @@ ZEST_CASE(EvictedDocumentRecompiles) {
         ZASSERT(co_await served.ensure_compiled(a));
         auto generation = fixture.generation(a->path_id);
         ZASSERT(co_await served.ensure_compiled(b));
+        co_await served.finished(a->path_id);
+        co_await served.finished(b->path_id);
         ZEXPECT(served.current(a->path_id));
         ZEXPECT(!served.resident(a->path_id));
 
@@ -1700,6 +1704,7 @@ ZEST_CASE(EvictedDocumentKeptAnswers) {
         ZASSERT(compiled_hints);
         ZASSERT(!compiled_hints.value().empty());
         ZASSERT(co_await served.ensure_compiled(b));
+        co_await served.finished(a->path_id);
         ZASSERT(!served.resident(a->path_id));
 
         auto kept_tokens = co_await tokens();
@@ -1772,6 +1777,7 @@ ZEST_CASE(QueryHoldsItsDocument) {
         ZASSERT(co_await served.ensure_compiled(b));
         probe.release(hold);
         co_await group.join();
+        co_await served.finished(b->path_id);
 
         ZEXPECT(hover.has_value());
         ZEXPECT(probe.builds[path][std::to_underlying(BuildKind::Compile)] == 1u);
@@ -1825,6 +1831,7 @@ ZEST_CASE(RecompileKeepsItsAST) {
         ZASSERT(co_await served.ensure_compiled(b));
         fixture.server.probe.release(gate);
         co_await group.join();
+        co_await served.finished(b->path_id);
 
         ZEXPECT(recompiled);
         ZEXPECT(served.resident(a->path_id));
@@ -1832,6 +1839,56 @@ ZEST_CASE(RecompileKeepsItsAST) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    fixture.loop.schedule(task);
+    fixture.loop.run();
+    ZEXPECT(done);
+}
+
+ZEST_CASE(FinishKeepsItsAST) {
+    // Another document's instantiations hold it in the one place the pool
+    // keeps: a compile's reply leaves its own AST resident for its
+    // instantiations, whose error then shows.
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+    tmp.touch("b.cpp", "");
+
+    ServedProjectFixture fixture(tmp.root);
+    auto& served = *fixture.served;
+    auto a = fixture.open(tmp.path("a.cpp"), "int alpha = 1;\n");
+    auto b =
+        fixture.open(tmp.path("b.cpp"),
+                     "template <typename T>\nint field(T t) { return t.x; }\nint v = field(1);\n");
+    auto& server = fixture.server;
+    server.pool.probe = &server.probe;
+    auto gate = server.probe.gate(worker::crash_tag(
+        worker::FinishCompileParams{.path = std::string(server.files.resolve(a->path_id))}));
+
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        opts.max_resident = 1;
+        ZASSERT(server.pool.start(opts));
+
+        ZASSERT(co_await served.ensure_compiled(a));
+        co_await parked(server.probe, gate);
+        ZASSERT(co_await served.ensure_compiled(b));
+        co_await served.finished(b->path_id);
+        auto compiled = served.latest(b->path_id);
+        ZASSERT((compiled && compiled->output.has_value()));
+        ZEXPECT(ranges::any_of(compiled->output->diagnostics.own, [](auto& diagnostic) {
+            return diagnostic.level == DiagnosticLevel::Error;
+        }));
+        server.probe.release(gate);
+        co_await served.finished(a->path_id);
+
+        co_await served.shutdown();
+        co_await server.pool.stop();
         done = true;
     };
     auto task = body();
@@ -1867,6 +1924,7 @@ ZEST_CASE(EvictedDocumentSeesHeader) {
         ZASSERT(co_await served.ensure_compiled(a));
         auto generation = fixture.generation(a->path_id);
         ZASSERT(co_await served.ensure_compiled(b));
+        co_await served.finished(a->path_id);
         ZASSERT(!served.resident(a->path_id));
         tmp.touch("late.h", "int late = 2, later = 3;\n");
 

@@ -26,6 +26,7 @@ import :syntax.dependency_graph;
 import :vfs.cache_store;
 import :vfs.file_table;
 import :vfs.path;
+import :worker.pool;
 import :worker.protocol;
 
 namespace clice {
@@ -164,6 +165,9 @@ struct ServedProject::Unfinished {
 
     /// The PCH pair the parse loaded.
     std::optional<std::string> consumed;
+
+    /// See CompileAttempt::hold.
+    std::unique_ptr<DocumentHold> hold;
 };
 
 void ServedProject::record_crash(const std::shared_ptr<Session>& session,
@@ -666,6 +670,11 @@ struct ServedProject::CompileAttempt {
     /// The same, for the reply of the instantiations past the parse.
     std::optional<CacheStore::PendingEntry> finished_transfer;
 
+    /// From the send on, until the instantiations past the parse end: the
+    /// Compile's own hold ends with its reply, and an eviction then would
+    /// drop the AST they finish.
+    std::unique_ptr<DocumentHold> hold;
+
     DiagnosticAdditions additions;
 
     /// The pair the parse could not read was retracted, and sent once more.
@@ -748,6 +757,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
                 .additions = std::move(additions),
                 .tidy = tidy_dispatch.has_value(),
                 .consumed = built.loaded,
+                .hold = std::move(hold),
             });
         }
         co_return result;
@@ -921,6 +931,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
         params.finished_index_output_path = finished_transfer->tmp_path;
     }
     auto& pool = served.server.pool;
+    hold = std::make_unique<DocumentHold>(pool, path_id.raw);
     auto result = co_await deliver(
         pool,
         true,
