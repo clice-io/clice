@@ -721,8 +721,10 @@ void StatefulWorker::register_handlers() {
 int run_stateful_worker_mode(const std::string& worker_name, const std::string& log_dir) {
     // The compiles and the requests reading their ASTs share the pool, which
     // needs a thread beside one compile at least (StatefulWorker::
-    // compile_slots). Must be set before any async::queue call.
-    auto threads = std::max<std::uint64_t>(env_integer("UV_THREADPOOL_SIZE").value_or(4), 2);
+    // compile_slots), and which libuv caps at 1024 threads. Must be set
+    // before any async::queue call.
+    auto threads =
+        std::clamp<std::uint64_t>(env_integer("UV_THREADPOOL_SIZE").value_or(4), 2, 1024);
     auto size = std::to_string(threads);
 #ifdef _WIN32
     _putenv_s("UV_THREADPOOL_SIZE", size.c_str());
