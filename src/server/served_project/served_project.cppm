@@ -381,8 +381,9 @@ public:
     async::task<bool> ensure_compiled(std::shared_ptr<Session> session, EnsureOptions options = {});
 
     /// Once the rest of the document's compile in flight, if any, ended:
-    /// the instantiations past its parse (finish_later).
-    async::task<> finished(Fid path_id);
+    /// the instantiations past its parse (finish_later). Returns whether the
+    /// compile runs again, without the pass it crashed in.
+    async::task<bool> finished(Fid path_id);
 
     /// Whether the document's compile is current, with what it read looked
     /// at: an evicted document's answers must show a header changed while
@@ -588,11 +589,6 @@ public:
 
     /// The files every open document's compile depends on (closure).
     void append_open_inputs(llvm::SmallVectorImpl<Fid>& files) const;
-
-    /// Whether an open document's own compile serves the file's index
-    /// (ServingSide::compiled_by_session): an escalated document's does when
-    /// it loads no PCH.
-    bool compiled_by_session(Fid path_id) const override;
 
     /// The project's context choices hold again or no longer do after the
     /// build or the include graph changed: an open document whose choice
@@ -820,6 +816,15 @@ private:
 
     struct Unfinished;
 
+    /// The rest of a document's compile in flight (finish_later).
+    struct Finishing {
+        /// Set as it ends.
+        async::event done{false};
+
+        /// It crashed in a pass the compile runs again without.
+        bool again = false;
+    };
+
     /// The instantiations past the parse a committed compile still runs:
     /// their diagnostics and the index with them replace the parse's, while
     /// the document still shows that compile.
@@ -1043,8 +1048,7 @@ private:
     /// and stop_compiles() fire to interrupt the worker's parse.
     llvm::DenseMap<Fid, std::unique_ptr<async::cancellation_source>> compile_interrupts;
 
-    /// Set as the rest of a document's compile ends (finish_later).
-    llvm::DenseMap<Fid, std::shared_ptr<async::event>> finishing;
+    llvm::DenseMap<Fid, std::shared_ptr<Finishing>> finishing;
 
     /// The include-tree runs in flight, by tree: a second asker waits for
     /// the first.

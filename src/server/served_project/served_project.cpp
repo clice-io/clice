@@ -293,15 +293,6 @@ void ServedProject::release(Fid path_id) {
     project.graph.invalidate(ast_node(path_id));
     project.import_scans.buffers.erase(path_id);
     documents.erase(path_id);
-    // The document's compile may have stood in for the file's background
-    // index (ServingSide::compiled_by_session); the disk's turn again, unless
-    // it was deleted meanwhile or its index run failed for good, which
-    // waits for a change.
-    auto& background = project.background_index;
-    if(!project.file_table.disk.seen_missing(path_id) && !background.failed(path_id) &&
-       background.enqueue(path_id, ReindexReason::DepsOnly)) {
-        background.schedule();
-    }
     // PCH entries are content-keyed and may be shared with other documents,
     // so nothing entry-level to clean up — but the loaded-index budget
     // shrinks with the open count, and this is the moment it does.

@@ -1174,32 +1174,35 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
 
 void ServedProject::finish_later(Unfinished unfinished) {
     auto path_id = unfinished.session->path_id;
-    auto& done = finishing[path_id];
-    if(done) {
-        done->set();
+    auto& current = finishing[path_id];
+    if(current) {
+        current->done.set();
     }
-    done = std::make_shared<async::event>(false);
+    current = std::make_shared<Finishing>();
     if(!started_compiles.spawn(finish_compile(std::move(unfinished)))) {
         LOG_WARN("finish_later: task group stopped, dropping the rest of the compile");
-        done->set();
+        current->done.set();
         finishing.erase(path_id);
     }
 }
 
-async::task<> ServedProject::finished(Fid path_id) {
-    if(auto it = finishing.find(path_id); it != finishing.end()) {
-        auto done = it->second;
-        co_await done->wait();
+async::task<bool> ServedProject::finished(Fid path_id) {
+    auto it = finishing.find(path_id);
+    if(it == finishing.end()) {
+        co_return false;
     }
+    auto current = it->second;
+    co_await current->done.wait();
+    co_return current->again;
 }
 
 async::task<> ServedProject::finish_compile(Unfinished unfinished) {
     auto& session = unfinished.session;
     auto path_id = session->path_id;
-    auto done = finishing[path_id];
+    auto current = finishing[path_id];
     auto ended = llvm::make_scope_exit([&] {
-        done->set();
-        if(auto it = finishing.find(path_id); it != finishing.end() && it->second == done) {
+        current->done.set();
+        if(auto it = finishing.find(path_id); it != finishing.end() && it->second == current) {
             finishing.erase(it);
         }
     });
@@ -1243,6 +1246,7 @@ async::task<> ServedProject::finish_compile(Unfinished unfinished) {
         });
     if(retry_without_suspect) {
         if(owns(*session)) {
+            current->again = true;
             invalidate(path_id);
             request_compile(session);
         }

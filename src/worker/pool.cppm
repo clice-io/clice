@@ -852,6 +852,14 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
     } timed{*this, id};
 
     auto gate = probe ? probe->sending(inflight.tag, peer) : std::nullopt;
+    if constexpr(compile) {
+        // The instantiations past the parse start under FinishCompileParams'
+        // tag before that request is sent: the compile carries its gate.
+        if(probe) {
+            probe->sending(worker::crash_tag(worker::FinishCompileParams{.path = params.path}),
+                           peer);
+        }
+    }
     auto result = co_await peer->send_request(params, opts);
     if(gate) {
         probe->answered(*gate);

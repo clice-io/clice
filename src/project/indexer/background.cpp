@@ -38,9 +38,8 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
     // dependencies), so only deps-only reindexes — where it exists to
     // deduplicate cascade storms — may take the shortcut.
     bool content_changed = reindexes.pending_reason(path_id) == ReindexReason::ContentChanged;
-    bool served = !content_changed && serving && serving->compiled_by_session(path_id);
-    if(!served && (content_changed || project.index.needs_reindex(path_id) ||
-                   project.index.indexed_command(path_id) != project.command_identity(path_id))) {
+    if(content_changed || project.index.needs_reindex(path_id) ||
+       project.index.indexed_command(path_id) != project.command_identity(path_id)) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
         auto result = co_await project.compile_unit(
             path_id,

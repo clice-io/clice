@@ -56,13 +56,6 @@ void push_moved(llvm::ArrayRef<Fid> files,
 
 }  // namespace
 
-bool ServedProject::compiled_by_session(Fid path_id) const {
-    auto* document = find_document(path_id);
-    // A compile over a PCH indexes nothing of the headers the PCH holds.
-    return document && document->serving == ServingMode::Escalated && document->latest &&
-           !document->latest->loaded_pch();
-}
-
 void ServedProject::mark_stale(Fid path_id, bool& refresh) {
     if(auto* document = find_document(path_id)) {
         inputs_changed(*document->session);
@@ -76,14 +69,11 @@ void ServedProject::reindex(Fid path_id, bool content) {
                                              : ReindexReason::DepsOnly);
 }
 
-/// An invalidated dependent recompiles when it is open, and reindexes
-/// unless its document's compile serves it.
+/// An invalidated dependent recompiles when it is open, and reindexes.
 void ServedProject::mark_dependent(Fid path_id, bool& refresh) {
     project.index.mark_outdated(path_id);
     mark_stale(path_id, refresh);
-    if(!compiled_by_session(path_id)) {
-        reindex(path_id, false);
-    }
+    reindex(path_id, false);
 }
 
 llvm::SmallVector<Fid> ServedProject::readers(Fid path_id) const {
@@ -132,9 +122,7 @@ void ServedProject::provider_appeared(llvm::StringRef module_name, bool& refresh
         } else if(id.kind == NodeKind::AST) {
             if(find_document(path_id)) {
                 mark_stale(path_id, refresh);
-                if(!compiled_by_session(path_id)) {
-                    reindex(path_id, true);
-                }
+                reindex(path_id, true);
             }
         } else {
             // A dirtied module unit: its importers are in this same list.

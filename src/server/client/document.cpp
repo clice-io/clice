@@ -509,9 +509,10 @@ void LSPClient::register_document_requests() {
                     auto taken = Ticket::take(session);
                     co_await owner->ensure_compiled(session, {.ast = false});
                     // A client that cannot be asked to pull again waits for
-                    // what the instantiations past the parse raise too.
-                    if(!diagnostic_refresh) {
-                        co_await owner->finished(path_id);
+                    // what the instantiations past the parse raise too, and
+                    // for the compile running again when they crashed.
+                    if(!diagnostic_refresh && co_await owner->finished(path_id)) {
+                        continue;
                     }
                     if(!taken.fresh()) {
                         continue;

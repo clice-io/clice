@@ -1,5 +1,4 @@
 [editor."main.cpp"]
-wrong = "the editor skips the function bodies of compare.h, so it cannot tell which functions are unused; with background indexing off nothing reports them"
 diagnostics = []
 
 [indexed."main.cpp"]

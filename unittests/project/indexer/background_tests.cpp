@@ -549,16 +549,15 @@ ZEST_CASE(IndexFirstSparesRunningPass) {
         f.background.enqueue(files.back(), ReindexReason::DepsOnly);
     }
 
-    // Asked for each dispatched deps-only reindex: the index_first arrives while the
-    // second file is taken.
+    // The index_first arrives as the first file finishes, the second taken
+    // meanwhile; a file its attempt leaves queued is not told of.
     std::vector<llvm::SmallVector<Fid>> passes(1);
     RecordingServing serving;
-    serving.served = [&](Fid id) {
-        if(passes.size() == 1 && passes.front().size() == 1) {
-            f.background.index_first(id);
+    serving.finished = [&](Fid id) {
+        if(passes.size() == 1 && passes.front().empty()) {
+            f.background.index_first(files[1]);
         }
         passes.back().push_back(id);
-        return false;
     };
     f.project.serving = &serving;
     auto conn = f.background.on_progress_changed.connect([&] {
@@ -570,7 +569,7 @@ ZEST_CASE(IndexFirstSparesRunningPass) {
     f.loop.run();
 
     ZEXPECT(passes.size() == 3u);
-    ZEXPECT(passes[0] == files);
+    ZEXPECT(passes[0] == (llvm::SmallVector<Fid>{files[0], files[2]}));
     ZEXPECT(passes[1] == llvm::SmallVector<Fid>{files[1]});
     ZEXPECT(f.background.idle());
 }

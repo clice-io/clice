@@ -62,13 +62,6 @@ struct ServingSide {
     /// How many documents are open: the loaded-index budget follows it.
     virtual std::size_t open_documents() const = 0;
 
-    /// Whether an open document's own compile serves the file: a pending
-    /// reindex other than a change of its own content then is cleared
-    /// without a background compile, which would compile the file a second
-    /// time. The serving side books the file again when the document
-    /// closes.
-    virtual bool compiled_by_session(Fid file) const = 0;
-
     /// An index attempt of the file finished with no retry pending, before
     /// its waiters wake (contract 15): the serving side decides whether the
     /// finished state can ever serve an open session and escalates it

@@ -100,11 +100,10 @@ for (const indexing of [false, true]) {
             await t.show(file, diagnostics);
             chained[file] = await diagnostics;
         }
-        // The index builds the target's PCH again: the editor's skips the
-        // function bodies, the index's keeps them.
+        // The editor and the index read one build of the target's PCH.
         const built = (await s.counts()).files;
         expect({ base: built[WRITER]?.pch, top: built["main.cpp"]?.pch }).toEqual({
-            base: indexing ? 2 : 1,
+            base: 1,
             top: 1,
         });
         const answered = await locations(t, s, true);

@@ -22,12 +22,11 @@ import :worker.pool;
 
 namespace clice::testing {
 
-/// The serving side of a test that plays the server: what its open
-/// documents' compiles serve, and the index changes it is told of.
+/// The serving side of a test that plays the server: the index attempts
+/// that finish and the index changes it is told of.
 struct RecordingServing final : ServingSide {
-    /// Whether an open document's compile serves the file; none does when
-    /// unset.
-    std::function<bool(Fid)> served;
+    /// Told of each index attempt that finished; none when unset.
+    std::function<void(Fid)> finished;
 
     /// The files of every index change reported, in order.
     llvm::SmallVector<Fid> changed;
@@ -36,11 +35,11 @@ struct RecordingServing final : ServingSide {
         return 0;
     }
 
-    bool compiled_by_session(Fid file) const override {
-        return served && served(file);
+    void attempt_finished(Fid file) override {
+        if(finished) {
+            finished(file);
+        }
     }
-
-    void attempt_finished(Fid) override {}
 
     void index_changed(llvm::ArrayRef<Fid> files) override {
         changed.append(files.begin(), files.end());
