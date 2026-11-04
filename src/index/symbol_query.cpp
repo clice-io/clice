@@ -393,6 +393,12 @@ bool segments_match(llvm::ArrayRef<SymbolQuery::Segment> segments,
     return next == segments.size();
 }
 
+bool chain_ends_with(llvm::ArrayRef<SymbolQuery::Segment> segments,
+                     llvm::ArrayRef<ScopeEntry> chain) {
+    return chain.size() >= segments.size() &&
+           segments_match(segments, chain.take_back(segments.size()), true);
+}
+
 bool in_scope(const SymbolQuery& query, llvm::ArrayRef<ScopeEntry> chain) {
     llvm::ArrayRef<SymbolQuery::Segment> scope = query.scope;
     if(query.absolute) {
@@ -401,6 +407,9 @@ bool in_scope(const SymbolQuery& query, llvm::ArrayRef<ScopeEntry> chain) {
                    segments_match(scope, chain.take_front(scope.size()), true);
         }
         return segments_match(scope, chain, true);
+    }
+    if(query.qualified_lookup) {
+        return chain_ends_with(scope, chain);
     }
     if(query.mode == SymbolQuery::Mode::Members && !scope.empty()) {
         return !chain.empty() && segments_match(scope.take_back(1), chain.take_back(1), true) &&

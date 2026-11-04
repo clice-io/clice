@@ -839,6 +839,62 @@ public:
         return tag->getDefinition();
     }
 
+    /// Sema's results, a function of the preamble's whose name the index
+    /// candidates leave out (from_index) with every overload the name finds
+    /// where it is completed: Sema lists those of them something before the
+    /// point read alone.
+    llvm::SmallVector<clang::CodeCompletionResult>
+        with_every_overload(clang::Sema& sema,
+                            llvm::ArrayRef<clang::CodeCompletionResult> results) {
+        llvm::SmallVector<clang::CodeCompletionResult> all(results);
+        if(!loaded || (names.scope.qualified() && !*loaded)) {
+            return all;
+        }
+        llvm::StringSet<> offered;
+        for(const auto& candidate: names.candidates) {
+            offered.insert(candidate.name);
+        }
+        llvm::DenseSet<const clang::Decl*> listed;
+        for(const auto& result: results) {
+            if(result.Kind == clang::CodeCompletionResult::RK_Declaration) {
+                listed.insert(result.Declaration->getUnderlyingDecl()->getCanonicalDecl());
+            }
+        }
+        llvm::StringSet<> looked_up;
+        for(const auto& result: results) {
+            const auto* decl = result.Declaration;
+            if(result.Kind != clang::CodeCompletionResult::RK_Declaration ||
+               !decl->isFromASTFile() ||
+               !llvm::isa<clang::FunctionDecl, clang::FunctionTemplateDecl>(
+                   decl->getUnderlyingDecl()) ||
+               !decl->getDeclContext()->getRedeclContext()->isFileContext() ||
+               !decl->getDeclName().isIdentifier() || offered.contains(decl->getName()) ||
+               !looked_up.insert(decl->getName()).second) {
+                continue;
+            }
+            clang::LookupResult found(sema,
+                                      decl->getDeclName(),
+                                      {},
+                                      clang::Sema::LookupOrdinaryName);
+            found.suppressDiagnostics();
+            if(*loaded) {
+                sema.LookupQualifiedName(found, *loaded);
+            } else {
+                sema.LookupName(found, sema.getCurScope());
+            }
+            for(auto* overload: found) {
+                auto* target = overload->getUnderlyingDecl();
+                if(listed.insert(target->getCanonicalDecl()).second) {
+                    all.emplace_back(target,
+                                     result.Priority,
+                                     result.Qualifier,
+                                     result.QualifierIsInformative);
+                }
+            }
+        }
+        return all;
+    }
+
     /// Sema's reply is replaced once the nested run `complete` offers
     /// candidates, even when the typed prefix then filters every one of
     /// them out; a nested run offering none keeps what an earlier callback
@@ -1696,7 +1752,7 @@ public:
             add(item);
         };
 
-        for(auto& candidate: ranges::subrange(candidates, candidates + candidate_count)) {
+        for(auto& candidate: with_every_overload(sema, {candidates, candidate_count})) {
             switch(candidate.Kind) {
                 case clang::CodeCompletionResult::RK_Keyword:
                     if(allowed_keyword(candidate.Keyword)) {

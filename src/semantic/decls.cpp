@@ -316,7 +316,8 @@ auto function_pattern(const clang::FunctionDecl& function) -> const clang::Funct
         return pattern;
     }
     if(const auto* described = function.getDescribedFunctionTemplate()) {
-        if(const auto* member = described->getInstantiatedFromMemberTemplate()) {
+        if(const auto* member = described->getInstantiatedFromMemberTemplate();
+           member && !described->isMemberSpecialization()) {
             return member->getTemplatedDecl();
         }
     }
@@ -334,10 +335,14 @@ auto named_parameters(const clang::FunctionDecl& function, unsigned index)
             }
         }
     };
-    add(function);
+    // clang renames an instantiation's parameters after the definition's
+    // when it instantiates the body, which another compile may not have
+    // done: the declarations it was instantiated from name them alone.
     if(const auto* pattern = function_pattern(function);
        pattern && pattern->getNumParams() == function.getNumParams()) {
         add(*pattern);
+    } else {
+        add(function);
     }
     return named;
 }

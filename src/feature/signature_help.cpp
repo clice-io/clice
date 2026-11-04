@@ -57,6 +57,52 @@ bool object_written(clang::Sema& sema, clang::SourceLocation open_paren) {
     return access && access->isOneOf(clang::tok::period, clang::tok::arrow);
 }
 
+/// Whether the argument list `open` opens is still open at the completion
+/// point. Once the parse stopped there, clang still offers a call whose
+/// arguments fail to parse, as in a member function body it parses after
+/// the class, which names a member the stopped parse never declared. A
+/// directive between them may leave out what the lexer reads: the call is
+/// taken as open.
+bool holds_point(clang::Sema& sema, clang::SourceLocation open) {
+    auto& sources = sema.getSourceManager();
+    auto [file, begin] = sources.getDecomposedLoc(sources.getFileLoc(open));
+    auto [point_file, point] =
+        sources.getDecomposedLoc(sema.getPreprocessor().getCodeCompletionLoc());
+    if(file != point_file || begin > point) {
+        return false;
+    }
+    auto text = sources.getBufferData(file);
+    clang::Lexer lexer(sources.getLocForStartOfFile(file),
+                       sema.getLangOpts(),
+                       text.begin(),
+                       text.begin() + begin,
+                       text.end());
+    clang::Token token;
+    lexer.LexFromRawLexer(token);
+    auto opening = token.getKind();
+    auto closing = opening == clang::tok::l_paren   ? clang::tok::r_paren
+                   : opening == clang::tok::l_brace ? clang::tok::r_brace
+                                                    : clang::tok::unknown;
+    if(closing == clang::tok::unknown) {
+        return true;
+    }
+    for(unsigned depth = 1; !lexer.LexFromRawLexer(token);) {
+        if(sources.getFileOffset(token.getLocation()) >= point ||
+           (token.is(clang::tok::hash) && token.isAtStartOfLine())) {
+            return true;
+        }
+        if(token.is(opening)) {
+            depth += 1;
+        } else if(token.is(closing)) {
+            depth -= 1;
+            if(depth == 0) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 /// Whether `method` differs from `better`, a method of the same class Sema
 /// ranked above it, only in its qualifiers: with the same parameters it is
 /// never the one a call picks, as the const overload on a non-const object.
@@ -90,6 +136,127 @@ const clang::FunctionDecl* shown(const clang::FunctionDecl* function) {
         return primary->getTemplatedDecl();
     }
     return function;
+}
+
+/// What Sema ranks a call's candidate by when `written` arguments precede
+/// the cursor: two candidates with the same key rank alike against every
+/// other. Nullopt for one ranked by more (an implicit constructor, which
+/// place_implicit orders; a function template's specialization once an
+/// argument is written, which partial ordering compares).
+std::optional<llvm::SmallVector<std::uintptr_t, 8>> ranking_key(const clang::FunctionDecl& function,
+                                                                std::uint32_t written) {
+    bool specialization = function.getPrimaryTemplate();
+    if(function.isImplicit() || (specialization && written > 0) ||
+       llvm::isa<clang::CXXDeductionGuideDecl>(function)) {
+        return std::nullopt;
+    }
+    llvm::SmallVector<std::uintptr_t, 8> key{specialization};
+    if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(&function)) {
+        if(method->isExplicitObjectMemberFunction()) {
+            return std::nullopt;
+        }
+        key.append({reinterpret_cast<std::uintptr_t>(method->getParent()->getCanonicalDecl()),
+                    method->isStatic(),
+                    method->getMethodQualifiers().getAsOpaqueValue(),
+                    method->getRefQualifier()});
+    }
+    if(specialization) {
+        // Partial ordering reads the template's parameters, a pack unexpanded.
+        auto params = function.getPrimaryTemplate()->getTemplatedDecl()->parameters();
+        key.append({params.size(), !params.empty() && params.back()->isParameterPack()});
+        return key;
+    }
+    for(std::uint32_t i = 0; i < written; i += 1) {
+        key.push_back(
+            i < function.getNumParams()
+                ? reinterpret_cast<std::uintptr_t>(
+                      function.getParamDecl(i)->getType().getCanonicalType().getAsOpaquePtr())
+                : 0);
+    }
+    return key;
+}
+
+/// Where a location stands in the translation unit: the line and column of
+/// each `#include` from the file the compile starts at down to its file,
+/// then its own.
+/// SourceManager::isBeforeInTranslationUnit orders the headers a preamble's
+/// PCH holds otherwise than a parse of them.
+using IncludedPosition = llvm::SmallVector<std::pair<unsigned, unsigned>, 8>;
+
+IncludedPosition included_position(const clang::SourceManager& sources,
+                                   clang::SourceLocation location) {
+    IncludedPosition position;
+    for(auto at = sources.getExpansionLoc(location); at.isValid();) {
+        auto presumed = sources.getPresumedLoc(at, /*UseLineDirectives=*/false);
+        if(presumed.isInvalid()) {
+            break;
+        }
+        position.emplace_back(presumed.getLine(), presumed.getColumn());
+        at = presumed.getIncludeLoc();
+    }
+    ranges::reverse(position);
+    return position;
+}
+
+/// Lists the candidates Sema ranks alike in the order they are declared:
+/// Sema leaves them in its lookup's order, which differs between
+/// declarations a preamble's PCH holds and the same ones parsed. Each set
+/// of alike candidates keeps the places Sema gave it. Constraints and the
+/// attributes Sema ranks by compare a candidate with only some others, so
+/// a call reaching any keeps Sema's order whole.
+void order_alike(clang::Sema& sema,
+                 std::uint32_t written,
+                 llvm::MutableArrayRef<clang::CodeCompleteConsumer::OverloadCandidate> candidates) {
+    auto ranked_apart = [](const clang::CodeCompleteConsumer::OverloadCandidate& candidate) {
+        const auto* function = candidate.getFunction();
+        if(!function) {
+            return false;
+        }
+        auto* primary = function->getPrimaryTemplate();
+        return function->getTrailingRequiresClause() ||
+               (primary && primary->hasAssociatedConstraints()) ||
+               function->hasAttr<clang::EnableIfAttr>() || function->isMultiVersion() ||
+               ranges::any_of(function->parameters(), [](const clang::ParmVarDecl* param) {
+                   return param->hasAttr<clang::PassObjectSizeAttr>();
+               });
+    };
+    if(sema.getLangOpts().CUDA || ranges::any_of(candidates, ranked_apart)) {
+        return;
+    }
+
+    std::vector<std::pair<llvm::SmallVector<std::uintptr_t, 8>, std::uint32_t>> keyed;
+    for(auto [index, candidate]: views::enumerate(candidates)) {
+        if(const auto* function = candidate.getFunction()) {
+            if(auto key = ranking_key(*function, written)) {
+                keyed.emplace_back(std::move(*key), static_cast<std::uint32_t>(index));
+            }
+        }
+    }
+    ranges::stable_sort(keyed, {}, [](const auto& entry) -> const auto& { return entry.first; });
+
+    auto& sources = sema.getSourceManager();
+    std::vector<std::pair<IncludedPosition, clang::CodeCompleteConsumer::OverloadCandidate>> alike;
+    for(auto begin = keyed.begin(); begin != keyed.end();) {
+        auto end = ranges::find_if(begin, keyed.end(), [&](const auto& entry) {
+            return entry.first != begin->first;
+        });
+        if(end - begin > 1) {
+            alike.clear();
+            for(auto& entry: ranges::subrange(begin, end)) {
+                auto& candidate = candidates[entry.second];
+                alike.emplace_back(
+                    included_position(sources, candidate.getFunction()->getLocation()),
+                    candidate);
+            }
+            ranges::stable_sort(alike, {}, [](const auto& entry) -> const auto& {
+                return entry.first;
+            });
+            for(auto [entry, candidate]: views::zip(ranges::subrange(begin, end), alike)) {
+                candidates[entry.second] = candidate.second;
+            }
+        }
+        begin = end;
+    }
 }
 
 /// Puts a class's implicit constructors, which Sema ranks alike with the
@@ -227,11 +394,16 @@ public:
             return;
         }
 
+        if(!holds_point(sema, open_paren)) {
+            return;
+        }
+
         help.signatures.reserve(candidate_count);
         start(sema.getASTContext());
         call_scope = sema.CurContext;
 
         bool ranked = object_written(sema, open_paren);
+        order_alike(sema, current_arg, {candidates, candidate_count});
         if(current_arg == 0) {
             place_implicit({candidates, candidate_count});
         }
@@ -873,7 +1045,9 @@ auto signature_help(CompilationParams params,
     complete_options.IncludeGlobals = false;
     complete_options.IncludeNamespaceLevelDecls = false;
     complete_options.IncludeBriefComments = false;
-    complete_options.LoadExternal = true;
+    // The names clang lists at an argument go unused: only the call's
+    // overloads are read.
+    complete_options.LoadExternal = false;
     complete_options.IncludeFixIts = false;
 
     auto offset = params.completion.offset;

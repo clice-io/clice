@@ -222,6 +222,9 @@ std::unique_ptr<clang::CompilerInvocation>
             // The parse stops at the cursor, so a body the command defers
             // would never be parsed and nothing in it would complete.
             lang_opts.DelayedTemplateParsing = false;
+            // Typo correction of an undeclared name before the cursor reads
+            // every identifier of the PCH, for a fix nothing shows.
+            lang_opts.SpellChecking = false;
             break;
         }
     }
@@ -509,6 +512,18 @@ public:
             if(function->isLateTemplateParsed()) {
                 late->D->getAsFunction()->setRangeEnd(late->Toks.back().getLocation());
             }
+        }
+        // A reader takes the last source location entry of the first AST
+        // file it loads to reach the end of the address space
+        // (SourceManager::isOffsetInFileID): were that entry the file's last
+        // macro expansion, an expression written as that macro would never
+        // end where the expansion does, and its spelling would be lost
+        // (Lexer::makeFileCharRange). An expansion of its own takes that place.
+        if(writes_output(unit.params.kind)) {
+            auto& sources = context.getSourceManager();
+            auto predefines = unit.instance->getPreprocessor().getPredefinesFileID();
+            auto start = sources.getLocForStartOfFile(predefines);
+            sources.createExpansionLoc(start, start, start, 1);
         }
         clang::MultiplexConsumer::HandleTranslationUnit(context);
     }
@@ -893,6 +908,13 @@ CompilationStatus CompilationUnit::run() {
     // Upstream FrontendAction::Execute() always returns success: errors go
     // through diagnostics.
     llvm::cantFail(action->Execute());
+    // The parser frees its scopes when the parse ends, and Sema goes on
+    // pointing at the translation unit's: a declaration the reader loads
+    // later, for a lookup on the finished AST, would be added to freed
+    // memory.
+    if(instance->hasSema()) {
+        instance->getSema().TUScope = nullptr;
+    }
 
     if(params.stop->load()) {
         return CompilationStatus::Cancelled;

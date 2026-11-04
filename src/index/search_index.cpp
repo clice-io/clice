@@ -571,25 +571,25 @@ std::optional<NameRank>
         return NameRank{.tier = static_cast<std::uint8_t>(name == query.pattern ? 0 : 1),
                         .score = quality};
     }
+    std::optional<NameRank> found;
+    if(auto score = exact.match(name)) {
+        found = NameRank{.tier = 2, .score = *score * quality};
+    } else if(lenient && typo) {
+        if(auto score = typo->match(name)) {
+            found = NameRank{.tier = 3, .score = *score * quality};
+        }
+    }
     // A query too short for trigrams is keyed by a name's first two words
     // in the index; judging entries the same way keeps the two answers alike.
-    if(!short_tokens.empty()) {
-        llvm::SmallVector<NameToken, 64> tokens;
-        name_tokens(name, tokens);
+    if(found && !short_tokens.empty()) {
+        llvm::SmallVector<NameToken, 16> tokens;
+        short_name_tokens(name, tokens);
         if(!ranges::all_of(short_tokens,
                            [&](NameToken token) { return ranges::binary_search(tokens, token); })) {
             return std::nullopt;
         }
     }
-    if(auto score = exact.match(name)) {
-        return NameRank{.tier = 2, .score = *score * quality};
-    }
-    if(lenient && typo) {
-        if(auto score = typo->match(name)) {
-            return NameRank{.tier = 3, .score = *score * quality};
-        }
-    }
-    return std::nullopt;
+    return found;
 }
 
 /// A mapped segment, its columns checked and its posting lists decoded on
@@ -1159,17 +1159,31 @@ SearchResult SearchIndex::search(const SymbolQuery& query,
                 above = above.drop_back();
                 for(auto entry: segment.lower_range(llvm::StringRef(last.name).lower())) {
                     auto [spelled, current] = newest(segment, entry);
-                    if(segment.is_container(entry) &&
-                       args_match(last.args, spelled->arguments(current)) &&
-                       segments_match(above, scope_chain(segment, entry), query.absolute)) {
+                    if(!segment.is_container(entry) ||
+                       !args_match(last.args, spelled->arguments(current))) {
+                        continue;
+                    }
+                    auto chain = scope_chain(segment, entry);
+                    if(query.qualified_lookup && !query.absolute
+                           ? chain_ends_with(above, chain)
+                           : segments_match(above, chain, query.absolute)) {
                         containers.push_back(entry);
                     }
                 }
             }
             Bitmap allowed;
             for(auto container: containers) {
-                allowed |=
-                    query.direct() ? segment.children(container) : segment.subtree(container);
+                if(!query.direct()) {
+                    allowed |= segment.subtree(container);
+                    continue;
+                }
+                auto& members = segment.children(container);
+                allowed |= members;
+                if(query.qualified_lookup) {
+                    for(auto enumeration: members& segment.kind(SymbolKind::Enum)) {
+                        allowed |= segment.children(enumeration);
+                    }
+                }
             }
             narrow(std::move(allowed));
         }

@@ -23,13 +23,14 @@ public:
         Inputs inputs;
     };
 
-    /// The entry of `key` while its inputs hold.
-    Entry* lookup(FileTable& files, KeyRef key) {
+    /// The entry of `key` while its inputs hold, any text of `any_text`
+    /// aside.
+    Entry* lookup(FileTable& files, KeyRef key, Fid any_text = {}) {
         auto it = entries.find(key);
         if(it == entries.end()) {
             return nullptr;
         }
-        if(!inputs_hold(files, it->second.inputs)) {
+        if(!inputs_hold(files, it->second.inputs, any_text)) {
             entries.erase(it);
             return nullptr;
         }

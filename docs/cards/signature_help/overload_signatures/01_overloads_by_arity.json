@@ -31,8 +31,8 @@
           "value": {
             "signature_help": {
               "signatures": [
-                "blend(int base, ⟦int tint⟧, int alpha) -> int",
-                "blend(int base, ⟦int tint⟧) -> int"
+                "blend(int base, ⟦int tint⟧) -> int",
+                "blend(int base, ⟦int tint⟧, int alpha) -> int"
               ],
               "active": 0
             }

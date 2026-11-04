@@ -30,8 +30,8 @@
           "value": {
             "signature_help": {
               "signatures": [
-                "draw(int x, ⟦int y⟧, int z) -> void",
                 "draw(int x, ⟦int y⟧) -> void",
+                "draw(int x, ⟦int y⟧, int z) -> void",
                 "draw(double x, ⟦double y⟧) -> void"
               ],
               "active": 0
@@ -43,8 +43,8 @@
           "value": {
             "signature_help": {
               "signatures": [
-                "draw(int x, ⟦int y⟧, int z) -> void",
                 "draw(int x, ⟦int y⟧) -> void",
+                "draw(int x, ⟦int y⟧, int z) -> void",
                 "draw(double x, ⟦double y⟧) -> void"
               ],
               "active": 2
@@ -56,8 +56,8 @@
           "value": {
             "signature_help": {
               "signatures": [
-                "draw(int x, ⟦int y⟧, int z) -> void",
                 "draw(int x, ⟦int y⟧) -> void",
+                "draw(int x, ⟦int y⟧, int z) -> void",
                 "draw(double x, ⟦double y⟧) -> void"
               ],
               "active": 0

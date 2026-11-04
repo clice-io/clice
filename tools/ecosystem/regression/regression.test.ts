@@ -68,37 +68,26 @@ describe("sweep", () => {
         expect(words).toEqual(["module", "module", "module_x"]);
     });
 
-    test("a difference the project accepts is told apart from others", () => {
-        const answer = (label: string) =>
-            `["completion m2".completion]\nitems = [\n    {\n        label = "${label}",\n        kind = "Method",\n    },\n]\n`;
-        const inspect = answer(
-            "GetAsUInt64(uint64_t fail_value = UINT64_MAX, bool *success_ptr = nullptr) const",
+    test("a completion list cut short is accepted when inspect lists all it keeps", () => {
+        const item = (label: string) => ({ label, kind: "Function", sortText: "1" });
+        const answer = (labels: string[], incomplete: boolean) =>
+            JSON.stringify({ items: labels.map(item), incomplete });
+        const inspect = answer(["abort", "array", "atomic", "exit"], false);
+        expect(acceptedDifference("completion", inspect, answer(["array", "atomic"], true))).toBe(
+            "code_completion/filtering/08_item_limit",
         );
-        const server = answer(
-            "GetAsUInt64(uint64_t fail_value = 18446744073709551615ULL, bool *success_ptr = nullptr) const",
-        );
-        expect(acceptedDifference("completion", inspect, server)).toBe(
-            "code_completion/member_access/20_macro_default_arguments",
-        );
-        expect(acceptedDifference("signatureHelp", inspect, server)).toBeUndefined();
         expect(
-            acceptedDifference(
-                "hover",
-                "  uint32_t m_stop_id = UINT32_MAX;\n",
-                "  uint32_t m_stop_id = 4294967295U;\n",
-            ),
-        ).toBe("code_completion/member_access/20_macro_default_arguments");
-        expect(
-            acceptedDifference("hover", "  int *p = nullptr;\n", "  int *p = 0;\n"),
+            acceptedDifference("completion", inspect, answer(["array", "atomic"], false)),
         ).toBeUndefined();
-        expect(acceptedDifference("hover", "  int n = 16;\n", "  int n = 32;\n")).toBeUndefined();
-        expect(acceptedDifference("hover", "  int n = FOO;\n", "  int n = BAR;\n")).toBeUndefined();
         expect(
-            acceptedDifference(
-                "completion",
-                inspect,
-                answer("GetAsUInt64(uint64_t fail_value) const"),
-            ),
+            acceptedDifference("completion", inspect, answer(["array", "vector"], true)),
+        ).toBeUndefined();
+        expect(
+            acceptedDifference("completion", inspect, answer(["array", "array"], true)),
+        ).toBeUndefined();
+        expect(acceptedDifference("completion", inspect, answer([], true))).toBeUndefined();
+        expect(
+            acceptedDifference("signatureHelp", inspect, answer(["array"], true)),
         ).toBeUndefined();
     });
 

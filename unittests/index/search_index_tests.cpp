@@ -339,6 +339,64 @@ ZEST_CASE(Scopes) {
     ZEXPECT(names(corpus, built, "Widget<int>::*") == (Names{"paint"}));
 }
 
+ZEST_CASE(QualifiedLookup) {
+    Corpus corpus;
+    corpus.add("lib", SymbolKind::Namespace);
+    corpus.add("lib::make_cell", SymbolKind::Function);
+    corpus.add("lib::Shade", SymbolKind::Enum);
+    corpus.add("lib::Shade::cell_red", SymbolKind::EnumMember);
+    corpus.add("lib::Grid", SymbolKind::Struct);
+    corpus.add("lib::Grid::cell_type", SymbolKind::Type);
+    corpus.add("lib::detail", SymbolKind::Namespace);
+    corpus.add("lib::detail::cell_copy", SymbolKind::Function);
+    auto built = corpus.build();
+    auto found = [&](bool absolute, bool qualified_lookup) {
+        SymbolQuery query{
+            .scope = {{.name = "lib"}},
+            .absolute = absolute,
+            .pattern = "cell",
+            .qualified_lookup = qualified_lookup,
+        };
+        Names out;
+        for(auto& hit: built.search(query, 10, [](std::uint32_t) { return false; }).hits) {
+            out.push_back(corpus.name_of(hit.hash));
+        }
+        ranges::sort(out);
+        return out;
+    };
+    ZEXPECT(found(false, false) == (Names{"cell_copy", "cell_red", "cell_type", "make_cell"}));
+    ZEXPECT(found(false, true) == (Names{"cell_red", "make_cell"}));
+    ZEXPECT(found(true, true) == (Names{"cell_red", "make_cell"}));
+}
+
+ZEST_CASE(QualifiedLookupContiguous) {
+    // `lib::detail::` names `lib`'s own `detail`, not one a scope between
+    // the two holds.
+    Corpus corpus;
+    corpus.add("lib", SymbolKind::Namespace);
+    corpus.add("lib::detail", SymbolKind::Namespace);
+    corpus.add("lib::detail::cell_copy", SymbolKind::Function);
+    corpus.add("lib::io", SymbolKind::Namespace);
+    corpus.add("lib::io::detail", SymbolKind::Namespace);
+    corpus.add("lib::io::detail::cell_read", SymbolKind::Function);
+    corpus.add("outer", SymbolKind::Namespace);
+    corpus.add("outer::lib", SymbolKind::Namespace);
+    corpus.add("outer::lib::detail", SymbolKind::Namespace);
+    corpus.add("outer::lib::detail::cell_move", SymbolKind::Function);
+    auto built = corpus.build();
+    SymbolQuery query{
+        .scope = {{.name = "lib"}, {.name = "detail"}},
+        .pattern = "cell",
+        .qualified_lookup = true,
+    };
+    Names out;
+    for(auto& hit: built.search(query, 10, [](std::uint32_t) { return false; }).hits) {
+        out.push_back(corpus.name_of(hit.hash));
+    }
+    ranges::sort(out);
+    ZEXPECT(out == (Names{"cell_copy", "cell_move"}));
+}
+
 ZEST_CASE(UnnamedScopes) {
     // An unnamed enum's enumerators and an anonymous union's members are
     // named through the enclosing scope, as lookup names them.

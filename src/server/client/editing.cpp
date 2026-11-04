@@ -189,17 +189,13 @@ void LSPClient::register_editing() {
             co_return to_raw(*list);
         }
         auto& compile = std::get<feature::CompileCompletion>(start);
-        auto offer =
-            [&](worker::CompletionParams& completion, llvm::StringRef pch_key, bool hosted) {
-                // The index of a PCH built behind a host's text names none of
-                // the host's: the compile reads the PCH whole.
-                std::vector<std::shared_ptr<index::TUIndex>> indexes;
-                if(!hosted) {
-                    indexes = project.project.pch_indexes(pch_key);
-                }
-                feature::offer_names(query, project.project.dep_graph, indexes, compile);
-                completion.names = compile;
-            };
+        auto offer = [&](worker::CompletionParams& completion, llvm::StringRef pch_key) {
+            feature::offer_names(query,
+                                 project.project.dep_graph,
+                                 project.project.pch_indexes(pch_key),
+                                 compile);
+            completion.names = compile;
+        };
         auto result = co_await project
                           .stateless_request(ticket,
                                              feature::RequestKind::Completion,
@@ -346,6 +342,7 @@ void LSPClient::register_editing() {
                 host_session || !host.valid() ? host_path : files.spelling(host).str();
             std::optional<SourceText> host_disk;
             std::optional<SearchConfig> search;
+            std::optional<IncludeArguments> arguments;
             OpenDocuments open_documents(project);
             auto query = open_documents.query();
             vfs::Scope scope(files.dirs);
@@ -369,13 +366,11 @@ void LSPClient::register_editing() {
                     },
                     .include_argument =
                         [&](CanonicalRef header) {
-                            if(!search) {
+                            if(!arguments) {
                                 search = project.search_of(path_id);
+                                arguments.emplace(*search, files.spelling(path_id), scope);
                             }
-                            return include_argument(header,
-                                                    *search,
-                                                    files.spelling(path_id),
-                                                    scope);
+                            return arguments->of(header);
                         },
                 });
             result = feature::to_protocol(

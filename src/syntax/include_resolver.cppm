@@ -76,20 +76,41 @@ std::optional<ResolveResult> resolve_forced_include(llvm::StringRef filename,
                                                     const ResolvedSearchConfig& config,
                                                     vfs::Scope& scope);
 
-/// The argument, quotes or brackets included, an include directive of
-/// `file` names `header` by, the header by identity and the file as the
-/// build reaches it: its path below the file's directory (where a quoted
-/// include looks first), else the shortest path below one of the command's
-/// search directories (resolved, however the command spells them), angled
-/// past the quoted segment — whichever of these the command's lookup order
-/// actually resolves to `header`, since a shorter one can name a same-named
-/// file in an earlier directory. None when that names a library's internal
-/// header, which its public headers include and its users never should:
-/// libstdc++'s and glibc's `bits/`, libc++'s `__`-prefixed directories and
-/// files.
-std::optional<std::string> include_argument(CanonicalRef header,
-                                            const SearchConfig& search,
-                                            const Spelling& file,
-                                            vfs::Scope& scope);
+/// The arguments, quotes or brackets included, an include directive of
+/// `file` names headers by, with the command's search directories resolved
+/// once for them all. Borrows `search` and `scope`.
+class IncludeArguments {
+public:
+    IncludeArguments(const SearchConfig& search, const Spelling& file, vfs::Scope& scope);
+
+    /// `header`'s, the header by identity and the file as the build reaches
+    /// it: its path below the file's directory (where a quoted include
+    /// looks first), else the shortest path below one of the command's
+    /// search directories (resolved, however the command spells them),
+    /// angled past the quoted segment — whichever of these the command's
+    /// lookup order actually resolves to `header`, since a shorter one can
+    /// name a same-named file in an earlier directory. None when that names
+    /// a library's internal header, which its public headers include and
+    /// its users never should: libstdc++'s and glibc's `bits/`, libc++'s
+    /// `__`-prefixed directories and files.
+    std::optional<std::string> of(CanonicalRef header);
+
+private:
+    const SearchConfig& search;
+
+    vfs::Scope& scope;
+
+    /// The including file's directory, which the quoted segment searches
+    /// first, and its identity.
+    Spelling directory;
+
+    CanonicalPath resolved_directory;
+
+    /// The identity of each of `search.dirs`, in its order.
+    std::vector<CanonicalPath> resolved_dirs;
+
+    /// The answer for each header asked already.
+    llvm::StringMap<std::optional<std::string>> known;
+};
 
 }  // namespace clice

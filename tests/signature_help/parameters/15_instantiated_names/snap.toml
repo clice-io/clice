@@ -1,0 +1,11 @@
+[answers.uninstantiated.signature_help]
+signatures = ["resize(⟦int length⟧) -> void"]
+active = 0
+
+[answers.instantiated.signature_help]
+signatures = ["reserve(⟦int capacity⟧) -> void"]
+active = 0
+
+[answers.specialized.signature_help]
+signatures = ["append(⟦U piece⟧) -> void"]
+active = 0

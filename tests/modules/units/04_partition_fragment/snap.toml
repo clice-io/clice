@@ -19,7 +19,7 @@ markdown = '''
 **variable** `max_size`
 
 ```cpp
-export constexpr int max_size = 100
+export constexpr int max_size = MAX_SIZE
 ```
 **Value:** `100 (0x64)`
 '''

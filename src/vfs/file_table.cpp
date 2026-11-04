@@ -116,7 +116,7 @@ vfs::DiskState::CheckResult FileTable::check_version(VersionID vid) {
     return disk.check(version.fid, version.content_hash);
 }
 
-bool inputs_hold(FileTable& files, const Inputs& snap) {
+bool inputs_hold(FileTable& files, const Inputs& snap, Fid any_text) {
     auto changed = [&](const Input& dep) {
         // Gone at build time: reappearing is the change; still-missing
         // stays unchanged (see intern_inputs).
@@ -132,7 +132,9 @@ bool inputs_hold(FileTable& files, const Inputs& snap) {
         // — conservative, retried by the rebuild's capture.
         return files.check_version(dep.version) != vfs::DiskState::CheckResult::Fresh;
     };
-    return ranges::count_if(snap, changed) == 0;
+    return ranges::count_if(snap, [&](const Input& dep) {
+               return changed(dep) && (dep.absent || dep.file != any_text);
+           }) == 0;
 }
 
 Inputs intern_inputs(FileTable& files,

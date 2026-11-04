@@ -281,14 +281,18 @@ public:
     /// inherited default arguments and base specifiers of classes defined
     /// in a preamble header end up there. Such entries belong to the
     /// preamble's own index, so they are dropped here. So are the entries
-    /// of a header's borrowed includer context: its host indexes them.
+    /// of a header's borrowed includer context: its host indexes them. A
+    /// preamble still registers the symbols they name, its names table the
+    /// completion of the header reads.
     FileIndex* file_index(clang::FileID fid) {
         if(instantiation_entries) {
             return &(*instantiation_entries)[fid];
         }
-        if((focus_only && fid != unit.focus_file().file() && !module_files.contains(fid)) ||
-           unit.from_context(fid)) {
+        if(focus_only && fid != unit.focus_file().file() && !module_files.contains(fid)) {
             return nullptr;
+        }
+        if(unit.from_context(fid)) {
+            return unit.kind() == CompilationKind::Preamble ? &context_entries : nullptr;
         }
         return &file_indices[fid];
     }
@@ -2148,6 +2152,10 @@ private:
     /// nothing outside the compilation, so it never leaves the builder;
     /// the encode step converts it through tree.path_id.
     llvm::DenseMap<clang::FileID, FileIndex> file_indices;
+
+    /// The entries a preamble's build writes in a borrowed includer
+    /// context, which no section takes (file_index).
+    FileIndex context_entries;
 
     /// With focus_only, the symbols registered that an imported
     /// module declares, a namespace aside: every unit reopening it

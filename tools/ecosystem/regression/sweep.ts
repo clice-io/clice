@@ -16,7 +16,7 @@ import type { MarkerAnchor } from "../../testing/cases/anchors.ts";
 import { EDITOR_CAPABILITIES } from "../../testing/cases/answers.ts";
 import { Disk } from "../../testing/cases/disk.ts";
 import { importsModule, Inspect } from "../../testing/inspect/inspect.ts";
-import type { Diagnostic } from "../../testing/render/answers.ts";
+import type { Completion, CompletionItem, Diagnostic } from "../../testing/render/answers.ts";
 import type { Client } from "../../testing/render/client.ts";
 import { renderLocation, SourceText, withoutBom } from "../../testing/render/position.ts";
 import { block, type Shown } from "../../testing/render/shown.ts";
@@ -102,42 +102,45 @@ export const REQUESTS: Request[] = [
     "errors",
 ];
 
-/// A value as a declaration's `=` shows it: a macro's name or a number.
-const SHOWN_VALUE = / = ([A-Z_][A-Z0-9_]*|[0-9][0-9A-Fa-fxX.]*[uUlL]*)(?=[,);\n])/;
-
-/// Whether two answers differ only where one shows a macro and the other
-/// the number it expands to.
-function macroOrNumber(left: string, right: string): boolean {
-    // Split by a pattern with a group: the text between at even indices,
-    // the values at odd ones.
-    const split = (shown: string) => shown.split(new RegExp(SHOWN_VALUE, "g"));
-    const [a, b] = [split(left), split(right)];
-    const isName = (value: string | undefined) => /^[A-Z_]/.test(value ?? "");
+/// Whether the server cut its completion list short, kept some items, and
+/// each is an item of its own that inspect, asked with no limit, lists too:
+/// the server ranks the names by how much the project uses them, inspect as
+/// clang finds them, so the two keep different ones.
+function cutFromInspect(inspect: string, server: string): boolean {
+    const [all, cut] = [JSON.parse(inspect) as Completion, JSON.parse(server) as Completion];
+    const key = (item: CompletionItem) =>
+        JSON.stringify([item.label, item.kind, item.detail ?? "", item.deprecated === true]);
+    const listed = new Map<string, number>();
+    for (const item of all.items) {
+        listed.set(key(item), (listed.get(key(item)) ?? 0) + 1);
+    }
     return (
-        a.length === b.length &&
-        a.every((part, i) => part === b[i] || (i % 2 === 1 && isName(part) !== isName(b[i])))
+        cut.incomplete &&
+        cut.items.length > 0 &&
+        cut.items.every((item) => {
+            const left = listed.get(key(item)) ?? 0;
+            listed.set(key(item), left - 1);
+            return left > 0;
+        })
     );
 }
 
 /// The differences between inspect and the server the project accepts, each
-/// pinned by a case.
+/// pinned by a case, told by the answers as the clients returned them.
 const ACCEPTED: {
     case: string;
     requests: Request[];
     same: (inspect: string, server: string) => boolean;
 }[] = [
     {
-        // Under a preamble a value written as a macro (a default argument,
-        // an initializer) can print as the number it expands to: a clang
-        // SourceManager bug.
-        case: "code_completion/member_access/20_macro_default_arguments",
-        requests: ["completion", "hover"],
-        same: macroOrNumber,
+        case: "code_completion/filtering/08_item_limit",
+        requests: ["completion"],
+        same: cutFromInspect,
     },
 ];
 
-/// The case pinning the difference between two rendered answers, when the
-/// project accepts it.
+/// The case pinning the difference between two answers, when the project
+/// accepts it.
 export function acceptedDifference(
     request: Request,
     inspect: string,
@@ -411,15 +414,16 @@ async function sweepFile(
         // compile per place for completion and signature help: each gets a
         // client of its own places only. Its errors are the compile's own:
         // a project's clang-tidy configuration may raise findings and
-        // warnings to errors.
-        const inspect = (marks: MarkerAnchor[]) =>
+        // warnings to errors. Its completion lists every name, the ones a
+        // list the server cut short keeps among them (ACCEPTED).
+        const inspect = (marks: MarkerAnchor[], config: Record<string, unknown> = {}) =>
             new Inspect(options.root, marks, {
                 sources: [file],
                 timeout: REQUEST_MS,
-                config: { diagnostics: { clang_tidy: false } },
+                config: { diagnostics: { clang_tidy: false }, ...config },
             });
         const atPoints = inspect(places.points);
-        const atMembers = inspect(places.members);
+        const atMembers = inspect(places.members, { code_completion: { limit: 0 } });
         const atCalls = inspect(places.calls);
         const clientOf = (ask: Ask) =>
             ask.request === "completion"
@@ -569,7 +573,7 @@ async function sweepFile(
         if (shownLeft === shownRight) {
             continue;
         }
-        const accepted = acceptedDifference(ask.request, shownLeft, shownRight);
+        const accepted = acceptedDifference(ask.request, left.value ?? "", right.value ?? "");
         if (accepted !== undefined) {
             run.accepted.push({ file, label: ask.label, case: accepted });
             continue;

@@ -155,7 +155,9 @@ std::optional<llvm::SmallVector<Host>> Project::include_chains(const UnitCommand
             }
         }
     }
-    auto* entry = hosting.trees.lookup(file_table, unit);
+    // As with the index's trees, the header's own text moves nothing above
+    // it: tree_chains checks it where its guard decides.
+    auto* entry = hosting.trees.lookup(file_table, unit, header);
     if(!entry) {
         return std::nullopt;
     }

@@ -737,11 +737,12 @@ private:
 /// How compile() builds a PCH: its inputs are checked by size alone when
 /// it is loaded, the templates its preamble uses are instantiated in it
 /// unless that raises an error, template bodies are deferred only when the
-/// command asks, and function bodies are skipped under skip_bodies. Keys
-/// of cached PCHs include it, so a blob built under another rule is never
-/// reused.
+/// command asks, function bodies are skipped under skip_bodies, and an
+/// expansion of its own ends it. Keys of cached PCHs include it, so a blob
+/// built under another rule is never reused.
 constexpr llvm::StringRef pch_build_rule(bool skip_bodies) {
-    return skip_bodies ? "size,instantiated,undeferred,skipped" : "size,instantiated,undeferred";
+    return skip_bodies ? "size,instantiated,undeferred,ended,skipped"
+                       : "size,instantiated,undeferred,ended";
 }
 
 /// The warnings that a declaration is unused: a use in a body skip_bodies

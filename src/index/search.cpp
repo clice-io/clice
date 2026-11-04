@@ -120,6 +120,12 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
             for(auto& container: containers) {
                 chain.push_back({.name = container.name, .args = container.args});
             }
+            // A qualified lookup finds an enumerator in its enumeration's
+            // scope too.
+            if(query.qualified_lookup && !containers.empty() &&
+               containers.back().kind == SymbolKind::Enum) {
+                chain.pop_back();
+            }
             if(!in_scope(query, chain)) {
                 return;
             }
@@ -173,6 +179,12 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
         index.live_sources()->for_each_session_index([&](const TUIndex& state) {
             state.for_each_symbol(
                 [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t>) {
+                    // The index judged the symbols it holds already, under
+                    // the same name.
+                    if(!scan_records && !project.search_pending().contains(hash) &&
+                       project.find_symbol(hash)) {
+                        return true;
+                    }
                     llvm::StringRef path;
                     if(identity.file != no_file) {
                         path = state.path(identity.file);
@@ -280,35 +292,28 @@ Completables completables(const IndexQuery& index,
         SymbolKind::Variable,
         SymbolKind::Concept,
     };
-    SymbolQuery scoped{.absolute = scope.absolute, .pattern = prefix.str(), .kinds = kinds};
+    SymbolQuery scoped{.absolute = scope.absolute,
+                       .pattern = prefix.str(),
+                       .kinds = kinds,
+                       .qualified_lookup = true};
     for(auto& name: scope.qualifier) {
         scoped.scope.push_back({.name = name});
     }
-    /// Whether a name the query found lies directly in a scope the
-    /// qualifier names, as completion after it lists: the query takes the
-    /// names below them too. An enumerator counts in its enumeration's
-    /// scope.
-    auto direct = [&](llvm::ArrayRef<SymbolInfo> chain) {
-        if(!chain.empty() && chain.back().kind == SymbolKind::Enum) {
-            chain = chain.drop_back();
-        }
-        if(chain.size() < scope.qualifier.size() ||
-           (scope.absolute && chain.size() != scope.qualifier.size())) {
-            return false;
-        }
-        return ranges::equal(chain.take_back(scope.qualifier.size()),
-                             scope.qualifier,
-                             {},
-                             &SymbolInfo::name);
-    };
 
     Completables result;
-    llvm::DenseSet<SymbolHash> taken;
-    /// Adds the best of the names `query` finds that `wanted` keeps, up to
-    /// the limit.
-    auto gather = [&](const SymbolQuery& query, auto wanted, bool& exhausted) {
-        // A qualifier's scopes hold more below them: the ranking is
-        // fetched wider than the names wanted.
+    /// The names taken, spelled through their scopes: the limit counts a
+    /// name once however many overloads and specializations it has.
+    llvm::StringSet<> taken;
+    /// Their names alone, past the limit the only ones more of whose
+    /// overloads join.
+    llvm::StringSet<> taken_names;
+    /// The symbols listed: the scopes the qualifier brings in find the
+    /// qualifier's own names again.
+    llvm::DenseSet<SymbolHash> listed;
+    /// Adds the best of the names `query` finds, up to the limit.
+    auto gather = [&](const SymbolQuery& query, bool& exhausted) {
+        // The names completion does not offer (a class's members) take
+        // places in the ranking: it is fetched wider than the names wanted.
         auto project_query = query;
         project_query.external_only = true;
         auto ranked = ranked_search(index, project_query, limit * 8);
@@ -318,7 +323,7 @@ Completables completables(const IndexQuery& index,
         }
         /// A preamble's names, its own of internal linkage among them, are
         /// spelled through its own scopes.
-        llvm::DenseMap<SymbolHash, llvm::SmallVector<SymbolInfo, 4>> preamble_scopes;
+        llvm::DenseMap<SymbolHash, const TUIndex*> preamble_of;
         for(auto& pch_index: pchs) {
             auto& pch = *pch_index;
             auto found = pch.names().search(query, limit * 8, [](std::uint32_t) { return false; });
@@ -327,15 +332,10 @@ Completables completables(const IndexQuery& index,
                     continue;
                 }
                 if(auto identity = pch.find_symbol(hit.hash)) {
-                    auto symbol = SymbolInfo::from(hit.hash, *identity);
-                    preamble_scopes[hit.hash] =
-                        scope_chain(hit.hash, symbol.parent, [&](SymbolHash parent) {
-                            auto container = pch.find_symbol(parent);
-                            return container ? std::optional(SymbolInfo::from(parent, *container))
-                                             : std::nullopt;
-                        });
-                    ranked.hits.push_back(
-                        {.rank = hit.rank, .symbol = std::move(symbol), .anchor = {}});
+                    preamble_of[hit.hash] = &pch;
+                    ranked.hits.push_back({.rank = hit.rank,
+                                           .symbol = SymbolInfo::from(hit.hash, *identity),
+                                           .anchor = {}});
                 }
             }
             ranked.exhausted = ranked.exhausted && found.exhausted;
@@ -345,7 +345,11 @@ Completables completables(const IndexQuery& index,
         exhausted = ranked.exhausted;
         for(auto& hit: ranked.hits) {
             if(!has_flag(hit.symbol.flags, SymbolFlags::Completable) ||
-               taken.contains(hit.symbol.hash)) {
+               listed.contains(hit.symbol.hash)) {
+                continue;
+            }
+            if(taken.size() == limit && !taken_names.contains(hit.symbol.name)) {
+                exhausted = false;
                 continue;
             }
             Fid declared;
@@ -353,36 +357,46 @@ Completables completables(const IndexQuery& index,
                identity && identity->file != no_file) {
                 declared = Fid{identity->file};
             }
-            auto preamble = preamble_scopes.find(hit.symbol.hash);
-            auto chain = preamble != preamble_scopes.end()
-                             ? std::move(preamble->second)
-                             : index.container_chain(hit.symbol.hash, declared);
-            if(!wanted(chain)) {
-                continue;
+            auto preamble = preamble_of.find(hit.symbol.hash);
+            auto chain =
+                preamble == preamble_of.end()
+                    ? index.container_chain(hit.symbol.hash, declared)
+                    : scope_chain(hit.symbol.hash,
+                                  hit.symbol.parent,
+                                  [&pch = *preamble->second](SymbolHash parent) {
+                                      auto container = pch.find_symbol(parent);
+                                      return container ? std::optional(
+                                                             SymbolInfo::from(parent, *container))
+                                                       : std::nullopt;
+                                  });
+            std::string spelled;
+            for(auto& container: chain) {
+                spelled += container.name;
+                spelled += "::";
             }
-            if(result.names.size() == limit) {
-                exhausted = false;
-                break;
+            spelled += hit.symbol.name;
+            if(!taken.contains(spelled)) {
+                if(taken.size() == limit) {
+                    exhausted = false;
+                    continue;
+                }
+                taken.insert(spelled);
+                taken_names.insert(hit.symbol.name);
             }
-            taken.insert(hit.symbol.hash);
+            listed.insert(hit.symbol.hash);
             result.names.push_back(
                 {.symbol = std::move(hit.symbol), .scope = std::move(chain), .file = declared});
         }
     };
 
-    auto any = [](llvm::ArrayRef<SymbolInfo>) {
-        return true;
-    };
+    gather(scoped, result.exhausted);
     if(!scope.qualified()) {
-        gather(scoped, any, result.exhausted);
         return result;
     }
-    gather(scoped, direct, result.exhausted);
     // A namespace's using-declarations and using-directives bring in the
     // names of others, which the index does not tell: the compile looks
     // these up in it as well.
     gather(SymbolQuery{.pattern = prefix.str(), .kinds = std::move(kinds)},
-           any,
            result.others_exhausted);
     return result;
 }

@@ -3,13 +3,6 @@ import { perf, regression, type PerfFile } from "@clice/tools/ecosystem";
 regression({
     known: [
         {
-            issue: "10-22#6",
-            why: "signature help names a parameter as the declaration does on one client and as the definition does on the other (libstdc++'s std::string::reserve)",
-            configuration: "gcc",
-            kind: "disagree",
-            request: "signatureHelp",
-        },
-        {
             issue: "10-24#7",
             why: "in templates and macro arguments the open file's highlights hold more than the unit's own",
             kind: "disagree",

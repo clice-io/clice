@@ -10,3 +10,9 @@ items = [
     { label = "meters_seen", kind = "Variable", detail = "int", insert = "meters_seen" },
     { label = "METERS_SCALE", kind = "Constant", insert = "METERS_SCALE" },
 ]
+
+["names of the host".included.completion]
+items = [
+    { label = "Feet", kind = "Class", insert = "Feet" },
+    { label = "feet_per_yard", kind = "Variable", detail = "int", insert = "feet_per_yard" },
+]

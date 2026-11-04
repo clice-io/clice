@@ -141,6 +141,11 @@ constexpr NameToken first_trigram = 1u << 16;
 /// word heads. Sorted, unique.
 void name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out);
 
+/// The tokens of `name_tokens` a query too short for trigrams keys on: the
+/// unigrams and bigrams starting at the name's first two word heads.
+/// Sorted, unique.
+void short_name_tokens(llvm::StringRef name, llvm::SmallVectorImpl<NameToken>& out);
+
 /// The tokens every name the matcher accepts for `pattern` carries: the
 /// trigrams of its letters in sequence, or for fewer than three letters
 /// the one unigram or bigram they form. Empty when the pattern has no

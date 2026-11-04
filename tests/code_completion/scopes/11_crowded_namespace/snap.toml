@@ -1,0 +1,6 @@
+[answers.qualified.completion]
+items = [
+    { label = "cram(…) +109 overloads", kind = "Function" },
+    { label = "make_cell()", kind = "Function", detail = "void" },
+    { label = "shade_cell", kind = "EnumMember", detail = "Shade" },
+]

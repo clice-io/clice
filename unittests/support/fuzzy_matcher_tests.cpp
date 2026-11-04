@@ -371,6 +371,8 @@ ZEST_CASE(Typos) {
     ZEXPECT(annotated("strdpy", "strcpy", typo) == "[str]c[py]");
     ZEXPECT(annotated("strxcpy", "strcpy", typo) == "[strcpy]");
     ZEXPECT(annotated("strpy", "strcpy", typo) == "[str]c[py]");
+    ZEXPECT(annotated("xstrcpy", "strcpy", typo) == "[strcpy]");
+    ZEXPECT(annotated("strcpyx", "strcpy", typo) == "[strcpy]");
     ZEXPECT(!matches("strxxcpy", "strcpy", typo));
     ZEXPECT(!matches("stxxpy", "strcpy", typo));
     FuzzyMatcher lenient("strcpy", typo);
@@ -404,6 +406,20 @@ ZEST_CASE(NameTokens) {
     ZEXPECT(ranges::contains(three, token("b")));
     ZEXPECT(ranges::contains(three, token("bb")));
     ZEXPECT(!ranges::contains(three, token("bz")));
+}
+
+ZEST_CASE(ShortNameTokens) {
+    auto short_of = [](llvm::StringRef name) {
+        llvm::SmallVector<NameToken> tokens;
+        short_name_tokens(name, tokens);
+        return tokens;
+    };
+    for(auto name: corpus) {
+        auto tokens = tokens_of(name);
+        llvm::SmallVector<NameToken> expected(tokens.begin(),
+                                              ranges::lower_bound(tokens, first_trigram));
+        ZEXPECT(short_of(name) == expected);
+    }
 }
 
 ZEST_CASE(NameTokensFollowPaths) {
