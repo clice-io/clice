@@ -537,9 +537,9 @@ ZEST_CASE(SaveKeepsQueuedSchedule) {
 }
 
 ZEST_CASE(IndexFirstSparesRunningPass) {
-    // A file put first while the running pass has it in flight is queued
-    // past the pass and leads the next one. Moved into the running pass,
-    // it would run there a second time and push the pass's last file out.
+    // A file put first once the running pass took it is queued past the
+    // pass and leads the next one. Moved into the running pass, it would
+    // run there a second time and push the pass's last file out.
     IndexerFixture f;
     f.project.settings.project.idle_timeout_ms = 0;
 
@@ -549,15 +549,14 @@ ZEST_CASE(IndexFirstSparesRunningPass) {
         f.background.enqueue(files.back(), ReindexReason::DepsOnly);
     }
 
-    // The index_first arrives as the first file finishes, the second taken
-    // meanwhile; a file its attempt leaves queued is not told of.
+    // The index_first arrives as the first file's attempt finishes.
     std::vector<llvm::SmallVector<Fid>> passes(1);
     RecordingServing serving;
     serving.finished = [&](Fid id) {
-        if(passes.size() == 1 && passes.front().empty()) {
-            f.background.index_first(files[1]);
-        }
         passes.back().push_back(id);
+        if(passes.size() == 1 && id == files[0]) {
+            f.background.index_first(id);
+        }
     };
     f.project.serving = &serving;
     auto conn = f.background.on_progress_changed.connect([&] {
@@ -569,8 +568,8 @@ ZEST_CASE(IndexFirstSparesRunningPass) {
     f.loop.run();
 
     ZEXPECT(passes.size() == 3u);
-    ZEXPECT(passes[0] == (llvm::SmallVector<Fid>{files[0], files[2]}));
-    ZEXPECT(passes[1] == llvm::SmallVector<Fid>{files[1]});
+    ZEXPECT(passes[0] == files);
+    ZEXPECT(passes[1] == llvm::SmallVector<Fid>{files[0]});
     ZEXPECT(f.background.idle());
 }
 

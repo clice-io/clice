@@ -65,8 +65,8 @@ ZEST_CASE(StaleFormatDropsPch) {
         ZASSERT(f.project.pchs.size() == std::size_t(1));
 
         // Put back the blob as an older binary would have written it.
-        auto current = std::format("\"pch_index_format\":{}", index::index_format_version);
-        auto stale = std::format("\"pch_index_format\":{}", index::index_format_version - 1);
+        auto current = std::format("\"index_format\":{}", index::index_format_version);
+        auto stale = std::format("\"index_format\":{}", index::index_format_version - 1);
         auto pos = records.find(current);
         ZASSERT(pos != std::string::npos);
         records.replace(pos, current.size(), stale);
@@ -141,7 +141,8 @@ ZEST_CASE(DeplessPcmDropped) {
 
     auto setup = [&](IndexerFixture& f) {
         open_store(tmp, f.project);
-        f.project.store->register_namespace({.name = "pcm", .extension = ".pcm"});
+        f.project.store->register_namespace(
+            {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx"});
     };
 
     {
@@ -150,6 +151,9 @@ ZEST_CASE(DeplessPcmDropped) {
         auto pending = f.project.store->begin_store("pcm", "k");
         ZASSERT(!fs::write_file(pending.tmp_path, "pcm-bytes"));
         ZASSERT(f.project.store->commit(std::move(pending)));
+        auto aux = f.project.store->begin_store_aux("pcm", "k");
+        ZASSERT(!fs::write_file(aux.tmp_path, "idx-bytes"));
+        ZASSERT(f.project.store->commit(std::move(aux)));
 
         auto& st = f.project.pcms[f.project.file_table.intern(Spelling::absolute(src))];
         st.path = "m.pcm";

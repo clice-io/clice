@@ -1,6 +1,10 @@
 module clice;
 
 import :feature.hover;
+import :index.search_index;
+import :index.symbol_query;
+import :index.tu_index;
+import :project.graph.precompiled;
 import :semantic.display;
 import :semantic.symbol;
 import :unittests.server.worker_test_helpers;
@@ -244,6 +248,7 @@ ZEST_CASE(BuildPCMRequest) {
                             src};
         params.module_name = "test_module";
         params.output_path = tmp.path("test_module.pcm");
+        params.index_output_path = tmp.path("test_module.pcm.idx");
 
         auto result = co_await w.peer->send_request(params);
         ZEXPECT(result);
@@ -264,6 +269,14 @@ ZEST_CASE(BuildPCMRequest) {
                 }
             }
             ZEXPECT(source_dep);
+            // The build indexes the unit too, with the names its importers
+            // complete from.
+            auto index = load_paired_index(tmp.path("test_module.pcm.idx"));
+            ZEXPECT(index != nullptr);
+            if(index) {
+                auto query = index::SymbolQuery::parse("module_func");
+                ZEXPECT(index->names().search(*query, 10, {}).hits.size() == 1u);
+            }
         }
         test_done = true;
         w.peer->close_output();

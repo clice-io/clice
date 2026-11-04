@@ -389,8 +389,7 @@ public:
     /// function's or a variable template's here, a static data member's
     /// through HandleCXXStaticMemberVarInstantiation, a class's through
     /// HandleTagDeclDefinition. An explicit instantiation hands over again
-    /// what an earlier use already instantiated. A PCM build indexes its
-    /// unit as a whole compile does.
+    /// what an earlier use already instantiated.
     void collect_instantiation(clang::Decl* decl) {
         if(unit.params.kind != CompilationKind::Whole &&
            unit.params.kind != CompilationKind::Content &&

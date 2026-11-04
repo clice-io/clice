@@ -272,7 +272,7 @@ public:
         known_variants(options.known_variants),
         resolver(unit.context(), {.only_instantiation = false}), readable(unit.context(), {}),
         known_instantiations(options.known_instantiations),
-        standard_library(options.standard_library_instantiations) {}
+        standard_library(options.standard_library_instantiations), names(options.names) {}
 
     /// The only gate through which entries enter `file_indices`. With
     /// focus_only, the index covers just the focus file and the
@@ -2073,14 +2073,14 @@ public:
         }
         blob.sections = std::move(sections);
         blob.instantiations = std::move(instantiation_sections);
-        if(preamble) {
-            SearchSnapshot names;
+        if(names) {
+            SearchSnapshot completable;
             for(auto hash: table) {
                 auto& symbol = symbols.find(hash)->second;
                 // The unit reaches the names of internal linkage its preamble
                 // declares as much as the others.
                 if(has_flag(symbol.flags, SymbolFlags::Completable)) {
-                    names.entries.push_back({
+                    completable.entries.push_back({
                         .hash = hash,
                         .name = symbol.name,
                         .args = symbol.args,
@@ -2090,7 +2090,7 @@ public:
                     });
                 }
             }
-            blob.names = std::move(build_search_segments(names, ~0u).front());
+            blob.names = std::move(build_search_segments(completable, ~0u).front());
         }
 
         ScopedTimer pack_timer;
@@ -2180,6 +2180,9 @@ private:
     /// walked (TUIndexOptions::standard_library_instantiations).
     bool standard_library;
 
+    /// Whether the index carries its names table (TUIndexOptions::names).
+    bool names;
+
     llvm::DenseMap<clang::FileID, Resolved> resolved;
 
     /// Per file, its written relations as records would say them
@@ -2232,7 +2235,7 @@ std::vector<std::byte> build_preamble_index(CompilationUnit& unit,
     for(auto& link: links) {
         blob.links.push_back({.range = link.range, .target = link.target});
     }
-    Indexer indexer(unit, {});
+    Indexer indexer(unit, {.names = true});
     return indexer.build(std::move(blob), true);
 }
 

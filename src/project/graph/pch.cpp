@@ -31,8 +31,6 @@ void forget_pairs(Project& project, llvm::StringRef pch_key) {
     }
     auto& entry = it->second;
     entry.discard(project.store ? &*project.store : nullptr, "pch");
-    entry.index_path.clear();
-    entry.index.reset();
     if(!entry.failure && !entry.consumes) {
         project.pchs.erase(it);
     }
@@ -220,7 +218,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         // published, discard the PCH too — the next attempt rebuilds both.
         if(auto index = project.store->commit(std::move(pending_idx))) {
             index_path = std::move(*index);
-            loaded = load_pch_index(*index_path);
+            loaded = load_paired_index(*index_path);
         }
         // A committed pch.idx index that fails verification is as unusable as
         // an uncommitted one: discard the pair rather than publish a PCH
@@ -247,18 +245,18 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     }
 
     auto& entry = project.pchs[pch_key];
+    // Replaces the previous blob's mapping (same key, rebuilt content);
+    // in-flight holders of the old shared_ptr stay valid.
     entry.publish(&*project.store,
                   "pch",
                   std::move(blob),
                   std::move(*pch_path),
+                  std::move(*index_path),
+                  std::move(loaded),
                   project.read_inputs(*built, before));
     entry.bound = request.params.preamble_bound;
     entry.base = request.base;
     entry.base_blob = std::move(base_blob);
-    entry.index_path = std::move(*index_path);
-    // Replace the previous blob's mapping (same key, rebuilt content);
-    // in-flight holders of the old shared_ptr stay valid.
-    entry.index = std::move(loaded);
     touch_loaded_index(project, pch_key);
     project.enforce_loaded_budget();
 
@@ -270,44 +268,6 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
 }
 
 }  // namespace
-
-std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path) {
-    auto file = fs::File::open(path);
-    if(!file) {
-        return nullptr;
-    }
-    auto buffer = llvm::MemoryBuffer::getOpenFile(file->native_handle(),
-                                                  path,
-                                                  /*FileSize=*/-1,
-                                                  /*RequiresNullTerminator=*/false,
-                                                  /*IsVolatile=*/false);
-    if(!buffer) {
-        return nullptr;
-    }
-    // A stale or truncated pair must never crash the server: the TU index
-    // is deep-verified, and every embedded shard blob once — queries then
-    // run unchecked. Anything failing reads as "pair missing" and the PCH
-    // is rebuilt.
-    auto tu_index = index::TUIndex::from_buffer(std::move(*buffer));
-    if(!tu_index.loaded() || !tu_index.verify_shards()) {
-        return nullptr;
-    }
-    return std::make_shared<index::TUIndex>(std::move(tu_index));
-}
-
-const std::shared_ptr<index::TUIndex>& PCHEntry::load_index() {
-    if(!index && !index_path.empty()) {
-        index = load_pch_index(index_path);
-        if(!index) {
-            // Unreadable blob: clear the path so queries don't retry the
-            // mmap + verification on every call. The pair now looks
-            // incomplete and the next acquisition rebuilds it.
-            LOG_WARN("Failed to open pch.idx envelope {}", index_path);
-            index_path.clear();
-        }
-    }
-    return index;
-}
 
 PCHRequest Project::declared_pch_request(const CommandRef& unit) {
     // The key names the build but the file's content, which the build's

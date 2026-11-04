@@ -13,8 +13,8 @@ test("an unsaved import", async (t) => {
     await t.show("completion", s.completion(t.at("main.cpp", "= ad|;")));
 });
 
-// A module imported below an include: its names, which no index holds, are
-// read from the module file, beside the preamble's the index offers.
+// A module imported below an include: the index its PCM build wrote offers
+// its names, beside the preamble's.
 test("an import below an include", async (t) => {
     const s = await t.start({ config: { project: { enable_indexing: false } } });
     expect(await s.errors("math.cppm")).toEqual([]);

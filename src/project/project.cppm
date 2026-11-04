@@ -966,6 +966,17 @@ struct Project {
     /// module's imports are built too.
     std::unordered_map<std::string, std::string> imported_pcms(llvm::ArrayRef<Fid> modules) const;
 
+    /// The index the module's PCM build wrote of its unit, its names among
+    /// it; null without a built PCM, or when the index is unreadable.
+    std::shared_ptr<index::TUIndex> module_index(Fid module);
+
+    /// The indexes naming what a compile loading the PCH of `pch_key` (none
+    /// when empty) and importing `modules` reads from them: pch_indexes, and
+    /// those of the modules whose PCMs it reads (imported_pcms). None when
+    /// one is missing.
+    std::vector<std::shared_ptr<index::TUIndex>> precompiled_indexes(llvm::StringRef pch_key,
+                                                                     llvm::ArrayRef<Fid> modules);
+
     /// What decides whether the module's last PCM build still holds: what it
     /// read, or — for a build an import failed — what the import's failure
     /// rests on, down to the module whose own build failed. Null for a module

@@ -13,6 +13,8 @@ hover = {}
 markdown = '''
 **method** `get` · struct `Box`
 
+Trivial accessor for `value`.
+
 ```cpp
 int get() const
 ```
@@ -21,7 +23,12 @@ range = "return box.⟦get⟧() + ANSWER;"
 
 [unindexed.call]
 definition = ["foo.h │ inline void ⟦foo⟧() {}"]
-references = ["foo.h │ inline void ⟦foo⟧() {}", "⟦foo⟧();"]
+references = [
+    "foo.h │ inline void ⟦foo⟧() {}",
+    "foo.h │ inline void bar() { ⟦foo⟧(); }",
+    "foo.h │ ⟦CALLER⟧(baz)",
+    "⟦foo⟧();",
+]
 
 [unindexed.macro]
 definition = ["#define ⟦ANSWER⟧ 42"]

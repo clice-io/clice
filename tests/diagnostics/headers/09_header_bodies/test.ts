@@ -28,8 +28,9 @@ test("while instantiating", async (t) => {
     await s.diagnostics("main.cpp");
     const park = await s.park("finishCompile", "main.cpp", { at: "worker" });
     s.edit("main.cpp", { replace: "Square{2}", with: "Square{3}" });
+    const parsed = s.diagnostics("main.cpp");
     await park.reached();
-    await t.show("parsed", s.diagnostics("main.cpp"));
+    await t.show("parsed", parsed);
     await t.show("hover", s.hover(t.at("main.cpp", "return ar|ea(Square{3})")));
     const refreshes = await s.serverRequests(REFRESH);
     await park.release();

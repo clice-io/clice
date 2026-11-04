@@ -507,10 +507,10 @@ public:
 
     auto top_level_decls() -> llvm::ArrayRef<clang::Decl*>;
 
-    /// The definitions a Whole or Content compile instantiated from
-    /// templates, implicitly or for an explicit instantiation — function
-    /// bodies, variable initializers and classes — in the order Sema
-    /// finished them; empty for every other kind. A Content compile behind
+    /// The definitions a Whole, Content or ModuleInterface compile
+    /// instantiated from templates, implicitly or for an explicit
+    /// instantiation — function bodies, variable initializers and classes —
+    /// in the order Sema finished them; empty for every other kind. A Content compile behind
     /// a preamble sees the function bodies the preamble left pending, not
     /// the classes it instantiated.
     auto instantiations() -> llvm::ArrayRef<const clang::Decl*>;

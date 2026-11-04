@@ -45,7 +45,8 @@ ZEST_CASE(ModuleLintScanParity) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
 
     UnitRequest request;
@@ -165,7 +166,8 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
 
     auto id = [&](llvm::StringRef name) {
@@ -233,7 +235,8 @@ ZEST_CASE(FailedImportWaitsOnce) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
 
     auto id = [&](llvm::StringRef name) {
@@ -294,7 +297,8 @@ ZEST_CASE(EvictedModuleBelowRebuilds) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
 
     auto id = [&](llvm::StringRef name) {
@@ -359,7 +363,8 @@ ZEST_CASE(CrashedModuleStaysRefused) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
 
     auto id = [&](llvm::StringRef name) {

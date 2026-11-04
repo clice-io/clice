@@ -275,7 +275,7 @@ std::vector<IndexQuery::Located> search(const IndexQuery& index,
 Completables completables(const IndexQuery& index,
                           llvm::StringRef prefix,
                           const CompletionScope& scope,
-                          llvm::ArrayRef<std::shared_ptr<TUIndex>> pchs,
+                          llvm::ArrayRef<std::shared_ptr<TUIndex>> precompiled,
                           std::uint32_t limit) {
     // Of the kinds a namespace's names have: a class's members, which a
     // scope's subtree holds more of, would crowd them out of the ranking.
@@ -321,18 +321,18 @@ Completables completables(const IndexQuery& index,
         for(auto& hit: ranked.hits) {
             seen.insert(hit.symbol.hash);
         }
-        /// A preamble's names, its own of internal linkage among them, are
-        /// spelled through its own scopes.
-        llvm::DenseMap<SymbolHash, const TUIndex*> preamble_of;
-        for(auto& pch_index: pchs) {
-            auto& pch = *pch_index;
-            auto found = pch.names().search(query, limit * 8, [](std::uint32_t) { return false; });
+        /// A PCH's or a module's names, its own of internal linkage among
+        /// them, are spelled through its own scopes.
+        llvm::DenseMap<SymbolHash, const TUIndex*> indexed_in;
+        for(auto& loaded: precompiled) {
+            auto& tu = *loaded;
+            auto found = tu.names().search(query, limit * 8, [](std::uint32_t) { return false; });
             for(auto& hit: found.hits) {
                 if(!seen.insert(hit.hash).second) {
                     continue;
                 }
-                if(auto identity = pch.find_symbol(hit.hash)) {
-                    preamble_of[hit.hash] = &pch;
+                if(auto identity = tu.find_symbol(hit.hash)) {
+                    indexed_in[hit.hash] = &tu;
                     ranked.hits.push_back({.rank = hit.rank,
                                            .symbol = SymbolInfo::from(hit.hash, *identity),
                                            .anchor = {}});
@@ -357,14 +357,14 @@ Completables completables(const IndexQuery& index,
                identity && identity->file != no_file) {
                 declared = Fid{identity->file};
             }
-            auto preamble = preamble_of.find(hit.symbol.hash);
+            auto owner = indexed_in.find(hit.symbol.hash);
             auto chain =
-                preamble == preamble_of.end()
+                owner == indexed_in.end()
                     ? index.container_chain(hit.symbol.hash, declared)
                     : scope_chain(hit.symbol.hash,
                                   hit.symbol.parent,
-                                  [&pch = *preamble->second](SymbolHash parent) {
-                                      auto container = pch.find_symbol(parent);
+                                  [&tu = *owner->second](SymbolHash parent) {
+                                      auto container = tu.find_symbol(parent);
                                       return container ? std::optional(
                                                              SymbolInfo::from(parent, *container))
                                                        : std::nullopt;

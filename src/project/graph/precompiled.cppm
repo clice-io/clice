@@ -1,7 +1,9 @@
 module clice:project.graph.precompiled;
 
+import :index.tu_index;
 import :project.graph.task_graph;
 import :support.failure_record;
+import :support.logging;
 import :support.prelude;
 import :vfs.cache_store;
 import :vfs.file_table;
@@ -22,6 +24,12 @@ struct BuildOptions {
     bool retry_crashed = false;
 };
 
+/// Open the index paired with a PCH or a PCM (memory-mapped). Null when the
+/// file is unreadable, structurally invalid, of a different format version,
+/// or any embedded shard blob fails verification — callers treat all of
+/// these as the pair missing.
+std::shared_ptr<index::TUIndex> load_paired_index(llvm::StringRef path);
+
 /// A build that failed with what it stands on (see Memo): what a failed
 /// build read, or for a crash, which reports nothing it read, the inputs
 /// known before it ran. It stands while they hold.
@@ -32,8 +40,9 @@ struct Failed {
     Inputs inputs;
 };
 
-/// What the entries of PCHs and PCMs share: the product in the store, the one
-/// it replaced, what it was built from, and the failure of the last build.
+/// What the entries of PCHs and PCMs share: the product in the store with the
+/// index paired with it, the one it replaced, what it was built from, and the
+/// failure of the last build.
 template <typename Failure>
 struct Precompiled {
     /// The product's name in the store: the entry's key and a nonce of the
@@ -53,11 +62,36 @@ struct Precompiled {
     /// a rebuild runs, and once it left the store.
     std::string path;
 
+    /// The product's paired index, committed and evicted with it; empty
+    /// with no product, or once it proved unreadable.
+    std::string index_path;
+
+    /// The paired index once opened; shared so a consumer holding it across
+    /// an await survives the entry replacing or dropping it.
+    std::shared_ptr<index::TUIndex> index;
+
     /// What the build read and looked for, what it was built over included.
     Inputs inputs;
 
     /// The last build's failure; none since a success.
     std::optional<Failed<Failure>> failure;
+
+    /// Open the paired index on first use (memory-mapped, no
+    /// deserialization). Null when it is missing or unreadable; an
+    /// unreadable one leaves the pair incomplete, which its next build
+    /// treats as a miss.
+    const std::shared_ptr<index::TUIndex>& load_index() {
+        if(!index && !index_path.empty()) {
+            index = load_paired_index(index_path);
+            if(!index) {
+                // Cleared so queries don't retry the mmap and verification
+                // on every call.
+                LOG_WARN("Failed to open the paired index {}", index_path);
+                index_path.clear();
+            }
+        }
+        return index;
+    }
 
     /// The last build's failure while what it stands on holds; one that no
     /// longer does is forgotten.
@@ -79,18 +113,25 @@ struct Precompiled {
             previous = std::exchange(blob, {});
         }
         path.clear();
+        index_path.clear();
+        index.reset();
         inputs.clear();
     }
 
-    /// A new build committed at `path` under `blob`, built from `inputs`.
+    /// A new build committed at `path` under `blob`, its index at
+    /// `index_path` and opened as `index`, built from `inputs`.
     void publish(CacheStore* store,
                  llvm::StringRef ns,
                  std::string blob,
                  std::string path,
+                 std::string index_path,
+                 std::shared_ptr<index::TUIndex> index,
                  Inputs inputs) {
         retire(store, ns);
         this->blob = std::move(blob);
         this->path = std::move(path);
+        this->index_path = std::move(index_path);
+        this->index = std::move(index);
         this->inputs = std::move(inputs);
         failure.reset();
     }
@@ -104,6 +145,8 @@ struct Precompiled {
             name->clear();
         }
         path.clear();
+        index_path.clear();
+        index.reset();
         inputs.clear();
     }
 };

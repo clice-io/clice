@@ -773,8 +773,8 @@ public:
     /// request: `if`, `for` and the like exist only as code patterns. The
     /// members the other access operator reaches come as candidates
     /// carrying the fix that writes it.
-    /// With `from_index`, the names of namespaces the preamble declares
-    /// are the candidates' alone (load_names).
+    /// With `from_index`, the names of namespaces the preamble and the
+    /// imported modules declare are the candidates' alone (load_names).
     static clang::CodeCompleteOptions sema_options(const CodeCompletionOptions& options,
                                                    bool from_index) {
         clang::CodeCompleteOptions sema;
@@ -2299,9 +2299,9 @@ auto code_complete(CompilationParams params,
     bool member_access = false;
     bool brought_in = false;
     bool read_whole = false;
-    // The index holds no module's names a module file brings in, nor those
-    // of the header modules a parse builds itself (-fmodules).
-    bool from_index = names.from_index && params.input.pcms.empty();
+    // The index holds none of the names of the header modules a parse
+    // builds itself (-fmodules).
+    bool from_index = names.from_index;
     params.completion.consumer = [&](CompilationUnit& unit) {
         auto& lang = unit.lang_options();
         from_index = from_index && !(lang.Modules && lang.ImplicitModules);

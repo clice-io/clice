@@ -1,5 +1,20 @@
 [editor."main.cpp"]
-diagnostics = []
+diagnostics = [
+    {
+        at = "int Point::⟦forgotten_member⟧() const {",
+        severity = "warning",
+        message = "unused member function 'forgotten_member'",
+        source = "clang",
+        code = "-Wunused-member-function",
+    },
+    {
+        at = "void ⟦forgotten⟧() {}",
+        severity = "warning",
+        message = "unused function 'forgotten'",
+        source = "clang",
+        code = "-Wunused-function",
+    },
+]
 
 [indexed."main.cpp"]
 diagnostics = [

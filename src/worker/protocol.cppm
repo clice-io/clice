@@ -267,10 +267,12 @@ struct BuildPCHParams {
     std::string index_output_path;
 };
 
-/// Build the PCM of a unit providing a module.
+/// Build the PCM of a unit providing a module, and the unit's index.
 struct BuildPCMParams {
     std::string file;
     std::string directory;
+    /// See CompilationInput::project_root.
+    std::string project_root;
     std::vector<std::string> arguments;
     /// Files on disk the command hides (Resolution::hidden).
     vfs::HiddenFiles hidden;
@@ -286,6 +288,13 @@ struct BuildPCMParams {
 
     /// Tmp path allocated by the master's store (see BuildPCHParams).
     std::string output_path;
+
+    /// Tmp path for the unit's index, with the names its importers complete
+    /// from, allocated alongside output_path.
+    std::string index_output_path;
+
+    /// See CompileUnitParams::standard_library_instantiations.
+    bool standard_library_instantiations = false;
 };
 
 /// One unit's compile: a single parse serving the products the frozen plan

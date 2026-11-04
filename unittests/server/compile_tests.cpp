@@ -496,7 +496,7 @@ ZEST_CASE(BufferImportBuildsPCM) {
     project.dep_graph.build_reverse_map();
     register_pch_store(fixture, tmp);
     project.store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
 
     auto session = fixture.open(src, "import m;\nint main() { return mv(); }\n");
 
@@ -557,7 +557,7 @@ ZEST_CASE(RefusedModuleForgotten) {
     project.dep_graph.build_reverse_map();
     register_pch_store(fixture, tmp);
     project.store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
 
     auto crashed = fixture.intern(tmp.path("crashed.cppm"));
     auto read = current_input(project.file_table, crashed);
@@ -640,7 +640,7 @@ ZEST_CASE(DiamondDepsDeduplicated) {
     project.dep_graph.build_reverse_map();
     register_pch_store(fixture, tmp);
     project.store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
 
     auto session = fixture.open(src, "import top;\nint main() { return t(); }\n");
 
@@ -695,7 +695,7 @@ ZEST_CASE(ImportScanPerUnit) {
     project.dep_graph.build_reverse_map();
     register_pch_store(fixture, tmp);
     project.store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
 
     auto plain = fixture.open(tmp.path("plain.cpp"), "int plain() { return 0; }\n");
     auto main = fixture.open(tmp.path("main.cpp"), "import m;\nint main() { return mv(); }\n");

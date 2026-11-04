@@ -90,12 +90,12 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
 
 void offer_names(const index::IndexQuery& query,
                  const DependencyGraph& graph,
-                 llvm::ArrayRef<std::shared_ptr<index::TUIndex>> pchs,
+                 llvm::ArrayRef<std::shared_ptr<index::TUIndex>> precompiled,
                  CompileCompletion& compile) {
     if(!compile.prefix) {
         return;
     }
-    compile.from_index = !pchs.empty();
+    compile.from_index = !precompiled.empty();
     auto kind_of = [](SymbolKind kind) {
         using Kind = protocol::CompletionItemKind;
         switch(kind) {
@@ -112,8 +112,11 @@ void offer_names(const index::IndexQuery& query,
             default: return Kind::Text;
         }
     };
-    auto found =
-        index::completables(query, *compile.prefix, compile.scope, pchs, scope_candidate_limit);
+    auto found = index::completables(query,
+                                     *compile.prefix,
+                                     compile.scope,
+                                     precompiled,
+                                     scope_candidate_limit);
     for(auto& [symbol, chain, declared]: found.names) {
         bool macro = symbol.kind == SymbolKind::Macro;
         ScopeCandidate candidate{
