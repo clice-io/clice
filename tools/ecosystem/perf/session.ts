@@ -251,7 +251,7 @@ export class Session {
         const end = this.end(uri);
         const comment = `// perf edit ${String(version)}`;
         const edited = nowMs();
-        const arrived = client.armDiagnostics(uri);
+        const arrived = client.armDiagnostics(uri, version);
         client.change(uri, version, [{ range: { start: end, end }, text: `\n${comment}` }]);
         const [diagnostics, tokens] = await Promise.all([
             bounded(arrived, `diagnostics of ${uri}`).then(() => nowMs() - edited),

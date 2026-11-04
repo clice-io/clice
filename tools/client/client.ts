@@ -214,7 +214,7 @@ export class CliceClient {
     /// clients a test already shut down explicitly.
     disposed = false;
 
-    private diagnosticsWaiters = new Map<string, (() => void)[]>();
+    private diagnosticsWaiters = new Map<string, { version?: number; resolve: () => void }[]>();
     private publishes = new Map<string, number>();
     /// Holds whose reply the server parked (clice/internal/held), and the
     /// waiters of the ones not parked yet.
@@ -263,9 +263,18 @@ export class CliceClient {
             for (const key of [rawUri, normalized]) {
                 const waiters = this.diagnosticsWaiters.get(key);
                 if (waiters) {
-                    this.diagnosticsWaiters.delete(key);
-                    waiters.forEach((resolve) => {
-                        resolve();
+                    const reached = (waiter: { version?: number }) =>
+                        waiter.version === undefined ||
+                        params.version === undefined ||
+                        params.version >= waiter.version;
+                    const waiting = waiters.filter((waiter) => !reached(waiter));
+                    if (waiting.length === 0) {
+                        this.diagnosticsWaiters.delete(key);
+                    } else {
+                        this.diagnosticsWaiters.set(key, waiting);
+                    }
+                    waiters.filter(reached).forEach((waiter) => {
+                        waiter.resolve();
                     });
                 }
             }
@@ -786,12 +795,14 @@ export class CliceClient {
 
     // === Diagnostics =====================================================
 
-    /// Arm a waiter that resolves on the NEXT publishDiagnostics for uri.
-    armDiagnostics(uri: string): Promise<void> {
+    /// Arm a waiter that resolves on the NEXT publishDiagnostics for uri;
+    /// with `version`, the next one of that version or later: a compile
+    /// past its parse publishes the previous version again.
+    armDiagnostics(uri: string, version?: number): Promise<void> {
         uri = this.normalizeUri(uri);
         return new Promise((resolve) => {
             const waiters = this.diagnosticsWaiters.get(uri) ?? [];
-            waiters.push(resolve);
+            waiters.push({ ...(version === undefined ? {} : { version }), resolve });
             this.diagnosticsWaiters.set(uri, waiters);
         });
     }
