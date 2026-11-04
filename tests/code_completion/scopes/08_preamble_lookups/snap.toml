@@ -1539,3 +1539,33 @@ items = [
     { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
+
+["nothing typed"."in a namespace".completion]
+items = [
+    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
+    { label = "helper_value(int x)", kind = "Function", detail = "int", insert = "helper_value()" },
+    { label = "macro_separator()", kind = "Function", detail = "int", insert = "macro_separator()" },
+    { label = "run()", kind = "Function", detail = "int", insert = "run()" },
+    { label = "alignof", kind = "Keyword", insert = "alignof" },
+    { label = "co_await", kind = "Keyword", insert = "co_await" },
+    { label = "co_yield", kind = "Keyword", insert = "co_yield" },
+    { label = "const_cast", kind = "Keyword", insert = "const_cast" },
+    { label = "decltype", kind = "Keyword", insert = "decltype" },
+    { label = "delete", kind = "Keyword", insert = "delete" },
+]
+more = 47
+
+["nothing typed".using-directive.completion]
+items = [
+    { label = "absolute()", kind = "Function", detail = "int", insert = "absolute()" },
+    { label = "all_members()", kind = "Function", detail = "int", insert = "all_members()" },
+    { label = "global()", kind = "Function", detail = "int", insert = "global()" },
+    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
+    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
+    { label = "helper_hidden(int x)", kind = "Function", detail = "int", insert = "helper_hidden()" },
+    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
+    { label = "helper_static(int x)", kind = "Function", detail = "int", insert = "helper_static()" },
+    { label = "helper_value(int x)", kind = "Function", detail = "int", insert = "helper_value()" },
+    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
+]
+more = 70

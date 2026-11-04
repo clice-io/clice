@@ -93,8 +93,9 @@ clang::DeclContext* qualified_namespace(clang::Sema& sema, const index::Completi
 }
 
 /// The identifiers of the files the compile loads that `typed` matches,
-/// best first. Read from the files' identifier tables, which name every
-/// identifier they spell and load no declaration.
+/// best first, each once. Read from the files' identifier tables, which
+/// name every identifier they spell, the same one in each, and load no
+/// declaration.
 std::vector<llvm::StringRef> matching_identifiers(clang::ASTContext& ast, llvm::StringRef typed) {
     auto* lookup = ast.Idents.getExternalIdentifierLookup();
     if(!lookup) {
@@ -106,6 +107,7 @@ std::vector<llvm::StringRef> matching_identifiers(clang::ASTContext& ast, llvm::
     bool reserved_typed = typed.starts_with("_");
     FuzzyMatcher matcher(typed);
     std::vector<std::pair<float, llvm::StringRef>> matched;
+    llvm::StringSet<> seen;
     std::unique_ptr<clang::IdentifierIterator> identifiers(lookup->getIdentifiers());
     for(auto name = identifiers->Next(); !name.empty(); name = identifiers->Next()) {
         if(!reserved_typed && name.starts_with("_") &&
@@ -131,7 +133,7 @@ std::vector<llvm::StringRef> matching_identifiers(clang::ASTContext& ast, llvm::
         if(next != lower.size()) {
             continue;
         }
-        if(auto score = matcher.match(name)) {
+        if(auto score = matcher.match(name); score && seen.insert(name).second) {
             matched.emplace_back(*score, name);
         }
     }
@@ -200,14 +202,28 @@ LoadedNames load_names(clang::Sema& sema, const CompileCompletion& names) {
     if(names.prefix->empty()) {
         // Every identifier matches: the index's most used names stand for a
         // scope it holds more of than a completion takes, and one it holds
-        // no more of — small, or not indexed — costs little read whole,
-        // with the macros where no qualifier was written.
-        if(!names.more_candidates) {
-            read_names(space ? space : ast.getTranslationUnitDecl());
-            if(!space) {
-                sema.getPreprocessor().macros(/*IncludeExternalMacros=*/true);
+        // no more of — small, or not indexed — costs little read whole.
+        // Where no qualifier was written, those are the namespaces around
+        // the point, those the using-directives of its blocks name, and the
+        // macros.
+        if(names.more_candidates) {
+            return loaded;
+        }
+        if(space) {
+            read_names(space);
+            return loaded;
+        }
+        for(auto* context = sema.CurContext; context; context = context->getParent()) {
+            if(context->isFileContext()) {
+                read_names(context);
             }
         }
+        for(auto* scope = sema.getCurScope(); scope; scope = scope->getParent()) {
+            for(auto* directive: scope->using_directives()) {
+                read_names(directive->getNominatedNamespace());
+            }
+        }
+        sema.getPreprocessor().macros(/*IncludeExternalMacros=*/true);
         return loaded;
     }
     // Most identifiers name nothing here: members, parameters, names of

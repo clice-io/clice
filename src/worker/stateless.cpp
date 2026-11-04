@@ -218,12 +218,11 @@ static worker::PrecompiledBuildResult
     if(success && !params.whole_file) {
         blob = serialize_preamble_index(*unit, params.preamble_bound);
     } else if(success && params.index) {
+        // The PCH stands without the index, whose unit then compiles itself.
         if(auto error = send_index(index::build_tu_index(*unit, index_options(params)),
                                    params.index_output_path,
                                    result)) {
-            success = false;
-            internal_error = true;
-            errors = {std::move(*error)};
+            LOG_WARN("BuildPCH: the index of {} is lost: {}", params.file, *error);
         }
     }
     auto index_ms = index_timer.ms();
@@ -308,16 +307,14 @@ static worker::PrecompiledBuildResult
         errors = collect_errors(*unit);
 
     worker::PrecompiledBuildResult result;
-    bool internal_error = false;
     std::size_t index_bytes = 0;
     ScopedTimer index_timer;
     if(success) {
         auto blob = index::build_tu_index(*unit, index_options(params));
         index_bytes = blob.size();
+        // The PCM stands without the index, whose unit then compiles itself.
         if(auto error = send_index(std::move(blob), params.index_output_path, result)) {
-            success = false;
-            internal_error = true;
-            errors = {std::move(*error)};
+            LOG_WARN("BuildPCM: the index of module {} is lost: {}", params.module_name, *error);
         }
     }
     auto index_ms = index_timer.ms();
@@ -349,7 +346,7 @@ static worker::PrecompiledBuildResult
                               started_at,
                               deps,
                               errors,
-                              internal_error);
+                              /*internal_error=*/false);
 }
 
 /// The batch tidy pass's findings, each where it is: unlike the LSP path,

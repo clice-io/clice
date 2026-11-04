@@ -78,3 +78,21 @@ test("a header edited before the compile", async (t) => {
     });
     await park.release();
 });
+
+// Nothing typed and nothing indexed: the compile reads whole the namespace
+// around the point, app's using-declaration bringing in helper_value, and
+// the one a block's using-directive names, helper_detail's.
+test("nothing typed", async (t) => {
+    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    await s.diagnostics("main.cpp");
+    await t.show(
+        "in a namespace",
+        s.completion(t.at("main.cpp", "int run() {\n    return |helper")),
+        { parts: ["insert"] },
+    );
+    await t.show(
+        "using-directive",
+        s.completion(t.at("main.cpp", "using namespace lib::detail;\n    return |helper")),
+        { parts: ["insert"] },
+    );
+});
