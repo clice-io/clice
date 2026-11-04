@@ -46,15 +46,16 @@ Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> providers, Fid 
     });
 }
 
-/// The entry's PCM, or the PCH it was built over, left the disk: forget it,
-/// so the module's next attempt builds again. Returns whether it had.
+/// The entry's PCM, or the PCH it was built over, left the disk, or its
+/// index proved unreadable: forget it, so the module's next attempt builds
+/// again. Returns whether it had.
 bool drop_evicted(PCMEntry& entry) {
     if(entry.path.empty()) {
         return false;
     }
     if(!fs::exists(entry.path)) {
         entry.blob.clear();
-    } else if(entry.pch.empty() || fs::exists(entry.pch)) {
+    } else if(!entry.index_path.empty() && (entry.pch.empty() || fs::exists(entry.pch))) {
         return false;
     }
     entry.path.clear();

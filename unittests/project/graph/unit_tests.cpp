@@ -344,6 +344,72 @@ ZEST_CASE(EvictedModuleBelowRebuilds) {
     ZEXPECT(fs::exists(low->second.path));
 }
 
+ZEST_CASE(UnreadableModuleIndexRebuilds) {
+    // A module whose PCM stayed on disk but whose index proved unreadable
+    // when first opened: the importer's next wait builds it again, and the
+    // new build's index opens.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int mv() { return 1; }\n");
+    tmp.touch("use.cpp", "import m;\nint u() { return mv(); }\n");
+
+    IndexerFixture f;
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"),  {}},
+                  {tmp.root, tmp.path("use.cpp"), {}},
+    }));
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ZASSERT(store);
+    store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
+    f.project.store.emplace(std::move(*store));
+
+    auto id = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+    std::vector<UnitResult::Status> results;
+    bool lost = false;
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(f.pool.start(opts));
+
+        UnitRequest first;
+        first.index = true;
+        results.push_back(
+            (co_await f.project.compile_unit(id("use.cpp"), std::move(first)))->status);
+        auto& entry = f.project.pcms.find(id("m.cppm"))->second;
+        ZASSERT(!entry.index_path.empty());
+        entry.index.reset();
+        ZASSERT(!fs::write_file(entry.index_path, "not an index"));
+        lost = f.project.module_index(id("m.cppm")) == nullptr;
+        UnitRequest second;
+        second.index = true;
+        results.push_back(
+            (co_await f.project.compile_unit(id("use.cpp"), std::move(second)))->status);
+
+        co_await f.project.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(done);
+
+    using enum UnitResult::Status;
+    ZEXPECT(results == (std::vector<UnitResult::Status>{Completed, Completed}));
+    ZEXPECT(lost);
+    ZEXPECT(f.project.module_index(id("m.cppm")) != nullptr);
+}
+
 ZEST_CASE(CrashedModuleStaysRefused) {
     // A module whose build crashed a worker stays refused while what that
     // build read holds, whatever its key: a rebuild of the PCH it reads
