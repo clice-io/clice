@@ -1,3 +1,4 @@
+import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
 // The compile crashes where clang instantiates, past the parse, every
@@ -11,5 +12,5 @@ test(async (t) => {
     await t.show("main.cpp", s.diagnostics("main.cpp"));
     await t.show("crashes", await s.crashes());
     const { files } = await s.counts();
-    await t.show("pch builds", files["main.cpp"]?.pch);
+    expect(files["main.cpp"]?.pch).toBe(2);
 });
