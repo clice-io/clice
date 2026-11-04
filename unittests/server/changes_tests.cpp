@@ -219,6 +219,25 @@ ZEST_CASE(SaveMarksDependents) {
     ZASSERT(queued(ReindexReason::ContentChanged).empty());
 }
 
+ZEST_CASE(OpenUnitsReindex) {
+    auto header = fixture.intern("/proj/h.h");
+    auto open_tu = list_unit(project.cdb, "/proj/a.cpp");
+    fixture.open("/proj/a.cpp", "");
+    auto closed_tu = list_unit(project.cdb, "/proj/b.cpp");
+    project.dep_graph.set_includes(open_tu, 0, {{header}});
+    project.dep_graph.set_includes(closed_tu, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+
+    served.disk_changed({header});
+
+    // An open unit's compile serves its buffer, the background index its
+    // disk text: the open dependent recompiles and reindexes too.
+    ZASSERT(invalidated(open_tu));
+    llvm::SmallVector<Fid> reindexed{open_tu, closed_tu};
+    ranges::sort(reindexed);
+    ZASSERT(queued(ReindexReason::DepsOnly) == reindexed);
+}
+
 ZEST_CASE(TransitiveDependentsEnqueue) {
     auto header = fixture.intern("/proj/h.h");
     auto middle = fixture.intern("/proj/g.h");
