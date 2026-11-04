@@ -868,10 +868,11 @@ struct Project {
     /// is unreadable.
     std::vector<std::shared_ptr<index::TUIndex>> pch_indexes(llvm::StringRef pch_key);
 
-    /// Forget the entries whose pairs the store's LRU evicted from disk (inside
-    /// a commit, maybe on a worker thread), or the content-keyed map grows
-    /// for the server's lifetime even for keys never requested again.
-    void forget_evicted_pchs();
+    /// Forget the PCH entries whose pairs the store's LRU evicted from disk
+    /// (inside a commit, maybe on a worker thread), or the content-keyed map
+    /// grows for the server's lifetime even for keys never requested again;
+    /// release the index mappings of the PCMs it evicted.
+    void forget_evicted();
 
     /// Unload pch.idx indexes beyond the budget (two per open document, plus
     /// 2), least recently used first. Without this every preamble key ever

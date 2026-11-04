@@ -1794,6 +1794,8 @@ public:
             project_expansions();
         } else {
             add_predefined_macros();
+        }
+        if(names) {
             add_brought_in_enumerators();
         }
         auto instantiations_ms = instantiations_timer.ms_f();

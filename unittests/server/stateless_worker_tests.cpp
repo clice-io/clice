@@ -228,7 +228,8 @@ ZEST_SUITE(StatelessWorkerExtended) {
 ZEST_CASE(BuildPCMRequest) {
     TempDir tmp;
     tmp.touch("test_module.cppm",
-              "export module test_module;\nexport int module_func() { return 1; }\n");
+              "export module test_module;\nexport int module_func() { return 1; }\n"
+              "export namespace lib {\nenum class Tone { tone_warm };\nusing enum Tone;\n}\n");
     auto src = tmp.path("test_module.cppm");
 
     WorkerHandle w;
@@ -270,12 +271,14 @@ ZEST_CASE(BuildPCMRequest) {
             }
             ZEXPECT(source_dep);
             // The build indexes the unit too, with the names its importers
-            // complete from.
+            // complete from: an enumerator `using enum` brings in among them.
             auto index = load_paired_index(tmp.path("test_module.pcm.idx"));
             ZEXPECT(index != nullptr);
             if(index) {
-                auto query = index::SymbolQuery::parse("module_func");
-                ZEXPECT(index->names().search(*query, 10, {}).hits.size() == 1u);
+                for(auto name: {"module_func", "tone_warm"}) {
+                    auto query = index::SymbolQuery::parse(name);
+                    ZEXPECT(index->names().search(*query, 10, {}).hits.size() == 1u);
+                }
             }
         }
         test_done = true;

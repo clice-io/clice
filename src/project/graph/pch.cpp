@@ -605,7 +605,7 @@ std::vector<std::shared_ptr<index::TUIndex>> Project::pch_indexes(llvm::StringRe
     return indexes;
 }
 
-void Project::forget_evicted_pchs() {
+void Project::forget_evicted() {
     if(!store) {
         return;
     }
@@ -613,6 +613,17 @@ void Project::forget_evicted_pchs() {
     // pair. A key rebuilt after the eviction was recorded names another
     // blob by now.
     for(auto& evicted: store->take_evictions()) {
+        if(evicted.ns == "pcm") {
+            // Its module finds the PCM gone when next asked (drop_evicted);
+            // the mapping of its index goes now, as a mapped file keeps its
+            // disk space once deleted.
+            for(auto& [module, entry]: pcms) {
+                if(entry.blob == evicted.key) {
+                    entry.index.reset();
+                }
+            }
+            continue;
+        }
         if(evicted.ns != "pch") {
             continue;
         }

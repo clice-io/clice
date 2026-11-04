@@ -410,6 +410,66 @@ ZEST_CASE(UnreadableModuleIndexRebuilds) {
     ZEXPECT(f.project.module_index(id("m.cppm")) != nullptr);
 }
 
+ZEST_CASE(EvictedModuleIndexReleased) {
+    // A store too small for two PCMs evicts the first as the second commits:
+    // the first module's index is no longer mapped once the eviction is
+    // taken in, as a mapped file keeps its disk space.
+    TempDir tmp;
+    tmp.touch("a.cppm", "export module a;\nexport int av() { return 1; }\n");
+    tmp.touch("b.cppm", "export module b;\nexport int bv() { return 2; }\n");
+
+    IndexerFixture f;
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("a.cppm"), {}},
+                  {tmp.root, tmp.path("b.cppm"), {}},
+    }));
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ZASSERT(store);
+    store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1});
+    f.project.store.emplace(std::move(*store));
+
+    auto id = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+    bool mapped = false;
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(f.pool.start(opts));
+
+        for(auto name: {"a.cppm", "b.cppm"}) {
+            UnitRequest request;
+            request.index = true;
+            co_await f.project.compile_unit(id(name), std::move(request));
+            if(llvm::StringRef(name) == "a.cppm") {
+                mapped = f.project.pcms.find(id("a.cppm"))->second.index != nullptr;
+            }
+        }
+
+        co_await f.project.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(done);
+
+    ZEXPECT(mapped);
+    f.project.forget_evicted();
+    ZEXPECT(f.project.pcms.find(id("a.cppm"))->second.index == nullptr);
+    ZEXPECT(f.project.pcms.find(id("b.cppm"))->second.index != nullptr);
+}
+
 ZEST_CASE(CrashedModuleStaysRefused) {
     // A module whose build crashed a worker stays refused while what that
     // build read holds, whatever its key: a rebuild of the PCH it reads
