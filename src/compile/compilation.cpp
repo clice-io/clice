@@ -671,7 +671,12 @@ public:
             return;
         }
         auto& sema = unit.instance->getSema();
-        // What the reader holds pending comes first, as Sema would order it.
+        // The reader joins Sema's external sources after this one, which
+        // would leave what it holds pending past the loop below: taken here,
+        // it comes first, as Sema orders it, and pauses as the rest does.
+        if(auto reader = unit.instance->getASTReader()) {
+            reader->ReadPendingInstantiations(pending);
+        }
         for(auto [decl, point]: pending) {
             if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
                 function->setInstantiationIsPending(true);

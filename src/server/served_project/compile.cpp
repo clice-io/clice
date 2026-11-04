@@ -251,6 +251,21 @@ bool ServedProject::attribute_crash(const std::shared_ptr<Session>& session,
     return false;
 }
 
+void ServedProject::compile_ended(const std::shared_ptr<Session>& session,
+                                  std::uint64_t generation,
+                                  bool tidy) {
+    using enum feature::RequestKind;
+    auto& suspects = session->suspects;
+    suspects.pch.clear();
+    auto tidy_crash = std::exchange(suspects.tidy, std::nullopt);
+    if(tidy) {
+        session->succeeded(Tidy, generation);
+    } else if(tidy_crash) {
+        record_crash(session, Tidy, worker::death_of(*tidy_crash), tidy_crash->message);
+    }
+    session->succeeded(Compile, generation);
+}
+
 void ServedProject::republish(const std::shared_ptr<Session>& session) {
     if(!owns(*session)) {
         return;
@@ -1066,6 +1081,12 @@ async::task<std::optional<Result>>
         co_return Result::Stale;
     }
     reply = std::move(*result);
+    // A pair found unreadable past the parse goes as one found at it does
+    // (send), the attempt run again over its rebuild.
+    if(reply.pch_suspect && built.loaded) {
+        project.pch_consume_failed(*built.loaded);
+        co_return Result::Stale;
+    }
     // The index came with the rest.
     std::swap(transfer, finished_transfer);
     co_return std::nullopt;
@@ -1148,24 +1169,14 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     if(tidy_config) {
         reply.deps.append_range(tidy_config->files);
     }
-    // A compile that finishes clears its suspects: the pair it read was at
-    // fault, or the pass it ran without.
-    auto& suspects = session->suspects;
-    if(!reply.unfinished) {
-        suspects.pch.clear();
-    }
-    auto tidy_crash = std::exchange(suspects.tidy, std::nullopt);
-    // clang-tidy runs past the parse: the rest of the compile tells.
-    if(tidy_dispatch && !reply.unfinished) {
-        session->succeeded(Tidy, ticket.generation);
-    } else if(tidy_crash) {
-        served.record_crash(session, Tidy, worker::death_of(*tidy_crash), tidy_crash->message);
-    }
     // The files the synthesized context embeds are read too, though clang
     // never opens them.
     entry.inputs = intern_inputs(project.file_table, reply.deps, reply.started_at);
     entry.inputs->append(resolution.inputs.begin(), resolution.inputs.end());
-    session->succeeded(Compile, ticket.generation);
+    // The instantiations past an unfinished parse may still crash.
+    if(!reply.unfinished) {
+        served.compile_ended(session, ticket.generation, tidy_dispatch.has_value());
+    }
     served.push_output(*session, true);
     // The push above told the client to re-pull what the fresh AST now
     // answers better; one refresh per commit.
@@ -1191,13 +1202,22 @@ void ServedProject::finish_later(Unfinished unfinished) {
 }
 
 async::task<bool> ServedProject::finished(Fid path_id) {
-    auto it = finishing.find(path_id);
-    if(it == finishing.end()) {
-        co_return false;
+    while(true) {
+        auto it = finishing.find(path_id);
+        if(it == finishing.end()) {
+            co_return false;
+        }
+        auto current = it->second;
+        co_await current->done.wait();
+        if(current->again) {
+            co_return true;
+        }
+        // The rest of a newer compile replaced it: that one tells.
+        if(auto next = finishing.find(path_id);
+           next == finishing.end() || next->second == current) {
+            co_return false;
+        }
     }
-    auto current = it->second;
-    co_await current->done.wait();
-    co_return current->again;
 }
 
 async::task<> ServedProject::finish_compile(Unfinished unfinished) {
@@ -1256,7 +1276,24 @@ async::task<> ServedProject::finish_compile(Unfinished unfinished) {
         }
         co_return;
     }
-    if(!result.has_value() || result->status != worker::CompileStatus::Done || !shown()) {
+    if(!result.has_value() || !shown()) {
+        co_return;
+    }
+    // A pair the reader finds unreadable only as the instantiations load
+    // from it goes as one found at the parse does (CompileAttempt::send).
+    if(result->pch_suspect && unfinished.consumed) {
+        LOG_WARN("Compile could not read PCH pair {} for {}; retracting the pair",
+                 *unfinished.consumed,
+                 file_path);
+        project.pch_consume_failed(*unfinished.consumed);
+        if(owns(*session)) {
+            current->again = true;
+            invalidate(path_id);
+            request_compile(session);
+        }
+        co_return;
+    }
+    if(result->status != worker::CompileStatus::Done) {
         co_return;
     }
 
@@ -1270,10 +1307,7 @@ async::task<> ServedProject::finish_compile(Unfinished unfinished) {
     if(unfinished.consumed) {
         project.pch_consume_succeeded(*unfinished.consumed);
     }
-    session->suspects.pch.clear();
-    if(unfinished.tidy) {
-        session->succeeded(feature::RequestKind::Tidy, unfinished.session_generation);
-    }
+    compile_ended(session, unfinished.session_generation, unfinished.tidy);
     // The instantiations change what the compile raised, not what its AST
     // answers.
     push_output(*session, false);

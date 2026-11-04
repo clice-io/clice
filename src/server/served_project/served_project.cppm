@@ -838,6 +838,15 @@ private:
 
     async::task<> finish_compile(Unfinished unfinished);
 
+    /// The document's compile ended, the instantiations past its parse
+    /// among it, under the session's `generation`: it clears its suspects —
+    /// the pair it read was at fault, or the pass it ran without, whose
+    /// crash it books — and the records of what it ran, clang-tidy when
+    /// `tidy`.
+    void compile_ended(const std::shared_ptr<Session>& session,
+                       std::uint64_t generation,
+                       bool tidy);
+
     /// Whose fault a worker death under the document's compile is, tried
     /// in turn: the clang-tidy pass, when `tidy` ran it, the PCH pair
     /// `consumed` the parse read, else the document's own code. Returns
