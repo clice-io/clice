@@ -392,9 +392,8 @@ public:
     /// HandleTagDeclDefinition. An explicit instantiation hands over again
     /// what an earlier use already instantiated.
     void collect_instantiation(clang::Decl* decl) {
-        if(unit.params.kind != CompilationKind::Whole &&
-           unit.params.kind != CompilationKind::Content &&
-           unit.params.kind != CompilationKind::ModuleInterface) {
+        if(unit.params.kind == CompilationKind::Preamble ||
+           unit.params.kind == CompilationKind::Completion) {
             return;
         }
         if(!instantiated(decl) || !instantiations.insert(decl).second) {

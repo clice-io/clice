@@ -783,16 +783,18 @@ struct Project {
 
     /// The request for clice's own build of the precompiled header the command
     /// of `unit` writes (Project::pch_writer): the unit's whole file, under that
-    /// command. The editor's build skips function bodies, the index's keeps
-    /// them: they are two PCHs.
-    PCHRequest declared_pch_request(const CommandRef& unit, bool skip_bodies);
+    /// command, function bodies and all — the editor and the index load the
+    /// same one.
+    PCHRequest declared_pch_request(const CommandRef& unit);
 
     /// The PCH of the preamble of `text`, the buffer of `file` compiled under
     /// `arguments` from `directory` as `resolution` resolved them, with
     /// `imports` its imports: keyed by the preamble text and the
     /// frontend-relevant flags, so files with the same preamble share it.
     /// `base` is the key of the precompiled header the build declares for
-    /// the command, built already; empty for none. `point` is where a
+    /// the command, built already; empty for none, and `forced` when the
+    /// command forces that header in all the same, which the PCH then
+    /// holds without a directive of the text's. `point` is where a
     /// completion's parse stops: the preamble ends before the line holding
     /// it, so the lines typed there keep the PCH of the lines above them.
     PreamblePCH preamble_pch(Fid file,
@@ -800,7 +802,8 @@ struct Project {
                              std::optional<std::uint32_t> point,
                              const Resolution& resolution,
                              const Imports& imports,
-                             llvm::StringRef base);
+                             llvm::StringRef base,
+                             bool forced);
 
     /// Build the PCHs a parse of `text`, the buffer of `file` under
     /// `resolution` with `imports` its imports, loads: the precompiled header
@@ -862,19 +865,12 @@ struct Project {
     /// enforce_loaded_budget).
     std::shared_ptr<index::TUIndex> preamble_index(llvm::StringRef pch_key);
 
-    /// The indexes naming what a compile loading the PCH of `pch_key` reads
-    /// from PCHs: its own, then that of the precompiled header it is built
-    /// over, as its own indexes only what the preamble adds. None when one
-    /// is unreadable.
-    std::vector<std::shared_ptr<index::TUIndex>> pch_indexes(llvm::StringRef pch_key);
+    /// Forget the entries whose pairs the store's LRU evicted from disk (inside
+    /// a commit, maybe on a worker thread), or the content-keyed map grows
+    /// for the server's lifetime even for keys never requested again.
+    void forget_evicted_pchs();
 
-    /// Forget the PCH entries whose pairs the store's LRU evicted from disk
-    /// (inside a commit, maybe on a worker thread), or the content-keyed map
-    /// grows for the server's lifetime even for keys never requested again;
-    /// release the index mappings of the PCMs it evicted.
-    void forget_evicted();
-
-    /// Unload pch.idx indexes beyond the budget (two per open document, plus
+    /// Unload pch.idx indexes beyond the budget (one per open document, plus
     /// 2), least recently used first. Without this every preamble key ever
     /// touched keeps its blob mapped for the server's lifetime — tens of MB per
     /// key on real projects, released by neither didClose nor store eviction.
@@ -988,17 +984,6 @@ struct Project {
     /// module's imports are built too.
     std::unordered_map<std::string, std::string> imported_pcms(llvm::ArrayRef<Fid> modules) const;
 
-    /// The index the module's PCM build wrote of its unit, its names among
-    /// it; null without a built PCM, or when the index is unreadable.
-    std::shared_ptr<index::TUIndex> module_index(Fid module);
-
-    /// The indexes naming what a compile loading the PCH of `pch_key` (none
-    /// when empty) and importing `modules` reads from them: pch_indexes, and
-    /// those of the modules whose PCMs it reads (imported_pcms). None when
-    /// one is missing.
-    std::vector<std::shared_ptr<index::TUIndex>> precompiled_indexes(llvm::StringRef pch_key,
-                                                                     llvm::ArrayRef<Fid> modules);
-
     /// What decides whether the module's last PCM build still holds: what it
     /// read, or — for a build an import failed — what the import's failure
     /// rests on, down to the module whose own build failed. Null for a module
@@ -1018,6 +1003,35 @@ struct Project {
     /// queue, the lint pass). None when the graph shut down.
     async::task<std::optional<UnitResult>> compile_unit(Fid path_id, UnitRequest request);
 
+    /// Whether a build compiles `unit` as its run's compile would, and
+    /// indexes it: its PCM's, or that of the precompiled header it writes.
+    /// Its run then waits on the build rather than compiling the unit again
+    /// (compile_unit), but for the products only a compile brings.
+    bool compiled_by_build(Fid unit);
+
+    /// Ask a compile of `unit` — its run's, or a build that is the unit's
+    /// compile (its PCM, the precompiled header it writes) — for the unit's
+    /// TU index as the project index takes it: without what the index
+    /// stores already of the files it is expected to include, unless its
+    /// last result named one the index had lost, and with the standard
+    /// library's own instantiations as the settings say. Returns how the
+    /// index comes back.
+    IndexTransfer request_index(Fid unit, worker::CompileUnitParams& params);
+    IndexTransfer request_index(Fid unit, worker::BuildPCMParams& params);
+    IndexTransfer request_index(Fid unit, worker::BuildPCHParams& params);
+
+    /// Merge the TU index of a compile of `unit` (request_index) and take
+    /// its report: read over `imports` — what the PCMs and the precompiled
+    /// header the parse read were built from — under the command `command`
+    /// identifies, its worker reaching `peak`. One naming a variant the
+    /// index lost fails Outdated, and the unit's next compile sends every
+    /// section in full.
+    std::expected<void, index::MergeError> merge_index(Fid unit,
+                                                       llvm::StringRef tu_index,
+                                                       llvm::ArrayRef<Input> imports,
+                                                       std::uint64_t command,
+                                                       std::uint64_t peak);
+
     // graph/precompiled.cpp
 
     /// The precompiled records as the index database carries them (blob kind
@@ -1034,6 +1048,16 @@ struct Project {
     /// what the modules it imports and the PCH it is built over were built from
     /// as it started — one rebuilt meanwhile stales it.
     Inputs read_inputs(const worker::PrecompiledBuildResult& built, const Inputs& before);
+
+    /// Merge the index a build that is `unit`'s compile sent (request_index)
+    /// as the unit's compile's: read over `before` (read_inputs), under the
+    /// command `command` identifies. One that does not merge leaves the unit
+    /// to its run's own compile.
+    void merge_build_index(Fid unit,
+                           IndexTransfer& transfer,
+                           const worker::PrecompiledBuildResult& built,
+                           const Inputs& before,
+                           std::uint64_t command);
 
     /// Send a PCH or PCM build, `label` naming what it builds in the log (a
     /// file, a module), and keep what did not build: a build that

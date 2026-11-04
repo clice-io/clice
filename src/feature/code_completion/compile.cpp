@@ -773,15 +773,15 @@ public:
     /// request: `if`, `for` and the like exist only as code patterns. The
     /// members the other access operator reaches come as candidates
     /// carrying the fix that writes it.
-    /// With `from_index`, the names of namespaces the preamble and the
-    /// imported modules declare are the candidates' alone (load_names).
+    /// With `by_name`, the names of namespaces the files the compile
+    /// loads declare are those load_names reads alone.
     static clang::CodeCompleteOptions sema_options(const CodeCompletionOptions& options,
-                                                   bool from_index) {
+                                                   bool by_name) {
         clang::CodeCompleteOptions sema;
         sema.IncludeMacros = 1;
         sema.IncludeCodePatterns = 1;
         sema.IncludeFixIts = options.dot_to_arrow;
-        sema.LoadExternal = !from_index;
+        sema.LoadExternal = !by_name;
         return sema;
     }
 
@@ -793,18 +793,20 @@ public:
             const CodeCompletionOptions& options,
             const CompletionClient& client,
             const CompileCompletion& names,
-            bool from_index,
+            bool by_name,
             WholeBuffer* whole_buffer,
             bool& includes_pending,
             bool& member_access,
             bool& brought_in,
+            bool& more_loaded,
             bool& read_whole) :
-        clang::CodeCompleteConsumer(sema_options(options, from_index)), unit(unit),
+        clang::CodeCompleteConsumer(sema_options(options, by_name)), unit(unit),
         focus(unit.focus_file()), text(focus.content()), offset(offset), encoding(encoding),
         output(output), documented(documented), options(options), argument_style(options.arguments),
-        client(client), names(names), names_pending(from_index), whole_buffer(whole_buffer),
+        client(client), names(names), names_pending(by_name), whole_buffer(whole_buffer),
         includes_pending(includes_pending), member_access(member_access), brought_in(brought_in),
-        read_whole(read_whole), info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
+        more_loaded(more_loaded), read_whole(read_whole),
+        info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
         // Sema asks first thing in a completion, in the scope of the point.
@@ -814,7 +816,9 @@ public:
         if(names_pending) {
             names_pending = false;
             auto& sema = unit.sema();
-            loaded = load_names(sema, names.scope, names.candidates);
+            auto names_loaded = load_names(sema, names, scope_candidate_limit);
+            loaded = names_loaded.space;
+            more_loaded = names_loaded.more;
             brought_in =
                 *loaded && names.more_elsewhere && brings_in(sema.getASTContext(), *loaded);
         }
@@ -839,8 +843,8 @@ public:
         return tag->getDefinition();
     }
 
-    /// Sema's results, a function of the preamble's whose name the index
-    /// candidates leave out (from_index) with every overload the name finds
+    /// Sema's results, a function of the preamble's whose name load_names
+    /// left out (by_name) with every overload the name finds
     /// where it is completed: Sema lists those of them something before the
     /// point read alone.
     llvm::SmallVector<clang::CodeCompletionResult>
@@ -1007,6 +1011,7 @@ public:
         bool includes = false;
         bool member_access = false;
         bool brought_in = false;
+        bool more_loaded = false;
         bool read_whole = false;
         Builder nested(found->unit,
                        offset,
@@ -1016,11 +1021,12 @@ public:
                        options,
                        client,
                        none,
-                       /*from_index=*/false,
+                       /*by_name=*/false,
                        nullptr,
                        includes,
                        member_access,
                        brought_in,
+                       more_loaded,
                        read_whole);
         nested.text = text;
         auto& completion = other.CodeCompletion();
@@ -1064,7 +1070,7 @@ public:
         return answered;
     }
 
-    /// With the namespaces' names the index offers alone (from_index), the
+    /// With the namespaces' names load_names reads alone (by_name), the
     /// namespace Sema completes in after a qualifier may be another than the
     /// one the server read the text as, where a macro spells the qualifier or
     /// its `::`: that namespace's names are read whole, and the completion
@@ -2264,6 +2270,9 @@ private:
     /// (load_names).
     bool& brought_in;
 
+    /// Whether more names of the loaded files match than load_names read.
+    bool& more_loaded;
+
     /// Whether the names of the namespace Sema completes in were read
     /// whole (complete_unread).
     bool& read_whole;
@@ -2298,13 +2307,9 @@ auto code_complete(CompilationParams params,
     bool includes = false;
     bool member_access = false;
     bool brought_in = false;
+    bool more_loaded = false;
     bool read_whole = false;
-    // The index holds none of the names of the header modules a parse
-    // builds itself (-fmodules).
-    bool from_index = names.from_index;
     params.completion.consumer = [&](CompilationUnit& unit) {
-        auto& lang = unit.lang_options();
-        from_index = from_index && !(lang.Modules && lang.ImplicitModules);
         return std::make_unique<Builder>(unit,
                                          offset,
                                          encoding,
@@ -2313,11 +2318,12 @@ auto code_complete(CompilationParams params,
                                          options,
                                          client,
                                          names,
-                                         from_index,
+                                         names.by_name,
                                          &whole_buffer,
                                          includes,
                                          member_access,
                                          brought_in,
+                                         more_loaded,
                                          read_whole);
     };
     auto unit = compile(std::move(params));
@@ -2347,8 +2353,8 @@ auto code_complete(CompilationParams params,
     Completion completion{.list = completion_list(std::move(items), includes ? 0U : options.limit)};
     completion.list.is_incomplete =
         completion.list.is_incomplete ||
-        ((names.more_candidates || (names.more_elsewhere && brought_in)) && !member_access &&
-         !read_whole);
+        ((names.more_candidates || more_loaded || (names.more_elsewhere && brought_in)) &&
+         !member_access && !read_whole);
     if(includes) {
         auto insertion = action::include_insertion(*unit);
         if(auto position = unit->focus_file().positions().position(insertion.offset, encoding)) {

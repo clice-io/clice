@@ -159,16 +159,10 @@ public:
     SearchIndex(SearchIndex&&) noexcept;
     SearchIndex& operator=(SearchIndex&&) noexcept;
 
-    /// Adopt one segment as the only run (a TU's name table), copied when
-    /// it is not readable_in_place. False — and the index stays empty —
-    /// when the bytes are not a search segment of this build's formats; a
-    /// segment whose columns are inconsistent is found at its first search
-    /// and marks the index damaged.
-    bool load(std::unique_ptr<llvm::MemoryBuffer> segment);
-
     /// Replace the newest `runs` runs by one made of `segments`, appending
     /// it when `runs` is 0. False, the index unchanged, when a segment does
-    /// not load.
+    /// not load; one whose columns are inconsistent is found at its first
+    /// search and marks the index damaged.
     bool replace(std::uint32_t runs, std::vector<std::unique_ptr<llvm::MemoryBuffer>> segments);
 
     /// Swap a segment's bytes for byte-identical ones elsewhere (a newer

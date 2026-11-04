@@ -9,7 +9,6 @@ import :index.indexer;
 import :index.instantiation_shard;
 import :index.shard;
 import :index.tu_index;
-import :project.graph.precompiled;
 import :project.project;
 import :semantic.identity;
 import :semantic.selection;
@@ -2578,7 +2577,7 @@ void build_state(std::source_location location = std::source_location::current()
     dir.touch(
         "state.pch.idx",
         as_chars(index::build_preamble_index(*unit, links, inactive, conditionals, diagnostics)));
-    state = load_paired_index(dir.path("state.pch.idx"));
+    state = load_pch_index(dir.path("state.pch.idx"));
     ZASSERT(state != nullptr);
 }
 
@@ -2635,7 +2634,7 @@ ZEST_CASE(ForcedIncludeServed) {
     ZASSERT(try_compile());
 
     dir.touch("state.pch.idx", as_chars(index::build_preamble_index(*unit, {}, {}, {}, {})));
-    state = load_paired_index(dir.path("state.pch.idx"));
+    state = load_pch_index(dir.path("state.pch.idx"));
     ZASSERT(state != nullptr);
 
     bool found = false;
@@ -2776,10 +2775,10 @@ int main() { return 0; }
 }
 
 ZEST_CASE(RejectBadBlob) {
-    ZEXPECT(load_paired_index(dir.path("missing.pch.idx")) == nullptr);
+    ZEXPECT(load_pch_index(dir.path("missing.pch.idx")) == nullptr);
 
     dir.touch("garbage.pch.idx", "not a blob at all");
-    ZEXPECT(load_paired_index(dir.path("garbage.pch.idx")) == nullptr);
+    ZEXPECT(load_pch_index(dir.path("garbage.pch.idx")) == nullptr);
 }
 
 ZEST_CASE(RejectVersionMismatch) {
@@ -2788,7 +2787,7 @@ ZEST_CASE(RejectVersionMismatch) {
     // instead of serving stale data.
     for(auto version: {0u, index::index_format_version - 1}) {
         dir.touch("stale.pch.idx", blob_of_version(version));
-        ZEXPECT(load_paired_index(dir.path("stale.pch.idx")) == nullptr);
+        ZEXPECT(load_pch_index(dir.path("stale.pch.idx")) == nullptr);
     }
 }
 
@@ -2797,7 +2796,7 @@ ZEST_CASE(AcceptCurrentVersionBlob) {
     // CURRENT version loads — the rejection comes from the version's value,
     // not from the blob's shape.
     dir.touch("current.pch.idx", blob_of_version(index::index_format_version));
-    ZEXPECT(load_paired_index(dir.path("current.pch.idx")) != nullptr);
+    ZEXPECT(load_pch_index(dir.path("current.pch.idx")) != nullptr);
 }
 
 ZEST_CASE(RejectCorruptBlob) {
@@ -2812,7 +2811,7 @@ int main() { return 0; }
     ZASSERT(bytes.size() > 8);
 
     dir.touch("truncated.pch.idx", bytes.take_front(bytes.size() / 2));
-    ZEXPECT(load_paired_index(dir.path("truncated.pch.idx")) == nullptr);
+    ZEXPECT(load_pch_index(dir.path("truncated.pch.idx")) == nullptr);
 
     // Bytes 4-7 carry the layout fingerprint; a blob of another layout
     // must be rejected up front.
@@ -2821,7 +2820,7 @@ int main() { return 0; }
         clobbered[i] = 'X';
     }
     dir.touch("clobbered.pch.idx", clobbered);
-    ZEXPECT(load_paired_index(dir.path("clobbered.pch.idx")) == nullptr);
+    ZEXPECT(load_pch_index(dir.path("clobbered.pch.idx")) == nullptr);
 }
 
 ZEST_CASE(RejectCorruptSectionBlob) {
@@ -2848,7 +2847,7 @@ int main() { return 0; }
     }
 
     dir.touch("bad_section.pch.idx", bytes);
-    ZEXPECT(load_paired_index(dir.path("bad_section.pch.idx")) == nullptr);
+    ZEXPECT(load_pch_index(dir.path("bad_section.pch.idx")) == nullptr);
 }
 
 ZEST_CASE(SourcePathAndPrefix) {

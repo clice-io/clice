@@ -151,28 +151,16 @@ void ServedProject::for_each_preamble(
 }
 
 void ServedProject::for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const {
-    // Sessions with identical preambles share one blob; visit it once. A
-    // preamble's PCH built over the build's precompiled header indexes
-    // only what it adds: that header's blob is visited too.
+    // Sessions with identical preambles share one blob; visit it once. The
+    // build's precompiled header a preamble's PCH is built over has none:
+    // what it holds is indexed with the unit writing it.
     llvm::StringSet<> seen;
-    auto visit_key = [&](llvm::StringRef key) {
-        if(key.empty() || !seen.insert(key).second) {
-            return true;
-        }
-        auto state = preamble_of(project, key);
-        return state ? visit(*state) : true;
-    };
     for(auto& [file, document]: documents) {
         auto& compiled = document.latest;
-        if(!compiled || !compiled->loaded_pch()) {
+        if(!compiled || !compiled->loaded_pch() || !seen.insert(*compiled->loaded_pch()).second) {
             continue;
         }
-        auto& key = *compiled->loaded_pch();
-        if(!visit_key(key)) {
-            return;
-        }
-        auto it = project.pchs.find(key);
-        if(it != project.pchs.end() && !visit_key(std::string(it->second.base))) {
+        if(auto state = preamble_of(project, *compiled->loaded_pch()); state && !visit(*state)) {
             return;
         }
     }

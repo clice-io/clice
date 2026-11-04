@@ -109,8 +109,9 @@ namespace clice::index {
 /// 23.1.3, whose canonical forms entity hashes follow; v53: a unit's
 /// manifest and file record name the command it was built under; v54: a
 /// preamble's completable names take in those of internal linkage and the
-/// macros of the compiler and the command line.
-constexpr inline std::uint32_t index_format_version = 54;
+/// macros of the compiler and the command line; v55: a preamble's TU index
+/// carries no names, which completion reads from the files a compile loads.
+constexpr inline std::uint32_t index_format_version = 55;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it, so one past it stops the
@@ -579,12 +580,6 @@ struct TUIndexBlobOf {
     /// as published (a JSON array of LSP diagnostics) — a compile that
     /// consumes the PCH never raises them again.
     Seq<char> diagnostics;
-
-    /// Preamble ride-along: one search segment (build_search_segments) of
-    /// the names completion may offer from the preamble —
-    /// SymbolFlags::Completable, of internal linkage too — looked up by name
-    /// as the project's search index is.
-    Seq<std::byte> names;
 };
 
 using TUIndexBlob = TUIndexBlobOf<codec::blob::Owned>;

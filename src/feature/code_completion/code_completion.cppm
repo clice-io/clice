@@ -5,7 +5,6 @@ import :compile.compilation;
 import :feature.documentation;
 import :index.query;
 import :index.search;
-import :index.tu_index;
 import :support.json;
 import :support.prelude;
 import :syntax.completion;
@@ -167,21 +166,21 @@ struct CompileCompletion {
     /// scopes, which the qualifier's namespace may bring in.
     bool more_elsewhere = false;
 
-    /// The candidates stand in for the namespaces' names the precompiled
-    /// preamble and the imported modules declare, and the preamble's macros:
-    /// the compile reads no others of them (clang's LoadExternal off), none
-    /// after a member access. Not in a directive, where reading the PCH's
-    /// macros costs less than ranking the index's, nor where the compile
-    /// loads no PCH or module, or one whose index is not at hand: the
-    /// compile reads them all then.
-    bool from_index = false;
+    /// The compile reads the names of namespaces the files it loads declare
+    /// — a precompiled preamble, the modules it imports — and their macros
+    /// by name alone (load_names: those the typed name matches, and the
+    /// candidates'; with nothing typed, a scope the index holds few of
+    /// whole), not all (clang's LoadExternal off); after a member access,
+    /// none. Not in a directive, where reading their macros whole costs
+    /// less than matching every identifier.
+    bool by_name = false;
 
     /// The name typed so far, empty before its first character, whose
     /// candidates offer_names takes; none after a member access and where
     /// no name is completed.
     std::optional<std::string> prefix;
 
-    /// Where the name being typed is looked up, with from_index.
+    /// Where the name being typed is looked up, with by_name.
     index::CompletionScope scope;
 };
 
@@ -216,13 +215,11 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
 /// The most names one completion offers from the index (ScopeCandidate).
 constexpr inline std::size_t scope_candidate_limit = 100;
 
-/// The names the index offers where `compile` completes (ScopeCandidate),
-/// with whether it holds more: the project's and those of `precompiled`,
-/// the indexes of the PCHs and the modules the compile loads, which stand
-/// in for the rest of their names when there are any (from_index).
+/// The project's names the index offers where `compile` completes
+/// (ScopeCandidate), with whether it holds more: those the file reaches,
+/// and those it reaches once it includes or imports what declares them.
 void offer_names(const index::IndexQuery& query,
                  const DependencyGraph& graph,
-                 llvm::ArrayRef<std::shared_ptr<index::TUIndex>> precompiled,
                  CompileCompletion& compile);
 
 /// A completion's reply finished (Completion): an item naming what the

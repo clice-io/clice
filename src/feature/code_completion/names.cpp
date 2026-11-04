@@ -3,6 +3,7 @@ module clice;
 import :feature.code_completion.names;
 import :feature.code_completion;
 import :index.search;
+import :support.fuzzy_matcher;
 
 namespace clice::feature {
 
@@ -89,28 +90,71 @@ clang::DeclContext* qualified_namespace(clang::Sema& sema, const index::Completi
     return space;
 }
 
+/// The identifiers of the files the compile loads that `typed` matches,
+/// best first. Read from the files' identifier tables, which name every
+/// identifier they spell and load no declaration.
+std::vector<llvm::StringRef> matching_identifiers(clang::ASTContext& ast, llvm::StringRef typed) {
+    auto* lookup = ast.Idents.getExternalIdentifierLookup();
+    if(!lookup) {
+        return {};
+    }
+    auto lower = typed.lower();
+    // A name reserved to the implementation is the library's own, wanted
+    // only when typed so.
+    bool reserved_typed = typed.starts_with("_");
+    FuzzyMatcher matcher(typed);
+    std::vector<std::pair<float, llvm::StringRef>> matched;
+    std::unique_ptr<clang::IdentifierIterator> identifiers(lookup->getIdentifiers());
+    for(auto name = identifiers->Next(); !name.empty(); name = identifiers->Next()) {
+        if(!reserved_typed && name.starts_with("_") &&
+           (name.starts_with("__") || (name.size() > 1 && llvm::isUpper(name[1])))) {
+            continue;
+        }
+        // The matcher's cost would add up over every identifier of a large
+        // preamble: a name missing a typed character, in order, is none of
+        // its matches.
+        std::size_t next = 0;
+        for(char c: name) {
+            next += next < lower.size() && llvm::toLower(c) == lower[next];
+        }
+        if(next != lower.size()) {
+            continue;
+        }
+        if(auto score = matcher.match(name)) {
+            matched.emplace_back(*score, name);
+        }
+    }
+    ranges::sort(matched, [](const auto& lhs, const auto& rhs) { return lhs.first > rhs.first; });
+    std::vector<llvm::StringRef> names;
+    names.reserve(matched.size());
+    for(auto& [score, name]: matched) {
+        names.push_back(name);
+    }
+    return names;
+}
+
 }  // namespace
 
-clang::DeclContext* load_names(clang::Sema& sema,
-                               const index::CompletionScope& scope,
-                               llvm::ArrayRef<ScopeCandidate> candidates) {
+LoadedNames load_names(clang::Sema& sema, const CompileCompletion& names, std::size_t limit) {
     auto& ast = sema.getASTContext();
-    clang::DeclContext* space = nullptr;
+    auto& scope = names.scope;
+    LoadedNames loaded;
+    auto& space = loaded.space;
     if(scope.qualified()) {
         space = qualified_namespace(sema, scope);
         if(!space) {
-            return nullptr;
+            return loaded;
         }
-        llvm::SmallVector<llvm::StringRef, 4> names;
+        llvm::SmallVector<llvm::StringRef, 4> spelled;
         for(auto* context = space; !context->isTranslationUnit(); context = context->getParent()) {
             if(auto* named = llvm::dyn_cast<clang::NamespaceDecl>(context);
                named && !named->isInline()) {
-                names.push_back(named->getName());
+                spelled.push_back(named->getName());
             }
         }
-        ranges::reverse(names);
-        if(names.size() < scope.qualifier.size() ||
-           !ranges::equal(llvm::ArrayRef(names).take_back(scope.qualifier.size()),
+        ranges::reverse(spelled);
+        if(spelled.size() < scope.qualifier.size() ||
+           !ranges::equal(llvm::ArrayRef(spelled).take_back(scope.qualifier.size()),
                           scope.qualifier,
                           {},
                           {},
@@ -118,20 +162,53 @@ clang::DeclContext* load_names(clang::Sema& sema,
             read_names(space);
         }
     }
-    for(const auto& candidate: candidates) {
-        // Its identifier comes with the macro the PCH defines by its name.
-        clang::LookupResult found(sema,
-                                  &ast.Idents.get(candidate.name),
-                                  {},
-                                  clang::Sema::LookupOrdinaryName);
+    // An identifier comes with the macro the loaded files define by its
+    // name. Whether it names something where it is looked up: a keyword
+    // names nothing, and a builtin's lookup would declare it.
+    auto load = [&](llvm::StringRef name, bool macro) {
+        auto* identifier = &ast.Idents.get(name);
+        if(identifier->getBuiltinID() != 0 || identifier->isKeyword(sema.getLangOpts())) {
+            return false;
+        }
+        clang::LookupResult found(sema, identifier, {}, clang::Sema::LookupOrdinaryName);
         found.suppressDiagnostics();
         if(space) {
             sema.LookupQualifiedName(found, space);
-        } else if(!candidate.macro) {
+        } else if(!macro) {
             sema.LookupName(found, sema.getCurScope());
         }
+        return !found.empty() || (!space && identifier->hasMacroDefinition());
+    };
+    for(const auto& candidate: names.candidates) {
+        load(candidate.name, candidate.macro);
     }
-    return space;
+    // After a member access, Sema reads the class whole.
+    if(!names.prefix) {
+        return loaded;
+    }
+    if(names.prefix->empty()) {
+        // Every identifier matches: the index's most used names stand for a
+        // scope it holds more of than a completion takes, and one it holds
+        // no more of — small, or not indexed — costs little read whole.
+        if(!names.more_candidates) {
+            read_names(space ? space : ast.getTranslationUnitDecl());
+        }
+        return loaded;
+    }
+    // Most identifiers name nothing here: members, parameters, names of
+    // other namespaces. They are looked up best first until `limit` name
+    // something, a bounded number of them.
+    std::size_t found = 0;
+    std::size_t tried = 0;
+    for(auto name: matching_identifiers(ast, *names.prefix)) {
+        if(found == limit || tried == limit * 40) {
+            loaded.more = true;
+            break;
+        }
+        tried += 1;
+        found += load(name, false);
+    }
+    return loaded;
 }
 
 bool brings_in(clang::ASTContext& ast, const clang::DeclContext* space) {

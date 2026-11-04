@@ -49,9 +49,8 @@ struct CompletionScope {
 /// The names `prefix` matches that completion may offer from `scope` —
 /// names of namespaces and unscoped enumerators (SymbolFlags::Completable)
 /// — best first, at most `limit` names, each with all its overloads: the
-/// project's and the open buffers' linked across files, and every one of
-/// `precompiled`, the indexes of the PCHs and the modules the completing
-/// compile loads. An empty prefix takes the names used most. After a
+/// project's and the open buffers' linked across files. An empty prefix
+/// takes the names used most. After a
 /// qualifier, its scopes' own names come first, then those of any other
 /// scope, which a using-declaration or using-directive there may bring
 /// in. Whether the limit cut each short.
@@ -64,7 +63,6 @@ struct Completables {
 Completables completables(const IndexQuery& index,
                           llvm::StringRef prefix,
                           const CompletionScope& scope,
-                          llvm::ArrayRef<std::shared_ptr<TUIndex>> precompiled,
                           std::uint32_t limit);
 
 /// The symbols a locator query names: by id; by place — the symbol

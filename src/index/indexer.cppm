@@ -39,11 +39,6 @@ struct TUIndexOptions {
     /// too (decls::in_standard_library): what `std::sort` resolves in the
     /// library's text. Without, they are neither walked nor keyed.
     bool standard_library_instantiations = false;
-
-    /// Add the table of the names a completion offers (TUIndex::names), as
-    /// a preamble's index has: a module unit's, which the files importing
-    /// the module complete from.
-    bool names = false;
 };
 
 /// Index one TU and encode the result as its TU index blob: the include

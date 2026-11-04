@@ -113,6 +113,8 @@ highlights = [
 markdown = '''
 **method** `get` · struct `Cell<…>`
 
+Trivial accessor for `value`.
+
 ```cpp
 T get() const
 ```
@@ -413,6 +415,8 @@ references = ["include/base.h │ T ⟦get⟧() const {", "int total = peek(toke
 markdown = '''
 **method** `get` · struct `Cell<…>`
 
+Trivial accessor for `value`.
+
 ```cpp
 T get() const
 ```
@@ -606,6 +610,8 @@ references = ["include/base.h │ T ⟦get⟧() const {", "int total = peek(toke
 ["indexed locations".cell.hover]
 markdown = '''
 **method** `get` · struct `Cell<…>`
+
+Trivial accessor for `value`.
 
 ```cpp
 T get() const

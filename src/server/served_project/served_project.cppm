@@ -706,19 +706,15 @@ public:
     /// buffer and its compile inputs go to a stateless worker, which
     /// compiles a buffer state the shared AST attempt may not have seen yet,
     /// at `offset` of it. `params` arrives with the fields particular to its
-    /// request filled in; `prepared` adds those that follow from the PCH the
-    /// build loads, under its key (empty for none), and the modules it
-    /// imports.
+    /// request filled in.
     template <typename Params>
-    async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error> stateless_request(
-        const Ticket& ticket,
-        feature::RequestKind kind,
-        llvm::StringRef label,
-        std::uint32_t offset,
-        Params params,
-        async::cancellation_token token,
-        std::type_identity_t<
-            llvm::function_ref<void(Params&, llvm::StringRef, llvm::ArrayRef<Fid>)>> prepared = {});
+    async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
+        stateless_request(const Ticket& ticket,
+                          feature::RequestKind kind,
+                          llvm::StringRef label,
+                          std::uint32_t offset,
+                          Params params,
+                          async::cancellation_token token);
 
     /// Format the ticket's buffer, or a range of it, on a stateless worker.
     async::task<std::optional<worker::FormatResult>, ipc::Error>
@@ -1278,15 +1274,12 @@ RequestResult<Params> ServedProject::send_stateless(const Ticket& ticket,
 
 template <typename Params>
 async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
-    ServedProject::stateless_request(
-        const Ticket& ticket,
-        feature::RequestKind kind,
-        llvm::StringRef label,
-        std::uint32_t offset,
-        Params params,
-        async::cancellation_token token,
-        std::type_identity_t<
-            llvm::function_ref<void(Params&, llvm::StringRef, llvm::ArrayRef<Fid>)>> prepared) {
+    ServedProject::stateless_request(const Ticket& ticket,
+                                     feature::RequestKind kind,
+                                     llvm::StringRef label,
+                                     std::uint32_t offset,
+                                     Params params,
+                                     async::cancellation_token token) {
     using Result = typename protocol::RequestTraits<Params>::Result;
     auto& session = *ticket.session;
     auto path_id = session.path_id;
@@ -1333,8 +1326,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     }
     adopt_pch(ticket, generation, *built);
     params.pch = std::move(built->pch);
-    auto modules = imports->imports.resolved();
-    params.pcms = project.imported_pcms(modules);
+    params.pcms = project.imported_pcms(imports->imports.resolved());
     auto wait_ms = timer.ms_f();
 
     // A completion reply stays useful after edits at or past the cursor:
@@ -1353,9 +1345,6 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         params.synthesized = resolution.synthesized->files;
     }
     params.hidden = std::move(resolution.hidden);
-    if(prepared) {
-        prepared(params, built->loaded.value_or(""), modules);
-    }
 
     // A preamble crash inside the preparation, or a crash of a request like
     // this one while it was prepared or waited for a worker, stops the

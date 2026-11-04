@@ -7,11 +7,13 @@ import :project.graph.pch;
 import :project.graph.pcm;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
+import :project.graph.unit;
 import :project.project;
 import :settings.settings;
 import :support.logging;
 import :support.text;
 import :syntax.preamble;
+import :vfs.cache_store;
 import :vfs.file_table;
 import :vfs.path;
 import :worker.protocol;
@@ -31,19 +33,21 @@ void forget_pairs(Project& project, llvm::StringRef pch_key) {
     }
     auto& entry = it->second;
     entry.discard(project.store ? &*project.store : nullptr, "pch");
+    entry.index_path.clear();
+    entry.index.reset();
     if(!entry.failure && !entry.consumes) {
         project.pchs.erase(it);
     }
 }
 
-/// Whether the pair registered under the key can be adopted as it is, and
-/// why not: complete, both halves in the store, the PCH on disk, its index
-/// readable — else it is gone, and builds again from what it read — and
-/// what it read unchanged, the build of the PCH it chains onto among it.
-/// Both halves must be present: a PCH whose pch.idx index is gone (crash
-/// between commits, failed aux commit) rebuilds whole. The store lookup
-/// refreshes the blob's LRU position, and a passing inputs check may repair
-/// the snapshot's stat fast path in place.
+/// Whether the PCH registered under the key can be adopted as it is, and
+/// why not: complete, in the store, on disk, a preamble's index readable —
+/// else it is gone, and builds again from what it read — and what it read
+/// unchanged, the build of the PCH it chains onto among it. A preamble's
+/// pair needs both halves: a PCH whose pch.idx index is gone (crash between
+/// commits, failed aux commit) rebuilds whole. The store lookup refreshes
+/// the blob's LRU position, and a passing inputs check may repair the
+/// snapshot's stat fast path in place.
 std::pair<Check, llvm::StringRef> pair_state(Project& project, llvm::StringRef pch_key) {
     auto it = project.pchs.find(pch_key);
     if(it == project.pchs.end() || it->second.path.empty()) {
@@ -51,12 +55,13 @@ std::pair<Check, llvm::StringRef> pair_state(Project& project, llvm::StringRef p
     }
     auto& entry = it->second;
     if(!project.store || !project.store->lookup("pch", entry.blob) ||
-       !project.store->lookup_aux("pch", entry.blob) || !fs::exists(entry.path)) {
+       (!entry.whole_file && !project.store->lookup_aux("pch", entry.blob)) ||
+       !fs::exists(entry.path)) {
         return {Check::ProductGone, "evicted"};
     }
     // load_index() found the blob unreadable earlier; republish the pair
     // rather than serving a PCH with no index forever.
-    if(entry.index_path.empty()) {
+    if(!entry.whole_file && entry.index_path.empty()) {
         return {Check::ProductGone, "idx_unreadable"};
     }
     if(!entry.base.empty()) {
@@ -115,8 +120,8 @@ void touch_loaded_index(Project& project, llvm::StringRef pch_key) {
     lru.insert(lru.begin(), pch_key.str());
 }
 
-/// One attempt: revalidate the registered pair, or dispatch a build with
-/// the request's inputs and commit the pair.
+/// One attempt: revalidate the registered PCH, or dispatch a build with the
+/// request's inputs and commit it, a preamble's with its index.
 async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest request) {
     const auto& pch_key = request.pch_key;
 
@@ -142,17 +147,28 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         co_return Result::Failed;
     }
 
-    // Build a new pair via a stateless worker: it writes the PCH and its
-    // pch.idx index to the tmp paths allocated here; the store commits
-    // (fsync + rename) both on success, primary first.
+    // Build via a stateless worker: it writes the PCH, and a preamble's
+    // pch.idx index, to the tmp paths allocated here; the store commits
+    // (fsync + rename) both on success, primary first. A whole file's build
+    // that is its writing unit's compile sends the unit's index instead,
+    // taken with the command it compiles under: one changing during the
+    // build leaves the index recorded under the old one.
     auto blob = new_blob(pch_key);
     auto pending = project.store->begin_store("pch", blob);
-    auto pending_idx = project.store->begin_store_aux("pch", blob);
-
     auto& bp = request.params;
     bp.project_root = project.root.str();
     bp.output_path = pending.tmp_path;
-    bp.index_output_path = pending_idx.tmp_path;
+    std::optional<CacheStore::PendingEntry> pending_idx;
+    IndexTransfer transfer;
+    std::uint64_t command = 0;
+    if(!bp.whole_file) {
+        pending_idx = project.store->begin_store_aux("pch", blob);
+        bp.index_output_path = pending_idx->tmp_path;
+    } else if(request.writer) {
+        bp.index = true;
+        transfer = project.request_index(*request.writer, bp);
+        command = project.command_identity(*request.writer);
+    }
 
     // What the imported modules' PCMs and the PCH built over were built
     // from as the build starts: one rebuilt meanwhile stales the PCH.
@@ -197,9 +213,12 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     if(!built) {
         co_return built.error();
     }
+    if(request.writer) {
+        project.merge_build_index(*request.writer, transfer, *built, before, command);
+    }
 
-    // Commit the pair on the thread pool as one job: the fsyncs stay off
-    // the event loop, and the store either publishes the whole pair or
+    // Commit on the thread pool as one job: the fsyncs stay off the event
+    // loop, and the store either publishes a preamble's whole pair or
     // discards it (a half pair would hand adopters a PCH whose pch.idx index
     // is gone). Opening the freshly committed blob (mmap + verification,
     // which walks every section's shard) also happens here so no later
@@ -214,11 +233,14 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
             return;
         }
         pch_path = std::move(*committed);
+        if(!pending_idx) {
+            return;
+        }
         // The pair is only usable complete: when the index blob cannot be
         // published, discard the PCH too — the next attempt rebuilds both.
-        if(auto index = project.store->commit(std::move(pending_idx))) {
+        if(auto index = project.store->commit(std::move(*pending_idx))) {
             index_path = std::move(*index);
-            loaded = load_paired_index(*index_path);
+            loaded = load_pch_index(*index_path);
         }
         // A committed pch.idx index that fails verification is as unusable as
         // an uncommitted one: discard the pair rather than publish a PCH
@@ -231,7 +253,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         LOG_WARN("Failed to commit PCH for {}", bp.file);
         co_return Result::Failed;
     }
-    if(!loaded) {
+    if(pending_idx && !loaded) {
         if(!index_path) {
             LOG_WARN("Failed to commit pch.idx envelope for {}", bp.file);
         } else {
@@ -245,20 +267,23 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     }
 
     auto& entry = project.pchs[pch_key];
-    // Replaces the previous blob's mapping (same key, rebuilt content);
-    // in-flight holders of the old shared_ptr stay valid.
     entry.publish(&*project.store,
                   "pch",
                   std::move(blob),
                   std::move(*pch_path),
-                  std::move(*index_path),
-                  std::move(loaded),
                   project.read_inputs(*built, before));
     entry.bound = request.params.preamble_bound;
+    entry.whole_file = bp.whole_file;
     entry.base = request.base;
     entry.base_blob = std::move(base_blob);
-    touch_loaded_index(project, pch_key);
-    project.enforce_loaded_budget();
+    entry.index_path = index_path.value_or("");
+    // Replace the previous blob's mapping (same key, rebuilt content);
+    // in-flight holders of the old shared_ptr stay valid.
+    entry.index = std::move(loaded);
+    if(entry.index) {
+        touch_loaded_index(project, pch_key);
+        project.enforce_loaded_budget();
+    }
 
     LOG_INFO("PCH built for {}: {}", bp.file, entry.path);
 
@@ -269,25 +294,71 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
 
 }  // namespace
 
-PCHRequest Project::declared_pch_request(const CommandRef& unit, bool skip_bodies) {
+std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path) {
+    auto file = fs::File::open(path);
+    if(!file) {
+        return nullptr;
+    }
+    auto buffer = llvm::MemoryBuffer::getOpenFile(file->native_handle(),
+                                                  path,
+                                                  /*FileSize=*/-1,
+                                                  /*RequiresNullTerminator=*/false,
+                                                  /*IsVolatile=*/false);
+    if(!buffer) {
+        return nullptr;
+    }
+    // A stale or truncated pair must never crash the server: the TU index
+    // is deep-verified, and every embedded shard blob once — queries then
+    // run unchecked. Anything failing reads as "pair missing" and the PCH
+    // is rebuilt.
+    auto tu_index = index::TUIndex::from_buffer(std::move(*buffer));
+    if(!tu_index.loaded() || !tu_index.verify_shards()) {
+        return nullptr;
+    }
+    return std::make_shared<index::TUIndex>(std::move(tu_index));
+}
+
+const std::shared_ptr<index::TUIndex>& PCHEntry::load_index() {
+    if(!index && !index_path.empty()) {
+        index = load_pch_index(index_path);
+        if(!index) {
+            // Unreadable blob: clear the path so queries don't retry the
+            // mmap + verification on every call. The pair now looks
+            // incomplete and the next acquisition rebuilds it.
+            LOG_WARN("Failed to open pch.idx envelope {}", index_path);
+            index_path.clear();
+        }
+    }
+    return index;
+}
+
+PCHRequest Project::declared_pch_request(const CommandRef& unit) {
     // The key names the build but the file's content, which the build's
     // inputs cover, its own source among them.
-    auto rendered = render(unit);
-    PCHRequest request{
-        .params = {.file = std::string(file_table.resolve(unit.file)),
-                   .directory = std::move(rendered.directory),
-                   .arguments = std::move(rendered.arguments),
-                   .hidden = std::move(rendered.hidden),
-                   .whole_file = true,
-                   .skip_bodies = skip_bodies},
+    auto declared = [&](const CommandRef& command) {
+        auto rendered = render(command);
+        PCHRequest request{
+            .params = {.file = std::string(file_table.resolve(command.file)),
+                       .directory = std::move(rendered.directory),
+                       .arguments = std::move(rendered.arguments),
+                       .hidden = std::move(rendered.hidden),
+                       .whole_file = true},
+        };
+        auto& params = request.params;
+        request.pch_key = cache_key({clang::getClangFullVersion(),
+                                     pch_build_rule(false),
+                                     database_key.str(),
+                                     params.directory,
+                                     params.file,
+                                     canonicalize(params.arguments)});
+        return request;
     };
-    auto& params = request.params;
-    request.pch_key = cache_key({clang::getClangFullVersion(),
-                                 pch_build_rule(skip_bodies),
-                                 database_key.str(),
-                                 params.directory,
-                                 params.file,
-                                 canonicalize(params.arguments)});
+    auto request = declared(unit);
+    // A consumer's rules may edit the writing unit's command otherwise than
+    // the unit's own do: that build is no compile of the unit.
+    if(declared(select_command(unit.file).ref).pch_key == request.pch_key) {
+        request.writer = unit.file;
+    }
     return request;
 }
 
@@ -301,7 +372,8 @@ PreamblePCH Project::preamble_pch(Fid path_id,
                                   std::optional<std::uint32_t> point,
                                   const Resolution& resolution,
                                   const Imports& imports,
-                                  llvm::StringRef base) {
+                                  llvm::StringRef base,
+                                  bool forced) {
     auto path = file_table.resolve(path_id);
     auto* synthesized = resolution.synthesized.get();
     // The part of the prefix inside braces comes after the preamble, which
@@ -318,7 +390,7 @@ PreamblePCH Project::preamble_pch(Fid path_id,
         bound = before;
     }
     bound = synthesized && !synthesized->open.empty() ? 0 : finished_preamble_bound(text, bound);
-    if(bound == 0 && !synthesized) {
+    if(bound == 0 && !synthesized && !forced) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts end up here too: they borrow
         // a command but inject nothing. A precompiled header the build
@@ -462,14 +534,16 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
     // The precompiled header the build declares for the command: the
     // preamble's PCH is built over it, and with none the parse loads it
     // itself. One that did not build leaves the header the command forces
-    // in to parse what it holds. The editor's build skips function bodies,
-    // but for a modular parse, which reads the index's, the one every PCM is
-    // built over.
+    // in to parse what it holds; so does one the file's rules build
+    // otherwise than the writing unit's, which no unit compiles and so
+    // nothing indexes, but for a modular parse.
+    std::optional<PCHRequest> declared;
     if(auto unit = pch_writer(file, resolution)) {
-        auto request =
-            declared_pch_request(*unit, settings.project.skip_header_bodies && !imports.modular());
-        auto key = request.pch_key;
-        switch(co_await wait(std::move(request))) {
+        declared = declared_pch_request(*unit);
+    }
+    if(declared && (declared->writer || imports.modular())) {
+        auto key = declared->pch_key;
+        switch(co_await wait(std::move(*declared))) {
             case Result::Success:
                 if(!pch_reads(key, file)) {
                     built.base = std::move(key);
@@ -480,7 +554,13 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
         }
     }
 
-    auto plan = preamble_pch(file, text, point, resolution, imports, built.base.value_or(""));
+    auto plan = preamble_pch(file,
+                             text,
+                             point,
+                             resolution,
+                             imports,
+                             built.base.value_or(""),
+                             declared.has_value() && !built.base);
     built.partial = plan.partial;
     if(plan.request) {
         auto key = plan.request->pch_key;
@@ -587,25 +667,7 @@ std::shared_ptr<index::TUIndex> Project::preamble_index(llvm::StringRef pch_key)
     return loaded;
 }
 
-std::vector<std::shared_ptr<index::TUIndex>> Project::pch_indexes(llvm::StringRef pch_key) {
-    std::vector<std::shared_ptr<index::TUIndex>> indexes;
-    for(auto key = pch_key.str(); !key.empty();) {
-        auto it = pchs.find(key);
-        if(it == pchs.end()) {
-            return {};
-        }
-        auto base = it->second.base;
-        auto index = preamble_index(key);
-        if(!index) {
-            return {};
-        }
-        indexes.push_back(std::move(index));
-        key = std::move(base);
-    }
-    return indexes;
-}
-
-void Project::forget_evicted() {
+void Project::forget_evicted_pchs() {
     if(!store) {
         return;
     }
@@ -613,17 +675,6 @@ void Project::forget_evicted() {
     // pair. A key rebuilt after the eviction was recorded names another
     // blob by now.
     for(auto& evicted: store->take_evictions()) {
-        if(evicted.ns == "pcm") {
-            // Its module finds the PCM gone when next asked (drop_evicted);
-            // the mapping of its index goes now, as a mapped file keeps its
-            // disk space once deleted.
-            for(auto& [module, entry]: pcms) {
-                if(entry.blob == evicted.key) {
-                    entry.index.reset();
-                }
-            }
-            continue;
-        }
         if(evicted.ns != "pch") {
             continue;
         }
@@ -637,18 +688,17 @@ void Project::forget_evicted() {
 }
 
 void Project::enforce_loaded_budget() {
-    // Two keys per open document — its preamble's and the build's
-    // precompiled header that preamble is built over — and two extra
-    // slots: a closed file's recently used index survives a quick
-    // close/reopen, and a shared key serving several documents stays warm
-    // while its consumers churn.
+    // One key per open document — its preamble's — and two extra slots: a
+    // closed file's recently used index survives a quick close/reopen, and
+    // a shared key serving several documents stays warm while its consumers
+    // churn.
     // Open documents' keys always fit the budget, so an unload can only
     // hit keys past the working set; the reload an unlucky consumer then
     // pays (mmap + verification, on the event loop) is the accepted cost
     // of bounding tens of MB per key.
     // Without a serving side (tests, tools), a small editor-like working set.
     constexpr std::size_t default_open_documents = 6;
-    std::size_t budget = 2 + 2 * (serving ? serving->open_documents() : default_open_documents);
+    std::size_t budget = 2 + (serving ? serving->open_documents() : default_open_documents);
 
     auto& lru = loaded_pch_indexes;
     std::size_t kept = 0;

@@ -1,9 +1,9 @@
 module;
 
-/// The names of the precompiled preamble and the imported modules in a
-/// completion's compile that reads no others of them
-/// (CompileCompletion::from_index): which of them the compile loads, and
-/// where qualified lookup reaches past the names the index offers.
+/// The names of the files a completion's compile loads — a precompiled
+/// preamble, the modules it imports — when it reads no others of them
+/// (CompileCompletion::by_name): which of them it loads, and where
+/// qualified lookup reaches past the names the index offers.
 
 module clice:feature.code_completion.names;
 
@@ -13,15 +13,24 @@ import :support.prelude;
 
 namespace clice::feature {
 
-/// Loads, of the precompiled preamble and the imported modules, what Sema
-/// lists at the point of the candidates' names while it reads no other
-/// names of namespaces (CompileCompletion::from_index): the declarations
-/// unqualified lookup finds, or those of the namespace a qualifier names. A
-/// namespace the index searched under another name, through an alias, is
-/// read whole. The namespace a qualifier names, null without one.
-clang::DeclContext* load_names(clang::Sema& sema,
-                               const index::CompletionScope& scope,
-                               llvm::ArrayRef<ScopeCandidate> candidates);
+/// What load_names loaded.
+struct LoadedNames {
+    /// The namespace a qualifier names, null without one.
+    clang::DeclContext* space = nullptr;
+
+    /// More names of the loaded files match the typed text than it read.
+    bool more = false;
+};
+
+/// Loads, of the files the compile loads, what Sema lists at the point
+/// while it reads no other names of namespaces (CompileCompletion::
+/// by_name): the candidates' names and, of the identifiers the typed name
+/// matches, the best `limit` that name something there — the declarations
+/// unqualified lookup finds, or those of the namespace a qualifier names,
+/// and the macros. With nothing typed, a scope the index holds no more of
+/// than the candidates is read whole, and so is a namespace the index
+/// searched under another name, through an alias.
+LoadedNames load_names(clang::Sema& sema, const CompileCompletion& names, std::size_t limit);
 
 /// Whether qualified lookup in `space` finds names the index files under
 /// other scopes: those a using-declaration or using-directive brings in,

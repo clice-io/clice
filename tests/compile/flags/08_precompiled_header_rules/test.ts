@@ -1,9 +1,9 @@
 import { test } from "@clice/tools/testing";
 
 // A rule edits the commands of the target's units but not its PCH
-// builder's: clice builds the PCH under the edits of the unit loading it,
-// or the PCH would hold another header than the unit parses — diameter()
-// exists only under the rule's define.
+// builder's: a PCH under the unit's edits is no unit's compile, nothing
+// would index it, so the unit parses the header itself under its edits —
+// diameter() exists only under the rule's define.
 
 test("a rule's define reaches the pch", async (t) => {
     const s = await t.start({

@@ -14,6 +14,9 @@ int twice(int a) {
     return §(call)add(a, a);
 }
 
+enum class Tone { tone_warm, tone_cool };
+using enum Tone;
+
 }  // namespace math
 
 int hidden() {

@@ -1,9 +1,12 @@
 module clice;
 
 import :compile.compilation;
+import :index.project_index;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :project.graph.unit;
+import :settings.rules;
+import :settings.settings;
 import :support.anomaly;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils;
@@ -45,8 +48,7 @@ ZEST_CASE(ModuleLintScanParity) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
 
     UnitRequest request;
@@ -144,11 +146,11 @@ ZEST_CASE(OutdatedRerunsInFull) {
     ZEXPECT(f.project.index.shard(x2_id) != nullptr);
 }
 
-ZEST_CASE(ModulesIndexedByPCMs) {
-    // A unit providing a module is indexed by its PCM build: the interface
-    // and an implementation partition build theirs, and their indexes
-    // merge; the implementation unit provides none and compiles, over the
-    // interface's PCM.
+ZEST_CASE(ModulesIndexedByTheirBuilds) {
+    // A unit providing a module is indexed by its PCM build, and its run
+    // compiles nothing more: the interface and an implementation partition
+    // build theirs, the implementation unit provides none and compiles, over
+    // the interface's PCM.
     TempDir tmp;
     tmp.touch("m.cppm", "export module m;\nexport int mv() { return 1; }\n");
     tmp.touch("detail.cpp", "module m:detail;\nint dv() { return 2; }\n");
@@ -167,8 +169,7 @@ ZEST_CASE(ModulesIndexedByPCMs) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
 
     auto id = [&](llvm::StringRef name) {
@@ -179,6 +180,7 @@ ZEST_CASE(ModulesIndexedByPCMs) {
                                 [](auto& entry) { return !entry.second.path.empty(); });
     };
     std::vector<UnitResult::Status> results;
+    std::vector<std::size_t> compiled;
     std::size_t pcms_before_impl = 0;
     bool done = false;
     auto body = [&]() -> async::task<> {
@@ -194,8 +196,9 @@ ZEST_CASE(ModulesIndexedByPCMs) {
             }
             UnitRequest request;
             request.index = true;
-            results.push_back(
-                (co_await f.project.compile_unit(id(name), std::move(request)))->status);
+            auto result = co_await f.project.compile_unit(id(name), std::move(request));
+            results.push_back(result->status);
+            compiled.push_back(result->perf.bytes);
         }
 
         co_await f.project.graph.shutdown();
@@ -211,9 +214,78 @@ ZEST_CASE(ModulesIndexedByPCMs) {
     ZEXPECT(results == (std::vector<UnitResult::Status>{Completed, Completed, Completed}));
     ZEXPECT(pcms_before_impl == 2u);
     ZEXPECT(built_pcms() == 2);
+    ZEXPECT(compiled[0] == 0u);
+    ZEXPECT(compiled[1] == 0u);
+    ZEXPECT(compiled[2] != 0u);
     for(auto name: {"m.cppm", "detail.cpp", "impl.cpp"}) {
         ZEXPECT(f.project.index.shard(id(name)) != nullptr);
     }
+}
+
+ZEST_CASE(ExcludedModuleIndexedByItsBuild) {
+    // A module unit a rule keeps out of the index is still indexed by the
+    // PCM build its importer waits on, as a header the rule covers is by
+    // its includers, and that index survives the next load.
+    TempDir tmp;
+    tmp.touch("vendor/m.cppm", "export module m;\nexport int mv() { return 1; }\n");
+    tmp.touch("use.cpp", "import m;\nint u() { return mv(); }\n");
+
+    auto setup = [&](IndexerFixture& f) {
+        open_store(tmp, f.project);
+        f.project.store->register_namespace(
+            {.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+        write_cdb(tmp,
+                  f.project.cdb,
+                  build_cdb_json({
+                      {tmp.root, tmp.path("vendor/m.cppm"), {}},
+                      {tmp.root, tmp.path("use.cpp"),       {}},
+        }));
+        f.project.settings.rules.push_back(Rule{.patterns = {"vendor/**"}, .index = false});
+        f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
+        f.project.settings.finalize(f.project.root);
+        f.project.rules = Rules(f.project.settings, f.project.root, "");
+        scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
+        f.project.dep_graph.build_reverse_map();
+    };
+    auto id = [&](IndexerFixture& f, llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+
+    {
+        IndexerFixture f;
+        setup(f);
+        ZASSERT(!f.project.rules.indexable(f.project.file_table.resolve(id(f, "vendor/m.cppm"))));
+        std::optional<UnitResult::Status> status;
+        bool done = false;
+        auto body = [&]() -> async::task<> {
+            WorkerPoolOptions opts;
+            opts.program = clice_binary();
+            opts.stateless_count = 1;
+            opts.stateful_count = 0;
+            ZASSERT(f.pool.start(opts));
+
+            UnitRequest request;
+            request.index = true;
+            status =
+                (co_await f.project.compile_unit(id(f, "use.cpp"), std::move(request)))->status;
+
+            co_await f.project.graph.shutdown();
+            co_await f.pool.stop();
+            done = true;
+        };
+        auto task = body();
+        f.loop.schedule(task);
+        f.loop.run();
+        ZEXPECT(done);
+        ZEXPECT(status == UnitResult::Status::Completed);
+        ZEXPECT(f.project.index.shard(id(f, "vendor/m.cppm")) != nullptr);
+        f.save();
+    }
+
+    IndexerFixture f;
+    setup(f);
+    f.load();
+    ZEXPECT(f.project.index.indexed(id(f, "vendor/m.cppm")));
 }
 
 ZEST_CASE(FailedImportWaitsOnce) {
@@ -236,8 +308,7 @@ ZEST_CASE(FailedImportWaitsOnce) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
 
     auto id = [&](llvm::StringRef name) {
@@ -298,8 +369,7 @@ ZEST_CASE(EvictedModuleBelowRebuilds) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
 
     auto id = [&](llvm::StringRef name) {
@@ -344,132 +414,6 @@ ZEST_CASE(EvictedModuleBelowRebuilds) {
     ZEXPECT(fs::exists(low->second.path));
 }
 
-ZEST_CASE(UnreadableModuleIndexRebuilds) {
-    // A module whose PCM stayed on disk but whose index proved unreadable
-    // when first opened: the importer's next wait builds it again, and the
-    // new build's index opens.
-    TempDir tmp;
-    tmp.touch("m.cppm", "export module m;\nexport int mv() { return 1; }\n");
-    tmp.touch("use.cpp", "import m;\nint u() { return mv(); }\n");
-
-    IndexerFixture f;
-    write_cdb(tmp,
-              f.project.cdb,
-              build_cdb_json({
-                  {tmp.root, tmp.path("m.cppm"),  {}},
-                  {tmp.root, tmp.path("use.cpp"), {}},
-    }));
-    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
-    f.project.dep_graph.build_reverse_map();
-
-    auto store = CacheStore::open(tmp.path("root"), 1);
-    ZASSERT(store);
-    store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
-    f.project.store.emplace(std::move(*store));
-
-    auto id = [&](llvm::StringRef name) {
-        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
-    };
-    std::vector<UnitResult::Status> results;
-    bool lost = false;
-    bool done = false;
-    auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(f.pool.start(opts));
-
-        UnitRequest first;
-        first.index = true;
-        results.push_back(
-            (co_await f.project.compile_unit(id("use.cpp"), std::move(first)))->status);
-        auto& entry = f.project.pcms.find(id("m.cppm"))->second;
-        ZASSERT(!entry.index_path.empty());
-        entry.index.reset();
-        ZASSERT(!fs::write_file(entry.index_path, "not an index"));
-        lost = f.project.module_index(id("m.cppm")) == nullptr;
-        UnitRequest second;
-        second.index = true;
-        results.push_back(
-            (co_await f.project.compile_unit(id("use.cpp"), std::move(second)))->status);
-
-        co_await f.project.graph.shutdown();
-        co_await f.pool.stop();
-        done = true;
-    };
-    auto task = body();
-    f.loop.schedule(task);
-    f.loop.run();
-    ZEXPECT(done);
-
-    using enum UnitResult::Status;
-    ZEXPECT(results == (std::vector<UnitResult::Status>{Completed, Completed}));
-    ZEXPECT(lost);
-    ZEXPECT(f.project.module_index(id("m.cppm")) != nullptr);
-}
-
-ZEST_CASE(EvictedModuleIndexReleased) {
-    // A store too small for two PCMs evicts the first as the second commits:
-    // the first module's index is no longer mapped once the eviction is
-    // taken in, as a mapped file keeps its disk space.
-    TempDir tmp;
-    tmp.touch("a.cppm", "export module a;\nexport int av() { return 1; }\n");
-    tmp.touch("b.cppm", "export module b;\nexport int bv() { return 2; }\n");
-
-    IndexerFixture f;
-    write_cdb(tmp,
-              f.project.cdb,
-              build_cdb_json({
-                  {tmp.root, tmp.path("a.cppm"), {}},
-                  {tmp.root, tmp.path("b.cppm"), {}},
-    }));
-    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
-    f.project.dep_graph.build_reverse_map();
-
-    auto store = CacheStore::open(tmp.path("root"), 1);
-    ZASSERT(store);
-    store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1});
-    f.project.store.emplace(std::move(*store));
-
-    auto id = [&](llvm::StringRef name) {
-        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
-    };
-    bool mapped = false;
-    bool done = false;
-    auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(f.pool.start(opts));
-
-        for(auto name: {"a.cppm", "b.cppm"}) {
-            UnitRequest request;
-            request.index = true;
-            co_await f.project.compile_unit(id(name), std::move(request));
-            if(llvm::StringRef(name) == "a.cppm") {
-                mapped = f.project.pcms.find(id("a.cppm"))->second.index != nullptr;
-            }
-        }
-
-        co_await f.project.graph.shutdown();
-        co_await f.pool.stop();
-        done = true;
-    };
-    auto task = body();
-    f.loop.schedule(task);
-    f.loop.run();
-    ZEXPECT(done);
-
-    ZEXPECT(mapped);
-    f.project.forget_evicted();
-    ZEXPECT(f.project.pcms.find(id("a.cppm"))->second.index == nullptr);
-    ZEXPECT(f.project.pcms.find(id("b.cppm"))->second.index != nullptr);
-}
-
 ZEST_CASE(CrashedModuleStaysRefused) {
     // A module whose build crashed a worker stays refused while what that
     // build read holds, whatever its key: a rebuild of the PCH it reads
@@ -490,8 +434,7 @@ ZEST_CASE(CrashedModuleStaysRefused) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .aux_extension = ".pcm.idx", .max_bytes = 1ull << 30});
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
 
     auto id = [&](llvm::StringRef name) {
@@ -638,6 +581,93 @@ ZEST_CASE(CrashCountsOnPCH) {
                                                         Completed}));
     ZEXPECT(counts == (std::vector<unsigned>{0, 0, 0, 1, 0, 0, 1}));
     logging::reset_anomaly_for_testing();
+}
+
+ZEST_CASE(WriterIndexedByItsPCH) {
+    // The build of a precompiled header a target declares is the compile of
+    // the unit writing it: the header's declarations are indexed with that
+    // unit by the build a unit loading the header waits on, and the
+    // writer's own run compiles nothing more.
+    TempDir tmp;
+    tmp.touch("pch.hxx", "#pragma once\nint shared();\n");
+    tmp.touch("pch.hxx.cxx", "");
+    tmp.touch("use.cpp", "int x = shared();\n");
+
+    IndexerFixture f;
+    auto header = tmp.path("pch.hxx");
+    auto pch = tmp.path("pch.hxx.pch");
+    std::vector<std::string> builds = {"-Xclang",
+                                       "-emit-pch",
+                                       "-Xclang",
+                                       "-include",
+                                       "-Xclang",
+                                       header,
+                                       "-x",
+                                       "c++-header",
+                                       "-o",
+                                       pch};
+    std::vector<std::string> reads =
+        {"-Xclang", "-include-pch", "-Xclang", pch, "-Xclang", "-include", "-Xclang", header};
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("pch.hxx.cxx"), builds},
+                  {tmp.root, tmp.path("use.cpp"),     reads },
+    }));
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ZASSERT(store);
+    store->register_namespace(
+        {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx", .max_bytes = 1ull << 30});
+    f.project.store.emplace(std::move(*store));
+
+    auto id = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+    std::vector<UnitResult::Status> results;
+    std::vector<std::size_t> compiled;
+    bool writer_indexed = false;
+    bool header_indexed = false;
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(f.pool.start(opts));
+
+        for(auto name: {"use.cpp", "pch.hxx.cxx"}) {
+            UnitRequest request;
+            request.index = true;
+            auto result = co_await f.project.compile_unit(id(name), std::move(request));
+            results.push_back(result->status);
+            compiled.push_back(result->perf.bytes);
+            if(llvm::StringRef(name) == "use.cpp") {
+                writer_indexed = f.project.index.indexed(id("pch.hxx.cxx"));
+                header_indexed = f.project.index.shard(id("pch.hxx")) != nullptr;
+            }
+        }
+
+        co_await f.project.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(done);
+
+    using enum UnitResult::Status;
+    ZEXPECT(results == (std::vector<UnitResult::Status>{Completed, Completed}));
+    ZEXPECT(writer_indexed);
+    ZEXPECT(header_indexed);
+    ZEXPECT(compiled[0] != 0u);
+    ZEXPECT(compiled[1] == 0u);
+    ZEXPECT(ranges::count_if(f.project.pchs, [](auto& entry) {
+                return entry.second.whole_file && !entry.second.path.empty();
+            }) == 1);
 }
 
 };  // ZEST_SUITE(UnitIndex)

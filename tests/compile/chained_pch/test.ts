@@ -6,9 +6,9 @@ import { answers, test, type Serve, type TestContext } from "@clice/tools/testin
 // open main.cpp builds its preamble's PCH over the target's, a chain of
 // two, and the background index loads the target's PCH. The chain answers
 // what the target's PCH alone answers, as clice inspect loads it with no
-// preamble, and what a parse loading no PCH answers, the same database with
-// -include-pch dropped. Markers named c_ complete, s_ ask for signature
-// help, the others ask where things are.
+// preamble, and, indexed, what a parse loading no PCH answers, the same
+// database with -include-pch dropped. Markers named c_ complete, s_ ask
+// for signature help, the others ask where things are.
 
 const DATABASE = "build/compile_commands.json";
 const WRITER = "build/CMakeFiles/app.dir/cmake_pch.hxx.cxx";
@@ -82,7 +82,10 @@ async function locations(
 
 for (const indexing of [false, true]) {
     test(indexing ? "indexed locations" : "locations", async (t) => {
-        const config = { project: { enable_indexing: indexing } };
+        // The target's PCH holds the function bodies of its headers. Indexed,
+        // the editor parses those of its own preamble's too, as a parse
+        // loading no PCH then parses the whole header set.
+        const config = { project: { enable_indexing: indexing, skip_header_bodies: !indexing } };
         // Indexed before main.cpp opens: what the index run adds to its
         // diagnostics is there when it opens, not raced by the open.
         const start = async (): Promise<Serve> => {
@@ -100,15 +103,21 @@ for (const indexing of [false, true]) {
             await t.show(file, diagnostics);
             chained[file] = await diagnostics;
         }
-        // The index builds the target's PCH again: the editor's skips the
-        // function bodies, the index's keeps them.
+        // The editor and the index load one build of the target's PCH, the
+        // compile of the unit writing it.
         const built = (await s.counts()).files;
         expect({ base: built[WRITER]?.pch, top: built["main.cpp"]?.pch }).toEqual({
-            base: indexing ? 2 : 1,
+            base: 1,
             top: 1,
         });
         const answered = await locations(t, s, true);
         await s.stop();
+        // Unindexed, the chain knows more than a parse loading no PCH: the
+        // build of the target's PCH is the writer's compile, which indexes
+        // the header set, function bodies and instantiations among it.
+        if (!indexing) {
+            return;
+        }
 
         t.disk.rm(".clice");
         withoutPch(t);
@@ -133,8 +142,10 @@ test("index", async (t) => {
     }
     t.disk.rm(".clice");
     withoutPch(t);
+    // The writer's compile still builds the target's PCH, which no unit
+    // reads now.
     await t.cli("index");
-    expect(t.disk.list(PCH)).toHaveLength(0);
+    expect(t.disk.list(PCH)).toHaveLength(1);
     for (const [i, question] of questions.entries()) {
         expect((await t.cli(question)).json, question).toEqual(chained[i]);
     }

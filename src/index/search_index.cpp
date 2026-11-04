@@ -922,13 +922,6 @@ SearchIndex::~SearchIndex() = default;
 SearchIndex::SearchIndex(SearchIndex&&) noexcept = default;
 SearchIndex& SearchIndex::operator=(SearchIndex&&) noexcept = default;
 
-bool SearchIndex::load(std::unique_ptr<llvm::MemoryBuffer> segment) {
-    clear();
-    std::vector<std::unique_ptr<llvm::MemoryBuffer>> run;
-    run.push_back(std::move(segment));
-    return replace(0, std::move(run));
-}
-
 bool SearchIndex::replace(std::uint32_t runs,
                           std::vector<std::unique_ptr<llvm::MemoryBuffer>> bytes) {
     assert(runs <= run_ends.size() && !bytes.empty() && "a run replaces runs the index holds");

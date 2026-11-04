@@ -11,6 +11,12 @@ references = ["inline int ⟦clamp⟧(int value) {", "math.cppm │ return ⟦cl
 [completion.qualified.completion]
 items = [
     { label = "twice(int a)", kind = "Function", detail = "int" },
+    { label = "tone_warm", kind = "EnumMember", detail = "Tone" },
+]
+
+[completion.brought_in.completion]
+items = [
+    { label = "tone_warm", kind = "EnumMember", detail = "Tone" },
 ]
 
 [completion.unexported.completion]

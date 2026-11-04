@@ -151,6 +151,13 @@ diagnostics = [
         code = "err_access",
     },
     {
+        at = "int c = ⟦needs_size⟧(1);",
+        severity = "error",
+        message = "In template: member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+    },
+    {
         at = "return a + b + c + ⟦old_extra⟧();",
         severity = "warning",
         message = "'old_extra' is deprecated",

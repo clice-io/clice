@@ -2,7 +2,6 @@ module clice;
 
 import :compile.tidy;
 import :index.project_index;
-import :index.tu_index;
 import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
@@ -90,6 +89,30 @@ async::task<UnitResult>
     if(co_await project.wait_modules(&attempt, modules) == Result::Stale) {
         co_return UnitResult{.status = Status::Preempted};
     }
+
+    // A build compiling the unit indexes it as the run's compile would:
+    // when that left the unit's index current, the run wants nothing else
+    // of the compile. One that failed leaves the unit to the compile, which
+    // indexes it in spite of its errors.
+    if(request.index && !params.tidy && !params.skipped_diagnostics &&
+       project.compiled_by_build(path_id)) {
+        Result built;
+        if(!project.dep_graph.module_of(path_id).empty()) {
+            built = co_await project.wait_modules(&attempt, {path_id});
+        } else {
+            auto pch = project.declared_pch_request(resolved.ref);
+            auto id = pch_node(pch.pch_key);
+            built = co_await attempt.depend(id, project.pch_work(std::move(pch)));
+        }
+        if(built == Result::Stale) {
+            co_return UnitResult{.status = Status::Preempted};
+        }
+        if(built == Result::Success && project.index.indexed_command(path_id) == command &&
+           !project.index.needs_reindex(path_id)) {
+            co_return UnitResult{.status = Status::Completed};
+        }
+    }
+
     // Looked up anew after every suspension: another unit's compile may
     // have grown the table meanwhile.
     auto history = [&]() -> UnitHistory& {
@@ -98,23 +121,27 @@ async::task<UnitResult>
 
     // A unit of a target with precompiled headers parses over clice's own
     // build of them: the header its command forces in then reads nothing
-    // again, and their declarations are indexed once, with the unit
-    // building them. One that did not build leaves that header to every
-    // unit's own parse, as the command alone does; so does one whose writing
-    // unit a rule keeps out of the index, but for a modular unit
-    // (Imports::modular).
+    // again, and their declarations are indexed once, by the build — the
+    // writing unit's compile. One that did not build leaves that header to
+    // every unit's own parse, as the command alone does; so does one the
+    // unit's rules build otherwise than the writing unit's, which no unit
+    // compiles, but for a modular unit (Imports::modular).
     Inputs precompiled;
     std::string consumed_pch;
     std::string left_out_pch;
-    if(auto unit = project.pch_writer(path_id, resolved, extra);
-       unit &&
-       (scanned.modular() || project.rules.indexable(project.file_table.resolve(unit->file)))) {
-        auto request = project.declared_pch_request(*unit, /*skip_bodies=*/false);
-        auto key = request.pch_key;
+    std::optional<PCHRequest> declared;
+    if(auto unit = project.pch_writer(path_id, resolved, extra)) {
+        declared = project.declared_pch_request(*unit);
+        if(!declared->writer && !scanned.modular()) {
+            declared.reset();
+        }
+    }
+    if(declared) {
+        auto key = declared->pch_key;
         if(history().crashed_over_pch == key) {
             left_out_pch = key;
         } else {
-            switch(co_await attempt.depend(pch_node(key), project.pch_work(std::move(request)))) {
+            switch(co_await attempt.depend(pch_node(key), project.pch_work(std::move(*declared)))) {
                 case Result::Success:
                     if(auto* pch = project.built_pch(key);
                        pch && !project.pch_reads(key, path_id)) {
@@ -134,6 +161,10 @@ async::task<UnitResult>
     // their paths: one rebuilt while the parse runs is no input of it.
     auto imports = project.module_inputs(modules);
     merge_inputs(imports, {&precompiled});
+    IndexTransfer transfer;
+    if(request.index) {
+        transfer = project.request_index(path_id, params);
+    }
 
     RequestCost cost;
     if(history().cost) {
@@ -141,71 +172,6 @@ async::task<UnitResult>
     } else if(auto manifest = project.index.manifest(path_id)) {
         cost.peak = manifest->peak;
     }
-
-    // Merges the unit's index into `result`; its run reached `peak`.
-    auto merge = [&](llvm::StringRef index_bytes, std::uint64_t peak, UnitResult result) {
-        // A newer content-level invalidation during this build (or a
-        // removal clearing the entry) means this result describes text
-        // that no longer exists. Drop the merge; the follow-up attempt
-        // redoes it.
-        if(request.outdated && request.outdated()) {
-            LOG_INFO("Discarding outdated index result for {}", file_path);
-            return UnitResult{.status = Status::Skipped};
-        }
-        ScopedTimer merge_timer;
-        auto report = project.index.merge(index_bytes, imports, command, peak);
-        if(!report) {
-            if(report.error() == index::MergeError::Outdated) {
-                history().send_in_full = true;
-                return UnitResult{.status = Status::Preempted,
-                                  .error = "a variant the result named by hash is not stored"};
-            }
-            // Rejected wholesale: the file's index is missing or stale,
-            // which is a failure, not a completed index.
-            return UnitResult{.status = Status::Failed,
-                              .error = "the TUIndex result failed verification"};
-        }
-        project.take_report(*report);
-        result.perf.merge_ms = merge_timer.ms();
-        return result;
-    };
-
-    // A module unit's PCM build indexes the unit as its compile does: that
-    // index stands for the compile's when the run wants nothing else of it.
-    // A unit whose PCM fails to build is left to the compile, which indexes
-    // it in spite of its errors.
-    if(request.index && !params.tidy && !params.skipped_diagnostics &&
-       !project.dep_graph.module_of(path_id).empty()) {
-        ScopedTimer timer;
-        if(co_await project.wait_modules(&attempt, {path_id}) == Result::Stale) {
-            co_return UnitResult{.status = Status::Preempted};
-        }
-        if(auto index = project.module_index(path_id)) {
-            auto bytes = index->bytes();
-            co_return merge(bytes,
-                            cost.peak,
-                            {
-                                .status = Status::Completed,
-                                .perf = {.bytes = bytes.size(), .index_ms = timer.ms()}
-            });
-        }
-    }
-
-    if(request.index && !std::exchange(history().send_in_full, false)) {
-        auto include_closure = project.dep_graph.include_closure(path_id);
-        params.known_variants = project.index.known_variants(path_id, include_closure);
-        params.known_instantiations =
-            project.index.known_instantiations(path_id, std::move(include_closure));
-    }
-    params.standard_library_instantiations =
-        project.settings.project.standard_library_instantiations;
-
-    std::optional<CacheStore::PendingEntry> transfer;
-    if(request.index && project.store) {
-        transfer = project.store->begin_transfer();
-        params.index_output_path = transfer->tmp_path;
-    }
-
     StatelessReport measured;
     ScopedTimer timer;
     auto reply = co_await project.pool->send_stateless(params,
@@ -232,22 +198,11 @@ async::task<UnitResult>
         history().crashed_over_pch.clear();
         auto run_ms = timer.ms();
         auto& value = reply.value();
-        llvm::StringRef index_bytes = as_chars(value.tu_index_data);
-        // Declared after `transfer`: the mapping must close before the
-        // entry removes the file, which Windows refuses while it is mapped.
-        fs::Mapping transferred;
-        if(value.index_in_file) {
-            auto read = fs::File::open(transfer->tmp_path).and_then(fs::Mapping::map);
-            if(!read) {
-                co_return UnitResult{.status = Status::Failed,
-                                     .error = std::format("reading the index from {} failed: {}",
-                                                          transfer->tmp_path,
-                                                          read.error().message())};
-            }
-            transferred = std::move(*read);
-            index_bytes = transferred.bytes();
+        auto index_bytes = transfer.receive(value.tu_index_data, value.index_in_file);
+        if(!index_bytes) {
+            co_return UnitResult{.status = Status::Failed, .error = std::move(index_bytes.error())};
         }
-        if(request.index && index_bytes.empty()) {
+        if(request.index && index_bytes->empty()) {
             co_return UnitResult{.status = Status::Failed,
                                  .error = "the worker returned no TUIndex"};
         }
@@ -257,13 +212,38 @@ async::task<UnitResult>
         result.errors = std::move(value.errors);
         result.skipped_diagnostics = std::move(value.skipped_diagnostics);
         result.text_hash = value.text_hash;
-        result.perf = {.bytes = index_bytes.size(), .index_ms = run_ms, .merge_ms = 0};
-        if(!request.index) {
-            co_return result;
+        result.perf = {.bytes = index_bytes->size(), .index_ms = run_ms, .merge_ms = 0};
+        if(request.index) {
+            // A newer content-level invalidation during this build (or a
+            // removal clearing the entry) means this result describes text
+            // that no longer exists. Drop the merge; the follow-up attempt
+            // redoes it.
+            if(request.outdated && request.outdated()) {
+                LOG_INFO("Discarding outdated index result for {}", file_path);
+                co_return UnitResult{.status = Status::Skipped};
+            }
+            ScopedTimer merge_timer;
+            // A run shorter than a sample interval measured nothing: the
+            // earlier peak stands.
+            auto merged = project.merge_index(path_id,
+                                              *index_bytes,
+                                              imports,
+                                              command,
+                                              peak != 0 ? peak : cost.peak);
+            if(!merged) {
+                if(merged.error() == index::MergeError::Outdated) {
+                    co_return UnitResult{.status = Status::Preempted,
+                                         .error =
+                                             "a variant the result named by hash is not stored"};
+                }
+                // Rejected wholesale: the file's index is missing or stale,
+                // which is a failure, not a completed index.
+                co_return UnitResult{.status = Status::Failed,
+                                     .error = "the TUIndex result failed verification"};
+            }
+            result.perf.merge_ms = merge_timer.ms();
         }
-        // A run shorter than a sample interval measured nothing: the
-        // earlier peak stands.
-        co_return merge(index_bytes, peak != 0 ? peak : cost.peak, std::move(result));
+        co_return result;
     }
 
     if(reply.has_value()) {
@@ -339,7 +319,73 @@ async::task<Result> attempt_compile(Project& project,
     std::unreachable();
 }
 
+template <typename Params>
+IndexTransfer ask_for_index(Project& project, Fid unit, Params& params) {
+    if(!std::exchange(project.unit_history[unit].send_in_full, false)) {
+        auto include_closure = project.dep_graph.include_closure(unit);
+        params.known_variants = project.index.known_variants(unit, include_closure);
+        params.known_instantiations =
+            project.index.known_instantiations(unit, std::move(include_closure));
+    }
+    params.standard_library_instantiations =
+        project.settings.project.standard_library_instantiations;
+    IndexTransfer transfer;
+    if(project.store) {
+        transfer.file = project.store->begin_transfer();
+        params.index_output_path = transfer.file->tmp_path;
+    }
+    return transfer;
+}
+
 }  // namespace
+
+bool Project::compiled_by_build(Fid unit) {
+    return !dep_graph.module_of(unit).empty() ||
+           commands.pch_output(select_command(unit).ref.command);
+}
+
+std::expected<llvm::StringRef, std::string> IndexTransfer::receive(std::span<const std::byte> data,
+                                                                   bool in_file) {
+    if(!in_file) {
+        return as_chars(data);
+    }
+    auto read = fs::File::open(file->tmp_path).and_then(fs::Mapping::map);
+    if(!read) {
+        return std::unexpected(std::format("reading the index from {} failed: {}",
+                                           file->tmp_path,
+                                           read.error().message()));
+    }
+    mapping = std::move(*read);
+    return mapping.bytes();
+}
+
+IndexTransfer Project::request_index(Fid unit, worker::CompileUnitParams& params) {
+    return ask_for_index(*this, unit, params);
+}
+
+IndexTransfer Project::request_index(Fid unit, worker::BuildPCMParams& params) {
+    return ask_for_index(*this, unit, params);
+}
+
+IndexTransfer Project::request_index(Fid unit, worker::BuildPCHParams& params) {
+    return ask_for_index(*this, unit, params);
+}
+
+std::expected<void, index::MergeError> Project::merge_index(Fid unit,
+                                                            llvm::StringRef tu_index,
+                                                            llvm::ArrayRef<Input> imports,
+                                                            std::uint64_t command,
+                                                            std::uint64_t peak) {
+    auto report = index.merge(tu_index, imports, command, peak);
+    if(!report) {
+        if(report.error() == index::MergeError::Outdated) {
+            unit_history[unit].send_in_full = true;
+        }
+        return std::unexpected(report.error());
+    }
+    take_report(*report);
+    return {};
+}
 
 async::task<std::optional<UnitResult>> Project::compile_unit(Fid path_id, UnitRequest request) {
     NodeId id{NodeKind::Unit, path_id.raw};

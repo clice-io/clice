@@ -5,7 +5,6 @@ import :index.format;
 import :index.include_tree;
 import :index.indexer;
 import :index.instantiation_shard;
-import :index.search_index;
 import :index.shard;
 import :index.symbol;
 import :semantic.decls;
@@ -272,7 +271,7 @@ public:
         known_variants(options.known_variants),
         resolver(unit.context(), {.only_instantiation = false}), readable(unit.context(), {}),
         known_instantiations(options.known_instantiations),
-        standard_library(options.standard_library_instantiations), names(options.names) {}
+        standard_library(options.standard_library_instantiations) {}
 
     /// The only gate through which entries enter `file_indices`. With
     /// focus_only, the index covers just the focus file and the
@@ -281,9 +280,7 @@ public:
     /// inherited default arguments and base specifiers of classes defined
     /// in a preamble header end up there. Such entries belong to the
     /// preamble's own index, so they are dropped here. So are the entries
-    /// of a header's borrowed includer context: its host indexes them. A
-    /// preamble still registers the symbols they name, its names table the
-    /// completion of the header reads.
+    /// of a header's borrowed includer context: its host indexes them.
     FileIndex* file_index(clang::FileID fid) {
         if(instantiation_entries) {
             return &(*instantiation_entries)[fid];
@@ -292,7 +289,7 @@ public:
             return nullptr;
         }
         if(unit.from_context(fid)) {
-            return unit.kind() == CompilationKind::Preamble ? &context_entries : nullptr;
+            return nullptr;
         }
         return &file_indices[fid];
     }
@@ -411,44 +408,6 @@ public:
         }
 
         index->occurrences.emplace_back(range, ensure_symbol(decls::normalize(decl)));
-    }
-
-    /// The macros the compiler and the command line define come with a
-    /// PCH but from no file: completion finds them among the preamble's
-    /// names all the same.
-    void add_predefined_macros() {
-        auto& sources = unit.context().getSourceManager();
-        for(const auto* macro: unit.predefined_macros()) {
-            auto [it, inserted] = symbols.try_emplace(unit.get<EntityTable>().entity(macro));
-            if(inserted) {
-                auto& symbol = it->second;
-                symbol.name = unit.token_spelling(macro->getDefinitionLoc());
-                symbol.kind = SymbolKind::Macro;
-                symbol.scope = SymbolScope::External;
-                symbol.flags = SymbolFlags::Completable;
-                symbol.token_class = token_class(*macro, sources);
-            }
-        }
-    }
-
-    /// The enumerators of scoped enumerations a using-declaration or a
-    /// `using enum` at namespace scope brings in: lookup in that namespace
-    /// finds them, and completion offers them there as the others.
-    void add_brought_in_enumerators() {
-        llvm::SmallVector<const clang::DeclContext*, 16> pending = {
-            unit.context().getTranslationUnitDecl()};
-        while(!pending.empty()) {
-            for(auto* decl: pending.pop_back_val()->noload_decls()) {
-                if(llvm::isa<clang::NamespaceDecl, clang::LinkageSpecDecl, clang::ExportDecl>(
-                       decl)) {
-                    pending.push_back(llvm::cast<clang::DeclContext>(decl));
-                } else if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(decl);
-                          shadow && llvm::isa<clang::EnumConstantDecl>(shadow->getTargetDecl())) {
-                    auto hash = ensure_symbol(decls::normalize(shadow->getTargetDecl()));
-                    symbols.find(hash)->second.flags |= SymbolFlags::Completable;
-                }
-            }
-        }
     }
 
     void add_macro(const clang::MacroInfo* def, RelationKind kind, clang::SourceLocation location) {
@@ -1792,11 +1751,6 @@ public:
         // index's to resolve: the preamble's own index carries none of it.
         if(!preamble) {
             project_expansions();
-        } else {
-            add_predefined_macros();
-        }
-        if(names) {
-            add_brought_in_enumerators();
         }
         auto instantiations_ms = instantiations_timer.ms_f();
 
@@ -1828,9 +1782,8 @@ public:
             for(const auto* redecl: decl->redecls()) {
                 auto* module = redecl->getOwningModule();
                 auto fid = SM.getFileID(SM.getFileLoc(redecl->getLocation()));
-                if(!focus_only && redecl->isFromASTFile() &&
-                   !(module && module->isHeaderLikeModule()) && fid.isValid() &&
-                   !unit.from_context(fid)) {
+                if(redecl->isFromASTFile() && !(module && module->isHeaderLikeModule()) &&
+                   fid.isValid() && !unit.from_context(fid)) {
                     declaring_files.emplace_back(hash, fid);
                     if(queued.insert(fid).second) {
                         indexed_fids.push_back(fid);
@@ -2032,7 +1985,7 @@ public:
             // A function's own name stays out but where another file names
             // it, which the merge lists (TUIndex::shared_locals).
             if(symbol.scope == SymbolScope::FunctionLocal &&
-               (focus_only || symbol.reference_files.cardinality() < 2)) {
+               symbol.reference_files.cardinality() < 2) {
                 continue;
             }
             if(symbol.scope == SymbolScope::External && !symbol.reference_files.isEmpty() &&
@@ -2075,27 +2028,6 @@ public:
         }
         blob.sections = std::move(sections);
         blob.instantiations = std::move(instantiation_sections);
-        if(names) {
-            SearchSnapshot completable;
-            for(auto hash: table) {
-                auto& symbol = symbols.find(hash)->second;
-                // The unit reaches the names of internal linkage its preamble
-                // declares as much as the others; a module's importers reach
-                // none of the module's, which their compile finds.
-                if(has_flag(symbol.flags, SymbolFlags::Completable)) {
-                    completable.entries.push_back({
-                        .hash = hash,
-                        .name = symbol.name,
-                        .args = symbol.args,
-                        .parent = symbol.parent,
-                        .kind = symbol.kind,
-                        .flags = symbol.flags,
-                    });
-                }
-            }
-            blob.names = std::move(build_search_segments(completable, ~0u).front());
-        }
-
         ScopedTimer pack_timer;
         auto bytes = encode(blob);
 
@@ -2156,10 +2088,6 @@ private:
     /// the encode step converts it through tree.path_id.
     llvm::DenseMap<clang::FileID, FileIndex> file_indices;
 
-    /// The entries a preamble's build writes in a borrowed includer
-    /// context, which no section takes (file_index).
-    FileIndex context_entries;
-
     /// With focus_only, the symbols registered that an imported
     /// module declares, a namespace aside: every unit reopening it
     /// redeclares it.
@@ -2182,9 +2110,6 @@ private:
     /// Whether the standard library's own instantiations and expansions are
     /// walked (TUIndexOptions::standard_library_instantiations).
     bool standard_library;
-
-    /// Whether the index carries its names table (TUIndexOptions::names).
-    bool names;
 
     llvm::DenseMap<clang::FileID, Resolved> resolved;
 
@@ -2238,7 +2163,7 @@ std::vector<std::byte> build_preamble_index(CompilationUnit& unit,
     for(auto& link: links) {
         blob.links.push_back({.range = link.range, .target = link.target});
     }
-    Indexer indexer(unit, {.names = true});
+    Indexer indexer(unit, {});
     return indexer.build(std::move(blob), true);
 }
 

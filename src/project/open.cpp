@@ -197,10 +197,7 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
                                    .extension = ".pch",
                                    .aux_extension = ".pch.idx",
                                    .max_bytes = 8 * GiB});
-        store->register_namespace({.name = "pcm",
-                                   .extension = ".pcm",
-                                   .aux_extension = ".pcm.idx",
-                                   .max_bytes = 8 * GiB});
+        store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 8 * GiB});
     }
     project.store.emplace(std::move(*store));
     if(!read_only) {

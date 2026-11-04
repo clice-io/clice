@@ -1,12 +1,11 @@
 module clice;
 
-import :index.format;
-import :index.tu_index;
 import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
+import :project.graph.unit;
 import :project.project;
 import :support.logging;
 import :syntax.header_context;
@@ -22,8 +21,9 @@ namespace clice {
 namespace {
 
 /// Changes whenever a PCM build of the same command comes to write another
-/// BMI, or its key comes to name another build, so a blob or a record an
-/// older clice stored is not taken for the new one.
+/// BMI or index its unit otherwise, or its key comes to name another build,
+/// so a blob or a record an older clice stored is not taken for the new
+/// one.
 constexpr llvm::StringRef pcm_version = "7";
 
 /// The provider an import in `importer` resolves to among several of one
@@ -46,20 +46,18 @@ Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> providers, Fid 
     });
 }
 
-/// The entry's PCM, or the PCH it was built over, left the disk, or its
-/// index proved unreadable: forget it, so the module's next attempt builds
-/// again. Returns whether it had.
+/// The entry's PCM, or the PCH it was built over, left the disk: forget it,
+/// so the module's next attempt builds again. Returns whether it had.
 bool drop_evicted(PCMEntry& entry) {
     if(entry.path.empty()) {
         return false;
     }
     if(!fs::exists(entry.path)) {
         entry.blob.clear();
-    } else if(!entry.index_path.empty() && (entry.pch.empty() || fs::exists(entry.pch))) {
+    } else if(entry.pch.empty() || fs::exists(entry.pch)) {
         return false;
     }
     entry.path.clear();
-    entry.index.reset();
     return true;
 }
 
@@ -114,8 +112,8 @@ llvm::SetVector<Fid> module_closure(const Project& project, llvm::ArrayRef<Fid> 
 }
 
 /// Why the module's last build cannot stand for `pcm_key`; empty when it
-/// can: built under the key, what it read unchanged, its PCM and its index
-/// in the store and on disk.
+/// can: built under the key, what it read unchanged, its PCM in the store
+/// and on disk.
 /// A build that cannot no longer describes the module: an importer
 /// compiling while the next one runs, or after it fails, must not read the
 /// previous interface from it. Its PCM stays in the store until the next
@@ -132,10 +130,8 @@ llvm::StringRef revalidate(Project& project, Fid module, llvm::StringRef pcm_key
     } else if(!inputs_hold(project.file_table, entry.inputs)) {
         miss = "inputs_changed";
     } else if(entry.path.empty() || !project.store->lookup("pcm", entry.blob) ||
-              !project.store->lookup_aux("pcm", entry.blob) || !fs::exists(entry.path)) {
+              !fs::exists(entry.path)) {
         miss = "evicted";
-    } else if(entry.index_path.empty()) {
-        miss = "index_unreadable";
     } else {
         return {};
     }
@@ -187,8 +183,12 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // reachable from its imports — fixing or providing one re-dirties it.
     // The scan runs under the command the build compiles with, resolved on
     // every attempt: a CDB or import change is always seen by the next one.
+    // That is the unit's own command: the build is the unit's compile, and
+    // sends its index, recorded under the command as it is now — one
+    // changing during the build leaves the unit owed.
     worker::BuildPCMParams bp;
     auto resolution = project.resolve_command(path_id);
+    auto command = project.command_identity(path_id);
     bp.directory = resolution.directory;
     bp.project_root = project.root.str();
     bp.arguments = resolution.arguments;
@@ -200,13 +200,12 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // build of them, as its command builds over the target's: the header
     // it forces in then reads nothing again, where parsed as text its
     // declarations would precede the module declaration. The PCM names
-    // that PCH to its importers, which read it with the PCM: it is the
-    // index's, keeping the function bodies, for every importer to read the
-    // same one. One that did not build leaves the header to the unit's own
-    // parse, as for any other unit.
+    // that PCH to its importers, which read it with the PCM. One that did
+    // not build leaves the header to the unit's own parse, as for any
+    // other unit.
     std::optional<std::string> pch_key;
     if(auto unit = project.pch_writer(path_id, resolution)) {
-        auto request = project.declared_pch_request(*unit, /*skip_bodies=*/false);
+        auto request = project.declared_pch_request(*unit);
         auto key = request.pch_key;
         switch(co_await attempt.depend(pch_node(key), project.pch_work(std::move(request)))) {
             case Result::Success: pch_key = std::move(key); break;
@@ -272,9 +271,8 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // inputs cover: the source path, the frontend-relevant subset of the
     // compile flags, the index database that records the blob's
     // dependency stamps, what each import resolved to — the keys of the
-    // imported modules, which name theirs in turn — the very build of the
-    // PCH it reads: rebuilt, that one has another name — and how it indexes
-    // the unit.
+    // imported modules, which name theirs in turn — and the very build of
+    // the PCH it reads: rebuilt, that one has another name.
     std::string import_keys;
     for(auto dep: imports.declared) {
         if(is_unresolved_import(dep)) {
@@ -284,15 +282,12 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
         }
         import_keys.push_back('\0');
     }
-    bp.standard_library_instantiations = project.settings.project.standard_library_instantiations;
     auto safe_module_name = module_name;
     ranges::replace(safe_module_name, ':', '-');
     auto pcm_key = std::format("{}-{}",
                                safe_module_name,
                                cache_key({clang::getClangFullVersion(),
                                           pcm_version,
-                                          std::to_string(index::index_format_version),
-                                          bp.standard_library_instantiations ? "std" : "",
                                           project.database_key.str(),
                                           bp.directory,
                                           file_path,
@@ -320,10 +315,9 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     bp.module_name = module_name;
     auto blob = new_blob(pcm_key);
     auto pending = project.store->begin_store("pcm", blob);
-    auto pending_index = project.store->begin_store_aux("pcm", blob);
     bp.output_path = pending.tmp_path;
-    bp.index_output_path = pending_index.tmp_path;
     bp.pcms = project.imported_pcms(resolved);
+    auto transfer = project.request_index(path_id, bp);
 
     // The modules it imports are inputs as much as its own text — the PCM
     // embeds what it read of them — and theirs already carry their own
@@ -358,28 +352,13 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
         }
         co_return built.error();
     }
+    project.merge_build_index(path_id, transfer, *built, before, command);
 
-    // Commit the pair on the thread pool, as a PCH's (see build_pair): the
-    // fsyncs, and the walk opening the index verifies.
-    std::optional<std::string> pcm_path;
-    std::optional<std::string> index_path;
-    std::shared_ptr<index::TUIndex> loaded;
-    co_await async::queue([&] {
-        auto committed = project.store->commit(std::move(pending));
-        if(!committed) {
-            return;
-        }
-        pcm_path = std::move(*committed);
-        if(auto index = project.store->commit(std::move(pending_index))) {
-            index_path = std::move(*index);
-            loaded = load_paired_index(*index_path);
-        }
-        if(!loaded) {
-            project.store->invalidate("pcm", blob);
-        }
-    });
+    // Commit on the thread pool: it fsyncs the freshly written PCM.
+    auto committed =
+        co_await async::queue([&] { return project.store->commit(std::move(pending)); });
     auto& entry = project.pcms[path_id];
-    if(!loaded) {
+    if(!committed.has_value()) {
         entry.retire(&*project.store, "pcm");
         LOG_WARN("Failed to commit PCM for module {}", module_name);
         co_return Result::Failed;
@@ -387,9 +366,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     entry.publish(&*project.store,
                   "pcm",
                   std::move(blob),
-                  std::move(*pcm_path),
-                  std::move(*index_path),
-                  std::move(loaded),
+                  std::move(committed.value()),
                   project.read_inputs(*built, before));
     entry.key = std::move(pcm_key);
     entry.pch = std::move(bp.pch);
@@ -692,33 +669,6 @@ std::unordered_map<std::string, std::string>
         }
     }
     return paths;
-}
-
-std::shared_ptr<index::TUIndex> Project::module_index(Fid module) {
-    auto it = pcms.find(module);
-    if(it == pcms.end() || it->second.path.empty()) {
-        return nullptr;
-    }
-    return it->second.load_index();
-}
-
-std::vector<std::shared_ptr<index::TUIndex>>
-    Project::precompiled_indexes(llvm::StringRef pch_key, llvm::ArrayRef<Fid> modules) {
-    auto indexes = pch_indexes(pch_key);
-    if(!pch_key.empty() && indexes.empty()) {
-        return {};
-    }
-    for(auto module: module_closure(*this, modules)) {
-        if(!built_pcm(module) || dep_graph.module_of(module).empty()) {
-            continue;
-        }
-        auto index = module_index(module);
-        if(!index) {
-            return {};
-        }
-        indexes.push_back(std::move(index));
-    }
-    return indexes;
 }
 
 llvm::SmallVector<Fid> Project::invalidate_module(Fid path_id) {

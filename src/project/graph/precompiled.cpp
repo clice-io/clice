@@ -2,10 +2,10 @@ module clice;
 
 import :feature.diagnostics;
 import :index.format;
-import :index.tu_index;
 import :project.command;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
+import :project.graph.unit;
 import :project.project;
 import :support.anomaly;
 import :support.failure_record;
@@ -43,6 +43,11 @@ struct SavedPCH {
     std::optional<std::string> blob;
 
     std::uint32_t bound;
+
+    /// See PCHEntry::whole_file; absent from the records of a binary
+    /// before it.
+    KANNOTATE(&whole_file, presence = optional)
+    bool whole_file = false;
 
     std::vector<SavedInput> deps;
 
@@ -89,11 +94,11 @@ struct SavedSelfContainment {
 struct Records {
     std::vector<std::string> paths;
 
-    /// index_format_version the paired indexes were written with (one
-    /// binary writes them all). A mismatch drops every entry at load so the
-    /// pairs rebuild immediately, instead of the mismatch showing up lazily
-    /// on the first query reading one — which cannot trigger a rebuild.
-    std::uint32_t index_format = 0;
+    /// index_format_version the .pch.idx indexes were written with (one
+    /// binary writes them all). A mismatch drops every PCH entry at load so
+    /// the pairs rebuild immediately, instead of the mismatch showing up
+    /// lazily on the first overlay query — which cannot trigger a rebuild.
+    std::uint32_t pch_index_format = 0;
 
     std::vector<SavedPCH> pch;
 
@@ -111,30 +116,6 @@ struct Records {
 };
 
 }  // namespace
-
-std::shared_ptr<index::TUIndex> load_paired_index(llvm::StringRef path) {
-    auto file = fs::File::open(path);
-    if(!file) {
-        return nullptr;
-    }
-    auto buffer = llvm::MemoryBuffer::getOpenFile(file->native_handle(),
-                                                  path,
-                                                  /*FileSize=*/-1,
-                                                  /*RequiresNullTerminator=*/false,
-                                                  /*IsVolatile=*/false);
-    if(!buffer) {
-        return nullptr;
-    }
-    // A stale or truncated pair must never crash the server: the TU index
-    // is deep-verified, and every embedded shard blob once — queries then
-    // run unchecked. Anything failing reads as "pair missing" and the
-    // product is rebuilt.
-    auto tu_index = index::TUIndex::from_buffer(std::move(*buffer));
-    if(!tu_index.loaded() || !tu_index.verify_shards()) {
-        return nullptr;
-    }
-    return std::make_shared<index::TUIndex>(std::move(tu_index));
-}
 
 std::string cache_key(llvm::ArrayRef<llvm::StringRef> parts) {
     std::string input;
@@ -161,6 +142,24 @@ Inputs Project::read_inputs(const worker::PrecompiledBuildResult& built, const I
     auto inputs = intern_inputs(file_table, built.deps, built.started_at);
     merge_inputs(inputs, {&before});
     return inputs;
+}
+
+void Project::merge_build_index(Fid unit,
+                                IndexTransfer& transfer,
+                                const worker::PrecompiledBuildResult& built,
+                                const Inputs& before,
+                                std::uint64_t command) {
+    auto path = file_table.resolve(unit);
+    auto tu_index = transfer.receive(built.tu_index_data, built.index_in_file);
+    if(!tu_index) {
+        LOG_WARN("The index the build of {} sent is lost: {}", path, tu_index.error());
+        return;
+    }
+    // A build measures no peak: the unit's last compile's stands.
+    auto manifest = index.manifest(unit);
+    if(!merge_index(unit, *tu_index, before, command, manifest ? manifest->peak : 0)) {
+        LOG_WARN("The index the build of {} sent did not merge", path);
+    }
 }
 
 template <typename Params>
@@ -230,7 +229,7 @@ async::task<std::expected<worker::PrecompiledBuildResult, Result>>
 
 std::string Project::serialize_precompiled_records() {
     Records data;
-    data.index_format = index::index_format_version;
+    data.pch_index_format = index::index_format_version;
     data.trials_scoring = feature::missing_context_scoring;
     llvm::StringMap<std::uint32_t> index_map;
 
@@ -262,6 +261,7 @@ std::string Project::serialize_precompiled_records() {
         entry.key = e.getKey().str();
         entry.blob = st.blob;
         entry.bound = st.bound;
+        entry.whole_file = st.whole_file;
         dump_deps(st.inputs, entry.deps);
         if(!st.base.empty()) {
             entry.base = st.base;
@@ -334,11 +334,11 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
         return inputs;
     };
 
-    if(data.index_format != index::index_format_version) {
-        data.pch.clear();
-        data.pcm.clear();
-    }
+    bool pch_format_ok = data.pch_index_format == index::index_format_version;
     for(auto& entry: data.pch) {
+        if(!pch_format_ok) {
+            break;
+        }
         if(!entry.blob) {
             store->invalidate("pch", entry.key);
             continue;
@@ -346,22 +346,27 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
         auto pch_path = store->lookup("pch", *entry.blob);
         if(!pch_path)
             continue;
-        // A PCH without its index is an incomplete pair (crash between the
-        // two commits): drop it so the next compile rebuilds both.
-        auto index_path = store->lookup_aux("pch", *entry.blob);
-        if(!index_path) {
-            store->invalidate("pch", *entry.blob);
-            continue;
+        // A preamble's PCH without its pch.idx index is an incomplete pair
+        // (crash between the two commits): drop it so the next compile
+        // rebuilds both.
+        std::optional<std::string> index_path;
+        if(!entry.whole_file) {
+            index_path = store->lookup_aux("pch", *entry.blob);
+            if(!index_path) {
+                store->invalidate("pch", *entry.blob);
+                continue;
+            }
         }
 
         auto& st = pchs[entry.key];
         st.blob = std::move(*entry.blob);
         st.path = *pch_path;
         st.bound = entry.bound;
+        st.whole_file = entry.whole_file;
         st.inputs = load_deps(entry.deps);
         st.base = entry.base.value_or("");
         st.base_blob = entry.base_blob.value_or("");
-        st.index_path = *index_path;
+        st.index_path = index_path.value_or("");
     }
 
     for(auto& entry: data.pcm) {
@@ -370,18 +375,16 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
             continue;
         }
         auto pcm_path = store->lookup("pcm", *entry.blob);
-        auto index_path = store->lookup_aux("pcm", *entry.blob);
         // A dep-less entry is an unvalidatable snapshot that would blindly
         // serve a stale PCM (the key embeds no content). Drop it and let
         // the module rebuild once.
-        if(!pcm_path || !index_path || entry.deps.empty())
+        if(!pcm_path || entry.deps.empty())
             continue;
         auto source = file_of(entry.source_file);
         if(!source)
             continue;
         auto& st = pcms[*source];
         st.path = *pcm_path;
-        st.index_path = *index_path;
         st.key = entry.key;
         st.blob = std::move(*entry.blob);
         st.inputs = load_deps(entry.deps);

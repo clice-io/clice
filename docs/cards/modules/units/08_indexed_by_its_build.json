@@ -4,7 +4,7 @@
   "subtopic": "units",
   "title": "A module unit compiled once",
   "summary": "A module unit is compiled once, into the module file its importers read, and that compile indexes it too",
-  "prose": "The background index takes the index the build of the module file wrote for a compile of its own, and a file importing the module completes the names the module exports from it, as it does the names of its precompiled preamble.",
+  "prose": "The build of the module file merges the unit's index into the project's, which the background index then finds current, and a file importing the module completes the names the module exports from the module file its compile loads.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -27,7 +27,7 @@
     },
     {
       "path": "math.cppm",
-      "text": "module;\n\n#include \"limits.h\"\n\nexport module math;\n\nexport namespace math {\n\nint add(int a, int b) {\n    return clamp(a + b);\n}\n\nint twice(int a) {\n    return add(a, a);\n}\n\n}  // namespace math\n\nint hidden() {\n    return 0;\n}\n",
+      "text": "module;\n\n#include \"limits.h\"\n\nexport module math;\n\nexport namespace math {\n\nint add(int a, int b) {\n    return clamp(a + b);\n}\n\nint twice(int a) {\n    return add(a, a);\n}\n\nenum class Tone { tone_warm, tone_cool };\nusing enum Tone;\n\n}  // namespace math\n\nint hidden() {\n    return 0;\n}\n",
       "markers": [
         {
           "name": "add",
@@ -146,6 +146,25 @@
                   "label": "twice(int a)",
                   "kind": "Function",
                   "detail": "int"
+                },
+                {
+                  "label": "tone_warm",
+                  "kind": "EnumMember",
+                  "detail": "Tone"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "brought_in",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "tone_warm",
+                  "kind": "EnumMember",
+                  "detail": "Tone"
                 }
               ]
             }

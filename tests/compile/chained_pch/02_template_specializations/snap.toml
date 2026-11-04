@@ -362,6 +362,7 @@ definition = ["include/base.h │ int ⟦get⟧() const {"]
 declaration = ["include/base.h │ int ⟦get⟧() const {"]
 references = [
     "include/base.h │ int ⟦get⟧() const {",
+    "include/base.h │ return twice(Inbase{}) + Box<Inbase>{}.⟦get⟧() + describe(1) + weight<Inbase>;",
     "int total = box.⟦get⟧() + other.get() + twice(pointer);",
     "int total = box.get() + other.⟦get⟧() + twice(pointer);",
 ]
@@ -386,6 +387,7 @@ definition = ["include/base.h │ int ⟦get⟧() const {"]
 declaration = ["include/base.h │ int ⟦get⟧() const {"]
 references = [
     "include/base.h │ int ⟦get⟧() const {",
+    "include/base.h │ return twice(Inbase{}) + Box<Inbase>{}.⟦get⟧() + describe(1) + weight<Inbase>;",
     "int total = box.⟦get⟧() + other.get() + twice(pointer);",
     "int total = box.get() + other.⟦get⟧() + twice(pointer);",
 ]
@@ -410,6 +412,7 @@ definition = ["include/base.h │ int ⟦twice⟧(T) {"]
 declaration = ["include/base.h │ int ⟦twice⟧(T) {"]
 references = [
     "include/base.h │ int ⟦twice⟧(T) {",
+    "include/base.h │ return ⟦twice⟧(Inbase{}) + Box<Inbase>{}.get() + describe(1) + weight<Inbase>;",
     "int total = box.get() + other.get() + ⟦twice⟧(pointer);",
     "total += weight<Widget> + base_use() + top_use() + ⟦twice⟧(Inbase{});",
 ]
@@ -451,6 +454,7 @@ wrong = "should list where twice<Widget> and Box<Widget>::get() read it, as clic
 definition = ["include/extra.h │ static constexpr int ⟦value⟧ = 7;"]
 declaration = ["include/extra.h │ static constexpr int ⟦value⟧ = 7;"]
 references = [
+    "include/base.h │ return Traits<T>::⟦value⟧;",
     "include/extra.h │ static constexpr int ⟦value⟧ = 7;",
     "static_assert(Traits<Widget>::⟦value⟧ == 7);",
     "total += describe(Widget{}) + Traits<Widget>::⟦value⟧ + holder.size();",
@@ -507,10 +511,10 @@ constexpr int weight = 9
 range = "total += ⟦weight⟧<Widget> + base_use() + top_use() + twice(Inbase{});"
 
 [locations.partial]
-wrong = "should list Traits<T>::value in base.h, which twice<int*> reads, as it does once the file is indexed"
 definition = ["include/extra.h │ static constexpr int ⟦value⟧ = 3;"]
 declaration = ["include/extra.h │ static constexpr int ⟦value⟧ = 3;"]
 references = [
+    "include/base.h │ return 2 * Traits<T>::⟦value⟧;",
     "include/extra.h │ static constexpr int ⟦value⟧ = 3;",
     "static_assert(Traits<int*>::⟦value⟧ == 3);",
     "return total + Traits<int*>::⟦value⟧;",

@@ -3,6 +3,7 @@ module clice:project.graph.unit;
 import :compile.compilation;
 import :feature.diagnostics;
 import :support.prelude;
+import :vfs.cache_store;
 import :worker.protocol;
 import :worker.scheduler;
 
@@ -42,6 +43,24 @@ struct UnitRequest {
     /// merge is dropped then; the follow-up attempt redoes it. Null when every
     /// result merges.
     std::function<bool()> outdated;
+};
+
+/// How a compile's TU index comes from its worker (Project::request_index):
+/// in the reply, or in a transfer file when too large for a message.
+struct IndexTransfer {
+    /// The index the reply carries, or the transfer file holds when the
+    /// worker wrote it there; why that cannot be read, else.
+    std::expected<llvm::StringRef, std::string> receive(std::span<const std::byte> data,
+                                                        bool in_file);
+
+    /// The store's file the worker writes an index too large for a message
+    /// to, removed with this; none without a store.
+    std::optional<CacheStore::PendingEntry> file;
+
+    /// The file, mapped once received. Declared after `file`: the mapping
+    /// must close before the entry removes the file, which Windows refuses
+    /// while it is mapped.
+    fs::Mapping mapping;
 };
 
 /// What a unit's compiles in this session showed, ahead of what its index

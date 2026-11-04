@@ -74,19 +74,25 @@ static std::vector<std::byte> serialize_preamble_index(CompilationUnit& unit,
     return blob;
 }
 
-/// Write the index paired with a PCH or a PCM, after the product itself.
-/// Returns an error description on failure so the master's anomaly carries
-/// the cause.
-static std::optional<std::string> write_paired_index(llvm::StringRef label,
-                                                     llvm::StringRef blob,
-                                                     llvm::StringRef output_path) {
+/// Write the serialized blob next to the PCH. Returns an error description
+/// on failure so the master's anomaly carries the cause.
+static std::optional<std::string> write_preamble_index(llvm::StringRef blob,
+                                                       llvm::StringRef output_path) {
     if(auto error = fs::write_file(output_path, blob)) {
         auto message =
-            std::format("failed writing the {} index {}: {}", label, output_path, error.message());
-        LOG_ERROR("Build{}: {}", label, message);
+            std::format("failed writing pch.idx envelope {}: {}", output_path, error.message());
+        LOG_ERROR("BuildPCH: {}", message);
         return message;
     }
     return std::nullopt;
+}
+
+/// The TU index a unit's compile, or a build that is one, sends as the
+/// master asked.
+static index::TUIndexOptions index_options(const auto& params) {
+    return {.known_variants = params.known_variants,
+            .known_instantiations = params.known_instantiations,
+            .standard_library_instantiations = params.standard_library_instantiations};
 }
 
 /// Where a PCH or PCM build writes: the master's tmp path when it provided
@@ -110,19 +116,20 @@ static std::expected<std::string, std::string> precompiled_output(llvm::StringRe
     return path;
 }
 
-/// The reply of a finished PCH or PCM build. Success hands the master the
-/// path to commit; failure removes the half-written file and classifies
-/// the errors — `internal_error` marks a failure of the worker's own I/O,
-/// never the user's code, and must not be downgraded to an expected build
-/// failure. Either way the reply carries the build's inputs.
-static worker::PrecompiledBuildResult finish_precompiled(llvm::StringRef label,
+/// The reply of a finished PCH or PCM build, `result` holding the index it
+/// sends. Success hands the master the path to commit; failure removes the
+/// half-written file and classifies the errors — `internal_error` marks a
+/// failure of the worker's own I/O, never the user's code, and must not be
+/// downgraded to an expected build failure. Either way the reply carries
+/// the build's inputs.
+static worker::PrecompiledBuildResult finish_precompiled(worker::PrecompiledBuildResult result,
+                                                         llvm::StringRef label,
                                                          bool success,
                                                          const std::string& tmp_path,
                                                          std::int64_t started_at,
                                                          const auto& deps,
                                                          llvm::ArrayRef<std::string> errors,
                                                          bool internal_error) {
-    worker::PrecompiledBuildResult result;
     result.started_at = started_at;
     result.deps = deps;
     if(success) {
@@ -204,10 +211,20 @@ static worker::PrecompiledBuildResult
     if(!success)
         errors = collect_errors(*unit);
 
+    worker::PrecompiledBuildResult result;
+    bool internal_error = false;
     std::vector<std::byte> blob;
     ScopedTimer index_timer;
-    if(success) {
-        blob = serialize_preamble_index(*unit, params.whole_file ? 0 : params.preamble_bound);
+    if(success && !params.whole_file) {
+        blob = serialize_preamble_index(*unit, params.preamble_bound);
+    } else if(success && params.index) {
+        if(auto error = send_index(index::build_tu_index(*unit, index_options(params)),
+                                   params.index_output_path,
+                                   result)) {
+            success = false;
+            internal_error = true;
+            errors = {std::move(*error)};
+        }
     }
     auto index_ms = index_timer.ms();
 
@@ -221,10 +238,9 @@ static worker::PrecompiledBuildResult
     // (renames preserve mtimes), so the on-disk order must match the
     // logical one. The PCH is only served together with its blob, so a
     // blob write failure fails the whole build.
-    bool internal_error = false;
     ScopedTimer state_write_timer;
-    if(success) {
-        if(auto error = write_paired_index("PCH", as_chars(blob), params.index_output_path)) {
+    if(success && !params.whole_file) {
+        if(auto error = write_preamble_index(as_chars(blob), params.index_output_path)) {
             success = false;
             internal_error = true;
             errors = {std::move(*error)};
@@ -234,7 +250,7 @@ static worker::PrecompiledBuildResult
 
     if(success) {
         LOG_PERF("build",
-                 "kind=pch file={} output={} compile_ms={} preamble_index_ms={} flush_ms={} "
+                 "kind=pch file={} output={} compile_ms={} index_ms={} flush_ms={} "
                  "state_write_ms={} total_ms={}",
                  params.file,
                  *output,
@@ -249,7 +265,14 @@ static worker::PrecompiledBuildResult
                  timer.ms(),
                  llvm::join(errors, "; "));
     }
-    return finish_precompiled("PCH", success, *output, started_at, deps, errors, internal_error);
+    return finish_precompiled(std::move(result),
+                              "PCH",
+                              success,
+                              *output,
+                              started_at,
+                              deps,
+                              errors,
+                              internal_error);
 }
 
 static worker::PrecompiledBuildResult
@@ -284,32 +307,25 @@ static worker::PrecompiledBuildResult
     if(!success)
         errors = collect_errors(*unit);
 
-    // The unit's index, which the background index takes for a compile of
-    // its own, with the names its importers complete from.
-    std::vector<std::byte> blob;
+    worker::PrecompiledBuildResult result;
+    bool internal_error = false;
+    std::size_t index_bytes = 0;
     ScopedTimer index_timer;
     if(success) {
-        blob = index::build_tu_index(
-            *unit,
-            {.standard_library_instantiations = params.standard_library_instantiations,
-             .names = true});
-    }
-    auto index_ms = index_timer.ms();
-
-    // Destroying the unit writes the PCM to disk; the index follows it, as
-    // a PCH's does.
-    ScopedTimer flush_timer;
-    unit.reset();
-    auto flush_ms = flush_timer.ms();
-
-    bool internal_error = false;
-    if(success) {
-        if(auto error = write_paired_index("PCM", as_chars(blob), params.index_output_path)) {
+        auto blob = index::build_tu_index(*unit, index_options(params));
+        index_bytes = blob.size();
+        if(auto error = send_index(std::move(blob), params.index_output_path, result)) {
             success = false;
             internal_error = true;
             errors = {std::move(*error)};
         }
     }
+    auto index_ms = index_timer.ms();
+
+    // Destroying the unit writes the PCM to disk.
+    ScopedTimer flush_timer;
+    unit.reset();
+    auto flush_ms = flush_timer.ms();
 
     if(success) {
         LOG_PERF("build",
@@ -317,7 +333,7 @@ static worker::PrecompiledBuildResult
                  params.module_name,
                  compile_ms,
                  index_ms,
-                 blob.size(),
+                 index_bytes,
                  flush_ms,
                  timer.ms());
     } else {
@@ -326,7 +342,14 @@ static worker::PrecompiledBuildResult
                  timer.ms(),
                  llvm::join(errors, "; "));
     }
-    return finish_precompiled("PCM", success, *output, started_at, deps, errors, internal_error);
+    return finish_precompiled(std::move(result),
+                              "PCM",
+                              success,
+                              *output,
+                              started_at,
+                              deps,
+                              errors,
+                              internal_error);
 }
 
 /// The batch tidy pass's findings, each where it is: unlike the LSP path,
@@ -495,11 +518,7 @@ static worker::CompileUnitResult
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;
     if(params.index) {
-        auto blob = index::build_tu_index(
-            *unit,
-            {.known_variants = params.known_variants,
-             .known_instantiations = params.known_instantiations,
-             .standard_library_instantiations = params.standard_library_instantiations});
+        auto blob = index::build_tu_index(*unit, index_options(params));
         index_bytes = blob.size();
         if(auto error = send_index(std::move(blob), params.index_output_path, result)) {
             return {false, std::move(*error)};

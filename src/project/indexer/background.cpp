@@ -44,10 +44,10 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                    project.index.needs_reindex(path_id) ||
                    project.index.indexed_command(path_id) != project.command_identity(path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
-        // A module unit's PCM build indexes it but brings no such
+        // A build compiling the unit indexes it but brings no such
         // diagnostics: only an open document lacking them compiles it for
         // them.
-        bool wants_skipped = skipped && (project.dep_graph.module_of(path_id).empty() ||
+        bool wants_skipped = skipped && (!project.compiled_by_build(path_id) ||
                                          serving->lacks_skipped_diagnostics(path_id));
         auto result = co_await project.compile_unit(
             path_id,

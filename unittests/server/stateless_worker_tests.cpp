@@ -1,12 +1,10 @@
 module clice;
 
 import :feature.hover;
-import :index.search_index;
-import :index.symbol_query;
 import :index.tu_index;
-import :project.graph.precompiled;
 import :semantic.display;
 import :semantic.symbol;
+import :support.bytes;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils;
 import :worker.protocol;
@@ -228,8 +226,7 @@ ZEST_SUITE(StatelessWorkerExtended) {
 ZEST_CASE(BuildPCMRequest) {
     TempDir tmp;
     tmp.touch("test_module.cppm",
-              "export module test_module;\nexport int module_func() { return 1; }\n"
-              "export namespace lib {\nenum class Tone { tone_warm };\nusing enum Tone;\n}\n");
+              "export module test_module;\nexport int module_func() { return 1; }\n");
     auto src = tmp.path("test_module.cppm");
 
     WorkerHandle w;
@@ -249,7 +246,6 @@ ZEST_CASE(BuildPCMRequest) {
                             src};
         params.module_name = "test_module";
         params.output_path = tmp.path("test_module.pcm");
-        params.index_output_path = tmp.path("test_module.pcm.idx");
 
         auto result = co_await w.peer->send_request(params);
         ZEXPECT(result);
@@ -270,15 +266,12 @@ ZEST_CASE(BuildPCMRequest) {
                 }
             }
             ZEXPECT(source_dep);
-            // The build indexes the unit too, with the names its importers
-            // complete from: an enumerator `using enum` brings in among them.
-            auto index = load_paired_index(tmp.path("test_module.pcm.idx"));
-            ZEXPECT(index != nullptr);
-            if(index) {
-                for(auto name: {"module_func", "tone_warm"}) {
-                    auto query = index::SymbolQuery::parse(name);
-                    ZEXPECT(index->names().search(*query, 10, {}).hits.size() == 1u);
-                }
+            // The build is the unit's compile: it sends the unit's index.
+            auto index = index::TUIndex::from_bytes(as_chars(build.tu_index_data));
+            ZEXPECT(index.loaded());
+            if(index.loaded()) {
+                ZEXPECT(index.path(index.focus_file()).ends_with("test_module.cppm"));
+                ZEXPECT(index.section_count() != 0u);
             }
         }
         test_done = true;

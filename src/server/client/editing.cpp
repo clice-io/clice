@@ -189,15 +189,7 @@ void LSPClient::register_editing() {
             co_return to_raw(*list);
         }
         auto& compile = std::get<feature::CompileCompletion>(start);
-        auto offer = [&](worker::CompletionParams& completion,
-                         llvm::StringRef pch_key,
-                         llvm::ArrayRef<Fid> modules) {
-            feature::offer_names(query,
-                                 project.project.dep_graph,
-                                 project.project.precompiled_indexes(pch_key, modules),
-                                 compile);
-            completion.names = compile;
-        };
+        feature::offer_names(query, project.project.dep_graph, compile);
         auto result = co_await project
                           .stateless_request(ticket,
                                              feature::RequestKind::Completion,
@@ -206,9 +198,9 @@ void LSPClient::register_editing() {
                                              worker::CompletionParams{
                                                  .client = completion_client,
                                                  .encoding = encoding,
+                                                 .names = compile,
                                              },
-                                             ctx.cancellation,
-                                             offer)
+                                             ctx.cancellation)
                           .or_fail();
         if(!result.include) {
             co_return std::move(result.list);
