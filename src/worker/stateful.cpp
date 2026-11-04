@@ -32,10 +32,10 @@ namespace clice {
 using ipc::RequestResult;
 using RequestContext = ipc::BincodePeer::RequestContext;
 
-/// A compile past its parse, while clang instantiates the templates the file
-/// uses (CompilationParams::Phases), and the requests reading its AST
-/// meanwhile: a request holds the compile where it pauses, where nothing
-/// changes the AST, and lets it go on once it read it.
+/// A document's compile and the requests reading its AST while it runs: from
+/// the end of the parse on, as clang instantiates the templates the file uses
+/// (CompilationParams::Phases), a request locks the AST, which keeps the
+/// compile where it pauses, and unlocks it once it read it.
 struct CompileRun : std::enable_shared_from_this<CompileRun> {
     CompileRun(int version, async::event_loop& loop) :
         version(version), relay(loop.create_relay()) {}
@@ -52,7 +52,7 @@ struct CompileRun : std::enable_shared_from_this<CompileRun> {
     /// On the compile's thread: wait while a request reads the AST.
     void pause() {
         std::unique_lock lock(mutex);
-        if(!held) {
+        if(!reading) {
             return;
         }
         state = State::Paused;
@@ -72,7 +72,7 @@ struct CompileRun : std::enable_shared_from_this<CompileRun> {
         }
         begin();
         std::unique_lock lock(mutex);
-        resumed.wait(lock, [&] { return !held; });
+        resumed.wait(lock, [&] { return !reading; });
         beginning = false;
         state = State::Running;
     }
@@ -84,12 +84,13 @@ struct CompileRun : std::enable_shared_from_this<CompileRun> {
         signal();
     }
 
-    /// Hold the compile where nothing changes the AST.
-    async::task<> hold() {
+    /// Keep the compile where nothing changes the AST: where it paused, or
+    /// done.
+    async::task<> lock_ast() {
         while(true) {
             {
                 std::lock_guard lock(mutex);
-                held = true;
+                reading = true;
                 if(state != State::Running) {
                     co_return;
                 }
@@ -100,9 +101,9 @@ struct CompileRun : std::enable_shared_from_this<CompileRun> {
     }
 
     /// Let the compile go on.
-    void release() {
+    void unlock_ast() {
         std::lock_guard lock(mutex);
-        held = false;
+        reading = false;
         if(state == State::Paused) {
             if(!beginning) {
                 state = State::Running;
@@ -145,7 +146,7 @@ struct CompileRun : std::enable_shared_from_this<CompileRun> {
     State state = State::Running;
 
     /// A request reads the AST or waits to.
-    bool held = false;
+    bool reading = false;
 
     /// Paused where the instantiations begin, until the compile goes on by
     /// itself (begin_instantiations).
@@ -160,7 +161,7 @@ struct DocumentEntry {
     /// runs, and after one that did not complete.
     std::unique_ptr<CompilationUnit> unit;
 
-    /// The compile running past its parse, whose AST answers meanwhile.
+    /// The compile running, whose AST answers from the end of its parse on.
     std::shared_ptr<CompileRun> running;
 
     /// The reply of the last compile that ended past its parse, until a
@@ -244,13 +245,19 @@ struct [[nodiscard]] CompileGuard {
     }
 };
 
+/// The threads of the worker's pool: its compiles and the requests reading
+/// their ASTs run there.
+constexpr int pool_threads = 4;
+
 /// The worker keeps the documents the master's pool sends it, until the
 /// pool evicts them (WorkerPool, worker::EvictParams).
 class StatefulWorker {
-    ipc::BincodePeer& peer;
+public:
+    StatefulWorker(ipc::BincodePeer& peer, async::event_loop& loop) : peer(peer), loop(loop) {}
 
-    llvm::StringMap<std::shared_ptr<DocumentEntry>> documents;
+    void register_handlers();
 
+private:
     std::shared_ptr<DocumentEntry> get_or_create(llvm::StringRef path) {
         auto [it, inserted] = documents.try_emplace(path, nullptr);
         if(inserted) {
@@ -285,11 +292,11 @@ class StatefulWorker {
         auto run = doc.running;
         auto release = llvm::make_scope_exit([&] {
             if(run) {
-                run->release();
+                run->unlock_ast();
             }
         });
         if(run) {
-            co_await run->hold();
+            co_await run->lock_ast();
         }
         auto acquire_ms = timer.ms_f();
         double compute_ms = 0;
@@ -336,15 +343,19 @@ class StatefulWorker {
     RequestResult<worker::FinishCompileParams>
         serve_finish(EntryHold hold, const worker::FinishCompileParams& params);
 
-public:
-    StatefulWorker(ipc::BincodePeer& peer, async::event_loop& loop) : peer(peer), loop(loop) {}
-
-    void register_handlers();
-
 private:
+    ipc::BincodePeer& peer;
+
     async::event_loop& loop;
 
+    llvm::StringMap<std::shared_ptr<DocumentEntry>> documents;
+
     async::task_group<> compiles;
+
+    /// The compiles running at once: a thread of the pool fewer than it
+    /// has, so a request reading the AST a compile paused for always finds
+    /// a thread to run on.
+    async::semaphore compile_slots{pool_threads - 1};
 };
 
 /// What a compile replies: the parse's AST, its diagnostics and its index,
@@ -431,10 +442,8 @@ RequestResult<worker::CompileParams>
 
     auto run = std::make_shared<CompileRun>(params.version, loop);
     doc->running = run;
-    if(!compiles.spawn(run_compile(doc, run, params))) {
-        doc->running.reset();
-        co_await async::fail(ipc::Error{worker::dispatch_errc::cancelled, "Worker stopping"});
-    }
+    [[maybe_unused]] bool spawned = compiles.spawn(run_compile(doc, run, params));
+    assert(spawned && "nothing cancels the compiles, whose runs never fail");
     // A Compile the master interrupts before the parse ended stops it.
     auto interrupted = llvm::make_scope_exit([&] {
         if(!run->parsed.is_set()) {
@@ -451,6 +460,8 @@ async::task<> StatefulWorker::run_compile(std::shared_ptr<DocumentEntry> doc,
     std::weak_ptr<CompileRun> self = run;
     std::unique_ptr<CompilationUnit> unit;
     std::shared_ptr<const llvm::MemoryBuffer> pch_mapping;
+    co_await compile_slots.acquire();
+    auto slot = llvm::make_scope_exit([&] { compile_slots.release(); });
     // The parse is interruptible: CompilationParams::stop is polled after
     // every top-level declaration and between the instantiations past it,
     // so a newer compile reaches into the middle of this one instead of
@@ -462,6 +473,11 @@ async::task<> StatefulWorker::run_compile(std::shared_ptr<DocumentEntry> doc,
             // then in flight.
             std::optional<CrashScope> finishing;
             ScopedTimer timer;
+            // Read with the AST, which no request reads before the parse
+            // ends.
+            doc->pch_bound = params.pch.second;
+            doc->open_conditionals = params.open_conditionals;
+            doc->preamble_inactive_regions = params.preamble_inactive_regions;
 
             CompilationParams cp{
                 .kind = CompilationKind::Content,
@@ -509,8 +525,8 @@ async::task<> StatefulWorker::run_compile(std::shared_ptr<DocumentEntry> doc,
             // The parse's reply took the transfer file the master gave it.
             auto result = result_of(*unit,
                                     params,
-                                    unit->parsed() ? params.finished_index_output_path
-                                                   : params.index_output_path,
+                                    unit->split_at_parse() ? params.finished_index_output_path
+                                                           : params.index_output_path,
                                     run->stop->load(std::memory_order_relaxed));
             LOG_INFO("Compile done: path={}, {}ms, {} diags, status={}",
                      params.path,
@@ -524,7 +540,7 @@ async::task<> StatefulWorker::run_compile(std::shared_ptr<DocumentEntry> doc,
 
     // Without a parse that ended, the Compile still waits: this is its
     // reply, and it holds the strand until it has it.
-    bool parsed = unit->parsed();
+    bool parsed = unit->split_at_parse();
     auto status = result.status;
     if(parsed) {
         co_await run->parsed.wait();
@@ -536,9 +552,6 @@ async::task<> StatefulWorker::run_compile(std::shared_ptr<DocumentEntry> doc,
     if(status == worker::CompileStatus::Done) {
         doc->unit = std::move(unit);
         doc->pch_mapping = std::move(pch_mapping);
-        doc->pch_bound = params.pch.second;
-        doc->open_conditionals = params.open_conditionals;
-        doc->preamble_inactive_regions = params.preamble_inactive_regions;
     } else {
         // An incomplete unit can never serve a query, yet it pins the
         // consumed PCHs and PCMs — on Windows a mapped PCH cannot be
@@ -561,6 +574,12 @@ RequestResult<worker::FinishCompileParams>
     StatefulWorker::serve_finish(EntryHold hold, const worker::FinishCompileParams& params) {
     auto& doc = *hold.doc;
     if(auto run = doc.running; run && run->version == params.version) {
+        // The rest the master gave up on is nobody's.
+        auto abandoned = llvm::make_scope_exit([&] {
+            if(!run->finished.is_set()) {
+                run->stop->store(true, std::memory_order_relaxed);
+            }
+        });
         co_await run->finished.wait();
     }
     if(doc.finished && doc.finished->version == params.version) {
@@ -698,6 +717,14 @@ void StatefulWorker::register_handlers() {
 }
 
 int run_stateful_worker_mode(const std::string& worker_name, const std::string& log_dir) {
+    // Must be set before any async::queue call.
+    auto threads = std::to_string(pool_threads);
+#ifdef _WIN32
+    _putenv_s("UV_THREADPOOL_SIZE", threads.c_str());
+#else
+    ::setenv("UV_THREADPOOL_SIZE", threads.c_str(), 1);
+#endif
+
     logging::stderr_logger(worker_name, logging::options);
     if(!log_dir.empty()) {
         // File only: worker stderr is reserved for crash/unexpected output,

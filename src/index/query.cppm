@@ -359,8 +359,8 @@ public:
 
     /// The open buffers whose own index carries a relation of `kind` for the
     /// symbol, each once: what a buffer its own compile serves knows before
-    /// the project index does — which hears of the buffer only once it
-    /// closes.
+    /// the project index does — which indexes the files as the disk holds
+    /// them.
     void for_each_live_file(SymbolHash hash,
                             RelationKind kind,
                             llvm::function_ref<void(Fid)> visit) const;

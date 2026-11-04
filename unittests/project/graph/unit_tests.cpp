@@ -144,7 +144,7 @@ ZEST_CASE(OutdatedRerunsInFull) {
     ZEXPECT(f.project.index.shard(x2_id) != nullptr);
 }
 
-ZEST_CASE(ModuleUnitsIndexedByTheirPCMs) {
+ZEST_CASE(ModulesIndexedByPCMs) {
     // A unit providing a module is indexed by its PCM build: the interface
     // and an implementation partition build theirs, and their indexes
     // merge; the implementation unit provides none and compiles, over the

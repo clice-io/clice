@@ -386,6 +386,7 @@ export type ReleaseResult = Record<string, never>;
 export const ReleaseRequest = new RequestType<ReleaseParams, ReleaseResult, void>(
     "clice/internal/release",
 );
+
 export interface HeldParams {
     id: number;
 }

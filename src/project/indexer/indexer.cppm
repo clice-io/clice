@@ -363,12 +363,6 @@ public:
         return attempts;
     }
 
-    /// Whether the file's latest attempt failed for good.
-    bool failed(Fid file) const {
-        auto it = attempts.find(file);
-        return it != attempts.end() && it->second.failed;
-    }
-
     /// TUs actually indexed and merged this session — dispatches the
     /// freshness gate skipped do not count. The one-shot `clice index`
     /// reports its work from this, so a warm rerun honestly says 0.

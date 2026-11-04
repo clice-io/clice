@@ -473,8 +473,9 @@ ZEST_CASE(OtherCommandNotSkipped) {
     f.run_pass();
 
     // No worker runs here: the run fails, the skip does not.
-    ZEXPECT(!f.background.failed(same));
-    ZEXPECT(f.background.failed(moved));
+    auto& attempts = f.background.last_attempts();
+    ZEXPECT(!attempts.contains(same));
+    ZEXPECT(attempts.contains(moved) && attempts.find(moved)->second.failed);
 }
 
 ZEST_CASE(SaveStartsOwedPass) {

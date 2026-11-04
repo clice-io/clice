@@ -2078,7 +2078,8 @@ public:
             for(auto hash: table) {
                 auto& symbol = symbols.find(hash)->second;
                 // The unit reaches the names of internal linkage its preamble
-                // declares as much as the others.
+                // declares as much as the others; a module's importers reach
+                // none of the module's, which their compile finds.
                 if(has_flag(symbol.flags, SymbolFlags::Completable)) {
                     completable.entries.push_back({
                         .hash = hash,

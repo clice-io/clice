@@ -601,14 +601,14 @@ struct GateReleaseParams {
     std::uint64_t id = 0;
 };
 
-/// Whether a request builds — a compile, a PCH or PCM, an indexing run:
-/// work whose time grows with the translation unit, where a query's never
-/// should.
+/// Whether a request builds — a compile or the rest of one, a PCH or PCM, an
+/// indexing run: work whose time grows with the translation unit, where a
+/// query's never should.
 template <typename Params>
 constexpr inline bool is_build =
-    std::same_as<Params, CompileParams> || std::same_as<Params, BuildPCHParams> ||
-    std::same_as<Params, BuildPCMParams> || std::same_as<Params, CompileUnitParams> ||
-    std::same_as<Params, IncludeTreeParams>;
+    std::same_as<Params, CompileParams> || std::same_as<Params, FinishCompileParams> ||
+    std::same_as<Params, BuildPCHParams> || std::same_as<Params, BuildPCMParams> ||
+    std::same_as<Params, CompileUnitParams> || std::same_as<Params, IncludeTreeParams>;
 
 }  // namespace clice::worker
 

@@ -32,9 +32,6 @@ test("edits pay no import scan", async (t) => {
 });
 
 test("forced header edit", async (t) => {
-    // The open unit's compile indexes it and only the closed unit runs in
-    // the background: a run of the open one, racing it to the forced
-    // header's shard, could make it run once more.
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);
     // The first index of the closed unit is done before the edits, which

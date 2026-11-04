@@ -39,6 +39,17 @@ test("while instantiating", async (t) => {
     await t.show("instantiated", s.diagnostics("main.cpp"));
 });
 
+// One of the push model gets the parse's diagnostics, then a push with
+// what the instantiations raise.
+test("pushed", async (t) => {
+    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    await s.diagnostics("main.cpp");
+    s.edit("main.cpp", { replace: "Square{2}", with: "Square{3}" });
+    await s.diagnostics("main.cpp");
+    await s.sync();
+    await t.show("pushes", s.pushes("main.cpp"));
+});
+
 // A header saved with an error in a function body reaches the open file
 // including it, and so does its fix.
 test("a saved header", async (t) => {

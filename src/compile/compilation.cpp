@@ -1031,6 +1031,12 @@ CompilationStatus CompilationUnit::run() {
     }
 
     if(parse_ended) {
+        // The instantiations parsed the template bodies delayed template
+        // parsing left: what readers derived of the AST at the parse lacks
+        // them.
+        if(lang_options().DelayedTemplateParsing) {
+            derived.clear();
+        }
         params.phases.pause();
     } else if(collected_tokens) {
         collected_tokens->finish(focus_file().lexical().tokens);

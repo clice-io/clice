@@ -306,9 +306,10 @@ public:
         return params.kind;
     }
 
-    /// Content: the parse ended and the instantiations past it began
-    /// (CompilationParams::Phases).
-    bool parsed() {
+    /// The parse ended and was handed to CompilationParams::Phases::parsed,
+    /// the instantiations past it then begun; only a compile given phases
+    /// splits so.
+    bool split_at_parse() {
         return parse_ended;
     }
 

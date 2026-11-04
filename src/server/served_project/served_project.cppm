@@ -352,8 +352,7 @@ public:
     void adopt(std::shared_ptr<Session> session);
 
     /// Let go of a document closed or moving to another project: the worker
-    /// holding its AST drops it, its compile goes, and its background index
-    /// is queued again, which its compile stood in for.
+    /// holding its AST drops it, and its compile goes.
     void release(Fid path_id);
 
     /// The document open here, or null when it is not this project's.
@@ -953,7 +952,7 @@ private:
     void cascade_providers(llvm::StringRef module_name, Fid except, bool& refresh);
 
     /// A dependency of the file changed: it recompiles when it is open, and
-    /// reindexes unless its document's compile serves it.
+    /// reindexes.
     void mark_dependent(Fid path_id, bool& refresh);
 
     /// What a file's inputs changing does to its open document, if any
@@ -1047,12 +1046,14 @@ private:
     /// The background index's progress, relayed to the master.
     Signal<>::Connection progress_conn;
 
-    /// Detached ensure_compiled joins from request_compile; the attempts
-    /// live in the graph's task group.
+    /// Detached ensure_compiled joins from request_compile, and the rest of
+    /// the compiles past their parse (finish_compile); the attempts live in
+    /// the graph's task group.
     async::task_group<> started_compiles;
 
     /// The cancel of each document's in-flight compile send, which edited()
-    /// and stop_compiles() fire to interrupt the worker's parse.
+    /// and stop_compiles() fire to interrupt the worker's parse, or the
+    /// instantiations past it.
     llvm::DenseMap<Fid, std::unique_ptr<async::cancellation_source>> compile_interrupts;
 
     llvm::DenseMap<Fid, std::shared_ptr<Finishing>> finishing;

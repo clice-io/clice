@@ -551,6 +551,139 @@ ZEST_CASE(EvictsOnlyWhenTold) {
     ZASSERT(test_done);
 }
 
+/// A file whose only error is raised where clang instantiates at its end.
+constexpr llvm::StringRef instantiated = R"(template <typename T>
+int field(T t) {
+    return t.x;
+}
+
+int v = field(1);
+)";
+
+ZEST_CASE(FinishReportsInstantiations) {
+    TempDir tmp;
+    tmp.touch("main.cpp", instantiated);
+    auto src = tmp.path("main.cpp");
+
+    WorkerHandle w;
+    ZASSERT(w.spawn(true));
+
+    bool test_done = false;
+    w.run([&]() -> async::task<> {
+        worker::CompileParams cp;
+        cp.path = src;
+        cp.version = 1;
+        cp.text = instantiated.str();
+        cp.directory = "/tmp";
+        cp.arguments = make_args(src);
+
+        auto parsed = co_await w.peer->send_request(cp);
+        ZASSERT(parsed);
+        ZEXPECT(parsed->unfinished);
+        ZEXPECT(parsed->diagnostics.empty());
+
+        auto finished =
+            co_await w.peer->send_request(worker::FinishCompileParams{.path = src, .version = 1});
+        ZASSERT(finished);
+        ZEXPECT(finished->status == worker::CompileStatus::Done);
+        ZEXPECT(!finished->unfinished);
+        ZEXPECT(finished->diagnostics.size() == 1u);
+
+        test_done = true;
+    });
+
+    ZASSERT(test_done);
+}
+
+ZEST_CASE(QueriesWhileInstantiating) {
+    TempDir tmp;
+    tmp.touch("main.cpp", instantiated);
+    auto src = tmp.path("main.cpp");
+
+    WorkerHandle w;
+    ZASSERT(w.spawn(true));
+
+    bool test_done = false;
+    w.run([&]() -> async::task<> {
+        worker::CompileParams cp;
+        cp.path = src;
+        cp.version = 1;
+        cp.text = instantiated.str();
+        cp.directory = "/tmp";
+        cp.arguments = make_args(src);
+
+        auto gate = w.gate(worker::FinishCompileParams{.path = src});
+        ZASSERT(co_await w.peer->send_request(cp));
+        co_await w.parked(gate);
+
+        worker::DocumentSymbolParams qp;
+        qp.path = src;
+        auto symbols = co_await w.peer->send_request(qp, {.timeout = chrono::seconds(30)});
+        ZASSERT(symbols);
+        ZEXPECT(symbols.value().has_value());
+
+        w.release(gate);
+        auto finished =
+            co_await w.peer->send_request(worker::FinishCompileParams{.path = src, .version = 1});
+        ZASSERT(finished);
+        ZEXPECT(finished->status == worker::CompileStatus::Done);
+
+        test_done = true;
+    });
+
+    ZASSERT(test_done);
+}
+
+ZEST_CASE(CompileStopsInstantiations) {
+    TempDir tmp;
+    tmp.touch("main.cpp", instantiated);
+    auto src = tmp.path("main.cpp");
+
+    WorkerHandle w;
+    ZASSERT(w.spawn(true));
+
+    bool test_done = false;
+    w.run([&]() -> async::task<> {
+        worker::CompileParams cp;
+        cp.path = src;
+        cp.version = 1;
+        cp.text = instantiated.str();
+        cp.directory = "/tmp";
+        cp.arguments = make_args(src);
+
+        auto gate = w.gate(worker::FinishCompileParams{.path = src});
+        ZASSERT(co_await w.peer->send_request(cp));
+        co_await w.parked(gate);
+
+        // The second compile reaches the worker before the release: the
+        // first goes on stopped.
+        auto next = cp;
+        next.version = 2;
+        std::optional<worker::CompileResult> replaced;
+        async::task_group<> group;
+        auto sender = [&]() -> async::task<> {
+            if(auto result = co_await w.peer->send_request(next)) {
+                replaced = std::move(*result);
+            }
+        };
+        group.spawn(sender());
+        w.release(gate);
+
+        auto finished =
+            co_await w.peer->send_request(worker::FinishCompileParams{.path = src, .version = 1});
+        ZASSERT(finished);
+        ZEXPECT(finished->status == worker::CompileStatus::Cancelled);
+        co_await group.join();
+        ZASSERT(replaced.has_value());
+        ZEXPECT(replaced->version == 2);
+        ZEXPECT(replaced->unfinished);
+
+        test_done = true;
+    });
+
+    ZASSERT(test_done);
+}
+
 };  // ZEST_SUITE(StatefulWorker)
 
 }  // namespace

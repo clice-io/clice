@@ -23,6 +23,7 @@ import :support.json;
 import :support.logging;
 import :support.timer;
 import :syntax.dependency_graph;
+import :vfs.cache_store;
 import :vfs.file_table;
 import :vfs.path;
 import :worker.protocol;
@@ -1094,8 +1095,9 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     // failures were transient, not the storage. An overtaken attempt clears
     // nothing: what overtook it may BE another consumer's fresh failure to
     // read the shared key, and clearing here would reset the count it just
-    // paid for.
-    if(still_current && built.loaded && !reply.pch_suspect) {
+    // paid for. The instantiations past an unfinished parse still read the
+    // pair: their end tells (finish_compile).
+    if(still_current && built.loaded && !reply.pch_suspect && !reply.unfinished) {
         project.pch_consume_succeeded(*built.loaded);
     }
 
@@ -1149,7 +1151,9 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     // A compile that finishes clears its suspects: the pair it read was at
     // fault, or the pass it ran without.
     auto& suspects = session->suspects;
-    suspects.pch.clear();
+    if(!reply.unfinished) {
+        suspects.pch.clear();
+    }
     auto tidy_crash = std::exchange(suspects.tidy, std::nullopt);
     // clang-tidy runs past the parse: the rest of the compile tells.
     if(tidy_dispatch && !reply.unfinished) {
@@ -1263,6 +1267,10 @@ async::task<> ServedProject::finish_compile(Unfinished unfinished) {
         compiled.index = std::move(index);
         compiled.output->diagnostics.own = std::move(diagnostics);
     });
+    if(unfinished.consumed) {
+        project.pch_consume_succeeded(*unfinished.consumed);
+    }
+    session->suspects.pch.clear();
     if(unfinished.tidy) {
         session->succeeded(feature::RequestKind::Tidy, unfinished.session_generation);
     }

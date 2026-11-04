@@ -12,7 +12,6 @@ import :support.failure_record;
 import :support.json;
 import :support.logging;
 import :vfs.cache_store;
-import :vfs.file_system;
 import :vfs.file_table;
 import :worker.pool;
 import :worker.protocol;
