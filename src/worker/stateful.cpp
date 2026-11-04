@@ -423,12 +423,15 @@ static worker::CompileResult result_of(CompilationUnit& unit,
 RequestResult<worker::CompileParams>
     StatefulWorker::serve_compile(CompileGuard guard, const worker::CompileParams& params) {
     auto doc = guard.hold.doc;
-    // A compile still instantiating describes the text this one replaces.
-    if(auto previous = doc->running) {
-        previous->stop->store(true, std::memory_order_relaxed);
-        co_await previous->finished.wait();
-    }
     auto strand = co_await doc->strand.scoped_lock();
+    // A compile still instantiating describes the text this one replaces. It
+    // takes the strand to end, and another Compile may start one meanwhile.
+    while(auto previous = doc->running) {
+        previous->stop->store(true, std::memory_order_relaxed);
+        strand.unlock();
+        co_await previous->finished.wait();
+        strand = co_await doc->strand.scoped_lock();
+    }
 
     // The old AST describes the text this request just replaced: drop
     // it before the cancellable await, or a cancellation arriving while
