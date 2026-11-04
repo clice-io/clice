@@ -252,7 +252,9 @@ public:
     /// Send a request to the stateful worker the document is assigned to,
     /// holding the document while it flies. A compile assigns it if it is
     /// not; a query of a document whose AST no worker holds — gone with its
-    /// worker since its compile — fails as worker_lost without being sent.
+    /// worker since its compile — fails as worker_lost without being sent,
+    /// a FinishCompile as worker_crashed when its instantiations killed that
+    /// worker.
     template <typename Params>
     RequestResult<Params> send_stateful(std::uint32_t path_id,
                                         const Params& params,
@@ -693,6 +695,14 @@ private:
     /// start.
     Residency residency{default_max_resident(0)};
 
+    /// The death that took each document's AST, with the dead worker's
+    /// identity, until the document is assigned again or forgotten. A
+    /// compile's instantiations past the parse run under FinishCompile's tag
+    /// before that request is sent: one sent after the death learns from it
+    /// whether they killed the worker.
+    llvm::DenseMap<std::uint32_t, std::pair<std::shared_ptr<WorkerDeath>, codec::dyn::Value>>
+        ast_deaths;
+
     std::size_t stateful_inflight = 0;
 
     /// Cancelled by stop(). Unwinds monitor_loop() and respawn backoff sleeps
@@ -812,6 +822,17 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
         } else if(residency.resident(path_id)) {
             assignment = residency.assignment(path_id);
         } else {
+            if constexpr(std::same_as<Params, worker::FinishCompileParams>) {
+                if(auto lost = ast_deaths.find(path_id); lost != ast_deaths.end()) {
+                    auto [death, identity] = lost->second;
+                    co_await death->done.wait();
+                    if(ranges::contains(death->culprits, worker::crash_tag(params))) {
+                        co_await async::fail(ipc::Error{worker::dispatch_errc::worker_crashed,
+                                                        death->cause,
+                                                        std::move(identity)});
+                    }
+                }
+            }
             co_await async::fail(ipc::Error{worker::dispatch_errc::worker_lost,
                                             "The document's AST died with its worker"});
         }
@@ -852,12 +873,14 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
     } timed{*this, id};
 
     auto gate = probe ? probe->sending(inflight.tag, peer) : std::nullopt;
+    // The instantiations past the parse start under FinishCompileParams' tag
+    // before that request is sent: the compile carries its gate and its
+    // crash.
+    std::string finish_tag;
     if constexpr(compile) {
-        // The instantiations past the parse start under FinishCompileParams'
-        // tag before that request is sent: the compile carries its gate.
+        finish_tag = worker::crash_tag(worker::FinishCompileParams{.path = params.path});
         if(probe) {
-            probe->sending(worker::crash_tag(worker::FinishCompileParams{.path = params.path}),
-                           peer);
+            probe->sending(finish_tag, peer);
         }
     }
     auto result = co_await peer->send_request(params, opts);
@@ -878,7 +901,10 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
     if(stateful_workers[idx].generation == gen)
         mark_worker_dead(idx, true, true);
     co_await death->done.wait();
-    co_await async::fail(death_error(*death, inflight.tag, worker::death_identity(idx, gen, true)));
+    auto tag = compile && ranges::contains(death->culprits, finish_tag)
+                   ? llvm::StringRef(finish_tag)
+                   : inflight.tag;
+    co_await async::fail(death_error(*death, tag, worker::death_identity(idx, gen, true)));
 }
 
 template <typename Params>

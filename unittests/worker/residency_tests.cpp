@@ -104,7 +104,7 @@ ZEST_CASE(WorkerDeathKeepsHolds) {
     compile(residency, 2, 1);
     residency.hold(2);
     ZEXPECT(evicted(residency) == llvm::SmallVector<std::string>{"/1.cpp"});
-    ZEXPECT(residency.worker_died(1) == 1u);
+    ZEXPECT(residency.worker_died(1) == llvm::SmallVector<std::uint32_t>{2});
     ZEXPECT(!residency.resident(2));
     ZEXPECT(!residency.assignment(2));
     compile(residency, 2, 0);

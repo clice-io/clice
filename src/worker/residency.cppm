@@ -66,8 +66,8 @@ public:
     void release(std::uint32_t document);
 
     /// The worker died: its documents have no assignment and no AST.
-    /// Returns how many it held.
-    std::size_t worker_died(std::size_t worker);
+    /// Returns them.
+    llvm::SmallVector<std::uint32_t> worker_died(std::size_t worker);
 
     /// The document closed or moved to another project: it has no
     /// assignment, and its worker drops what it holds of it, if any.

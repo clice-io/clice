@@ -10,6 +10,7 @@ import :support.anomaly;
 import :support.signal;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils;
+import :unittests.utils.platform;
 import :worker.pool;
 import :worker.probe;
 import :worker.protocol;
@@ -1399,6 +1400,41 @@ ZEST_CASE(StatefulDyingUnavailable) {
     ZEXPECT(done);
 }
 
+ZEST_CASE(FinishLearnsItsDeath) {
+    // A compile's instantiations past its reply run under FinishCompile's
+    // tag before that request is sent: the FinishCompile sent after they
+    // killed the worker is told it crashed it. A query of the document is
+    // not, nor a FinishCompile once the document is assigned anew.
+    WorkerPoolFixture f;
+    f.add_stateful();
+    f.add_stateful();
+    ZASSERT(f.assign_worker(7) == 0u);
+    f.compiled(7);
+    worker::FinishCompileParams finish{.path = "/x.cpp", .version = 1};
+    auto death = f.death(0, true);
+    f.mark_dead(0, true);
+    death->culprits.push_back(worker::crash_tag(finish));
+    death->done.set();
+
+    bool done = false;
+    f.run([&]() -> async::task<> {
+        using namespace worker::dispatch_errc;
+        auto query = co_await f.pool.send_stateful(7, worker::DocumentLinkParams{"/x.cpp"});
+        ZASSERT(!query.has_value());
+        ZEXPECT(query.error().code == worker_lost);
+        auto crashed = co_await f.pool.send_stateful(7, finish);
+        ZASSERT(!crashed.has_value());
+        ZEXPECT(crashed.error().code == worker_crashed);
+        ZEXPECT(worker::death_of(crashed.error()) == "sf:0:0");
+        ZEXPECT(f.assign_worker(7) == 1u);
+        auto reassigned = co_await f.pool.send_stateful(7, finish);
+        ZASSERT(!reassigned.has_value());
+        ZEXPECT(reassigned.error().code == worker_lost);
+        done = true;
+    });
+    ZEXPECT(done);
+}
+
 ZEST_CASE(DyingSlotKeepsWaiters) {
     // A slot marked dead but without a result still counts as future
     // capacity: a queued request keeps waiting for the respawn instead of
@@ -1467,6 +1503,42 @@ ZEST_CASE(StoppedPoolBlamesNothing) {
     });
     ZEXPECT(blames == 0);
     ZEXPECT(code == worker::dispatch_errc::worker_unavailable);
+}
+
+ZEST_CASE(InstantiationCrashBlamed) {
+    // The instantiations past the parse kill the worker under
+    // FinishCompile's tag: whether the crash outruns the Compile's reply or
+    // the FinishCompile's send, one of the two is told it crashed it.
+    constexpr llvm::StringRef text =
+        "template <typename T> int f(T t) { return t; }\nint v = f(1);\n";
+    TempDir tmp;
+    tmp.touch("main.cpp", text);
+    auto src = tmp.path("main.cpp");
+    ScopedEnv crash("CLICE_TEST_CRASH_REQUEST", "finishCompile");
+
+    WorkerPoolFixture f;
+    std::vector<protocol::integer> codes;
+    f.run([&]() -> async::task<> {
+        ZASSERT(f.start(0, 1));
+        worker::CompileParams cp;
+        cp.path = src;
+        cp.version = 1;
+        cp.text = text.str();
+        cp.directory = tmp.root;
+        cp.arguments = make_args(src);
+        auto compiled = co_await f.pool.send_stateful(7, cp);
+        if(!compiled.has_value()) {
+            codes.push_back(compiled.error().code);
+        } else {
+            auto finished = co_await f.pool.send_stateful(
+                7,
+                worker::FinishCompileParams{.path = src, .version = 1});
+            ZASSERT(!finished.has_value());
+            codes.push_back(finished.error().code);
+        }
+        co_await f.stop();
+    });
+    ZEXPECT(codes == std::vector{worker::dispatch_errc::worker_crashed});
 }
 
 ZEST_CASE(StatelessRequest) {

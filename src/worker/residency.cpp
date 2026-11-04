@@ -61,7 +61,7 @@ void Residency::release(std::uint32_t document) {
     }
 }
 
-std::size_t Residency::worker_died(std::size_t worker) {
+llvm::SmallVector<std::uint32_t> Residency::worker_died(std::size_t worker) {
     llvm::SmallVector<std::uint32_t> lost;
     for(auto& [document, entry]: entries) {
         if(entry.assignment.worker == worker) {
@@ -71,7 +71,7 @@ std::size_t Residency::worker_died(std::size_t worker) {
     for(auto document: lost) {
         entries.erase(document);
     }
-    return lost.size();
+    return lost;
 }
 
 std::optional<Residency::Eviction> Residency::forget(std::uint32_t document) {

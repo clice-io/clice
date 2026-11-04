@@ -348,6 +348,7 @@ std::optional<Residency::Assignment> WorkerPool::assign_worker(std::uint32_t pat
     if(auto assignment = residency.assignment(path_id)) {
         return assignment;
     }
+    ast_deaths.erase(path_id);
     std::optional<std::size_t> fewest;
     for(std::size_t i = 0; i < stateful_workers.size(); i += 1) {
         if(stateful_workers[i].state == SlotState::Alive &&
@@ -363,6 +364,7 @@ std::optional<Residency::Assignment> WorkerPool::assign_worker(std::uint32_t pat
 }
 
 void WorkerPool::forget_document(std::uint32_t path_id) {
+    ast_deaths.erase(path_id);
     if(auto eviction = residency.forget(path_id)) {
         send_evict(std::move(*eviction));
     }
@@ -406,7 +408,13 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
         w.death->alone = scheduler.runs_alone(index);
     }
     if(stateful) {
-        w.death->documents = residency.worker_died(index);
+        auto lost = residency.worker_died(index);
+        w.death->documents = lost.size();
+        for(auto document: lost) {
+            ast_deaths.insert_or_assign(
+                document,
+                std::pair(w.death, worker::death_identity(index, w.generation - 1, true)));
+        }
     }
     if(w.peer) {
         w.peer->close();
