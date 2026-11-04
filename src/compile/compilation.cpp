@@ -674,7 +674,8 @@ public:
         // The reader joins Sema's external sources after this one, which
         // would leave what it holds pending past the loop below: taken here,
         // it comes first, as Sema orders it, and pauses as the rest does.
-        if(auto reader = unit.instance->getASTReader()) {
+        if(auto* reader = llvm::dyn_cast_if_present<clang::ExternalSemaSource>(
+               sema.getASTContext().getExternalSource())) {
             reader->ReadPendingInstantiations(pending);
         }
         for(auto [decl, point]: pending) {
