@@ -618,6 +618,8 @@ ZEST_CASE(QueriesWhileInstantiating) {
 
         worker::DocumentSymbolParams qp;
         qp.path = src;
+        // Hang detection: a query waiting for the parked compile fails
+        // here, attributably, rather than the whole run at its timeout.
         auto symbols = co_await w.peer->send_request(qp, {.timeout = chrono::seconds(30)});
         ZASSERT(symbols);
         ZEXPECT(symbols.value().has_value());
