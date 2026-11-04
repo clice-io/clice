@@ -59,6 +59,7 @@ bool drop_evicted(PCMEntry& entry) {
         return false;
     }
     entry.path.clear();
+    entry.index.reset();
     return true;
 }
 
