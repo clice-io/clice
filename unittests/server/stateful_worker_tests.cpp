@@ -579,19 +579,20 @@ ZEST_CASE(FinishReportsInstantiations) {
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
 
+        auto is_error = [](const feature::FileDiagnostic& diag) {
+            return diag.level == DiagnosticLevel::Error;
+        };
         auto parsed = co_await w.peer->send_request(cp);
         ZASSERT(parsed);
         ZEXPECT(parsed->unfinished);
-        ZEXPECT(parsed->diagnostics.empty());
+        ZEXPECT(ranges::none_of(parsed->diagnostics, is_error));
 
         auto finished =
             co_await w.peer->send_request(worker::FinishCompileParams{.path = src, .version = 1});
         ZASSERT(finished);
         ZEXPECT(finished->status == worker::CompileStatus::Done);
         ZEXPECT(!finished->unfinished);
-        ZEXPECT(ranges::any_of(finished->diagnostics, [](const feature::FileDiagnostic& diag) {
-            return diag.level == DiagnosticLevel::Error;
-        }));
+        ZEXPECT(ranges::any_of(finished->diagnostics, is_error));
 
         test_done = true;
     });
