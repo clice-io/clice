@@ -127,8 +127,14 @@ document_links = [
 ]
 
 [locations."main.cpp"]
-wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing reports the errors inside them"
 diagnostics = [
+    {
+        at = '#include ⟦"extra.h"⟧',
+        severity = "error",
+        message = "In included file: use of undeclared identifier 'undefined_in_preamble'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
     {
         at = "int a = ⟦stale⟧();",
         severity = "warning",
@@ -149,6 +155,13 @@ diagnostics = [
         message = "'secret' is a private member of 'Closed'",
         source = "clang",
         code = "err_access",
+    },
+    {
+        at = "int c = ⟦needs_size⟧(1);",
+        severity = "error",
+        message = "In template: member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
     },
     {
         at = "return a + b + c + ⟦old_extra⟧();",

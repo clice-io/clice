@@ -16,8 +16,9 @@ test("one compile", async (t) => {
 });
 
 // An importer completes the module's names from the index its PCM build
-// wrote, as it does the preamble's: those it exports, not the unit's own
-// nor those of the headers its global module fragment includes.
+// wrote, as it does the preamble's: those it exports; a name of a header
+// the global module fragment includes comes with that header's #include,
+// and the unit's own not at all.
 test("completion", async (t) => {
     const s = await t.start({ config: { project: { enable_indexing: false } } });
     expect(await s.errors("math.cppm")).toEqual([]);
@@ -27,5 +28,5 @@ test("completion", async (t) => {
     });
     await t.show("qualified", s.completion(t.at("main.cpp", "math::tw|;")));
     await t.show("unexported", s.completion(t.at("main.cpp", "= hid|;")));
-    await t.show("fragment", s.completion(t.at("main.cpp", "= clam|;")));
+    await t.show("fragment", s.completion(t.at("main.cpp", "= clam|;")), { parts: ["edits"] });
 });

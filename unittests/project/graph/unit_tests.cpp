@@ -144,10 +144,11 @@ ZEST_CASE(OutdatedRerunsInFull) {
     ZEXPECT(f.project.index.shard(x2_id) != nullptr);
 }
 
-ZEST_CASE(BuildsOnlyImportedPCMs) {
-    // Indexing a module unit needs the PCMs of its imports, never its own:
-    // the interface and an implementation partition nothing imports build
-    // none, the implementation unit builds the interface it imports.
+ZEST_CASE(ModuleUnitsIndexedByTheirPCMs) {
+    // A unit providing a module is indexed by its PCM build: the interface
+    // and an implementation partition build theirs, and their indexes
+    // merge; the implementation unit provides none and compiles, over the
+    // interface's PCM.
     TempDir tmp;
     tmp.touch("m.cppm", "export module m;\nexport int mv() { return 1; }\n");
     tmp.touch("detail.cpp", "module m:detail;\nint dv() { return 2; }\n");
@@ -208,11 +209,11 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
 
     using enum UnitResult::Status;
     ZEXPECT(results == (std::vector<UnitResult::Status>{Completed, Completed, Completed}));
-    ZEXPECT(pcms_before_impl == 0u);
-    ZEXPECT(built_pcms() == 1);
-    auto build = f.project.pcms.find(id("m.cppm"));
-    ZASSERT(build != f.project.pcms.end());
-    ZEXPECT(!build->second.path.empty());
+    ZEXPECT(pcms_before_impl == 2u);
+    ZEXPECT(built_pcms() == 2);
+    for(auto name: {"m.cppm", "detail.cpp", "impl.cpp"}) {
+        ZEXPECT(f.project.index.shard(id(name)) != nullptr);
+    }
 }
 
 ZEST_CASE(FailedImportWaitsOnce) {
