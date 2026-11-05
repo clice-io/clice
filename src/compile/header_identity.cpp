@@ -160,17 +160,16 @@ private:
         auto [fid, offset] = sm.getDecomposedExpansionLoc(name.getLocation());
         if(macro->isBuiltinMacro() && unit_specific(*name.getIdentifierInfo())) {
             unit_only.insert(fid);
+            identities[fid] = 0;
+            return;
         }
         add(fid, mix(offset, macro_key(name, macro)));
     }
 
-    void EndOfMainFile() override {
-        for(auto fid: unit_only) {
-            identities[fid] = 0;
-        }
-    }
-
     void add(clang::FileID fid, std::uint64_t value) {
+        if(unit_only.contains(fid)) {
+            return;
+        }
         auto& identity = identities[fid];
         identity = mix(identity, value);
     }
@@ -271,7 +270,8 @@ private:
     /// many of their tokens the parser read.
     llvm::DenseMap<clang::FileID, std::uint32_t> pending;
 
-    /// The entries a unit_specific builtin expands in.
+    /// The entries a unit_specific builtin expands in: their identity stays
+    /// 0.
     llvm::DenseSet<clang::FileID> unit_only;
 
     llvm::DenseMap<const clang::FileEntry*, std::uint64_t> content_keys;

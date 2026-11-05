@@ -59,7 +59,8 @@ int a() { return twice(unbox(Box<int>{1})); }
     tmp.touch("b.cpp", R"cpp(#include "box.h"
 int b() { return twice(unbox(Box<int>{2})) + unbox(Box<char>{'c'}) + (Box<long>{} == Box<long>{}); }
 )cpp");
-    auto a = index::TUIndex::from_bytes(index_file(tmp, tmp.path("a.cpp")).data);
+    auto a_data = index_file(tmp, tmp.path("a.cpp")).data;
+    auto a = index::TUIndex::from_bytes(a_data);
     auto header = section_of(a, "box.h");
     ZASSERT(header);
     auto known = a.section_identity(*header);
@@ -111,13 +112,14 @@ inline size measure() { return 1; }
 )cpp");
     tmp.touch("narrow.cpp", "#include \"config.h\"\nsize n = measure();\n");
     tmp.touch("wide.cpp", "#define WIDE\n#include \"config.h\"\nsize w = measure();\n");
-    auto narrow = index::TUIndex::from_bytes(index_file(tmp, tmp.path("narrow.cpp")).data);
+    auto narrow_data = index_file(tmp, tmp.path("narrow.cpp")).data;
+    auto narrow = index::TUIndex::from_bytes(narrow_data);
     auto header = section_of(narrow, "config.h");
     ZASSERT(header);
     auto known = narrow.section_identity(*header);
 
-    auto wide = index::TUIndex::from_bytes(
-        index_file(tmp, tmp.path("wide.cpp"), {}, {known.variant}, {}, {known}).data);
+    auto wide_data = index_file(tmp, tmp.path("wide.cpp"), {}, {known.variant}, {}, {known}).data;
+    auto wide = index::TUIndex::from_bytes(wide_data);
     auto other = section_of(wide, "config.h");
     ZASSERT(other);
     ZEXPECT(wide.section_identity(*other).identity != known.identity);
@@ -139,7 +141,8 @@ void helper(int);
 )cpp");
     tmp.touch("other.h", "#pragma once\nvoid helper(double);\n");
     tmp.touch("main.cpp", "#include \"other.h\"\n#include \"decl.h\"\n");
-    auto view = index::TUIndex::from_bytes(index_file(tmp, tmp.path("main.cpp")).data);
+    auto data = index_file(tmp, tmp.path("main.cpp")).data;
+    auto view = index::TUIndex::from_bytes(data);
     auto impl = section_of(view, "impl.h");
     ZASSERT(impl);
     ZEXPECT(guessed(view, *impl) == std::vector<std::string>{"helper(int)"});
