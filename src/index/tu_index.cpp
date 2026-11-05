@@ -205,6 +205,14 @@ std::uint64_t TUIndex::section_hash(std::uint32_t i) const {
     return view_of(data).sections[i].hash;
 }
 
+KnownIdentity TUIndex::section_identity(std::uint32_t i) const {
+    const auto& section = view_of(data).sections[i];
+    return {.identity = section.identity,
+            .own = section.own_identity,
+            .reach = section.reach,
+            .variant = section.hash};
+}
+
 llvm::StringRef TUIndex::section_blob(std::uint32_t i) const {
     return as_chars(view_of(data).sections[i].blob);
 }

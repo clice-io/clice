@@ -340,12 +340,34 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     for(auto& [global_id, replacement]: replacements) {
         auto& record = change_file(global_id);
         record.generation = replacement.content_hash();
-        record.stored = replacement.variants();
+        record.store(replacement.variants());
         shards[global_id] = std::move(replacement);
         changed_shards.insert(global_id);
         retired_shards.erase(global_id);
         report.add_index_changed(global_id);
         search_file_changed(global_id);
+    }
+    // The identity each variant was found at, for the next unit to find it
+    // by without walking its file; the latest unit's answer stands.
+    for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
+        auto known = view.section_identity(section);
+        if(known.identity == 0) {
+            continue;
+        }
+        auto global_id = file_ids_map[view.section_path(section)];
+        auto* record = file_record(global_id);
+        auto& held = record->identities;
+        auto it = ranges::lower_bound(held, known.identity, {}, &KnownIdentity::identity);
+        if(it != held.end() && *it == known) {
+            continue;
+        }
+        auto& identities = change_file(global_id).identities;
+        it = ranges::lower_bound(identities, known.identity, {}, &KnownIdentity::identity);
+        if(it != identities.end() && it->identity == known.identity) {
+            *it = known;
+        } else {
+            identities.insert(it, known);
+        }
     }
     // A file's instantiations live with its shard of the same generation.
     for(auto path_id: rebuilt_ids) {
@@ -400,8 +422,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     return report;
 }
 
-std::vector<std::uint64_t> ProjectIndex::known_variants(Fid tu,
-                                                        llvm::DenseSet<Fid> include_closure) const {
+KnownVariants ProjectIndex::known_variants(Fid tu, llvm::DenseSet<Fid> include_closure) const {
     auto& expected = include_closure;
     if(auto last = manifest(tu)) {
         for(auto version: views::keys(last->contributions)) {
@@ -409,14 +430,15 @@ std::vector<std::uint64_t> ProjectIndex::known_variants(Fid tu,
         }
     }
 
-    std::vector<std::uint64_t> known;
+    KnownVariants known;
     for(auto file: expected) {
         if(auto* record = file_record(file)) {
-            known.append_range(record->stored);
+            known.hashes.append_range(record->stored);
+            known.identities.append_range(record->identities);
         }
     }
-    ranges::sort(known);
-    known.erase(ranges::unique(known).begin(), known.end());
+    ranges::sort(known.hashes);
+    known.hashes.erase(ranges::unique(known.hashes).begin(), known.hashes.end());
     return known;
 }
 

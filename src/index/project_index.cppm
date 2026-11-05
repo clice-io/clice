@@ -82,6 +82,14 @@ enum class SearchRebuild : std::uint8_t {
     Never,
 };
 
+/// The variants stored for some files: their hashes, sorted, and the
+/// identities units found them at.
+struct KnownVariants {
+    std::vector<VariantHash> hashes;
+
+    std::vector<KnownIdentity> identities;
+};
+
 /// Why a merge committed nothing.
 enum class MergeError : std::uint8_t {
     /// The result failed verification: the file counts as failed, not
@@ -332,11 +340,12 @@ public:
     /// the index.
     void drop(Fid tu, IndexReport& report);
 
-    /// The variant identities stored for the files `tu` is expected to
-    /// include — `include_closure`, its scanned include closure, and its
-    /// last manifest's files — sorted: what the worker indexing it may send
-    /// as bare hashes (TUIndexOptions::known_variants).
-    std::vector<std::uint64_t> known_variants(Fid tu, llvm::DenseSet<Fid> include_closure) const;
+    /// The variants stored for the files `tu` is expected to include —
+    /// `include_closure`, its scanned include closure, and its last
+    /// manifest's files: what the worker indexing it may send as bare
+    /// hashes, and find without a walk (TUIndexOptions::known_variants,
+    /// TUIndexOptions::known_identities).
+    KnownVariants known_variants(Fid tu, llvm::DenseSet<Fid> include_closure) const;
 
     /// The instantiation keys stored for the same files but `tu` itself
     /// whose walk still holds, sorted: what the worker indexing `tu` may

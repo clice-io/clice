@@ -252,6 +252,29 @@ public:
             return true;
         }
 
+        if(X && options.partial && !visiting_root && !partial_whole &&
+           !llvm::isa<clang::NamespaceDecl, clang::LinkageSpecDecl, clang::ExportDecl>(X)) {
+            auto& SM = unit.context().getSourceManager();
+            auto& partial = *options.partial;
+            if(partial.files.contains(SM.getFileID(SM.getExpansionLoc(X->getLocation())))) {
+                // A friend defined in its class: the friend declaration
+                // holds it.
+                const clang::Decl* held = X;
+                if(auto* friend_decl = llvm::dyn_cast<clang::FriendDecl>(X)) {
+                    held = friend_decl->getFriendDecl();
+                }
+                if(partial.whole.contains(X) || (held && partial.whole.contains(held))) {
+                    partial_whole = true;
+                    bool ret = TraverseDecl(X);
+                    partial_whole = false;
+                    return ret;
+                }
+                if(!partial.around.contains(X)) {
+                    return true;
+                }
+            }
+        }
+
         // Base::TraverseDecl will suppress children, but not this node itself.
         if(X && X->isImplicit()) {
             // Most implicit nodes have only implicit children and can be skipped.
@@ -954,6 +977,9 @@ private:
     /// root it traverses.
     const clang::Decl* visiting_root = nullptr;
     llvm::DenseSet<const clang::Decl*> root_set;
+
+    /// Inside a declaration PartialFiles::whole names.
+    bool partial_whole = false;
 
     /// The source ranges of the binary operators popped so far.
     llvm::DenseMap<const clang::Expr*, clang::SourceRange> operator_ranges;

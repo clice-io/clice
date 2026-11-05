@@ -59,9 +59,21 @@ struct FileRecord {
 
     std::vector<VariantHash> stored;
 
+    /// The identities units found stored variants at, ascending by
+    /// identity: every one names a variant of `stored`.
+    std::vector<KnownIdentity> identities;
+
     std::uint64_t run = 0;
 
     std::uint64_t command = 0;
+
+    /// Replace the stored variants, with the identities of the ones left.
+    void store(std::vector<VariantHash> variants) {
+        stored = std::move(variants);
+        std::erase_if(identities, [&](const KnownIdentity& known) {
+            return !ranges::contains(stored, known.variant);
+        });
+    }
 
     friend bool operator==(const FileRecord&, const FileRecord&) = default;
 };

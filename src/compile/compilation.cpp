@@ -888,6 +888,9 @@ CompilationStatus CompilationUnit::run() {
     /// Add PPCallbacks to collect preprocessing information.
     instance->getPreprocessor().addPPCallbacks(directive_recorder());
     handle_system_header_pragmas(instance->getPreprocessor());
+    if(params.header_identities) {
+        instance->getPreprocessor().addPPCallbacks(identity_recorder());
+    }
 
     // Past the end of the focus file clang instantiates the templates the
     // preamble uses, and checks little else: the end of the last

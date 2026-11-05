@@ -230,6 +230,10 @@ struct CompilationParams {
     /// begin/end offset pairs): the `#include`s there were never entered.
     std::vector<std::uint32_t> preamble_inactive_regions;
 
+    /// Whole: take the identity of every file entry as the parse goes
+    /// (CompilationUnit::header_identities).
+    bool header_identities = false;
+
     /// Set to stop the compile, an old one a newer request replaces.
     std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
 };
@@ -508,6 +512,18 @@ public:
 
     llvm::DenseMap<clang::FileID, Directive>& directives();
 
+    /// With CompilationParams::header_identities, per entry of a file, a
+    /// hash of what decides the declarations its text makes: the text, the
+    /// branches its conditions take, the files its includes find, the
+    /// definition of every macro expanded in it, the declaration context it
+    /// is entered in, the language and the target. Two entries of equal
+    /// identity declare the same, given the same declarations before them.
+    /// 0 for an entry a builtin macro makes this unit's alone
+    /// (`__COUNTER__`).
+    const llvm::DenseMap<clang::FileID, std::uint64_t>& header_identities() {
+        return collected_identities;
+    }
+
     clang::TranslationUnitDecl* tu();
 
     /// The files this compilation read (include and __has_include targets),
@@ -542,6 +558,7 @@ private:
 
     class DiagnosticRecorder;
     class DirectiveRecorder;
+    class IdentityRecorder;
     class ParseConsumer;
     class ParseAction;
 
@@ -553,6 +570,10 @@ private:
     /// The callbacks filling collected_directives and absent_paths, see
     /// directive.cpp.
     std::unique_ptr<clang::PPCallbacks> directive_recorder();
+
+    /// The callbacks filling collected_identities, watching the tokens the
+    /// parser reads too, see header_identity.cpp.
+    std::unique_ptr<clang::PPCallbacks> identity_recorder();
 
     auto SM() -> clang::SourceManager& {
         return instance->getSourceManager();
@@ -664,6 +685,9 @@ private:
 
     /// All directive information collected during the preprocessing.
     llvm::DenseMap<clang::FileID, Directive> collected_directives;
+
+    /// See header_identities.
+    llvm::DenseMap<clang::FileID, std::uint64_t> collected_identities;
 
     /// Cache for file path. It is used to avoid multiple file path lookup.
     llvm::DenseMap<clang::FileEntryRef, llvm::StringRef> path_cache;

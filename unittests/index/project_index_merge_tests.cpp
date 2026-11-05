@@ -263,11 +263,12 @@ ZEST_CASE(KnownVariantsFromManifest) {
     std::vector<std::uint64_t> expected = project.index.shard(header_id)->variants();
     expected.append_range(project.index.shard(a_id)->variants());
     ranges::sort(expected);
-    ZEXPECT(project.index.known_variants(a_id, project.dep_graph.include_closure(a_id)) ==
+    ZEXPECT(project.index.known_variants(a_id, project.dep_graph.include_closure(a_id)).hashes ==
             expected);
 
     auto other = project.file_table.intern(Spelling::absolute(tmp.path("other.cpp")));
-    ZEXPECT(project.index.known_variants(other, project.dep_graph.include_closure(other)).empty());
+    ZEXPECT(project.index.known_variants(other, project.dep_graph.include_closure(other))
+                .hashes.empty());
 }
 
 ZEST_CASE(HeaderRegenerationReplaces) {

@@ -113,7 +113,7 @@ namespace clice::index {
 /// carries no names, which completion reads from the files a compile loads;
 /// v56: the search index splits a name into words where digits follow a
 /// letter.
-constexpr inline std::uint32_t index_format_version = 56;
+constexpr inline std::uint32_t index_format_version = 57;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it, so one past it stops the
@@ -484,6 +484,15 @@ struct FileSectionOf {
     std::uint64_t hash = 0;
 
     Seq<std::byte> blob;
+
+    /// The identity the unit finds the variant at, the file's own and how
+    /// far its guesses reach (KnownIdentity); 0 for the focus file and a
+    /// file whose identity is the unit's alone.
+    std::uint64_t identity = 0;
+
+    std::uint64_t own_identity = 0;
+
+    std::uint8_t reach = 0;
 };
 
 using FileSection = FileSectionOf<codec::blob::Owned>;
@@ -639,6 +648,13 @@ struct FileBlobOf {
     /// take as stored without reading the shard.
     std::uint64_t generation = 0;
     Seq<std::uint64_t> stored;
+
+    /// The identities units found stored variants at, ascending, each with
+    /// the file's own identity, its reach and the variant (KnownIdentity).
+    Seq<std::uint64_t> identities;
+    Seq<std::uint64_t> identity_owns;
+    Seq<std::uint8_t> identity_reaches;
+    Seq<std::uint64_t> identity_variants;
 
     /// For a unit, its manifest's built_at; 0 when the file is no unit.
     std::uint64_t run = 0;

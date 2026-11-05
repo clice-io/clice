@@ -90,9 +90,15 @@ static std::optional<std::string> write_preamble_index(llvm::StringRef blob,
 /// The TU index a unit's compile, or a build that is one, sends as the
 /// master asked.
 static index::TUIndexOptions index_options(const auto& params) {
-    return {.known_variants = params.known_variants,
-            .known_instantiations = params.known_instantiations,
-            .standard_library_instantiations = params.standard_library_instantiations};
+    index::TUIndexOptions options{
+        .known_variants = params.known_variants,
+        .known_instantiations = params.known_instantiations,
+        .standard_library_instantiations = params.standard_library_instantiations,
+    };
+    if constexpr(requires { params.known_identities; }) {
+        options.known_identities = params.known_identities;
+    }
+    return options;
 }
 
 /// Where a PCH or PCM build writes: the master's tmp path when it provided
@@ -475,6 +481,7 @@ static worker::CompileUnitResult
                   .project_root = params.project_root,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .tidy = params.tidy,
+        .header_identities = params.index,
         .stop = stop,
     };
     hold_recent(use_precompiled(cp.input, {params.pch, 0}, params.pcms));

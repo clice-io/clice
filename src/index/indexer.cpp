@@ -109,6 +109,37 @@ bool is_specialization(const clang::NamedDecl* decl) {
     return false;
 }
 
+/// Whether a class template's instantiation derives from a base its pattern
+/// spells dependently: the instantiation resolves it (project_bases).
+bool has_dependent_base(const clang::CXXRecordDecl* record) {
+    const auto* pattern = record->getTemplateInstantiationPattern();
+    return pattern && ranges::any_of(pattern->bases(), [](const clang::CXXBaseSpecifier& base) {
+               return base.getType()->isDependentType();
+           });
+}
+
+/// Whether the walk relates a declaration as a definition (the
+/// semantics' relations of a written declaration).
+bool defines(const clang::Decl* decl) {
+    if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
+        return tag->isThisDeclarationADefinition();
+    }
+    if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+        return function->isThisDeclarationADefinition();
+    }
+    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        return var->isThisDeclarationADefinition() != clang::VarDecl::DeclarationOnly;
+    }
+    return llvm::isa<clang::TypedefNameDecl>(decl);
+}
+
+/// One hash of two.
+std::uint64_t combine(std::uint64_t first, std::uint64_t second) {
+    std::array<std::uint64_t, 2> both{first, second};
+    return llvm::xxh3_64bits(llvm::ArrayRef(reinterpret_cast<const std::uint8_t*>(both.data()),
+                                            sizeof(both)));
+}
+
 /// The type of a value; of a function, the type it returns.
 clang::QualType value_type(const clang::ValueDecl* decl) {
     if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
@@ -271,7 +302,13 @@ public:
         known_variants(options.known_variants),
         resolver(unit.context(), {.only_instantiation = false}), readable(unit.context(), {}),
         known_instantiations(options.known_instantiations),
-        standard_library(options.standard_library_instantiations) {}
+        standard_library(options.standard_library_instantiations) {
+        for(auto& known: options.known_identities) {
+            known_variants_at.try_emplace(known.identity, known.variant);
+            auto& reach = known_reaches[known.own];
+            reach = std::max(reach, known.reach);
+        }
+    }
 
     /// The only gate through which entries enter `file_indices`. With
     /// focus_only, the index covers just the focus file and the
@@ -303,6 +340,9 @@ public:
         }
         auto hash = unit.get<EntityTable>().entity(decl);
         auto [it, success] = symbols.try_emplace(hash);
+        if(success && !unwalked.files.empty()) {
+            symbol_decls.try_emplace(hash, decl);
+        }
         if(success) {
             // The entity's own declaration describes it: a reference can
             // reach it first through a template (a member body calling
@@ -542,6 +582,12 @@ public:
         add_pair_relation(decl, RelationKind::TypeDefinition, target, decl->getLocation());
         auto type = types::unwrap(resolver.resolve(value_type(decl)));
         if(!llvm::isa<clang::CXXRecordDecl>(target) || type->isDependentType()) {
+            return;
+        }
+        // What `->` reaches through a specialization depends on whether the
+        // unit instantiated it: a header's index says it of none.
+        if(llvm::isa<clang::ClassTemplateSpecializationDecl>(target) &&
+           unit.file_id(decl->getLocation()) != unit.focus_file().file()) {
             return;
         }
         if(auto* pointed = types::decl_of(types::unwrap(resolver.arrow_pointee(type)))) {
@@ -806,7 +852,9 @@ public:
             // A dependent call reaches every candidate the resolver finds
             // for it, as its weak references do.
             for(auto* candidate: resolver.lookup(CE)) {
-                call(candidate->getUnderlyingDecl(), range);
+                if(guess_allowed(range.getBegin(), candidate->getUnderlyingDecl())) {
+                    call(candidate->getUnderlyingDecl(), range);
+                }
             }
             return;
         }
@@ -1150,6 +1198,10 @@ public:
             return;
         }
         for(auto& occurrence: resolve_occurrences(semantics, i, &resolver)) {
+            if(occurrence.kind.is_one_of(RelationKind::WeakReference) &&
+               !guess_allowed(occurrence.location, occurrence.decl)) {
+                continue;
+            }
             auto name = add_name(occurrence);
             if(instantiation_entries) {
                 continue;
@@ -1288,12 +1340,11 @@ public:
         return found->second;
     }
 
-    /// The file holding the definition an instantiation was made from: what
-    /// it resolves lies there. The pattern clang answers for a function or
-    /// a variable can be a declaration the unit's lookup met (`std::min`
-    /// redeclared in algorithmfwd.h after its definition), which varies
-    /// with the unit; the definition does not.
-    clang::FileID home_of(const clang::Decl* decl) {
+    /// The definition an instantiation was made from. The pattern clang
+    /// answers for a function or a variable can be a declaration the unit's
+    /// lookup met (`std::min` redeclared in algorithmfwd.h after its
+    /// definition), which varies with the unit; the definition does not.
+    const clang::Decl* pattern_of(const clang::Decl* decl) {
         const clang::Decl* pattern = nullptr;
         if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
             if(const auto* found = function->getTemplateInstantiationPattern()) {
@@ -1308,8 +1359,14 @@ public:
         } else if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
             pattern = record->getTemplateInstantiationPattern();
         }
+        return pattern ? pattern : decl;
+    }
+
+    /// The file holding the definition an instantiation was made from
+    /// (pattern_of): what it resolves lies there.
+    clang::FileID home_of(const clang::Decl* decl) {
         auto& SM = unit.context().getSourceManager();
-        return SM.getFileID(SM.getFileLoc((pattern ? pattern : decl)->getLocation()));
+        return SM.getFileID(SM.getFileLoc(pattern_of(decl)->getLocation()));
     }
 
     /// Whether a file's instantiations belong to this run's index: not to
@@ -1530,12 +1587,8 @@ public:
     /// depend on the arguments (`struct D : T`): no key, the resolution alone —
     /// computing them costs less than looking one up.
     void project_bases(const clang::CXXRecordDecl* record) {
-        const auto* pattern = record->getTemplateInstantiationPattern();
-        if(!pattern || !record->hasDefinition() ||
-           (!standard_library && decls::in_standard_library(record)) ||
-           ranges::none_of(pattern->bases(), [](const clang::CXXBaseSpecifier& base) {
-               return base.getType()->isDependentType();
-           })) {
+        if(!has_dependent_base(record) || !record->hasDefinition() ||
+           (!standard_library && decls::in_standard_library(record))) {
             return;
         }
         auto home = home_of(record);
@@ -1709,6 +1762,260 @@ public:
 
     /// The TU index, into `blob`, which arrives holding what a preamble's
     /// own index adds on top of an ordinary build when `preamble` is set.
+    /// Whether a header's record may name `decl` by a guess — a dependent
+    /// name's candidate, a member the resolver finds through a template —
+    /// without the record depending on what else the unit included: some
+    /// declaration of it lies in the header's include closure, or in that of
+    /// one of the few files it is included from, which a header like
+    /// `vector.tcc` or `qarraydataops.h` relies on to declare what it uses
+    /// (that file's identity then joins the header's, identity_of). The
+    /// focus file guesses from the whole unit.
+    bool guess_allowed(clang::SourceLocation at, const clang::NamedDecl* decl) {
+        auto& SM = unit.context().getSourceManager();
+        auto fid = SM.getFileID(SM.getExpansionLoc(at));
+        if(fid.isInvalid() || fid == unit.focus_file().file() || unit.is_builtin_file(fid)) {
+            return true;
+        }
+        llvm::SmallVector<std::uint32_t, 4> declared;
+        for(const auto* redecl: decl->redecls()) {
+            auto location = redecl->getLocation();
+            if(location.isInvalid()) {
+                return true;
+            }
+            auto file = SM.getFileID(SM.getExpansionLoc(location));
+            if(unit.is_builtin_file(file)) {
+                return true;
+            }
+            declared.push_back(closure_slot(file));
+        }
+        auto sees = [&](clang::FileID from) {
+            const auto& closure = closure_of(from);
+            return ranges::any_of(declared, [&](std::uint32_t slot) {
+                return slot < closure.size() && closure.test(slot);
+            });
+        };
+        if(sees(fid)) {
+            return true;
+        }
+        auto from = fid;
+        for(std::uint8_t depth = 1; depth <= max_reach; depth += 1) {
+            from = SM.getFileID(SM.getIncludeLoc(from));
+            if(from.isInvalid() || unit.is_builtin_file(from) || from == unit.focus_file().file()) {
+                return false;
+            }
+            if(sees(from)) {
+                auto& reach = reaches[fid];
+                reach = std::max(reach, depth);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// The files `fid`'s file includes, itself among them, transitively, as
+    /// bits by closure_slot. By path: `qlist.h` includes
+    /// `qbytearraylist.h`, which includes `qlist.h` again, entered anew
+    /// while its guard is still open. The files of a cycle share one closure
+    /// (Tarjan's strongly connected components).
+    const llvm::BitVector& closure_of(clang::FileID fid) {
+        auto root = closure_slot(fid);
+        if(closure_done[root]) {
+            return closures[root];
+        }
+        if(entries_by_path.empty()) {
+            for(auto& entry: views::keys(unit.directives())) {
+                if(!unit.is_builtin_file(entry)) {
+                    entries_by_path[unit.file_path(entry)].push_back(entry);
+                }
+            }
+        }
+        auto includes_of = [&](std::uint32_t slot) {
+            llvm::SmallVector<std::uint32_t, 8> slots;
+            for(auto entry: entries_by_path.lookup(closure_paths[slot])) {
+                for(auto& include: unit.directives().find(entry)->second.includes) {
+                    if(include.fid.isValid() && !unit.is_builtin_file(include.fid)) {
+                        slots.push_back(closure_slot(include.fid));
+                    }
+                }
+            }
+            return slots;
+        };
+        // Per slot met, its visit number and the lowest one it reaches.
+        llvm::DenseMap<std::uint32_t, std::pair<std::uint32_t, std::uint32_t>> order;
+        std::vector<std::uint32_t> stack;
+        llvm::DenseSet<std::uint32_t> on_stack;
+        auto visit = [&](auto& self, std::uint32_t slot) -> void {
+            auto number = static_cast<std::uint32_t>(order.size());
+            order[slot] = {number, number};
+            stack.push_back(slot);
+            on_stack.insert(slot);
+            for(auto next: includes_of(slot)) {
+                if(closure_done[next]) {
+                    continue;
+                }
+                if(!order.contains(next)) {
+                    self(self, next);
+                    order[slot].second = std::min(order[slot].second, order[next].second);
+                } else if(on_stack.contains(next)) {
+                    order[slot].second = std::min(order[slot].second, order[next].first);
+                }
+            }
+            if(order[slot].first != order[slot].second) {
+                return;
+            }
+            std::vector<std::uint32_t> members;
+            std::uint32_t member;
+            do {
+                member = stack.back();
+                stack.pop_back();
+                on_stack.erase(member);
+                members.push_back(member);
+            } while(member != slot);
+            llvm::BitVector bits;
+            for(auto m: members) {
+                if(bits.size() <= m) {
+                    bits.resize(m + 1);
+                }
+                bits.set(m);
+            }
+            for(auto m: members) {
+                for(auto next: includes_of(m)) {
+                    if(closure_done[next]) {
+                        bits |= closures[next];
+                    }
+                }
+            }
+            for(auto m: members) {
+                closures[m] = bits;
+                closure_done[m] = true;
+            }
+        };
+        visit(visit, root);
+        return closures[root];
+    }
+
+    std::uint32_t closure_slot(clang::FileID fid) {
+        auto path = unit.file_path(fid);
+        auto [it, fresh] = closure_slots.try_emplace(path, closures.size());
+        if(fresh) {
+            closures.emplace_back();
+            closure_done.push_back(false);
+            closure_paths.push_back(path.str());
+        }
+        return it->second;
+    }
+
+    /// A file's own identity in this unit: its entries' header identities
+    /// with its path; 0 when an entry's is this unit's alone.
+    std::uint64_t own_identity(clang::FileID fid) {
+        if(own_identities.empty()) {
+            // Entries in the order the unit made them, each FileID once.
+            auto entries = ranges::to<std::vector<std::pair<clang::FileID, std::uint64_t>>>(
+                unit.header_identities());
+            ranges::sort(entries, {}, [](auto& entry) { return entry.first.getHashValue(); });
+            for(auto [entry, identity]: entries) {
+                if(unit.is_builtin_file(entry)) {
+                    continue;
+                }
+                auto path = unit.file_path(entry);
+                auto [it, fresh] = own_identities.try_emplace(path, llvm::xxh3_64bits(path));
+                it->second = it->second == 0 || identity == 0 ? 0 : combine(it->second, identity);
+            }
+        }
+        return own_identities.lookup(unit.file_path(fid));
+    }
+
+    /// How many of the files `fid` is included from its guesses reach into:
+    /// in this unit's walk, or in the walks of units the receiver learned
+    /// its identity from.
+    std::uint8_t reach_of(clang::FileID fid) {
+        return std::max(reaches.lookup(fid), known_reaches.lookup(own_identity(fid)));
+    }
+
+    /// The identity a variant of `fid` is found by: its own, and those of
+    /// the files its guesses reach into (guess_allowed); 0 for none.
+    std::uint64_t identity_of(clang::FileID fid) {
+        auto identity = own_identity(fid);
+        auto& SM = unit.context().getSourceManager();
+        auto from = fid;
+        for(auto depth = reach_of(fid); depth > 0 && identity != 0; depth -= 1) {
+            from = SM.getFileID(SM.getIncludeLoc(from));
+            if(from.isInvalid() || unit.is_builtin_file(from)) {
+                break;
+            }
+            auto includer = own_identity(from);
+            identity = includer == 0 ? 0 : combine(identity, includer);
+        }
+        return identity;
+    }
+
+    /// The files whose variant the receiver stores at their identity: they
+    /// go unwalked, but for the templates the walked instantiations come
+    /// from and the classes whose dependent bases an instantiation
+    /// resolves — what those resolve is recorded beyond what their written
+    /// entries say (written_in).
+    void choose_known(llvm::ArrayRef<const clang::Decl*> walked) {
+        auto focus = unit.focus_file().file();
+        for(auto fid: views::keys(unit.header_identities())) {
+            if(fid == focus || unit.is_builtin_file(fid) || unit.from_context(fid)) {
+                continue;
+            }
+            auto identity = identity_of(fid);
+            if(auto it = known_variants_at.find(identity);
+               identity != 0 && it != known_variants_at.end()) {
+                unwalked.files.insert(fid);
+                known_sections.try_emplace(unit.file_path(fid),
+                                           KnownIdentity{.identity = identity,
+                                                         .own = own_identity(fid),
+                                                         .reach = reach_of(fid),
+                                                         .variant = it->second});
+            }
+        }
+        if(unwalked.files.empty()) {
+            return;
+        }
+        auto described = [](const clang::Decl* decl) -> const clang::Decl* {
+            if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+                return function->getDescribedFunctionTemplate();
+            }
+            if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+                return record->getDescribedClassTemplate();
+            }
+            if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+                return var->getDescribedVarTemplate();
+            }
+            return nullptr;
+        };
+        auto keep = [&](const clang::Decl* decl) {
+            if(!unwalked.files.contains(home_of(decl))) {
+                return;
+            }
+            const auto* pattern = pattern_of(decl);
+            unwalked.whole.insert(pattern);
+            if(const auto* outer = described(pattern)) {
+                unwalked.whole.insert(outer);
+            }
+            for(const auto* context = pattern->getLexicalDeclContext();
+                context && !context->isTranslationUnit();
+                context = context->getLexicalParent()) {
+                const auto* around = llvm::cast<clang::Decl>(context);
+                unwalked.around.insert(around);
+                if(const auto* outer = described(around)) {
+                    unwalked.around.insert(outer);
+                }
+            }
+        };
+        for(const auto* decl: walked) {
+            keep(decl);
+        }
+        for(const auto* decl: unit.instantiations()) {
+            if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
+               record && has_dependent_base(record)) {
+                keep(record);
+            }
+        }
+    }
+
     std::vector<std::byte> build(TUIndexBlob blob, bool preamble) {
         ScopedTimer semantics_timer;
         auto walked = walked_instantiations();
@@ -1719,7 +2026,14 @@ public:
         // its macros, in a build of their own.
         std::optional<Semantics> full;
         if(!focus_only) {
-            full.emplace(Semantics::build(unit, {.all_files = true, .instantiations = walked}));
+            if(!unit.header_identities().empty()) {
+                choose_known(walked);
+            }
+            full.emplace(Semantics::build(
+                unit,
+                {.all_files = true,
+                 .instantiations = walked,
+                 .partial = unwalked.files.empty() ? nullptr : &unwalked}));
         } else if(auto expanding = expanding_decls(); !walked.empty() || !expanding.empty()) {
             full.emplace(Semantics::build(
                 unit,
@@ -1766,6 +2080,13 @@ public:
         for(auto fid:
             views::transform(resolved, [](auto& entry) -> auto& { return entry.first; })) {
             if(!file_indices.contains(fid)) {
+                indexed_fids.push_back(fid);
+            }
+        }
+        // An unwalked file holds the known variant, entries of the walk or
+        // none.
+        for(auto fid: unwalked.files) {
+            if(!file_indices.contains(fid) && !resolved.contains(fid)) {
                 indexed_fids.push_back(fid);
             }
         }
@@ -1899,6 +2220,22 @@ public:
                 symbol.file = path_id;
             }
         };
+        // An unwalked file declares what its walk would have related.
+        for(auto& [hash, decl]: symbol_decls) {
+            auto& symbol = symbols[hash];
+            for(const auto* redecl: decl->redecls()) {
+                if(redecl->isImplicit() || redecl->getLocation().isInvalid()) {
+                    continue;
+                }
+                auto fid = SM.getFileID(SM.getExpansionLoc(redecl->getLocation()));
+                if(!unwalked.files.contains(fid) || tree.node_of(fid) == no_node) {
+                    continue;
+                }
+                auto path_id = tree.path_id(fid);
+                symbol.reference_files.add(path_id);
+                adopt(symbol, path_id, defines(redecl));
+            }
+        }
         for(auto& [path_id, file_index]: by_path) {
             for(auto& [symbol_id, relations]: file_index.relations) {
                 auto& symbol = symbols[symbol_id];
@@ -1937,22 +2274,47 @@ public:
             views::transform(by_path, [](auto& entry) -> auto& { return entry.first; })) {
             path_ids.push_back(path_id);
         }
+        for(auto fid: unwalked.files) {
+            if(tree.node_of(fid) != no_node) {
+                auto path_id = tree.path_id(fid);
+                if(path_fids.try_emplace(path_id, fid).second || !by_path.contains(path_id)) {
+                    path_ids.push_back(path_id);
+                }
+            }
+        }
         ranges::sort(path_ids);
+        path_ids.erase(ranges::unique(path_ids).begin(), path_ids.end());
         std::vector<FileSection> sections;
         llvm::BitVector known_paths(tree.paths.size());
         for(auto path_id: path_ids) {
+            auto fid = path_fids[path_id];
+            if(auto it = known_sections.find(unit.file_path(fid)); it != known_sections.end()) {
+                auto& known = it->second;
+                known_paths.set(path_id);
+                sections.push_back({.path_id = path_id,
+                                    .hash = known.variant,
+                                    .identity = known.identity,
+                                    .own_identity = known.own,
+                                    .reach = known.reach});
+                continue;
+            }
             auto& file_index = by_path[path_id];
             if(file_index.empty()) {
                 continue;
             }
-            auto bytes = write_shard(file_index, resolve, unit.file_content(path_fids[path_id]));
-            auto hash = llvm::xxh3_64bits(as_chars(bytes));
-            if(ranges::binary_search(known_variants, hash)) {
-                known_paths.set(path_id);
-                sections.push_back({path_id, hash, {}});
-                continue;
+            auto bytes = write_shard(file_index, resolve, unit.file_content(fid));
+            FileSection section{.path_id = path_id, .hash = llvm::xxh3_64bits(as_chars(bytes))};
+            if(fid != unit.focus_file().file() && !unit.header_identities().empty()) {
+                section.identity = identity_of(fid);
+                section.own_identity = own_identity(fid);
+                section.reach = reach_of(fid);
             }
-            sections.push_back({path_id, hash, std::move(bytes)});
+            if(ranges::binary_search(known_variants, section.hash)) {
+                known_paths.set(path_id);
+            } else {
+                section.blob = std::move(bytes);
+            }
+            sections.push_back(std::move(section));
         }
         std::vector<InstantiationSection> instantiation_sections;
         auto resolved_paths = ranges::to<llvm::SmallVector<std::uint32_t>>(
@@ -2112,6 +2474,45 @@ private:
     bool standard_library;
 
     llvm::DenseMap<clang::FileID, Resolved> resolved;
+
+    /// The variants the receiver stores, by the identity a unit finds each
+    /// at, and how far the guesses of the files of each own identity reach
+    /// (TUIndexOptions::known_identities).
+    llvm::DenseMap<std::uint64_t, VariantHash> known_variants_at;
+
+    llvm::DenseMap<std::uint64_t, std::uint8_t> known_reaches;
+
+    /// Per path, the file's own identity (own_identity).
+    llvm::StringMap<std::uint64_t> own_identities;
+
+    /// Per file, how many of the files it is included from its guesses
+    /// reach into (guess_allowed), and the bound on it.
+    llvm::DenseMap<clang::FileID, std::uint8_t> reaches;
+
+    static constexpr std::uint8_t max_reach = 8;
+
+    /// The include closures (closure_of): per path its slot, per slot the
+    /// path, its closure and whether that is complete; the entries of each
+    /// path.
+    llvm::StringMap<std::uint32_t> closure_slots;
+
+    std::vector<std::string> closure_paths;
+
+    std::vector<llvm::BitVector> closures;
+
+    std::vector<bool> closure_done;
+
+    llvm::StringMap<llvm::SmallVector<clang::FileID, 1>> entries_by_path;
+
+    /// The files a known variant stands for (choose_known), and per path the
+    /// variant with the identity it was found at.
+    PartialFiles unwalked;
+
+    llvm::StringMap<KnownIdentity> known_sections;
+
+    /// While files go unwalked, the declaration each symbol was registered
+    /// from: their redeclarations there stand for the walk's relations.
+    llvm::DenseMap<SymbolHash, const clang::NamedDecl*> symbol_decls;
 
     /// Per file, its written relations as records would say them
     /// (written_in).

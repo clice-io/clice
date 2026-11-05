@@ -338,6 +338,10 @@ struct CompileUnitParams {
     /// expected to include, sorted (see index::TUIndexOptions).
     std::vector<std::uint64_t> known_variants;
 
+    /// The identities those variants are found at (see
+    /// index::TUIndexOptions).
+    std::vector<index::KnownIdentity> known_identities;
+
     /// The keys of the instantiations the master holds for those files,
     /// sorted (see index::TUIndexOptions).
     std::vector<std::uint64_t> known_instantiations;

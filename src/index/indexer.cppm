@@ -35,6 +35,12 @@ struct TUIndexOptions {
     /// file's section lists the key as skipped.
     llvm::ArrayRef<std::uint64_t> known_instantiations;
 
+    /// The identities of the variants the receiver stores for the files the
+    /// unit is expected to include (KnownIdentity). With a Whole compile's
+    /// header identities, a file whose identity is among them is not
+    /// walked, its section the known variant, travelling as its bare hash.
+    llvm::ArrayRef<KnownIdentity> known_identities;
+
     /// Walk the standard library's own instantiations and macro expansions
     /// too (decls::in_standard_library): what `std::sort` resolves in the
     /// library's text. Without, they are neither walked nor keyed.

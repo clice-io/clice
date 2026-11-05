@@ -23,6 +23,22 @@ using SymbolHash = std::uint64_t;
 /// the file agrees produce byte-identical blobs and share one identity.
 using VariantHash = std::uint64_t;
 
+/// The variant a unit indexed a file at, by the identity it finds it by:
+/// the file's own (CompilationUnit::header_identities, with its path) mixed
+/// with those of the files it is included from that its guesses reach into
+/// (how many is `reach`).
+struct KnownIdentity {
+    std::uint64_t identity = 0;
+
+    std::uint64_t own = 0;
+
+    std::uint8_t reach = 0;
+
+    VariantHash variant = 0;
+
+    friend bool operator==(const KnownIdentity&, const KnownIdentity&) = default;
+};
+
 /// The identity of one resolution — the records one instantiated definition or
 /// macro expansion resolves in one file (resolution_hash).
 using ResolutionHash = std::uint64_t;

@@ -83,10 +83,11 @@ bool has_c_linkage(const clang::Decl* decl) {
 /// language; so is everything an anonymous namespace encloses. An
 /// unnamed type is defined once, and a typedef name has no linkage of
 /// its own: two source files may each declare a private `State`, so
-/// both carry their file. System headers are exempt for typedef names:
-/// they declare a name consistently, and several of them declare the
-/// same one (size_t), whichever is included first. A namespace alias
-/// only renames a namespace and stays shared. A C tag has no linkage
+/// both carry their file. A header's typedef name is told by its type
+/// instead (EntityTable::add_self): several headers declare the same one
+/// (size_t, `kernel_ulong_t`), and which the unit reads first must not
+/// decide its identity. A namespace alias only renames a namespace and
+/// stays shared. A C tag has no linkage
 /// either, though clang reports one: `struct state` defined in two
 /// source files is two types. One first declared in a header stays one
 /// entity per name, whichever header forward-declares it first; the
@@ -116,7 +117,10 @@ bool needs_path(const clang::NamedDecl* decl, CompilationUnit& unit) {
     if(llvm::isa<clang::NamespaceAliasDecl>(decl)) {
         return false;
     }
-    return (linkage == clang::Linkage::None || llvm::isa<clang::TypedefNameDecl>(decl)) &&
+    if(llvm::isa<clang::TypedefNameDecl>(decl)) {
+        return unit.host_source(unit.produced_at(decl->getLocation()).file);
+    }
+    return linkage == clang::Linkage::None &&
            !unit.context().getSourceManager().isInSystemHeader(decl->getLocation());
 }
 
@@ -905,6 +909,10 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
     /// first declaration's file tells the copies apart. Judged by linkage,
     /// not visibility: a typedef or namespace alias has no linkage yet is
     /// shared by every unit that includes its header.
+    if(auto* alias = dyn_cast<TypedefNameDecl>(decl);
+       alias && alias->getDeclContext()->getRedeclContext()->isFileContext()) {
+        add_type(hasher, alias->getUnderlyingType().getCanonicalType());
+    }
     if(needs_path(decl, unit)) {
         add_path(hasher, decl->getLocation());
     }

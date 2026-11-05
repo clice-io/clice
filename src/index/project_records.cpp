@@ -187,6 +187,12 @@ std::vector<std::byte> encode_record(const FileRecord& file) {
     blob.consumed = file.consumed;
     blob.generation = file.generation;
     blob.stored = file.stored;
+    for(auto& known: file.identities) {
+        blob.identities.push_back(known.identity);
+        blob.identity_owns.push_back(known.own);
+        blob.identity_reaches.push_back(known.reach);
+        blob.identity_variants.push_back(known.variant);
+    }
     blob.run = file.run;
     blob.command = file.command;
     return encode(blob);
@@ -195,10 +201,17 @@ std::vector<std::byte> encode_record(const FileRecord& file) {
 std::optional<FileRecord> decode_file(llvm::StringRef data) {
     auto* root = view_record<FileBlob>(data);
     if(!root || !strictly_ascending(root->consumed) ||
-       (root->generation == 0) != root->stored.empty()) {
+       (root->generation == 0) != root->stored.empty() ||
+       !strictly_ascending(root->identities) ||
+       root->identity_owns.size() != root->identities.size() ||
+       root->identity_reaches.size() != root->identities.size() ||
+       root->identity_variants.size() != root->identities.size() ||
+       !ranges::all_of(root->identity_variants, [&](std::uint64_t variant) {
+           return ranges::contains(root->stored, variant);
+       })) {
         return std::nullopt;
     }
-    return FileRecord{
+    FileRecord record{
         .path = root->path,
         .absent = root->absent,
         .consumed = {root->consumed.begin(), root->consumed.end()},
@@ -207,6 +220,13 @@ std::optional<FileRecord> decode_file(llvm::StringRef data) {
         .run = root->run,
         .command = root->command,
     };
+    for(std::size_t i = 0; i < root->identities.size(); i += 1) {
+        record.identities.push_back({.identity = root->identities[i],
+                                     .own = root->identity_owns[i],
+                                     .reach = root->identity_reaches[i],
+                                     .variant = root->identity_variants[i]});
+    }
+    return record;
 }
 
 std::vector<std::byte> encode_record(const Dependents& dependents) {

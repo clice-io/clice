@@ -81,6 +81,9 @@ public:
 
     std::uint64_t section_hash(std::uint32_t i) const;
 
+    /// The identity the unit finds section `i`'s variant at; 0 for none.
+    KnownIdentity section_identity(std::uint32_t i) const;
+
     /// One section's shard blob bytes, borrowing the TU index; empty for
     /// a variant the receiver already stores (TUIndexOptions::known_variants).
     llvm::StringRef section_blob(std::uint32_t i) const;

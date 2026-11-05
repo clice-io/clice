@@ -251,6 +251,16 @@ clang::SourceLocation keyword_after_scope(const clang::ASTContext& context,
 clang::SourceRange written_name(const clang::DeclarationNameInfo& name,
                                 const clang::SourceManager& SM);
 
+/// Files to traverse in part: of their declarations only the `whole` ones,
+/// entirely, and the ones `around` them, for those alone.
+struct PartialFiles {
+    llvm::DenseSet<clang::FileID> files;
+
+    llvm::DenseSet<const clang::Decl*> whole;
+
+    llvm::DenseSet<const clang::Decl*> around;
+};
+
 struct SemanticsOptions {
     /// Traverse everything the unit parsed, the transient shape the
     /// whole-TU index build uses; it reads no tokens, so it builds on a
@@ -269,6 +279,9 @@ struct SemanticsOptions {
     /// everything the unit parsed: a Content compile's own have the shape
     /// features share.
     std::optional<llvm::ArrayRef<const clang::Decl*>> written;
+
+    /// With all_files, the files to traverse in part.
+    const PartialFiles* partial = nullptr;
 };
 
 /// The semantic map of the focus file, built once after a successful

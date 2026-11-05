@@ -341,7 +341,7 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
             retired_shards.insert(file);
             auto& record = change_file(file);
             record.generation = 0;
-            record.stored.clear();
+            record.store({});
             report.add_index_changed(file);
             requeue_owners(file, report);
             search_file_changed(file);
@@ -354,7 +354,7 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
         auto replacement =
             Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
         assert(replacement.loaded() && "a freshly written shard blob must verify");
-        change_file(file).stored = replacement.variants();
+        change_file(file).store(replacement.variants());
         shards[file] = std::move(replacement);
         changed_shards.insert(file);
     }

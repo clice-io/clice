@@ -323,7 +323,11 @@ template <typename Params>
 IndexTransfer ask_for_index(Project& project, Fid unit, Params& params) {
     if(!std::exchange(project.unit_history[unit].send_in_full, false)) {
         auto include_closure = project.dep_graph.include_closure(unit);
-        params.known_variants = project.index.known_variants(unit, include_closure);
+        auto known = project.index.known_variants(unit, include_closure);
+        params.known_variants = std::move(known.hashes);
+        if constexpr(requires { params.known_identities; }) {
+            params.known_identities = std::move(known.identities);
+        }
         params.known_instantiations =
             project.index.known_instantiations(unit, std::move(include_closure));
     }
