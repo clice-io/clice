@@ -153,6 +153,11 @@ void drop_by_arity(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
 /// Whether `type` still refers to a parameter of `params`.
 bool mentions_parameters(clang::QualType type, const clang::TemplateParameterList* params);
 
+/// Whether `record`'s definition inherits from a still-dependent base, which
+/// may bring a member only once it instantiates; an undefined record tells
+/// nothing either.
+bool has_dependent_base(const clang::CXXRecordDecl* record);
+
 /// An argument of a call as deduction sees it: its type, resolved, and
 /// whether it is an lvalue.
 struct CallArgument {
@@ -162,6 +167,14 @@ struct CallArgument {
 
     /// The argument as written, when the call spells it.
     const clang::Expr* expr = nullptr;
+};
+
+/// An operand evaluated: its type (see PseudoInstantiator::expr_type) and
+/// whether it is an rvalue (see PseudoInstantiator::rvalue).
+struct Operand {
+    clang::QualType type;
+
+    bool rvalue;
 };
 
 /// What a lookup found, with what tells two finds of one declaration apart:
@@ -437,6 +450,8 @@ private:
     /// the caller to pop.
     Deduction deduce_template_arguments(clang::ClassTemplateDecl* CTD, TemplateArguments arguments);
 
+    Deduction deduce_template_arguments(clang::VarTemplateDecl* VTD, TemplateArguments arguments);
+
     Deduction deduce_template_arguments(clang::ClassTemplatePartialSpecializationDecl* partial,
                                         TemplateArguments arguments);
 
@@ -513,10 +528,11 @@ private:
                          TemplateArguments written);
 
     /// `name` in `CTD<arguments>` where it is not certain which pattern
-    /// applies — a defaulted argument does not fold, a constraint is not
-    /// decided: what every pattern that may apply finds alike, a member of a
-    /// base they share; else nothing. The frames of the primary's lookup
-    /// stay, as lookup's do.
+    /// applies — a value is not known, a constraint is not decided: what
+    /// every pattern that may apply finds alike, a member of a base they
+    /// share; else nothing. A pattern certainly lacking the name drops out:
+    /// the code names it, so instantiation reads another. The frames of the
+    /// lookup in a pattern finding it stay, as lookup's do.
     lookup_result lookup_through_any(clang::ClassTemplateDecl* CTD,
                                      TemplateArguments arguments,
                                      clang::DeclarationName name);
@@ -536,9 +552,22 @@ private:
 
     /// Deduction alone may match several overlapping partials; pick the
     /// most specialized one among the viable ones, as real instantiation
-    /// would.
+    /// would. An explicit specialization the arguments may name
+    /// (undecided_specializations) leaves the choice Unverified.
     PartialChoice<clang::ClassTemplatePartialSpecializationDecl>
         match_partial(clang::ClassTemplateDecl* CTD, TemplateArguments arguments);
+
+    PartialChoice<clang::VarTemplatePartialSpecializationDecl>
+        match_partial(clang::VarTemplateDecl* VTD, TemplateArguments arguments);
+
+    /// The explicit specializations of `CTD` that `arguments` may name
+    /// without certainly naming one (may_name): `__conditional<B>` with `B`
+    /// not known may be `__conditional<false>`.
+    llvm::SmallVector<clang::ClassTemplateSpecializationDecl*, 2>
+        undecided_specializations(clang::ClassTemplateDecl* CTD, TemplateArguments arguments);
+
+    llvm::SmallVector<clang::VarTemplateSpecializationDecl*, 2>
+        undecided_specializations(clang::VarTemplateDecl* VTD, TemplateArguments arguments);
 
     /// Pseudo-SFINAE: decide whether a partial specialization's dependent
     /// pattern constraints (e.g. the `void_t<typename A::rebind<U>::other>`
@@ -586,6 +615,15 @@ private:
 
     /// The value of a name the folding cannot see through.
     std::optional<llvm::APSInt> value_of(const clang::Expr* expr);
+
+    /// The value of `VTD<written>`: its pattern's initializer under the
+    /// bindings of the arguments. Where it is not certain which pattern
+    /// applies, the value every pattern that may apply has alike.
+    std::optional<llvm::APSInt> value_of(clang::VarTemplateDecl* VTD,
+                                         llvm::ArrayRef<clang::TemplateArgumentLoc> written);
+
+    /// The value `var`'s initializer folds to, converted to its type.
+    std::optional<llvm::APSInt> initial_value(const clang::VarDecl* var);
 
     /// The type a dependent expression evaluates to, resolved: a name, a
     /// member access or a call takes the found declaration's type — the
@@ -635,6 +673,11 @@ private:
     /// Whether the object `base` denotes is an rvalue: a call returning no
     /// lvalue reference, or a temporary. A name denotes an lvalue.
     bool rvalue(const clang::Expr* base);
+
+    /// `expr` evaluated once for both its type and its value category: a
+    /// dependent call's category is what its type tells, and asking rvalue
+    /// would evaluate it again, and each call it nests.
+    Operand operand(const clang::Expr* expr);
 
     /// Whether `expr` is an xvalue, also where clang cannot tell: a dependent
     /// access to a data member of an rvalue, which clang marks an lvalue.

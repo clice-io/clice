@@ -194,3 +194,46 @@ struct test {
 };
 
 }  // namespace noexcept_deduce
+
+namespace repeated_parameter_undecided {
+
+template <typename T, typename U>
+struct same {
+    using type = char;
+};
+
+template <typename T>
+struct same<T, T> {
+    using type = int;
+};
+
+template <typename K, typename V>
+struct test {
+    // `K` and `V` may be one type: either pattern may apply.
+    using §(repeated_parameter_undecided)input = typename same<K, V>::type;
+};
+
+}  // namespace repeated_parameter_undecided
+
+namespace repeated_parameter_enclosing {
+
+template <typename T, typename U>
+struct same {
+    using type = char;
+};
+
+template <typename T>
+struct same<T, T> {
+    using type = int;
+};
+
+template <typename A, typename B>
+struct pair {};
+
+template <typename K, typename V>
+struct test {
+    // A type never holds itself: `K` is no `pair<const K, V>`.
+    using §(repeated_parameter_enclosing)input = typename same<K, pair<const K, V>>::type;
+};
+
+}  // namespace repeated_parameter_enclosing

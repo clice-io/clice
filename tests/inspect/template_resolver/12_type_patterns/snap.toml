@@ -38,3 +38,10 @@ declarations = ["using ⟦type⟧ = U; @-5"]
 type = "flag<P>"
 record = "struct ⟦flag⟧ {};"
 declarations = ["using ⟦type⟧ = flag<B>;"]
+
+[answers.repeated_parameter_undecided.template_resolver]
+type = "typename same<K, V>::type"
+
+[answers.repeated_parameter_enclosing.template_resolver]
+type = "char"
+declarations = ["using ⟦type⟧ = char; @-14"]

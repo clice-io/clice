@@ -1,5 +1,6 @@
 #include <map>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 // A query whose answer would name a declaration or class of the host's library
@@ -72,3 +73,32 @@ struct test {
 };
 
 }  // namespace standard_map_iterator
+
+namespace standard_enable_if {
+
+template <typename T>
+struct test {
+    using §(standard_enable_if)input = std::enable_if_t<(sizeof(T) > 4), T*>*;
+};
+
+}  // namespace standard_enable_if
+
+namespace standard_same_value {
+
+template <typename T>
+struct test {
+    // `T` is never a vector of itself.
+    using §(standard_same_value)input =
+        std::conditional_t<std::is_same_v<T, std::vector<T>>, int, T*>*;
+};
+
+}  // namespace standard_same_value
+
+namespace standard_same_class {
+
+template <typename T>
+struct test {
+    using §(standard_same_class)input = std::conditional_t<std::is_same<T, T*>::value, int, T&>&;
+};
+
+}  // namespace standard_same_class

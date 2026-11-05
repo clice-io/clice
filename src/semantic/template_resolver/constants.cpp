@@ -37,6 +37,11 @@ struct Folder {
         }
 
         expr = expr->IgnoreParens();
+        /// An argument an alias forwards (`conditional_t<B, ...>`) stands
+        /// in its aliased type as what was written for it.
+        if(auto* forwarded = llvm::dyn_cast<clang::SubstNonTypeTemplateParmExpr>(expr)) {
+            return fold(forwarded->getReplacement());
+        }
         if(auto* cast = llvm::dyn_cast<clang::CastExpr>(expr)) {
             auto value = fold(cast->getSubExpr());
             return value ? convert_integral(context, *value, cast->getType()) : std::nullopt;
@@ -292,9 +297,16 @@ std::optional<bool> category_trait(llvm::StringRef name, Category category) {
 
 }  // namespace
 
-std::optional<bool> type_trait(const clang::Expr* expr,
+std::optional<bool> type_trait(clang::ASTContext& context,
+                               const clang::Expr* expr,
                                llvm::function_ref<clang::QualType(clang::QualType)> bound) {
     expr = expr->IgnoreParenImpCasts();
+    if(auto* trait = llvm::dyn_cast<clang::TypeTraitExpr>(expr);
+       trait && trait->getTrait() == clang::BTT_IsSame) {
+        return same_type(context,
+                         bound(trait->getArg(0)->getType()),
+                         bound(trait->getArg(1)->getType()));
+    }
     auto standard = [](const clang::Decl* decl) {
         return decl && decl->getDeclContext()->isStdNamespace();
     };

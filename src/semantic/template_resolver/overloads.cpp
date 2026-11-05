@@ -523,8 +523,10 @@ Callees PseudoInstantiator::callee_candidates(
             }
         }
     } else if(auto DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(callee)) {
-        object = member_object(DSME);
-        rvalue_object = !DSME->isArrow() && !DSME->isImplicitAccess() && rvalue(DSME->getBase());
+        auto base = DSME->isImplicitAccess() ? Operand{.type = DSME->getBaseType(), .rvalue = false}
+                                             : operand(DSME->getBase());
+        object = member_object(base.type, DSME->isArrow());
+        rvalue_object = !DSME->isArrow() && base.rvalue;
         auto members = lookup_member(object, DSME->getMember());
         candidates.append(members.begin(), members.end());
     } else if(auto DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(callee)) {

@@ -362,3 +362,40 @@ void run(typename Source<T>::type left, B* right) {
 }
 
 }  // namespace explicit_arguments_bound
+
+namespace long_call_chain {
+
+template <typename T>
+struct box {};
+
+template <typename U>
+struct builder {
+    builder& add(U);
+    U build();
+};
+
+template <typename T>
+struct test {
+    builder<box<T>> parts;
+    box<T> part;
+    // Each call's object is evaluated once: a chain this long stays well within the budget.
+    using §(long_call_chain)input = decltype(parts.add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .add(part)
+                                                 .build())*;
+};
+
+}  // namespace long_call_chain

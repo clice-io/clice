@@ -6,12 +6,6 @@ import :support.logging;
 
 namespace clice::types {
 
-namespace {
-
-/// Does `record`'s definition inherit from a still-dependent base? Such
-/// a base may contribute the probed member only after instantiation, so
-/// absence is never conclusive through it. An undefined record proves
-/// nothing either.
 bool has_dependent_base(const clang::CXXRecordDecl* record) {
     auto definition = record->getDefinition();
     if(!definition) {
@@ -20,6 +14,38 @@ bool has_dependent_base(const clang::CXXRecordDecl* record) {
     return ranges::any_of(definition->bases(), [](const clang::CXXBaseSpecifier& base) {
         return base.getType()->isDependentType();
     });
+}
+
+namespace {
+
+/// The explicit specializations among `specializations` that `arguments`
+/// may name without certainly naming one. Only a value not known leaves
+/// matching their concrete arguments undecided.
+template <typename Specialization>
+llvm::SmallVector<Specialization*, 2>
+    undecided_among(clang::ASTContext& context,
+                    auto specializations,
+                    llvm::ArrayRef<clang::TemplateArgument> arguments,
+                    const DeductionOptions& options) {
+    auto unknown = [](const clang::TemplateArgument& argument) {
+        return argument.getKind() == clang::TemplateArgument::Expression &&
+               argument.getAsExpr()->isValueDependent();
+    };
+    llvm::SmallVector<Specialization*, 2> undecided;
+    if(ranges::none_of(arguments, [&](const clang::TemplateArgument& argument) {
+           return argument.getKind() == clang::TemplateArgument::Pack
+                      ? ranges::any_of(argument.pack_elements(), unknown)
+                      : unknown(argument);
+       })) {
+        return undecided;
+    }
+    for(auto* specialization: specializations) {
+        if(specialization->isExplicitSpecialization() &&
+           may_name(context, specialization->getTemplateArgs().asArray(), arguments, options)) {
+            undecided.push_back(specialization);
+        }
+    }
+    return undecided;
 }
 
 /// Is `decl` provably unusable for the probe's usage form? `typename
@@ -99,7 +125,42 @@ llvm::SmallVector<PartialMatch<clang::VarTemplatePartialSpecializationDecl>, 4>
 
 PartialChoice<clang::ClassTemplatePartialSpecializationDecl>
     PseudoInstantiator::match_partial(clang::ClassTemplateDecl* CTD, TemplateArguments arguments) {
-    return select_partial(context, viable_partials(CTD, arguments));
+    auto choice = select_partial(context, viable_partials(CTD, arguments));
+    if(choice.result != PartialResult::Ambiguous &&
+       !undecided_specializations(CTD, arguments).empty()) {
+        return {.result = PartialResult::Unverified};
+    }
+    return choice;
+}
+
+PartialChoice<clang::VarTemplatePartialSpecializationDecl>
+    PseudoInstantiator::match_partial(clang::VarTemplateDecl* VTD, TemplateArguments arguments) {
+    auto choice = select_partial(context, viable_partials(VTD, arguments));
+    if(choice.result != PartialResult::Ambiguous &&
+       !undecided_specializations(VTD, arguments).empty()) {
+        return {.result = PartialResult::Unverified};
+    }
+    return choice;
+}
+
+llvm::SmallVector<clang::ClassTemplateSpecializationDecl*, 2>
+    PseudoInstantiator::undecided_specializations(clang::ClassTemplateDecl* CTD,
+                                                  TemplateArguments arguments) {
+    return undecided_among<clang::ClassTemplateSpecializationDecl>(
+        context,
+        CTD->specializations(),
+        arguments,
+        {.open = open_defaults.getArrayRef()});
+}
+
+llvm::SmallVector<clang::VarTemplateSpecializationDecl*, 2>
+    PseudoInstantiator::undecided_specializations(clang::VarTemplateDecl* VTD,
+                                                  TemplateArguments arguments) {
+    return undecided_among<clang::VarTemplateSpecializationDecl>(
+        context,
+        VTD->specializations(),
+        arguments,
+        {.open = open_defaults.getArrayRef()});
 }
 
 clang::CXXRecordDecl* PseudoInstantiator::select_pattern(clang::ClassTemplateDecl* CTD,
@@ -126,7 +187,7 @@ clang::VarDecl* PseudoInstantiator::select_pattern(clang::VarTemplateDecl* VTD,
         return nullptr;
     }
 
-    auto choice = select_partial(context, viable_partials(VTD, arguments));
+    auto choice = match_partial(VTD, arguments);
     switch(choice.result) {
         case PartialResult::Selected: return choice.winner;
         case PartialResult::None: return VTD->getTemplatedDecl();

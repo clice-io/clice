@@ -27,7 +27,7 @@ declarations = ["using ⟦type⟧ = void; @-11"]
 
 [answers.dependent_typed_value.template_resolver]
 type = "X"
-declarations = ["using ⟦type⟧ = T;"]
+declarations = ["using ⟦type⟧ = T; @-5"]
 
 [answers.compound_value_match.template_resolver]
 type = "int"
@@ -43,3 +43,39 @@ declarations = ["using ⟦type⟧ = typename trait<A, B>::type;"]
 [answers.compound_value_argument.template_resolver]
 type = "int"
 declarations = ["using ⟦inner⟧ = typename Arr<N + 1>::type;"]
+
+[answers.unknown_flag.template_resolver]
+type = "typename conditional<(sizeof(X) > 4), int, char>::type"
+
+[answers.unknown_flag_one_pattern.template_resolver]
+type = "X *"
+declarations = ["using ⟦type⟧ = T; @-6"]
+
+[answers.unknown_flag_explicit.template_resolver]
+type = "typename select<(sizeof(X) > 4)>::template type<int, char>"
+
+[answers.unknown_wide_value.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T; @-11"]
+
+[answers.variable_template_value.template_resolver]
+type = "char"
+declarations = ["using ⟦type⟧ = F; @-9"]
+
+[answers.variable_template_undecided.template_resolver]
+type = "typename conditional<same<K, V>, int, char>::type"
+
+[answers.builtin_same.template_resolver]
+type = "char"
+declarations = ["using ⟦type⟧ = F; @-5"]
+
+[answers.unused_member_value.template_resolver]
+type = "char"
+declarations = ["using ⟦type⟧ = F; @-5"]
+
+[answers.resolved_trait_operand.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = T; @-12"]
+
+[answers.member_flag.template_resolver]
+type = "member_flag::tree<traits<K, V>>::mutable_iterator *"

@@ -212,3 +212,246 @@ struct test {
 };
 
 }  // namespace compound_value_argument
+
+namespace unknown_flag {
+
+template <bool B, typename T, typename F>
+struct conditional {
+    using type = T;
+};
+
+template <typename T, typename F>
+struct conditional<false, T, F> {
+    using type = F;
+};
+
+template <typename X>
+struct test {
+    // Whether `X` is wider than 4 bytes waits for instantiation: either pattern may apply, and
+    // their types differ.
+    using §(unknown_flag)input = typename conditional<(sizeof(X) > 4), int, char>::type;
+};
+
+}  // namespace unknown_flag
+
+namespace unknown_flag_one_pattern {
+
+template <bool B, typename T>
+struct enable_if {};
+
+template <typename T>
+struct enable_if<true, T> {
+    using type = T;
+};
+
+template <typename X>
+struct test {
+    // Only the partial declares `type`: the code naming it instantiates with the flag true.
+    using §(unknown_flag_one_pattern)input = typename enable_if<(sizeof(X) > 4), X*>::type;
+};
+
+}  // namespace unknown_flag_one_pattern
+
+namespace unknown_flag_explicit {
+
+template <bool>
+struct select {
+    template <typename T, typename F>
+    using type = T;
+};
+
+template <>
+struct select<false> {
+    template <typename T, typename F>
+    using type = F;
+};
+
+template <typename X>
+struct test {
+    // The explicit specialization for `false` may apply as well.
+    using §(unknown_flag_explicit)input =
+        typename select<(sizeof(X) > 4)>::template type<int, char>;
+};
+
+}  // namespace unknown_flag_explicit
+
+namespace unknown_wide_value {
+
+template <typename T, int N>
+struct array {
+    using type = T;
+};
+
+template <typename T>
+struct array<T, 0> {
+    using type = void;
+};
+
+template <typename X, int N>
+struct test {
+    // One value of an `int` is a special case: with `N` not known, the primary's `T`.
+    using §(unknown_wide_value)input = typename array<X, N>::type;
+};
+
+}  // namespace unknown_wide_value
+
+namespace variable_template_value {
+
+template <typename T, typename U>
+constexpr bool same = false;
+
+template <typename T>
+constexpr bool same<T, T> = true;
+
+template <bool B, typename T, typename F>
+struct conditional {
+    using type = T;
+};
+
+template <typename T, typename F>
+struct conditional<false, T, F> {
+    using type = F;
+};
+
+template <typename T>
+struct box {};
+
+template <typename K>
+struct test {
+    // `K` is never the `box<K>` holding it: `same` is false.
+    using §(variable_template_value)input = typename conditional<same<K, box<K>>, int, char>::type;
+};
+
+}  // namespace variable_template_value
+
+namespace variable_template_undecided {
+
+template <typename T, typename U>
+constexpr bool same = false;
+
+template <typename T>
+constexpr bool same<T, T> = true;
+
+template <bool B, typename T, typename F>
+struct conditional {
+    using type = T;
+};
+
+template <typename T, typename F>
+struct conditional<false, T, F> {
+    using type = F;
+};
+
+template <typename K, typename V>
+struct test {
+    // `K` and `V` may be one type.
+    using §(variable_template_undecided)input = typename conditional<same<K, V>, int, char>::type;
+};
+
+}  // namespace variable_template_undecided
+
+namespace builtin_same {
+
+template <bool B, typename T, typename F>
+struct conditional {
+    using type = T;
+};
+
+template <typename T, typename F>
+struct conditional<false, T, F> {
+    using type = F;
+};
+
+template <typename K>
+struct test {
+    using §(builtin_same)input = typename conditional<__is_same(K, const K*), int, char>::type;
+};
+
+}  // namespace builtin_same
+
+namespace unused_member_value {
+
+template <typename T, T V>
+struct constant {
+    static constexpr T value = V;
+};
+
+// The specialization is instantiated, its `value` initializer only once a use needs it.
+using no = constant<bool, false>;
+no instance;
+
+template <typename A, typename B>
+struct same : constant<bool, __is_same(A, B)> {};
+
+template <typename T>
+struct allocator {
+    using rebound = allocator;
+};
+
+template <bool B, typename T, typename F>
+struct conditional {
+    using type = T;
+};
+
+template <typename T, typename F>
+struct conditional<false, T, F> {
+    using type = F;
+};
+
+template <typename K>
+struct test {
+    using §(unused_member_value)input = typename conditional<same<K, K*>::value, int, char>::type;
+    // `rebound` names the allocator itself.
+    using §(resolved_trait_operand)rebound =
+        typename conditional<same<typename allocator<K>::rebound, allocator<K>>::value, int, char>::type;
+};
+
+}  // namespace unused_member_value
+
+namespace member_flag {
+
+template <typename T, typename U>
+constexpr bool same = false;
+
+template <typename T>
+constexpr bool same<T, T> = true;
+
+template <bool B, typename T, typename F>
+struct conditional {
+    using type = T;
+};
+
+template <typename T, typename F>
+struct conditional<false, T, F> {
+    using type = F;
+};
+
+template <typename A, typename B>
+struct pair {};
+
+template <typename K, typename V>
+struct traits {
+    using key_type = K;
+    using value_type = pair<const K, V>;
+};
+
+template <typename Traits>
+struct tree {
+    using key_type = typename Traits::key_type;
+    using value_type = typename Traits::value_type;
+    static constexpr bool is_set = same<key_type, value_type>;
+
+    struct const_iterator {};
+
+    struct mutable_iterator {};
+
+    using iterator = typename conditional<is_set, const_iterator, mutable_iterator>::type;
+};
+
+template <typename K, typename V>
+struct test {
+    // A map's keys are never its values: the mutable iterator.
+    using §(member_flag)input = typename tree<traits<K, V>>::iterator*;
+};
+
+}  // namespace member_flag

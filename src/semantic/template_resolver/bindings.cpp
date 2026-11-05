@@ -68,8 +68,9 @@ bool PseudoInstantiator::fill_defaults(clang::TemplateDecl* TD,
     out.reserve(list->size());
     for(auto [index, argument]: views::enumerate(arguments)) {
         /// A value written as is (`Vec<T, 3>`), or folded from an expression
-        /// with the expression's type; the specialization holds it converted
-        /// to the parameter's.
+        /// under the bindings, one a parameter forwards included (`_If<_Cond,
+        /// ...>`); the specialization holds it converted to the parameter's
+        /// type.
         auto* NTTP = static_cast<unsigned>(index) < list->size()
                          ? llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(
                                list->getParam(static_cast<unsigned>(index)))
@@ -78,9 +79,10 @@ bool PseudoInstantiator::fill_defaults(clang::TemplateDecl* TD,
         if(NTTP && !NTTP->isParameterPack()) {
             if(argument.getKind() == clang::TemplateArgument::Integral) {
                 value = argument.getAsIntegral();
-            } else if(argument.getKind() == clang::TemplateArgument::Expression &&
-                      !argument.getAsExpr()->isValueDependent()) {
-                value = argument.getAsExpr()->getIntegerConstantExpr(context);
+            } else if(argument.getKind() == clang::TemplateArgument::Expression) {
+                auto* expr = argument.getAsExpr();
+                value = expr->isValueDependent() ? evaluate(expr)
+                                                 : expr->getIntegerConstantExpr(context);
             }
         }
         if(auto converted =
@@ -191,6 +193,12 @@ Deduction PseudoInstantiator::deduce_template_arguments(clang::ClassTemplateDecl
     }
     auto* list = defined->getTemplateParameters();
     return push_deduction(CTD, list, list->getInjectedTemplateArgs(context), arguments, "primary");
+}
+
+Deduction PseudoInstantiator::deduce_template_arguments(clang::VarTemplateDecl* VTD,
+                                                        TemplateArguments arguments) {
+    auto* list = VTD->getTemplateParameters();
+    return push_deduction(VTD, list, list->getInjectedTemplateArgs(context), arguments, "primary");
 }
 
 Deduction PseudoInstantiator::deduce_template_arguments(

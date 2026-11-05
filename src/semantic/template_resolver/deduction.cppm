@@ -33,11 +33,19 @@ enum class Deduction : std::uint8_t {
 };
 
 /// How deduce_arguments treats what the match leaves open.
+///
+/// The arguments' own template parameters may stand for anything, and a
+/// match that holds only for some of what they stand for is undecided
+/// (Deduction::Unverified): two arguments for one parameter that may turn
+/// out the same type (`is_same<T, T>` against `<K, V>`), and a `bool` the
+/// pattern fixes against a value not known (`conditional<false, ...>`), half
+/// of what it may hold. A shape the pattern gives a type (`vector<bool>`
+/// against `vector<T>`), and one value of a wider type (`array<T, 0>`
+/// against `array<T, N>`), are special cases instead: they do not match,
+/// and the primary template stands for the rest.
 struct DeductionOptions {
     /// Value arguments that may hold any value — defaults that do not fold:
-    /// a value pattern meeting one is undecided (Deduction::Unverified).
-    /// Any other argument whose value is not known matches no value a
-    /// pattern fixes.
+    /// a value pattern meeting one is undecided whatever its type.
     llvm::ArrayRef<const clang::Expr*> open;
 
     /// Leave a parameter the match binds nothing to null rather than fail
@@ -66,6 +74,22 @@ Deduction deduce_arguments(clang::ASTContext& context,
                            llvm::ArrayRef<clang::TemplateArgument> arguments,
                            llvm::SmallVectorImpl<clang::TemplateArgument>& deduced,
                            const DeductionOptions& options = {});
+
+/// Whether `arguments` may name the explicit specialization whose arguments
+/// are `specialized` without certainly naming it: they match them but for
+/// what the match leaves undecided (see DeductionOptions), `__conditional<B>`
+/// with `B` not known and `__conditional<false>`.
+bool may_name(clang::ASTContext& context,
+              llvm::ArrayRef<clang::TemplateArgument> specialized,
+              llvm::ArrayRef<clang::TemplateArgument> arguments,
+              const DeductionOptions& options = {});
+
+/// Whether `lhs` and `rhs` are one type, by their shapes: none while the
+/// template parameters in them leave it open. A type never holds itself, so
+/// a parameter is never what a pointer, a function or a class template's
+/// specialization built on it is (`K` and `pair<const K, V>`); a dependent
+/// name may be anything, the parameter included.
+std::optional<bool> same_type(clang::ASTContext& context, clang::QualType lhs, clang::QualType rhs);
 
 /// The result of select_partial: a winner, or why there is none. Real
 /// instantiation diagnoses an ambiguity (no partial dominates every other
@@ -126,11 +150,12 @@ std::optional<llvm::APSInt>
                       llvm::function_ref<std::optional<llvm::APSInt>(const clang::Expr*)> value_of);
 
 /// What a standard type-category trait `expr` spells — `std::is_object_v<T>`,
-/// `std::is_object<T>::value` or `__is_object(T)` — says of its operand,
-/// `bound` giving the operand under the caller's bindings; none when it is
-/// no such trait, or the operand's shape leaves it open (a template
-/// parameter may become any type).
-std::optional<bool> type_trait(const clang::Expr* expr,
+/// `std::is_object<T>::value` or `__is_object(T)` — says of its operand, or
+/// `__is_same(T, U)` of its two, `bound` giving an operand under the
+/// caller's bindings; none when it is no such trait, or the operands'
+/// shapes leave it open (a template parameter may become any type).
+std::optional<bool> type_trait(clang::ASTContext& context,
+                               const clang::Expr* expr,
                                llvm::function_ref<clang::QualType(clang::QualType)> bound);
 
 /// If `expr` is a (possibly parenthesized/casted) reference to a non-type

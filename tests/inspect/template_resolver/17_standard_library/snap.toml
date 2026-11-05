@@ -18,3 +18,12 @@ type = "std::vector<V> &"
 
 [answers.standard_map_iterator.template_resolver]
 type = "std::vector<V> *"
+
+[answers.standard_enable_if.template_resolver]
+type = "T **"
+
+[answers.standard_same_value.template_resolver]
+type = "T **"
+
+[answers.standard_same_class.template_resolver]
+type = "T &"

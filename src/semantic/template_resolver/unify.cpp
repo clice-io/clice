@@ -114,14 +114,17 @@ class Unifier {
 public:
     using TemplateArguments = llvm::ArrayRef<clang::TemplateArgument>;
 
-    /// `open` are value arguments that may hold any value — defaults that
-    /// do not fold: a value pattern meeting one is undecided. Any other
-    /// argument whose value is not known matches no value a pattern fixes.
+    /// What the match leaves undecided is as DeductionOptions says, `open`
+    /// its unfolded defaults; unless `ordering`: the arguments are then
+    /// another pattern's, as partial ordering matches them, whose
+    /// parameters stand for unique types and values — two of them are
+    /// never one type, and one matches no value a pattern fixes.
     explicit Unifier(clang::ASTContext& context,
                      unsigned depth,
                      unsigned size,
-                     llvm::ArrayRef<const clang::Expr*> open = {}) :
-        context(context), depth(depth), bindings(size), open(open) {}
+                     llvm::ArrayRef<const clang::Expr*> open,
+                     bool ordering) :
+        context(context), depth(depth), bindings(size), open(open), ordering(ordering) {}
 
     /// Unify `patterns` (a partial specialization's argument pattern or a
     /// primary template's injected arguments) against `arguments`. On success,
@@ -146,10 +149,10 @@ public:
         return deferred_checks;
     }
 
-    /// Whether a value pattern met an open argument: the match then holds
-    /// or not once its value is known.
+    /// Whether the match holds for some of what the arguments' parameters
+    /// may stand for only.
     bool undecided() const {
-        return undecided_values;
+        return undecided_match;
     }
 
 private:
@@ -179,8 +182,9 @@ private:
     unsigned depth;
     llvm::SmallVector<clang::TemplateArgument, 4> bindings;
     llvm::ArrayRef<const clang::Expr*> open;
+    bool ordering;
     llvm::SmallVector<Deferred, 1> deferred_checks;
-    bool undecided_values = false;
+    bool undecided_match = false;
 
     /// Element-wise matching state for a structured pack expansion pattern:
     /// while `expanding`, pack parameters accumulate one element per matched
@@ -383,6 +387,98 @@ bool may_match(clang::ASTContext& context,
     return true;
 }
 
+namespace {
+
+bool holds(clang::QualType type, const clang::Type* parameter);
+
+/// Whether the canonical `type` is built on the canonical template
+/// parameter `parameter`: it is a pointer, reference, array, function or
+/// member pointer on what holds it, or a class template's specialization
+/// with it among its arguments. Another template's specialization may name
+/// an alias template (`TT<K>` with `TT` bound to one), and a dependent name
+/// anything.
+bool encloses(const clang::Type* type, const clang::Type* parameter) {
+    switch(type->getTypeClass()) {
+        case clang::Type::Pointer:
+        case clang::Type::LValueReference:
+        case clang::Type::RValueReference: {
+            return holds(type->getPointeeType(), parameter);
+        }
+        case clang::Type::ConstantArray:
+        case clang::Type::IncompleteArray:
+        case clang::Type::DependentSizedArray: {
+            return holds(llvm::cast<clang::ArrayType>(type)->getElementType(), parameter);
+        }
+        case clang::Type::MemberPointer: {
+            auto* pointer = llvm::cast<clang::MemberPointerType>(type);
+            auto qualifier = pointer->getQualifier();
+            return holds(pointer->getPointeeType(), parameter) ||
+                   (qualifier.getKind() == clang::NestedNameSpecifier::Kind::Type &&
+                    holds(clang::QualType(qualifier.getAsType(), 0), parameter));
+        }
+        case clang::Type::FunctionProto: {
+            auto* function = llvm::cast<clang::FunctionProtoType>(type);
+            return holds(function->getReturnType(), parameter) ||
+                   ranges::any_of(function->getParamTypes(),
+                                  [&](clang::QualType type) { return holds(type, parameter); });
+        }
+        case clang::Type::TemplateSpecialization: {
+            auto* specialization = llvm::cast<clang::TemplateSpecializationType>(type);
+            if(!llvm::isa_and_present<clang::ClassTemplateDecl>(
+                   specialization->getTemplateName().getAsTemplateDecl())) {
+                return false;
+            }
+            auto held = [&](const clang::TemplateArgument& argument) {
+                return argument.getKind() == clang::TemplateArgument::Type &&
+                       holds(argument.getAsType(), parameter);
+            };
+            return ranges::any_of(specialization->template_arguments(),
+                                  [&](const clang::TemplateArgument& argument) {
+                                      return argument.getKind() == clang::TemplateArgument::Pack
+                                                 ? ranges::any_of(argument.pack_elements(), held)
+                                                 : held(argument);
+                                  });
+        }
+        default: return false;
+    }
+}
+
+/// Whether `type` is `parameter`, qualified or not, or is built on it.
+bool holds(clang::QualType type, const clang::Type* parameter) {
+    auto* canonical = type.getCanonicalType().getTypePtr();
+    return canonical == parameter || encloses(canonical, parameter);
+}
+
+/// Whether two arguments for one parameter may turn out the same.
+bool may_be_same(clang::ASTContext& context,
+                 const clang::TemplateArgument& lhs,
+                 const clang::TemplateArgument& rhs) {
+    if(lhs.getKind() == clang::TemplateArgument::Type &&
+       rhs.getKind() == clang::TemplateArgument::Type) {
+        return same_type(context, lhs.getAsType(), rhs.getAsType()) != false;
+    }
+    return arguments_may_match(context, lhs, rhs);
+}
+
+}  // namespace
+
+std::optional<bool> same_type(clang::ASTContext& context,
+                              clang::QualType lhs,
+                              clang::QualType rhs) {
+    if(context.hasSameType(lhs, rhs)) {
+        return true;
+    }
+    auto built_on = [](clang::QualType outer, clang::QualType inner) {
+        auto* parameter = inner.getCanonicalType().getTypePtr();
+        return llvm::isa<clang::TemplateTypeParmType>(parameter) &&
+               encloses(outer.getCanonicalType().getTypePtr(), parameter);
+    };
+    if(!types_may_match(context, lhs, rhs) || built_on(lhs, rhs) || built_on(rhs, lhs)) {
+        return false;
+    }
+    return std::nullopt;
+}
+
 bool Unifier::equivalent(const clang::TemplateArgument& lhs,
                          const clang::TemplateArgument& rhs) const {
     if(context.getCanonicalTemplateArgument(lhs).structurallyEquals(
@@ -413,7 +509,11 @@ bool Unifier::bind(unsigned index, const clang::TemplateArgument& argument) {
     }
 
     if(!equivalent(existing, argument)) {
-        return false;
+        if(ordering || !may_be_same(context, existing, argument)) {
+            return false;
+        }
+        undecided_match = true;
+        return true;
     }
 
     /// Same argument bound twice; keep the more sugared spelling.
@@ -814,8 +914,9 @@ bool Unifier::unify(const clang::TemplateArgument& pattern,
             if(argument.getKind() == clang::TemplateArgument::Expression) {
                 auto expr = argument.getAsExpr();
                 if(expr->isValueDependent()) {
-                    bool undecided = ranges::contains(open, expr);
-                    undecided_values |= undecided;
+                    bool undecided = !ordering && (pattern.getIntegralType()->isBooleanType() ||
+                                                   ranges::contains(open, expr));
+                    undecided_match |= undecided;
                     return undecided;
                 }
                 if(context.hasSameType(pattern.getIntegralType(), expr->getType())) {
@@ -1072,7 +1173,7 @@ Deduction deduce_arguments(clang::ASTContext& context,
                            llvm::ArrayRef<clang::TemplateArgument> arguments,
                            llvm::SmallVectorImpl<clang::TemplateArgument>& deduced,
                            const DeductionOptions& options) {
-    Unifier unifier(context, params->getDepth(), params->size(), options.open);
+    Unifier unifier(context, params->getDepth(), params->size(), options.open, false);
     if(!unifier.unify(patterns, arguments)) {
         return Deduction::Failed;
     }
@@ -1105,7 +1206,7 @@ Deduction deduce_arguments(clang::ASTContext& context,
         return deduced[parameter->getIndex()].getAsType();
     };
     auto value_of = [&](const clang::Expr* expr) -> std::optional<llvm::APSInt> {
-        if(auto trait = type_trait(expr, bound)) {
+        if(auto trait = type_trait(context, expr, bound)) {
             return llvm::APSInt(llvm::APInt(1, *trait ? 1 : 0), /*isUnsigned=*/true);
         }
         auto NTTP = referenced_nttp(expr);
@@ -1145,6 +1246,16 @@ Deduction deduce_arguments(clang::ASTContext& context,
     return deduction;
 }
 
+bool may_name(clang::ASTContext& context,
+              llvm::ArrayRef<clang::TemplateArgument> specialized,
+              llvm::ArrayRef<clang::TemplateArgument> arguments,
+              const DeductionOptions& options) {
+    /// The arguments of an explicit specialization name no parameter to
+    /// bind.
+    Unifier unifier(context, ~0u, 0, options.open, false);
+    return unifier.unify(specialized, arguments) && unifier.undecided();
+}
+
 namespace {
 
 /// Partial ordering via symmetric deduction: `left` is more specialized than
@@ -1156,7 +1267,7 @@ bool more_specialized(clang::ASTContext& context, Partial* left, Partial* right)
     /// pattern fixes.
     auto matches = [&](Partial* pattern, Partial* argument) {
         auto params = pattern->getTemplateParameters();
-        Unifier unifier(context, params->getDepth(), params->size());
+        Unifier unifier(context, params->getDepth(), params->size(), {}, /*ordering=*/true);
         return unifier.unify(pattern->getTemplateArgs().asArray(),
                              argument->getTemplateArgs().asArray()) &&
                !unifier.undecided();

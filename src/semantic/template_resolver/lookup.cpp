@@ -331,28 +331,65 @@ PseudoInstantiator::lookup_result
                                            clang::DeclarationName name) {
     auto frames = stack.size();
     std::optional<Found> common;
-    for(auto& match: viable_partials(CTD, arguments)) {
-        std::optional<Found> here;
-        if(deduce_template_arguments(match.partial, arguments) != Deduction::Failed) {
-            if(auto members = lookup_in_record(match.partial, name); !members.empty()) {
-                here = found_by(members, frames);
-            }
+    /// `name` in `pattern`, its parameters bound: none when it leaves no
+    /// one answer — it finds what the others do not, or may have the name
+    /// without the lookup telling —, else what it finds, empty if certainly
+    /// nothing.
+    auto agrees = [&](clang::CXXRecordDecl* pattern) -> std::optional<lookup_result> {
+        bool outer = inconclusive;
+        inconclusive = false;
+        auto members = lookup_in_record(pattern, name);
+        bool unsure = inconclusive;
+        inconclusive = outer || unsure;
+        if(members.empty()) {
+            return unsure || has_dependent_base(pattern) ? std::nullopt : std::optional(members);
         }
-        stack.truncate(frames);
-        if(!here || (common && !same_found(*common, *here))) {
-            return lookup_result();
+        auto here = found_by(members, frames);
+        if(common && !same_found(*common, here)) {
+            return std::nullopt;
         }
         common = std::move(here);
+        return members;
+    };
+
+    clang::CXXRecordDecl* finding = nullptr;
+    auto consider = [&](clang::CXXRecordDecl* pattern) {
+        auto members = agrees(pattern);
+        stack.truncate(frames);
+        if(members && !members->empty() && !finding) {
+            finding = pattern;
+        }
+        return members.has_value();
+    };
+    for(auto& match: viable_partials(CTD, arguments)) {
+        if(deduce_template_arguments(match.partial, arguments) == Deduction::Failed ||
+           !consider(match.partial)) {
+            return lookup_result();
+        }
+    }
+    for(auto* specialization: undecided_specializations(CTD, arguments)) {
+        /// One declared and never defined cannot instantiate at all.
+        if(auto* definition = specialization->getDefinition();
+           definition && !consider(definition)) {
+            return lookup_result();
+        }
     }
     if(deduce_template_arguments(CTD, arguments) == Deduction::Failed) {
         return lookup_result();
     }
-    auto members = lookup_in_record(CTD->getTemplatedDecl(), name);
-    if(members.empty() || (common && !same_found(*common, found_by(members, frames)))) {
-        stack.truncate(frames);
+    auto members = agrees(CTD->getTemplatedDecl());
+    if(members && !members->empty()) {
+        return *members;
+    }
+    stack.truncate(frames);
+    if(!members || !finding) {
         return lookup_result();
     }
-    return members;
+    /// The frames of the lookup in a pattern that finds the name.
+    if(auto* partial = llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(finding)) {
+        deduce_template_arguments(partial, arguments);
+    }
+    return lookup_in_record(finding, name);
 }
 
 PseudoInstantiator::lookup_result PseudoInstantiator::lookup_member(clang::QualType object,
