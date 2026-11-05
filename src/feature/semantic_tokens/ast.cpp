@@ -495,7 +495,7 @@ private:
             return std::nullopt;
         }
         auto [file, offset] = unit.written_at(location);
-        if(file != unit.focus_file().file()) {
+        if(!unit.focus_file().contains(file)) {
             return std::nullopt;
         }
         auto spelled = semantics.spelled_tokens();

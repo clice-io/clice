@@ -1,0 +1,76 @@
+[compiles.outline]
+document_symbols = [
+    { name = "Forward", kind = "Class", at = "class ⟦Forward⟧;" },
+    { name = "offset", kind = "Function", at = "static int ⟦offset⟧() {" },
+    { name = "lib:other", kind = "Module", at = "module ⟦lib:other⟧;" },
+    { name = "thrice", kind = "Function", at = "int ⟦thrice⟧(int value) {" },
+]
+
+[compiles.tokens]
+semantic_tokens = [
+    { at = "⟦module⟧;", type = "keyword" },
+    { at = '⟦#include⟧ "legacy.h"', type = "directive" },
+    { at = '#include ⟦"legacy.h"⟧', type = "header" },
+    { at = "⟦class⟧ Forward;", type = "keyword" },
+    { at = "class ⟦Forward⟧;", type = "class", modifiers = ["declaration", "global"] },
+    { at = "⟦static⟧ int offset() {", type = "keyword" },
+    { at = "static ⟦int⟧ offset() {", type = "primitive" },
+    { at = "static int ⟦offset⟧() {", type = "function", modifiers = ["definition", "internal"] },
+    { at = "⟦return⟧ 1;", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦1⟧;", type = "number" },
+    { at = "⟦module⟧ lib:other;", type = "keyword" },
+    { at = "module ⟦lib⟧:other;", type = "module", modifiers = ["definition"] },
+    { at = "module lib:⟦other⟧;", type = "module", modifiers = ["definition"] },
+    { at = "⟦int⟧ thrice(int value) {", type = "primitive" },
+    { at = "int ⟦thrice⟧(int value) {", type = "function", modifiers = ["definition", "global"] },
+    { at = "int thrice(⟦int⟧ value) {", type = "primitive" },
+    { at = "int thrice(int ⟦value⟧) {", type = "parameter", modifiers = ["definition", "local"] },
+    { at = "⟦return⟧ Legacy{value}.value * 3 + offset();", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦Legacy⟧{value}.value * 3 + offset();", type = "struct", modifiers = ["global"] },
+    { at = "return Legacy{⟦value⟧}.value * 3 + offset();", type = "parameter", modifiers = ["local"] },
+    { at = "return Legacy{value}.⟦value⟧ * 3 + offset();", type = "field", modifiers = ["member"] },
+    { at = "return Legacy{value}.value ⟦*⟧ 3 + offset();", type = "operator" },
+    { at = "return Legacy{value}.value * ⟦3⟧ + offset();", type = "number" },
+    { at = "return Legacy{value}.value * 3 ⟦+⟧ offset();", type = "operator" },
+    { at = "return Legacy{value}.value * 3 + ⟦offset⟧();", type = "function", modifiers = ["internal"] },
+]
+
+[compiles.definition]
+definition = ["static int ⟦offset⟧() {"]
+
+[compiles.hover.hover]
+markdown = '''
+**class** `Forward`
+
+```cpp
+class Forward
+```
+'''
+range = "class ⟦Forward⟧;"
+
+[compiles.symbols]
+workspace_symbols = [
+    { name = "Forward", kind = "Class", at = "other.cppm │ class ⟦Forward⟧;" },
+]
+
+[edits.error]
+errors = [
+    {
+        at = "return ⟦missing⟧;",
+        severity = "error",
+        message = "use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]
+
+[edits.typing]
+errors = [
+    {
+        at = '#include ⟦"leg⟧',
+        severity = "error",
+        message = 'expected "FILENAME" or <FILENAME>',
+        source = "clang",
+        code = "err_pp_expects_filename",
+    },
+]

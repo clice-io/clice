@@ -285,6 +285,11 @@ public:
         if(instantiation_entries) {
             return &(*instantiation_entries)[fid];
         }
+        // A global module fragment's declarations lie in the PCH's copy of
+        // the focus file, at the offsets the buffer has.
+        if(unit.focus_file().contains(fid)) {
+            fid = unit.focus_file().file();
+        }
         if(focus_only && fid != unit.focus_file().file() && !module_files.contains(fid)) {
             return nullptr;
         }

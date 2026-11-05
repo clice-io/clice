@@ -281,9 +281,11 @@ struct SemanticsOptions {
 /// the AST itself remains the single source of truth.
 ///
 /// The map deliberately covers only what the live AST covers. Content the
-/// compile consumed as immutable state (the preamble under a PCH) is served
-/// by results precomputed at PCH build time and merged per feature. Do not
-/// try to reconstruct it here: serialized entries cannot become AST nodes.
+/// compile consumed as immutable state (the preamble's directives under a
+/// PCH) is served by results precomputed at PCH build time and merged per
+/// feature. Do not try to reconstruct it here: serialized entries cannot
+/// become AST nodes. A global module fragment's declarations, which the
+/// compile reads back from its PCH, are AST nodes of the file's own.
 class Semantics {
 public:
     constexpr static std::uint32_t invalid = static_cast<std::uint32_t>(-1);

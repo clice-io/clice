@@ -502,6 +502,25 @@ public:
     // noload_decls leaves a preamble's declarations on disk.
     void HandleTranslationUnit(clang::ASTContext& context) final {
         if(unit.params.kind == CompilationKind::Content) {
+            // The declarations a global module fragment writes itself are in
+            // the preamble, which the PCH hands to no consumer: read back,
+            // they come first. The reader knows a file's declarations once
+            // the file's entry is loaded.
+            if(auto preamble = unit.SM().getPreambleFileID(); preamble.isValid()) {
+                auto parsed = unit.collected_decls.size();
+                unit.SM().getSLocEntry(preamble);
+                llvm::SmallVector<clang::Decl*> own;
+                context.getExternalSource()->FindFileRegionDecls(preamble,
+                                                                 0,
+                                                                 unit.params.input.pch.second,
+                                                                 own);
+                for(auto* decl: own) {
+                    if(decl->getLexicalDeclContext()->isTranslationUnit()) {
+                        collect_decl(decl);
+                    }
+                }
+                ranges::rotate(unit.collected_decls, unit.collected_decls.begin() + parsed);
+            }
             for(auto* decl: context.getTranslationUnitDecl()->noload_decls()) {
                 if(llvm::isa<clang::ExplicitInstantiationDecl>(decl)) {
                     collect_decl(decl);
@@ -955,7 +974,9 @@ CompilationStatus CompilationUnit::run() {
     }
 
     if(collected_tokens) {
-        collected_tokens->finish(focus_file().lexical().tokens);
+        collected_tokens->finish(focus_file().lexical().tokens,
+                                 params.input.pch.second,
+                                 params.preamble_inactive_regions);
     }
 
     run_tidy();

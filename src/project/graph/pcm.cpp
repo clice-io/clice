@@ -528,6 +528,44 @@ async::task<Imports> Project::scan_imports(Fid path_id,
     co_return imports;
 }
 
+/// The internal partitions `unit` imports, into `imported`.
+static async::task<> add_imported_partitions(Project& project,
+                                             Fid unit,
+                                             llvm::DenseSet<Fid>& imported) {
+    auto resolution = project.resolve_command(unit);
+    auto imports = co_await project.scan_imports(unit, resolution, std::nullopt);
+    for(auto module: imports.resolved()) {
+        if(project.dep_graph.internal_partition(module)) {
+            imported.insert(module);
+        }
+    }
+}
+
+async::task<llvm::DenseSet<Fid>> Project::imported_partitions() {
+    // A partition is imported by the units of its own module alone.
+    llvm::StringSet<> partitioned;
+    for(auto& entry: dep_graph.modules()) {
+        if(ranges::any_of(entry.getValue(),
+                          [&](Fid fid) { return dep_graph.internal_partition(fid); })) {
+            partitioned.insert(entry.getKey().split(':').first);
+        }
+    }
+    llvm::DenseSet<Fid> imported;
+    async::task_group<> scans;
+    for(auto unit: members()) {
+        auto module = dep_graph.module_of(unit);
+        if(auto* scan = dep_graph.scan_of(file_table, unit);
+           module.empty() && scan && scan->is_implementation_unit()) {
+            module = scan->module_name;
+        }
+        if(!module.empty() && partitioned.contains(module.split(':').first)) {
+            scans.spawn(add_imported_partitions(*this, unit, imported));
+        }
+    }
+    co_await scans.join();
+    co_return imported;
+}
+
 llvm::SmallVector<NodeId> Project::provider_appeared(llvm::StringRef name) {
     return graph.invalidate(unresolved_import(name));
 }

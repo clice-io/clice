@@ -36,7 +36,11 @@ public:
 
     /// Ends the collection after the parse and maps the stream onto
     /// `scanned`, the focus file's lexical scan, which outlives the map.
-    void finish(llvm::ArrayRef<Token> scanned);
+    /// The text before `preamble` a PCH parsed, its regions `inactive`
+    /// (begin/end offset pairs) left out.
+    void finish(llvm::ArrayRef<Token> scanned,
+                std::uint32_t preamble,
+                llvm::ArrayRef<std::uint32_t> inactive);
 
     /// The focus file's spelled tokens, its lexical scan's: comments and
     /// directive ends among them, the whole file under a preamble PCH too.
@@ -45,9 +49,9 @@ public:
     }
 
     /// Per spelled token, whether it was preprocessed away to nothing: a
-    /// directive, a disabled region, the preamble under a PCH, a macro
-    /// invocation that expanded to nothing. A comment or a directive end
-    /// shares the flag of the token before it.
+    /// directive, a disabled region, a macro invocation that expanded to
+    /// nothing. A comment or a directive end shares the flag of the token
+    /// before it.
     llvm::ArrayRef<bool> preprocessed_away() const {
         return away;
     }

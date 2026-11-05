@@ -381,7 +381,9 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     // being typed ends before its unfinished directive: the finished part
     // keeps its PCH — the key of the one before, when the directive goes at
     // the end of the block — and the unfinished one parses with the body,
-    // which reports its own error.
+    // which reports its own error. A global module fragment declaring
+    // anything itself is not cut so: the module declaration would follow a
+    // declaration of the body.
     auto bound = preamble_bound(text);
     bool partial = false;
     if(point) {
@@ -389,7 +391,9 @@ PreamblePCH Project::preamble_pch(Fid path_id,
         partial = before < bound;
         bound = before;
     }
-    bound = synthesized && !synthesized->open.empty() ? 0 : finished_preamble_bound(text, bound);
+    auto finished = finished_preamble_bound(text, bound);
+    bool cut_fragment = finished < bound && preamble_declares(text, bound);
+    bound = (synthesized && !synthesized->open.empty()) || cut_fragment ? 0 : finished;
     if(bound == 0 && !synthesized && !forced) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts end up here too: they borrow
@@ -443,9 +447,10 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     // files with identical preambles share one PCH — but its DIRECTORY (and
     // the working directory) must stay in: quote includes and relative paths
     // resolve against them, so equal preamble text in different directories
-    // can mean different content.  A preamble defining or testing a macro
-    // keeps the path in too: the PCH places the macro and its uses in the
-    // file that built it, where a file sharing it would find its own.  The
+    // can mean different content.  A preamble defining or testing a macro,
+    // or declaring in a global module fragment, keeps the path in too: the
+    // PCH places the macro and its uses, or the declaration, in the file
+    // that built it, where a file sharing it would find its own.  The
     // clang version guards against reusing
     // blobs a newer bundled clang would reject, and the database key keeps
     // the blob with the index database that records its dependencies:
@@ -458,7 +463,9 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     if(auto it = pchs.find(base); it != pchs.end()) {
         base_blob = it->second.blob;
     }
-    auto own_path = preamble_uses_macros(text, bound) ? llvm::StringRef(path) : llvm::StringRef();
+    auto own_path = preamble_uses_macros(text, bound) || preamble_declares(text, bound)
+                        ? llvm::StringRef(path)
+                        : llvm::StringRef();
     bool skip_bodies = settings.project.skip_header_bodies;
     bool modular = imports.modular();
     auto pch_key = cache_key({clang::getClangFullVersion(),

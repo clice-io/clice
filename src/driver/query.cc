@@ -419,12 +419,20 @@ int run(ImpactAnalysis& question) {
                     });
 }
 
+async::task<> read_imported_partitions(Project& project, llvm::DenseSet<Fid>& imported) {
+    imported = co_await project.imported_partitions();
+}
+
 int run(Counterparts& question) {
     return ask_file(
         question,
         /*with_build=*/true,
         [](Project& project, feature::query::Context& ctx, const Spelling& path) {
-            return feature::counterparts(ctx, project.dep_graph, project.members(), path);
+            llvm::DenseSet<Fid> imported;
+            async::event_loop loop;
+            loop.schedule(read_imported_partitions(project, imported));
+            loop.run();
+            return feature::counterparts(ctx, project.dep_graph, project.members(), imported, path);
         });
 }
 

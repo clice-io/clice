@@ -1,0 +1,12 @@
+[answers."detail.cpp".counterparts]
+preferred = "shapes.cpp"
+candidates = [
+    { path = "shapes.cpp", reasons = ["defines 1 of 1 declaration"] },
+]
+
+[answers."shapes.cpp".counterparts]
+preferred = "shapes.cppm"
+candidates = [
+    { path = "shapes.cppm", reasons = ["declares 1 of 2 definitions", "same name", "interface of module shapes"] },
+    { path = "detail.cpp", reasons = ["declares 1 of 2 definitions"] },
+]

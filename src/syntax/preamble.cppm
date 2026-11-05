@@ -4,9 +4,9 @@ import :support.prelude;
 
 namespace clice {
 
-/// The end of the preamble: the directives, and the global module
-/// fragment's `module;`, that open the file, those starting before `limit`;
-/// none for a global module fragment declaring anything itself.
+/// The end of the preamble: the directives that open the file, and in a
+/// module unit its whole global module fragment, the lines starting before
+/// `limit`.
 std::uint32_t preamble_bound(llvm::StringRef content,
                              std::uint32_t limit = std::numeric_limits<std::uint32_t>::max());
 
@@ -20,6 +20,10 @@ std::uint32_t finished_preamble_bound(llvm::StringRef content, std::uint32_t bou
 /// tests a macro: the macro and its uses then sit at positions of the file
 /// itself.
 bool preamble_uses_macros(llvm::StringRef content, std::uint32_t bound);
+
+/// Whether the preamble up to `bound` holds a declaration of the file's
+/// own, written in its global module fragment.
+bool preamble_declares(llvm::StringRef content, std::uint32_t bound);
 
 /// Whether the text up to `bound` guards itself with `#pragma once`: a
 /// compile enters it once, so its other includes find it skipped.

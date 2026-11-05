@@ -11,43 +11,61 @@ std::uint32_t preamble_bound(llvm::StringRef content, std::uint32_t limit) {
     auto spelled = [&](const Token& token, llvm::StringRef word) {
         return token.is_identifier() && token.text(content) == word;
     };
-    std::uint32_t bound = 0;
+    // A global module fragment belongs to the preamble up to the module
+    // declaration, declarations written in it too: clang accepts the module
+    // declaration only as the first declaration it parses itself, those of
+    // the PCH not counting. A fragment cut at `limit` before a declaration
+    // of its own leaves that declaration to the body, so the file parses
+    // without a PCH; one reaching no module declaration ends at its
+    // directives, as any preamble does.
+    std::uint32_t directives = 0;
+    std::uint32_t before_limit = 0;
     bool fragment = false;
+    bool code = false;
+    bool code_past_limit = false;
     for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
         if(!token.is_at_start_of_line) {
             continue;
         }
-        // A global module fragment is read past `limit` for a declaration
-        // of its own, which the scan must not leave to the body.
         bool past_limit = token.range.begin >= limit;
         if(past_limit && !fragment) {
             break;
         }
+        bool line_code = false;
+        std::uint32_t end = 0;
         if(token.kind == clang::tok::hash) {
             /// For preprocessor directive, consume the whole directive: the
             /// bound is the end of the token before the eod.
             lexer.advance_until(clang::tok::eod);
-            if(!past_limit) {
-                bound = lexer.last().range.end;
-            }
+            end = lexer.last().range.end;
         } else if(spelled(token, "module") && lexer.next().kind == clang::tok::semi) {
-            /// `module;` opens the global module fragment, which belongs
-            /// to the preamble; any other module keyword ends it.
             fragment = true;
-            bound = lexer.advance().range.end;
-        } else if(fragment && !(spelled(token, "export") ? spelled(lexer.next(), "module")
-                                                         : spelled(token, "module"))) {
-            // A declaration the fragment writes itself, not through a
-            // header: the module declaration past the preamble would follow
-            // it, where clang accepts one only as the first declaration it
-            // parses, and a PCH holding it would hide it from the features
-            // reading the parse. The file goes without a preamble.
-            return 0;
-        } else {
+            end = lexer.advance().range.end;
+        } else if(!fragment) {
             break;
+        } else if(spelled(token, "export") ? spelled(lexer.next(), "module")
+                                           : spelled(token, "module")) {
+            return code_past_limit ? 0 : before_limit;
+        } else {
+            line_code = true;
+            end = token.range.end;
+            while(!lexer.next().is_eof() && !lexer.next().is_at_start_of_line) {
+                if(auto next = lexer.advance(); !next.is_eod()) {
+                    end = next.range.end;
+                }
+            }
+        }
+        if(past_limit) {
+            code_past_limit |= line_code;
+            continue;
+        }
+        code |= line_code;
+        before_limit = end;
+        if(!code) {
+            directives = end;
         }
     }
-    return bound;
+    return directives;
 }
 
 std::uint32_t finished_preamble_bound(llvm::StringRef content, std::uint32_t bound) {
@@ -126,6 +144,22 @@ bool preamble_uses_macros(llvm::StringRef content, std::uint32_t bound) {
             return true;
         }
     }
+}
+
+bool preamble_declares(llvm::StringRef content, std::uint32_t bound) {
+    Lexer lexer(content, dialect_of());
+    for(auto token = lexer.advance(); !token.is_eof() && token.range.begin < bound;
+        token = lexer.advance()) {
+        if(!token.is_at_start_of_line || token.kind == clang::tok::hash) {
+            continue;
+        }
+        bool opens_fragment = token.is_identifier() && token.text(content) == "module" &&
+                              lexer.next().kind == clang::tok::semi;
+        if(!opens_fragment) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool has_pragma_once(llvm::StringRef content, std::uint32_t bound) {
