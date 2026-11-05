@@ -624,6 +624,7 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
         pad(),
         clang::QualType(DNT, 0).getAsString());
     indent += 1;
+    auto judged = own_conclusion();
 
     // Check cache.
     if(pack_narrowing == 0) {
@@ -641,6 +642,7 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
     // Cycle detection: if we're already resolving this DNT, bail out.
     if(!resolving.insert(DNT).second) {
         LOG_DEBUG("{}→ <cycle detected, returning original>", pad());
+        inconclusive = true;
         indent -= 1;
         return clang::QualType(DNT, 0);
     }
@@ -723,6 +725,7 @@ clang::QualType
         clang::QualType(TST, 0).getAsString());
     indent += 1;
 
+    auto judged = own_conclusion();
     auto& template_name = *TST->getTemplateName().getAsDependentTemplateName();
     /// Pack-narrowed resolutions depend on context the node pointer does
     /// not capture; they may not be cached.

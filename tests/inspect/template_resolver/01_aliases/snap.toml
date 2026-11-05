@@ -84,3 +84,7 @@ declarations = ["using ⟦type⟧ = T*; @+5"]
 [answers.redecl_alias_forward.template_resolver]
 type = "X *"
 declarations = ["using ⟦type⟧ = T*; @+5"]
+
+[answers.plain_variable.template_resolver]
+type = "T *"
+declarations = ["using ⟦type⟧ = T*; @-6"]

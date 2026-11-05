@@ -399,3 +399,29 @@ struct test {
 };
 
 }  // namespace long_call_chain
+
+namespace deduced_reference_binding {
+
+struct Good {};
+
+struct Bad {};
+
+template <typename U>
+Bad choose(const U&&);
+
+Good choose(long);
+
+template <typename T>
+struct box {
+    int value;
+};
+
+template <typename T>
+struct test {
+    box<T> held;
+    // `const U&&` deduces to `const int&&`, which takes no lvalue: `choose(long)` is called.
+    using §(deduced_reference_binding)input =
+        decltype(::deduced_reference_binding::choose(held.value))*;
+};
+
+}  // namespace deduced_reference_binding

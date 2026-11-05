@@ -81,9 +81,25 @@ std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr
         return VTD ? value_of(VTD, ULE->template_arguments()) : std::nullopt;
     }
 
+    auto judged = own_conclusion();
+    auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(expr);
+    std::optional<std::pair<const void*, void*>> key;
+    clang::QualType scope;
+    if(DSDRE && DSDRE->getQualifier().getKind() == clang::NestedNameSpecifier::Kind::Type &&
+       pack_narrowing == 0) {
+        scope = resolve_object(clang::QualType(DSDRE->getQualifier().getAsType(), 0));
+        key.emplace(scope.getCanonicalType().getAsOpaquePtr(),
+                    DSDRE->getDeclName().getAsOpaquePtr());
+        if(auto known = member_values.find(*key); known != member_values.end()) {
+            return known->second;
+        }
+    }
+
     auto frames = stack.size();
     const clang::Decl* decl = nullptr;
-    if(auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(expr)) {
+    if(key) {
+        decl = preferred(lookup(scope, DSDRE->getDeclName()));
+    } else if(DSDRE) {
         decl = preferred(lookup(DSDRE->getQualifier(), DSDRE->getDeclName()));
     } else if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(expr)) {
         decl = DRE->getDecl();
@@ -102,6 +118,9 @@ std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr
         }
     }
     stack.truncate(frames);
+    if(key && !inconclusive) {
+        member_values.try_emplace(*key, value);
+    }
     return value;
 }
 

@@ -342,7 +342,9 @@ std::optional<codec::raw_value> run_template_resolver(const FeatureParams& param
     } else if(const auto* alias = node->get<clang::TypedefNameDecl>()) {
         resolve(alias->getUnderlyingType());
     } else if(const auto* var = node->get<clang::VarDecl>()) {
-        if(auto deduced = resolver.deduce(var); !deduced.isNull()) {
+        if(!var->getType()->getContainedAutoType()) {
+            resolve(var->getType());
+        } else if(auto deduced = resolver.deduce(var); !deduced.isNull()) {
             out.type = deduced.getAsString(unit.context().getPrintingPolicy());
         }
     } else if(const auto* expr = node->get<clang::Expr>()) {

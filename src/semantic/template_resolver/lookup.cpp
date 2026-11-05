@@ -336,13 +336,11 @@ PseudoInstantiator::lookup_result
     /// without the lookup telling —, else what it finds, empty if certainly
     /// nothing.
     auto agrees = [&](clang::CXXRecordDecl* pattern) -> std::optional<lookup_result> {
-        bool outer = inconclusive;
-        inconclusive = false;
+        auto judged = own_conclusion();
         auto members = lookup_in_record(pattern, name);
-        bool unsure = inconclusive;
-        inconclusive = outer || unsure;
         if(members.empty()) {
-            return unsure || has_dependent_base(pattern) ? std::nullopt : std::optional(members);
+            return inconclusive || has_dependent_base(pattern) ? std::nullopt
+                                                               : std::optional(members);
         }
         auto here = found_by(members, frames);
         if(common && !same_found(*common, here)) {

@@ -294,6 +294,9 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
     /// deduction gives them; an argument the C-style ellipsis takes is the
     /// worst match there is.
     using Ranks = llvm::SmallVector<unsigned, 4>;
+    /// Those an argument cannot initialize their parameter with once
+    /// deduction made it concrete: `const U&&` takes no lvalue.
+    llvm::SmallPtrSet<const clang::NamedDecl*, 4> unviable;
     auto exact = [&](const clang::NamedDecl* decl) -> std::optional<Ranks> {
         auto* FD = as_function(decl);
         if(!FD) {
@@ -325,6 +328,10 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
             if(type.isNull() || type->isDependentType()) {
                 return std::nullopt;
             }
+            if(never_initializes(context, argument.type, argument.lvalue, type)) {
+                unviable.insert(decl);
+                return Ranks{};
+            }
             auto taken = rank(type, argument.type);
             if(!taken) {
                 return Ranks{};
@@ -341,14 +348,18 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
         Ranks ranks;
     };
     llvm::SmallVector<Exact, 4> exacts;
+    bool waits = false;
     for(auto* candidate: candidates) {
         auto taken = exact(candidate);
-        if(!taken) {
-            return;
-        }
-        if(taken->size() == arguments.size() && !(taken->empty() && !arguments.empty())) {
+        waits |= !taken;
+        if(taken && taken->size() == arguments.size() && !(taken->empty() && !arguments.empty())) {
             exacts.push_back({candidate, std::move(*taken)});
         }
+    }
+    llvm::erase_if(candidates,
+                   [&](const clang::NamedDecl* decl) { return unviable.contains(decl); });
+    if(waits) {
+        return;
     }
     /// One no worse for any argument and better for some is better.
     auto better = [](const Ranks& lhs, const Ranks& rhs) {

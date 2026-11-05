@@ -739,7 +739,8 @@ private:
     /// the only such, or the only such that is no template specialization:
     /// overload resolution prefers it to every candidate that needs a
     /// conversion, or the ellipsis. A parameter that stays dependent leaves
-    /// the set as it is.
+    /// the rest of the set as it is; one deduction makes concrete drops its
+    /// candidate when the argument cannot initialize it.
     void prefer_exact(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
                       llvm::ArrayRef<CallArgument> arguments,
                       bool member_call);
@@ -770,6 +771,13 @@ private:
         return std::string(indent * 2, ' ');
     }
 
+    /// Clear `inconclusive` for the work up to the end of the scope, and
+    /// merge it back with what came before then.
+    auto own_conclusion() {
+        return llvm::make_scope_exit(
+            [this, outer = std::exchange(inconclusive, false)] { inconclusive |= outer; });
+    }
+
 private:
     clang::ASTContext& context;
 
@@ -787,6 +795,14 @@ private:
 
     llvm::SmallPtrSet<const clang::VarDecl*, 4> deducing;
 
+    /// What the dependent members this query read (`Trait<T>::value`) fold
+    /// to, by their class, resolved, and their name: every member type of
+    /// `allocator_traits<A>` reads `_Is_default_allocator<A>::value`. The
+    /// class is keyed canonically, as the sugar of one `A` differs by the
+    /// path that reached it; what parameters it still names are unbound
+    /// alike. Only a conclusive answer is kept.
+    llvm::DenseMap<std::pair<const void*, void*>, std::optional<llvm::APSInt>> member_values;
+
     /// The defaults of value parameters that did not fold, which may hold
     /// any value (deduce_arguments).
     llvm::SmallSetVector<const clang::Expr*, 4> open_defaults;
@@ -803,13 +819,15 @@ private:
     /// one element; node-pointer-keyed caches are bypassed for the duration.
     unsigned pack_narrowing = 0;
 
-    /// Sticky: some answer in this query came back empty or partial because
-    /// a lookup was already in progress (a recursive chain such as
-    /// `callback_traits<F> : callback_traits<decltype(&F::operator())>`) or
-    /// a rewrite hit the depth or step limit, not because what it looked for
-    /// is absent. Such an answer is not conclusive: it never enters the
-    /// unit-wide cache — a later query with a fresh budget could still
-    /// resolve it — and never proves a member absent.
+    /// Some answer came back empty or partial because a lookup was already
+    /// in progress (a recursive chain such as `callback_traits<F> :
+    /// callback_traits<decltype(&F::operator())>`) or a rewrite hit the
+    /// depth or step limit, not because what it looked for is absent. Such
+    /// an answer is not conclusive: it never enters the unit-wide cache — a
+    /// later query with a fresh budget could still resolve it — and never
+    /// proves a member absent. A resolution judges its own work
+    /// (own_conclusion), so one that came before it in the query does not
+    /// keep it out of the cache.
     bool inconclusive = false;
 
     /// Hard ceiling on rewrite steps per query; bounds the total work

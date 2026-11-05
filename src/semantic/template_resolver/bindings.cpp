@@ -67,10 +67,11 @@ bool PseudoInstantiator::fill_defaults(clang::TemplateDecl* TD,
     auto list = TD->getTemplateParameters();
     out.reserve(list->size());
     for(auto [index, argument]: views::enumerate(arguments)) {
-        /// A value written as is (`Vec<T, 3>`), or folded from an expression
-        /// under the bindings, one a parameter forwards included (`_If<_Cond,
-        /// ...>`); the specialization holds it converted to the parameter's
-        /// type.
+        /// A value written as is (`Vec<T, 3>`), or folded from an expression:
+        /// a constant one, or under the bindings one whose type waits for
+        /// conversion to the parameter's (`is_same_v<T, U>`), which rewriting
+        /// the arguments leaves to here; the specialization holds it
+        /// converted to the parameter's type.
         auto* NTTP = static_cast<unsigned>(index) < list->size()
                          ? llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(
                                list->getParam(static_cast<unsigned>(index)))
@@ -79,10 +80,13 @@ bool PseudoInstantiator::fill_defaults(clang::TemplateDecl* TD,
         if(NTTP && !NTTP->isParameterPack()) {
             if(argument.getKind() == clang::TemplateArgument::Integral) {
                 value = argument.getAsIntegral();
-            } else if(argument.getKind() == clang::TemplateArgument::Expression) {
-                auto* expr = argument.getAsExpr();
-                value = expr->isValueDependent() ? evaluate(expr)
-                                                 : expr->getIntegerConstantExpr(context);
+            } else if(auto* expr = argument.getKind() == clang::TemplateArgument::Expression
+                                       ? argument.getAsExpr()
+                                       : nullptr;
+                      expr && !expr->isValueDependent()) {
+                value = expr->getIntegerConstantExpr(context);
+            } else if(expr && expr->getType()->isDependentType()) {
+                value = evaluate(expr);
             }
         }
         if(auto converted =

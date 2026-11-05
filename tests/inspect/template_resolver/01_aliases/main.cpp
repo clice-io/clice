@@ -395,3 +395,18 @@ struct A {
 };
 
 }  // namespace redecl_alias_forward
+
+namespace plain_variable {
+
+template <typename T>
+struct holder {
+    using type = T*;
+};
+
+template <typename T>
+void use() {
+    // A variable without `auto` shows its declared type, resolved.
+    typename holder<T>::type §(plain_variable)value = nullptr;
+}
+
+}  // namespace plain_variable

@@ -338,15 +338,10 @@ bool PseudoInstantiator::scope_lacks(clang::NestedNameSpecifier scope,
 
     auto stack_size = stack.size();
 
-    /// The flag is save/reset/restored rather than just read: `scope_lacks`
-    /// reenters itself through lookup's partial probing, and a nested clean
-    /// probe must not wash out what an in-flight outer one observed.
-    /// Restoring with `saved || inconclusive` propagates it outwards, so
-    /// every enclosing probe also stays Unknown. The reset sits before
-    /// `rewrite_specifier` because resolving the scope prefix can make the
-    /// probe inconclusive too.
-    bool saved = inconclusive;
-    inconclusive = false;
+    /// The probe judges its own work: `scope_lacks` reenters itself through
+    /// lookup's partial probing, and what an enclosing probe observed stays
+    /// with it. Resolving the scope prefix is part of that work.
+    auto judged = own_conclusion();
 
     auto resolved_scope = rewrite_specifier(scope, Policy::Resolve);
 
@@ -386,13 +381,8 @@ bool PseudoInstantiator::scope_lacks(clang::NestedNameSpecifier scope,
         }
     }
 
-    if(inconclusive) {
-        lacks = false;
-    }
-    inconclusive = saved || inconclusive;
-
     stack.truncate(stack_size);
-    return lacks;
+    return lacks && !inconclusive;
 }
 
 }  // namespace clice::types
