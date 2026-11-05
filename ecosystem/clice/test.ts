@@ -8,5 +8,11 @@ regression({
             kind: "compile",
             detail: /no matching conversion for functional-style cast from 'const std::string_view'/,
         },
+        {
+            issue: "11-04#1",
+            why: "the same, where clice::version is formatted: the std module's formatter takes no std::string_view of the fragment's",
+            kind: "compile",
+            detail: /no member named 'parse' in 'std::(?:__1::)?formatter<std::(?:__1::)?string_view>'/,
+        },
     ],
 });
