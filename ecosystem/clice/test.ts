@@ -10,7 +10,7 @@ regression({
         },
         {
             issue: "11-04#1",
-            why: "the same, where clice::version is formatted: the std module's formatter takes no std::string_view of the fragment's",
+            why: "the same, where clice::version is formatted: the std module's formatter takes no std::string_view the fragment's <string_view> declares",
             kind: "compile",
             detail: /no member named 'parse' in 'std::(?:__1::)?formatter<std::(?:__1::)?string_view>'/,
         },
