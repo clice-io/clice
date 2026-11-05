@@ -159,6 +159,9 @@ struct CallArgument {
     clang::QualType type;
 
     bool lvalue;
+
+    /// The argument as written, when the call spells it.
+    const clang::Expr* expr = nullptr;
 };
 
 /// The functions a dependent call may call.

@@ -37,7 +37,9 @@ bool arity_viable(const clang::FunctionDecl* FD, unsigned count, bool member_cal
 
 /// Whether every one of `arguments`, resolved, may initialize its
 /// parameter of `FD`: none certain to fail (never_initializes), matched by
-/// position up to a parameter pack.
+/// position up to a parameter pack. An argument clang already typed is
+/// checked as written instead (accepts), where a null pointer constant, a
+/// string literal or a braced list shows.
 bool may_take(const clang::FunctionDecl* FD,
               llvm::ArrayRef<CallArgument> arguments,
               bool member_call) {
@@ -45,6 +47,10 @@ bool may_take(const clang::FunctionDecl* FD,
     for(auto [parameter, argument]: views::zip(parameters, arguments)) {
         if(parameter->isParameterPack()) {
             break;
+        }
+        if(argument.expr && (!argument.expr->isTypeDependent() ||
+                             llvm::isa<clang::InitListExpr>(argument.expr->IgnoreParens()))) {
+            continue;
         }
         if(never_initializes(FD->getASTContext(),
                              argument.type.getNonReferenceType(),
@@ -429,7 +435,7 @@ std::optional<llvm::SmallVector<CallArgument, 4>>
         if(type.isNull()) {
             return std::nullopt;
         }
-        passed.push_back({.type = type, .lvalue = !rvalue(argument)});
+        passed.push_back({.type = type, .lvalue = !rvalue(argument), .expr = argument});
     }
     return passed;
 }
