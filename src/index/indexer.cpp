@@ -302,6 +302,7 @@ public:
         known_variants(options.known_variants),
         resolver(unit.context(), {.only_instantiation = false}), readable(unit.context(), {}),
         known_instantiations(options.known_instantiations),
+        shared_sections(options.shared_sections),
         standard_library(options.standard_library_instantiations) {
         for(auto& known: options.known_identities) {
             known_variants_at.try_emplace(known.identity, known.variant);
@@ -2282,13 +2283,30 @@ public:
                 }
             }
         }
+        // A header the shared header's PCH held, and a file it entered, is
+        // what the shared header's index made of it.
+        if(auto* shared = unit.shared_header(); shared && !unit.grafted_includes().empty()) {
+            llvm::StringMap<std::uint32_t> path_ids_of;
+            for(auto [path_id, path]: views::enumerate(tree.paths)) {
+                path_ids_of.try_emplace(path, static_cast<std::uint32_t>(path_id));
+            }
+            for(auto& include: unit.grafted_includes()) {
+                auto& section = shared_sections[include.file];
+                if(include.skipped || section.variant == 0) {
+                    continue;
+                }
+                auto& path = shared->files[include.file].path;
+                if(known_sections.try_emplace(path, section).second) {
+                    path_ids.push_back(path_ids_of.lookup(path));
+                }
+            }
+        }
         ranges::sort(path_ids);
         path_ids.erase(ranges::unique(path_ids).begin(), path_ids.end());
         std::vector<FileSection> sections;
         llvm::BitVector known_paths(tree.paths.size());
         for(auto path_id: path_ids) {
-            auto fid = path_fids[path_id];
-            if(auto it = known_sections.find(unit.file_path(fid)); it != known_sections.end()) {
+            if(auto it = known_sections.find(tree.paths[path_id]); it != known_sections.end()) {
                 auto& known = it->second;
                 known_paths.set(path_id);
                 sections.push_back({.path_id = path_id,
@@ -2298,6 +2316,7 @@ public:
                                     .reach = known.reach});
                 continue;
             }
+            auto fid = path_fids[path_id];
             auto& file_index = by_path[path_id];
             if(file_index.empty()) {
                 continue;
@@ -2468,6 +2487,9 @@ private:
     /// The keys of the instantiations the receiver already holds
     /// (TUIndexOptions::known_instantiations).
     llvm::ArrayRef<std::uint64_t> known_instantiations;
+
+    /// See TUIndexOptions::shared_sections.
+    llvm::ArrayRef<KnownIdentity> shared_sections;
 
     /// Whether the standard library's own instantiations and expansions are
     /// walked (TUIndexOptions::standard_library_instantiations).

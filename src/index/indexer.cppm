@@ -41,6 +41,12 @@ struct TUIndexOptions {
     /// walked, its section the known variant, travelling as its bare hash.
     llvm::ArrayRef<KnownIdentity> known_identities;
 
+    /// With the PCH of a shared header loaded, the sections of the
+    /// header's own index, per file of its record (SharedHeaderIndex): a
+    /// file the PCH held that the unit includes is the variant there,
+    /// travelling as its bare hash.
+    llvm::ArrayRef<KnownIdentity> shared_sections;
+
     /// Walk the standard library's own instantiations and macro expansions
     /// too (decls::in_standard_library): what `std::sort` resolves in the
     /// library's text. Without, they are neither walked nor keyed.

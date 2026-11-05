@@ -542,6 +542,11 @@ public:
         return recorded_shared;
     }
 
+    /// CompilationParams::shared, null when the compile parsed without it.
+    const SharedHeaderRecord* shared_header() {
+        return params.shared.get();
+    }
+
     /// With CompilationParams::shared, the includes of the headers the PCH
     /// held that the parse would have run without it, in the order it
     /// would have.

@@ -1,15 +1,26 @@
 module clice;
 
 import :compile.compilation;
+import :compile.shared_header;
 import :index.include_tree;
 import :support.logging;
 
 namespace clice::index {
 
+/// The node of `fid`, with the nodes of the files that include it. A file
+/// of a shared header's PCH is at the include `grafted` names for its
+/// path, where the unit's text would have entered it.
 static std::uint32_t add_include_chain(CompilationUnit& unit,
                                        clang::FileID fid,
                                        IncludeTree& tree,
-                                       llvm::StringMap<std::uint32_t>& path_table) {
+                                       llvm::StringMap<std::uint32_t>& path_table,
+                                       const llvm::StringMap<std::uint32_t>& grafted) {
+    if(!grafted.empty() && unit.context().getSourceManager().isLoadedFileID(fid)) {
+        if(auto it = grafted.find(unit.file_path(fid)); it != grafted.end()) {
+            tree.file_nodes[fid] = it->second;
+            return it->second;
+        }
+    }
     auto include_loc = unit.include_location(fid);
     if(include_loc.isInvalid()) {
         return no_node;
@@ -39,7 +50,8 @@ static std::uint32_t add_include_chain(CompilationUnit& unit,
         // (not the presumed include loc, which names the containing
         // file's includer and sat one level off) bottoms out at no_node
         // for directives written in the focus file.
-        auto parent = add_include_chain(unit, unit.file_id(include_loc), tree, path_table);
+        auto parent =
+            add_include_chain(unit, unit.file_id(include_loc), tree, path_table, grafted);
         tree.nodes[index].parent = parent;
     }
 
@@ -49,6 +61,11 @@ static std::uint32_t add_include_chain(CompilationUnit& unit,
 IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileID> indexed_fids) {
     llvm::StringMap<std::uint32_t> path_table;
     IncludeTree tree;
+    /// The first node entering each file grafted from a shared header.
+    llvm::StringMap<std::uint32_t> grafted;
+    auto chain = [&](clang::FileID fid) {
+        return add_include_chain(unit, fid, tree, path_table, grafted);
+    };
 
     // Path and node ids are assigned in first-visit order and the
     // TU index's byte hash is an identity, so the visit order must be a
@@ -67,8 +84,38 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
     for(auto fid: directive_fids) {
         for(auto& include: directives.find(fid)->second.includes) {
             if(!include.skipped && include.fid.isValid() && !unit.from_context(include.fid)) {
-                tree.file_nodes[include.fid] =
-                    add_include_chain(unit, include.fid, tree, path_table);
+                tree.file_nodes[include.fid] = chain(include.fid);
+            }
+        }
+    }
+
+    // The headers a shared header's PCH held, which the unit's text
+    // skipped, and what they included: the tree the parse would have
+    // entered without the PCH, taking the bytes the PCH read.
+    llvm::StringSet<> held;
+    llvm::SmallVector<std::pair<std::uint32_t, std::uint64_t>> grafted_hashes;
+    if(auto* shared = unit.shared_header()) {
+        for(auto& header: shared->headers) {
+            held.insert(shared->files[header.file].path);
+        }
+        auto includes = unit.grafted_includes();
+        llvm::SmallVector<std::uint32_t> nodes(includes.size(), no_node);
+        for(auto [i, include]: views::enumerate(includes)) {
+            auto parent = include.parent == SharedHeaderRecord::none ? chain(include.includer)
+                                                                     : nodes[include.parent];
+            auto& file = shared->files[include.file];
+            auto [it, fresh] = path_table.try_emplace(file.path, tree.paths.size());
+            if(fresh) {
+                tree.paths.emplace_back(file.path);
+            }
+            nodes[i] = static_cast<std::uint32_t>(tree.nodes.size());
+            tree.nodes.push_back({.file = it->second,
+                                  .parent = parent,
+                                  .line = include.line,
+                                  .skipped = include.skipped});
+            grafted_hashes.emplace_back(it->second, file.content_hash);
+            if(!include.skipped) {
+                grafted.try_emplace(file.path, nodes[i]);
             }
         }
     }
@@ -84,10 +131,11 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
             // has no buffer to hash, and a version without a hash is never
             // fresh: leave the directive out rather than pin the unit stale.
             if(!include.skipped || !include.fid.isValid() ||
-               !unit.loaded_file_content(include.fid) || unit.from_context(fid)) {
+               !unit.loaded_file_content(include.fid) || unit.from_context(fid) ||
+               held.contains(unit.file_path(include.fid))) {
                 continue;
             }
-            auto parent = add_include_chain(unit, fid, tree, path_table);
+            auto parent = chain(fid);
             auto [iter, success] =
                 path_table.try_emplace(unit.file_path(include.fid), tree.paths.size());
             if(success) {
@@ -106,11 +154,11 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
     llvm::SmallVector<clang::FileID> sorted_indexed(indexed_fids.begin(), indexed_fids.end());
     ranges::sort(sorted_indexed);
     for(auto fid: sorted_indexed) {
-        tree.file_nodes[fid] = add_include_chain(unit, fid, tree, path_table);
+        tree.file_nodes[fid] = chain(fid);
     }
 
     auto focus = unit.focus_file().file();
-    tree.file_nodes[focus] = add_include_chain(unit, focus, tree, path_table);
+    tree.file_nodes[focus] = chain(focus);
     tree.paths.emplace_back(unit.file_path(focus));
 
     // Hash the consumed bytes per path from the compiler's own buffers.
@@ -134,6 +182,11 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
     }
     for(auto [fid, path_id]: skipped_targets) {
         hash_fid(fid, path_id);
+    }
+    for(auto [path_id, hash]: grafted_hashes) {
+        if(tree.content_hashes[path_id] == 0) {
+            tree.content_hashes[path_id] = hash;
+        }
     }
     hash_fid(focus, tree.paths.size() - 1);
     return tree;
