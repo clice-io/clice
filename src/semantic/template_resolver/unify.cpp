@@ -256,11 +256,8 @@ bool arguments_may_match(clang::ASTContext& context,
     auto open = [](const clang::TemplateArgument& argument) {
         switch(argument.getKind()) {
             case Kind::Expression: return argument.getAsExpr()->isValueDependent();
-            case Kind::Template:
-            case Kind::TemplateExpansion:
-                return argument.getAsTemplateOrTemplatePattern().isDependent();
-            case Kind::Pack: return true;
-            default: return argument.isPackExpansion();
+            case Kind::Template: return argument.getAsTemplate().isDependent();
+            default: return false;
         }
     };
     if(open(lhs) || open(rhs)) {
@@ -360,11 +357,11 @@ bool may_match(clang::ASTContext& context,
     };
     auto left = flatten(lhs);
     auto right = flatten(rhs);
-    for(unsigned i = 0; i < std::min(left.size(), right.size()); i += 1) {
-        if(left[i].isPackExpansion() || right[i].isPackExpansion()) {
+    for(auto [l, r]: views::zip(left, right)) {
+        if(l.isPackExpansion() || r.isPackExpansion()) {
             return true;
         }
-        if(!arguments_may_match(context, left[i], right[i])) {
+        if(!arguments_may_match(context, l, r)) {
             return false;
         }
     }

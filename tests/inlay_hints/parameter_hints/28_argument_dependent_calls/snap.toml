@@ -1,2 +1,3 @@
 [answers."main.cpp"]
+wrong = "the only instantiation calls N::g, as ::g(int, int) cannot take an N::S: the hints should name adl_first and adl_second"
 inlay_hints = []

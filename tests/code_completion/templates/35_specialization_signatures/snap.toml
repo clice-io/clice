@@ -15,3 +15,15 @@ items = [
     { label = "X", kind = "Class" },
     { label = "f(U value)", kind = "Method", detail = "int" },
 ]
+
+[answers.value_pack.completion]
+items = [
+    { label = "again()", kind = "Method", detail = "Seq<Ks...>" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.template_pack.completion]
+items = [
+    { label = "again()", kind = "Method", detail = "Kinds<Hs...>" },
+    { label = "template", kind = "Keyword" },
+]

@@ -409,8 +409,7 @@ Callees PseudoInstantiator::callee_candidates(
             /// dependent base out of the set it found.
             if(auto* naming = UME->getNamingClass()) {
                 for(auto* decl: naming->lookup(UME->getName())) {
-                    if(llvm::isa<clang::UnresolvedUsingValueDecl>(decl) &&
-                       !ranges::contains(candidates, decl)) {
+                    if(llvm::isa<clang::UnresolvedUsingValueDecl>(decl)) {
                         candidates.push_back(decl);
                     }
                 }
@@ -428,13 +427,7 @@ Callees PseudoInstantiator::callee_candidates(
                 found = argument_dependent_lookup(ULE->getName(), types);
             }
             if(found) {
-                for(auto* decl: *found) {
-                    if(ranges::none_of(candidates, [&](const clang::NamedDecl* candidate) {
-                           return candidate->getCanonicalDecl() == decl->getCanonicalDecl();
-                       })) {
-                        candidates.push_back(decl);
-                    }
-                }
+                candidates.append(found->begin(), found->end());
             } else {
                 callees.complete = false;
             }

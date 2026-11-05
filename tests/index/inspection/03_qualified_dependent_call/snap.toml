@@ -8,9 +8,9 @@ exit = 0
 [test."$ clice index file util.h"]
 stdout = '''
 file ${WS}/util.h
-  blob=# B  content size=115  content hash=#36c787b12f022bff
+  blob=# B  content size=134  content hash=#12b0948f26b979ee
   variants=1
-    #399a789fc57ba3be  contributed by 2 units
+    #0a25980645716398  contributed by 2 units
       ${WS}/a.cpp
       ${WS}/b.cpp
   symbols=7  local symbols=4  occurrences=11  relations=15
@@ -20,9 +20,9 @@ file ${WS}/util.h
     Reference=5
     TypeDefinition=2
     WeakReference=1
-    local #510a734bc90640eb  kind=Type  name=P
-    local #71bc0ba5688ac272  kind=Parameter  name=p
-    local #874416b1474f3d09  kind=Parameter  name=c
-    local #af4d5dfcb9b28721  kind=Type  name=C
+    local #25890a58b8b270f0  kind=Parameter  name=p
+    local #7d6e12ee51f5e416  kind=Type  name=C
+    local #9857f55a4223240a  kind=Type  name=P
+    local #dc1b1b9e04b9eef6  kind=Parameter  name=c
 '''
 exit = 0

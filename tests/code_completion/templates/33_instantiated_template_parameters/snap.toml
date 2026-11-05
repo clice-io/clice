@@ -15,3 +15,17 @@ items = [
     { label = "int_wrapped", kind = "Field", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]
+
+[answers.partial_specialization.completion]
+items = [
+    { label = "pointed", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.qualified_scope.completion]
+items = [
+    { label = "int_wrapped", kind = "Field", detail = "int" },
+    { label = "Wrap", kind = "Class" },
+    { label = "operator=(…) +1 overload", kind = "Method" },
+    { label = "~Wrap()", kind = "Method", detail = "void" },
+]

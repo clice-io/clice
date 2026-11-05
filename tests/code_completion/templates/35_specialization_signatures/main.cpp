@@ -8,6 +8,16 @@ struct Pack {
     Pack<Bs...> again();
 };
 
+template <int... Ns>
+struct Seq {
+    Seq<Ns...> again();
+};
+
+template <template <class> class... Ts>
+struct Kinds {
+    Kinds<Ts...> again();
+};
+
 template <class T>
 struct X {
     static int f(T value);
@@ -18,4 +28,10 @@ void use(Array<U, M> a, Pack<Cs...> p) {
     a.§(non_type);
     p.§(pack);
     X<U>::§(qualified);
+}
+
+template <int... Ks, template <class> class... Hs>
+void more(Seq<Ks...> s, Kinds<Hs...> k) {
+    s.§(value_pack);
+    k.§(template_pack);
 }

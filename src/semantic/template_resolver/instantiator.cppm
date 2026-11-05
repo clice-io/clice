@@ -134,10 +134,6 @@ struct InstantiationStack {
         auto handle = find_slot(decl, depth, index);
         return handle ? &data[handle->first].arguments[handle->second] : nullptr;
     }
-
-    const clang::TemplateArgument* find_argument(const clang::TemplateTypeParmType* T) const {
-        return find_argument(T->getDecl(), T->getDepth(), T->getIndex());
-    }
 };
 
 /// The function `decl` names, through a using-declaration; null for any
