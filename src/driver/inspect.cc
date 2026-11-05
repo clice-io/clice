@@ -25,7 +25,9 @@ import :index.query;
 import :index.shard;
 import :index.tu_index;
 import :project.project;
+import :semantic.selection;
 import :semantic.symbol;
+import :semantic.template_resolver;
 import :settings.settings;
 import :support.bytes;
 import :syntax.token;
@@ -286,6 +288,77 @@ std::optional<codec::raw_value> run_inlay_hints(const FeatureParams& params) {
     return to_raw_json(out);
 }
 
+/// Point payload for the template resolver: what it answers at the node a
+/// point selects. A type, or an alias's, resolves (`type`) to a type that
+/// may name a class (`record`); an `auto` variable deduces its `type`; a
+/// dependent name finds its `declarations`, and a call's callee the
+/// functions the call may call.
+struct RawResolution {
+    std::optional<std::string> type;
+    std::optional<RawLocation> record;
+    std::vector<RawLocation> declarations;
+};
+
+std::optional<codec::raw_value> run_template_resolver(const FeatureParams& params) {
+    auto& unit = params.unit;
+    auto tree = SelectionTree::create_right(unit, {params.range.begin, params.range.begin});
+    const auto* node = tree.common_ancestor();
+    if(!node) {
+        return codec::raw_value{};
+    }
+    auto& resolver = unit.get<types::TemplateResolver>();
+    auto place = [&](const clang::Decl* decl) -> std::optional<RawLocation> {
+        auto [file, range] = unit.produced_range(clang::SourceRange(decl->getLocation()));
+        if(file.isInvalid() || unit.is_builtin_file(file)) {
+            return std::nullopt;
+        }
+        auto position = unit.positions(file).range(range, PositionEncoding::UTF16);
+        if(!position) {
+            return std::nullopt;
+        }
+        return RawLocation{.path = unit.file_path(file).str(), .range = *position};
+    };
+    RawResolution out;
+    auto find = [&](auto&& decls) {
+        for(const clang::Decl* decl: decls) {
+            if(auto at = place(decl)) {
+                out.declarations.push_back(std::move(*at));
+            }
+        }
+    };
+    auto resolve = [&](clang::QualType type) {
+        if(auto resolved = resolver.resolve(type); !resolved.isNull()) {
+            out.type = resolved.getAsString(unit.context().getPrintingPolicy());
+        }
+        if(const auto* tag = resolver.resolve_tag(type)) {
+            out.record = place(tag);
+        }
+        if(const auto* name = type->getAs<clang::DependentNameType>()) {
+            find(resolver.lookup(name));
+        }
+    };
+    if(const auto* loc = node->get<clang::TypeLoc>()) {
+        resolve(loc->getType());
+    } else if(const auto* alias = node->get<clang::TypedefNameDecl>()) {
+        resolve(alias->getUnderlyingType());
+    } else if(const auto* var = node->get<clang::VarDecl>()) {
+        if(auto deduced = resolver.deduce(var); !deduced.isNull()) {
+            out.type = deduced.getAsString(unit.context().getPrintingPolicy());
+        }
+    } else if(const auto* expr = node->get<clang::Expr>()) {
+        const auto* outer = node->outer_implicit().parent;
+        const auto* call = outer ? outer->get<clang::CallExpr>() : nullptr;
+        if(call && call->getCallee()->IgnoreParenImpCasts() == expr) {
+            find(resolver.callees(call));
+        } else if(const auto* scoped = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(expr)) {
+            find(resolver.lookup(scoped));
+        } else if(const auto* member = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(expr)) {
+            find(resolver.lookup(member));
+        }
+    }
+    return to_raw_json(out);
+}
+
 std::optional<codec::raw_value> run_selection_range(const FeatureParams& params) {
     return to_raw_json(feature::selection_ranges(params.unit, {params.range.begin}).front());
 }
@@ -450,6 +523,10 @@ constexpr std::array features = {
                 .description = "The signature help at a point",
                 .shape = Shape::Points,
                 .run = run_signature_help},
+    FeatureSpec{.name = "template-resolver",
+                .description = "What the template resolver answers at a point",
+                .shape = Shape::Points,
+                .run = run_template_resolver},
 };
 
 /// The inspected file, with the markers --markers places in it.
