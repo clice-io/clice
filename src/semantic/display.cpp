@@ -3711,21 +3711,22 @@ auto ReadableTypes::readable(clang::QualType type,
     }
 
     /// What an expansion of a pack of the template the substitution names
-    /// (`Bs...`) reads as: the arguments the pack takes, the code's own.
+    /// (`Bs...`, `const Bs...`) reads as: the arguments the pack takes, the
+    /// code's own, each with the qualifiers the pattern adds.
+    clang::Qualifiers qualifiers;
     auto expanded = [&](const clang::TemplateArgument& argument)
         -> std::optional<llvm::ArrayRef<clang::TemplateArgument>> {
         const clang::NamedDecl* pack = nullptr;
         unsigned index = 0;
+        qualifiers = {};
         if(argument.getKind() == clang::TemplateArgument::Type) {
             const auto* expansion = argument.getAsType()->getAs<clang::PackExpansionType>();
-            /// Only the bare pack reads as its arguments: `const Bs...` would
-            /// need the pattern applied to each.
             if(const auto* param =
-                   expansion && !expansion->getPattern().hasQualifiers()
-                       ? expansion->getPattern()->getAs<clang::TemplateTypeParmType>()
-                       : nullptr) {
+                   expansion ? expansion->getPattern()->getAs<clang::TemplateTypeParmType>()
+                             : nullptr) {
                 pack = param->getDecl();
                 index = param->getIndex();
+                qualifiers = expansion->getPattern().getCanonicalType().getQualifiers();
             }
         } else if(argument.getKind() == clang::TemplateArgument::Expression) {
             const auto* expansion = llvm::dyn_cast<clang::PackExpansionExpr>(argument.getAsExpr());
@@ -3753,7 +3754,19 @@ auto ReadableTypes::readable(clang::QualType type,
             llvm::SaveAndRestore<const clang::TemplateSpecializationType*> plain(substitution,
                                                                                  nullptr);
             for(const auto& element: *elements) {
-                rewritten.push_back(readable(element, scope, source, sugar));
+                if(qualifiers.empty() || element.getKind() != clang::TemplateArgument::Type) {
+                    rewritten.push_back(readable(element, scope, source, sugar));
+                    continue;
+                }
+                auto type = element.getAsType();
+                if(const auto* expansion = type->getAs<clang::PackExpansionType>()) {
+                    type = context.getPackExpansionType(
+                        context.getQualifiedType(expansion->getPattern(), qualifiers),
+                        expansion->getNumExpansions());
+                } else {
+                    type = context.getQualifiedType(type, qualifiers);
+                }
+                rewritten.push_back(readable(clang::TemplateArgument(type), scope, source, sugar));
             }
             continue;
         }

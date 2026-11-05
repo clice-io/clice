@@ -28,9 +28,18 @@ int large
 '''
 range = "return getter.get(1).⟦large⟧;"
 
-[answers.array_decay]
-wrong = "both overloads take the array as an exact match, so the one that is not a template wins: the card should show Large::large"
-hover = {}
+[answers.array_decay.hover]
+markdown = '''
+**field** `large` · struct `Large`
+
+```cpp
+int large
+```
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "return Decay<T>::take(a).⟦large⟧;"
 
 [answers.same_alias.hover]
 markdown = '''

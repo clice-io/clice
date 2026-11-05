@@ -315,8 +315,12 @@ bool PseudoInstantiator::scope_lacks(clang::NestedNameSpecifier scope,
                     }
                 }
             } else if(auto RD = type->getAsCXXRecordDecl()) {
-                lacks = conclusive(RD->lookup(name)) && conclusive(lookup_in_bases(RD, name)) &&
-                        !has_dependent_base(RD);
+                /// A member of the class hides those of its bases.
+                if(auto own = RD->lookup(name); !own.empty()) {
+                    lacks = conclusive(own);
+                } else {
+                    lacks = conclusive(lookup_in_bases(RD, name)) && !has_dependent_base(RD);
+                }
             }
         }
     }

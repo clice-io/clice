@@ -255,18 +255,16 @@ bool PseudoInstantiator::accepts(const clang::FunctionDecl* FD,
 }
 
 void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
-                                      llvm::ArrayRef<const clang::Expr*> arguments) {
-    if(candidates.size() < 2 || ranges::any_of(arguments, [](const clang::Expr* argument) {
-           return argument->isTypeDependent();
-       })) {
+                                      llvm::ArrayRef<CallArgument> arguments,
+                                      bool member_call) {
+    if(candidates.size() < 2) {
         return;
     }
     /// Whether the argument converts to the parameter at the rank of an
     /// exact match: as is, decayed, or to a pointer to a more qualified
     /// type.
-    auto same = [&](clang::QualType parameter, const clang::Expr* argument) {
+    auto same = [&](clang::QualType parameter, clang::QualType type) {
         auto target = parameter.getNonReferenceType();
-        auto type = argument->getType();
         if(context.hasSameUnqualifiedType(target, type)) {
             return true;
         }
@@ -282,47 +280,64 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
         }
         return context.hasSameUnqualifiedType(target, decayed);
     };
-    /// Whether `decl` takes every argument as is; nullopt when that waits
-    /// for instantiation.
+    /// Whether `decl` takes every argument at the rank of an exact match;
+    /// nullopt when that waits for instantiation. A parameter of a function
+    /// template's own parameters takes what deduction gives it, as is; an
+    /// argument the C-style ellipsis takes is the worst match there is.
     auto exact = [&](const clang::NamedDecl* decl) -> std::optional<bool> {
         auto* FD = as_function(decl);
         if(!FD) {
             return std::nullopt;
         }
-        unsigned offset = 0;
-        if(auto method = llvm::dyn_cast<clang::CXXMethodDecl>(FD);
-           method && method->isExplicitObjectMemberFunction()) {
-            offset = 1;
-        }
-        if(arguments.size() + offset > FD->getNumParams()) {
+        /// A member defined out of line is written in its own template
+        /// parameters, its declaration in the class in the class's.
+        FD = FD->getCanonicalDecl();
+        auto* FTD = FD->getDescribedFunctionTemplate();
+        if(FTD && deduce_call(FTD, FD, arguments).empty()) {
             return false;
         }
+        auto parameters = FD->parameters().drop_front(passed(FD, 0, member_call));
         for(auto [index, argument]: views::enumerate(arguments)) {
-            auto type = FD->getParamDecl(static_cast<unsigned>(index) + offset)->getType();
-            if(type->isDependentType()) {
+            if(static_cast<std::size_t>(index) >= parameters.size()) {
+                return false;
+            }
+            auto* parameter = parameters[index];
+            if(parameter->isParameterPack()) {
+                return true;
+            }
+            auto type = parameter->getType();
+            if(FTD && mentions_parameters(type, FTD->getTemplateParameters())) {
+                continue;
+            }
+            type = substitute(type);
+            if(type.isNull() || type->isDependentType()) {
                 return std::nullopt;
             }
-            if(!same(type, argument)) {
+            if(!same(type, argument.type)) {
                 return false;
             }
         }
         return true;
     };
-    const clang::NamedDecl* chosen = nullptr;
+    llvm::SmallVector<const clang::NamedDecl*, 4> exacts;
     for(auto* candidate: candidates) {
         auto taken = exact(candidate);
         if(!taken) {
             return;
         }
         if(*taken) {
-            if(chosen) {
-                return;
-            }
-            chosen = candidate;
+            exacts.push_back(candidate);
         }
     }
-    if(chosen) {
-        candidates.assign({chosen});
+    /// Of two exact matches the one that is no template specialization wins.
+    if(exacts.size() > 1) {
+        auto templated = [](const clang::NamedDecl* decl) {
+            return as_function(decl)->getDescribedFunctionTemplate() != nullptr;
+        };
+        llvm::erase_if(exacts, templated);
+    }
+    if(exacts.size() == 1) {
+        candidates.assign({exacts.front()});
     }
 }
 
@@ -408,8 +423,10 @@ Callees PseudoInstantiator::call_candidates(const clang::CallExpr* expr) {
                               return (pack || arity_viable(FD, arguments.size(), member)) &&
                                      accepts(FD, arguments, member);
                           });
-    if(!pack) {
-        prefer_exact(callees.candidates, arguments);
+    if(callees.arguments) {
+        bool member = llvm::isa<clang::UnresolvedMemberExpr, clang::CXXDependentScopeMemberExpr>(
+            expr->getCallee()->IgnoreParenImpCasts());
+        prefer_exact(callees.candidates, *callees.arguments, member);
     }
     return callees;
 }

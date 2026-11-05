@@ -155,3 +155,17 @@ template <class T>
 void nested_inline(typename Versions<T>::type versioned) {
     auto §(nested_inline)chosen = choose(versioned);
 }
+
+template <class... Ts>
+struct Tuple {};
+
+template <class T>
+struct Packs {
+    template <class... Ts, class U>
+    static Tuple<Ts...> trailing(Ts... ts, U u);
+};
+
+template <class T>
+void leading_pack() {
+    auto §(leading_pack)packed = Packs<T>::trailing(1);
+}

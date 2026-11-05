@@ -675,13 +675,15 @@ private:
                  bool member_call);
 
     /// Of `candidates` every argument of a call may initialize, the one
-    /// taking each argument as is, of its type exactly — binding a
-    /// reference or dropping top-level qualifiers aside —, alone when it is
-    /// the only such: every other one needs a conversion of some argument,
-    /// and overload resolution prefers it. Dependent arguments or
-    /// parameters leave the set as it is.
+    /// taking each of the resolved `arguments` at the rank of an exact match
+    /// — as is, decayed, or to a more qualified pointer —, alone when it is
+    /// the only such, or the only such that is no template specialization:
+    /// overload resolution prefers it to every candidate that needs a
+    /// conversion, or the ellipsis. A parameter that stays dependent leaves
+    /// the set as it is.
     void prefer_exact(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
-                      llvm::ArrayRef<const clang::Expr*> arguments);
+                      llvm::ArrayRef<CallArgument> arguments,
+                      bool member_call);
 
     /// Overloads that differ only in their object parameter — its cv- and
     /// ref-qualifiers, `front()` and `front() const`, `value() &` and

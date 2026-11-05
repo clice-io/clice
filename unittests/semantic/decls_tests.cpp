@@ -130,6 +130,37 @@ has_x<Exposed>* exposed_use;
     ZEXPECT(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(decls::normalize(exposed)));
 };
 
+ZEST_CASE(UndeclaredDetectionHiddenByUsing) {
+    add_focus("main.cpp", R"cpp(
+template <typename...> using void_t = void;
+template <typename T, typename = void> struct has_x { };
+template <typename T> struct has_x<T, void_t<typename T::x>> { };
+
+struct Base {
+    using x = int;
+};
+struct Hidden : Base {
+private:
+    using Base::x;
+};
+
+has_x<Hidden>* hidden_use;
+)cpp");
+    ZASSERT(compile());
+
+    clang::ClassTemplateSpecializationDecl* hidden = nullptr;
+    for(auto* spec: class_template("has_x")->specializations()) {
+        hidden = spec;
+    }
+    ZASSERT(hidden);
+    ZASSERT(hidden->getSpecializationKind() == clang::TSK_Undeclared);
+
+    /// The private using-declaration hides Base's public alias: real
+    /// instantiation uses the primary, and so does the identity.
+    ZEXPECT(decls::normalize(hidden) ==
+            class_template("has_x")->getTemplatedDecl()->getCanonicalDecl());
+};
+
 ZEST_CASE(AmbiguousPartialsPrimary) {
     add_focus("main.cpp", R"cpp(
 template <typename T, typename U> struct B { };

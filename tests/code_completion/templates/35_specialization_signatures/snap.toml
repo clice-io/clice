@@ -28,11 +28,8 @@ items = [
     { label = "template", kind = "Keyword" },
 ]
 
-[answers.qualified_pack]
-wrong = "the detail should read the code's own pack, Pack<const Ws...>"
-
 [answers.qualified_pack.completion]
 items = [
-    { label = "view()", kind = "Method", detail = "Pack<const Ts...>" },
+    { label = "view()", kind = "Method", detail = "Pack<const Ws...>" },
     { label = "template", kind = "Keyword" },
 ]

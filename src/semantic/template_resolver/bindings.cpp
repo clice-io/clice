@@ -388,11 +388,10 @@ llvm::SmallVector<clang::TemplateArgument, 4>
     for(auto* parameter: function->parameters()) {
         auto type = parameter->getType();
         /// A function parameter pack takes every argument left; one before
-        /// other parameters is not deduced, leaving the rest to
-        /// instantiation.
+        /// other parameters is not deduced, and takes none.
         if(auto* expansion = type->getAs<clang::PackExpansionType>()) {
             if(parameter != function->parameters().back()) {
-                return {};
+                continue;
             }
             auto element = expansion->getPattern();
             for(; index < arguments.size(); index += 1) {

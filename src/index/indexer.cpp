@@ -753,6 +753,27 @@ public:
         return location;
     }
 
+    /// Add the modules an import of `name` makes visible: it, and those it
+    /// re-exports, in turn.
+    void add_imported(llvm::StringRef name, llvm::StringSet<>& modules) {
+        if(name.empty()) {
+            return;
+        }
+        auto& map = unit.sema().getPreprocessor().getHeaderSearchInfo().getModuleMap();
+        auto* module = map.findModule(name);
+        if(!module) {
+            modules.insert(name);
+            return;
+        }
+        llvm::SmallVector<clang::Module*> pending{module};
+        while(!pending.empty()) {
+            auto* current = pending.pop_back_val();
+            if(modules.insert(current->getTopLevelModuleName()).second) {
+                current->getExportedModules(pending);
+            }
+        }
+    }
+
     const Reach& reach(clang::FileID file) {
         if(auto found = reached.find(file); found != reached.end()) {
             return found->second;
@@ -767,9 +788,7 @@ public:
                 continue;
             }
             for(auto& import: directive->second.imports) {
-                if(!import.full_name.empty()) {
-                    brought.modules.insert(import.full_name);
-                }
+                add_imported(import.full_name, brought.modules);
             }
             for(auto& include: directive->second.includes) {
                 if(include.fid.isValid() && brought.files.insert(include.fid).second) {
@@ -809,13 +828,13 @@ public:
         auto before = [&](clang::SourceLocation location) {
             return SM.getDecomposedExpansionLoc(location).second < offset;
         };
-        llvm::StringSet<> imported;
+        llvm::StringSet<> modules;
         for(auto& import: directive->second.imports) {
-            if(!import.full_name.empty() && before(import.location)) {
-                imported.insert(import.full_name);
+            if(before(import.location)) {
+                add_imported(import.full_name, modules);
             }
         }
-        if(declared_in({file}, imported)) {
+        if(declared_in({file}, modules)) {
             return true;
         }
         for(auto& include: directive->second.includes) {
