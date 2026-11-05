@@ -773,6 +773,11 @@ private:
     /// including pseudo-SFINAE probes over rejected branches.
     constexpr static unsigned step_budget = 4096;
 
+    /// Hard ceiling on nested rewrites. What an expression in a type
+    /// evaluates to nests inside it: the iterator MSVC's `std::map::begin()`
+    /// returns, through its `conditional_t`s, runs past 16 under a pointer.
+    constexpr static unsigned depth_limit = 32;
+
     unsigned indent = 0;
 };
 

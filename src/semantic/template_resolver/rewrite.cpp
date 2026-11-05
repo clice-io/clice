@@ -19,7 +19,7 @@ clang::QualType PseudoInstantiator::rewrite(clang::QualType type, Policy policy)
         return type;
     }
     steps += 1;
-    if(depth > 16 || steps > step_budget) {
+    if(depth > depth_limit || steps > step_budget) {
         inconclusive = true;
         return type;
     }
