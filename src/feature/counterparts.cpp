@@ -207,8 +207,9 @@ struct Pairing {
                                                          : llvm::StringRef();
         }
         auto* declared = declaration_of(unit);
-        return declared && declared->is_implementation_unit() ? llvm::StringRef(declared->module_name)
-                                                              : llvm::StringRef();
+        return declared && declared->is_implementation_unit()
+                   ? llvm::StringRef(declared->module_name)
+                   : llvm::StringRef();
     }
 
     /// A unit implementing a module pairs with the interface of its module,
