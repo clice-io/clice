@@ -261,7 +261,8 @@ struct BuildPCHParams {
     /// (CompileUnitParams::index_output_path).
     std::string index_output_path;
 
-    /// The build of a shared header (SharedPCH), a whole file's: it writes
+    /// The build of a shared header (Project::plan_shared_headers), a whole
+    /// file's: it writes
     /// what the headers its PCH holds read and wrote, with the sections of
     /// its index (index::SharedHeaderIndex), to `record_output_path`, which
     /// the master commits with the PCH.
@@ -529,10 +530,6 @@ struct CompileUnitResult {
 
     /// The hash of the text skipped_diagnostics describe.
     std::uint64_t text_hash = 0;
-
-    /// Why the run parsed without the shared header's PCH it was given
-    /// (CompileUnitParams::shared_record); empty when it loaded it.
-    std::string shared_rejection;
 };
 
 /// Preprocess a unit for its include tree: where its compile enters each

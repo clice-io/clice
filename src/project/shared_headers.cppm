@@ -27,8 +27,8 @@ struct SharedHeaders {
     /// Each unit loading one, into `headers`.
     llvm::DenseMap<Fid, std::uint32_t> units;
 
-    /// Each header's file, into `headers`.
-    llvm::DenseMap<Fid, std::uint32_t> files;
+    /// Each header's file.
+    llvm::DenseSet<Fid> files;
 };
 
 }  // namespace clice

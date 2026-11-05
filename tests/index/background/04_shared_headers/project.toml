@@ -1,1 +1,14 @@
 flags = ["-std=c++20"]
+
+# wide.cpp's command differs from the others' in a macro alone: it joins
+# their group, and parses shapes.h itself, which reads the macro.
+[units]
+"first.cpp" = []
+"second.cpp" = []
+"third.cpp" = []
+"fourth.cpp" = []
+"fifth.cpp" = []
+"sixth.cpp" = []
+"seventh.cpp" = []
+"eighth.cpp" = []
+"wide.cpp" = ["-DWIDE"]

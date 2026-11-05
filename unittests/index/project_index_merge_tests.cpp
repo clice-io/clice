@@ -271,7 +271,7 @@ ZEST_CASE(KnownVariantsFromManifest) {
                 .hashes.empty());
 }
 
-ZEST_CASE(IdentitiesFollowTheStoredVariants) {
+ZEST_CASE(IdentitiesFollowStoredVariants) {
     TempDir tmp;
     tmp.touch("shared.h", "#pragma once\ninline int shared_fn() { return 1; }\n");
     tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");

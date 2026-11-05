@@ -53,11 +53,16 @@ struct Box {
 inline int twice(int x) { return x * 2; }
 template <typename T>
 T unbox(const Box<T>& box) { return box.get(); }
+struct Fixed {};
+template <typename T>
+struct Derived : Fixed, T {};
 )cpp");
     tmp.touch("a.cpp", R"cpp(#include "box.h"
 int a() { return twice(unbox(Box<int>{1})); }
 )cpp");
     tmp.touch("b.cpp", R"cpp(#include "box.h"
+struct Tag {};
+Derived<Tag> derived;
 int b() { return twice(unbox(Box<int>{2})) + unbox(Box<char>{'c'}) + (Box<long>{} == Box<long>{}); }
 )cpp");
     auto a_data = index_file(tmp, tmp.path("a.cpp")).data;
@@ -166,7 +171,7 @@ inline size measure() { return 1; }
     ZEXPECT(!wide.section_blob(*other).empty());
 };
 
-ZEST_CASE(GuessesStayInWhatTheHeaderSees) {
+ZEST_CASE(GuessesStayInClosure) {
     // impl.h names no header: what declares `helper` for its template comes
     // from the file including it. other.h, included before by the unit
     // alone, declares an overload impl.h never sees elsewhere.

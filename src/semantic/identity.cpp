@@ -904,15 +904,17 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
         add_declaration_name(hasher, decl->getDeclName());
     }
 
+    // A typedef at namespace scope a header declares carries no path
+    // (needs_path): the type it names tells two of one name apart.
+    if(auto* alias = dyn_cast<TypedefNameDecl>(decl);
+       alias && alias->getDeclContext()->getRedeclContext()->isFileContext()) {
+        add_type(hasher, alias->getUnderlyingType().getCanonicalType());
+    }
     /// A namespace-scope declaration nothing outside the translation unit
     /// can see is one entity per header, not per translation unit: its
     /// first declaration's file tells the copies apart. Judged by linkage,
     /// not visibility: a typedef or namespace alias has no linkage yet is
     /// shared by every unit that includes its header.
-    if(auto* alias = dyn_cast<TypedefNameDecl>(decl);
-       alias && alias->getDeclContext()->getRedeclContext()->isFileContext()) {
-        add_type(hasher, alias->getUnderlyingType().getCanonicalType());
-    }
     if(needs_path(decl, unit)) {
         add_path(hasher, decl->getLocation());
     }

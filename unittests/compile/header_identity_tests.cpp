@@ -14,10 +14,13 @@ ZEST_SUITE(HeaderIdentity, Tester) {
 std::uint64_t identity(Tester& tester,
                        llvm::StringRef focus,
                        llvm::StringRef file,
-                       llvm::StringRef standard = "-std=c++20") {
+                       llvm::StringRef standard = "-std=c++20",
+                       llvm::ArrayRef<std::string> extra = {}) {
     tester.src_path = focus.str();
     tester.kind = CompilationKind::Whole;
     tester.prepare(standard);
+    auto& arguments = tester.params.input.arguments;
+    arguments.insert(arguments.end() - 1, extra.begin(), extra.end());
     tester.params.header_identities = true;
     if(!tester.try_compile()) {
         return ~0ull;
@@ -74,7 +77,16 @@ ZEST_CASE(LanguageStandard) {
             identity(*this, "main.cpp", "plain.h", "-std=c++20"));
 };
 
-ZEST_CASE(CounterIsTheUnitsAlone) {
+ZEST_CASE(CommandLineMacros) {
+    // A macro of the command has no file: its tokens tell two apart.
+    add_file("names.h", "#pragma once\nnamespace NS { struct W {}; }\n");
+    add_file("main.cpp", "#include \"names.h\"\n");
+    auto first = identity(*this, "main.cpp", "names.h", "-std=c++20", {"-DNS=v1"});
+    ZEXPECT(identity(*this, "main.cpp", "names.h", "-std=c++20", {"-DNS=v1"}) == first);
+    ZEXPECT(identity(*this, "main.cpp", "names.h", "-std=c++20", {"-DNS=v2"}) != first);
+};
+
+ZEST_CASE(UnitSpecificCounter) {
     add_file("unique.h", "#pragma once\nconstexpr int unique = __COUNTER__;\n");
     add_file("main.cpp", "#include \"unique.h\"\n");
     ZEXPECT(identity(*this, "main.cpp", "unique.h") == 0U);

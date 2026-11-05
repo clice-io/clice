@@ -13,6 +13,7 @@ import :project.shared_headers;
 import :support.logging;
 import :syntax.lexical_scan;
 import :syntax.preamble;
+import :vfs.dir_cache;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -88,8 +89,19 @@ llvm::DenseMap<Fid, std::uint32_t> entry_order(const DependencyGraph& graph, Fid
 }  // namespace
 
 void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
-    release_shared_headers();
-    if(!settings.project.shared_pch || !store) {
+    if(!store) {
+        return;
+    }
+    // A session that died mid-pass left its headers behind.
+    auto directory = path::join(store->base_dir(), "shared");
+    if(auto listing = vfs::list(directory)) {
+        for(auto& entry: listing->entries) {
+            if(!entry.getValue()) {
+                fs::remove(path::join(directory, entry.getKey()));
+            }
+        }
+    }
+    if(!settings.project.shared_pch) {
         return;
     }
 
@@ -130,13 +142,11 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
         group.units.push_back(unit);
     }
 
-    auto directory = path::join(store->base_dir(), "shared");
     for(auto& [key, group]: groups) {
         if(group.units.size() < least_units) {
             continue;
         }
         ranges::sort(group.units, {}, [&](Fid unit) { return file_table.resolve(unit); });
-        group.units.erase(ranges::unique(group.units).begin(), group.units.end());
         std::vector<llvm::DenseSet<Fid>> closures;
         llvm::DenseMap<Fid, std::uint32_t> reached;
         for(auto unit: group.units) {
@@ -170,7 +180,7 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
         }
         std::vector<std::vector<Fid>> assigned(held.size());
         for(auto [unit, closure]: views::zip(group.units, closures)) {
-            for(auto level = held.size(); level-- > 0;) {
+            for(auto level: views::iota(std::size_t(0), held.size()) | views::reverse) {
                 if(ranges::all_of(held[level], [&](Fid file) { return closure.contains(file); })) {
                     assigned[level].push_back(unit);
                     break;
@@ -212,8 +222,7 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
 
             std::string text = "#pragma once\n";
             for(auto root: roots) {
-                text += std::format("#include \"{}\"\n",
-                                    llvm::sys::path::convert_to_slash(file_table.resolve(root)));
+                text += std::format("#include \"{}\"\n", file_table.resolve(root));
             }
             auto name = std::format("{:016x}.{}",
                                     llvm::xxh3_64bits(std::format("{}:{}", key, level)),
@@ -276,7 +285,7 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
             request.writer = PCHRequest::Writer{header, llvm::xxh3_64bits(request.pch_key)};
             auto index = static_cast<std::uint32_t>(shared_headers.headers.size());
             shared_headers.headers.push_back({.file = header, .request = std::move(request)});
-            shared_headers.files[header] = index;
+            shared_headers.files.insert(header);
             for(auto unit: members) {
                 shared_headers.units[unit] = index;
             }

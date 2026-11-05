@@ -494,6 +494,8 @@ async::task<> BackgroundIndex::stop() {
     state = State::Stopped;
     tasks.cancel();
     co_await tasks.join();
+    // A cancelled pass never reached its own release.
+    project.release_shared_headers();
     // Cancelling the pass that waited on the idle timer leaves it armed,
     // and an armed timer keeps the loop running until it fires.
     if(idle_timer) {

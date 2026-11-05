@@ -1,11 +1,11 @@
 import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
-// The eight units including shapes.h share their command: their index runs
-// load the PCH of a header clice writes for them, which the pass builds
-// once, indexing it in the same compile, and drops. wide.cpp defines WIDE before the include, which the
-// PCH did not see: it parses shapes.h itself. Without the shared header the
-// index answers alike.
+// The units including shapes.h share their command: their index runs load
+// the PCH of a header clice writes for them, which the pass builds once,
+// indexing it in the same compile, and drops. wide.cpp's command defines
+// WIDE, which the PCH did not see: it parses shapes.h itself. Indexed from
+// scratch without the shared header, the index answers alike.
 const MARKERS = ["meters", "area_type", "area", "widen"];
 
 test(async (t) => {
@@ -25,8 +25,12 @@ test(async (t) => {
     }
     await s.stop();
 
+    t.disk.rm(".clice/cache");
     const plain = await t.start({ config: { project: { shared_pch: false } } });
     await plain.indexed();
+    expect(
+        Object.keys((await plain.counts()).files).filter((file) => file.includes("/shared/")),
+    ).toEqual([]);
     for (const name of MARKERS) {
         expect(await plain.references(t.marker(name)), name).toEqual(answered[name]);
     }

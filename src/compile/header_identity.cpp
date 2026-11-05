@@ -4,13 +4,9 @@ import :compile.compilation;
 
 namespace clice {
 
-namespace {
-
-std::uint64_t mix(std::uint64_t hash, std::uint64_t value) {
+static std::uint64_t mix(std::uint64_t hash, std::uint64_t value) {
     return (hash ^ value) * 0x100000001b3ULL + (hash >> 29);
 }
-
-}  // namespace
 
 /// What a file entry hands the parser follows from its text, the branches
 /// its conditions take, the files its includes find and each macro expanded

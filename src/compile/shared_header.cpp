@@ -456,6 +456,19 @@ public:
         check(info->getName(), 0, token.getLocation());
     }
 
+    /// The parse is over: a held header the unit never included it would
+    /// not have read.
+    void finish() {
+        for(auto [index, header]: views::enumerate(record.headers)) {
+            if(!entered[index]) {
+                reject(std::format("{} is in the PCH but never included",
+                                   record.files[header.file].path));
+                break;
+            }
+        }
+        unit.grafted = std::move(grafted);
+    }
+
 private:
     void FileChanged(clang::SourceLocation,
                      FileChangeReason reason,
@@ -473,21 +486,6 @@ private:
         }
     }
 
-public:
-    /// The parse is over: a held header the unit never included it would
-    /// not have read.
-    void finish() {
-        for(auto [index, header]: views::enumerate(record.headers)) {
-            if(!entered[index]) {
-                reject(std::format("{} is in the PCH but never included",
-                                   record.files[header.file].path));
-                break;
-            }
-        }
-        unit.grafted = std::move(grafted);
-    }
-
-private:
     void FileSkipped(const clang::FileEntryRef& entry,
                      const clang::Token& name,
                      clang::SrcMgr::CharacteristicKind) override {

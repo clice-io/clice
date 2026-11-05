@@ -121,12 +121,25 @@ ZEST_CASE(FileRoundTrip) {
         .consumed = {10,  20 },
         .generation = 20,
         .stored = {111, 222},
+        .identities = {{.identity = 5, .own = 6, .reach = 1, .variant = 222},
+                       {.identity = 7, .own = 7, .reach = 0, .variant = 111}},
         .run = 1700000000000,
     };
     auto buffer = aligned(index::encode_record(file));
     auto read = index::decode_file(buffer->getBuffer());
     ZASSERT(read);
     ZEXPECT(*read == file);
+
+    // An identity of a variant the file does not store, or out of order,
+    // is no file record.
+    auto identities = file.identities;
+    file.identities.back().variant = 333;
+    auto unstored = aligned(index::encode_record(file));
+    ZEXPECT(!index::decode_file(unstored->getBuffer()));
+    file.identities = {identities.back(), identities.front()};
+    auto disordered = aligned(index::encode_record(file));
+    ZEXPECT(!index::decode_file(disordered->getBuffer()));
+    file.identities = identities;
 
     // A shard generation without the variants it stores, or the other way
     // round, is no file record; nor are consumed hashes out of order.

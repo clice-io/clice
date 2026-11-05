@@ -119,7 +119,7 @@ ZEST_CASE(OrderOfTheUnit) {
                                                           "  common.h:2 skipped"});
 };
 
-ZEST_CASE(OwnMacroAHeaderReads) {
+ZEST_CASE(OwnMacroHeaderReads) {
     add_file("shared.hxx", "#pragma once\n#include \"config.h\"\n");
     add_file("config.h", R"cpp(#pragma once
 #ifdef WIDE
@@ -135,7 +135,7 @@ using size = int;
     ZEXPECT(!from_pch(*compiled.unit, "size"));
 };
 
-ZEST_CASE(OwnMacroAHeaderSpells) {
+ZEST_CASE(OwnMacroReplacesIdentifier) {
     // An identifier is a read too: the unit's macro would have replaced it.
     add_file("shared.hxx", "#pragma once\n#include \"names.h\"\n");
     add_file("names.h", "#pragma once\nstruct widget { int field; };\n");
@@ -157,7 +157,7 @@ int early;
     ZEXPECT(!from_pch(*compiled.unit, "early"));
 };
 
-ZEST_CASE(OwnDefaultOfAHeldMacro) {
+ZEST_CASE(OwnHeldMacroDefault) {
     // With the PCH the unit's own definition would be an inactive branch.
     add_file("shared.hxx", "#pragma once\n#include \"limits.h\"\n");
     add_file("limits.h", "#pragma once\n#define LIMIT 8\nint limit();\n");
@@ -218,7 +218,7 @@ int fast();
     ZEXPECT(grafted(compiled) == std::vector<std::string>{"reader.h:1", "  writer.h:2"});
 };
 
-ZEST_CASE(SystemReadInAProjectHeader) {
+ZEST_CASE(ProjectHeaderSystemRead) {
     // config.h enters the unguarded system header mark.h, which reads the
     // macro its first entry, through base.h, wrote: the order of the system
     // library's own entries.

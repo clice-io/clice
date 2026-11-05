@@ -166,7 +166,7 @@ std::set<std::string> records(const index::TUIndex& view, llvm::StringRef file) 
 
 ZEST_SUITE(SharedHeaderIndex) {
 
-ZEST_CASE(SameAsParsedByTheUnit) {
+ZEST_CASE(SameAsUnitParse) {
     TempDir tmp;
     tmp.touch("shared.hxx", "#pragma once\n#include \"outer.h\"\n#include \"other.h\"\n");
     tmp.touch("inner.h", "#pragma once\nstruct Inner { int value; };\n");
@@ -207,7 +207,7 @@ int use() { return outer(Outer{}) + other(Inner{}); }
     }
 };
 
-ZEST_CASE(LocalOfThePCHDefined) {
+ZEST_CASE(PCHLocalDefined) {
     // A constant of a header the PCH holds has internal linkage: the unit's
     // own table describes it, defined, whether it parses the header or
     // reads it from a precompiled header, shared or the build's.
@@ -236,7 +236,7 @@ ZEST_CASE(LocalOfThePCHDefined) {
     ZEXPECT(has_flag(*declared_flags, index::SymbolFlags::HasDefinition));
 };
 
-ZEST_CASE(OwnInstantiationsOfHeldTemplates) {
+ZEST_CASE(HeldTemplateInstantiations) {
     // The unit instantiates a template the PCH holds for a type of its own:
     // what it records there is what the template's text leaves open, as
     // when it parses the header itself.
@@ -303,8 +303,14 @@ inline void inner() { SHOW(Box<Inner>{}); }
 
     IndexerFixture f;
     open_store(tmp, f.project);
+    // Before the shared header's index, what the unit names by hash is
+    // stored nowhere.
+    auto over = index_over(tmp, pch, &*shared);
+    auto early = f.project.index.merge(over, {});
+    ZASSERT(!early);
+    ZEXPECT(early.error() == index::MergeError::Outdated);
     ZASSERT(f.merge(own));
-    ZASSERT(f.merge(index_over(tmp, pch, &*shared)));
+    ZASSERT(f.merge(over));
     auto box = f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")));
     auto records = [&] {
         std::size_t count = 0;

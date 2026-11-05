@@ -355,8 +355,6 @@ public:
         auto [it, success] = symbols.try_emplace(hash);
         if(success) {
             symbol_decls.try_emplace(hash, decl);
-        }
-        if(success) {
             // The entity's own declaration describes it: a reference can
             // reach it first through a template (a member body calling
             // `begin<T>()` above `begin`) or a using-declaration's shadow,
@@ -1773,8 +1771,6 @@ public:
         }
     }
 
-    /// The TU index, into `blob`, which arrives holding what a preamble's
-    /// own index adds on top of an ordinary build when `preamble` is set.
     /// Whether a header's record may name `decl` by a guess — a dependent
     /// name's candidate, a member the resolver finds through a template —
     /// without the record depending on what else the unit included: some
@@ -1963,11 +1959,8 @@ public:
     }
 
     /// The files whose variant the receiver stores at their identity: they
-    /// go unwalked, but for the templates the walked instantiations come
-    /// from and the classes whose dependent bases an instantiation
-    /// resolves — what those resolve is recorded beyond what their written
-    /// entries say (written_in).
-    void choose_known(llvm::ArrayRef<const clang::Decl*> walked) {
+    /// go unwalked, but for what walk_patterns takes of them.
+    void choose_known() {
         auto focus = unit.focus_file().file();
         for(auto& [fid, own]: unit.header_identities()) {
             if(fid == focus || unit.is_builtin_file(fid) || unit.from_context(fid)) {
@@ -2044,6 +2037,8 @@ public:
         }
     }
 
+    /// The TU index, into `blob`, which arrives holding what a preamble's
+    /// own index adds on top of an ordinary build when `preamble` is set.
     std::vector<std::byte> build(TUIndexBlob blob, bool preamble) {
         ScopedTimer semantics_timer;
         auto walked = walked_instantiations();
@@ -2055,7 +2050,7 @@ public:
         std::optional<Semantics> full;
         if(!focus_only) {
             if(!unit.header_identities().empty()) {
-                choose_known(walked);
+                choose_known();
             }
             walk_patterns(walked);
             bool partial = !unwalked.files.empty() || !unwalked.precompiled.empty();

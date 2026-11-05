@@ -561,11 +561,9 @@ static worker::CompileUnitResult
     }
     worker::CompileUnitResult result;
     result.success = true;
-    result.shared_rejection = unreadable ? "its record is unreadable" : unit->shared_rejection();
-    if(!result.shared_rejection.empty()) {
-        LOG_INFO("{} parsed without its shared header's PCH: {}",
-                 params.file,
-                 result.shared_rejection);
+    if(auto rejection = unreadable ? "its record is unreadable" : unit->shared_rejection();
+       !rejection.empty()) {
+        LOG_INFO("{} parsed without its shared header's PCH: {}", params.file, rejection);
     }
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;

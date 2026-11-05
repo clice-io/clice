@@ -1,0 +1,2 @@
+[answers.shared]
+type_definition = ["ptr.h │ struct ⟦Ptr⟧ {", "ptr.h │ struct ⟦Widget⟧ {"]
