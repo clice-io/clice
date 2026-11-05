@@ -41,3 +41,15 @@ void temporaries() {
     decltype(auto) §(parenthesized_member)p = (Box<T>::make().value);
     auto&& §(rvalue_element)e = Box<T>::make().arr[0];
 }
+
+template <class T>
+struct Node {
+    T value;
+    Node<W<T>>* children;
+    template <class U>
+    U echo(U u);
+
+    void walk() {
+        auto §(recursive_class)r = children->echo(value);
+    }
+};

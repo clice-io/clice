@@ -13,3 +13,25 @@ template <class T>
 int use(Box<T>& box) {
     return box.make().§(member)vec_member;
 }
+
+namespace lib {
+struct Text {
+    int text;
+};
+
+template <class R = Text, class... A>
+R convert(A&&... a);
+
+template <class A, class T = Vec<A>>
+T pair(A a, T t);
+}  // namespace lib
+
+struct Real {
+    int real;
+};
+
+template <class T>
+int explicit_arguments(T x) {
+    int packed = lib::convert<Real>(x).§(explicit_pack)real;
+    return packed + lib::pair<int>(x, Real()).§(explicit_then_deduced)real;
+}

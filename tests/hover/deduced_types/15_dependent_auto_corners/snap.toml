@@ -66,3 +66,14 @@ auto&& e = Box<T>::make().arr[0]
 **Type:** `int&&`
 '''
 range = "auto&& ⟦e⟧ = Box<T>::make().arr[0];"
+
+[answers.recursive_class.hover]
+markdown = '''
+**variable** `r` · method `Node::walk`
+
+```cpp
+auto r = children->echo(value)
+```
+**Type:** `T`
+'''
+range = "auto ⟦r⟧ = children->echo(value);"

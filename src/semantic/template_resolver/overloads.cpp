@@ -309,6 +309,10 @@ void
         return std::popcount(method_quals & ~quals) * 2 +
                (rvalue && ref == clang::RQ_LValue ? 1 : 0);
     };
+    bool bindable = ranges::any_of(candidates, [&](const clang::NamedDecl* decl) {
+        auto* method = method_of(decl);
+        return method && rank(method) >= 0;
+    });
     auto outranked = [&](const clang::NamedDecl* decl) {
         auto* method = method_of(decl);
         if(!method) {
@@ -322,12 +326,11 @@ void
                 continue;
             }
             siblings = true;
-            if(auto other_score = rank(sibling);
-               other_score >= 0 && (score < 0 || other_score < score)) {
+            if(auto other_score = rank(sibling); other_score >= 0 && other_score < score) {
                 return true;
             }
         }
-        return siblings && score < 0;
+        return score < 0 && (bindable || siblings);
     };
     llvm::SmallVector<const clang::NamedDecl*, 4> kept;
     for(auto* candidate: candidates) {

@@ -7,3 +7,29 @@ int vec_member
 ```
 '''
 range = "return box.make().⟦vec_member⟧;"
+
+[answers.explicit_pack.hover]
+markdown = '''
+**field** `real` · struct `Real`
+
+```cpp
+int real
+```
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "int packed = lib::convert<Real>(x).⟦real⟧;"
+
+[answers.explicit_then_deduced.hover]
+markdown = '''
+**field** `real` · struct `Real`
+
+```cpp
+int real
+```
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "return packed + lib::pair<int>(x, Real()).⟦real⟧;"

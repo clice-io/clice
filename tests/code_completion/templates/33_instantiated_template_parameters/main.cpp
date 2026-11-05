@@ -33,6 +33,16 @@ struct Ptr<T*> {
     int pointed;
 };
 
+template <class T, int N>
+struct Vec {
+    T data[N];
+};
+
+template <>
+struct Vec<float, 3> {
+    float x;
+};
+
 template <int N>
 int count(Arr<N> items) {
     return items.§(non_type);
@@ -58,10 +68,16 @@ int scoped() {
     return Wrap<T>::§(qualified_scope);
 }
 
+template <class T>
+void literal(Vec<T, 3> point) {
+    point.§(literal_value);
+}
+
 int use() {
     count(Arr<3>{});
     hold(Box<int>{});
     deref(Ptr<int*>{});
     scoped<int>();
+    literal(Vec<float, 3>{});
     return unwrap(Wrap<int>{});
 }

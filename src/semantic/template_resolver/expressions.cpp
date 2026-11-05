@@ -440,13 +440,15 @@ bool PseudoInstantiator::rvalue(const clang::Expr* base) {
 
 clang::QualType PseudoInstantiator::call_type(const clang::CallExpr* call) {
     auto* callee = call->getCallee()->IgnoreParenImpCasts();
+    /// The arguments are written in the caller's terms: resolved before
+    /// the lookup leaves the frames of the callee's class on the stack.
+    auto arguments = call_arguments({call->getArgs(), call->getNumArgs()});
     /// A call whose argument-dependent lookup waits for instantiation may
     /// call what the visible overloads say nothing about.
     auto callees = call_candidates(call);
     if(!callees.complete) {
         return clang::QualType();
     }
-    auto arguments = call_arguments({call->getArgs(), call->getNumArgs()});
     return common_return_type(callees.candidates,
                               decls::explicit_template_arguments(callee),
                               arguments ? llvm::ArrayRef<CallArgument>(*arguments)
@@ -497,20 +499,25 @@ clang::QualType
 
     auto* params = FTD->getTemplateParameters();
     llvm::SmallVector<clang::TemplateArgument, 4> bound;
-    if(!template_arguments.empty()) {
-        /// A pack parameter would need its explicit arguments grouped;
-        /// leave it to the unbound case below.
-        if(!params->hasParameterPack()) {
-            for(auto& argument: template_arguments) {
-                bound.push_back(argument.getArgument());
+    /// Explicit arguments reaching a pack parameter would need grouping;
+    /// leave them all to the unbound case below.
+    auto pack = ranges::find_if(*params, &clang::NamedDecl::isTemplateParameterPack);
+    if(template_arguments.size() <= static_cast<std::size_t>(pack - params->begin())) {
+        for(auto& argument: template_arguments) {
+            bound.push_back(argument.getArgument());
+        }
+        /// The call deduces what the explicit arguments leave out, before
+        /// any default applies.
+        if(!arguments.empty() && bound.size() < params->size()) {
+            auto deduced = deduce_call(FTD, function, arguments);
+            for(auto i = bound.size(); i < deduced.size() && !deduced[i].isNull(); i += 1) {
+                bound.push_back(deduced[i]);
             }
         }
-    } else if(!arguments.empty()) {
-        bound = deduce_call(FTD, function, arguments);
-    }
-    if(llvm::SmallVector<clang::TemplateArgument, 4> completed;
-       fill_defaults(FTD, bound, completed)) {
-        bound = std::move(completed);
+        if(llvm::SmallVector<clang::TemplateArgument, 4> completed;
+           fill_defaults(FTD, bound, completed)) {
+            bound = std::move(completed);
+        }
     }
     /// Unbound, they would be resolved through the rest of the stack:
     /// a `decltype` of a call on them names whatever that call returns

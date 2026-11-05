@@ -14,3 +14,16 @@ int small
 **Alignment:** 4 bytes
 '''
 range = "return rows.template pick<int>().⟦small⟧;"
+
+[answers.const_object.hover]
+markdown = '''
+**field** `large` · struct `Large`
+
+```cpp
+int large
+```
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "return getter.get(1).⟦large⟧;"

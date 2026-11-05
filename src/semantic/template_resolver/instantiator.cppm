@@ -443,7 +443,7 @@ private:
                              llvm::StringRef kind);
 
     /// The parameters of `FTD`, the template of `function`, that a call with
-    /// `arguments` deduces, up to the first one it leaves unbound; empty when
+    /// `arguments` deduces, null where it leaves one unbound; empty when
     /// the call cannot match. Simplified [temp.deduct.call]: a reference
     /// parameter matches its referred type (a forwarding reference an lvalue
     /// as an lvalue reference), any other the argument decayed and
@@ -680,7 +680,8 @@ private:
     /// object drops out (one less cv-qualified than it, `&` on an rvalue,
     /// `&&` on an lvalue), and of the rest the one adding the fewest
     /// qualifiers binds best, an rvalue taking `const&` last. An overload
-    /// with no such sibling is left alone: ranking it needs conversions.
+    /// with no such sibling is left alone, ranking it needs conversions,
+    /// unless it cannot bind the object while another can.
     void select_by_object(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
                           clang::QualType object,
                           bool rvalue = false);

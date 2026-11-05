@@ -67,19 +67,26 @@ bool PseudoInstantiator::fill_defaults(clang::TemplateDecl* TD,
     auto list = TD->getTemplateParameters();
     out.reserve(list->size());
     for(auto [index, argument]: views::enumerate(arguments)) {
-        /// A value folded from an expression has the expression's type; the
-        /// specialization holds it converted to the parameter's.
+        /// A value written as is (`Vec<T, 3>`), or folded from an expression
+        /// with the expression's type; the specialization holds it converted
+        /// to the parameter's.
         auto* NTTP = static_cast<unsigned>(index) < list->size()
                          ? llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(
                                list->getParam(static_cast<unsigned>(index)))
                          : nullptr;
-        if(NTTP && !NTTP->isParameterPack() &&
-           argument.getKind() == clang::TemplateArgument::Integral &&
-           !context.hasSameType(argument.getIntegralType(), NTTP->getType())) {
-            if(auto value = convert_integral(context, argument.getAsIntegral(), NTTP->getType())) {
-                out.emplace_back(context, *value, NTTP->getType());
-                continue;
+        std::optional<llvm::APSInt> value;
+        if(NTTP && !NTTP->isParameterPack()) {
+            if(argument.getKind() == clang::TemplateArgument::Integral) {
+                value = argument.getAsIntegral();
+            } else if(argument.getKind() == clang::TemplateArgument::Expression &&
+                      !argument.getAsExpr()->isValueDependent()) {
+                value = argument.getAsExpr()->getIntegerConstantExpr(context);
             }
+        }
+        if(auto converted =
+               value ? convert_integral(context, *value, NTTP->getType()) : std::nullopt) {
+            out.emplace_back(context, *converted, NTTP->getType());
+            continue;
         }
         out.emplace_back(argument);
     }
@@ -368,7 +375,6 @@ llvm::SmallVector<clang::TemplateArgument, 4>
        Deduction::Failed) {
         return {};
     }
-    deduced.erase(ranges::find_if(deduced, &clang::TemplateArgument::isNull), deduced.end());
     return deduced;
 }
 

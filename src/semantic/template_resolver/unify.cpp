@@ -263,6 +263,20 @@ bool arguments_may_match(clang::ASTContext& context,
     if(open(lhs) || open(rhs)) {
         return true;
     }
+    /// A template-id holds its value arguments as written, a specialization
+    /// converted.
+    auto value = [&](const clang::TemplateArgument& argument) -> std::optional<llvm::APSInt> {
+        if(argument.getKind() == Kind::Integral) {
+            return argument.getAsIntegral();
+        }
+        if(argument.getKind() == Kind::Expression) {
+            return argument.getAsExpr()->getIntegerConstantExpr(context);
+        }
+        return std::nullopt;
+    };
+    if(auto left = value(lhs), right = value(rhs); left && right) {
+        return llvm::APSInt::isSameValue(*left, *right);
+    }
     if(lhs.getKind() == Kind::Type && rhs.getKind() == Kind::Type) {
         return types_may_match(context, lhs.getAsType(), rhs.getAsType());
     }

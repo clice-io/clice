@@ -29,3 +29,9 @@ items = [
     { label = "operator=(…) +1 overload", kind = "Method" },
     { label = "~Wrap()", kind = "Method", detail = "void" },
 ]
+
+[answers.literal_value.completion]
+items = [
+    { label = "x", kind = "Field", detail = "float" },
+    { label = "template", kind = "Keyword" },
+]
