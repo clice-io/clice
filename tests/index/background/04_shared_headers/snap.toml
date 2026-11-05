@@ -1,0 +1,26 @@
+[test.meters]
+references = [
+    "shapes.h │ inline area_type area(⟦meters⟧ w, meters h) { return w * h; }",
+    "shapes.h │ inline area_type area(meters w, ⟦meters⟧ h) { return w * h; }",
+    "using ⟦meters⟧ = int;",
+]
+
+[test.area_type]
+references = ["using ⟦area_type⟧ = int;", "inline ⟦area_type⟧ area(meters w, meters h) { return w * h; }"]
+
+[test.area]
+references = [
+    "eighth.cpp │ int eighth() { return ⟦area⟧(1, 2); }",
+    "fifth.cpp │ int fifth() { return ⟦area⟧(1, 2); }",
+    "first.cpp │ int first() { return ⟦area⟧(1, 2); }",
+    "fourth.cpp │ int fourth() { return ⟦area⟧(1, 2); }",
+    "second.cpp │ int second() { return ⟦area⟧(1, 2); }",
+    "seventh.cpp │ int seventh() { return ⟦area⟧(1, 2); }",
+    "inline area_type ⟦area⟧(meters w, meters h) { return w * h; }",
+    "sixth.cpp │ int sixth() { return ⟦area⟧(1, 2); }",
+    "third.cpp │ int third() { return ⟦area⟧(1, 2); }",
+    "wide.cpp │ long widen() { return ⟦area⟧(3, 4); }",
+]
+
+[test.widen]
+references = ["long ⟦widen⟧() { return area(3, 4); }"]
