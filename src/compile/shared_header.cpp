@@ -149,12 +149,13 @@ private:
         /// The include of the file below it on the stack that entered it.
         std::uint32_t entered_by = none;
 
-        llvm::DenseSet<std::uint64_t> read_names;
+        /// The names read, by whether a system header read them.
+        llvm::DenseSet<std::pair<std::uint64_t, std::uint8_t>> read_names;
 
         /// What it and the runs inside it wrote.
         llvm::DenseSet<std::uint64_t> written;
 
-        std::vector<MacroState> reads;
+        std::vector<SharedHeaderRecord::Read> reads;
 
         std::vector<MacroState> writes;
 
@@ -198,7 +199,6 @@ private:
             headers.push_back({.entry = *frame.entry,
                                .forced = frame.forced,
                                .record = {.file = file_index(*frame.entry),
-                                          .system = frame.system,
                                           .reads = std::move(frame.reads),
                                           .writes = std::move(frame.writes),
                                           .includes = std::move(frame.includes)}});
@@ -212,15 +212,23 @@ private:
         // includes it: its run is the run of the header including it.
         auto base = static_cast<std::uint32_t>(below.includes.size());
         auto writes = static_cast<std::uint32_t>(below.writes.size());
+        auto reads = static_cast<std::uint32_t>(below.reads.size());
+        std::vector<std::uint32_t> kept_reads;
+        for(auto [i, read]: views::enumerate(frame.reads)) {
+            if(!below.written.contains(read.macro.name) &&
+               below.read_names.insert({read.macro.name, std::uint8_t(read.system)}).second) {
+                kept_reads.push_back(static_cast<std::uint32_t>(i));
+                below.reads.push_back(read);
+            }
+        }
         for(auto include: frame.includes) {
             include.parent = include.parent == none ? frame.entered_by : include.parent + base;
             include.writes += writes;
+            // The reads of the file before it that its includer kept.
+            include.reads = reads + static_cast<std::uint32_t>(
+                                        ranges::lower_bound(kept_reads, include.reads) -
+                                        kept_reads.begin());
             below.includes.push_back(include);
-        }
-        for(auto read: frame.reads) {
-            if(!below.written.contains(read.name) && below.read_names.insert(read.name).second) {
-                below.reads.push_back(read);
-            }
         }
         below.writes.append_range(frame.writes);
         below.written.insert(frame.written.begin(), frame.written.end());
@@ -244,7 +252,8 @@ private:
         frame.includes.push_back({.line = sm.getPresumedLoc(hash, false).getLine(),
                                   .file = file_index(*file),
                                   .held = unresolved,
-                                  .writes = static_cast<std::uint32_t>(frame.writes.size())});
+                                  .writes = static_cast<std::uint32_t>(frame.writes.size()),
+                                  .reads = static_cast<std::uint32_t>(frame.reads.size())});
     }
 
     void MacroDefined(const clang::Token& name, const clang::MacroDirective* directive) override {
@@ -327,8 +336,9 @@ private:
         auto name = name_hash(spelling);
         initial.try_emplace(name, state);
         auto& frame = stack.back();
-        if(!frame.written.contains(name) && frame.read_names.insert(name).second) {
-            frame.reads.push_back({.name = name, .state = state});
+        if(!frame.written.contains(name) && frame.read_names.insert({name, std::uint8_t(frame.system)}).second) {
+            frame.reads.push_back(
+                {.macro = {.name = name, .state = state}, .system = frame.system});
         }
     }
 
@@ -501,19 +511,26 @@ private:
         auto& header = record.headers[index];
         auto node = static_cast<std::uint32_t>(grafted.size());
         grafted.push_back({.includer = includer, .parent = parent, .line = line, .file = header.file});
-        for(auto& read: header.reads) {
-            if(state(read.name) != read.state && !(header.system && !project_written(read.name))) {
-                reject(std::format("{} would read {} otherwise",
-                                   record.files[header.file].path,
-                                   spelling(read.name)));
-            }
-        }
-        llvm::SmallVector<std::uint32_t> nodes(header.includes.size(), none);
+        // Its run read and wrote between its includes, what the headers
+        // those enter wrote seen by the reads after them.
+        std::uint32_t read = 0;
         std::uint32_t written = 0;
-        for(auto [i, include]: views::enumerate(header.includes)) {
-            for(; written < include.writes; written += 1) {
+        auto run_until = [&](std::uint32_t reads, std::uint32_t writes) {
+            for(; read < reads; read += 1) {
+                auto& [macro, system] = header.reads[read];
+                if(state(macro.name) != macro.state && !(system && !project_written(macro.name))) {
+                    reject(std::format("{} would read {} otherwise",
+                                       record.files[header.file].path,
+                                       spelling(macro.name)));
+                }
+            }
+            for(; written < writes; written += 1) {
                 states[header.writes[written].name] = header.writes[written].state;
             }
+        };
+        llvm::SmallVector<std::uint32_t> nodes(header.includes.size(), none);
+        for(auto [i, include]: views::enumerate(header.includes)) {
+            run_until(include.reads, include.writes);
             auto above = include.parent == none ? node : nodes[include.parent];
             if(include.held == none) {
                 nodes[i] = static_cast<std::uint32_t>(grafted.size());
@@ -525,9 +542,8 @@ private:
                 enter(include.held, {}, above, include.line);
             }
         }
-        for(; written < header.writes.size(); written += 1) {
-            states[header.writes[written].name] = header.writes[written].state;
-        }
+        run_until(static_cast<std::uint32_t>(header.reads.size()),
+                  static_cast<std::uint32_t>(header.writes.size()));
     }
 
     void MacroDefined(const clang::Token& name, const clang::MacroDirective* directive) override {

@@ -52,21 +52,30 @@ struct SharedHeaderRecord {
         /// guard, whose includes follow it.
         std::uint32_t held = none;
 
-        /// How many of the header's writes came before it.
+        /// How many of the header's writes and reads came before it.
         std::uint32_t writes = 0;
+        std::uint32_t reads = 0;
 
         friend bool operator==(const Include&, const Include&) = default;
+    };
+
+    /// A macro a header's run read before the run wrote it, identifiers no
+    /// macro names among them (state 0).
+    struct Read {
+        MacroState macro;
+
+        /// Where a system header's text read it.
+        bool system = false;
+
+        friend bool operator==(const Read&, const Read&) = default;
     };
 
     struct Header {
         /// Into `files`.
         std::uint32_t file = 0;
 
-        bool system = false;
-
-        /// The macros its run read before it wrote them, with the state it
-        /// read, identifiers no macro names among them (state 0).
-        std::vector<MacroState> reads;
+        /// What its run read, in order, with the state it read.
+        std::vector<Read> reads;
 
         /// Each macro its run wrote, in order, with the state it left.
         std::vector<MacroState> writes;

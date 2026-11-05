@@ -31,9 +31,7 @@ template <template <typename> typename Seq>
 struct SharedHeaderHeaderOf {
     std::uint32_t file = 0;
 
-    std::uint8_t system = 0;
-
-    Seq<MacroState> reads;
+    Seq<SharedHeaderRecord::Read> reads;
 
     Seq<MacroState> writes;
 
@@ -125,7 +123,6 @@ std::vector<std::byte> encode_shared_header(const SharedHeaderIndex& index) {
     }
     for(auto& header: record.headers) {
         blob.headers.push_back({.file = header.file,
-                                .system = header.system,
                                 .reads = header.reads,
                                 .writes = header.writes,
                                 .includes = header.includes});
@@ -168,12 +165,12 @@ std::optional<SharedHeaderIndex> decode_shared_header(llvm::StringRef bytes) {
         }
         auto& into = record.headers.emplace_back();
         into.file = header.file;
-        into.system = header.system != 0;
-        into.reads = copy<MacroState>(header.reads);
+        into.reads = copy<SharedHeaderRecord::Read>(header.reads);
         into.writes = copy<MacroState>(header.writes);
         into.includes = copy<SharedHeaderRecord::Include>(header.includes);
         for(auto [i, include]: views::enumerate(into.includes)) {
             if(include.file >= files || include.writes > into.writes.size() ||
+               include.reads > into.reads.size() ||
                (include.held != SharedHeaderRecord::none && include.held >= headers) ||
                (include.parent != SharedHeaderRecord::none &&
                 include.parent >= static_cast<std::uint32_t>(i))) {

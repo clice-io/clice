@@ -198,6 +198,41 @@ typedef unsigned long size_type;
     ZEXPECT(compiled.unit->shared_rejection().empty());
 };
 
+ZEST_CASE(ReadAfterAnInclude) {
+    // The PCH enters writer.h first, so reader.h's own include of it is
+    // skipped there; the unit's text includes reader.h alone, which enters
+    // writer.h before reading what it defines.
+    add_file("shared.hxx", "#pragma once\n#include \"writer.h\"\n#include \"reader.h\"\n");
+    add_file("writer.h", "#pragma once\n#define FAST\n");
+    add_file("reader.h", R"cpp(#pragma once
+#include "writer.h"
+#ifdef FAST
+int fast();
+#endif
+)cpp");
+    add_focus("main.cpp", "#include \"reader.h\"\nint use() { return fast(); }\n");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().empty());
+    ZEXPECT(grafted(compiled) == std::vector<std::string>{"reader.h:1", "  writer.h:2"});
+};
+
+ZEST_CASE(SystemReadInAProjectHeader) {
+    // config.h enters the unguarded system header mark.h, which reads the
+    // macro its first entry, through base.h, wrote: the order of the system
+    // library's own entries.
+    add_file("shared.hxx", "#pragma once\n#include <base.h>\n#include \"config.h\"\n");
+    add_file("sys/mark.h", R"cpp(#ifdef _MARK_H
+#undef _MARK_H
+#endif
+#define _MARK_H 1
+)cpp");
+    add_file("sys/base.h", "#pragma once\n#include <mark.h>\n");
+    add_file("config.h", "#pragma once\n#include <mark.h>\nint config();\n");
+    add_focus("main.cpp", "#include \"config.h\"\n#include <base.h>\n");
+    auto compiled = compile_over(*this, {"-isystem", TestVFS::path("sys")});
+    ZEXPECT(compiled.unit->shared_rejection().empty());
+};
+
 ZEST_CASE(ProjectOrder) {
     // The same between project headers is no system library's business.
     add_file("shared.hxx", "#pragma once\n#include \"reader.h\"\n#include \"writer.h\"\n");
