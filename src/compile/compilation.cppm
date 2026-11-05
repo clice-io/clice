@@ -2,6 +2,7 @@ module clice:compile.compilation;
 
 import :compile.diagnostic;
 import :compile.directive;
+import :compile.shared_header;
 import :compile.tokens;
 import :support.prelude;
 import :syntax.header_context;
@@ -230,9 +231,20 @@ struct CompilationParams {
     /// begin/end offset pairs): the `#include`s there were never entered.
     std::vector<std::uint32_t> preamble_inactive_regions;
 
-    /// Whole: take the identity of every file entry as the parse goes
-    /// (CompilationUnit::header_identities).
+    /// Whole and PrecompiledHeader: take the identity of every file entry
+    /// as the parse goes (CompilationUnit::header_identities).
     bool header_identities = false;
+
+    /// PrecompiledHeader of a shared header: record what each header the
+    /// PCH holds read and wrote (CompilationUnit::shared_record).
+    bool record_shared = false;
+
+    /// What the build of the shared header whose PCH the compile loads
+    /// (CompilationInput::pch) recorded. Parsing a header it holds where
+    /// the focus file includes it, or the focus file's own text, may read
+    /// another macro than with the PCH loaded: then the compile parses
+    /// again without it (CompilationUnit::shared_rejection).
+    std::shared_ptr<const SharedHeaderRecord> shared;
 
     /// Set to stop the compile, an old one a newer request replaces.
     std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
@@ -524,6 +536,25 @@ public:
         return collected_identities;
     }
 
+    /// With CompilationParams::record_shared, what the build learned of
+    /// the headers its PCH holds.
+    const SharedHeaderRecord& shared_record() {
+        return recorded_shared;
+    }
+
+    /// With CompilationParams::shared, the includes of the headers the PCH
+    /// held that the parse would have run without it, in the order it
+    /// would have.
+    llvm::ArrayRef<GraftedInclude> grafted_includes() {
+        return grafted;
+    }
+
+    /// Why the compile parsed without the shared header's PCH it was given
+    /// (CompilationParams::shared); empty when it loaded it.
+    llvm::StringRef shared_rejection() {
+        return rejection;
+    }
+
     clang::TranslationUnitDecl* tu();
 
     /// The files this compilation read (include and __has_include targets),
@@ -559,6 +590,8 @@ private:
     class DiagnosticRecorder;
     class DirectiveRecorder;
     class IdentityRecorder;
+    class SharedHeaderJudge;
+    class SharedHeaderRecorder;
     class ParseConsumer;
     class ParseAction;
 
@@ -574,6 +607,23 @@ private:
     /// The callbacks filling collected_identities, watching the tokens the
     /// parser reads too, see header_identity.cpp.
     std::unique_ptr<clang::PPCallbacks> identity_recorder();
+
+    /// The callbacks filling recorded_shared, see shared_header.cpp.
+    std::unique_ptr<clang::PPCallbacks> shared_header_recorder();
+
+    /// The callbacks deciding `rejection` and filling `grafted`, see
+    /// shared_header.cpp.
+    std::unique_ptr<clang::PPCallbacks> shared_header_judge();
+
+    /// Hand `watch` every token the preprocessor hands the parser.
+    void watch_tokens(std::function<void(const clang::Token&)> watch) {
+        token_watchers.push_back(std::move(watch));
+    }
+
+    /// A hash of the definition `macro`, the same in every compile reading
+    /// it: where it is, or for one with no file (`-D`, the predefines) its
+    /// tokens; a builtin by its name. 0 for none.
+    std::uint64_t macro_state(const clang::MacroInfo* macro, const clang::IdentifierInfo& name);
 
     auto SM() -> clang::SourceManager& {
         return instance->getSourceManager();
@@ -688,6 +738,24 @@ private:
 
     /// See header_identities.
     llvm::DenseMap<clang::FileID, std::uint64_t> collected_identities;
+
+    /// See shared_record.
+    SharedHeaderRecord recorded_shared;
+
+    /// See grafted_includes.
+    std::vector<GraftedInclude> grafted;
+
+    /// See shared_rejection.
+    std::string rejection;
+
+    /// See watch_tokens.
+    llvm::SmallVector<std::function<void(const clang::Token&)>, 2> token_watchers;
+
+    /// What runs once the parse is over.
+    llvm::SmallVector<std::function<void()>, 2> after_parse;
+
+    /// Memo of macro_state.
+    llvm::DenseMap<const clang::MacroInfo*, std::uint64_t> macro_states;
 
     /// Cache for file path. It is used to avoid multiple file path lookup.
     llvm::DenseMap<clang::FileEntryRef, llvm::StringRef> path_cache;

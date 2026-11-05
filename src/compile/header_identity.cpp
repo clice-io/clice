@@ -163,7 +163,7 @@ private:
             identities[fid] = 0;
             return;
         }
-        add(fid, mix(offset, macro_key(name, macro)));
+        add(fid, mix(offset, unit.macro_state(macro, *name.getIdentifierInfo())));
     }
 
     void add(clang::FileID fid, std::uint64_t value) {
@@ -187,8 +187,7 @@ private:
     }
 
     std::uint64_t path_key(clang::FileEntryRef file) {
-        auto real = file.getFileEntry().tryGetRealPathName();
-        return llvm::xxh3_64bits(real.empty() ? file.getName() : real);
+        return llvm::xxh3_64bits(unit.file_path(file));
     }
 
     /// A file's text, the same in every unit while the file is unchanged.
@@ -204,38 +203,6 @@ private:
             }
         }
         return it->second;
-    }
-
-    /// A macro by its definition: where it is, or, for one with no file
-    /// (`-D`, the predefines), its tokens. A builtin by its name.
-    std::uint64_t macro_key(const clang::Token& name, const clang::MacroInfo* macro) {
-        auto [it, fresh] = macro_keys.try_emplace(macro, 0);
-        if(!fresh) {
-            return it->second;
-        }
-        auto& key = it->second;
-        if(macro->isBuiltinMacro()) {
-            key = llvm::xxh3_64bits(name.getIdentifierInfo()->getName());
-            return key;
-        }
-        auto location = sm.getFileLoc(macro->getDefinitionLoc());
-        auto [fid, offset] = sm.getDecomposedLoc(location);
-        if(auto entry = sm.getFileEntryRefForID(fid)) {
-            key = mix(path_key(*entry), offset);
-            return key;
-        }
-        key = mix(macro->isFunctionLike() ? 7 : 11, macro->getNumParams());
-        for(const auto& token: macro->tokens()) {
-            key = mix(key, static_cast<std::uint64_t>(token.getKind()));
-            if(auto* identifier = token.getIdentifierInfo()) {
-                key = mix(key, llvm::xxh3_64bits(identifier->getName()));
-            } else if(token.isLiteral() && token.getLiteralData()) {
-                key = mix(key,
-                          llvm::xxh3_64bits(
-                              llvm::StringRef(token.getLiteralData(), token.getLength())));
-            }
-        }
-        return key;
     }
 
     /// The declaration context the parser is in: its chain of named scopes
@@ -275,16 +242,50 @@ private:
     llvm::DenseSet<clang::FileID> unit_only;
 
     llvm::DenseMap<const clang::FileEntry*, std::uint64_t> content_keys;
-
-    llvm::DenseMap<const clang::MacroInfo*, std::uint64_t> macro_keys;
 };
 
 std::unique_ptr<clang::PPCallbacks> CompilationUnit::identity_recorder() {
-    assert(params.kind == CompilationKind::Whole);
+    assert(params.kind == CompilationKind::Whole ||
+           params.kind == CompilationKind::PrecompiledHeader);
     auto recorder = std::make_unique<IdentityRecorder>(*this);
-    instance->getPreprocessor().setTokenWatcher(
-        [watch = recorder.get()](const clang::Token& token) { watch->token(token); });
+    watch_tokens([watch = recorder.get()](const clang::Token& token) { watch->token(token); });
     return recorder;
+}
+
+std::uint64_t CompilationUnit::macro_state(const clang::MacroInfo* macro,
+                                           const clang::IdentifierInfo& name) {
+    if(!macro) {
+        return 0;
+    }
+    auto [it, fresh] = macro_states.try_emplace(macro, 0);
+    if(!fresh) {
+        return it->second;
+    }
+    auto& state = it->second;
+    if(macro->isBuiltinMacro()) {
+        state = llvm::xxh3_64bits(name.getName());
+        return state;
+    }
+    auto& sm = SM();
+    auto [fid, offset] = sm.getDecomposedLoc(sm.getFileLoc(macro->getDefinitionLoc()));
+    if(auto entry = sm.getFileEntryRefForID(fid)) {
+        state = mix(llvm::xxh3_64bits(file_path(*entry)), offset);
+        return state;
+    }
+    // A definition read from a PCH keeps no pointer to its literals' text,
+    // which its buffer, in the PCH too, still has.
+    auto& pp = instance->getPreprocessor();
+    llvm::SmallString<32> buffer;
+    state = mix(macro->isFunctionLike() ? 7 : 11, macro->getNumParams());
+    for(const auto& token: macro->tokens()) {
+        state = mix(state, static_cast<std::uint64_t>(token.getKind()));
+        if(auto* identifier = token.getIdentifierInfo()) {
+            state = mix(state, llvm::xxh3_64bits(identifier->getName()));
+        } else if(token.isLiteral()) {
+            state = mix(state, llvm::xxh3_64bits(pp.getSpelling(token, buffer)));
+        }
+    }
+    return state;
 }
 
 }  // namespace clice

@@ -891,15 +891,28 @@ CompilationStatus CompilationUnit::run() {
     if(params.header_identities) {
         instance->getPreprocessor().addPPCallbacks(identity_recorder());
     }
+    if(params.record_shared) {
+        instance->getPreprocessor().addPPCallbacks(shared_header_recorder());
+    }
+    if(params.shared) {
+        instance->getPreprocessor().addPPCallbacks(shared_header_judge());
+    }
 
     // Past the end of the focus file clang instantiates the templates the
     // preamble uses, and checks little else: the end of the last
     // declaration's body, an unclosed `#pragma clang attribute`. Their
     // errors cost a needless rebuild (see compile()).
     if(writes_pch(params.kind) && instantiate) {
-        instance->getPreprocessor().setTokenWatcher([this](const clang::Token& token) {
+        watch_tokens([this](const clang::Token& token) {
             if(token.is(clang::tok::eof) && !errors_at_end) {
                 errors_at_end = instance->getDiagnostics().getNumErrors();
+            }
+        });
+    }
+    if(!token_watchers.empty()) {
+        instance->getPreprocessor().setTokenWatcher([this](const clang::Token& token) {
+            for(auto& watch: token_watchers) {
+                watch(token);
             }
         });
     }
@@ -911,6 +924,9 @@ CompilationStatus CompilationUnit::run() {
     // Upstream FrontendAction::Execute() always returns success: errors go
     // through diagnostics.
     llvm::cantFail(action->Execute());
+    for(auto& finish: after_parse) {
+        finish();
+    }
     // The parser frees its scopes when the parse ends, and Sema goes on
     // pointing at the translation unit's: a declaration the reader loads
     // later, for a lookup on the finished AST, would be added to freed
@@ -972,11 +988,32 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .tidy = built.tidy,
             .skip_bodies = built.skip_bodies,
             .instantiating = built.instantiating,
+            .header_identities = built.header_identities,
             .stop = built.stop,
         };
         again.input.pch = {};
         unit.reset();
         unit.reset(new CompilationUnit(std::move(again)));
+        unit->status = unit->run();
+    }
+
+    if(unit->params.shared && !unit->rejection.empty()) {
+        auto& built = unit->params;
+        CompilationParams again{
+            .kind = built.kind,
+            .input = built.input,
+            .output_file = built.output_file,
+            .tidy = built.tidy,
+            .skip_bodies = built.skip_bodies,
+            .instantiating = built.instantiating,
+            .header_identities = built.header_identities,
+            .stop = built.stop,
+        };
+        again.input.pch = {};
+        auto rejection = std::move(unit->rejection);
+        unit.reset();
+        unit.reset(new CompilationUnit(std::move(again)));
+        unit->rejection = std::move(rejection);
         unit->status = unit->run();
     }
 
@@ -995,6 +1032,8 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .tidy = built.tidy,
             .skip_bodies = built.skip_bodies,
             .instantiating = built.instantiating,
+            .header_identities = built.header_identities,
+            .record_shared = built.record_shared,
             .stop = built.stop,
         };
         unit.reset();
