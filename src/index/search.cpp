@@ -1,5 +1,6 @@
 module clice;
 
+import :command.file_kind;
 import :index.query;
 import :index.search;
 import :index.search_index;
@@ -44,9 +45,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
     llvm::DenseSet<SymbolHash> seen;
     auto indexed = project.search_index().search(query, limit, [&](std::uint32_t path) {
         auto file = project.fid_of(path);
-        return file.valid() && ranges::any_of(query.paths, [&](const std::string& wanted) {
-                   return path_matches(wanted, files.resolve(file));
-               });
+        return file.valid() ? files.resolve(file) : llvm::StringRef();
     });
     // A damaged index answers incompletely, a missing one not at all:
     // until a full build every symbol record is judged one by one instead.
@@ -96,7 +95,8 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
                         std::uint32_t reference_files,
                         Fid anchor) {
         if(!searchable(identity.kind, identity.name, identity.flags) || seen.contains(hash) ||
-           (query.external_only && identity.scope != SymbolScope::External)) {
+           (query.nameable_only && identity.scope != SymbolScope::External &&
+            !is_header_path(path))) {
             return;
         }
         if(!query.kinds.empty() && !ranges::contains(query.kinds, identity.kind)) {
@@ -161,13 +161,12 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
     }
     // The names of internal linkage of the files merged since the newest
     // run's snapshot live in their shards alone.
-    if(!query.external_only) {
-        for(auto file: project.search_pending_files()) {
-            auto* shard = index.declaring_shard(file);
-            if(!shard) {
-                continue;
-            }
-            llvm::StringRef path = files.resolve(file);
+    for(auto file: project.search_pending_files()) {
+        llvm::StringRef path = files.resolve(file);
+        if(query.nameable_only && !is_header_path(path)) {
+            continue;
+        }
+        if(auto* shard = index.declaring_shard(file)) {
             shard->for_each_local_symbol([&](SymbolHash hash, const SymbolView& identity) {
                 if(identity.scope == SymbolScope::Internal && shard->declares(hash)) {
                     consider(hash, identity, path, 0, file);
@@ -289,7 +288,7 @@ Completables completables(const IndexQuery& index, llvm::StringRef prefix, std::
                   SymbolKind::Function,
                   SymbolKind::Variable,
                   SymbolKind::Concept},
-        .external_only = true,
+        .nameable_only = true,
     };
     // The names completion does not offer (a class's members) take places
     // in the ranking: it is fetched wider than the names wanted.
@@ -309,7 +308,8 @@ Completables completables(const IndexQuery& index, llvm::StringRef prefix, std::
             result.exhausted = false;
             continue;
         }
-        Fid declared;
+        // A header's name of internal linkage is in its file alone.
+        Fid declared = hit.anchor;
         if(auto identity = index.project().find_symbol(hit.symbol.hash);
            identity && identity->file != no_file) {
             declared = Fid{identity->file};

@@ -1,0 +1,4 @@
+[answers.after_comment.completion]
+items = [
+    { label = "math", kind = "Module", insert = "math;", replace = "import /* the math module; see math.cppm */ ⟦ma⟧" },
+]

@@ -99,15 +99,15 @@ std::vector<llvm::StringRef>
     // Most identifiers name nothing in one scope: members, parameters, names
     // of other namespaces. Those tried are bounded too.
     std::vector<llvm::StringRef> found;
-    std::size_t tried = 0;
     for(auto name: matching()) {
-        if(found.size() == limit || tried == limit * 40) {
+        if(found_total == limit || tried_total == limit * 40) {
             cut = true;
             break;
         }
-        tried += 1;
+        tried_total += 1;
         if(names_something(name)) {
             found.push_back(name);
+            found_total += 1;
         }
     }
     return found;

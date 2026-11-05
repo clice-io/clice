@@ -1,2 +1,12 @@
 [answers.pos.completion]
 items = []
+
+[answers.after_comment.completion]
+items = [
+    {
+        label = "snap_header.h",
+        kind = "File",
+        insert = "snap_header.h>",
+        replace = "#include /* the snapshot */ <⟦snap⟧",
+    },
+]

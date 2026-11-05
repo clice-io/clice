@@ -21,6 +21,7 @@ import :support.prelude;
 import :support.signal;
 import :support.timer;
 import :syntax.position;
+import :syntax.scan;
 import :syntax.source_text;
 import :syntax.token;
 import :vfs.disk_state;
@@ -659,6 +660,10 @@ public:
 
     /// The header search of the command the open file compiles under.
     SearchConfig search_of(Fid path_id);
+
+    /// The module declaration of `text`, the open file's own up to a point,
+    /// as the preprocessor reads it under the file's command.
+    ScanResult declared_module(Fid path_id, llvm::StringRef text);
 
     /// The preamble include links of a document's active PCH; empty when
     /// there is no PCH or its preamble no longer matches the buffer.

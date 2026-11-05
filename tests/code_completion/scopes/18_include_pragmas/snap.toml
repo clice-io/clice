@@ -1,0 +1,31 @@
+[answers.mapped.completion]
+items = [
+    {
+        label = "lib::impl_value",
+        kind = "Function",
+        insert = "lib::impl_value($0)",
+        snippet = true,
+        edits = [
+            {
+                at = "⟦⟧// A private header is not included itself: the header its pragma names",
+                text = '#include "lib/api.h"',
+            },
+        ],
+    },
+]
+
+[answers.exported.completion]
+items = [
+    {
+        label = "lib::exported_value",
+        kind = "Function",
+        insert = "lib::exported_value($0)",
+        snippet = true,
+        edits = [
+            {
+                at = "⟦⟧// A private header is not included itself: the header its pragma names",
+                text = '#include "lib/umbrella.h"',
+            },
+        ],
+    },
+]

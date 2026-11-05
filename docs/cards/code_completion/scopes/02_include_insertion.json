@@ -9,6 +9,11 @@
   "issues": [],
   "files": [
     {
+      "path": "canvas.h",
+      "text": "#pragma once\n\nstruct Canvas {\n    int width;\n};\n",
+      "markers": []
+    },
+    {
       "path": "geometry.h",
       "text": "#pragma once\n\n#define GEO_SCALE 2\n\nnamespace geo {\n\ndouble area(double radius);\n\n}  // namespace geo\n",
       "markers": []
@@ -20,7 +25,7 @@
     },
     {
       "path": "main.cpp",
-      "text": "#include \"geometry.h\"\n\nnamespace app {\n\ndouble draw() {\n    Circ c;\n    using Shape = circ;\n    on_rese;\n    void (*handler)(int) = on_resi;\n    redra;\n    Gri grid;\n    Ro row;\n    int size = grid_si;\n    int shade = shade_d;\n    auto tone = tone_br;\n    int count = circle_cou;\n    vecto values;\n    double scale = GEO_SC;\n    int most = SIZES_;\n    repai;\n    return geo::area(c.radius) * scale;\n}\n\n}  // namespace app\n",
+      "text": "#include \"geometry.h\"\n\nnamespace app {\n\ndouble draw() {\n    Circ c;\n    using Shape = circ;\n    on_rese;\n    void (*handler)(int) = on_resi;\n    redra;\n    Gri grid;\n    Ro row;\n    int size = grid_si;\n    int shade = shade_d;\n    auto tone = tone_br;\n    int count = circle_cou;\n    vecto values;\n    double scale = GEO_SC;\n    int most = SIZES_;\n    repai;\n    return geo::area(c.radius) * scale;\n}\n\n}  // namespace app\n\nvoid paint() {\n    int Canvas = 0;\n    Canva * target;\n}\n",
       "markers": [
         {
           "name": "not_included",
@@ -111,6 +116,12 @@
           "begin": 357,
           "end": 357,
           "range": false
+        },
+        {
+          "name": "shadowed_global",
+          "begin": 467,
+          "end": 467,
+          "range": false
         }
       ]
     },
@@ -150,7 +161,7 @@
     },
     {
       "path": "shapes.cpp",
-      "text": "#include \"shapes.h\"\n#include \"sizes.h\"\n#include \"standard.h\"\n#include <bits/shapes_impl.h>\n\nnamespace shapes {\n\nvoid on_resize(int width) {}\n\n}  // namespace shapes\n\nnamespace art {\n\nint redraw_budget = 0;\n\n}  // namespace art\n",
+      "text": "#include \"canvas.h\"\n#include \"shapes.h\"\n#include \"sizes.h\"\n#include \"standard.h\"\n#include <bits/shapes_impl.h>\n\nnamespace shapes {\n\nvoid on_resize(int width) {}\n\n}  // namespace shapes\n\nnamespace art {\n\nint redraw_budget = 0;\n\n}  // namespace art\n",
       "markers": []
     },
     {
@@ -758,6 +769,46 @@
           }
         },
         {
+          "label": "shadowed_global",
+          "marker": "shadowed_global",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Canvas",
+                  "kind": "Variable",
+                  "detail": "int",
+                  "insert": "Canvas"
+                },
+                {
+                  "label": "::Canvas",
+                  "kind": "Class",
+                  "insert": "::Canvas",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-26",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"canvas.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
           "label": "c_file",
           "marker": "c_file",
           "value": {
@@ -1015,6 +1066,22 @@
           "value": {
             "completion": {
               "items": []
+            }
+          }
+        },
+        {
+          "label": "shadowed_global",
+          "marker": "shadowed_global",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Canvas",
+                  "kind": "Variable",
+                  "detail": "int",
+                  "insert": "Canvas"
+                }
+              ]
             }
           }
         },

@@ -26,3 +26,11 @@ struct Prism : Square {
 struct Circle : Polygon {
     rese§(deleted)
 };
+
+struct Painter {
+    virtual void erase();
+};
+
+struct Board : Square, Painter {
+    eras§(final_in_another_base)
+};

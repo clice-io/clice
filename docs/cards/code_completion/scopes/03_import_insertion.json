@@ -49,6 +49,18 @@
       "markers": []
     },
     {
+      "path": "fragment.cppm",
+      "text": "// No import goes in a global module fragment.\nmodule;\nCirc\nexport module fragment;\n",
+      "markers": [
+        {
+          "name": "global_fragment",
+          "begin": 59,
+          "end": 59,
+          "range": false
+        }
+      ]
+    },
+    {
       "path": "gui.cppm",
       "text": "export module gui;\n#if 0\nimport optional;\n#endif\n\nexport namespace gui {\n\nvoid show() {\n    Circ c;\n}\n\n}  // namespace gui\n",
       "markers": [
@@ -177,6 +189,15 @@
         {
           "label": "same_partition",
           "marker": "same_partition",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "global_fragment",
+          "marker": "global_fragment",
           "value": {
             "completion": {
               "items": []
@@ -325,6 +346,15 @@
         {
           "label": "same_partition",
           "marker": "same_partition",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "global_fragment",
+          "marker": "global_fragment",
           "value": {
             "completion": {
               "items": []

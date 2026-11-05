@@ -142,6 +142,7 @@ ScanResult scan_quick(llvm::StringRef content) {
                 }
 
                 result.is_interface_unit = dir.Kind == dds::cxx_export_module_decl;
+                result.in_global_fragment = module_name.empty();
                 result.module_name = std::move(module_name);
                 break;
             }

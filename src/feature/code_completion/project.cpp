@@ -14,10 +14,12 @@ import :semantic.token_class;
 import :support.fuzzy_matcher;
 import :syntax.completion;
 import :syntax.dependency_graph;
+import :syntax.include_pragmas;
 import :syntax.include_resolver;
 import :syntax.lexer;
 import :syntax.scan;
 import :vfs.dir_cache;
+import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
 
@@ -62,6 +64,8 @@ void offer_names(const index::IndexQuery& query,
             default: return Kind::Text;
         }
     };
+    namespace stdlib = clang::tooling::stdlib;
+    bool builds_std = !graph.lookup_module("std").empty();
     auto found = index::completables(query, *compile.prefix, scope_candidate_limit);
     for(auto& [symbol, chain, declared]: found.names) {
         bool macro = symbol.kind == SymbolKind::Macro;
@@ -94,6 +98,15 @@ void offer_names(const index::IndexQuery& query,
         if(declared.valid() && index::has_flag(symbol.flags, index::SymbolFlags::Exported)) {
             candidate.module = graph.module_of(declared).str();
         }
+        if(builds_std && candidate.module.empty() && !candidate.scope.empty() &&
+           candidate.scope.front() == "std") {
+            std::string qualifier;
+            for(const auto& segment: candidate.scope) {
+                qualifier += segment + "::";
+            }
+            candidate.std_module =
+                stdlib::Symbol::named(qualifier, candidate.name, stdlib::Lang::CXX).has_value();
+        }
         compile.candidates.push_back(std::move(candidate));
     }
     compile.more_candidates = !found.exhausted;
@@ -102,13 +115,18 @@ void offer_names(const index::IndexQuery& query,
 /// The header, quotes or brackets included, an `#include` for `candidate`
 /// names in `file`, as `arguments` spells it: a standard name's from the
 /// standard library's own table (the C library's for a C file, `c`),
-/// another's the header the index says declares it. None when only a
-/// library's internal header is known.
-static std::optional<std::string> include_for(const index::IndexQuery& query,
-                                              const ScopeCandidate& candidate,
-                                              bool c,
-                                              Fid file,
-                                              IncludeArguments& arguments) {
+/// another's the header the index says declares it, or the one its IWYU
+/// pragmas name instead (`pragmas_of`): a private header's mapping, or a
+/// header including it that exports it. None when only a library's
+/// internal header is known.
+static std::optional<std::string>
+    include_for(const index::IndexQuery& query,
+                const DependencyGraph& graph,
+                const ScopeCandidate& candidate,
+                bool c,
+                Fid file,
+                IncludeArguments& arguments,
+                llvm::function_ref<const IncludePragmas&(Fid)> pragmas_of) {
     auto& files = query.file_table();
     namespace stdlib = clang::tooling::stdlib;
     std::string qualifier;
@@ -137,11 +155,34 @@ static std::optional<std::string> include_for(const index::IndexQuery& query,
         }
     }
     for(auto header: headers) {
-        if(header == file || is_context_header_path(files.resolve(header))) {
+        auto path = files.resolve(header);
+        if(header == file || is_context_header_path(path)) {
             continue;
         }
-        if(auto argument = arguments.of(files.resolve(header))) {
-            return argument;
+        auto& pragmas = pragmas_of(header);
+        if(!pragmas.include_instead.empty()) {
+            return pragmas.include_instead;
+        }
+        if(!pragmas.is_private) {
+            if(auto argument = arguments.of(path)) {
+                return argument;
+            }
+            continue;
+        }
+        // An export names the private header as its includer wrote it.
+        for(auto includer: graph.get_includers(header)) {
+            auto& exporter = pragmas_of(includer);
+            bool exports = ranges::any_of(exporter.exports, [&](llvm::StringRef name) {
+                llvm::StringRef spelled = path;
+                auto rest = spelled.drop_back(name.size());
+                return spelled.ends_with(name) &&
+                       (rest.empty() || llvm::sys::path::is_separator(rest.back()));
+            });
+            if(exports) {
+                if(auto argument = arguments.of(files.resolve(includer))) {
+                    return argument;
+                }
+            }
         }
     }
     return std::nullopt;
@@ -151,12 +192,25 @@ auto finish_completion(protocol::CompletionList list,
                        const IncludePlace& include,
                        llvm::ArrayRef<ScopeCandidate> candidates,
                        const index::IndexQuery& query,
+                       const DependencyGraph& graph,
                        Fid file,
                        const SearchConfig& search,
                        vfs::Scope& scope,
                        std::uint32_t limit) -> protocol::CompletionList {
     IncludeInsertion insertion{.opens_fragment = include.opens_fragment};
     IncludeArguments arguments(search, query.file_table().spelling(file), scope);
+    // Read from the disk, once a header.
+    llvm::DenseMap<Fid, IncludePragmas> pragmas;
+    auto pragmas_of = [&](Fid header) -> const IncludePragmas& {
+        auto [it, inserted] = pragmas.try_emplace(header);
+        if(inserted) {
+            auto path = query.file_table().resolve(header);
+            if(auto read = vfs::read_observed(path)) {
+                it->second = include_pragmas(read->text, dialect_of(path, include.c));
+            }
+        }
+        return it->second;
+    };
     std::erase_if(list.items, [&](protocol::CompletionItem& item) {
         auto symbol = data_symbol(item.data);
         if(!symbol) {
@@ -167,7 +221,7 @@ auto finish_completion(protocol::CompletionList list,
             return each.symbol == *symbol;
         });
         assert(candidate != candidates.end() && "the worker names a candidate it was given");
-        auto header = include_for(query, *candidate, include.c, file, arguments);
+        auto header = include_for(query, graph, *candidate, include.c, file, arguments, pragmas_of);
         if(!header) {
             return true;
         }
@@ -340,22 +394,27 @@ auto module_completion(const CompletionName& completing,
                        const PositionMap& map,
                        PositionEncoding encoding,
                        llvm::StringRef path,
-                       const DependencyGraph& graph,
+                       const ModuleProviders& providers,
                        FileTable& files,
+                       llvm::function_ref<ScanResult(llvm::StringRef)> declared_module,
                        std::uint32_t limit) -> protocol::CompletionList {
     std::vector<std::string> module_names;
     if(completing.kind == CompletionName::Kind::ModuleDeclaration) {
-        module_names = complete_module_declaration(graph, completing.prefix);
+        module_names = complete_module_declaration(providers, completing.prefix);
     } else {
         // The module declaration precedes every import, and the
         // scan stops before the import being typed: the scanner
         // rejects a buffer with an unclosed directive whole. Its
         // lexer needs the NUL terminator a copy provides.
         auto declared = text.take_front(text.rfind('\n', completing.replace.begin) + 1).str();
-        // FIXME: a module declaration inside `#if` scans as none, so the unit's own
-        // module is offered and its partitions are not; an import typed in the global
-        // module fragment, where none may go, is offered names too.
-        module_names = complete_module_import(graph, completing.prefix, scan_quick(declared));
+        auto unit = scan_quick(declared);
+        if(unit.need_preprocess) {
+            unit = declared_module(declared);
+        } else if(unit.in_global_fragment) {
+            // No import may go there.
+            return completion_list({}, limit);
+        }
+        module_names = complete_module_import(providers, completing.prefix, unit);
     }
     auto directory = path::parent(path);
     auto up_to = [&](Fid provider) {
@@ -373,7 +432,7 @@ auto module_completion(const CompletionName& completing,
         if(name.starts_with(":")) {
             return std::uint32_t(0);
         }
-        return ranges::min(graph.lookup_module(name) | views::transform(up_to));
+        return ranges::min(providers.modules.find(name)->getValue() | views::transform(up_to));
     };
     std::vector<protocol::CompletionItem> items;
     items.reserve(module_names.size());
@@ -440,8 +499,9 @@ auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
                                          inputs.positions,
                                          inputs.encoding,
                                          inputs.path,
-                                         inputs.graph,
+                                         module_providers(inputs.graph, inputs.open_modules()),
                                          inputs.files,
+                                         inputs.declared_module,
                                          limit);
             default: break;
         }

@@ -9,6 +9,7 @@ import :support.prelude;
 import :syntax.completion;
 import :syntax.dependency_graph;
 import :syntax.position;
+import :syntax.scan;
 import :vfs.dir_cache;
 import :vfs.file_table;
 import :vfs.ids;
@@ -82,7 +83,10 @@ struct CodeCompletionOptions {
     KANNOTATE(&insert_imports,
               description =
                   "With `all_scopes`, also offer names exported by modules "
-                  "the file does not import yet, adding the `import`.")
+                  "the file does not import yet, adding the `import`. Where "
+                  "the project builds the `std` module, a file that imports "
+                  "modules or is a module unit takes the standard library's "
+                  "names with `import std;` rather than their headers.")
     bool insert_imports = true;
 
     KANNOTATE(&limit,
@@ -129,6 +133,10 @@ struct ScopeCandidate {
     /// The module exporting it, `name` or `name:partition`, when a module
     /// unit declares it.
     std::string module;
+
+    /// A standard library name the project's `std` module exports: a file
+    /// using modules imports it rather than including its header.
+    bool std_module = false;
 
     /// The symbol, by which the server picks the header declaring it.
     std::uint64_t symbol = 0;
@@ -200,6 +208,7 @@ auto finish_completion(protocol::CompletionList list,
                        const IncludePlace& include,
                        llvm::ArrayRef<ScopeCandidate> candidates,
                        const index::IndexQuery& query,
+                       const DependencyGraph& graph,
                        Fid file,
                        const SearchConfig& search,
                        vfs::Scope& scope,
@@ -237,8 +246,9 @@ auto module_completion(const CompletionName& completing,
                        const PositionMap& map,
                        PositionEncoding encoding,
                        llvm::StringRef path,
-                       const DependencyGraph& graph,
+                       const ModuleProviders& providers,
                        FileTable& files,
+                       llvm::function_ref<ScanResult(llvm::StringRef)> declared_module,
                        std::uint32_t limit) -> protocol::CompletionList;
 
 /// A completion request as the server has it before any compile.
@@ -267,6 +277,15 @@ struct CompletionInputs {
     /// The header search of the file's command, asked only where an
     /// include path is completed.
     llvm::function_ref<SearchConfig()> search;
+
+    /// The module declaration of the text given, read by the preprocessor
+    /// under the file's command: asked where an import is completed below
+    /// a declaration a conditional holds.
+    llvm::function_ref<ScanResult(llvm::StringRef)> declared_module;
+
+    /// The modules the other open units' buffers declare, asked where a
+    /// module name is completed.
+    llvm::function_ref<std::vector<OpenModule>()> open_modules;
     vfs::Scope& scope;
 };
 

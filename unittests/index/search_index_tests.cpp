@@ -73,11 +73,9 @@ struct Corpus {
         return buffers;
     }
 
-    /// Whether a file is among a query's paths.
-    bool wanted(const SymbolQuery& query, std::uint32_t file) const {
-        return ranges::any_of(query.paths, [&](const std::string& wanted) {
-            return index::path_matches(wanted, paths[file]);
-        });
+    /// A file's path, by its path id.
+    llvm::StringRef path_of(std::uint32_t file) const {
+        return paths[file];
     }
 
     std::string name_of(SymbolHash hash) const {
@@ -138,10 +136,10 @@ std::vector<std::string> names(const Corpus& corpus,
         out.push_back("error: " + query.error());
         return out;
     }
-    auto wanted = [&](std::uint32_t file) {
-        return corpus.wanted(*query, file);
+    auto path_of = [&](std::uint32_t file) {
+        return corpus.path_of(file);
     };
-    for(auto& hit: built.search(*query, limit, wanted).hits) {
+    for(auto& hit: built.search(*query, limit, path_of).hits) {
         out.push_back(corpus.name_of(hit.hash));
     }
     return out;
@@ -362,7 +360,7 @@ ZEST_CASE(QualifiedLookup) {
             .qualified_lookup = qualified_lookup,
         };
         Names out;
-        for(auto& hit: built.search(query, 10, [](std::uint32_t) { return false; }).hits) {
+        for(auto& hit: built.search(query, 10, {}).hits) {
             out.push_back(corpus.name_of(hit.hash));
         }
         ranges::sort(out);
@@ -394,7 +392,7 @@ ZEST_CASE(QualifiedLookupContiguous) {
         .qualified_lookup = true,
     };
     Names out;
-    for(auto& hit: built.search(query, 10, [](std::uint32_t) { return false; }).hits) {
+    for(auto& hit: built.search(query, 10, {}).hits) {
         out.push_back(corpus.name_of(hit.hash));
     }
     ranges::sort(out);
@@ -559,21 +557,26 @@ ZEST_CASE(LocalHitsNameFile) {
     }));
 }
 
-ZEST_CASE(ExternalOnlyLeavesLocals) {
-    // A name of internal linkage ranking first takes no place in a search
-    // for external names, however few it asks for.
+ZEST_CASE(NameableOnlyLeavesSourceLocals) {
+    // A source file's name of internal linkage ranking first takes no place
+    // in a search for names other units can name, however few it asks for;
+    // a header's does.
     Corpus corpus;
     corpus.add("helper", SymbolKind::Function, SymbolFlags::HasDefinition, 9, "/w/src/b.cpp");
     corpus.add("helper_function", SymbolKind::Function);
+    corpus.add("helper_inline", SymbolKind::Function, SymbolFlags::HasDefinition, 1, "/w/src/b.h");
     corpus.snapshot.entries[0].local = true;
+    corpus.snapshot.entries[2].local = true;
     auto built = corpus.build();
     auto query = *SymbolQuery::parse("helper");
-    query.external_only = true;
+    query.nameable_only = true;
     std::vector<std::string> names;
-    for(auto& hit: built.search(query, 1, {}).hits) {
+    for(auto& hit:
+        built.search(query, 2, [&](std::uint32_t file) { return corpus.path_of(file); }).hits) {
         names.push_back(corpus.name_of(hit.hash));
     }
-    ZEXPECT(names == std::vector<std::string>{"helper_function"});
+    ranges::sort(names);
+    ZEXPECT(names == (std::vector<std::string>{"helper_function", "helper_inline"}));
 }
 
 ZEST_CASE(SegmentsAnswerAsOne) {

@@ -1,30 +1,21 @@
 import { answers, test, type AnswersContext } from "@clice/tools/testing";
 
 // The names of lib.h come to the server's compile from the identifiers of
-// its preamble's PCH, looked up just where the parse stands at the point:
+// its preamble's PCH, looked up where Sema lists names at the point:
 // through using-declarations and using-directives, a namespace's own names,
 // an inline namespace's, an alias's and a macro's, a macro spelling the `::`
 // too, in a function body, right inside a namespace and after a
 // requirement's braces; of internal linkage too, and a scoped enumeration's
-// a `using enum` brings in. Those of other namespaces come from the index.
-// An arrow after a call accesses a member.
+// a `using enum` brings in. Those of other namespaces come from the index,
+// a header's of internal linkage among them. An arrow after a call accesses
+// a member.
 async function items(a: AnswersContext): Promise<void> {
     for (const m of a.markers()) {
         await a.show(m.name, a.completion(m), { parts: ["insert"] });
     }
 }
 
-answers(
-    "default",
-    {
-        indexing: true,
-        paths: {
-            separate:
-                "a name of internal linkage in another namespace completes on the server only from a header the file parses itself",
-        },
-    },
-    items,
-);
+answers("default", { indexing: true }, items);
 answers("configured", { config: { code_completion: { all_scopes: false } } }, items);
 
 // Before the document's first compile the completion builds the PCH, whose

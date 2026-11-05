@@ -1,4 +1,4 @@
-[default.inspect.macro_separator.completion]
+[default.macro_separator.completion]
 items = [
     {
         label = "helper_hidden(int x)",
@@ -28,7 +28,7 @@ items = [
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
 
-[default.inspect.using_declaration.completion]
+[default.using_declaration.completion]
 items = [
     { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
     {
@@ -66,7 +66,7 @@ items = [
 ]
 more = 6
 
-[default.inspect.first_in_namespace.completion]
+[default.first_in_namespace.completion]
 items = [
     { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
     { label = "helper_type", kind = "Class", insert = "helper_type" },
@@ -79,7 +79,7 @@ items = [
     { label = "HELPER_SPACE", kind = "Constant", insert = "HELPER_SPACE" },
 ]
 
-[default.inspect.using_directive.completion]
+[default.using_directive.completion]
 items = [
     { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
     {
@@ -117,7 +117,7 @@ items = [
 ]
 more = 6
 
-[default.inspect.namespace_member.completion]
+[default.namespace_member.completion]
 items = [
     {
         label = "helper_hidden(int x)",
@@ -147,7 +147,7 @@ items = [
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
 
-[default.inspect.namespace_names.completion]
+[default.namespace_names.completion]
 items = [
     {
         label = "helper_hidden(int x)",
@@ -180,12 +180,12 @@ items = [
 ]
 more = 4
 
-[default.inspect.two_qualifiers.completion]
+[default.two_qualifiers.completion]
 items = [
     { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
 ]
 
-[default.inspect.absolute.completion]
+[default.absolute.completion]
 items = [
     {
         label = "helper_hidden(int x)",
@@ -215,7 +215,7 @@ items = [
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
 
-[default.inspect.global.completion]
+[default.global.completion]
 items = [
     { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
     {
@@ -246,7 +246,7 @@ items = [
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
 
-[default.inspect.qualified_using_declaration.completion]
+[default.qualified_using_declaration.completion]
 items = [
     {
         label = "helper_value(int x)",
@@ -257,7 +257,7 @@ items = [
     },
 ]
 
-[default.inspect.qualified_using_directive.completion]
+[default.qualified_using_directive.completion]
 items = [
     {
         label = "helper_hidden(int x)",
@@ -287,7 +287,7 @@ items = [
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
 
-[default.inspect.trailing_return.completion]
+[default.trailing_return.completion]
 items = [
     { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
     { label = "helper_type", kind = "Class", insert = "helper_type" },
@@ -325,7 +325,7 @@ items = [
 ]
 more = 5
 
-[default.inspect.local_using_directive.completion]
+[default.local_using_directive.completion]
 items = [
     { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
     { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
@@ -358,27 +358,27 @@ items = [
 ]
 more = 6
 
-[default.inspect.local_alias.completion]
+[default.local_alias.completion]
 items = [
     { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
 ]
 
-[default.inspect.command_line_macro.completion]
+[default.command_line_macro.completion]
 items = [
     { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
 ]
 
-[default.inspect.compiler_macro.completion]
+[default.compiler_macro.completion]
 items = [
     { label = "__cplusplus", kind = "Constant", insert = "__cplusplus" },
 ]
 
-[default.inspect.namespace_alias.completion]
+[default.namespace_alias.completion]
 items = [
     { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
 ]
 
-[default.inspect.macro_qualifier.completion]
+[default.macro_qualifier.completion]
 items = [
     {
         label = "helper_hidden(int x)",
@@ -408,7 +408,7 @@ items = [
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
 
-[default.inspect.absolute_macro_qualifier.completion]
+[default.absolute_macro_qualifier.completion]
 items = [
     {
         label = "helper_hidden(int x)",
@@ -438,12 +438,12 @@ items = [
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
 
-[default.inspect.inner_macro_qualifier.completion]
+[default.inner_macro_qualifier.completion]
 items = [
     { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
 ]
 
-[default.inspect.empty_macro_qualifier.completion]
+[default.empty_macro_qualifier.completion]
 items = [
     { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
     {
@@ -474,24 +474,24 @@ items = [
     { label = "helper_type", kind = "Class", insert = "helper_type" },
 ]
 
-[default.inspect.using_enum.completion]
+[default.using_enum.completion]
 items = [
     { label = "tone_cold", kind = "EnumMember", detail = "Tone", insert = "tone_cold" },
     { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
 ]
 
-[default.inspect.qualified_using_enum.completion]
+[default.qualified_using_enum.completion]
 items = [
     { label = "tone_cold", kind = "EnumMember", detail = "Tone", insert = "tone_cold" },
     { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
 ]
 
-[default.inspect.arrow_after_call.completion]
+[default.arrow_after_call.completion]
 items = [
     { label = "helper_field", kind = "Field", detail = "int", insert = "helper_field" },
 ]
 
-[default.inspect.concept_after_brace.completion]
+[default.concept_after_brace.completion]
 items = [
     { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
     { label = "helper_type", kind = "Class", insert = "helper_type" },
@@ -528,504 +528,6 @@ items = [
     { label = "HELPER_DETAIL", kind = "Constant", insert = "HELPER_DETAIL" },
 ]
 more = 5
-
-[default.server]
-wrong = "the index offers no names of internal linkage in another namespace, which inspect finds in the headers it parses"
-
-[default.server.macro_separator.completion]
-items = [
-    {
-        label = "helper_hidden(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_hidden(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
-    {
-        label = "helper_static(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_static(${1:int x})",
-        snippet = true,
-    },
-    {
-        label = "helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_value(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
-    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
-]
-
-[default.server.using_declaration.completion]
-items = [
-    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
-    {
-        label = "helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_value(${1:int x})",
-        snippet = true,
-    },
-    {
-        label = "lib::detail::helper_detail()",
-        kind = "Function",
-        detail = "int",
-        insert = "lib::detail::helper_detail()",
-    },
-    { label = "lib::helper_concept<class T>", kind = "TypeParameter", insert = "lib::helper_concept" },
-    { label = "lib::helper_mode", kind = "EnumMember", detail = "Mode", insert = "lib::helper_mode" },
-    { label = "lib::helper_type", kind = "Class", insert = "lib::helper_type" },
-    { label = "lib::helper_versioned()", kind = "Function", detail = "int", insert = "lib::helper_versioned()" },
-    { label = "HELPER_DETAIL", kind = "Constant", insert = "HELPER_DETAIL" },
-    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
-    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
-]
-more = 3
-
-[default.server.first_in_namespace.completion]
-items = [
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
-    { label = "detail::helper_detail()", kind = "Function", detail = "int", insert = "detail::helper_detail()" },
-    { label = "HELPER_DETAIL", kind = "Constant", insert = "HELPER_DETAIL" },
-    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
-    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
-    { label = "HELPER_ROOT", kind = "Constant", insert = "HELPER_ROOT" },
-    { label = "HELPER_SCOPE", kind = "Constant", insert = "HELPER_SCOPE" },
-    { label = "HELPER_SPACE", kind = "Constant", insert = "HELPER_SPACE" },
-]
-
-[default.server.using_directive.completion]
-items = [
-    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
-    {
-        label = "helper_hidden(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_hidden(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
-    {
-        label = "helper_static(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_static(${1:int x})",
-        snippet = true,
-    },
-    {
-        label = "helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_value(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
-    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
-    {
-        label = "lib::detail::helper_detail()",
-        kind = "Function",
-        detail = "int",
-        insert = "lib::detail::helper_detail()",
-    },
-]
-more = 6
-
-[default.server.namespace_member.completion]
-items = [
-    {
-        label = "helper_hidden(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_hidden(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
-    {
-        label = "helper_static(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_static(${1:int x})",
-        snippet = true,
-    },
-    {
-        label = "helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_value(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
-    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
-]
-
-[default.server.namespace_names.completion]
-items = [
-    {
-        label = "helper_hidden(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_hidden(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
-    {
-        label = "helper_static(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_static(${1:int x})",
-        snippet = true,
-    },
-    {
-        label = "helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_value(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
-    { label = "Mode", kind = "Enum", insert = "Mode" },
-    { label = "Tone", kind = "Enum", insert = "Tone" },
-    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "tone_cold", kind = "EnumMember", detail = "Tone", insert = "tone_cold" },
-    { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
-]
-more = 4
-
-[default.server.two_qualifiers.completion]
-items = [
-    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
-]
-
-[default.server.absolute.completion]
-items = [
-    {
-        label = "helper_hidden(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_hidden(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
-    {
-        label = "helper_static(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_static(${1:int x})",
-        snippet = true,
-    },
-    {
-        label = "helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_value(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
-    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
-]
-
-[default.server.global.completion]
-items = [
-    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
-    {
-        label = "helper_hidden(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_hidden(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
-    {
-        label = "helper_static(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_static(${1:int x})",
-        snippet = true,
-    },
-    {
-        label = "helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_value(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
-    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
-]
-
-[default.server.qualified_using_declaration.completion]
-items = [
-    {
-        label = "helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_value(${1:int x})",
-        snippet = true,
-    },
-]
-
-[default.server.qualified_using_directive.completion]
-items = [
-    {
-        label = "helper_hidden(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_hidden(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
-    {
-        label = "helper_static(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_static(${1:int x})",
-        snippet = true,
-    },
-    {
-        label = "helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_value(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
-    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
-]
-
-[default.server.trailing_return.completion]
-items = [
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
-    {
-        label = "lib::detail::helper_detail()",
-        kind = "Function",
-        detail = "int",
-        insert = "lib::detail::helper_detail()",
-    },
-    { label = "lib::helper_mode", kind = "EnumMember", detail = "Mode", insert = "lib::helper_mode" },
-    {
-        label = "lib::helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "lib::helper_value(${1:int x})",
-        snippet = true,
-    },
-    { label = "lib::helper_versioned()", kind = "Function", detail = "int", insert = "lib::helper_versioned()" },
-    { label = "HELPER_DETAIL", kind = "Constant", insert = "HELPER_DETAIL" },
-    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
-    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
-    { label = "HELPER_ROOT", kind = "Constant", insert = "HELPER_ROOT" },
-]
-more = 2
-
-[default.server.local_using_directive.completion]
-items = [
-    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
-    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
-    {
-        label = "helper_hidden(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_hidden(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
-    {
-        label = "helper_static(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_static(${1:int x})",
-        snippet = true,
-    },
-    {
-        label = "helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_value(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
-    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
-]
-more = 6
-
-[default.server.local_alias.completion]
-items = [
-    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
-]
-
-[default.server.command_line_macro.completion]
-items = [
-    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
-]
-
-[default.server.compiler_macro.completion]
-items = [
-    { label = "__cplusplus", kind = "Constant", insert = "__cplusplus" },
-]
-
-[default.server.namespace_alias.completion]
-items = [
-    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
-]
-
-[default.server.macro_qualifier.completion]
-items = [
-    {
-        label = "helper_hidden(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_hidden(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
-    {
-        label = "helper_static(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_static(${1:int x})",
-        snippet = true,
-    },
-    {
-        label = "helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_value(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
-    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
-]
-
-[default.server.absolute_macro_qualifier.completion]
-items = [
-    {
-        label = "helper_hidden(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_hidden(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
-    {
-        label = "helper_static(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_static(${1:int x})",
-        snippet = true,
-    },
-    {
-        label = "helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_value(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
-    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
-]
-
-[default.server.inner_macro_qualifier.completion]
-items = [
-    { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
-]
-
-[default.server.empty_macro_qualifier.completion]
-items = [
-    { label = "helper_global()", kind = "Function", detail = "int", insert = "helper_global()" },
-    {
-        label = "helper_hidden(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_hidden(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_limit", kind = "Variable", detail = "const int", insert = "helper_limit" },
-    {
-        label = "helper_static(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_static(${1:int x})",
-        snippet = true,
-    },
-    {
-        label = "helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "helper_value(${1:int x})",
-        snippet = true,
-    },
-    { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
-    { label = "helper_mode", kind = "EnumMember", detail = "Mode", insert = "helper_mode" },
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
-]
-
-[default.server.using_enum.completion]
-items = [
-    { label = "tone_cold", kind = "EnumMember", detail = "Tone", insert = "tone_cold" },
-    { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
-]
-
-[default.server.qualified_using_enum.completion]
-items = [
-    { label = "tone_cold", kind = "EnumMember", detail = "Tone", insert = "tone_cold" },
-    { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
-]
-
-[default.server.arrow_after_call.completion]
-items = [
-    { label = "helper_field", kind = "Field", detail = "int", insert = "helper_field" },
-]
-
-[default.server.concept_after_brace.completion]
-items = [
-    { label = "helper_concept<class T>", kind = "TypeParameter", insert = "helper_concept" },
-    { label = "helper_type", kind = "Class", insert = "helper_type" },
-    {
-        label = "lib::detail::helper_detail()",
-        kind = "Function",
-        detail = "int",
-        insert = "lib::detail::helper_detail()",
-    },
-    { label = "lib::helper_mode", kind = "EnumMember", detail = "Mode", insert = "lib::helper_mode" },
-    {
-        label = "lib::helper_value(int x)",
-        kind = "Function",
-        detail = "int",
-        insert = "lib::helper_value(${1:int x})",
-        snippet = true,
-    },
-    { label = "lib::helper_versioned()", kind = "Function", detail = "int", insert = "lib::helper_versioned()" },
-    { label = "HELPER_DETAIL", kind = "Constant", insert = "HELPER_DETAIL" },
-    { label = "HELPER_FROM_CLI", kind = "Constant", insert = "HELPER_FROM_CLI" },
-    { label = "HELPER_MACRO(x)", kind = "Function", insert = "HELPER_MACRO(${1:x})", snippet = true },
-    { label = "HELPER_ROOT", kind = "Constant", insert = "HELPER_ROOT" },
-]
-more = 2
 
 [configured.macro_separator.completion]
 items = [

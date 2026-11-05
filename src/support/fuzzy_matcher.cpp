@@ -14,6 +14,7 @@ enum class CharClass : std::uint8_t {
     Separator,
     Lower,
     Upper,
+    Digit,
 };
 
 CharClass classify(char c) {
@@ -21,7 +22,10 @@ CharClass classify(char c) {
     if(byte >= 'A' && byte <= 'Z') {
         return CharClass::Upper;
     }
-    if((byte >= 'a' && byte <= 'z') || (byte >= '0' && byte <= '9') || byte >= 128) {
+    if(byte >= '0' && byte <= '9') {
+        return CharClass::Digit;
+    }
+    if((byte >= 'a' && byte <= 'z') || byte >= 128) {
         return CharClass::Lower;
     }
     return CharClass::Separator;
@@ -224,7 +228,10 @@ void segment(llvm::StringRef text, llvm::MutableArrayRef<CharRole> roles) {
         } else if(prev == CharClass::Separator) {
             roles[i] = CharRole::Head;
         } else if(cur == CharClass::Upper &&
-                  (prev == CharClass::Lower || next == CharClass::Lower)) {
+                  (prev == CharClass::Lower || prev == CharClass::Digit ||
+                   next == CharClass::Lower)) {
+            roles[i] = CharRole::Head;
+        } else if(cur == CharClass::Digit && prev != CharClass::Digit) {
             roles[i] = CharRole::Head;
         } else {
             roles[i] = CharRole::Tail;
@@ -238,6 +245,7 @@ FuzzyMatcher::FuzzyMatcher(llvm::StringRef pattern, MatchOptions options) :
     pattern = pattern.take_front(max_pattern);
     pat.assign(pattern.begin(), pattern.end());
     for(char c: pat) {
+        positions[static_cast<unsigned char>(lower(c))] |= std::uint64_t(1) << low_pat.size();
         low_pat.push_back(lower(c));
         pat_has_upper = pat_has_upper || is_upper(c);
     }
@@ -271,7 +279,20 @@ bool FuzzyMatcher::prepare(llvm::StringRef text) {
     for(std::size_t i = 0; i < name.size(); i += 1) {
         anchor.push_back(is_anchor(name[i], role[i], has_lower));
     }
-    return true;
+    return options.typo || options.inside_word || reachable();
+}
+
+bool FuzzyMatcher::reachable() const {
+    // The prefixes of the pattern some path matches, and those whose last
+    // character matched the name character before.
+    std::uint64_t matched = 1;
+    std::uint64_t ending = 0;
+    for(std::size_t n = 0; n < name.size(); n += 1) {
+        auto from = anchor[n] ? matched : ending;
+        ending = (from & positions[static_cast<unsigned char>(low_name[n])]) << 1;
+        matched |= ending;
+    }
+    return (matched >> pat.size() & 1) != 0;
 }
 
 void FuzzyMatcher::fill() {

@@ -13,8 +13,8 @@ namespace clice::feature {
 /// typed: as it reads a namespace, the macros or a C translation unit's
 /// names, which live on their identifiers, the identifiers the typed name
 /// matches are read there, best first, until `limit` of them name
-/// something; the scope's other names stay unread. Sema decides which
-/// scopes it reads, and reads everything else whole.
+/// something in the scopes read so far; the other names stay unread. Sema
+/// decides which scopes it reads, and reads everything else whole.
 class TypedNames final : public clang::MultiplexExternalSemaSource {
 public:
     /// Taking over the sources of `sema`'s AST, preprocessor and identifier
@@ -114,6 +114,12 @@ private:
 
     /// The namespaces read.
     llvm::DenseSet<const clang::DeclContext*> read;
+
+    /// The names read and the identifiers tried, of every scope: a list
+    /// shows `limit` items at most, the innermost scope's first, as Sema
+    /// reads it first.
+    std::size_t found_total = 0;
+    std::size_t tried_total = 0;
 
     bool cut = false;
 };

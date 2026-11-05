@@ -11,7 +11,9 @@ import :server.extension;
 import :server.master;
 import :server.served_project;
 import :support.json;
+import :syntax.completion;
 import :syntax.include_resolver;
+import :syntax.scan;
 import :syntax.source_text;
 import :vfs.dir_cache;
 import :vfs.file_system;
@@ -180,6 +182,27 @@ void LSPClient::register_editing() {
             .graph = project.project.dep_graph,
             .files = files,
             .search = [&] { return project.search_of(path_id); },
+            .declared_module =
+                [&](llvm::StringRef text) { return project.declared_module(path_id, text); },
+            .open_modules =
+                [&] {
+                    std::vector<OpenModule> open;
+                    for(auto& [file, opened]: server.documents) {
+                        if(file == path_id || opened.owner != &project ||
+                           !project.project.is_unit(file)) {
+                            continue;
+                        }
+                        auto unit = scan_quick(opened.session->text());
+                        if(!unit.need_preprocess) {
+                            open.push_back({
+                                .file = file,
+                                .name = unit.provided_module().str(),
+                                .internal = unit.is_internal_partition(),
+                            });
+                        }
+                    }
+                    return open;
+                },
             .scope = scope,
         });
         if(std::holds_alternative<feature::NoCompletion>(start)) {
@@ -213,6 +236,7 @@ void LSPClient::register_editing() {
                                                     *result.include,
                                                     compile.candidates,
                                                     query,
+                                                    project.project.dep_graph,
                                                     path_id,
                                                     project.search_of(path_id),
                                                     scope,

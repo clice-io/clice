@@ -25,6 +25,9 @@ items = [
 [default.same_partition.completion]
 items = []
 
+[default.global_fragment.completion]
+items = []
+
 [default.conditional.completion]
 items = [
     {
@@ -71,6 +74,9 @@ items = []
 items = []
 
 [configured.same_partition.completion]
+items = []
+
+[configured.global_fragment.completion]
 items = []
 
 [configured.conditional.completion]

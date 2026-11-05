@@ -4,6 +4,8 @@ import :index.peer_queries;
 import :server.master;
 import :server.served_project;
 import :support.logging;
+import :syntax.scan;
+import :vfs.file_system;
 import :support.timer;
 import :worker.protocol;
 
@@ -142,6 +144,20 @@ SearchConfig ServedProject::search_of(Fid path_id) {
     // database entry) the open buffer compiles under.
     return project.toolchain.search_config(
         project.select_command(path_id, {.choice = active_choice(path_id), .open = true}).ref);
+}
+
+ScanResult ServedProject::declared_module(Fid path_id, llvm::StringRef text) {
+    auto rendered = project.render(
+        project.select_command(path_id, {.choice = active_choice(path_id), .open = true}).ref);
+    std::vector<const char*> argv;
+    argv.reserve(rendered.arguments.size());
+    for(auto& argument: rendered.arguments) {
+        argv.push_back(argument.c_str());
+    }
+    return scan_module_decl(argv,
+                            rendered.directory,
+                            text,
+                            llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden)));
 }
 
 std::vector<index::DocumentLink> ServedProject::preamble_links(const Session& session) const {
