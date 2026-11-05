@@ -62,3 +62,6 @@ type = "box<T> *"
 
 [answers.deduced_reference_binding.template_resolver]
 type = "Good *"
+
+[answers.failed_constraint.template_resolver]
+type = "Good *"

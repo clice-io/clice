@@ -313,6 +313,20 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
                 return Ranks{};
             }
             stack.push(FTD, FTD->getTemplateParameters(), deduced);
+            /// Its constraints decide whether it is a candidate at all: one
+            /// that fails drops it, one not decided leaves the set as it is.
+            llvm::SmallVector<clang::AssociatedConstraint, 2> constraints;
+            FTD->getAssociatedConstraints(constraints);
+            for(auto& constraint: constraints) {
+                auto satisfied = evaluate(constraint.ConstraintExpr);
+                if(!satisfied) {
+                    return std::nullopt;
+                }
+                if(satisfied->isZero()) {
+                    unviable.insert(decl);
+                    return Ranks{};
+                }
+            }
         }
         Ranks ranks;
         auto parameters = FD->parameters().drop_front(passed(FD, 0, member_call));

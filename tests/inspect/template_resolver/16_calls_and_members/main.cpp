@@ -425,3 +425,29 @@ struct test {
 };
 
 }  // namespace deduced_reference_binding
+
+namespace failed_constraint {
+
+struct Good {};
+
+struct Bad {};
+
+template <typename U>
+Bad choose(U)
+    requires (!__is_same(U, int));
+
+Good choose(long);
+
+template <typename T>
+struct box {
+    int value;
+};
+
+template <typename T>
+struct test {
+    box<T> held;
+    // `U` deduces to `int`, which the constraint rules out: `choose(long)` is called.
+    using §(failed_constraint)input = decltype(::failed_constraint::choose(held.value))*;
+};
+
+}  // namespace failed_constraint
