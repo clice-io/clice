@@ -3,6 +3,7 @@ module clice;
 import :compile.compilation;
 import :compile.shared_header;
 import :index.indexer;
+import :index.instantiation_shard;
 import :index.shared_header;
 import :index.symbol;
 import :index.tu_index;
@@ -62,7 +63,9 @@ std::string index_over(TempDir& tmp, llvm::StringRef pch, const index::SharedHea
     auto unit = compile(std::move(params));
     ZEXPECT(unit->shared_rejection().empty());
     return std::string(
-        as_chars(index::build_tu_index(*unit, {.shared_sections = shared.sections})));
+        as_chars(index::build_tu_index(*unit,
+                                       {.shared_sections = shared.sections,
+                                        .shared_instantiations = shared.instantiations})));
 }
 
 /// The include tree as `includer line -> file`, a skipped include marked.
@@ -95,6 +98,25 @@ std::vector<std::string> sections(const index::TUIndex& view) {
     return lines;
 }
 
+/// Each file's instantiation keys, walked or skipped, as `file key`.
+std::vector<std::string> instantiation_keys(const index::TUIndex& view) {
+    std::vector<std::string> lines;
+    for(std::uint32_t i = 0; i < view.instantiation_count(); i += 1) {
+        auto file = path::filename(view.path(view.instantiation_path(i)));
+        std::vector<std::uint64_t> keys(view.skipped_instantiations(i).begin(),
+                                        view.skipped_instantiations(i).end());
+        if(auto blob = view.instantiation_blob(i); !blob.empty()) {
+            keys.append_range(index::InstantiationShard::from_bytes(blob).keys());
+        }
+        for(auto key: keys) {
+            lines.push_back(std::format("{} {:016x}", file, key));
+        }
+    }
+    ranges::sort(lines);
+    lines.erase(ranges::unique(lines).begin(), lines.end());
+    return lines;
+}
+
 ZEST_SUITE(SharedHeaderIndex) {
 
 ZEST_CASE(SameAsParsedByTheUnit) {
@@ -103,8 +125,13 @@ ZEST_CASE(SameAsParsedByTheUnit) {
     tmp.touch("inner.h", "#pragma once\nstruct Inner { int value; };\n");
     tmp.touch("outer.h", R"cpp(#pragma once
 #include "inner.h"
-struct Outer { Inner inner; };
-inline int outer(const Outer& o) { return o.inner.value; }
+template <typename T>
+struct Box {
+    T value;
+    auto get() const { return value.value; }
+};
+struct Outer { Box<Inner> inner; };
+inline int outer(const Outer& o) { return o.inner.get(); }
 )cpp");
     tmp.touch("other.h", "#pragma once\n#include \"inner.h\"\nint other(Inner);\n");
     tmp.touch("main.cpp", R"cpp(#include "other.h"
@@ -123,6 +150,8 @@ int use() { return outer(Outer{}) + other(Inner{}); }
     ZASSERT(grafted.loaded());
     ZEXPECT(includes(grafted) == includes(walked));
     ZEXPECT(sections(grafted) == sections(walked));
+    ZEXPECT(!instantiation_keys(walked).empty());
+    ZEXPECT(instantiation_keys(grafted) == instantiation_keys(walked));
     // Its headers' variants travel as bare hashes.
     for(std::uint32_t i = 0; i < grafted.section_count(); i += 1) {
         if(grafted.section_path(i) != grafted.focus_file()) {

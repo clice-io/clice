@@ -17,6 +17,11 @@ struct SharedHeaderIndex {
     /// Per file of the record, its section: variant 0 for a file the shared
     /// header's index left without entries.
     std::vector<KnownIdentity> sections;
+
+    /// Per file of the record, the keys of the instantiations the shared
+    /// header's index walked or skipped there, ascending: a unit loading
+    /// the PCH uses what they resolve as a skipped key's.
+    std::vector<std::vector<std::uint64_t>> instantiations;
 };
 
 /// `record`, of a shared header's build, with the sections of `tu_index`,

@@ -303,6 +303,7 @@ public:
         resolver(unit.context(), {.only_instantiation = false}), readable(unit.context(), {}),
         known_instantiations(options.known_instantiations),
         shared_sections(options.shared_sections),
+        shared_instantiations(options.shared_instantiations),
         standard_library(options.standard_library_instantiations) {
         for(auto& known: options.known_identities) {
             known_variants_at.try_emplace(known.identity, known.variant);
@@ -2284,20 +2285,26 @@ public:
             }
         }
         // A header the shared header's PCH held, and a file it entered, is
-        // what the shared header's index made of it.
+        // what the shared header's index made of it: its variant, and the
+        // instantiations resolved there.
         if(auto* shared = unit.shared_header(); shared && !unit.grafted_includes().empty()) {
             llvm::StringMap<std::uint32_t> path_ids_of;
             for(auto [path_id, path]: views::enumerate(tree.paths)) {
                 path_ids_of.try_emplace(path, static_cast<std::uint32_t>(path_id));
             }
+            llvm::DenseSet<std::uint32_t> files;
             for(auto& include: unit.grafted_includes()) {
-                auto& section = shared_sections[include.file];
-                if(include.skipped || section.variant == 0) {
+                if(include.skipped || !files.insert(include.file).second) {
                     continue;
                 }
                 auto& path = shared->files[include.file].path;
-                if(known_sections.try_emplace(path, section).second) {
-                    path_ids.push_back(path_ids_of.lookup(path));
+                auto path_id = path_ids_of.lookup(path);
+                if(auto& section = shared_sections[include.file]; section.variant != 0) {
+                    known_sections.try_emplace(path, section);
+                    path_ids.push_back(path_id);
+                }
+                if(auto& keys = shared_instantiations[include.file]; !keys.empty()) {
+                    resolved_by_path[path_id].skipped.append_range(keys);
                 }
             }
         }
@@ -2490,6 +2497,9 @@ private:
 
     /// See TUIndexOptions::shared_sections.
     llvm::ArrayRef<KnownIdentity> shared_sections;
+
+    /// See TUIndexOptions::shared_instantiations.
+    llvm::ArrayRef<std::vector<std::uint64_t>> shared_instantiations;
 
     /// Whether the standard library's own instantiations and expansions are
     /// walked (TUIndexOptions::standard_library_instantiations).
