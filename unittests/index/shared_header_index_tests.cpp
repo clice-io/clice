@@ -17,8 +17,10 @@ namespace clice::testing {
 namespace {
 
 /// A shared header's build of `shared.hxx` in `tmp`: its PCH at `pch`, its
-/// record with its sections.
-std::optional<index::SharedHeaderIndex> build_shared(TempDir& tmp, llvm::StringRef pch) {
+/// record with its sections, and its own TU index into `tu_index`.
+std::optional<index::SharedHeaderIndex> build_shared(TempDir& tmp,
+                                                     llvm::StringRef pch,
+                                                     std::string* tu_index = nullptr) {
     CompilationParams params{
         .kind = CompilationKind::PrecompiledHeader,
         .output_file = pch.str(),
@@ -38,8 +40,11 @@ std::optional<index::SharedHeaderIndex> build_shared(TempDir& tmp, llvm::StringR
     if(!unit->has_output() || !collect_errors(*unit).empty()) {
         return std::nullopt;
     }
-    auto tu_index = index::build_tu_index(*unit);
-    auto index = index::shared_header_index(unit->shared_record(), as_chars(tu_index));
+    auto bytes = index::build_tu_index(*unit);
+    if(tu_index) {
+        *tu_index = as_chars(bytes).str();
+    }
+    auto index = index::shared_header_index(unit->shared_record(), as_chars(bytes));
     // As the cache stores it.
     return index::decode_shared_header(as_chars(index::encode_shared_header(index)));
 }
@@ -135,6 +140,29 @@ std::vector<std::string> instantiation_keys(const index::TUIndex& view) {
     return lines;
 }
 
+/// The instantiation records of `file` in the TU index, as text.
+std::set<std::string> records(const index::TUIndex& view, llvm::StringRef file) {
+    std::set<std::string> lines;
+    for(std::uint32_t i = 0; i < view.instantiation_count(); i += 1) {
+        auto blob = view.instantiation_blob(i);
+        if(llvm::StringRef(path::filename(view.path(view.instantiation_path(i)))) != file ||
+           blob.empty()) {
+            continue;
+        }
+        index::InstantiationShard::from_bytes(blob).for_each_record(
+            [&](const index::InstantiationRecord& record) {
+                lines.insert(std::format("{}-{} {} {:016x} {:016x}",
+                                         record.range.begin,
+                                         record.range.end,
+                                         static_cast<int>(record.kind),
+                                         record.target,
+                                         record.from));
+                return true;
+            });
+    }
+    return lines;
+}
+
 ZEST_SUITE(SharedHeaderIndex) {
 
 ZEST_CASE(SameAsParsedByTheUnit) {
@@ -205,6 +233,47 @@ ZEST_CASE(LocalOfThePCHDefined) {
     auto declared_flags = flags_of(declared, "limit");
     ZASSERT(declared_flags);
     ZEXPECT(has_flag(*declared_flags, index::SymbolFlags::HasDefinition));
+};
+
+ZEST_CASE(OwnInstantiationsOfHeldTemplates) {
+    // The unit instantiates a template the PCH holds for a type of its own:
+    // what it records there is what the template's text leaves open, as
+    // when it parses the header itself.
+    TempDir tmp;
+    tmp.touch("shared.hxx", "#pragma once\n#include \"box.h\"\n");
+    tmp.touch("box.h", R"cpp(#pragma once
+template <typename T>
+struct Box {
+    T value;
+    int count() const { return value.size() + 1; }
+};
+struct Inner {
+    int size() const { return 0; }
+};
+inline int inner() { return Box<Inner>{}.count(); }
+)cpp");
+    tmp.touch("main.cpp", R"cpp(#include "box.h"
+struct Mine {
+    int size() const { return 1; }
+};
+int use() { return Box<Mine>{}.count(); }
+)cpp");
+    auto pch = tmp.path("shared.pch");
+    std::string own_data;
+    auto shared = build_shared(tmp, pch, &own_data);
+    ZASSERT(shared);
+    auto own = index::TUIndex::from_bytes(own_data);
+
+    auto walked_data = index_file(tmp, tmp.path("main.cpp"), {"-std=c++20"}).data;
+    auto walked = records(index::TUIndex::from_bytes(walked_data), "box.h");
+    ZEXPECT(!walked.empty());
+    for(auto* record: {static_cast<const index::SharedHeaderIndex*>(&*shared),
+                       static_cast<const index::SharedHeaderIndex*>(nullptr)}) {
+        auto data = index_over(tmp, pch, record);
+        auto over = records(index::TUIndex::from_bytes(data), "box.h");
+        over.insert_range(records(own, "box.h"));
+        ZEXPECT(over == walked);
+    }
 };
 
 };  // ZEST_SUITE(SharedHeaderIndex)

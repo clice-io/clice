@@ -1985,9 +1985,15 @@ public:
                                                          .variant = it->second});
             }
         }
-        if(unwalked.files.empty()) {
-            return;
-        }
+    }
+
+    /// The templates whose patterns the walk takes beyond the files it
+    /// walks whole: an instantiation's records are what its template's own
+    /// entries leave open (records_of), and those are known only of a
+    /// pattern walked. One in an unwalked file is walked with what encloses
+    /// it; one a precompiled header holds is a root of its own, which the
+    /// traversal from the translation unit never reaches.
+    void walk_patterns(llvm::ArrayRef<const clang::Decl*> walked) {
         auto described = [](const clang::Decl* decl) -> const clang::Decl* {
             if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
                 return function->getDescribedFunctionTemplate();
@@ -2000,11 +2006,20 @@ public:
             }
             return nullptr;
         };
+        llvm::DenseSet<const clang::Decl*> precompiled;
         auto keep = [&](const clang::Decl* decl) {
+            const auto* pattern = pattern_of(decl);
+            if(pattern->isFromASTFile() && !pattern->getOwningModule()) {
+                const auto* outer = described(pattern);
+                const auto* root = outer ? outer : pattern;
+                if(precompiled.insert(root).second) {
+                    unwalked.precompiled.push_back(root);
+                }
+                return;
+            }
             if(!unwalked.files.contains(home_of(decl))) {
                 return;
             }
-            const auto* pattern = pattern_of(decl);
             unwalked.whole.insert(pattern);
             if(const auto* outer = described(pattern)) {
                 unwalked.whole.insert(outer);
@@ -2043,11 +2058,12 @@ public:
             if(!unit.header_identities().empty()) {
                 choose_known(walked);
             }
-            full.emplace(Semantics::build(
-                unit,
-                {.all_files = true,
-                 .instantiations = walked,
-                 .partial = unwalked.files.empty() ? nullptr : &unwalked}));
+            walk_patterns(walked);
+            bool partial = !unwalked.files.empty() || !unwalked.precompiled.empty();
+            full.emplace(Semantics::build(unit,
+                                          {.all_files = true,
+                                           .instantiations = walked,
+                                           .partial = partial ? &unwalked : nullptr}));
         } else if(auto expanding = expanding_decls(); !walked.empty() || !expanding.empty()) {
             full.emplace(Semantics::build(
                 unit,
@@ -2081,6 +2097,22 @@ public:
             project_expansions();
         }
         auto instantiations_ms = instantiations_timer.ms_f();
+
+        // A file the unit reads from a precompiled header holds entries of
+        // the patterns walk_patterns took, which only told their
+        // instantiations' records apart: its index is the header's own.
+        if(!unwalked.precompiled.empty()) {
+            auto& sm = unit.context().getSourceManager();
+            llvm::SmallVector<clang::FileID> loaded;
+            for(auto& [fid, entries]: file_indices) {
+                if(sm.isLoadedFileID(fid)) {
+                    loaded.push_back(fid);
+                }
+            }
+            for(auto fid: loaded) {
+                file_indices.erase(fid);
+            }
+        }
 
         ScopedTimer finish_timer;
         // Build the include graph from what the index actually recorded:

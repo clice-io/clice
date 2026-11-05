@@ -200,6 +200,13 @@ public:
             }
         } else {
             builder.TraverseAST(unit.context());
+            if(options.partial) {
+                builder.partial_whole = true;
+                for(const auto* decl: options.partial->precompiled) {
+                    builder.TraverseDecl(const_cast<clang::Decl*>(decl));
+                }
+                builder.partial_whole = false;
+            }
         }
         if(options.all_files) {
             builder.traverse_instantiations();
