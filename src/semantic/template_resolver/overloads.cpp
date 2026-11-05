@@ -424,22 +424,6 @@ llvm::SmallVector<const clang::NamedDecl*, 4>
         .candidates;
 }
 
-std::optional<llvm::SmallVector<CallArgument, 4>>
-    PseudoInstantiator::call_arguments(llvm::ArrayRef<const clang::Expr*> arguments) {
-    if(expands_pack(arguments)) {
-        return std::nullopt;
-    }
-    llvm::SmallVector<CallArgument, 4> passed;
-    for(auto* argument: arguments) {
-        auto type = resolve_object(expr_type(argument));
-        if(type.isNull()) {
-            return std::nullopt;
-        }
-        passed.push_back({.type = type, .lvalue = !rvalue(argument), .expr = argument});
-    }
-    return passed;
-}
-
 Callees PseudoInstantiator::callee_candidates(
     const clang::Expr* callee,
     llvm::ArrayRef<const clang::Expr*> arguments,

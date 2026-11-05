@@ -121,3 +121,17 @@ auto& value = ::get(values, 0)
 **Type:** `T&`
 '''
 range = "auto& ⟦value⟧ = ::get(values, 0);"
+
+[answers.nested_calls.hover]
+markdown = '''
+**variable** `nested` · function `nested_calls`
+
+```cpp
+auto nested = Id<T>::id(Id<T>::id(
+    Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(
+        Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(
+            Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(value))))))))))))))))))))
+```
+**Type:** `lib::Item`
+'''
+range = "auto ⟦nested⟧ = Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(value))))))))))))))))))));"

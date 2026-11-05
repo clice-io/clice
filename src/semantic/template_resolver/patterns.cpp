@@ -26,18 +26,19 @@ bool has_dependent_base(const clang::CXXRecordDecl* record) {
 /// X::m` cannot name a value; `X::template m<...>` cannot name a value
 /// or a plain type. Unknown declaration kinds stay presumed viable.
 bool unusable_member(clang::Decl* decl, bool wants_template) {
-    if(auto shadow = llvm::dyn_cast<clang::UsingShadowDecl>(decl)) {
-        decl = shadow->getTargetDecl();
-    }
-    if(llvm::isa<clang::ValueDecl, clang::FunctionTemplateDecl, clang::VarTemplateDecl>(decl)) {
-        return true;
-    }
     /// Access participates in SFINAE: the probe models a use from
     /// outside the class, where a non-public member never resolves.
     /// Friendship of the probing specialization is not modeled — an
     /// accepted approximation; detectors befriended by their subjects
-    /// degrade to the primary.
+    /// degrade to the primary. A using-declaration grants the access it
+    /// is declared with.
     if(decl->getAccess() == clang::AS_private || decl->getAccess() == clang::AS_protected) {
+        return true;
+    }
+    if(auto shadow = llvm::dyn_cast<clang::UsingShadowDecl>(decl)) {
+        decl = shadow->getTargetDecl();
+    }
+    if(llvm::isa<clang::ValueDecl, clang::FunctionTemplateDecl, clang::VarTemplateDecl>(decl)) {
         return true;
     }
     /// `typename X::m` cannot name an unspecialized template either.

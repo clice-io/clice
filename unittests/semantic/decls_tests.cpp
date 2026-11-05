@@ -99,6 +99,37 @@ has_x<Without>* missing_use;
             class_template("has_x")->getTemplatedDecl()->getCanonicalDecl());
 };
 
+ZEST_CASE(UndeclaredDetectionThroughUsing) {
+    add_focus("main.cpp", R"cpp(
+template <typename...> using void_t = void;
+template <typename T, typename = void> struct has_x { };
+template <typename T> struct has_x<T, void_t<typename T::x>> { };
+
+struct Base {
+protected:
+    using x = int;
+};
+struct Exposed : Base {
+    using Base::x;
+};
+
+has_x<Exposed>* exposed_use;
+)cpp");
+    ZASSERT(compile());
+
+    clang::ClassTemplateSpecializationDecl* exposed = nullptr;
+    for(auto* spec: class_template("has_x")->specializations()) {
+        exposed = spec;
+    }
+    ZASSERT(exposed);
+    ZASSERT(exposed->getSpecializationKind() == clang::TSK_Undeclared);
+
+    /// The public using-declaration makes the protected alias usable from
+    /// outside: real instantiation takes the partial, and so does the
+    /// identity.
+    ZEXPECT(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(decls::normalize(exposed)));
+};
+
 ZEST_CASE(AmbiguousPartialsPrimary) {
     add_focus("main.cpp", R"cpp(
 template <typename T, typename U> struct B { };

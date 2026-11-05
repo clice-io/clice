@@ -107,3 +107,13 @@ void unrelated_operator(Rows<T> rows, lib::Vec<T> values) {
     for(auto& §(unrelated_operator)row: rows) {}
     auto& §(converted_argument)value = ::get(values, 0);
 }
+
+template <class T>
+struct Id {
+    static lib::Item id(lib::Item item);
+};
+
+template <class T>
+void nested_calls(lib::Item value) {
+    auto §(nested_calls)nested = Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(value))))))))))))))))))));
+}

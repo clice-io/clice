@@ -1,6 +1,6 @@
 [test."$ clice index -j 1"]
 stdout = '''
-Indexed 2 translation units in #s: 3 file shards (# KB), 6 symbols.
+Indexed 2 translation units in #s: 5 file shards (# KB), 7 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
@@ -23,5 +23,26 @@ file ${WS}/util.h
     local #a5464685e2caf263  kind=Type  name=C
     local #bad926d7a1a6cee3  kind=Parameter  name=c
     local #d9a00eae474b65d7  kind=Parameter  name=p
+'''
+exit = 0
+
+[test."$ clice index file wrap.h"]
+stdout = '''
+file ${WS}/wrap.h
+  blob=# B  content size=121  content hash=#dbe19b955d3425f7
+  variants=1
+    #66f1200919a4163e  contributed by 1 unit
+      ${WS}/main.cpp
+  symbols=7  local symbols=4  occurrences=11  relations=15
+    Callee=1
+    Caller=1
+    Definition=5
+    Reference=5
+    TypeDefinition=2
+    WeakReference=1
+    local #20efbda22bb946d7  kind=Type  name=P
+    local #31f72b66220a06e9  kind=Parameter  name=p
+    local #c5e3cba16d80e315  kind=Type  name=C
+    local #f663b2abe56d5b57  kind=Parameter  name=c
 '''
 exit = 0

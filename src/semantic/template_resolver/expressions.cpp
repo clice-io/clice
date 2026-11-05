@@ -510,6 +510,29 @@ clang::QualType
     return mentions_parameters(type, params) ? clang::QualType() : type;
 }
 
+std::optional<llvm::SmallVector<CallArgument, 4>>
+    PseudoInstantiator::call_arguments(llvm::ArrayRef<const clang::Expr*> arguments) {
+    if(ranges::any_of(arguments, llvm::IsaPred<clang::PackExpansionExpr>)) {
+        return std::nullopt;
+    }
+    llvm::SmallVector<CallArgument, 4> passed;
+    for(auto* argument: arguments) {
+        auto evaluated = expr_type(argument);
+        auto type = resolve_object(evaluated);
+        if(type.isNull()) {
+            return std::nullopt;
+        }
+        /// A dependent call's evaluated type tells its value category;
+        /// asking rvalue would evaluate it again, and each call it nests.
+        bool lvalue = llvm::isa<clang::CallExpr>(argument->IgnoreParenImpCasts()) &&
+                              unevaluated(argument->getType())
+                          ? evaluated->isLValueReferenceType()
+                          : !rvalue(argument);
+        passed.push_back({.type = type, .lvalue = lvalue, .expr = argument});
+    }
+    return passed;
+}
+
 const clang::Decl* PseudoInstantiator::referenced_decl(const clang::Expr* expr) {
     if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(expr)) {
         return preferred(lookup_member(member_object(DSME), DSME->getMember()));

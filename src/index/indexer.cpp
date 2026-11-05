@@ -262,6 +262,14 @@ bool is_completable(const clang::NamedDecl* decl) {
     return false;
 }
 
+/// What a file brings in itself: it, every file it includes with what those
+/// include in turn, and the modules they import.
+struct Reach {
+    llvm::DenseSet<clang::FileID> files;
+
+    llvm::StringSet<> modules;
+};
+
 /// Projects the unit's semantic map into TUIndex entries: occurrences and
 /// relations from the resolve facts, macros from the preprocessor directives.
 class Indexer {
@@ -745,13 +753,11 @@ public:
         return location;
     }
 
-    /// The files `file` brings in itself: it, and every file it includes,
-    /// with what those include in turn.
-    const llvm::DenseSet<clang::FileID>& reach(clang::FileID file) {
+    const Reach& reach(clang::FileID file) {
         if(auto found = reached.find(file); found != reached.end()) {
             return found->second;
         }
-        llvm::DenseSet<clang::FileID> files{file};
+        Reach brought{.files = {file}};
         llvm::SmallVector<clang::FileID> pending{file};
         auto& directives = unit.directives();
         while(!pending.empty()) {
@@ -760,57 +766,67 @@ public:
             if(directive == directives.end()) {
                 continue;
             }
+            for(auto& import: directive->second.imports) {
+                if(!import.full_name.empty()) {
+                    brought.modules.insert(import.full_name);
+                }
+            }
             for(auto& include: directive->second.includes) {
-                if(include.fid.isValid() && files.insert(include.fid).second) {
+                if(include.fid.isValid() && brought.files.insert(include.fid).second) {
                     pending.push_back(include.fid);
                 }
             }
         }
-        return reached.try_emplace(file, std::move(files)).first->second;
+        return reached.try_emplace(file, std::move(brought)).first->second;
     }
 
     /// Whether the file holding `at`, a name in a dependent call's overload
     /// set, sees `candidate` on its own: the focus file always, a header
-    /// when a declaration of it is in the header, in what the header
-    /// includes before `at`, or in a module it imports before then. What its includers bring in
-    /// before it differs from one unit to the next, and recording it would split the header's index
-    /// into variants that differ by those alone; what instantiations call, the instantiation shards
-    /// hold.
+    /// when a declaration of it is in the header or in a module the header
+    /// imports before `at`, or what the header includes before `at` brings
+    /// in (reach). What its includers bring in before it differs from one
+    /// unit to the next, and recording it would split the header's index
+    /// into variants that differ by those alone; what instantiations call,
+    /// the instantiation shards hold.
     bool sees_on_its_own(const clang::NamedDecl* candidate, clang::SourceLocation at) {
         auto& SM = unit.context().getSourceManager();
         auto [file, offset] = SM.getDecomposedExpansionLoc(at);
         if(unit.focus_file().contains(file)) {
             return true;
         }
-        auto declared_in = [&](const llvm::DenseSet<clang::FileID>& files) {
+        auto declared_in = [&](const llvm::DenseSet<clang::FileID>& files,
+                               const llvm::StringSet<>& modules) {
             return ranges::any_of(candidate->redecls(), [&](const clang::Decl* redecl) {
-                return files.contains(SM.getFileID(SM.getExpansionLoc(redecl->getLocation())));
+                auto* module = redecl->getOwningModule();
+                return files.contains(SM.getFileID(SM.getExpansionLoc(redecl->getLocation()))) ||
+                       (module && modules.contains(module->getTopLevelModuleName()));
             });
         };
-        if(declared_in({file})) {
-            return true;
-        }
         auto directive = unit.directives().find(file);
         if(directive == unit.directives().end()) {
-            return false;
+            return declared_in({file}, {});
+        }
+        auto before = [&](clang::SourceLocation location) {
+            return SM.getDecomposedExpansionLoc(location).second < offset;
+        };
+        llvm::StringSet<> imported;
+        for(auto& import: directive->second.imports) {
+            if(!import.full_name.empty() && before(import.location)) {
+                imported.insert(import.full_name);
+            }
+        }
+        if(declared_in({file}, imported)) {
+            return true;
         }
         for(auto& include: directive->second.includes) {
-            if(SM.getDecomposedExpansionLoc(include.location).second >= offset) {
+            if(!before(include.location)) {
                 break;
             }
-            if(include.fid.isValid() && declared_in(reach(include.fid))) {
-                return true;
-            }
-        }
-        for(auto& import: directive->second.imports) {
-            if(SM.getDecomposedExpansionLoc(import.location).second >= offset) {
-                break;
-            }
-            if(ranges::any_of(candidate->redecls(), [&](const clang::Decl* redecl) {
-                   auto* module = redecl->getOwningModule();
-                   return module && module->getTopLevelModuleName() == import.full_name;
-               })) {
-                return true;
+            if(include.fid.isValid()) {
+                auto& brought = reach(include.fid);
+                if(declared_in(brought.files, brought.modules)) {
+                    return true;
+                }
             }
         }
         return false;
@@ -2216,8 +2232,8 @@ private:
 
     std::vector<BodyName> body_names;
 
-    /// The files each file brings in itself (reach).
-    llvm::DenseMap<clang::FileID, llvm::DenseSet<clang::FileID>> reached;
+    /// What each file brings in itself (reach).
+    llvm::DenseMap<clang::FileID, Reach> reached;
 };
 
 }  // namespace

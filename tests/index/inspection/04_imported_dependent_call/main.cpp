@@ -1,2 +1,3 @@
 #include "util.h"
-int main() { lib::vec<int> v; return remove_bad(v, 0); }
+#include "wrap.h"
+int main() { lib::vec<int> v; return remove_bad(v, 0) + remove_worse(v, 0); }
