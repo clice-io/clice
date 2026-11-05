@@ -517,18 +517,18 @@ std::optional<llvm::SmallVector<CallArgument, 4>>
     }
     llvm::SmallVector<CallArgument, 4> passed;
     for(auto* argument: arguments) {
-        auto evaluated = expr_type(argument);
-        auto type = resolve_object(evaluated);
+        auto type = resolve(expr_type(argument));
         if(type.isNull()) {
             return std::nullopt;
         }
-        /// A dependent call's evaluated type tells its value category;
-        /// asking rvalue would evaluate it again, and each call it nests.
-        bool lvalue = llvm::isa<clang::CallExpr>(argument->IgnoreParenImpCasts()) &&
-                              unevaluated(argument->getType())
-                          ? evaluated->isLValueReferenceType()
-                          : !rvalue(argument);
-        passed.push_back({.type = type, .lvalue = lvalue, .expr = argument});
+        /// An expression of lvalue reference type, resolved, is an lvalue:
+        /// `static_cast<T&&>(v)` with `T = Item&` collapses. A dependent
+        /// call's resolved type tells its value category alone; asking
+        /// rvalue would evaluate it again, and each call it nests.
+        bool call = llvm::isa<clang::CallExpr>(argument->IgnoreParenImpCasts()) &&
+                    unevaluated(argument->getType());
+        bool lvalue = type->isLValueReferenceType() || (!call && !rvalue(argument));
+        passed.push_back({.type = type.getNonReferenceType(), .lvalue = lvalue, .expr = argument});
     }
     return passed;
 }

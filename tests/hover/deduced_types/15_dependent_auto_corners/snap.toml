@@ -135,3 +135,14 @@ auto nested = Id<T>::id(Id<T>::id(
 **Type:** `lib::Item`
 '''
 range = "auto ⟦nested⟧ = Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(value))))))))))))))))))));"
+
+[answers.collapsed_cast.hover]
+markdown = '''
+**variable** `x` · method `Forward::f`
+
+```cpp
+auto x = ::pick(static_cast<T&&>(v))
+```
+**Type:** `Picked`
+'''
+range = "auto ⟦x⟧ = ::pick(static_cast<T&&>(v));"

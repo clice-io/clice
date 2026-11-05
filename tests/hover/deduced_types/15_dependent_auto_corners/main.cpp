@@ -117,3 +117,19 @@ template <class T>
 void nested_calls(lib::Item value) {
     auto §(nested_calls)nested = Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(Id<T>::id(value))))))))))))))))))));
 }
+
+struct Picked {
+    int picked;
+};
+
+Picked pick(lib::Item& item);
+lib::Other pick(lib::Item&& item);
+
+template <class T>
+struct Forward {
+    void f(T& v) {
+        auto §(collapsed_cast)x = ::pick(static_cast<T&&>(v));
+    }
+};
+
+template struct Forward<lib::Item&>;
