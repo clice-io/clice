@@ -170,6 +170,7 @@ void LSPClient::register_editing() {
         auto positions = session->positions();
         vfs::Scope scope(files.dirs);
         auto start = feature::start_completion({
+            .file = path_id,
             .path = resolved,
             .text = session->text(),
             .positions = positions,

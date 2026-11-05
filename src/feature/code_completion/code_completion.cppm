@@ -239,23 +239,28 @@ auto directive_completion(const CompletionName& completing,
                           const CompletionClient& client) -> protocol::CompletionList;
 
 /// The modules an `import` or a module declaration being typed
-/// (`completing`) in `text`, the file at `path`, may name: the unit's own
-/// partitions first, then the modules whose interface lies nearest the
+/// (`completing`) in `text`, the file `file` at `path`, may name: the unit's
+/// own partitions first, then the modules whose interface lies nearest the
 /// file — the fewest directories up from it to one holding the interface.
+/// The other open units provide what their buffers declare (`open`), the
+/// file what its text does.
 auto module_completion(const CompletionName& completing,
                        llvm::StringRef text,
                        const PositionMap& map,
                        PositionEncoding encoding,
+                       Fid file,
                        llvm::StringRef path,
-                       const ModuleProviders& providers,
+                       const DependencyGraph& graph,
+                       std::vector<OpenModule> open,
                        FileTable& files,
                        llvm::function_ref<ScanResult(llvm::StringRef)> declared_module,
                        std::uint32_t limit) -> protocol::CompletionList;
 
 /// A completion request as the server has it before any compile.
 struct CompletionInputs {
-    /// The path and text of the file completed in, and the point completed
-    /// at in the client's encoding.
+    /// The file completed in, its path and text, and the point completed at
+    /// in the client's encoding.
+    Fid file;
     llvm::StringRef path;
     llvm::StringRef text;
     const PositionMap& positions;

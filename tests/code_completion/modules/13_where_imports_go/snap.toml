@@ -5,3 +5,6 @@ items = [
 
 [answers.global_fragment.completion]
 items = []
+
+[answers.conditional_fragment.completion]
+items = []

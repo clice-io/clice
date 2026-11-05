@@ -399,13 +399,19 @@ auto module_completion(const CompletionName& completing,
                        llvm::StringRef text,
                        const PositionMap& map,
                        PositionEncoding encoding,
+                       Fid file,
                        llvm::StringRef path,
-                       const ModuleProviders& providers,
+                       const DependencyGraph& graph,
+                       std::vector<OpenModule> open,
                        FileTable& files,
                        llvm::function_ref<ScanResult(llvm::StringRef)> declared_module,
                        std::uint32_t limit) -> protocol::CompletionList {
     std::vector<std::string> module_names;
+    ModuleProviders providers;
     if(completing.kind == CompletionName::Kind::ModuleDeclaration) {
+        // The declaration being typed provides nothing yet.
+        open.push_back({.file = file});
+        providers = module_providers(graph, open);
         module_names = complete_module_declaration(providers, completing.prefix);
     } else {
         // The module declaration precedes every import, and the
@@ -415,11 +421,22 @@ auto module_completion(const CompletionName& completing,
         auto declared = text.take_front(text.rfind('\n', completing.replace.begin) + 1).str();
         auto unit = scan_quick(declared);
         if(unit.need_preprocess) {
+            // The fragment `module;` opened lasts unless the preprocessor
+            // reads a declaration after it.
+            bool opened = unit.in_global_fragment;
             unit = declared_module(declared);
-        } else if(unit.in_global_fragment) {
+            unit.in_global_fragment = opened && unit.module_name.empty();
+        }
+        if(unit.in_global_fragment) {
             // No import may go there.
             return completion_list({}, limit);
         }
+        open.push_back({
+            .file = file,
+            .name = unit.provided_module().str(),
+            .internal = unit.is_internal_partition(),
+        });
+        providers = module_providers(graph, open);
         module_names = complete_module_import(providers, completing.prefix, unit);
     }
     auto directory = path::parent(path);
@@ -504,8 +521,10 @@ auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
                                          text,
                                          inputs.positions,
                                          inputs.encoding,
+                                         inputs.file,
                                          inputs.path,
-                                         module_providers(inputs.graph, inputs.open_modules()),
+                                         inputs.graph,
+                                         inputs.open_modules(),
                                          inputs.files,
                                          inputs.declared_module,
                                          limit);
