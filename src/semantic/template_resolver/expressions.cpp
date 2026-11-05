@@ -241,9 +241,11 @@ bool PseudoInstantiator::xvalue(const clang::Expr* expr) {
         }
         auto frames = stack.size();
         auto* field = llvm::dyn_cast_if_present<clang::FieldDecl>(referenced_decl(access));
+        /// A reference member names what it refers to, an lvalue: one of a
+        /// type a parameter binds to a reference too.
+        auto type = field ? substitute(field->getType()) : clang::QualType();
         stack.truncate(frames);
-        /// A reference member names what it refers to, an lvalue.
-        return field && !field->getType()->isReferenceType();
+        return !type.isNull() && !type->isReferenceType();
     }
     return expr->isXValue();
 }

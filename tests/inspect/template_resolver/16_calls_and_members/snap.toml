@@ -46,3 +46,13 @@ type = "typename decltype(make(N::Arg<X>{}))::type"
 [answers.using_two_specializations]
 wrong = "Base<T>::get takes value as it is, Base<T*>::get not at all: got is a T"
 template_resolver = {}
+
+[answers.reference_bound_field.template_resolver]
+type = "Left"
+
+[answers.reference_qualification.template_resolver]
+type = "Good"
+
+[answers.explicit_arguments_bound]
+wrong = "the explicit argument makes U a Base: only the first takes an A* and a B*, so chosen is a Good"
+template_resolver = {}

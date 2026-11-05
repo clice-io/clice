@@ -278,3 +278,87 @@ void use(Derived<T>& derived, T value) {
 }
 
 }  // namespace using_two_specializations
+
+namespace reference_bound_field {
+
+struct Left {};
+
+struct Right {};
+
+struct Getter {
+    Left get() &;
+    Right get() &&;
+};
+
+template <typename U>
+struct Holder {
+    U value;
+    static Holder make();
+};
+
+template <typename T>
+struct Test {
+    void run() {
+        // `value` is a `Getter&` in `Holder<Getter&>`: an lvalue even through a temporary.
+        auto §(reference_bound_field)got = Holder<T&>::make().value.get();
+    }
+};
+
+template struct Test<Getter>;
+
+}  // namespace reference_bound_field
+
+namespace reference_qualification {
+
+struct Good {};
+
+struct Bad {};
+
+template <typename U>
+Good choose(U& value);
+
+Bad choose(const int& value);
+
+template <typename T>
+struct Source {
+    using type = int;
+};
+
+template <typename T>
+void run(typename Source<T>::type& value) {
+    // Binding `int&` beats binding `const int&`: the template wins.
+    auto §(reference_qualification)chosen = reference_qualification::choose(value);
+}
+
+}  // namespace reference_qualification
+
+namespace explicit_arguments_bound {
+
+struct Base {};
+
+struct A : Base {};
+
+struct B : Base {};
+
+struct Good {};
+
+struct Bad {};
+
+template <typename U>
+Good choose(U* left, U* right);
+
+template <typename U>
+Bad choose(U left, B* right);
+
+template <typename T>
+struct Source {
+    using type = A*;
+};
+
+template <typename T>
+void run(typename Source<T>::type left, B* right) {
+    auto §(explicit_arguments_bound)chosen =
+        explicit_arguments_bound::choose<Base>(left, right);
+}
+
+}  // namespace explicit_arguments_bound
