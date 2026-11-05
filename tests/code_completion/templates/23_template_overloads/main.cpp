@@ -1,8 +1,8 @@
 // A member call whose overloads include a member template, as std::map's
 // find() and its heterogeneous lookup: a template returning the `decltype`
-// of what deduction would tell leaves the type to the others; one returning
-// another type leaves the call untyped, one returning its parameter what the
-// argument deduces it to.
+// of what deduction would tell leaves the type to the others; where it and
+// a non-template both take the arguments as they are, the non-template wins;
+// one returning its parameter gives what the argument deduces it to.
 template <class K, class V>
 struct Pair {
     K first;

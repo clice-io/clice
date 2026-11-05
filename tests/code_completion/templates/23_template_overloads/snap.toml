@@ -6,7 +6,10 @@ items = [
 ]
 
 [answers.differing_template.completion]
-items = []
+items = [
+    { label = "left", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
 
 [answers.ruled_out.completion]
 items = [
