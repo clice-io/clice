@@ -154,6 +154,32 @@ void drop_by_arity(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
                    unsigned count,
                    bool member_call);
 
+/// The functions a dependent call may call.
+struct Callees {
+    llvm::SmallVector<const clang::NamedDecl*, 4> candidates;
+
+    /// Whether the call may call no other function: false for a call
+    /// needing argument-dependent lookup whose arguments' types do not all
+    /// resolve — its instantiation may find more.
+    bool complete = true;
+};
+
+/// An argument of a call as deduction sees it: its type, resolved, and
+/// whether it is an lvalue.
+struct CallArgument {
+    clang::QualType type;
+
+    bool lvalue;
+};
+
+/// The functions named `name` that argument-dependent lookup finds for
+/// arguments of `types`: those of the namespaces their types are associated
+/// with, and the friends their associated classes declare. None when one of
+/// the types is still dependent: its associated namespaces wait for
+/// instantiation.
+std::optional<llvm::SmallVector<const clang::NamedDecl*, 4>>
+    argument_dependent_lookup(clang::DeclarationName name, llvm::ArrayRef<clang::QualType> types);
+
 /// The core pseudo-instantiation engine, one query's state. Resolves
 /// dependent names by looking up members in primary templates and partial
 /// specializations — a capability clang's own instantiation machinery does
@@ -280,7 +306,7 @@ public:
     /// dropped: ranking the rest is full overload resolution (Sema
     /// territory). The frames of the lookup that found the set stay on the
     /// stack.
-    llvm::SmallVector<const clang::NamedDecl*, 4> call_candidates(const clang::CallExpr* expr);
+    Callees call_candidates(const clang::CallExpr* expr);
 
     /// The overloads a dependent `callee` may call, its call written as far
     /// as the `written` arguments: at the first argument every one, past it
@@ -299,14 +325,23 @@ private:
 
     clang::QualType rewrite_parameter(const clang::TemplateTypeParmType* TTPT, Policy policy);
 
+    /// The argument the template parameter `param`, `index` in its list at
+    /// `depth`, is bound to: by the frame holding its template when a frame
+    /// does — the query names a specialization of it or calls it —, else,
+    /// for a parameter of the template the query is inside of, by the
+    /// template's only instantiation. Null when unbound.
+    const clang::TemplateArgument* bound_argument(const clang::NamedDecl* param,
+                                                  unsigned depth,
+                                                  unsigned index) const;
+
     /// The argument a function template's parameter took in the template's
     /// only instantiation: a generic lambda's `auto` parameter stands for
     /// the type the lambda is called with. Several instantiations give no
     /// one answer. A class template's parameters stay as they are: the
     /// resolver reads its patterns with them unbound, save where a query
     /// binds them first (TemplateResolver::deduce).
-    const clang::TemplateArgument*
-        only_instantiation_argument(const clang::TemplateTypeParmType* TTPT) const;
+    const clang::TemplateArgument* only_instantiation_argument(const clang::NamedDecl* param,
+                                                               unsigned index) const;
 
     /// What the transform `kind` (`__add_pointer`, `__remove_cvref`) makes
     /// of `base`, as Sema computes it, where the shape of `base` decides it:
@@ -391,6 +426,17 @@ private:
     Deduction deduce_template_arguments(clang::TypeAliasTemplateDecl* alias,
                                         TemplateArguments arguments);
 
+    /// `patterns`, which may reference parameters of templates enclosing
+    /// `decl`, with the current bindings of those substituted in, into
+    /// `storage` when that changes them: they are concrete from the
+    /// deduction of `list`, the parameters of `decl`, which compares them
+    /// structurally (a member partial specialization pinning an outer
+    /// parameter, e.g. `Inner<pair<O, U>>`) instead of guessing.
+    TemplateArguments substitute_outer(clang::Decl* decl,
+                                       clang::TemplateParameterList* list,
+                                       TemplateArguments patterns,
+                                       llvm::SmallVectorImpl<clang::TemplateArgument>& storage);
+
     /// Deduce `list`, the parameters of `decl`, by matching `patterns`
     /// against `arguments`, and push the deduced frame unless that fails.
     /// `kind` names `decl` in the log.
@@ -411,8 +457,9 @@ private:
 
     /// Search for `name` in the base classes of `CRD`, each of them: a name
     /// found in two bases is ambiguous, as real lookup would diagnose, and
-    /// degrades to empty; the same declarations reached along two paths
-    /// (`Left<T>::type` through a diamond) are not.
+    /// degrades to empty; the same declarations of one specialization
+    /// reached along two paths (`Left<T>::type` through a diamond) are not,
+    /// those of two specializations (`X<T>` and `X<T*>`) are.
     ///
     /// IMPORTANT: when a member is found, stack frames pushed during the lookup
     /// are intentionally left intact. The caller (resolve_dependent_name)
@@ -421,6 +468,12 @@ private:
     lookup_result lookup_in_bases(clang::CXXRecordDecl* CRD, clang::DeclarationName name);
 
     lookup_result lookup_in_base(const clang::CXXBaseSpecifier& base, clang::DeclarationName name);
+
+    /// The arguments the lookup that found `members`, its frames those past
+    /// `since`, bound the template they are members of to; empty for the
+    /// members of a class that is no template's pattern.
+    llvm::SmallVector<clang::TemplateArgument, 4> owner_arguments(lookup_result members,
+                                                                  unsigned since);
 
     lookup_result lookup(clang::ClassTemplateDecl* CTD,
                          clang::DeclarationName name,
@@ -537,9 +590,12 @@ private:
     clang::QualType subscript_type(const clang::ArraySubscriptExpr* expr);
 
     /// What dereferencing an `object` yields: a pointer's pointee, else what
-    /// the class's own `operator*` returns. A non-member operator is no
-    /// candidate, as for any dependent operator but `[]` and `->`, which
-    /// can only be members. The frames of the lookup stay for the caller to
+    /// the class's own `operator*` returns, or one argument-dependent lookup
+    /// finds for the object's resolved type. A non-member operator only the
+    /// definition sees is no candidate, as for any dependent operator but
+    /// `[]` and `->`, which can only be members: instantiation adds the
+    /// operands' associated operators, so what the definition happened to
+    /// see says nothing. The frames of the lookup stay for the caller to
     /// truncate.
     clang::QualType deref_type(clang::QualType object, bool rvalue);
 
@@ -547,14 +603,20 @@ private:
     /// lvalue reference, or a temporary. A name denotes an lvalue.
     bool rvalue(const clang::Expr* base);
 
+    /// Whether `expr` is an xvalue, also where clang cannot tell: a dependent
+    /// access to a data member of an rvalue, which clang marks an lvalue.
+    bool xvalue(const clang::Expr* expr);
+
     /// The type a call returns, before resolution; the frames it pushes
     /// stay for the caller to truncate.
     clang::QualType call_type(const clang::CallExpr* call);
 
-    /// What calling one of `candidates` returns, before resolution: the
-    /// type they all return (`map::operator[]` takes a `const key_type&` or
-    /// a `key_type&&`, and returns `mapped_type&` either way). Null when
-    /// they disagree, or there are none.
+    /// What calling one of `candidates` with `arguments` returns, before
+    /// resolution: the type they all return (`map::operator[]` takes a
+    /// `const key_type&` or a `key_type&&`, and returns `mapped_type&`
+    /// either way). Null when they disagree, or there are none. The
+    /// `operands` of an operator are its arguments, of which a member takes
+    /// the first as its object.
     ///
     /// A template returning the `decltype` of a call on the parameters only
     /// deduction would bind tells nothing, and the others decide: beside a
@@ -564,15 +626,35 @@ private:
     /// chosen, and leaves the call untyped.
     clang::QualType
         common_return_type(llvm::ArrayRef<const clang::NamedDecl*> candidates,
-                           llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments);
+                           llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments,
+                           llvm::ArrayRef<CallArgument> arguments = {},
+                           bool operands = false);
 
-    /// What calling `candidate` returns, before resolution; the frames it
-    /// pushes stay for the caller to truncate. A function template's own
-    /// parameters are bound from the call's explicit template arguments; one
-    /// left to deduction from the call's arguments, which is not modeled,
-    /// leaves the call untyped.
+    /// What calling `candidate` with `arguments` returns, before resolution;
+    /// the frames it pushes stay for the caller to truncate. A function
+    /// template's own parameters are bound from the call's explicit template
+    /// arguments, else deduced from `arguments`; those left take their
+    /// defaults. One still unbound leaves the call untyped.
     clang::QualType return_type(const clang::NamedDecl* candidate,
-                                llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments);
+                                llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments,
+                                llvm::ArrayRef<CallArgument> arguments);
+
+    /// The parameters of `FTD`, the template of `function`, that a call with
+    /// `arguments` deduces, up to the first one it leaves unbound; empty when
+    /// the call cannot match. Simplified [temp.deduct.call]: a reference
+    /// parameter matches its referred type (a forwarding reference an lvalue
+    /// as an lvalue reference), any other the argument decayed and
+    /// unqualified.
+    llvm::SmallVector<clang::TemplateArgument, 4>
+        deduce_call(clang::FunctionTemplateDecl* FTD,
+                    const clang::FunctionDecl* function,
+                    llvm::ArrayRef<CallArgument> arguments);
+
+    /// The arguments of a call as deduction sees them; none when one of
+    /// them expands a pack, which may stand for any number of arguments, or
+    /// has a type that does not resolve.
+    std::optional<llvm::SmallVector<CallArgument, 4>>
+        call_arguments(llvm::ArrayRef<const clang::Expr*> arguments);
 
     /// The declaration a name or member expression refers to; the frames
     /// of the lookup that found it stay on the stack (see lookup).
@@ -586,6 +668,15 @@ private:
                  llvm::ArrayRef<const clang::Expr*> arguments,
                  bool member_call);
 
+    /// Of `candidates` every argument of a call may initialize, the one
+    /// taking each argument as is, of its type exactly — binding a
+    /// reference or dropping top-level qualifiers aside —, alone when it is
+    /// the only such: every other one needs a conversion of some argument,
+    /// and overload resolution prefers it. Dependent arguments or
+    /// parameters leave the set as it is.
+    void prefer_exact(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
+                      llvm::ArrayRef<const clang::Expr*> arguments);
+
     /// Overloads that differ only in their object parameter — its cv- and
     /// ref-qualifiers, `front()` and `front() const`, `value() &` and
     /// `value() &&` — are told apart by the object, an lvalue unless
@@ -598,12 +689,14 @@ private:
                           clang::QualType object,
                           bool rvalue = false);
 
-    /// The resolved overload set of a dependent `callee`, the functions
-    /// `viable` rejects left out, and for a member call those its object
-    /// binds best.
-    llvm::SmallVector<const clang::NamedDecl*, 4>
-        callee_candidates(const clang::Expr* callee,
-                          llvm::function_ref<bool(const clang::FunctionDecl*, bool)> viable);
+    /// The resolved overload set of a dependent `callee` called with
+    /// `arguments` — for a name needing argument-dependent lookup, with what
+    /// that lookup finds —, the functions `viable` rejects left out, and for
+    /// a member call those its object binds best. A using-declaration among
+    /// them stands for what it names in its base.
+    Callees callee_candidates(const clang::Expr* callee,
+                              llvm::ArrayRef<const clang::Expr*> arguments,
+                              llvm::function_ref<bool(const clang::FunctionDecl*, bool)> viable);
 
     std::string pad() const {
         return std::string(indent * 2, ' ');

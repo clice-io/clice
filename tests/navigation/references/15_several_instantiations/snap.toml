@@ -1,0 +1,5 @@
+[answers.first]
+references = ["void ⟦foo⟧(); @+0", "obj.⟦foo⟧();"]
+
+[answers.second]
+references = ["void ⟦foo⟧(); @+0", "obj.⟦foo⟧();"]

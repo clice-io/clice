@@ -92,7 +92,7 @@ std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr
         return llvm::APSInt(llvm::APInt(1, *trait ? 1 : 0), /*isUnsigned=*/true);
     }
     if(auto NTTP = referenced_nttp(expr)) {
-        auto* bound = stack.find_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
+        auto* bound = bound_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
         if(bound && bound->getKind() == clang::TemplateArgument::Integral) {
             return bound->getAsIntegral();
         }
@@ -247,13 +247,14 @@ clang::QualType PseudoInstantiator::deduce(clang::QualType declared, const clang
     if(source.isNull()) {
         return source;
     }
-    /// FIXME: no value category of its own for a dependent member access, which
-    /// clang marks an lvalue, nor for subscript_type over an xvalue array: on a
-    /// temporary (`Box<T>::make().value`, `.arr[0]`) `auto&&` and `decltype(auto)`
-    /// deduce `int &` where the instantiation has `int &&`.
     if(decltype_auto) {
-        bool lvalue = parenthesized && init->isLValue() && !source->isReferenceType();
-        return lvalue ? context.getLValueReferenceType(source) : source;
+        if(!parenthesized || source->isReferenceType()) {
+            return source;
+        }
+        if(xvalue(init)) {
+            return context.getRValueReferenceType(source);
+        }
+        return init->isLValue() ? context.getLValueReferenceType(source) : source;
     }
 
     /// Clang cannot tell what a dependent call or subscript yields, nor
@@ -263,7 +264,22 @@ clang::QualType PseudoInstantiator::deduce(clang::QualType declared, const clang
         evaluated && llvm::isa<clang::CallExpr, clang::ArraySubscriptExpr>(init->IgnoreParens());
     return bind_auto(declared,
                      source,
-                     source->isLValueReferenceType() || (!opaque && init->isLValue()));
+                     source->isLValueReferenceType() ||
+                         (!opaque && init->isLValue() && !xvalue(init)));
+}
+
+bool PseudoInstantiator::xvalue(const clang::Expr* expr) {
+    expr = expr->IgnoreParens();
+    if(auto* access = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(expr)) {
+        if(access->isArrow() || access->isImplicitAccess() || !rvalue(access->getBase())) {
+            return false;
+        }
+        auto frames = stack.size();
+        bool field = llvm::isa_and_present<clang::FieldDecl>(referenced_decl(access));
+        stack.truncate(frames);
+        return field;
+    }
+    return expr->isXValue();
 }
 
 clang::QualType PseudoInstantiator::bind_auto(clang::QualType declared,
@@ -315,12 +331,24 @@ clang::QualType PseudoInstantiator::loop_element(const clang::VarDecl* var) {
         return context.getLValueReferenceType(array->getElementType());
     }
     auto begin = context.DeclarationNames.getIdentifier(&context.Idents.get("begin"));
+    auto end = context.DeclarationNames.getIdentifier(&context.Idents.get("end"));
     auto members = lookup(range, begin);
-    llvm::SmallVector<const clang::NamedDecl*, 4> candidates(members.begin(), members.end());
-    drop_by_arity(candidates, 0, /*member_call=*/true);
-    /// `begin()` is called on the variable the range initializes.
-    select_by_object(candidates, range);
-    auto iterator = common_return_type(candidates, {});
+    clang::QualType iterator;
+    if(!members.empty() || !lookup(range, end).empty()) {
+        llvm::SmallVector<const clang::NamedDecl*, 4> candidates(members.begin(), members.end());
+        drop_by_arity(candidates, 0, /*member_call=*/true);
+        /// `begin()` is called on the variable the range initializes.
+        select_by_object(candidates, range);
+        iterator = common_return_type(candidates, {});
+    } else if(auto found = argument_dependent_lookup(begin, {range})) {
+        /// A class without member `begin` or `end` is iterated through the
+        /// `begin(range)` argument-dependent lookup finds.
+        drop_by_arity(*found, 1, /*member_call=*/false);
+        iterator = common_return_type(*found,
+                                      {
+        },
+                                      {{.type = range, .lvalue = true}});
+    }
     return iterator.isNull() ? iterator : deref_type(resolve_object(iterator), false);
 }
 
@@ -364,8 +392,10 @@ clang::QualType PseudoInstantiator::subscript_type(const clang::ArraySubscriptEx
     if(auto* PT = object->getAs<clang::PointerType>()) {
         return context.getLValueReferenceType(PT->getPointeeType());
     }
+    /// An element of an xvalue array is an xvalue.
     if(auto* AT = context.getAsArrayType(object)) {
-        return context.getLValueReferenceType(AT->getElementType());
+        return xvalue(expr->getLHS()) ? context.getRValueReferenceType(AT->getElementType())
+                                      : context.getLValueReferenceType(AT->getElementType());
     }
 
     auto subscript = context.DeclarationNames.getCXXOperatorName(clang::OO_Subscript);
@@ -388,7 +418,15 @@ clang::QualType PseudoInstantiator::deref_type(clang::QualType object, bool rval
     llvm::SmallVector<const clang::NamedDecl*, 4> candidates(members.begin(), members.end());
     drop_by_arity(candidates, 0, /*member_call=*/true);
     select_by_object(candidates, object, rvalue);
-    return common_return_type(candidates, {});
+    if(auto found = argument_dependent_lookup(star, {object})) {
+        drop_by_arity(*found, 1, /*member_call=*/false);
+        candidates.append(found->begin(), found->end());
+    }
+    return common_return_type(candidates,
+                              {
+    },
+                              {{.type = object, .lvalue = !rvalue}},
+                              /*operands=*/true);
 }
 
 bool PseudoInstantiator::rvalue(const clang::Expr* base) {
@@ -402,22 +440,30 @@ bool PseudoInstantiator::rvalue(const clang::Expr* base) {
 
 clang::QualType PseudoInstantiator::call_type(const clang::CallExpr* call) {
     auto* callee = call->getCallee()->IgnoreParenImpCasts();
-    /// Argument-dependent lookup adds candidates only instantiation
-    /// sees; the ordinary set proves nothing about the callee. Without
-    /// arguments it adds none.
-    if(auto* ULE = llvm::dyn_cast<clang::UnresolvedLookupExpr>(callee);
-       ULE && ULE->requiresADL() && call->getNumArgs() > 0) {
+    /// A call whose argument-dependent lookup waits for instantiation may
+    /// call what the visible overloads say nothing about.
+    auto callees = call_candidates(call);
+    if(!callees.complete) {
         return clang::QualType();
     }
-    return common_return_type(call_candidates(call), decls::explicit_template_arguments(callee));
+    auto arguments = call_arguments({call->getArgs(), call->getNumArgs()});
+    return common_return_type(callees.candidates,
+                              decls::explicit_template_arguments(callee),
+                              arguments ? llvm::ArrayRef<CallArgument>(*arguments)
+                                        : llvm::ArrayRef<CallArgument>());
 }
 
 clang::QualType PseudoInstantiator::common_return_type(
     llvm::ArrayRef<const clang::NamedDecl*> candidates,
-    llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments) {
+    llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments,
+    llvm::ArrayRef<CallArgument> arguments,
+    bool operands) {
     clang::QualType common;
     for(auto* candidate: candidates) {
-        auto type = return_type(candidate, template_arguments);
+        auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(as_function(candidate));
+        bool object = operands && method && method->isImplicitObjectMemberFunction();
+        auto type =
+            return_type(candidate, template_arguments, object ? arguments.drop_front() : arguments);
         if(auto* function = as_function(candidate);
            type.isNull() && function && template_arguments.empty() &&
            function->getDescribedFunctionTemplate() &&
@@ -434,7 +480,8 @@ clang::QualType PseudoInstantiator::common_return_type(
 
 clang::QualType
     PseudoInstantiator::return_type(const clang::NamedDecl* candidate,
-                                    llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments) {
+                                    llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments,
+                                    llvm::ArrayRef<CallArgument> arguments) {
     auto* function = as_function(candidate);
     if(!function) {
         return clang::QualType();
@@ -448,14 +495,22 @@ clang::QualType
         return substitute(function->getReturnType());
     }
 
-    /// A pack parameter would need its explicit arguments grouped;
-    /// leave it to the unbound case below.
     auto* params = FTD->getTemplateParameters();
     llvm::SmallVector<clang::TemplateArgument, 4> bound;
-    if(!params->hasParameterPack()) {
-        for(auto& argument: template_arguments) {
-            bound.push_back(argument.getArgument());
+    if(!template_arguments.empty()) {
+        /// A pack parameter would need its explicit arguments grouped;
+        /// leave it to the unbound case below.
+        if(!params->hasParameterPack()) {
+            for(auto& argument: template_arguments) {
+                bound.push_back(argument.getArgument());
+            }
         }
+    } else if(!arguments.empty()) {
+        bound = deduce_call(FTD, function, arguments);
+    }
+    if(llvm::SmallVector<clang::TemplateArgument, 4> completed;
+       fill_defaults(FTD, bound, completed)) {
+        bound = std::move(completed);
     }
     /// Unbound, they would be resolved through the rest of the stack:
     /// a `decltype` of a call on them names whatever that call returns

@@ -15,4 +15,7 @@ items = [
 ]
 
 [answers.parameter_template.completion]
-items = []
+items = [
+    { label = "right", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]

@@ -260,18 +260,6 @@ const clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(const clan
 
 }  // namespace
 
-/// An explicit specialization named before it is declared keeps that
-/// first, undeclared node as its canonical declaration.
-template <typename Spec>
-bool explicitly_specialized(const Spec* spec) {
-    for(auto* redecl: spec->redecls()) {
-        if(llvm::cast<Spec>(redecl)->getSpecializationKind() == clang::TSK_ExplicitSpecialization) {
-            return true;
-        }
-    }
-    return false;
-}
-
 auto function_pattern(const clang::FunctionDecl& function) -> const clang::FunctionDecl* {
     if(const auto* pattern = function.getTemplateInstantiationPattern()) {
         return pattern;

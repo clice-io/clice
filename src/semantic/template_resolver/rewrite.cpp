@@ -332,7 +332,7 @@ clang::QualType PseudoInstantiator::rewrite_type(clang::QualType type, Policy po
             /// bound that is itself a dependent expression (`N = M` from
             /// deduction) is threaded through instead of left stale.
             if(auto NTTP = referenced_nttp(DSAT->getSizeExpr())) {
-                auto* argument = stack.find_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
+                auto* argument = bound_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
                 if(argument && argument->getKind() == clang::TemplateArgument::Integral) {
                     /// A negative bound is ill-formed; fabricating an
                     /// array from its two's-complement bits would be a
@@ -420,7 +420,7 @@ clang::QualType PseudoInstantiator::rewrite_type(clang::QualType type, Policy po
                     auto pattern = PET->getPattern();
                     const clang::TemplateArgument* bound = nullptr;
                     if(auto TTPT = pattern->getAs<clang::TemplateTypeParmType>()) {
-                        bound = stack.find_argument(TTPT);
+                        bound = bound_argument(TTPT->getDecl(), TTPT->getDepth(), TTPT->getIndex());
                     }
                     if(bound && bound->getKind() == clang::TemplateArgument::Pack) {
                         splice(bound->getPackAsArray());
@@ -460,7 +460,7 @@ clang::QualType PseudoInstantiator::rewrite_type(clang::QualType type, Policy po
             /// specification — no expression is ever rebuilt.
             if(FPT->getExceptionSpecType() == clang::EST_DependentNoexcept) {
                 if(auto NTTP = referenced_nttp(FPT->getNoexceptExpr())) {
-                    auto* bound = stack.find_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
+                    auto* bound = bound_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
                     if(bound && bound->getKind() == clang::TemplateArgument::Integral) {
                         EPI.ExceptionSpec = {};
                         EPI.ExceptionSpec.Type = bound->getAsIntegral().getBoolValue()
@@ -502,15 +502,24 @@ clang::QualType PseudoInstantiator::rewrite_type(clang::QualType type, Policy po
     return result;
 }
 
+const clang::TemplateArgument* PseudoInstantiator::bound_argument(const clang::NamedDecl* param,
+                                                                  unsigned depth,
+                                                                  unsigned index) const {
+    if(stack.owns(param, depth)) {
+        return stack.find_argument(param, depth, index);
+    }
+    return only_instantiation_argument(param, index);
+}
+
 const clang::TemplateArgument*
-    PseudoInstantiator::only_instantiation_argument(const clang::TemplateTypeParmType* TTPT) const {
-    if(!options.only_instantiation) {
+    PseudoInstantiator::only_instantiation_argument(const clang::NamedDecl* param,
+                                                    unsigned index) const {
+    if(!options.only_instantiation || !param) {
         return nullptr;
     }
     /// A template parameter belongs to the function its template adopted
     /// it into; the parameters of any other template sit elsewhere.
-    auto* param = TTPT->getDecl();
-    auto* function = param ? llvm::dyn_cast<clang::FunctionDecl>(param->getDeclContext()) : nullptr;
+    auto* function = llvm::dyn_cast<clang::FunctionDecl>(param->getDeclContext());
     /// A captureless generic lambda's conversion to a function pointer
     /// and its static invoker adopt the call operator's parameter list
     /// after it, but calls instantiate the call operator.
@@ -521,12 +530,12 @@ const clang::TemplateArgument*
     if(!function) {
         return nullptr;
     }
-    auto* instantiation =
-        llvm::dyn_cast_or_null<clang::FunctionDecl>(decls::only_instantiation(function));
+    auto* instantiation = llvm::dyn_cast_or_null<clang::FunctionDecl>(
+        decls::only_instantiation(const_cast<clang::FunctionDecl*>(function)));
     if(!instantiation) {
         return nullptr;
     }
-    return &instantiation->getTemplateSpecializationArgs()->get(TTPT->getIndex());
+    return &instantiation->getTemplateSpecializationArgs()->get(index);
 }
 
 clang::QualType PseudoInstantiator::transformed(clang::UnaryTransformType::UTTKind kind,
@@ -611,13 +620,7 @@ clang::QualType PseudoInstantiator::transformed(clang::UnaryTransformType::UTTKi
 
 clang::QualType PseudoInstantiator::rewrite_parameter(const clang::TemplateTypeParmType* TTPT,
                                                       Policy policy) {
-    /// A frame holds the template the parameter belongs to when the
-    /// query names a specialization of it or calls it; a parameter of
-    /// the template the query is inside of stands for the template's
-    /// only instantiation.
-    bool owned = stack.owns(TTPT->getDecl(), TTPT->getDepth());
-    const auto* argument = owned ? stack.find_argument(TTPT) : only_instantiation_argument(TTPT);
-    if(argument) {
+    if(const auto* argument = bound_argument(TTPT->getDecl(), TTPT->getDepth(), TTPT->getIndex())) {
         clang::QualType type;
 
         if(argument->getKind() == clang::TemplateArgument::Type) {
@@ -639,7 +642,7 @@ clang::QualType PseudoInstantiator::rewrite_parameter(const clang::TemplateTypeP
     // default. This enables resolution chains like:
     //   template<typename T, typename Alloc = allocator<T>> struct vector;
     // where Alloc's default depends on T.
-    if(owned && policy == Policy::Resolve) {
+    if(stack.owns(TTPT->getDecl(), TTPT->getDepth()) && policy == Policy::Resolve) {
         if(clang::TemplateTypeParmDecl* TTPD = TTPT->getDecl();
            TTPD && TTPD->hasDefaultArgument()) {
             const auto& argument = TTPD->getDefaultArgument().getArgument();

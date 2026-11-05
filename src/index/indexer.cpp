@@ -745,6 +745,66 @@ public:
         return location;
     }
 
+    /// The files `file` brings in itself: it, and every file it includes,
+    /// with what those include in turn.
+    const llvm::DenseSet<clang::FileID>& reach(clang::FileID file) {
+        if(auto found = reached.find(file); found != reached.end()) {
+            return found->second;
+        }
+        llvm::DenseSet<clang::FileID> files{file};
+        llvm::SmallVector<clang::FileID> pending{file};
+        auto& directives = unit.directives();
+        while(!pending.empty()) {
+            auto current = pending.pop_back_val();
+            auto directive = directives.find(current);
+            if(directive == directives.end()) {
+                continue;
+            }
+            for(auto& include: directive->second.includes) {
+                if(include.fid.isValid() && files.insert(include.fid).second) {
+                    pending.push_back(include.fid);
+                }
+            }
+        }
+        return reached.try_emplace(file, std::move(files)).first->second;
+    }
+
+    /// Whether the file holding `at`, a name in a dependent call's overload
+    /// set, sees `candidate` on its own: the focus file always, a header
+    /// when a declaration of it is in the header or in what the header
+    /// includes before `at`. What its includers bring in before it differs
+    /// from one unit to the next, and recording it would split the header's
+    /// index into variants that differ by those alone; what instantiations
+    /// call, the instantiation shards hold.
+    bool sees_on_its_own(const clang::NamedDecl* candidate, clang::SourceLocation at) {
+        auto& SM = unit.context().getSourceManager();
+        auto [file, offset] = SM.getDecomposedExpansionLoc(at);
+        if(unit.focus_file().contains(file)) {
+            return true;
+        }
+        auto declared_in = [&](const llvm::DenseSet<clang::FileID>& files) {
+            return ranges::any_of(candidate->redecls(), [&](const clang::Decl* redecl) {
+                return files.contains(SM.getFileID(SM.getExpansionLoc(redecl->getLocation())));
+            });
+        };
+        if(declared_in({file})) {
+            return true;
+        }
+        auto directive = unit.directives().find(file);
+        if(directive == unit.directives().end()) {
+            return false;
+        }
+        for(auto& include: directive->second.includes) {
+            if(SM.getDecomposedExpansionLoc(include.location).second >= offset) {
+                break;
+            }
+            if(include.fid.isValid() && declared_in(reach(include.fid))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// Hierarchy ranges are positions in the caller's document: a call
     /// written in a fragment the caller's body pastes in is recorded at
     /// that include.
@@ -805,8 +865,12 @@ public:
             }
             // A dependent call reaches every candidate the resolver finds
             // for it, as its weak references do.
+            bool overload_set =
+                llvm::isa<clang::UnresolvedLookupExpr>(CE->getCallee()->IgnoreParenImpCasts());
             for(auto* candidate: resolver.callees(CE)) {
-                call(candidate->getUnderlyingDecl(), range);
+                if(!overload_set || sees_on_its_own(candidate, range.getBegin())) {
+                    call(candidate->getUnderlyingDecl(), range);
+                }
             }
             return;
         }
@@ -1149,7 +1213,12 @@ public:
             }
             return;
         }
+        bool overload_set = semantics.node(i).node.get<clang::UnresolvedLookupExpr>() != nullptr;
         for(auto& occurrence: resolve_occurrences(semantics, i, &resolver)) {
+            if(overload_set && occurrence.kind.is_one_of(RelationKind::WeakReference) &&
+               !sees_on_its_own(occurrence.decl, occurrence.location)) {
+                continue;
+            }
             auto name = add_name(occurrence);
             if(instantiation_entries) {
                 continue;
@@ -2135,6 +2204,9 @@ private:
         pattern_locals;
 
     std::vector<BodyName> body_names;
+
+    /// The files each file brings in itself (reach).
+    llvm::DenseMap<clang::FileID, llvm::DenseSet<clang::FileID>> reached;
 };
 
 }  // namespace

@@ -1,0 +1,17 @@
+[answers.non_type.completion]
+items = [
+    { label = "copy()", kind = "Method", detail = "Array<U, M>" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.pack.completion]
+items = [
+    { label = "again()", kind = "Method", detail = "Pack<Cs...>" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.qualified.completion]
+items = [
+    { label = "X", kind = "Class" },
+    { label = "f(U value)", kind = "Method", detail = "int" },
+]

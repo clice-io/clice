@@ -2,6 +2,7 @@ module clice;
 
 import :semantic.decls;
 import :semantic.template_resolver;
+import :semantic.template_resolver.deduction;
 import :semantic.template_resolver.instantiator;
 
 namespace clice::types {
@@ -15,6 +16,23 @@ struct OnlyInstantiation {
     clang::TemplateParameterList* params;
     const clang::ClassTemplateSpecializationDecl* instantiation;
 };
+
+/// Whether `instantiation` explicitly specializes `member`, a member of
+/// its template's pattern (`template <> void A<int>::f() {}`): it never
+/// instantiates that member's body.
+bool explicitly_specializes(const clang::ClassTemplateSpecializationDecl& instantiation,
+                            const clang::Decl& member) {
+    auto* function = llvm::dyn_cast<clang::FunctionDecl>(&member);
+    if(!function) {
+        return false;
+    }
+    return ranges::any_of(instantiation.decls(), [&](const clang::Decl* decl) {
+        auto* specialized = llvm::dyn_cast<clang::FunctionDecl>(decl);
+        auto* pattern = specialized ? specialized->getInstantiatedFromMemberFunction() : nullptr;
+        return pattern && pattern->getCanonicalDecl() == function->getCanonicalDecl() &&
+               specialized->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization;
+    });
+}
 
 /// The parameter lists through which `var` can name the parameters of the
 /// class templates around it. Besides each template's own list, a
@@ -35,17 +53,19 @@ llvm::SmallVector<OnlyInstantiation> only_instantiations(const clang::VarDecl* v
         return decl->getFriendObjectKind() != clang::Decl::FOK_None ? decl->getLexicalDeclContext()
                                                                     : decl->getDeclContext();
     };
+    /// The member of the class the walk reached that holds `var`.
+    const clang::Decl* member = nullptr;
     for(const clang::Decl* decl = var; decl && !llvm::isa<clang::TranslationUnitDecl>(decl);
-        decl = llvm::dyn_cast<clang::Decl>(scope(decl))) {
+        member = decl, decl = llvm::dyn_cast<clang::Decl>(scope(decl))) {
         auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
         if(auto* owner = record ? record->getDescribedClassTemplate() : nullptr) {
             // The helper keeps its clangd signature, which speaks mutable
             // pointers; it only reads through them.
             auto* instantiation = llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(
                 decls::only_instantiation(const_cast<clang::CXXRecordDecl*>(record)));
-            // FIXME: the class's instantiation is taken for every member: one the
-            // specialization explicitly specializes (`template <> void A<int>::f() {}`)
-            // never instantiates this body, yet `auto x = T();` in it reads `int`.
+            if(instantiation && member && explicitly_specializes(*instantiation, *member)) {
+                instantiation = nullptr;
+            }
             enclosing.push_back({owner, owner->getTemplateParameters(), instantiation});
         }
         /// A member class template's own list is not among its outer ones.
@@ -121,6 +141,32 @@ clang::TagDecl* TemplateResolver::resolve_tag(clang::QualType type) {
     return instantiator.select_pattern(CTD, TST->template_arguments());
 }
 
+bool TemplateResolver::specializable(clang::QualType type) {
+    auto* chosen = resolve_tag(type);
+    PseudoInstantiator instantiator(context, resolved, options);
+    type = instantiator.resolve(type);
+    auto* TST = type.isNull() ? nullptr : type->getAs<clang::TemplateSpecializationType>();
+    auto* CTD = TST ? llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
+                          TST->getTemplateName().getAsTemplateDecl())
+                    : nullptr;
+    if(!CTD || !TST->isDependentType()) {
+        return false;
+    }
+    auto matches = [&](const clang::ClassTemplateSpecializationDecl* specialization) {
+        return specialization != chosen && may_match(context,
+                                                     TST->template_arguments(),
+                                                     specialization->getTemplateArgs().asArray());
+    };
+    llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*> partials;
+    CTD->getPartialSpecializations(partials);
+    return ranges::any_of(partials, matches) ||
+           ranges::any_of(CTD->specializations(),
+                          [&](const clang::ClassTemplateSpecializationDecl* specialization) {
+                              return decls::explicitly_specialized(specialization) &&
+                                     matches(specialization);
+                          });
+}
+
 clang::QualType TemplateResolver::deduce(const clang::VarDecl* var) {
     /// A variable inside class templates the unit instantiates once deduces
     /// as in those instantiations. Their parameters are bound for this query
@@ -175,7 +221,7 @@ TemplateResolver::lookup_result
 llvm::SmallVector<const clang::NamedDecl*, 4>
     TemplateResolver::callees(const clang::CallExpr* expr) {
     PseudoInstantiator instantiator(context, resolved, options);
-    return instantiator.call_candidates(expr);
+    return std::move(instantiator.call_candidates(expr).candidates);
 }
 
 llvm::SmallVector<const clang::NamedDecl*, 4>

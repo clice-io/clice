@@ -131,7 +131,7 @@ clang::QualType PseudoInstantiator::rewrite_template(const clang::TemplateSpecia
     bool head_changed = false;
     if(auto TTP =
            llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(name.getAsTemplateDecl())) {
-        if(auto* bound = stack.find_argument(TTP, TTP->getDepth(), TTP->getIndex());
+        if(auto* bound = bound_argument(TTP, TTP->getDepth(), TTP->getIndex());
            bound && bound->getKind() == clang::TemplateArgument::Template) {
             name = bound->getAsTemplate();
             head_changed = true;
@@ -160,7 +160,8 @@ bool PseudoInstantiator::rewrite_arguments(TemplateArguments arguments,
                 if(auto PET = type->getAs<clang::PackExpansionType>()) {
                     auto pattern = PET->getPattern();
                     if(auto TTPT = pattern->getAs<clang::TemplateTypeParmType>()) {
-                        auto* bound = stack.find_argument(TTPT);
+                        auto* bound =
+                            bound_argument(TTPT->getDecl(), TTPT->getDepth(), TTPT->getIndex());
                         if(bound && bound->getKind() == clang::TemplateArgument::Pack) {
                             out.append(bound->pack_begin(), bound->pack_end());
                             changed = true;
@@ -204,7 +205,7 @@ bool PseudoInstantiator::rewrite_arguments(TemplateArguments arguments,
                 /// bound pack, mirroring the type-pack path above.
                 if(auto PEE = llvm::dyn_cast<clang::PackExpansionExpr>(argument.getAsExpr())) {
                     if(auto NTTP = referenced_nttp(PEE->getPattern())) {
-                        auto* bound = stack.find_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
+                        auto* bound = bound_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
                         if(bound && bound->getKind() == clang::TemplateArgument::Pack) {
                             out.append(bound->pack_begin(), bound->pack_end());
                             changed = true;
@@ -215,19 +216,25 @@ bool PseudoInstantiator::rewrite_arguments(TemplateArguments arguments,
 
                 /// Substitute a bound non-type parameter at the argument
                 /// level; expressions themselves are never rebuilt.
-                /// TODO(nttp-expr): compound expressions (`value<N + 1>`)
-                /// therefore keep referencing the original parameter and
-                /// degrade to unresolved downstream — never a wrong
-                /// answer, never a crash. Rebuilding them needs an
-                /// expression substitution engine; deliberately deferred.
                 /// A Pack binding is only usable inside a narrowed element
                 /// rewrite (where the slot holds one element) — splicing
                 /// it here as a single argument would be malformed.
-                if(auto NTTP = referenced_nttp(argument.getAsExpr())) {
-                    auto* bound = stack.find_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
+                auto* expr = argument.getAsExpr();
+                if(auto NTTP = referenced_nttp(expr)) {
+                    auto* bound = bound_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
                     if(bound && !bound->isNull() &&
                        bound->getKind() != clang::TemplateArgument::Pack) {
                         out.push_back(*bound);
+                        changed = true;
+                        continue;
+                    }
+                }
+                /// A compound expression (`value<N + 1>`) takes the value it
+                /// folds to under the bindings; one that does not fold stays
+                /// as written, unresolved downstream.
+                if(expr->isValueDependent() && !expr->getType()->isDependentType()) {
+                    if(auto value = evaluate(expr)) {
+                        out.emplace_back(context, *value, expr->getType());
                         changed = true;
                         continue;
                     }
@@ -241,7 +248,7 @@ bool PseudoInstantiator::rewrite_arguments(TemplateArguments arguments,
                 /// (`apply<TT, Us...>`) is substituted with its binding.
                 if(auto TTP = llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(
                        argument.getAsTemplate().getAsTemplateDecl())) {
-                    auto* bound = stack.find_argument(TTP, TTP->getDepth(), TTP->getIndex());
+                    auto* bound = bound_argument(TTP, TTP->getDepth(), TTP->getIndex());
                     if(bound && bound->getKind() == clang::TemplateArgument::Template) {
                         out.push_back(*bound);
                         changed = true;
@@ -269,7 +276,7 @@ bool PseudoInstantiator::rewrite_arguments(TemplateArguments arguments,
                 /// with the type and expression pack paths.
                 if(auto TTP = llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(
                        argument.getAsTemplateOrTemplatePattern().getAsTemplateDecl())) {
-                    auto* bound = stack.find_argument(TTP, TTP->getDepth(), TTP->getIndex());
+                    auto* bound = bound_argument(TTP, TTP->getDepth(), TTP->getIndex());
                     if(bound && bound->getKind() == clang::TemplateArgument::Pack) {
                         out.append(bound->pack_begin(), bound->pack_end());
                         changed = true;

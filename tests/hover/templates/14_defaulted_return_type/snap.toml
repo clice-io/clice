@@ -1,0 +1,9 @@
+[answers.member.hover]
+markdown = '''
+**field** `vec_member` · struct `Vec<T>`
+
+```cpp
+int vec_member
+```
+'''
+range = "return box.make().⟦vec_member⟧;"

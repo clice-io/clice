@@ -64,6 +64,41 @@ A<char*> instantiated_partial;
             class_template("A")->getTemplatedDecl()->getCanonicalDecl());
 };
 
+ZEST_CASE(UndeclaredDetectionPartial) {
+    add_focus("main.cpp", R"cpp(
+template <typename...> using void_t = void;
+template <typename T, typename = void> struct has_x { };
+template <typename T> struct has_x<T, void_t<typename T::x>> { };
+
+struct With { using x = int; };
+struct Without { };
+
+has_x<With>* detected_use;
+has_x<Without>* missing_use;
+)cpp");
+    ZASSERT(compile());
+
+    auto of = [&](llvm::StringRef name) -> clang::ClassTemplateSpecializationDecl* {
+        for(auto* spec: class_template("has_x")->specializations()) {
+            auto* record = spec->getTemplateArgs()[0].getAsType()->getAsCXXRecordDecl();
+            if(record && record->getName() == name) {
+                return spec;
+            }
+        }
+        return nullptr;
+    };
+    auto* detected = of("With");
+    auto* missing = of("Without");
+    ZASSERT((detected && missing));
+    ZASSERT(missing->getSpecializationKind() == clang::TSK_Undeclared);
+
+    /// Substituting `Without` into the partial's pattern fails: real
+    /// instantiation uses the primary, and so does the identity.
+    ZEXPECT(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(decls::normalize(detected)));
+    ZEXPECT(decls::normalize(missing) ==
+            class_template("has_x")->getTemplatedDecl()->getCanonicalDecl());
+};
+
 ZEST_CASE(AmbiguousPartialsPrimary) {
     add_focus("main.cpp", R"cpp(
 template <typename T, typename U> struct B { };

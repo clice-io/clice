@@ -634,19 +634,25 @@ void add_macros(HoverInfo& info,
 }
 
 /// The dependent specialization the code at `node` names a member of a
-/// class template through: `vector<Point<T>>` for `pts.push_back` or
-/// `typename vector<Point<T>>::value_type`.
+/// class template through: `vector<Point<T>>` for `pts.push_back`,
+/// `typename vector<Point<T>>::value_type` or `vector<Point<T>>::npos`.
 auto accessed_specialization(const SelectionTree::Node& node, CompilationUnit& unit)
     -> const clang::TemplateSpecializationType* {
     if(const auto* access = node.get<clang::CXXDependentScopeMemberExpr>()) {
         return types::accessed_specialization(*access, unit.get<types::TemplateResolver>());
     }
-    const auto* loc = node.get<clang::TypeLoc>();
-    const auto* name = loc ? loc->getType()->getAs<clang::DependentNameType>() : nullptr;
-    if(!name || name->getQualifier().getKind() != clang::NestedNameSpecifier::Kind::Type) {
+    clang::NestedNameSpecifier qualifier = std::nullopt;
+    if(const auto* name = node.get<clang::DependentScopeDeclRefExpr>()) {
+        qualifier = name->getQualifier();
+    } else if(const auto* loc = node.get<clang::TypeLoc>()) {
+        if(const auto* name = loc->getType()->getAs<clang::DependentNameType>()) {
+            qualifier = name->getQualifier();
+        }
+    }
+    if(!qualifier || qualifier.getKind() != clang::NestedNameSpecifier::Kind::Type) {
         return nullptr;
     }
-    return name->getQualifier().getAsType()->getAs<clang::TemplateSpecializationType>();
+    return qualifier.getAsType()->getAs<clang::TemplateSpecializationType>();
 }
 
 /// The template an instantiation was instantiated from, as a card shows it

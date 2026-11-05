@@ -44,6 +44,12 @@ public:
     /// Null when the type does not resolve to a class or enumeration.
     clang::TagDecl* resolve_tag(clang::QualType type);
 
+    /// Whether a specialization of the class template the dependent `type`
+    /// names — explicit or partial, but the pattern resolve_tag chose — may
+    /// apply once the template parameters in its arguments are known: the
+    /// class resolve_tag gives then holds for some instantiations only.
+    bool specializable(clang::QualType type);
+
     /// What a member access on `base` (`base.`, or `base->` when `arrow`)
     /// names its members in, resolved: what the base evaluates to, through
     /// `operator->` chains for an arrow. Null when it does not resolve.
@@ -86,7 +92,10 @@ public:
     /// conversion-free subset of it. A dependent operator (`a == b`) gets
     /// no candidates: instantiation adds the operands' associated operators
     /// and the built-in ones, so the operators its definition happened to
-    /// see say nothing, and differ between the units including it.
+    /// see say nothing, and differ between the units including it. A call
+    /// needing argument-dependent lookup takes in what that lookup finds
+    /// for its arguments' resolved types; while one of them stays dependent,
+    /// the visible overloads are all it has.
     llvm::SmallVector<const clang::NamedDecl*, 4> callees(const clang::CallExpr* expr);
 
     /// The overloads a dependent call being written, its arguments so far

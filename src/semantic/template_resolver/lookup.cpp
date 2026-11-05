@@ -1,5 +1,6 @@
 module clice;
 
+import :semantic.decls;
 import :semantic.template_resolver.deduction;
 import :semantic.template_resolver.instantiator;
 import :support.logging;
@@ -60,9 +61,13 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::QualType typ
         }
 
         /// A specialization the TU never instantiated has no members
-        /// yet; look them up in the pattern it would instantiate from.
+        /// yet; look them up in the pattern it would instantiate from. One
+        /// explicitly specialized and never defined has none at all.
         if(auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record);
            spec && !spec->hasDefinition()) {
+            if(decls::explicitly_specialized(spec)) {
+                return lookup_result();
+            }
             return lookup(spec->getSpecializedTemplate(), name, spec->getTemplateArgs().asArray());
         }
         return lookup_in_record(record, name);
@@ -161,6 +166,7 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup_in_bases(clang::CXX
 
     auto frames = stack.size();
     lookup_result found;
+    llvm::SmallVector<clang::TemplateArgument, 4> found_in;
     for(auto& base: CRD->bases()) {
         auto base_frames = stack.size();
         auto members = lookup_in_base(base, name);
@@ -168,6 +174,7 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup_in_bases(clang::CXX
             stack.truncate(base_frames);
             continue;
         }
+        auto owner = owner_arguments(members, base_frames);
         if(found.empty()) {
             LOG_DEBUG(
                 "{}"
@@ -176,13 +183,20 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup_in_bases(clang::CXX
                 name.getAsString(),
                 base.getType().getAsString());
             found = members;
+            found_in = std::move(owner);
             continue;
         }
         stack.truncate(base_frames);
+        bool same_owner = ranges::equal(
+            found_in,
+            owner,
+            [&](const clang::TemplateArgument& lhs, const clang::TemplateArgument& rhs) {
+                return context.isSameTemplateArgument(lhs, rhs);
+            });
         /// FIXME: no dominance through virtual bases: with B<T> and C<T> both
         /// virtually deriving A<T>, B's `type` hides A's in `D : C<T>, B<T>`, yet the
         /// two paths read as ambiguous here and the lookup answers nothing.
-        if(!same_declarations(found, members)) {
+        if(!same_declarations(found, members) || !same_owner) {
             LOG_DEBUG(
                 "{}"
                 "'{}' is ambiguous among the bases",
@@ -193,6 +207,27 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup_in_bases(clang::CXX
         }
     }
     return found;
+}
+
+llvm::SmallVector<clang::TemplateArgument, 4>
+    PseudoInstantiator::owner_arguments(lookup_result members, unsigned since) {
+    auto* owner = llvm::dyn_cast<clang::CXXRecordDecl>(members.front()->getDeclContext());
+    const clang::Decl* pattern = nullptr;
+    if(owner && llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(owner)) {
+        pattern = owner;
+    } else if(owner) {
+        pattern = owner->getDescribedClassTemplate();
+    }
+    if(!pattern) {
+        return {};
+    }
+    for(unsigned f = stack.size(); f > since; f -= 1) {
+        auto& frame = stack.frames()[f - 1];
+        if(frame.decl->getCanonicalDecl() == pattern->getCanonicalDecl()) {
+            return frame.arguments;
+        }
+    }
+    return {};
 }
 
 PseudoInstantiator::lookup_result
@@ -251,24 +286,25 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::ClassTemplat
         indent -= 1;
         return members;
     }
-    auto* best = choice.winner;
-
-    if(best && deduce_template_arguments(best, arguments) != Deduction::Failed) {
+    /// Instantiation reads the pattern it chose alone: a name the chosen
+    /// partial specialization lacks is no member, whatever the primary
+    /// template declares.
+    clang::CXXRecordDecl* pattern = choice.winner;
+    Deduction deduction = Deduction::Failed;
+    if(pattern) {
         LOG_DEBUG(
             "{}"
             "matched partial '{}'",
             pad(),
-            best->getNameAsString());
-        if(auto members = lookup_in_record(best, name); !members.empty()) {
-            indent -= 1;
-            return members;
-        }
-        stack.pop();
-    }
-
-    if(deduce_template_arguments(CTD, arguments) != Deduction::Failed) {
+            pattern->getNameAsString());
+        deduction = deduce_template_arguments(choice.winner, arguments);
+    } else {
         LOG_DEBUG("{}using primary template", pad());
-        if(auto members = lookup_in_record(CTD->getTemplatedDecl(), name); !members.empty()) {
+        pattern = CTD->getTemplatedDecl();
+        deduction = deduce_template_arguments(CTD, arguments);
+    }
+    if(deduction != Deduction::Failed) {
+        if(auto members = lookup_in_record(pattern, name); !members.empty()) {
             indent -= 1;
             return members;
         }

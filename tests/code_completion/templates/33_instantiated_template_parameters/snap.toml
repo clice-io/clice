@@ -1,0 +1,17 @@
+[answers.non_type.completion]
+items = [
+    { label = "three", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.template_template.completion]
+items = [
+    { label = "boxed", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.explicit_specialization.completion]
+items = [
+    { label = "int_wrapped", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]

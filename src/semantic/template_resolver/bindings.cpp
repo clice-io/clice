@@ -64,8 +64,22 @@ bool PseudoInstantiator::fill_defaults(clang::TemplateDecl* TD,
                                        llvm::SmallVectorImpl<clang::TemplateArgument>& out) {
     auto list = TD->getTemplateParameters();
     out.reserve(list->size());
-    for(auto arg: arguments) {
-        out.emplace_back(arg);
+    for(auto [index, argument]: views::enumerate(arguments)) {
+        /// A value folded from an expression has the expression's type; the
+        /// specialization holds it converted to the parameter's.
+        auto* NTTP = static_cast<unsigned>(index) < list->size()
+                         ? llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(
+                               list->getParam(static_cast<unsigned>(index)))
+                         : nullptr;
+        if(NTTP && !NTTP->isParameterPack() &&
+           argument.getKind() == clang::TemplateArgument::Integral &&
+           !context.hasSameType(argument.getIntegralType(), NTTP->getType())) {
+            if(auto value = convert_integral(context, argument.getAsIntegral(), NTTP->getType())) {
+                out.emplace_back(context, *value, NTTP->getType());
+                continue;
+            }
+        }
+        out.emplace_back(argument);
     }
 
     for(auto i = out.size(); i < list->size(); i += 1) {
@@ -201,30 +215,16 @@ Deduction PseudoInstantiator::push_deduction(clang::Decl* decl,
                                              TemplateArguments patterns,
                                              TemplateArguments arguments,
                                              llvm::StringRef kind) {
-    /// Patterns may reference parameters of enclosing templates (a member
-    /// partial specialization pinning an outer parameter, e.g.
-    /// `Inner<pair<O, U>>`). Those are concrete from this deduction's
-    /// point of view: substitute the current bindings in first so the
-    /// unifier compares them structurally instead of guessing.
-    ///
-    /// The parameters being deduced must stay free, yet an enclosing
-    /// in-flight deduction of this same template may have them bound on
-    /// the stack (recursive chains like allocator_traits' rebind). An
-    /// empty-argument frame masks them: decl matching stops at it and
-    /// reports "unbound", while enclosing templates' frames still apply.
     llvm::SmallVector<clang::TemplateArgument, 4> substituted;
-    if(!stack.empty()) {
-        stack.push(decl, list, {});
-        bool changed = rewrite_arguments(patterns, substituted, Policy::Substitute);
-        stack.pop();
-        if(changed) {
-            patterns = substituted;
-        }
-    }
+    patterns = substitute_outer(decl, list, patterns, substituted);
 
     llvm::SmallVector<clang::TemplateArgument, 4> deduced;
-    auto deduction =
-        deduce_arguments(context, list, patterns, arguments, deduced, open_defaults.getArrayRef());
+    auto deduction = deduce_arguments(context,
+                                      list,
+                                      patterns,
+                                      arguments,
+                                      deduced,
+                                      {.open = open_defaults.getArrayRef()});
     if(deduction == Deduction::Failed) {
         return deduction;
     }
@@ -267,6 +267,107 @@ Deduction PseudoInstantiator::push_deduction(clang::Decl* decl,
     }());
 
     return deduction;
+}
+
+PseudoInstantiator::TemplateArguments
+    PseudoInstantiator::substitute_outer(clang::Decl* decl,
+                                         clang::TemplateParameterList* list,
+                                         TemplateArguments patterns,
+                                         llvm::SmallVectorImpl<clang::TemplateArgument>& storage) {
+    /// The parameters being deduced must stay free, yet an enclosing
+    /// in-flight deduction of this same template may have them bound on
+    /// the stack (recursive chains like allocator_traits' rebind). An
+    /// empty-argument frame masks them: decl matching stops at it and
+    /// reports "unbound", while enclosing templates' frames still apply.
+    if(stack.empty()) {
+        return patterns;
+    }
+    stack.push(decl, list, {});
+    bool changed = rewrite_arguments(patterns, storage, Policy::Substitute);
+    stack.pop();
+    return changed ? TemplateArguments(storage) : patterns;
+}
+
+llvm::SmallVector<clang::TemplateArgument, 4>
+    PseudoInstantiator::deduce_call(clang::FunctionTemplateDecl* FTD,
+                                    const clang::FunctionDecl* function,
+                                    llvm::ArrayRef<CallArgument> arguments) {
+    if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(function);
+       method && method->isExplicitObjectMemberFunction()) {
+        return {};
+    }
+    auto* params = FTD->getTemplateParameters();
+    /// `T&&` with `T` a parameter of the template, unqualified.
+    auto forwarding = [&](clang::QualType parameter) {
+        auto* reference = parameter->getAs<clang::RValueReferenceType>();
+        if(!reference) {
+            return false;
+        }
+        auto pointee = reference->getPointeeType();
+        auto* TTPT = pointee->getAs<clang::TemplateTypeParmType>();
+        return TTPT && TTPT->getDepth() == params->getDepth() &&
+               !pointee.getCanonicalType().hasQualifiers();
+    };
+    /// The type deduction matches a parameter's arguments against.
+    auto pattern_of = [&](clang::QualType parameter) {
+        if(auto* reference = parameter->getAs<clang::ReferenceType>()) {
+            return reference->getPointeeType();
+        }
+        return parameter.getUnqualifiedType();
+    };
+    /// What deduction matches against that pattern for `argument`.
+    auto argument_for = [&](clang::QualType parameter, const CallArgument& argument) {
+        auto type = argument.type.getNonReferenceType();
+        if(forwarding(parameter)) {
+            return argument.lvalue ? context.getLValueReferenceType(type) : type;
+        }
+        /// A reference binds an argument less qualified than what it
+        /// refers to.
+        if(parameter->isReferenceType()) {
+            return context.getQualifiedType(
+                type,
+                pattern_of(parameter).getCanonicalType().getQualifiers());
+        }
+        return context.getAdjustedParameterType(type).getUnqualifiedType();
+    };
+
+    llvm::SmallVector<clang::TemplateArgument, 4> patterns;
+    llvm::SmallVector<clang::TemplateArgument, 4> types;
+    unsigned index = 0;
+    for(auto* parameter: function->parameters()) {
+        auto type = parameter->getType();
+        /// A function parameter pack takes every argument left.
+        if(auto* expansion = type->getAs<clang::PackExpansionType>()) {
+            auto element = expansion->getPattern();
+            for(; index < arguments.size(); index += 1) {
+                types.emplace_back(argument_for(element, arguments[index]));
+            }
+            patterns.emplace_back(context.getPackExpansionType(pattern_of(element), std::nullopt));
+            break;
+        }
+        /// A defaulted parameter the call leaves out deduces nothing.
+        if(index == arguments.size()) {
+            break;
+        }
+        patterns.emplace_back(pattern_of(type));
+        types.emplace_back(argument_for(type, arguments[index]));
+        index += 1;
+    }
+
+    llvm::SmallVector<clang::TemplateArgument, 4> substituted;
+    auto written = substitute_outer(FTD, params, patterns, substituted);
+    llvm::SmallVector<clang::TemplateArgument, 4> deduced;
+    if(deduce_arguments(context,
+                        params,
+                        written,
+                        types,
+                        deduced,
+                        {.open = open_defaults.getArrayRef(), .partial = true}) ==
+       Deduction::Failed) {
+        return {};
+    }
+    deduced.erase(ranges::find_if(deduced, &clang::TemplateArgument::isNull), deduced.end());
+    return deduced;
 }
 
 void PseudoInstantiator::assume(clang::ClassTemplateDecl* owner,

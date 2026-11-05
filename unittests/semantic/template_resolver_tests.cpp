@@ -4695,10 +4695,37 @@ ZEST_CASE(DecltypeExplicitTemplateCall) {
     )code");
 }
 
+ZEST_CASE(CompoundValueArgument) {
+    /// `N + 1` folds under the binding of `N`: `Arr<4>`, the explicit
+    /// specialization.
+    run(R"code(
+        template <int N>
+        struct Arr {
+            using type = char;
+        };
+
+        template <>
+        struct Arr<4> {
+            using type = int;
+        };
+
+        template <class T, int N>
+        struct Outer {
+            using inner = typename Arr<N + 1>::type;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename Outer<X, 3>::inner;
+            using expect = int;
+        };
+    )code");
+}
+
 ZEST_CASE(DecltypeDeducedTemplateCall) {
-    /// `U` is deduced from the argument, which is not modeled; the call
-    /// stays untyped rather than reading `Result<U>` as the primary.
-    add_focus("main.cpp", R"code(
+    /// `U` is deduced from the argument, `X*`: the call returns
+    /// `Result<X*>`, whose partial specialization says `int`.
+    run(R"code(
         template <typename U>
         struct Result {
             using type = char;
@@ -4715,16 +4742,9 @@ ZEST_CASE(DecltypeDeducedTemplateCall) {
         template <typename X>
         struct test {
             using input = typename decltype(::make(static_cast<X*>(nullptr)))::type;
+            using expect = int;
         };
     )code");
-    ZASSERT(compile());
-
-    InputFinder finder(*unit);
-    finder.TraverseAST(unit->context());
-
-    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
-    ZASSERT(!input.isNull());
-    ZEXPECT(input->isDependentType());
 }
 
 ZEST_CASE(DependentTypedMemberValue) {

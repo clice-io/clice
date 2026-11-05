@@ -1,0 +1,16 @@
+[answers.dominance]
+wrong = "VA<T> is a virtual base of both bases, so VB<T>::type hides VA<T>::type: the card should show VB's type"
+hover = {}
+
+[answers.explicit_arguments.hover]
+markdown = '''
+**field** `small` · struct `Small`
+
+```cpp
+int small
+```
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "return rows.template pick<int>().⟦small⟧;"

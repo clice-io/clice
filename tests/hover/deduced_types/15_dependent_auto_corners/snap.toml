@@ -1,0 +1,68 @@
+[answers.explicit_member.hover]
+markdown = '''
+**variable** `x` · method `A::f`
+
+```cpp
+auto x = T()
+```
+**Type:** `T`
+'''
+range = "auto ⟦x⟧ = T();"
+
+[answers.own_specialization]
+wrong = "from_call of Holder<W<T>> is a W<W<T>>: the frames of the lookup that found it bind T again in what the call already returned in the caller's terms"
+
+[answers.own_specialization.hover]
+markdown = '''
+**variable** `y` · method `Holder::g`
+
+```cpp
+auto y = Holder<W<T>>::from_call
+```
+**Type:** `W<W<W<T>>>`
+'''
+range = "auto ⟦y⟧ = Holder<W<T>>::from_call;"
+
+[answers.rvalue_member.hover]
+markdown = '''
+**variable** `m` · function `temporaries`
+
+```cpp
+auto&& m = Box<T>::make().value
+```
+**Type:** `int&&`
+'''
+range = "auto&& ⟦m⟧ = Box<T>::make().value;"
+
+[answers.decltype_member.hover]
+markdown = '''
+**variable** `d` · function `temporaries`
+
+```cpp
+decltype(auto) d = Box<T>::make().value
+```
+**Type:** `int`
+'''
+range = "decltype(auto) ⟦d⟧ = Box<T>::make().value;"
+
+[answers.parenthesized_member.hover]
+markdown = '''
+**variable** `p` · function `temporaries`
+
+```cpp
+decltype(auto) p = (Box<T>::make().value)
+```
+**Type:** `int&&`
+'''
+range = "decltype(auto) ⟦p⟧ = (Box<T>::make().value);"
+
+[answers.rvalue_element.hover]
+markdown = '''
+**variable** `e` · function `temporaries`
+
+```cpp
+auto&& e = Box<T>::make().arr[0]
+```
+**Type:** `int&&`
+'''
+range = "auto&& ⟦e⟧ = Box<T>::make().arr[0];"

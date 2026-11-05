@@ -245,6 +245,133 @@ llvm::SmallVector<PackParameter, 2> packs_in(const clang::TemplateArgument& patt
     return std::move(finder.packs);
 }
 
+namespace {
+
+bool types_may_match(clang::ASTContext& context, clang::QualType lhs, clang::QualType rhs);
+
+bool arguments_may_match(clang::ASTContext& context,
+                         const clang::TemplateArgument& lhs,
+                         const clang::TemplateArgument& rhs) {
+    using Kind = clang::TemplateArgument;
+    auto open = [](const clang::TemplateArgument& argument) {
+        switch(argument.getKind()) {
+            case Kind::Expression: return argument.getAsExpr()->isValueDependent();
+            case Kind::Template:
+            case Kind::TemplateExpansion:
+                return argument.getAsTemplateOrTemplatePattern().isDependent();
+            case Kind::Pack: return true;
+            default: return argument.isPackExpansion();
+        }
+    };
+    if(open(lhs) || open(rhs)) {
+        return true;
+    }
+    if(lhs.getKind() == Kind::Type && rhs.getKind() == Kind::Type) {
+        return types_may_match(context, lhs.getAsType(), rhs.getAsType());
+    }
+    return context.isSameTemplateArgument(lhs, rhs);
+}
+
+bool types_may_match(clang::ASTContext& context, clang::QualType lhs, clang::QualType rhs) {
+    lhs = lhs.getCanonicalType();
+    rhs = rhs.getCanonicalType();
+    if(!lhs->isDependentType() && !rhs->isDependentType()) {
+        return context.hasSameType(lhs, rhs);
+    }
+    if(llvm::isa<clang::TemplateTypeParmType>(lhs) || llvm::isa<clang::TemplateTypeParmType>(rhs)) {
+        return true;
+    }
+    if(lhs->getTypeClass() != rhs->getTypeClass()) {
+        /// A template-id and the record of a specialization of it compare
+        /// by their arguments.
+        clang::TemplateName lhs_name, rhs_name;
+        llvm::ArrayRef<clang::TemplateArgument> lhs_arguments, rhs_arguments;
+        auto template_id = [](clang::QualType type,
+                              clang::TemplateName& name,
+                              llvm::ArrayRef<clang::TemplateArgument>& arguments) {
+            if(auto* TST = type->getAs<clang::TemplateSpecializationType>()) {
+                name = TST->getTemplateName();
+                arguments = TST->template_arguments();
+                return true;
+            }
+            if(auto* CTSD = llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(
+                   type->getAsCXXRecordDecl())) {
+                name = clang::TemplateName(CTSD->getSpecializedTemplate());
+                arguments = CTSD->getTemplateArgs().asArray();
+                return true;
+            }
+            return false;
+        };
+        if(template_id(lhs, lhs_name, lhs_arguments) && template_id(rhs, rhs_name, rhs_arguments)) {
+            return context.hasSameTemplateName(lhs_name, rhs_name) &&
+                   types::may_match(context, lhs_arguments, rhs_arguments);
+        }
+        /// A dependent form not compared structurally may become anything.
+        return llvm::isa<clang::DependentNameType,
+                         clang::DecltypeType,
+                         clang::PackExpansionType,
+                         clang::UnaryTransformType>(lhs) ||
+               llvm::isa<clang::DependentNameType,
+                         clang::DecltypeType,
+                         clang::PackExpansionType,
+                         clang::UnaryTransformType>(rhs);
+    }
+    switch(lhs->getTypeClass()) {
+        case clang::Type::Pointer:
+            return types_may_match(context, lhs->getPointeeType(), rhs->getPointeeType());
+        case clang::Type::LValueReference:
+        case clang::Type::RValueReference:
+            return types_may_match(context,
+                                   lhs->getAs<clang::ReferenceType>()->getPointeeType(),
+                                   rhs->getAs<clang::ReferenceType>()->getPointeeType());
+        case clang::Type::ConstantArray:
+        case clang::Type::DependentSizedArray:
+        case clang::Type::IncompleteArray:
+            return types_may_match(context,
+                                   context.getAsArrayType(lhs)->getElementType(),
+                                   context.getAsArrayType(rhs)->getElementType());
+        case clang::Type::TemplateSpecialization: {
+            auto* left = llvm::cast<clang::TemplateSpecializationType>(lhs);
+            auto* right = llvm::cast<clang::TemplateSpecializationType>(rhs);
+            return context.hasSameTemplateName(left->getTemplateName(), right->getTemplateName()) &&
+                   types::may_match(context,
+                                    left->template_arguments(),
+                                    right->template_arguments());
+        }
+        default: return true;
+    }
+}
+
+}  // namespace
+
+bool may_match(clang::ASTContext& context,
+               llvm::ArrayRef<clang::TemplateArgument> lhs,
+               llvm::ArrayRef<clang::TemplateArgument> rhs) {
+    auto flatten = [](llvm::ArrayRef<clang::TemplateArgument> arguments) {
+        llvm::SmallVector<clang::TemplateArgument, 4> flat;
+        for(auto& argument: arguments) {
+            if(argument.getKind() == clang::TemplateArgument::Pack) {
+                flat.append(argument.pack_begin(), argument.pack_end());
+            } else {
+                flat.push_back(argument);
+            }
+        }
+        return flat;
+    };
+    auto left = flatten(lhs);
+    auto right = flatten(rhs);
+    for(unsigned i = 0; i < std::min(left.size(), right.size()); i += 1) {
+        if(left[i].isPackExpansion() || right[i].isPackExpansion()) {
+            return true;
+        }
+        if(!arguments_may_match(context, left[i], right[i])) {
+            return false;
+        }
+    }
+    /// The shorter list may still take defaults.
+    return true;
+}
+
 bool Unifier::equivalent(const clang::TemplateArgument& lhs,
                          const clang::TemplateArgument& rhs) const {
     if(context.getCanonicalTemplateArgument(lhs).structurallyEquals(
@@ -933,8 +1060,8 @@ Deduction deduce_arguments(clang::ASTContext& context,
                            llvm::ArrayRef<clang::TemplateArgument> patterns,
                            llvm::ArrayRef<clang::TemplateArgument> arguments,
                            llvm::SmallVectorImpl<clang::TemplateArgument>& deduced,
-                           llvm::ArrayRef<const clang::Expr*> open) {
-    Unifier unifier(context, params->getDepth(), params->size(), open);
+                           const DeductionOptions& options) {
+    Unifier unifier(context, params->getDepth(), params->size(), options.open);
     if(!unifier.unify(patterns, arguments)) {
         return Deduction::Failed;
     }
@@ -951,7 +1078,9 @@ Deduction deduce_arguments(clang::ASTContext& context,
             continue;
         }
 
-        return Deduction::Failed;
+        if(!options.partial) {
+            return Deduction::Failed;
+        }
     }
 
     /// A parameter of the list as what it deduced to.

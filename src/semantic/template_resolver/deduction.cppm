@@ -32,10 +32,25 @@ enum class Deduction : std::uint8_t {
     Unverified,
 };
 
+/// How deduce_arguments treats what the match leaves open.
+struct DeductionOptions {
+    /// Value arguments that may hold any value — defaults that do not fold:
+    /// a value pattern meeting one is undecided (Deduction::Unverified).
+    /// Any other argument whose value is not known matches no value a
+    /// pattern fixes.
+    llvm::ArrayRef<const clang::Expr*> open;
+
+    /// Leave a parameter the match binds nothing to null rather than fail
+    /// the deduction: a function template's defaults fill it after the
+    /// deduction from the call.
+    bool partial = false;
+};
+
 /// Deduce the arguments of `params` at its own depth by matching `patterns`
 /// against `arguments`. An unbound pack deduces as empty; any other unbound
-/// parameter fails the deduction. Default arguments are not consulted here —
-/// the caller fills them (with its own instantiation stack) before deducing.
+/// parameter fails the deduction, unless `options.partial`. Default
+/// arguments are not consulted here — the caller fills them (with its own
+/// instantiation stack) before or after deducing.
 ///
 /// After deduction, the non-deduced expression arguments and the list's
 /// associated constraints are checked with the bindings substituted: one
@@ -50,7 +65,7 @@ Deduction deduce_arguments(clang::ASTContext& context,
                            llvm::ArrayRef<clang::TemplateArgument> patterns,
                            llvm::ArrayRef<clang::TemplateArgument> arguments,
                            llvm::SmallVectorImpl<clang::TemplateArgument>& deduced,
-                           llvm::ArrayRef<const clang::Expr*> open = {});
+                           const DeductionOptions& options = {});
 
 /// The result of select_partial: a winner, or why there is none. Real
 /// instantiation diagnoses an ambiguity (no partial dominates every other
@@ -121,6 +136,15 @@ std::optional<bool> type_trait(const clang::Expr* expr,
 /// If `expr` is a (possibly parenthesized/casted) reference to a non-type
 /// template parameter, return its declaration.
 const clang::NonTypeTemplateParmDecl* referenced_nttp(const clang::Expr* expr);
+
+/// Whether some arguments for the template parameters `lhs` and `rhs` name
+/// may make the two lists the same: the gate of a deeper look, not a match
+/// — a parameter matches anything, a value or a form not compared
+/// structurally may hold anything, and a parameter named twice is not held
+/// to one argument.
+bool may_match(clang::ASTContext& context,
+               llvm::ArrayRef<clang::TemplateArgument> lhs,
+               llvm::ArrayRef<clang::TemplateArgument> rhs);
 
 /// A parameter pack an expansion pattern names.
 struct PackParameter {

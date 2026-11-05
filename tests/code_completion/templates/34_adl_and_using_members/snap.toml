@@ -1,0 +1,23 @@
+[answers.adl_loop.completion]
+items = [
+    { label = "item_value", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.adl_begin.completion]
+items = [
+    { label = "item_value", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.free_dereference.completion]
+items = [
+    { label = "item_value", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.using_beside_own.completion]
+items = [
+    { label = "item_value", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
