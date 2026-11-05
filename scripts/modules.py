@@ -199,7 +199,7 @@ def generate(name, clice):
     ).stdout
     # A unit that does not compile leaves out of the modules what it fails
     # to declare (a clice without its resource headers fails them all).
-    if units := json.loads(report)["compiled_with_errors"]:
+    if units := json.loads(report)["compiledWithErrors"]:
         raise SystemExit(
             "\n".join(
                 f"{name}: {unit['unit']} does not compile: {error['file']}:"

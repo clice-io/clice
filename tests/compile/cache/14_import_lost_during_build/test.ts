@@ -3,8 +3,8 @@ import { test } from "@clice/tools/testing";
 
 // A's PCM leaves the store while M's build is about to read it, as an
 // eviction under the cache's budget or by another server sharing it does:
-// M's build fails on the missing file, which says nothing of M, so the next
-// compile importing M builds A and M again.
+// M's build fails on the missing file, which says nothing of M: the import
+// says so, and the next compile importing M builds A and M again.
 test(async (t) => {
     const s = await t.start({ config: { project: { enable_indexing: false } } });
     const build = await s.park("buildPcm", "m.cppm", { at: "worker" });

@@ -342,31 +342,28 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     if(auto own = current_input(project.file_table, path_id)) {
         known.push_back(*own);
     }
-    auto built =
-        co_await project.send_precompiled(attempt,
-                                          bp,
-                                          std::format("module {}", module_name),
-                                          std::move(known),
-                                          before,
-                                          [&](FailureRecord record, Inputs inputs) {
-                                              // A build whose imports left the disk under it
-                                              // failed on the missing file, which says nothing of
-                                              // the module: the next wait builds them again.
-                                              if(!record.crashed() && lost_import(bp)) {
-                                                  LOG_WARN(
-                                                      "PCM build for module {} lost an import "
-                                                      "to the cache's eviction",
-                                                      module_name);
-                                                  return;
-                                              }
-                                              // An attempt overtaken in flight records its inputs
-                                              // all the same: they no longer match, and its
-                                              // successor rebuilds.
-                                              project.pcms[path_id].failure = {
-                                                  {.key = pcm_key, .record = std::move(record)},
-                                                  std::move(inputs)
-                                              };
-                                          });
+    auto built = co_await project.send_precompiled(
+        attempt,
+        bp,
+        std::format("module {}", module_name),
+        std::move(known),
+        before,
+        [&](FailureRecord record, Inputs inputs) {
+            // A build whose imports left the disk under it failed on the
+            // missing file: the next wait builds them again, and the module
+            // with them.
+            auto key = pcm_key;
+            if(!record.crashed() && lost_import(bp)) {
+                key.clear();
+                record.cause = "an import's module file left the cache during the build";
+            }
+            // An attempt overtaken in flight records its inputs all the same:
+            // they no longer match, and its successor rebuilds.
+            project.pcms[path_id].failure = {
+                {.key = std::move(key), .record = std::move(record)},
+                std::move(inputs)
+            };
+        });
     if(!built) {
         if(built.error() == Result::Failed) {
             project.pcms[path_id].retire(&*project.store, "pcm");

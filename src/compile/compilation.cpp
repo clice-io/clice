@@ -508,7 +508,7 @@ public:
                 }
             }
         }
-        if(unit.params.kind == CompilationKind::Preamble && unit.params.modular) {
+        if(unit.params.modular) {
             drop_preferred_names(context);
         }
         // The PCH writer stores each import with the location where the

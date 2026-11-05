@@ -55,6 +55,14 @@ export function failureExcerpt(lines: readonly LogLine[], limit = 60): string {
 }
 
 const keptLogs = process.env["CLICE_KEEP_LOGS"];
+if (keptLogs !== undefined && !path.isAbsolute(keptLogs)) {
+    throw new Error(
+        `CLICE_KEEP_LOGS is ${JSON.stringify(keptLogs)}: it takes an absolute directory`,
+    );
+}
+
+/// The directories keepLogs wrote, by case.
+const kept = new Map<string, string[]>();
 
 /// Under CLICE_KEEP_LOGS=<dir>, copy the logs of a case's copy to
 /// <dir>/<case id>/<copy> before the copy goes; the runner drops a case's
@@ -63,15 +71,18 @@ export function keepLogs(caseId: string, root: string): void {
     if (keptLogs === undefined) {
         return;
     }
+    const copy = path.join(keptLogs, caseId, path.basename(root));
     for (const file of logFiles(root)) {
-        const kept = path.join(keptLogs, caseId, path.basename(root), path.relative(root, file));
-        fs.mkdirSync(path.dirname(kept), { recursive: true });
-        fs.copyFileSync(file, kept);
+        const target = path.join(copy, path.relative(root, file));
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.copyFileSync(file, target);
     }
+    kept.set(caseId, [...(kept.get(caseId) ?? []), copy]);
 }
 
 export function dropKeptLogs(caseId: string): void {
-    if (keptLogs !== undefined) {
-        fs.rmSync(path.join(keptLogs, caseId), { recursive: true, force: true });
+    for (const copy of kept.get(caseId) ?? []) {
+        fs.rmSync(copy, { recursive: true, force: true });
     }
+    kept.delete(caseId);
 }

@@ -4,9 +4,9 @@ import :support.prelude;
 
 namespace clice {
 
-/// The end of the preamble: the directives that open the file, and in a
-/// module unit its whole global module fragment, the lines starting before
-/// `limit`.
+/// The end of the preamble: the directives, and the global module
+/// fragment's `module;`, that open the file, those starting before `limit`;
+/// none for a global module fragment declaring anything itself.
 std::uint32_t preamble_bound(llvm::StringRef content,
                              std::uint32_t limit = std::numeric_limits<std::uint32_t>::max());
 

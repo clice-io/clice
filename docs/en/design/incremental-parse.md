@@ -42,7 +42,7 @@ Incremental compilation is organized around four core concepts: preamble separat
 
 ### Preamble Separation
 
-The preamble is the region at the top of a source file consisting of preprocessor directives (`#include`, `#define`, `#pragma`, etc.) and module declarations (`module;`). Its end position is identified by a byte offset (bound) -- the byte position just before the first line of non-preprocessor content. In a module unit the preamble is the whole global module fragment, up to the module declaration, declarations written in it included: Clang accepts a module declaration only at the start of the file or after a global module fragment it parsed itself, and a PCH does not carry the fragment.
+The preamble is the region at the top of a source file consisting of preprocessor directives (`#include`, `#define`, `#pragma`, etc.) and module declarations (`module;`). Its end position is identified by a byte offset (bound) -- the byte position just before the first line of non-preprocessor content.
 
 The preamble is compiled into a PCH file and cached on disk. Subsequent compilations load the PCH and only need to process user code after the bound. If the preamble is empty (bound is zero), no PCH is needed and the entire PCH flow is skipped.
 
@@ -98,7 +98,7 @@ When preamble content changes, the new PCH uses a different hash for its filenam
 
 ### Preamble Boundary Computation
 
-The preamble boundary is determined through lexical scanning: the project's `Lexer` scans line by line from the start of the file, identifying preprocessor directives beginning with `#` and `module;` global module fragment declarations. Scanning stops at the first line of non-preprocessor content, or in a global module fragment at the module declaration, and the byte offset at that point is returned as the boundary.
+The preamble boundary is determined through lexical scanning: the project's `Lexer` scans line by line from the start of the file, identifying preprocessor directives beginning with `#` and `module;` global module fragment declarations. Scanning stops at the first line of non-preprocessor content, and the byte offset at that point is returned as the boundary. A global module fragment that declares something itself, not through a header it includes, leaves the file without a preamble: Clang accepts a module declaration only as the first declaration a compile parses itself, so the fragment cannot be split between the PCH and the body.
 
 This lexer-based detection does not require starting a full preprocessor and is very fast.
 
@@ -139,8 +139,6 @@ Compute preamble boundary (before an unfinished directive) and hash
 Cache hit requires two conditions: the preamble hash matches the cached value (preamble content unchanged), and two-layer invalidation detection passes (dependency file contents unchanged). Both conditions must be satisfied simultaneously.
 
 A preamble that imports C++20 modules, itself or through the headers it includes, also depends on what those modules were built from: rebuilding one of them, or a missing one becoming available, rebuilds its PCH.
-
-The PCH of a module unit, or of a file that imports modules, leaves Clang's `preferred_name` attributes out, as Clang leaves them out of the modules it writes: kept, a class template specialization that the PCH and a module both declare, such as `std::basic_string_view<char>`, can be read as two distinct types. In such a file the types the preamble declares print as the template names them (`basic_string_view<char>` rather than `string_view`), as the module's already do.
 
 PCH builds are executed by stateless worker processes (see [multi-process architecture](multi-process.md)). The worker uses Clang's Preamble compilation mode, processing only the preamble portion before the bound. Upon completion, it returns the PCH file path and list of dependency files.
 
@@ -194,7 +192,9 @@ After loading the cache on startup, all PCH entries are validated through two-la
 
 - **Incomplete preamble completeness check**. The current completeness check only covers a header name left open (an unclosed `"` or `<` in `#include`, `#embed` and the like). Other types of incomplete edits (e.g., typing a `#define` value) are not detected. The impact of building a PCH from such an incomplete preamble on subsequent compilation has not been thoroughly tested. Further investigation is needed into Clang's behavior when processing incomplete preprocessor directives, to determine whether the completeness check scope should be extended.
 
-- **No PCH for a global module fragment that imports**. A module unit whose global module fragment imports a module, typically through a header it includes, parses its whole preamble on every edit. Clang keeps no record in a PCH that the global module fragment was open, and the module declaration that follows the PCH would hide the modules the fragment imported. The improvement direction is a Clang change that restores the fragment when the PCH is loaded.
+- **No PCH for a global module fragment that imports or declares**. A module unit whose global module fragment imports a module, typically through a header it includes, parses its whole preamble on every edit. Clang keeps no record in a PCH that the global module fragment was open, and the module declaration that follows the PCH would hide the modules the fragment imported. So does a module unit whose fragment writes a declaration itself, such as a forward declaration between `module;` and the module declaration, which the standard does not allow there and Clang accepts. The improvement direction is a Clang change that restores the fragment when the PCH is loaded.
+
+- **Types lose their preferred names in files that use modules**. Clang writes no `preferred_name` attribute into the modules it builds, and the PCH of a module unit or of a file importing modules leaves it out too: kept, a class template specialization that the PCH and a module both declare, such as `std::basic_string_view<char>`, can be read as two distinct types. Where the source does not spell a type, hover, inlay hints and signature help then name it by its template, `std::basic_string<char>` rather than `std::string`. The improvement direction is a Clang change that lets modules and PCHs keep the attribute.
 
 - **Templates the preamble instantiates see only the preamble**. The PCH instantiates the templates its headers use where the preamble ends, while a compiler instantiates them at the end of the file, after the focus file's own declarations. An instantiation that fails at the end of the preamble is left to the end of the file instead; one that succeeds there is kept, and differs from the compiler's in three rare cases. The editor's compile leaves two errors to the background index, which shows them once it has compiled the file (see below): one a declaration the focus file adds would cause, such as a call picking an overload the focus file deletes, and one in the initializer of a static data member of a class template that the headers use and the focus file defines, which the PCH never instantiates. And a warning raised inside a template that the headers reach only through other templates is the header's: it no longer shows on the focus file's own use of the same specialization, where the compiler reports it.
 

@@ -79,38 +79,28 @@ module;
 class Forward;
 export module foo;
 )";
-    ZEXPECT(preamble_bound(src) == src.find("Forward;") + 8);
+    ZEXPECT(preamble_bound(src) == 0u);
+    ZEXPECT(preamble_bound(src, src.find("class")) == 0u);
 }
 
 ZEST_CASE(FragmentImport) {
     llvm::StringRef src = R"(
 module;
+#include <a>
 import base;
-#include <a>
 export module foo;
 )";
-    ZEXPECT(preamble_bound(src) == src.find("<a>") + 3);
+    ZEXPECT(preamble_bound(src) == 0u);
 }
 
-ZEST_CASE(FragmentWithoutModuleDeclaration) {
+ZEST_CASE(FragmentPastLimit) {
     llvm::StringRef src = R"(
 module;
 #include <a>
-int x;
-)";
-    ZEXPECT(preamble_bound(src) == src.find("<a>") + 3);
-}
-
-ZEST_CASE(FragmentCutBeforeDeclaration) {
-    llvm::StringRef src = R"(
-module;
-#include <a>
-class Forward;
 #include <b>
-export module foo;
+module foo;
 )";
-    ZEXPECT(preamble_bound(src, src.find("class")) == 0u);
-    ZEXPECT(preamble_bound(src, src.find("#include <b>")) == src.find("Forward;") + 8);
+    ZEXPECT(preamble_bound(src, src.find("#include <b>")) == src.find("<a>") + 3);
 }
 
 ZEST_CASE(BoundBeforeLimit) {

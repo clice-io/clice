@@ -3,8 +3,8 @@ errors = [
     {
         at = "import ⟦M;⟧",
         severity = "error",
-        message = "module 'M' not found",
+        message = "could not build module 'M': an import's module file left the cache during the build",
         source = "clang",
-        code = "err_module_not_found",
+        code = "err_module_not_built",
     },
 ]

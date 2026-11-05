@@ -19,10 +19,12 @@ namespace {
 
 /// Which side of the split between declaring and defining a file is on.
 enum class Side : std::uint8_t {
-    /// Headers, and the module units other units import.
+    /// Headers, module interface units, and the internal partitions written
+    /// in a module interface file.
     Interface,
-    /// Sources, module implementation units, and the template definitions
-    /// a header pulls in (`.inl`, `.tpp`, ...).
+    /// Sources, module implementation units, internal partitions written in
+    /// a source, and the template definitions a header pulls in (`.inl`,
+    /// `.tpp`, ...).
     Implementation,
     /// `.inc` and `.def` files: pieces of their includers' text, with no
     /// counterpart of their own.

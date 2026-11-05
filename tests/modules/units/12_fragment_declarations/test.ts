@@ -1,10 +1,10 @@
 import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
-// A declaration written in a global module fragment belongs to the preamble
-// with the fragment's directives: left to the body, it would put the module
-// declaration after a declaration the body parsed itself. impl.cppm keeps
-// its PCH; counter.cppm's fragment imports and goes without one.
+// A global module fragment declaring something itself, not through a
+// header, goes without a PCH: one holding only the directives above the
+// declaration would put the module declaration after a declaration the
+// body parsed itself.
 test(async (t) => {
     const s = await t.start({ config: { project: { enable_indexing: false } } });
     for (const file of ["impl.cppm", "lib.cppm", "counter.cppm", "main.cpp"]) {
@@ -12,5 +12,5 @@ test(async (t) => {
     }
     await s.sync();
     const { files } = await s.counts();
-    expect([files["impl.cppm"]?.pch, files["counter.cppm"]?.pch]).toEqual([1, 0]);
+    expect([files["impl.cppm"]?.pch, files["counter.cppm"]?.pch]).toEqual([0, 0]);
 });

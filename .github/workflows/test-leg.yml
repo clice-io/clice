@@ -263,6 +263,7 @@ jobs:
         with:
           name: case-logs-${{ inputs.target }}-${{ inputs.build_type }}-${{ matrix.shard }}
           path: ${{ runner.temp }}/case-logs
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
 
