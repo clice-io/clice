@@ -64,3 +64,19 @@ items = [
 
 [answers.private_alone.completion]
 items = []
+
+[answers.exported_by_private.completion]
+items = [
+    {
+        label = "lib::inner_value",
+        kind = "Function",
+        insert = "lib::inner_value($0)",
+        snippet = true,
+        edits = [
+            {
+                at = "⟦⟧// A private header is not included itself: the header its pragma names",
+                text = '#include "lib/api.h"',
+            },
+        ],
+    },
+]

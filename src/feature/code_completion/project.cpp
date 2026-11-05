@@ -117,8 +117,8 @@ void offer_names(const index::IndexQuery& query,
 /// standard library's own table (the C library's for a C file, `c`),
 /// another's the header the index says declares it, or the one its IWYU
 /// pragmas name instead (`pragmas_of`): a private header's mapping, or a
-/// header including it that exports it. None when only a library's
-/// internal header is known.
+/// header including it that exports it, included the same way in turn.
+/// None when only a library's internal header is known.
 static std::optional<std::string>
     include_for(const index::IndexQuery& query,
                 const DependencyGraph& graph,
@@ -154,20 +154,19 @@ static std::optional<std::string>
             headers.push_back(site.file);
         }
     }
-    for(auto header: headers) {
+    llvm::SmallVector<Fid, 4> visited;
+    auto include_of = [&](auto& self, Fid header) -> std::optional<std::string> {
         auto path = files.resolve(header);
-        if(header == file || is_context_header_path(path)) {
-            continue;
+        if(header == file || is_context_header_path(path) || ranges::contains(visited, header)) {
+            return std::nullopt;
         }
+        visited.push_back(header);
         auto& pragmas = pragmas_of(header);
         if(!pragmas.include_instead.empty()) {
             return pragmas.include_instead;
         }
         if(!pragmas.is_private) {
-            if(auto argument = arguments.of(path)) {
-                return argument;
-            }
-            continue;
+            return arguments.of(path);
         }
         // An export names the private header as its includer wrote it:
         // beside the includer, or under a search directory.
@@ -185,10 +184,16 @@ static std::optional<std::string>
                        path::is_separator(spelled[spelled.size() - name.size() - 1]);
             });
             if(exports) {
-                if(auto argument = arguments.of(files.resolve(includer))) {
-                    return argument;
+                if(auto spelled = self(self, includer)) {
+                    return spelled;
                 }
             }
+        }
+        return std::nullopt;
+    };
+    for(auto header: headers) {
+        if(auto spelled = include_of(include_of, header)) {
+            return spelled;
         }
     }
     return std::nullopt;
