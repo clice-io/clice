@@ -325,24 +325,6 @@ private:
 
     clang::QualType rewrite_parameter(const clang::TemplateTypeParmType* TTPT, Policy policy);
 
-    /// The argument the template parameter `param`, `index` in its list at
-    /// `depth`, is bound to: by the frame holding its template when a frame
-    /// does — the query names a specialization of it or calls it —, else,
-    /// for a parameter of the template the query is inside of, by the
-    /// template's only instantiation. Null when unbound.
-    const clang::TemplateArgument* bound_argument(const clang::NamedDecl* param,
-                                                  unsigned depth,
-                                                  unsigned index) const;
-
-    /// The argument a function template's parameter took in the template's
-    /// only instantiation: a generic lambda's `auto` parameter stands for
-    /// the type the lambda is called with. Several instantiations give no
-    /// one answer. A class template's parameters stay as they are: the
-    /// resolver reads its patterns with them unbound, save where a query
-    /// binds them first (TemplateResolver::deduce).
-    const clang::TemplateArgument* only_instantiation_argument(const clang::NamedDecl* param,
-                                                               unsigned index) const;
-
     /// What the transform `kind` (`__add_pointer`, `__remove_cvref`) makes
     /// of `base`, as Sema computes it, where the shape of `base` decides it:
     /// not for a bare template parameter, which may become a reference, nor
@@ -393,6 +375,24 @@ private:
                                                              Policy policy);
 
     clang::NestedNameSpecifier rewrite_specifier(clang::NestedNameSpecifier NNS, Policy policy);
+
+    /// The argument the template parameter `param`, `index` in its list at
+    /// `depth`, is bound to: by the frame holding its template when a frame
+    /// does — the query names a specialization of it or calls it —, else,
+    /// for a parameter of the template the query is inside of, by the
+    /// template's only instantiation. Null when unbound.
+    const clang::TemplateArgument* bound_argument(const clang::NamedDecl* param,
+                                                  unsigned depth,
+                                                  unsigned index) const;
+
+    /// The argument a function template's parameter took in the template's
+    /// only instantiation: a generic lambda's `auto` parameter stands for
+    /// the type the lambda is called with. Several instantiations give no
+    /// one answer. A class template's parameters stay as they are: the
+    /// resolver reads its patterns with them unbound, save where a query
+    /// binds them first (TemplateResolver::deduce).
+    const clang::TemplateArgument* only_instantiation_argument(const clang::NamedDecl* param,
+                                                               unsigned index) const;
 
     /// Push `TD`'s parameters bound to `arguments`, once per redeclaration:
     /// a default inherited from an earlier redeclaration still references
@@ -445,6 +445,17 @@ private:
                              TemplateArguments patterns,
                              TemplateArguments arguments,
                              llvm::StringRef kind);
+
+    /// The parameters of `FTD`, the template of `function`, that a call with
+    /// `arguments` deduces, up to the first one it leaves unbound; empty when
+    /// the call cannot match. Simplified [temp.deduct.call]: a reference
+    /// parameter matches its referred type (a forwarding reference an lvalue
+    /// as an lvalue reference), any other the argument decayed and
+    /// unqualified.
+    llvm::SmallVector<clang::TemplateArgument, 4>
+        deduce_call(clang::FunctionTemplateDecl* FTD,
+                    const clang::FunctionDecl* function,
+                    llvm::ArrayRef<CallArgument> arguments);
 
     /// When DeclContext::lookup returns multiple declarations (e.g. a member in
     /// both a base class and derived class), take the last one. This heuristic
@@ -639,26 +650,15 @@ private:
                                 llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments,
                                 llvm::ArrayRef<CallArgument> arguments);
 
-    /// The parameters of `FTD`, the template of `function`, that a call with
-    /// `arguments` deduces, up to the first one it leaves unbound; empty when
-    /// the call cannot match. Simplified [temp.deduct.call]: a reference
-    /// parameter matches its referred type (a forwarding reference an lvalue
-    /// as an lvalue reference), any other the argument decayed and
-    /// unqualified.
-    llvm::SmallVector<clang::TemplateArgument, 4>
-        deduce_call(clang::FunctionTemplateDecl* FTD,
-                    const clang::FunctionDecl* function,
-                    llvm::ArrayRef<CallArgument> arguments);
+    /// The declaration a name or member expression refers to; the frames
+    /// of the lookup that found it stay on the stack (see lookup).
+    const clang::Decl* referenced_decl(const clang::Expr* expr);
 
     /// The arguments of a call as deduction sees them; none when one of
     /// them expands a pack, which may stand for any number of arguments, or
     /// has a type that does not resolve.
     std::optional<llvm::SmallVector<CallArgument, 4>>
         call_arguments(llvm::ArrayRef<const clang::Expr*> arguments);
-
-    /// The declaration a name or member expression refers to; the frames
-    /// of the lookup that found it stay on the stack (see lookup).
-    const clang::Decl* referenced_decl(const clang::Expr* expr);
 
     /// Whether every one of `arguments` may initialize its parameter of
     /// `FD`, none certain to fail (never_initializes): both sides

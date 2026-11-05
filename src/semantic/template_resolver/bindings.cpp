@@ -1,5 +1,7 @@
 module clice;
 
+import :semantic.decls;
+import :semantic.template_resolver;
 import :semantic.template_resolver.deduction;
 import :semantic.template_resolver.instantiator;
 import :support.logging;
@@ -368,6 +370,42 @@ llvm::SmallVector<clang::TemplateArgument, 4>
     }
     deduced.erase(ranges::find_if(deduced, &clang::TemplateArgument::isNull), deduced.end());
     return deduced;
+}
+
+const clang::TemplateArgument* PseudoInstantiator::bound_argument(const clang::NamedDecl* param,
+                                                                  unsigned depth,
+                                                                  unsigned index) const {
+    if(stack.owns(param, depth)) {
+        return stack.find_argument(param, depth, index);
+    }
+    return only_instantiation_argument(param, index);
+}
+
+const clang::TemplateArgument*
+    PseudoInstantiator::only_instantiation_argument(const clang::NamedDecl* param,
+                                                    unsigned index) const {
+    if(!options.only_instantiation || !param) {
+        return nullptr;
+    }
+    /// A template parameter belongs to the function its template adopted
+    /// it into; the parameters of any other template sit elsewhere.
+    auto* function = llvm::dyn_cast<clang::FunctionDecl>(param->getDeclContext());
+    /// A captureless generic lambda's conversion to a function pointer
+    /// and its static invoker adopt the call operator's parameter list
+    /// after it, but calls instantiate the call operator.
+    if(auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(function);
+       method && method->getParent()->isLambda()) {
+        function = method->getParent()->getLambdaCallOperator();
+    }
+    if(!function) {
+        return nullptr;
+    }
+    auto* instantiation = llvm::dyn_cast_or_null<clang::FunctionDecl>(
+        decls::only_instantiation(const_cast<clang::FunctionDecl*>(function)));
+    if(!instantiation) {
+        return nullptr;
+    }
+    return &instantiation->getTemplateSpecializationArgs()->get(index);
 }
 
 void PseudoInstantiator::assume(clang::ClassTemplateDecl* owner,
