@@ -133,3 +133,25 @@ struct Forward {
 };
 
 template struct Forward<lib::Item&>;
+
+namespace outer {
+inline namespace v1 {
+inline namespace v2 {
+struct Versioned {};
+}  // namespace v2
+}  // namespace v1
+
+Picked choose(Versioned versioned);
+}  // namespace outer
+
+lib::Other choose(...);
+
+template <class T>
+struct Versions {
+    using type = outer::Versioned;
+};
+
+template <class T>
+void nested_inline(typename Versions<T>::type versioned) {
+    auto §(nested_inline)chosen = choose(versioned);
+}

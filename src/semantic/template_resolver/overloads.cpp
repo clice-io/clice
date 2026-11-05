@@ -88,14 +88,17 @@ struct Associated {
 
     llvm::SmallPtrSet<const clang::CXXRecordDecl*, 4> classes;
 
-    /// The innermost namespace enclosing `decl`, and the one enclosing it
-    /// when that is inline: lookup there finds what the inline one holds.
+    /// The innermost namespace enclosing `decl`, and each enclosing it
+    /// through inline ones: lookup there finds what the inline ones hold.
     void enclosing(const clang::Decl* decl) {
         const auto* scope = decl->getDeclContext()->getEnclosingNamespaceContext();
         namespaces.insert(scope->getPrimaryContext());
-        if(const auto* inline_scope = llvm::dyn_cast<clang::NamespaceDecl>(scope);
-           inline_scope && inline_scope->isInline()) {
-            namespaces.insert(inline_scope->getParent()->getEnclosingNamespaceContext());
+        while(const auto* inline_scope = llvm::dyn_cast<clang::NamespaceDecl>(scope)) {
+            if(!inline_scope->isInline()) {
+                break;
+            }
+            scope = inline_scope->getParent()->getEnclosingNamespaceContext();
+            namespaces.insert(scope->getPrimaryContext());
         }
     }
 

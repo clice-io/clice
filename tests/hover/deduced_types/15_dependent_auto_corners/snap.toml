@@ -146,3 +146,17 @@ auto x = ::pick(static_cast<T&&>(v))
 **Type:** `Picked`
 '''
 range = "auto ⟦x⟧ = ::pick(static_cast<T&&>(v));"
+
+[answers.nested_inline]
+wrong = "argument-dependent lookup finds outer::choose through both inline namespaces, and its exact match beats the ellipsis: Picked"
+
+[answers.nested_inline.hover]
+markdown = '''
+**variable** `chosen` · function `nested_inline`
+
+```cpp
+auto chosen = choose(versioned)
+```
+**Type:** `auto`
+'''
+range = "auto ⟦chosen⟧ = choose(versioned);"
