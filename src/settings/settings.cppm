@@ -291,6 +291,19 @@ struct ProjectSettings {
                   "`clice inspect` still compile the bodies.")
     bool skip_header_bodies = true;
 
+    KANNOTATE(&shared_pch,
+              description =
+                  "Have the background index parse the headers most of the "
+                  "units compiled under one command include once, into a "
+                  "precompiled header clice builds for them while it indexes "
+                  "them, instead of in every unit; each unit still indexes "
+                  "as its own parse would, compiling without it where it "
+                  "would have parsed one of those headers otherwise — a "
+                  "macro of its own the header reads. Units reading a "
+                  "precompiled header their build declares parse over that "
+                  "one instead.")
+    bool shared_pch = true;
+
     KANNOTATE(&readonly,
               with = type<LowercaseNames>,
               description =

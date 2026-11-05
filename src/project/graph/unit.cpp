@@ -156,6 +156,34 @@ async::task<UnitResult>
         }
     }
 
+    // A unit of a background index pass parses over the PCH of the shared
+    // header planned for it (Project::plan_shared_headers), and parses
+    // without it where it would have parsed what the PCH holds otherwise.
+    // One whose last index named a variant the index lost sends everything
+    // as its own parse makes it.
+    std::optional<PCHRequest> shared;
+    if(!declared && request.index && !params.tidy && !history().send_in_full) {
+        shared = project.shared_header_request(path_id);
+    }
+    if(shared) {
+        auto key = shared->pch_key;
+        if(history().crashed_over_pch == key) {
+            left_out_pch = key;
+        } else {
+            switch(co_await attempt.depend(pch_node(key), project.pch_work(std::move(*shared)))) {
+                case Result::Success:
+                    if(auto* pch = project.built_pch(key)) {
+                        params.pch = pch->path;
+                        params.shared_record = pch->index_path;
+                        consumed_pch = key;
+                    }
+                    break;
+                case Result::Failed: break;
+                case Result::Stale: co_return UnitResult{.status = Status::Preempted};
+            }
+        }
+    }
+
     params.pcms = project.imported_pcms(modules);
     // The modules and the precompiled header the parse reads, taken with
     // their paths: one rebuilt while the parse runs is no input of it.

@@ -110,6 +110,11 @@ public:
     /// worker outage spin the dispatch loop against instant failures (#611).
     std::size_t begin_pass(llvm::function_ref<bool(Fid)> first);
 
+    /// The files of the places the running pass has not taken yet.
+    llvm::ArrayRef<Fid> pass_left_files() const {
+        return llvm::ArrayRef(order).slice(position, pass_end - position);
+    }
+
     /// Whether the running pass has places not taken yet.
     bool pass_left() const {
         return position < pass_end;

@@ -23,6 +23,7 @@ import :project.indexer;
 import :project.listings;
 import :project.members;
 import :project.memo;
+import :project.shared_headers;
 import :semantic.symbol;
 import :settings.rules;
 import :settings.settings;
@@ -292,6 +293,9 @@ struct Project {
 
     /// What each unit's compiles in this session showed.
     llvm::DenseMap<Fid, UnitHistory> unit_history;
+
+    /// The shared headers of the background index's pass, while it runs.
+    SharedHeaders shared_headers;
 
     /// The task graph the PCH, PCM and unit nodes build on, the server's
     /// AST nodes beside them. Its attempts use everything above.
@@ -1031,6 +1035,25 @@ struct Project {
                                                        llvm::ArrayRef<Input> imports,
                                                        std::uint64_t command,
                                                        std::uint64_t peak);
+
+    // shared_headers.cpp
+
+    /// Plan the shared headers of a background index pass over `units`:
+    /// the units compiled under one command, enough of them for a PCH to
+    /// pay, each load the deepest of the headers holding what at least all,
+    /// 95%, 90%, ..., half of them include whose every file the unit
+    /// includes itself, by the lexical scan, in the order a unit includes
+    /// them. Units writing or reading a precompiled header the build
+    /// declares, and the units of modules, load none.
+    void plan_shared_headers(llvm::ArrayRef<Fid> units);
+
+    /// The request building the PCH of the shared header `unit`'s index run
+    /// loads in this pass; none for none.
+    std::optional<PCHRequest> shared_header_request(Fid unit) const;
+
+    /// The pass is over: drop each shared header's index, its PCH and its
+    /// file.
+    void release_shared_headers();
 
     // graph/precompiled.cpp
 

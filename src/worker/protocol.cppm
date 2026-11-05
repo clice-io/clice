@@ -261,6 +261,13 @@ struct BuildPCHParams {
     /// (CompileUnitParams::index_output_path).
     std::string index_output_path;
 
+    /// The build of a shared header (SharedPCH), a whole file's: it writes
+    /// what the headers its PCH holds read and wrote, with the sections of
+    /// its index (index::SharedHeaderIndex), to `record_output_path`, which
+    /// the master commits with the PCH.
+    bool shared = false;
+    std::string record_output_path;
+
     /// See CompileUnitParams::known_variants.
     std::vector<std::uint64_t> known_variants;
 
@@ -325,6 +332,11 @@ struct CompileUnitParams {
     /// The precompiled header the build declares for the command, built by
     /// clice; empty for none.
     std::string pch;
+
+    /// When `pch` is a shared header's (BuildPCHParams::shared), its
+    /// record: the run parses without the PCH where the unit would have
+    /// parsed what it holds otherwise. Empty for none.
+    std::string shared_record;
 
     /// Products of the run: the index, the errors the compile reports, the
     /// diagnostics an editor skipping header bodies misses, and a clang-tidy
@@ -517,6 +529,10 @@ struct CompileUnitResult {
 
     /// The hash of the text skipped_diagnostics describe.
     std::uint64_t text_hash = 0;
+
+    /// Why the run parsed without the shared header's PCH it was given
+    /// (CompileUnitParams::shared_record); empty when it loaded it.
+    std::string shared_rejection;
 };
 
 /// Preprocess a unit for its include tree: where its compile enters each

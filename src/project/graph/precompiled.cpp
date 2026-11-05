@@ -150,8 +150,8 @@ void Project::merge_build_index(Fid unit,
                                 const Inputs& before,
                                 std::uint64_t command) {
     // One the build stopped compiling while it ran left the index with its
-    // entries.
-    if(!is_unit(unit)) {
+    // entries. A shared header's is the pass's.
+    if(!is_unit(unit) && !shared_headers.files.contains(unit)) {
         return;
     }
     auto path = file_table.resolve(unit);
@@ -260,7 +260,8 @@ std::string Project::serialize_precompiled_records() {
 
     for(auto& e: pchs) {
         auto& st = e.second;
-        if(st.path.empty())
+        // A shared header's lives for its pass.
+        if(st.path.empty() || st.shared)
             continue;
         SavedPCH entry;
         entry.key = e.getKey().str();

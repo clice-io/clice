@@ -339,6 +339,7 @@ async::task<> BackgroundIndex::run_pass() {
 
     auto total =
         reindexes.begin_pass([&](Fid id) { return !project.dep_graph.module_of(id).empty(); });
+    project.plan_shared_headers(reindexes.pass_left_files());
     std::size_t dispatched = 0;
     PassState pass;
 
@@ -362,6 +363,7 @@ async::task<> BackgroundIndex::run_pass() {
 
     // No dispatch loop takes from the queue any more.
     reindexes.end_pass();
+    project.release_shared_headers();
 
     LOG_PERF("index",
              "phase=run dispatched={} skipped={} total={} elapsed_ms={}",

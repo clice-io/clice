@@ -36,6 +36,11 @@ struct PCHEntry : Precompiled<FailureRecord> {
     /// (Project::declared_pch_request).
     bool whole_file = false;
 
+    /// A shared header's, built whole (Project::plan_shared_headers): its
+    /// pair's other half, at `index_path`, is the header's record
+    /// (index::SharedHeaderIndex).
+    bool shared = false;
+
     /// The key of the precompiled header the build declares that this
     /// preamble's PCH is built over and chains onto; empty for none.
     std::string base;

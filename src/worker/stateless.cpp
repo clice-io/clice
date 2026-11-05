@@ -14,6 +14,7 @@ import :feature.inactive_regions;
 import :feature.signature_help;
 import :index.include_tree;
 import :index.indexer;
+import :index.shared_header;
 import :index.tu_index;
 import :support.bytes;
 import :support.json;
@@ -85,6 +86,33 @@ static std::optional<std::string> write_preamble_index(llvm::StringRef blob,
         return message;
     }
     return std::nullopt;
+}
+
+/// The record of a shared header at `path` (CompileUnitParams::
+/// shared_record), with the last few read: the units of one shared header
+/// come one after another, and a record stays as its path names it. Null
+/// for one unreadable.
+static std::shared_ptr<const index::SharedHeaderIndex> read_shared_record(llvm::StringRef path) {
+    static std::vector<std::pair<std::string, std::shared_ptr<const index::SharedHeaderIndex>>>
+        recent;
+    if(auto it = ranges::find(recent, path, [](auto& entry) { return llvm::StringRef(entry.first); });
+       it != recent.end()) {
+        return it->second;
+    }
+    std::string bytes;
+    if(fs::read_file(bytes, path)) {
+        return nullptr;
+    }
+    auto decoded = index::decode_shared_header(bytes);
+    if(!decoded) {
+        return nullptr;
+    }
+    auto record = std::make_shared<const index::SharedHeaderIndex>(std::move(*decoded));
+    recent.insert(recent.begin(), {path.str(), record});
+    if(recent.size() > 4) {
+        recent.pop_back();
+    }
+    return record;
 }
 
 /// The TU index a unit's compile, or a build that is one, sends as the
@@ -195,6 +223,8 @@ static worker::PrecompiledBuildResult
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .output_file = *output,
         .skip_bodies = params.skip_bodies,
+        .header_identities = params.shared,
+        .record_shared = params.shared,
         .stop = stop,
     };
     if(!params.whole_file) {
@@ -224,10 +254,13 @@ static worker::PrecompiledBuildResult
     if(success && !params.whole_file) {
         blob = serialize_preamble_index(*unit, params.preamble_bound);
     } else if(success && params.index) {
+        auto tu_index = index::build_tu_index(*unit, index_options(params));
+        if(params.shared) {
+            blob = index::encode_shared_header(
+                index::shared_header_index(unit->shared_record(), as_chars(tu_index)));
+        }
         // The PCH stands without the index, whose unit then compiles itself.
-        if(auto error = send_index(index::build_tu_index(*unit, index_options(params)),
-                                   params.index_output_path,
-                                   result)) {
+        if(auto error = send_index(std::move(tu_index), params.index_output_path, result)) {
             LOG_WARN("BuildPCH: the index of {} is lost: {}", params.file, *error);
         }
     }
@@ -244,8 +277,9 @@ static worker::PrecompiledBuildResult
     // logical one. The PCH is only served together with its blob, so a
     // blob write failure fails the whole build.
     ScopedTimer state_write_timer;
-    if(success && !params.whole_file) {
-        if(auto error = write_preamble_index(as_chars(blob), params.index_output_path)) {
+    if(success && (!params.whole_file || params.shared)) {
+        auto path = params.shared ? params.record_output_path : params.index_output_path;
+        if(auto error = write_preamble_index(as_chars(blob), path)) {
             success = false;
             internal_error = true;
             errors = {std::move(*error)};
@@ -474,6 +508,10 @@ static worker::CompileUnitResult
     // extra args are already in params.arguments (applied at driver
     // resolution); the plan's copies feed the engine's warning-options
     // path only.
+    std::shared_ptr<const index::SharedHeaderIndex> shared;
+    if(!params.shared_record.empty()) {
+        shared = read_shared_record(params.shared_record);
+    }
     CompilationParams cp{
         .kind = CompilationKind::Whole,
         .input = {.arguments = params.arguments,
@@ -482,9 +520,12 @@ static worker::CompileUnitResult
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .tidy = params.tidy,
         .header_identities = params.index,
+        .shared = shared ? std::shared_ptr<const SharedHeaderRecord>(shared, &shared->record)
+                         : nullptr,
         .stop = stop,
     };
-    hold_recent(use_precompiled(cp.input, {params.pch, 0}, params.pcms));
+    bool unreadable = !params.shared_record.empty() && !shared;
+    hold_recent(use_precompiled(cp.input, {unreadable ? "" : params.pch, 0}, params.pcms));
 
     ScopedTimer compile_timer;
     auto unit = compile(std::move(cp));
@@ -519,10 +560,21 @@ static worker::CompileUnitResult
     }
     worker::CompileUnitResult result;
     result.success = true;
+    result.shared_rejection = unreadable ? "its record is unreadable" : unit->shared_rejection();
+    if(!result.shared_rejection.empty()) {
+        LOG_INFO("{} parsed without its shared header's PCH: {}",
+                 params.file,
+                 result.shared_rejection);
+    }
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;
     if(params.index) {
-        auto blob = index::build_tu_index(*unit, index_options(params));
+        auto options = index_options(params);
+        if(unit->shared_header()) {
+            options.shared_sections = shared->sections;
+            options.shared_instantiations = shared->instantiations;
+        }
+        auto blob = index::build_tu_index(*unit, options);
         index_bytes = blob.size();
         if(auto error = send_index(std::move(blob), params.index_output_path, result)) {
             return {false, std::move(*error)};

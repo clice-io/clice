@@ -54,14 +54,14 @@ std::pair<Check, llvm::StringRef> pair_state(Project& project, llvm::StringRef p
         return {Check::ProductGone, "no_entry"};
     }
     auto& entry = it->second;
+    bool paired = !entry.whole_file || entry.shared;
     if(!project.store || !project.store->lookup("pch", entry.blob) ||
-       (!entry.whole_file && !project.store->lookup_aux("pch", entry.blob)) ||
-       !fs::exists(entry.path)) {
+       (paired && !project.store->lookup_aux("pch", entry.blob)) || !fs::exists(entry.path)) {
         return {Check::ProductGone, "evicted"};
     }
     // load_index() found the blob unreadable earlier; republish the pair
     // rather than serving a PCH with no index forever.
-    if(!entry.whole_file && entry.index_path.empty()) {
+    if(paired && entry.index_path.empty()) {
         return {Check::ProductGone, "idx_unreadable"};
     }
     if(!entry.base.empty()) {
@@ -148,9 +148,10 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     }
 
     // Build via a stateless worker: it writes the PCH, and a preamble's
-    // pch.idx index, to the tmp paths allocated here; the store commits
-    // (fsync + rename) both on success, primary first. A whole file's build
-    // that is its writing unit's compile sends the unit's index instead.
+    // pch.idx index or a shared header's record, to the tmp paths allocated
+    // here; the store commits (fsync + rename) both on success, primary
+    // first. A whole file's build that is its writing unit's compile sends
+    // the unit's index too.
     auto blob = new_blob(pch_key);
     auto pending = project.store->begin_store("pch", blob);
     auto& bp = request.params;
@@ -158,10 +159,11 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     bp.output_path = pending.tmp_path;
     std::optional<CacheStore::PendingEntry> pending_idx;
     IndexTransfer transfer;
-    if(!bp.whole_file) {
+    if(!bp.whole_file || bp.shared) {
         pending_idx = project.store->begin_store_aux("pch", blob);
-        bp.index_output_path = pending_idx->tmp_path;
-    } else if(request.writer) {
+        (bp.shared ? bp.record_output_path : bp.index_output_path) = pending_idx->tmp_path;
+    }
+    if(bp.whole_file && request.writer) {
         bp.index = true;
         transfer = project.request_index(request.writer->unit, bp);
     }
@@ -240,12 +242,15 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         // published, discard the PCH too — the next attempt rebuilds both.
         if(auto index = project.store->commit(std::move(*pending_idx))) {
             index_path = std::move(*index);
-            loaded = load_pch_index(*index_path);
+            if(!bp.shared) {
+                loaded = load_pch_index(*index_path);
+            }
         }
         // A committed pch.idx index that fails verification is as unusable as
         // an uncommitted one: discard the pair rather than publish a PCH
-        // whose preamble index every consumer would fail to load.
-        if(!loaded) {
+        // whose preamble index every consumer would fail to load. A shared
+        // header's record its consumers read themselves.
+        if(bp.shared ? !index_path : !loaded) {
             project.store->invalidate("pch", blob);
         }
     });
@@ -253,7 +258,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         LOG_WARN("Failed to commit PCH for {}", bp.file);
         co_return Result::Failed;
     }
-    if(pending_idx && !loaded) {
+    if(pending_idx && (bp.shared ? !index_path : !loaded)) {
         if(!index_path) {
             LOG_WARN("Failed to commit pch.idx envelope for {}", bp.file);
         } else {
@@ -274,6 +279,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
                   project.read_inputs(*built, before));
     entry.bound = request.params.preamble_bound;
     entry.whole_file = bp.whole_file;
+    entry.shared = bp.shared;
     entry.base = request.base;
     entry.base_blob = std::move(base_blob);
     entry.index_path = index_path.value_or("");
