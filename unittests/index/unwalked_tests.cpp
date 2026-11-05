@@ -21,14 +21,15 @@ std::optional<std::uint32_t> section_of(const index::TUIndex& view, llvm::String
     return std::nullopt;
 }
 
-/// The symbols a section names by WeakReference, as `name(args)`.
+/// The symbols a section names by WeakReference, as their name and
+/// signature.
 std::vector<std::string> guessed(const index::TUIndex& view, std::uint32_t section) {
     std::vector<std::string> names;
     view.section_shard(section).for_each_relation(
         [&](index::SymbolHash hash, const index::Relation& relation) {
             if(relation.kind == RelationKind::WeakReference) {
                 if(auto symbol = view.find_symbol(hash)) {
-                    names.push_back(std::format("{}{}", symbol->name, symbol->args));
+                    names.push_back(std::format("{}{}", symbol->name, symbol->signature));
                 }
             }
             return true;
