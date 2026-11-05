@@ -1,4 +1,4 @@
-flags = ["-std=c++20"]
+flags = ["-std=c++20", "-isystem", "sys/first", "-isystem", "sys/second"]
 
 # wide.cpp's command differs from the others' in a macro alone: it joins
 # their group, and parses shapes.h itself, which reads the macro.

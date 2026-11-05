@@ -24,3 +24,16 @@ references = [
 
 [test.widen]
 references = ["long ⟦widen⟧() { return area(3, 4); }"]
+
+[test.limit]
+references = [
+    "eighth.cpp │ int eighth_limit() { return ⟦limit⟧(); }",
+    "fifth.cpp │ int fifth_limit() { return ⟦limit⟧(); }",
+    "first.cpp │ int first_limit() { return ⟦limit⟧(); }",
+    "fourth.cpp │ int fourth_limit() { return ⟦limit⟧(); }",
+    "second.cpp │ int second_limit() { return ⟦limit⟧(); }",
+    "seventh.cpp │ int seventh_limit() { return ⟦limit⟧(); }",
+    "sixth.cpp │ int sixth_limit() { return ⟦limit⟧(); }",
+    "int ⟦limit⟧();",
+    "third.cpp │ int third_limit() { return ⟦limit⟧(); }",
+]

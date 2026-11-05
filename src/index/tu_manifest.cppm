@@ -63,7 +63,9 @@ struct TUManifest {
 
     /// FileVersion -> variant hash for every file this TU contributed a variant to,
     /// the TU's own file included. Deduplicated: one entry per file version
-    /// even when the file was entered several times.
+    /// even when the file was entered several times, but for a file the TU
+    /// read from a shared header's PCH and entered itself too, whose two
+    /// variants it holds (FileSection::shared).
     std::vector<std::pair<VersionID, std::uint64_t>> contributions;
 
     /// The places the TU's failed lookups looked that held no file, as

@@ -4,9 +4,11 @@ import { test } from "@clice/tools/testing";
 // The units including shapes.h share their command: their index runs load
 // the PCH of a header clice writes for them, which the pass builds once,
 // indexing it in the same compile, and drops. wide.cpp's command defines
-// WIDE, which the PCH did not see: it parses shapes.h itself. Indexed from
-// scratch without the shared header, the index answers alike.
-const MARKERS = ["meters", "area_type", "area", "widen"];
+// WIDE, which the PCH did not see: it parses shapes.h itself. The system
+// header limit.h goes on to the next one of its name, which the PCH finds
+// only through the search directories. Indexed from scratch without the
+// shared header, the index answers alike.
+const MARKERS = ["meters", "area_type", "area", "widen", "limit"];
 
 test(async (t) => {
     const s = await t.start();

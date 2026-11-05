@@ -4,9 +4,11 @@ import :compile.compilation;
 import :compile.shared_header;
 import :index.indexer;
 import :index.instantiation_shard;
+import :index.shard;
 import :index.shared_header;
 import :index.symbol;
 import :index.tu_index;
+import :semantic.symbol;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -162,6 +164,47 @@ std::set<std::string> records(const index::TUIndex& view, llvm::StringRef file) 
             });
     }
     return lines;
+}
+
+/// The section of the file named `file` in the TU index; none for none.
+std::optional<std::uint32_t> section_named(const index::TUIndex& view, llvm::StringRef file) {
+    for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
+        if(llvm::StringRef(path::filename(view.path(view.section_path(i)))) == file) {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+/// The occurrences of `shard` as `begin-end symbol`.
+std::set<std::string> occurrences(const index::Shard& shard) {
+    std::set<std::string> lines;
+    shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
+        lines.insert(std::format("{}-{} {:016x}",
+                                 occurrence.range.begin,
+                                 occurrence.range.end,
+                                 occurrence.target));
+        return true;
+    });
+    return lines;
+}
+
+/// The symbols a section names by WeakReference, as their name and
+/// signature.
+std::vector<std::string> guessed(const index::TUIndex& view, std::uint32_t section) {
+    std::vector<std::string> names;
+    view.section_shard(section).for_each_relation(
+        [&](index::SymbolHash hash, const index::Relation& relation) {
+            if(relation.kind == RelationKind::WeakReference) {
+                if(auto symbol = view.find_symbol(hash)) {
+                    names.push_back(std::format("{}{}", symbol->name, symbol->signature));
+                }
+            }
+            return true;
+        });
+    ranges::sort(names);
+    names.erase(ranges::unique(names).begin(), names.end());
+    return names;
 }
 
 ZEST_SUITE(SharedHeaderIndex) {
@@ -327,6 +370,92 @@ inline void inner() { SHOW(Box<Inner>{}); }
     f.drop_index(f.project.file_table.intern(Spelling::absolute(tmp.path("shared.hxx"))));
     f.save();
     ZEXPECT(records() == before);
+};
+
+ZEST_CASE(FileEnteredByBoth) {
+    // kinds.def has no guard: the enumeration of the header the PCH holds
+    // enters it, and the unit enters it again under a macro of its own. The
+    // unit's entries of it are both, the shared header's index dropped too.
+    TempDir tmp;
+    tmp.touch("shared.hxx", "#pragma once\n#include \"kinds.h\"\n");
+    tmp.touch("kinds.h", R"cpp(#pragma once
+enum Kind {
+#define KIND(name) name,
+#include "kinds.def"
+#undef KIND
+};
+)cpp");
+    tmp.touch("kinds.def", "KIND(Alpha)\nKIND(Beta)\n");
+    tmp.touch("main.cpp", R"cpp(#include "kinds.h"
+#define KIND(name) int name##_value();
+#include "kinds.def"
+#undef KIND
+int use() { return Alpha_value() + Beta; }
+)cpp");
+    auto pch = tmp.path("shared.pch");
+    std::string own_data;
+    auto shared = build_shared(tmp, pch, &own_data);
+    ZASSERT(shared);
+    auto own = index::TUIndex::from_bytes(own_data);
+    auto over_data = index_over(tmp, pch, &*shared);
+    auto over = index::TUIndex::from_bytes(over_data);
+    auto walked_data = index_file(tmp, tmp.path("main.cpp"), {"-std=c++20"}).data;
+    auto walked = index::TUIndex::from_bytes(walked_data);
+
+    auto in_own = section_named(own, "kinds.def");
+    auto in_over = section_named(over, "kinds.def");
+    auto in_walked = section_named(walked, "kinds.def");
+    ZASSERT(in_own);
+    ZASSERT(in_over);
+    ZASSERT(in_walked);
+    ZEXPECT(over.section_shared(*in_over) == own.section_hash(*in_own));
+    auto both = occurrences(own.section_shard(*in_own));
+    auto unit_own = occurrences(over.section_shard(*in_over));
+    ZEXPECT(!unit_own.empty());
+    both.insert_range(unit_own);
+    ZEXPECT(both == occurrences(walked.section_shard(*in_walked)));
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    ZASSERT(f.merge(own_data));
+    ZASSERT(f.merge(over_data));
+    f.drop_index(f.project.file_table.intern(Spelling::absolute(tmp.path("shared.hxx"))));
+    f.save();
+    auto* stored = f.project.index.shard(
+        f.project.file_table.intern(Spelling::absolute(tmp.path("kinds.def"))));
+    ZASSERT(stored);
+    auto variants = stored->variants();
+    ZEXPECT(ranges::contains(variants, over.section_hash(*in_over)));
+    ZEXPECT(ranges::contains(variants, own.section_hash(*in_own)));
+};
+
+ZEST_CASE(GuessesIntoHeldHeaders) {
+    // impl.h's template finds `helper` through user.h, which includes the
+    // header the PCH holds that declares it.
+    TempDir tmp;
+    tmp.touch("shared.hxx", "#pragma once\n#include \"decl.h\"\n");
+    tmp.touch("decl.h", "#pragma once\n#include \"helpers.h\"\n");
+    tmp.touch("helpers.h", "#pragma once\nvoid helper(int);\n");
+    tmp.touch("impl.h", R"cpp(#pragma once
+template <typename T>
+void call(T value) { helper(value); }
+)cpp");
+    tmp.touch("user.h", "#pragma once\n#include \"decl.h\"\n#include \"impl.h\"\n");
+    tmp.touch("main.cpp", "#include \"user.h\"\nvoid use() { call(1); }\n");
+    auto pch = tmp.path("shared.pch");
+    auto shared = build_shared(tmp, pch);
+    ZASSERT(shared);
+    auto walked_data = index_file(tmp, tmp.path("main.cpp"), {"-std=c++20"}).data;
+    auto walked = index::TUIndex::from_bytes(walked_data);
+    auto over_data = index_over(tmp, pch, &*shared);
+    auto over = index::TUIndex::from_bytes(over_data);
+    auto in_walked = section_named(walked, "impl.h");
+    auto in_over = section_named(over, "impl.h");
+    ZASSERT(in_walked);
+    ZASSERT(in_over);
+    ZEXPECT(guessed(walked, *in_walked) == std::vector<std::string>{"helper(int)"});
+    ZEXPECT(guessed(over, *in_over) == guessed(walked, *in_walked));
+    ZEXPECT(over.section_identity(*in_over) == walked.section_identity(*in_walked));
 };
 
 };  // ZEST_SUITE(SharedHeaderIndex)

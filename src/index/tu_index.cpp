@@ -213,6 +213,10 @@ KnownIdentity TUIndex::section_identity(std::uint32_t i) const {
             .variant = section.hash};
 }
 
+std::uint64_t TUIndex::section_shared(std::uint32_t i) const {
+    return view_of(data).sections[i].shared;
+}
+
 llvm::StringRef TUIndex::section_blob(std::uint32_t i) const {
     return as_chars(view_of(data).sections[i].blob);
 }

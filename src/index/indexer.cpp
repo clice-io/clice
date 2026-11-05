@@ -1837,6 +1837,18 @@ public:
                     entries_by_path[unit.file_path(entry)].push_back(entry);
                 }
             }
+            // What the headers a shared header's PCH held include, which the
+            // unit skipped.
+            if(auto* shared = unit.shared_header()) {
+                auto grafted = unit.grafted_includes();
+                for(auto& include: grafted) {
+                    auto includer =
+                        include.parent == SharedHeaderRecord::none
+                            ? unit.file_path(include.includer)
+                            : llvm::StringRef(shared->files[grafted[include.parent].file].path);
+                    grafted_by_path[includer].push_back(shared->files[include.file].path);
+                }
+            }
         }
         auto includes_of = [&](std::uint32_t slot) {
             llvm::SmallVector<std::uint32_t, 8> slots;
@@ -1846,6 +1858,9 @@ public:
                         slots.push_back(closure_slot(include.fid));
                     }
                 }
+            }
+            for(auto path: grafted_by_path.lookup(closure_paths[slot])) {
+                slots.push_back(closure_slot(path));
             }
             return slots;
         };
@@ -1904,7 +1919,10 @@ public:
     }
 
     std::uint32_t closure_slot(clang::FileID fid) {
-        auto path = unit.file_path(fid);
+        return closure_slot(unit.file_path(fid));
+    }
+
+    std::uint32_t closure_slot(llvm::StringRef path) {
         auto [it, fresh] = closure_slots.try_emplace(path, closures.size());
         if(fresh) {
             closures.emplace_back();
@@ -1959,7 +1977,8 @@ public:
     }
 
     /// The files whose variant the receiver stores at their identity: they
-    /// go unwalked, but for what walk_patterns takes of them.
+    /// go unwalked, but for what walk_patterns takes of them and the
+    /// declarations around the files walked they include.
     void choose_known() {
         auto focus = unit.focus_file().file();
         for(auto& [fid, own]: unit.header_identities()) {
@@ -1976,6 +1995,28 @@ public:
                                                          .reach = reach_of(fid),
                                                          .variant = it->second});
             }
+        }
+        auto& SM = unit.context().getSourceManager();
+        for(auto& [fid, own]: unit.header_identities()) {
+            if(unwalked.files.contains(fid)) {
+                continue;
+            }
+            for(auto from = fid;;) {
+                auto include = SM.getIncludeLoc(from);
+                if(include.isInvalid()) {
+                    break;
+                }
+                auto [includer, offset] = SM.getDecomposedExpansionLoc(include);
+                if(!unwalked.files.contains(includer)) {
+                    break;
+                }
+                unwalked.includes[includer].push_back(offset);
+                from = includer;
+            }
+        }
+        for(auto& [fid, offsets]: unwalked.includes) {
+            ranges::sort(offsets);
+            offsets.erase(ranges::unique(offsets).begin(), offsets.end());
         }
     }
 
@@ -2163,7 +2204,7 @@ public:
         // what the shared header's index made of it: its variant, and the
         // instantiations resolved there.
         llvm::StringMap<std::uint32_t> path_ids_of;
-        llvm::SmallVector<std::uint32_t> shared_paths;
+        llvm::DenseMap<std::uint32_t, KnownIdentity> shared_known;
         llvm::SmallVector<std::pair<std::uint32_t, std::uint32_t>> shared_resolved;
         if(auto* shared = unit.shared_header(); shared && !unit.grafted_includes().empty()) {
             for(auto [path_id, path]: views::enumerate(tree.paths)) {
@@ -2177,8 +2218,7 @@ public:
                 auto& path = shared->files[include.file].path;
                 auto path_id = path_ids_of.lookup(path);
                 if(auto& section = shared_sections[include.file]; section.variant != 0) {
-                    known_sections.try_emplace(path, section);
-                    shared_paths.push_back(path_id);
+                    shared_known.try_emplace(path_id, section);
                 }
                 auto& resolutions = shared_resolutions[include.file];
                 if(!resolutions.skipped.empty() || !resolutions.made.empty()) {
@@ -2200,12 +2240,20 @@ public:
         // has no edge.
         llvm::DenseMap<std::uint32_t, FileIndex> by_path;
         llvm::DenseMap<std::uint32_t, clang::FileID> path_fids;
+        // The paths the unit entered itself: one the shared header's PCH
+        // holds too, a file entered without a guard, takes the unit's own
+        // entries on top of the PCH's.
+        llvm::DenseSet<std::uint32_t> own_paths;
         for(auto& [fid, index]: file_indices) {
             if(fid != unit.focus_file().file() && tree.node_of(fid) == no_node) {
                 continue;
             }
             auto path_id = tree.path_id(fid);
-            path_fids.try_emplace(path_id, fid);
+            if(SM.isLoadedFileID(fid)) {
+                path_fids.try_emplace(path_id, fid);
+            } else if(own_paths.insert(path_id).second) {
+                path_fids[path_id] = fid;
+            }
             auto& into = by_path[path_id];
             if(into.empty()) {
                 into = std::move(index);
@@ -2309,11 +2357,11 @@ public:
                 std::optional<std::uint32_t> known;
                 if(unwalked.files.contains(fid) && tree.node_of(fid) != no_node) {
                     known = tree.path_id(fid);
-                } else if(!path_ids_of.empty() && SM.isLoadedFileID(fid) &&
+                } else if(!shared_known.empty() && SM.isLoadedFileID(fid) &&
                           !unit.is_builtin_file(fid)) {
-                    auto path = unit.file_path(fid);
-                    if(known_sections.contains(path)) {
-                        known = path_ids_of.lookup(path);
+                    if(auto it = path_ids_of.find(unit.file_path(fid));
+                       it != path_ids_of.end() && shared_known.contains(it->second)) {
+                        known = it->second;
                     }
                 }
                 if(known) {
@@ -2371,40 +2419,60 @@ public:
                 }
             }
         }
-        path_ids.append(shared_paths.begin(), shared_paths.end());
+        for(auto& [path_id, known]: shared_known) {
+            path_ids.push_back(path_id);
+        }
         ranges::sort(path_ids);
         path_ids.erase(ranges::unique(path_ids).begin(), path_ids.end());
         std::vector<FileSection> sections;
         llvm::BitVector known_paths(tree.paths.size());
         for(auto path_id: path_ids) {
+            auto shared = shared_known.find(path_id);
+            std::optional<FileSection> section;
             if(auto it = known_sections.find(tree.paths[path_id]); it != known_sections.end()) {
                 auto& known = it->second;
+                section = FileSection{.path_id = path_id,
+                                      .hash = known.variant,
+                                      .identity = known.identity,
+                                      .own_identity = known.own,
+                                      .reach = known.reach};
                 known_paths.set(path_id);
-                sections.push_back({.path_id = path_id,
-                                    .hash = known.variant,
-                                    .identity = known.identity,
-                                    .own_identity = known.own,
-                                    .reach = known.reach});
-                continue;
+            } else if(auto& file_index = by_path[path_id];
+                      !file_index.empty() &&
+                      (shared == shared_known.end() || own_paths.contains(path_id))) {
+                auto fid = path_fids[path_id];
+                auto bytes = write_shard(file_index, resolve, unit.file_content(fid));
+                section =
+                    FileSection{.path_id = path_id, .hash = llvm::xxh3_64bits(as_chars(bytes))};
+                if(fid != unit.focus_file().file() && !unit.header_identities().empty()) {
+                    section->identity = identity_of(fid);
+                    section->own_identity = own_identity(fid);
+                    section->reach = reach_of(fid);
+                }
+                if(ranges::binary_search(known_variants, section->hash)) {
+                    known_paths.set(path_id);
+                } else {
+                    section->blob = std::move(bytes);
+                }
             }
-            auto fid = path_fids[path_id];
-            auto& file_index = by_path[path_id];
-            if(file_index.empty()) {
-                continue;
+            if(shared != shared_known.end()) {
+                auto& known = shared->second;
+                if(section) {
+                    if(section->hash != known.variant) {
+                        section->shared = known.variant;
+                    }
+                } else {
+                    section = FileSection{.path_id = path_id,
+                                          .hash = known.variant,
+                                          .identity = known.identity,
+                                          .own_identity = known.own,
+                                          .reach = known.reach};
+                    known_paths.set(path_id);
+                }
             }
-            auto bytes = write_shard(file_index, resolve, unit.file_content(fid));
-            FileSection section{.path_id = path_id, .hash = llvm::xxh3_64bits(as_chars(bytes))};
-            if(fid != unit.focus_file().file() && !unit.header_identities().empty()) {
-                section.identity = identity_of(fid);
-                section.own_identity = own_identity(fid);
-                section.reach = reach_of(fid);
+            if(section) {
+                sections.push_back(std::move(*section));
             }
-            if(ranges::binary_search(known_variants, section.hash)) {
-                known_paths.set(path_id);
-            } else {
-                section.blob = std::move(bytes);
-            }
-            sections.push_back(std::move(section));
         }
         std::vector<InstantiationSection> instantiation_sections;
         auto resolved_paths = ranges::to<llvm::SmallVector<std::uint32_t>>(
@@ -2603,6 +2671,8 @@ private:
     std::vector<bool> closure_done;
 
     llvm::StringMap<llvm::SmallVector<clang::FileID, 1>> entries_by_path;
+
+    llvm::StringMap<llvm::SmallVector<llvm::StringRef, 2>> grafted_by_path;
 
     /// The files a known variant stands for (choose_known), and per path the
     /// variant with the identity it was found at.

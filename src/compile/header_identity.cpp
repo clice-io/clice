@@ -42,7 +42,7 @@ public:
         if(auto it = pending.find(fid); it != pending.end()) {
             it->second += 1;
             if(it->second == 2) {
-                add(fid, context_key());
+                add(fid, unit.declaration_context());
                 pending.erase(it);
             }
         }
@@ -56,7 +56,7 @@ private:
         if(reason == ExitFile) {
             // A file of fewer than two tokens: its context as it leaves.
             if(auto it = pending.find(previous); it != pending.end()) {
-                add(previous, context_key());
+                add(previous, unit.declaration_context());
                 pending.erase(it);
             }
             return;
@@ -199,24 +199,6 @@ private:
         return it->second;
     }
 
-    /// The declaration context the parser is in: its chain of named scopes
-    /// and language linkages.
-    std::uint64_t context_key() {
-        std::uint64_t context = 0;
-        if(!unit.instance->hasSema()) {
-            return context;
-        }
-        for(auto* dc = unit.instance->getSema().CurContext; dc; dc = dc->getParent()) {
-            context = mix(context, static_cast<std::uint64_t>(dc->getDeclKind()));
-            if(auto* named = llvm::dyn_cast<clang::NamedDecl>(dc)) {
-                context = mix(context, llvm::xxh3_64bits(named->getNameAsString()));
-            } else if(auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(dc)) {
-                context = mix(context, static_cast<std::uint64_t>(linkage->getLanguage()));
-            }
-        }
-        return context;
-    }
-
 private:
     CompilationUnit& unit;
 
@@ -280,6 +262,32 @@ std::uint64_t CompilationUnit::macro_state(const clang::MacroInfo* macro,
         }
     }
     return state;
+}
+
+std::uint64_t CompilationUnit::declaration_context() {
+    std::uint64_t context = 0;
+    if(!instance->hasSema()) {
+        return context;
+    }
+    auto& sema = instance->getSema();
+    for(auto* dc = sema.CurContext; dc; dc = dc->getParent()) {
+        context = mix(context, static_cast<std::uint64_t>(dc->getDeclKind()));
+        if(auto* named = llvm::dyn_cast<clang::NamedDecl>(dc)) {
+            context = mix(context, llvm::xxh3_64bits(named->getNameAsString()));
+        } else if(auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(dc)) {
+            context = mix(context, static_cast<std::uint64_t>(linkage->getLanguage()));
+        }
+    }
+    return context;
+}
+
+std::uint64_t CompilationUnit::declaration_pragmas() {
+    if(!instance->hasSema()) {
+        return 0;
+    }
+    auto& sema = instance->getSema();
+    return mix(clang::Sema::AlignPackInfo::getRawEncoding(sema.AlignPackStack.CurrentValue),
+               sema.PragmaAttributeStack.size());
 }
 
 }  // namespace clice

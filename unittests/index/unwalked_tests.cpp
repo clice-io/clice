@@ -171,6 +171,39 @@ inline size measure() { return 1; }
     ZEXPECT(!wide.section_blob(*other).empty());
 };
 
+ZEST_CASE(GeneratedEnumeratorsWalked) {
+    // kinds.def is regenerated: its enumeration in kinds.h, the variant of
+    // which the receiver stores, holds what the walk of kinds.def records.
+    TempDir tmp;
+    tmp.touch("kinds.h", R"cpp(#pragma once
+enum Kind {
+#define KIND(name) name,
+#include "kinds.def"
+#undef KIND
+};
+)cpp");
+    tmp.touch("kinds.def", "KIND(Alpha)\n");
+    tmp.touch("a.cpp", "#include \"kinds.h\"\nKind a() { return Alpha; }\n");
+    tmp.touch("b.cpp", "#include \"kinds.h\"\nKind b() { return Beta; }\n");
+    auto a_data = index_file(tmp, tmp.path("a.cpp")).data;
+    auto a = index::TUIndex::from_bytes(a_data);
+    auto header = section_of(a, "kinds.h");
+    ZASSERT(header);
+    auto known = a.section_identity(*header);
+
+    tmp.touch("kinds.def", "KIND(Alpha)\nKIND(Beta)\n");
+    auto walked_data = index_file(tmp, tmp.path("b.cpp")).data;
+    auto unwalked_data = index_file(tmp, tmp.path("b.cpp"), {}, {known.variant}, {}, {known}).data;
+    auto walked = index::TUIndex::from_bytes(walked_data);
+    auto unwalked = index::TUIndex::from_bytes(unwalked_data);
+    auto in_walked = section_of(walked, "kinds.def");
+    auto in_unwalked = section_of(unwalked, "kinds.def");
+    ZASSERT(in_walked);
+    ZASSERT(in_unwalked);
+    ZEXPECT(unwalked.section_blob(*section_of(unwalked, "kinds.h")).empty());
+    ZEXPECT(unwalked.section_hash(*in_unwalked) == walked.section_hash(*in_walked));
+};
+
 ZEST_CASE(GuessesStayInClosure) {
     // impl.h names no header: what declares `helper` for its template comes
     // from the file including it. other.h, included before by the unit

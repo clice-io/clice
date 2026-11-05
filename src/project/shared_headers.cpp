@@ -5,12 +5,14 @@ module;
 module clice;
 
 import :command.argument;
+import :command.search_config;
 import :compile.compilation;
 import :project.graph.pch;
 import :project.graph.precompiled;
 import :project.project;
 import :project.shared_headers;
 import :support.logging;
+import :syntax.include_resolver;
 import :syntax.lexical_scan;
 import :syntax.preamble;
 import :vfs.dir_cache;
@@ -32,14 +34,9 @@ constexpr std::size_t least_units = 8;
 /// it a file it does not include.
 constexpr double levels[] = {1, 0.95, 0.9, 0.8, 0.7, 0.6, 0.5};
 
-/// Whether `file` is guarded, `#pragma once` or an include guard: a unit
+/// Whether `text` is guarded, `#pragma once` or an include guard: a unit
 /// including it skips it once the PCH holds it.
-bool guarded(llvm::StringRef file, const clang::LangOptions& dialect) {
-    auto content = vfs::read_text(file);
-    if(!content) {
-        return false;
-    }
-    llvm::StringRef text = *content;
+bool guarded(llvm::StringRef text, const clang::LangOptions& dialect) {
     return has_pragma_once(text, static_cast<std::uint32_t>(text.size())) ||
            lexical_scan(text, dialect).include_guard.has_value();
 }
@@ -190,44 +187,77 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
 
         auto language = llvm::StringRef(group.command.language.value);
         auto& dialect = this->dialect(group.command.file, nullptr);
+        auto search = toolchain.search_config(group.command);
+        vfs::Scope scope(file_table.dirs);
         for(auto level: views::iota(std::size_t(0), held.size())) {
             auto& members = assigned[level];
             if(members.size() < least_units) {
                 continue;
             }
-            // The headers no other of them includes, guarded, in the order
-            // a member enters them.
+            auto name = std::format("{:016x}.{}",
+                                    llvm::xxh3_64bits(std::format("{}:{}", key, level)),
+                                    language == "c" ? "h" : "hxx");
+            auto file = path::join(directory, name);
+
+            // How the shared header includes a root: by the name the
+            // command's search directories find it under, as the members
+            // reach it, so that a system header is one there too and its
+            // `#include_next` goes on where theirs does; by its path when no
+            // search directory holds it, unless an `#include_next` of its
+            // would start over there. None for a header a unit including it
+            // enters again.
+            IncludeArguments spellings(search, Spelling::absolute(file), scope);
+            auto argument = [&](Fid root) -> std::optional<std::string> {
+                auto path = file_table.resolve(root);
+                auto content = vfs::read_text(path);
+                if(!content || !guarded(*content, dialect)) {
+                    return std::nullopt;
+                }
+                if(auto spelled = spellings.resolving(path)) {
+                    return spelled;
+                }
+                if(llvm::StringRef(*content).contains("include_next") ||
+                   ranges::any_of(search.dirs, [&](const SearchDir& dir) {
+                       return path::is_within(path, CanonicalPath(Spelling::absolute(dir.path)));
+                   })) {
+                    return std::nullopt;
+                }
+                return std::format("\"{}\"", path);
+            };
+
+            // The headers no other of them includes, in the order a member
+            // enters them.
             llvm::DenseMap<Fid, llvm::DenseSet<Fid>> reaches;
-            for(auto file: held[level]) {
-                reaches[file] = dep_graph.include_closure(file);
+            for(auto header: held[level]) {
+                reaches[header] = dep_graph.include_closure(header);
             }
             auto candidates = held[level];
-            ranges::stable_sort(candidates, std::greater{}, [&](Fid file) {
-                return reaches[file].size();
+            ranges::stable_sort(candidates, std::greater{}, [&](Fid header) {
+                return reaches[header].size();
             });
             llvm::DenseSet<Fid> covered;
-            std::vector<Fid> roots;
-            for(auto file: candidates) {
-                if(covered.contains(file) || !guarded(file_table.resolve(file), dialect)) {
+            std::vector<std::pair<Fid, std::string>> roots;
+            for(auto header: candidates) {
+                if(covered.contains(header)) {
                     continue;
                 }
-                roots.push_back(file);
-                covered.insert(reaches[file].begin(), reaches[file].end());
+                auto spelled = argument(header);
+                if(!spelled) {
+                    continue;
+                }
+                roots.emplace_back(header, std::move(*spelled));
+                covered.insert(reaches[header].begin(), reaches[header].end());
             }
             if(roots.empty()) {
                 continue;
             }
             auto order = entry_order(dep_graph, members.front());
-            ranges::sort(roots, {}, [&](Fid file) { return order.lookup(file); });
+            ranges::sort(roots, {}, [&](auto& root) { return order.lookup(root.first); });
 
             std::string text = "#pragma once\n";
-            for(auto root: roots) {
-                text += std::format("#include \"{}\"\n", file_table.resolve(root));
+            for(auto& spelled: views::values(roots)) {
+                text += std::format("#include {}\n", spelled);
             }
-            auto name = std::format("{:016x}.{}",
-                                    llvm::xxh3_64bits(std::format("{}:{}", key, level)),
-                                    language == "c" ? "h" : "hxx");
-            auto file = path::join(directory, name);
             if(auto made = fs::create_directories(directory); !made) {
                 LOG_WARN("Cannot create {} for the shared headers: {}",
                          directory,

@@ -276,7 +276,7 @@ public:
                     partial_whole = false;
                     return ret;
                 }
-                if(!partial.around.contains(X)) {
+                if(!partial.around.contains(X) && !encloses_include(X)) {
                     return true;
                 }
             }
@@ -541,6 +541,24 @@ private:
         }
 
         stack.push_back(Semantics::invalid);
+    }
+
+    /// Whether `X`, in a file traversed in part, spans an include entering
+    /// a file traversed (PartialFiles::includes).
+    bool encloses_include(const clang::Decl* X) const {
+        auto it =
+            options.partial->includes.find(SM.getFileID(SM.getExpansionLoc(X->getLocation())));
+        if(it == options.partial->includes.end()) {
+            return false;
+        }
+        auto range = X->getSourceRange();
+        auto [begin_fid, begin] = SM.getDecomposedExpansionLoc(range.getBegin());
+        auto [end_fid, end] = SM.getDecomposedExpansionLoc(range.getEnd());
+        if(begin_fid != it->first || end_fid != it->first) {
+            return false;
+        }
+        auto include = ranges::lower_bound(it->second, begin);
+        return include != it->second.end() && *include <= end;
     }
 
     template <typename Func>

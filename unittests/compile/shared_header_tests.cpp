@@ -272,6 +272,81 @@ int moded();
     ZEXPECT(compiled.unit->shared_rejection().contains("MODE"));
 };
 
+ZEST_CASE(ReadAfterHeldRedefined) {
+    // buffer.h reads what config.h, which it includes, defines; the unit
+    // includes config.h first and redefines that before buffer.h.
+    add_file("shared.hxx", "#pragma once\n#include \"buffer.h\"\n");
+    add_file("config.h", "#pragma once\n#define BUF 64\n");
+    add_file("buffer.h", R"cpp(#pragma once
+#include "config.h"
+#if BUF > 100
+int big();
+#else
+int small();
+#endif
+)cpp");
+    add_focus("main.cpp", R"cpp(#include "config.h"
+#undef BUF
+#define BUF 256
+#include "buffer.h"
+int use() { return big(); }
+)cpp");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().contains("BUF"));
+};
+
+ZEST_CASE(IncludedInExternC) {
+    add_file("shared.hxx", "#pragma once\n#include \"api.h\"\n");
+    add_file("api.h", "#pragma once\nint api(int);\n");
+    add_focus("main.cpp", R"cpp(extern "C" {
+#include "api.h"
+}
+int use() { return api(1); }
+)cpp");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().contains("api.h"));
+    ZEXPECT(!from_pch(*compiled.unit, "api"));
+};
+
+ZEST_CASE(IncludedInNamespace) {
+    add_file("shared.hxx", "#pragma once\n#include \"api.h\"\n");
+    add_file("api.h", "#pragma once\nint api(int);\n");
+    add_focus("main.cpp", R"cpp(namespace ns {
+#include "api.h"
+}
+int use() { return ns::api(1); }
+)cpp");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().contains("api.h"));
+};
+
+ZEST_CASE(IncludedUnderPack) {
+    add_file("shared.hxx", "#pragma once\n#include \"api.h\"\n");
+    add_file("api.h", "#pragma once\nstruct Packed { char c; int i; };\n");
+    add_focus("main.cpp", R"cpp(#pragma pack(push, 1)
+#include "api.h"
+#pragma pack(pop)
+static_assert(sizeof(Packed) == 5);
+)cpp");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().contains("api.h"));
+};
+
+ZEST_CASE(IncludedAfterANamespace) {
+    // The parser leaves the namespace once it reads past the include.
+    add_file("shared.hxx", "#pragma once\n#include \"api.h\"\n");
+    add_file("api.h", "#pragma once\nint api(int);\n");
+    add_focus("main.cpp", R"cpp(namespace detail {
+int helper();
+}
+#include "api.h"
+int use() { return api(detail::helper()); }
+)cpp");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().empty());
+    ZEXPECT(from_pch(*compiled.unit, "api"));
+};
+
 };  // ZEST_SUITE(SharedHeader)
 
 }  // namespace

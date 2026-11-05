@@ -33,6 +33,10 @@ template <template <typename> typename Seq>
 struct SharedHeaderHeaderOf {
     std::uint32_t file = 0;
 
+    std::uint64_t context = 0;
+
+    std::uint64_t pragmas = 0;
+
     Seq<SharedHeaderRecord::Read> reads;
 
     Seq<MacroState> writes;
@@ -125,6 +129,8 @@ std::vector<std::byte> encode_shared_header(const SharedHeaderIndex& index) {
     }
     for(auto& header: record.headers) {
         blob.headers.push_back({.file = header.file,
+                                .context = header.context,
+                                .pragmas = header.pragmas,
                                 .reads = header.reads,
                                 .writes = header.writes,
                                 .includes = header.includes});
@@ -169,6 +175,8 @@ std::optional<SharedHeaderIndex> decode_shared_header(llvm::StringRef bytes) {
         }
         auto& into = record.headers.emplace_back();
         into.file = header.file;
+        into.context = header.context;
+        into.pragmas = header.pragmas;
         into.reads = copy<SharedHeaderRecord::Read>(header.reads);
         into.writes = copy<MacroState>(header.writes);
         into.includes = copy<SharedHeaderRecord::Include>(header.includes);

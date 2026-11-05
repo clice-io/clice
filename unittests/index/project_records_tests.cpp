@@ -121,10 +121,10 @@ ZEST_CASE(FileRoundTrip) {
         .consumed = {10,  20 },
         .generation = 20,
         .stored = {111, 222},
-        .identities = {{.identity = 5, .own = 6, .reach = 1, .variant = 222},
-                       {.identity = 7, .own = 7, .reach = 0, .variant = 111}},
         .run = 1700000000000,
     };
+    file.identities.push_back({.identity = 5, .own = 6, .reach = 1, .variant = 222});
+    file.identities.push_back({.identity = 7, .own = 7, .reach = 0, .variant = 111});
     auto buffer = aligned(index::encode_record(file));
     auto read = index::decode_file(buffer->getBuffer());
     ZASSERT(read);

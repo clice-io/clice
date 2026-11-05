@@ -74,6 +74,15 @@ struct SharedHeaderRecord {
         /// Into `files`.
         std::uint32_t file = 0;
 
+        /// The declaration context the build entered it in, as the parser
+        /// reads the second token after the entry
+        /// (CompilationUnit::declaration_context).
+        std::uint64_t context = 0;
+
+        /// What the pragmas the build entered it under give its
+        /// declarations (CompilationUnit::declaration_pragmas).
+        std::uint64_t pragmas = 0;
+
         /// What its run read, in order, with the state it read.
         std::vector<Read> reads;
 

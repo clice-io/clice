@@ -80,6 +80,22 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         auto blob_hash = view.section_hash(section);
         auto global_id = file_ids_map[local_id];
 
+        // The variant of a shared header's index the unit's own entries add
+        // to, merged with the header's index before the unit's.
+        if(auto shared = view.section_shared(section); shared != 0) {
+            auto* record = file_record(global_id);
+            if(!record || !ranges::contains(record->stored, shared)) {
+                LOG_INFO("Rerun {}: {} stores no variant of the shared header it names",
+                         tu_path,
+                         files.resolve(global_id));
+                return std::unexpected(MergeError::Outdated);
+            }
+            if(!record_consumed(local_id, record->generation)) {
+                return std::unexpected(MergeError::Invalid);
+            }
+            section_contributions.emplace_back(local_id, shared);
+        }
+
         // Fast path: the blob already stores this variant. The identity
         // hashes the blob bytes, which embed the content generation, so
         // one membership test of the file's record is the whole check —

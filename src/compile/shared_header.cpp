@@ -70,9 +70,13 @@ public:
     explicit SharedHeaderRecorder(CompilationUnit& unit) :
         unit(unit), sm(unit.SM()), pp(unit.instance->getPreprocessor()) {}
 
-    /// An identifier the preprocessor handed the parser: one no macro
-    /// names here, read as 0.
+    /// A token the preprocessor handed the parser: the second after an
+    /// entry is read as the parser stands in the declaration context of
+    /// the entry; an identifier no macro names here is read as 0.
     void token(const clang::Token& token) {
+        if(!token.isAnnotation() && !token.isOneOf(clang::tok::eod, clang::tok::eof)) {
+            take_contexts(1);
+        }
         auto* info = token.getIdentifierInfo();
         if(!info || token.isAnnotation() || info->hasMacroDefinition()) {
             return;
@@ -83,6 +87,7 @@ public:
     /// Hand what was recorded to the unit, the headers whose guard the PCH
     /// left undefined left out: a unit enters them again.
     void finish() {
+        take_contexts(2);
         auto& record = unit.recorded_shared;
         // An include names a file before the build enters it, which it then
         // has entered by the end.
@@ -100,6 +105,8 @@ public:
             auto* guard = info.getControllingMacro(nullptr);
             if(header.forced || info.isPragmaOnce || (guard && pp.getMacroInfo(guard))) {
                 kept[index] = static_cast<std::uint32_t>(record.headers.size());
+                header.record.context = contexts.lookup(header.fid);
+                header.record.pragmas = pragmas.lookup(header.fid);
                 record.headers.push_back(std::move(header.record));
                 if(header.forced) {
                     record.forced.push_back(kept[index]);
@@ -152,8 +159,12 @@ private:
         /// The names read, by whether a system header read them.
         llvm::DenseSet<std::pair<std::uint64_t, std::uint8_t>> read_names;
 
-        /// What it and the runs inside it wrote.
+        /// What it and the files inside it entered without a guard wrote:
+        /// a later read of these reads its own run's state.
         llvm::DenseSet<std::uint64_t> written;
+
+        /// What the headers held inside it wrote.
+        llvm::DenseSet<std::uint64_t> held_wrote;
 
         std::vector<SharedHeaderRecord::Read> reads;
 
@@ -168,6 +179,8 @@ private:
                      clang::FileID) override {
         if(reason == EnterFile) {
             auto fid = sm.getFileID(location);
+            pending.emplace_back(fid, 0);
+            pragmas.try_emplace(fid, unit.declaration_pragmas());
             Frame frame{.fid = fid,
                         .entry = sm.getFileEntryRefForID(fid),
                         .system = clang::SrcMgr::isSystem(kind)};
@@ -198,6 +211,7 @@ private:
            held.try_emplace(&frame.entry->getFileEntry(), index).second) {
             headers.push_back({
                 .entry = *frame.entry,
+                .fid = frame.fid,
                 .forced = frame.forced,
                 .record = {.file = file_index(*frame.entry),
                            .reads = std::move(frame.reads),
@@ -207,7 +221,8 @@ private:
             if(frame.entered_by != none) {
                 below.includes[frame.entered_by].held = index;
             }
-            below.written.insert(frame.written.begin(), frame.written.end());
+            frame.held_wrote.insert(frame.written.begin(), frame.written.end());
+            forget(below, frame.held_wrote);
             return;
         }
         // A file entered without a guard, again by every unit that
@@ -217,8 +232,10 @@ private:
         auto reads = static_cast<std::uint32_t>(below.reads.size());
         std::vector<std::uint32_t> kept_reads;
         for(auto [i, read]: views::enumerate(frame.reads)) {
-            if(!below.written.contains(read.macro.name) &&
-               below.read_names.insert({read.macro.name, std::uint8_t(read.system)}).second) {
+            auto name = read.macro.name;
+            if(frame.held_wrote.contains(name) ||
+               (!below.written.contains(name) &&
+                below.read_names.insert({name, std::uint8_t(read.system)}).second)) {
                 kept_reads.push_back(static_cast<std::uint32_t>(i));
                 below.reads.push_back(read);
             }
@@ -234,6 +251,32 @@ private:
         }
         below.writes.append_range(frame.writes);
         below.written.insert(frame.written.begin(), frame.written.end());
+        forget(below, frame.held_wrote);
+    }
+
+    /// Headers held inside `frame` wrote `names`: what it reads of them
+    /// afterwards is recorded, since a unit that entered such a header
+    /// before skips it.
+    static void forget(Frame& frame, const llvm::DenseSet<std::uint64_t>& names) {
+        for(auto name: names) {
+            frame.written.erase(name);
+            frame.read_names.erase({name, 0});
+            frame.read_names.erase({name, 1});
+            frame.held_wrote.insert(name);
+        }
+    }
+
+    /// `tokens` more tokens are read since the entries pending: the parser
+    /// stands in the context of those it has read two after.
+    void take_contexts(std::uint32_t tokens) {
+        llvm::erase_if(pending, [&](auto& entry) {
+            entry.second += tokens;
+            if(entry.second < 2) {
+                return false;
+            }
+            contexts.try_emplace(entry.first, unit.declaration_context());
+            return true;
+        });
     }
 
     void InclusionDirective(clang::SourceLocation hash,
@@ -380,6 +423,8 @@ private:
     struct Header {
         clang::FileEntryRef entry;
 
+        clang::FileID fid;
+
         bool forced = false;
 
         SharedHeaderRecord::Header record;
@@ -415,11 +460,21 @@ private:
 
     /// The macros written.
     llvm::DenseMap<std::uint64_t, Write> written;
+
+    /// The entries whose declaration context is not taken yet, with how
+    /// many tokens the parser read since.
+    llvm::SmallVector<std::pair<clang::FileID, std::uint32_t>> pending;
+
+    /// The declaration context of each entry, and its pragmas.
+    llvm::DenseMap<clang::FileID, std::uint64_t> contexts;
+
+    llvm::DenseMap<clang::FileID, std::uint64_t> pragmas;
 };
 
 /// Checks, in a unit loading a shared header's PCH, that parsing each held
 /// header where the unit's text includes it would have read what its build
-/// read, and that the unit's text reads what it would without the PCH;
+/// read, in the declaration context and under the pragmas of its build,
+/// and that the unit's text reads what it would without the PCH;
 /// the macros of the unit without the PCH are simulated: the ones the
 /// command gave, then the writes of the unit's own text and of each held
 /// header it includes, in order. A difference is waved through only inside
@@ -449,6 +504,9 @@ public:
     }
 
     void token(const clang::Token& token) {
+        if(!token.isAnnotation() && !token.isOneOf(clang::tok::eod, clang::tok::eof)) {
+            check_sites(1);
+        }
         auto* info = token.getIdentifierInfo();
         if(!info || token.isAnnotation() || info->hasMacroDefinition()) {
             return;
@@ -459,6 +517,7 @@ public:
     /// The parse is over: a held header the unit never included it would
     /// not have read.
     void finish() {
+        check_sites(2);
         for(auto [index, header]: views::enumerate(record.headers)) {
             if(!entered[index]) {
                 reject(std::format("{} is in the PCH but never included",
@@ -502,7 +561,30 @@ private:
                 {.includer = includer, .line = line, .file = it->second, .skipped = true});
             return;
         }
+        if(unit.declaration_pragmas() != record.headers[header].pragmas) {
+            reject(std::format("{} is included under pragmas its PCH did not see",
+                               record.files[record.headers[header].file].path));
+        }
+        sites.emplace_back(header, 0);
         enter(header, includer, none, line);
+    }
+
+    /// `tokens` more tokens are read since the includes pending: the parser
+    /// stands in the declaration context of those it has read two after,
+    /// the one the PCH declares the header in.
+    void check_sites(std::uint32_t tokens) {
+        llvm::erase_if(sites, [&](auto& site) {
+            site.second += tokens;
+            if(site.second < 2) {
+                return false;
+            }
+            auto& header = record.headers[site.first];
+            if(unit.declaration_context() != header.context) {
+                reject(std::format("{} is included where its PCH does not declare it",
+                                   record.files[header.file].path));
+            }
+            return true;
+        });
     }
 
     /// The unit includes `header` the first time: the header's run is
@@ -700,6 +782,10 @@ private:
     llvm::DenseSet<std::uint64_t> own_project;
 
     std::vector<GraftedInclude> grafted;
+
+    /// The held headers the unit's text included whose declaration context
+    /// is not checked yet, with how many tokens the parser read since.
+    llvm::SmallVector<std::pair<std::uint32_t, std::uint32_t>> sites;
 };
 
 std::unique_ptr<clang::PPCallbacks> CompilationUnit::shared_header_recorder() {

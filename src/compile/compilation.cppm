@@ -630,6 +630,14 @@ private:
     /// tokens; a builtin by its name. 0 for none.
     std::uint64_t macro_state(const clang::MacroInfo* macro, const clang::IdentifierInfo& name);
 
+    /// A hash of the declaration context the parser is in: its chain of
+    /// named scopes and language linkages.
+    std::uint64_t declaration_context();
+
+    /// A hash of what `#pragma pack` and `#pragma clang attribute` give the
+    /// declarations the parser reads next.
+    std::uint64_t declaration_pragmas();
+
     auto SM() -> clang::SourceManager& {
         return instance->getSourceManager();
     }

@@ -252,15 +252,22 @@ clang::SourceRange written_name(const clang::DeclarationNameInfo& name,
                                 const clang::SourceManager& SM);
 
 /// Files to traverse in part: of their declarations only the `whole` ones,
-/// entirely, and the ones `around` them, for those alone; and declarations
-/// a precompiled header holds, which the traversal of what the unit parsed
-/// never reaches, each traversed entirely as a root of its own.
+/// entirely, the ones `around` them, for those alone, and the ones around
+/// an include of a file traversed, for what that file holds; and
+/// declarations a precompiled header holds, which the traversal of what
+/// the unit parsed never reaches, each traversed entirely as a root of its
+/// own.
 struct PartialFiles {
     llvm::DenseSet<clang::FileID> files;
 
     llvm::DenseSet<const clang::Decl*> whole;
 
     llvm::DenseSet<const clang::Decl*> around;
+
+    /// Per file of `files`, ascending, the offsets of its includes that
+    /// enter a file traversed: an enumeration whose enumerators a
+    /// generated file lists.
+    llvm::DenseMap<clang::FileID, llvm::SmallVector<std::uint32_t>> includes;
 
     std::vector<const clang::Decl*> precompiled;
 };

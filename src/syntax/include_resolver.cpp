@@ -171,7 +171,7 @@ std::optional<ResolveResult> resolve_forced_include(llvm::StringRef filename,
 }
 
 /// Whether an include's path names a library's internal header (see
-/// include_argument).
+/// IncludeArguments::of).
 static bool internal_header(bool angled, llvm::StringRef name) {
     return angled && ranges::any_of(path::components(name), [](std::string_view part) {
                return part == "bits" || part.starts_with("__");
@@ -189,6 +189,15 @@ IncludeArguments::IncludeArguments(const SearchConfig& search,
 }
 
 std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
+    auto argument = resolving(header);
+    if(argument && internal_header(argument->starts_with("<"),
+                                   llvm::StringRef(*argument).drop_front().drop_back())) {
+        return std::nullopt;
+    }
+    return argument;
+}
+
+std::optional<std::string> IncludeArguments::resolving(CanonicalRef header) {
     auto [known_entry, inserted] = known.try_emplace(llvm::StringRef(header));
     auto& argument = known_entry->second;
     if(!inserted) {
@@ -223,10 +232,8 @@ std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
         auto resolved =
             resolve_include(candidate.name, candidate.angled, directory, false, 0, search, scope);
         if(resolved && CanonicalPath(Spelling::absolute(resolved->path)) == header) {
-            if(!internal_header(candidate.angled, candidate.name)) {
-                argument = candidate.angled ? std::format("<{}>", candidate.name)
-                                            : std::format("\"{}\"", candidate.name);
-            }
+            argument = candidate.angled ? std::format("<{}>", candidate.name)
+                                        : std::format("\"{}\"", candidate.name);
             break;
         }
     }

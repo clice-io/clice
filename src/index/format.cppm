@@ -112,7 +112,8 @@ namespace clice::index {
 /// macros of the compiler and the command line; v55: a preamble's TU index
 /// carries no names, which completion reads from the files a compile loads;
 /// v56: the search index splits a name into words where digits follow a
-/// letter.
+/// letter; v57: units find the variants of headers by identity, and a unit
+/// loading a shared header's PCH uses what that header's index stores.
 constexpr inline std::uint32_t index_format_version = 57;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
@@ -493,6 +494,11 @@ struct FileSectionOf {
     std::uint64_t own_identity = 0;
 
     std::uint8_t reach = 0;
+
+    /// With the PCH of a shared header loaded, the variant its index made
+    /// of a file the unit entered too, without a guard: the unit's entries
+    /// of the file are both variants. 0 for none.
+    std::uint64_t shared = 0;
 };
 
 using FileSection = FileSectionOf<codec::blob::Owned>;
