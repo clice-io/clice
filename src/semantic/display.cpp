@@ -3718,9 +3718,12 @@ auto ReadableTypes::readable(clang::QualType type,
         unsigned index = 0;
         if(argument.getKind() == clang::TemplateArgument::Type) {
             const auto* expansion = argument.getAsType()->getAs<clang::PackExpansionType>();
+            /// Only the bare pack reads as its arguments: `const Bs...` would
+            /// need the pattern applied to each.
             if(const auto* param =
-                   expansion ? expansion->getPattern()->getAs<clang::TemplateTypeParmType>()
-                             : nullptr) {
+                   expansion && !expansion->getPattern().hasQualifiers()
+                       ? expansion->getPattern()->getAs<clang::TemplateTypeParmType>()
+                       : nullptr) {
                 pack = param->getDecl();
                 index = param->getIndex();
             }

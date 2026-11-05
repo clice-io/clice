@@ -77,3 +77,25 @@ auto r = children->echo(value)
 **Type:** `T`
 '''
 range = "auto ⟦r⟧ = children->echo(value);"
+
+[answers.xvalue_argument.hover]
+markdown = '''
+**variable** `x` · function `forwarded`
+
+```cpp
+auto&& x = ::identity(Tied<T>::make().value)
+```
+**Type:** `int&&`
+'''
+range = "auto&& ⟦x⟧ = ::identity(Tied<T>::make().value);"
+
+[answers.reference_member.hover]
+markdown = '''
+**variable** `r` · function `forwarded`
+
+```cpp
+auto&& r = Tied<T>::make().arr[0]
+```
+**Type:** `int&`
+'''
+range = "auto&& ⟦r⟧ = Tied<T>::make().arr[0];"

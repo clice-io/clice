@@ -275,9 +275,10 @@ bool PseudoInstantiator::xvalue(const clang::Expr* expr) {
             return false;
         }
         auto frames = stack.size();
-        bool field = llvm::isa_and_present<clang::FieldDecl>(referenced_decl(access));
+        auto* field = llvm::dyn_cast_if_present<clang::FieldDecl>(referenced_decl(access));
         stack.truncate(frames);
-        return field;
+        /// A reference member names what it refers to, an lvalue.
+        return field && !field->getType()->isReferenceType();
     }
     return expr->isXValue();
 }
@@ -435,7 +436,7 @@ bool PseudoInstantiator::rvalue(const clang::Expr* base) {
         auto type = type_of(base);
         return !type.isNull() && !type->isLValueReferenceType();
     }
-    return !base->isLValue();
+    return !base->isLValue() || xvalue(base);
 }
 
 clang::QualType PseudoInstantiator::call_type(const clang::CallExpr* call) {
@@ -507,15 +508,28 @@ clang::QualType
             bound.push_back(argument.getArgument());
         }
         /// The call deduces what the explicit arguments leave out, before
-        /// any default applies.
+        /// any default applies; none stands in for a deduction that fails.
+        bool deduced = true;
         if(!arguments.empty() && bound.size() < params->size()) {
-            auto deduced = deduce_call(FTD, function, arguments);
-            for(auto i = bound.size(); i < deduced.size() && !deduced[i].isNull(); i += 1) {
-                bound.push_back(deduced[i]);
+            auto from_call = deduce_call(FTD, function, arguments);
+            deduced = !from_call.empty();
+            for(auto i = bound.size(); i < from_call.size(); i += 1) {
+                if(!from_call[i].isNull()) {
+                    bound.push_back(from_call[i]);
+                    continue;
+                }
+                /// One the call leaves undeduced takes its default, which
+                /// may read those before it.
+                llvm::SmallVector<clang::TemplateArgument, 4> completed;
+                fill_defaults(FTD, bound, completed);
+                if(completed.size() <= i) {
+                    break;
+                }
+                bound.push_back(completed[i]);
             }
         }
         if(llvm::SmallVector<clang::TemplateArgument, 4> completed;
-           fill_defaults(FTD, bound, completed)) {
+           deduced && fill_defaults(FTD, bound, completed)) {
             bound = std::move(completed);
         }
     }

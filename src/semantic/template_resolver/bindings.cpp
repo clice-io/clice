@@ -337,7 +337,15 @@ llvm::SmallVector<clang::TemplateArgument, 4>
                 type,
                 pattern_of(parameter).getCanonicalType().getQualifiers());
         }
-        return context.getAdjustedParameterType(type).getUnqualifiedType();
+        auto decayed = context.getAdjustedParameterType(type).getUnqualifiedType();
+        /// A pointer converts to one to a more qualified type.
+        if(auto* pointer = parameter.getCanonicalType()->getAs<clang::PointerType>();
+           pointer && decayed->isPointerType()) {
+            return context.getPointerType(
+                context.getQualifiedType(decayed->getPointeeType(),
+                                         pointer->getPointeeType().getQualifiers()));
+        }
+        return decayed;
     };
 
     llvm::SmallVector<clang::TemplateArgument, 4> patterns;
@@ -345,8 +353,13 @@ llvm::SmallVector<clang::TemplateArgument, 4>
     unsigned index = 0;
     for(auto* parameter: function->parameters()) {
         auto type = parameter->getType();
-        /// A function parameter pack takes every argument left.
+        /// A function parameter pack takes every argument left; one before
+        /// other parameters is not deduced, leaving the rest to
+        /// instantiation.
         if(auto* expansion = type->getAs<clang::PackExpansionType>()) {
+            if(parameter != function->parameters().back()) {
+                return {};
+            }
             auto element = expansion->getPattern();
             for(; index < arguments.size(); index += 1) {
                 types.emplace_back(argument_for(element, arguments[index]));

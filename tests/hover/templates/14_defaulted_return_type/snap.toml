@@ -33,3 +33,29 @@ int real
 **Alignment:** 4 bytes
 '''
 range = "return packed + lib::pair<int>(x, Real()).⟦real⟧;"
+
+[answers.deduced_after_default.hover]
+markdown = '''
+**field** `real` · struct `Real`
+
+```cpp
+int real
+```
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "int selected = Api<T>::select(Real()).⟦real⟧;"
+
+[answers.qualified_pointer.hover]
+markdown = '''
+**field** `real` · struct `Real`
+
+```cpp
+int real
+```
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "return selected + Api<T>::pointed(p).⟦real⟧;"

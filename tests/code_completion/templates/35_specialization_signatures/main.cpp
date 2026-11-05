@@ -18,6 +18,11 @@ struct Kinds {
     Kinds<Ts...> again();
 };
 
+template <class... Ts>
+struct Views {
+    Pack<const Ts...> view();
+};
+
 template <class T>
 struct X {
     static int f(T value);
@@ -34,4 +39,9 @@ template <int... Ks, template <class> class... Hs>
 void more(Seq<Ks...> s, Kinds<Hs...> k) {
     s.§(value_pack);
     k.§(template_pack);
+}
+
+template <class... Ws>
+void qualified(Views<Ws...> v) {
+    v.§(qualified_pack);
 }

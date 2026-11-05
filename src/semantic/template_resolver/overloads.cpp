@@ -228,8 +228,26 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
        })) {
         return;
     }
+    /// Whether the argument converts to the parameter at the rank of an
+    /// exact match: as is, decayed, or to a pointer to a more qualified
+    /// type.
     auto same = [&](clang::QualType parameter, const clang::Expr* argument) {
-        return context.hasSameUnqualifiedType(parameter.getNonReferenceType(), argument->getType());
+        auto target = parameter.getNonReferenceType();
+        auto type = argument->getType();
+        if(context.hasSameUnqualifiedType(target, type)) {
+            return true;
+        }
+        if(parameter->isReferenceType()) {
+            return false;
+        }
+        auto decayed = context.getAdjustedParameterType(type);
+        if(target->isPointerType() && decayed->isPointerType()) {
+            auto to = target->getPointeeType();
+            auto from = decayed->getPointeeType();
+            return context.hasSameUnqualifiedType(to, from) &&
+                   (from.getCVRQualifiers() & ~to.getCVRQualifiers()) == 0;
+        }
+        return context.hasSameUnqualifiedType(target, decayed);
     };
     /// Whether `decl` takes every argument as is; nullopt when that waits
     /// for instantiation.

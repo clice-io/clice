@@ -53,3 +53,19 @@ struct Node {
         auto §(recursive_class)r = children->echo(value);
     }
 };
+
+template <class U>
+U&& identity(U&& u);
+
+template <class T>
+struct Tied {
+    static Tied make();
+    int value;
+    int (&arr)[2];
+};
+
+template <class T>
+void forwarded() {
+    auto&& §(xvalue_argument)x = ::identity(Tied<T>::make().value);
+    auto&& §(reference_member)r = Tied<T>::make().arr[0];
+}

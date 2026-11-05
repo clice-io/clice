@@ -49,3 +49,15 @@ int const_object(const T& getter) {
 void use_getter() {
     const_object(Getter());
 }
+
+template <class T>
+struct Decay {
+    template <class U = void>
+    static Small take(int (&a)[3]);
+    static Large take(int* p);
+};
+
+template <class T>
+int array_decay(int (&a)[3]) {
+    return Decay<T>::take(a).§(array_decay)large;
+}

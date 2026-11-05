@@ -27,3 +27,7 @@ int large
 **Alignment:** 4 bytes
 '''
 range = "return getter.get(1).⟦large⟧;"
+
+[answers.array_decay]
+wrong = "both overloads take the array as an exact match, so the one that is not a template wins: the card should show Large::large"
+hover = {}
