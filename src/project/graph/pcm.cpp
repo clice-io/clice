@@ -20,9 +20,10 @@ namespace clice {
 namespace {
 
 /// Changes whenever a PCM build of the same command comes to write another
-/// BMI, or its key comes to name another build, so a blob or a record an
-/// older clice stored is not taken for the new one.
-constexpr llvm::StringRef pcm_version = "6";
+/// BMI or index its unit otherwise, or its key comes to name another build,
+/// so a blob or a record an older clice stored is not taken for the new
+/// one.
+constexpr llvm::StringRef pcm_version = "7";
 
 /// The provider an import in `importer` resolves to among several of one
 /// name: the nearest — the fewest directories up from the importer to one
@@ -181,9 +182,14 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // reachable from its imports — fixing or providing one re-dirties it.
     // The scan runs under the command the build compiles with, resolved on
     // every attempt: a CDB or import change is always seen by the next one.
+    // That is the unit's own command: the build is the unit's compile, and
+    // sends its index, recorded under the command as it is now — one
+    // changing during the build leaves the unit owed.
     worker::BuildPCMParams bp;
     auto resolution = project.resolve_command(path_id);
+    auto command = project.command_identity(path_id);
     bp.directory = resolution.directory;
+    bp.project_root = project.root.str();
     bp.arguments = resolution.arguments;
     bp.hidden = resolution.hidden;
     auto imports = co_await project.scan_imports(path_id, resolution, std::nullopt);
@@ -193,13 +199,12 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // build of them, as its command builds over the target's: the header
     // it forces in then reads nothing again, where parsed as text its
     // declarations would precede the module declaration. The PCM names
-    // that PCH to its importers, which read it with the PCM: it is the
-    // index's, keeping the function bodies, for every importer to read the
-    // same one. One that did not build leaves the header to the unit's own
-    // parse, as for any other unit.
+    // that PCH to its importers, which read it with the PCM. One that did
+    // not build leaves the header to the unit's own parse, as for any
+    // other unit.
     std::optional<std::string> pch_key;
     if(auto unit = project.pch_writer(path_id, resolution)) {
-        auto request = project.declared_pch_request(*unit, /*skip_bodies=*/false);
+        auto request = project.declared_pch_request(*unit);
         auto key = request.pch_key;
         switch(co_await attempt.depend(pch_node(key), project.pch_work(std::move(request)))) {
             case Result::Success: pch_key = std::move(key); break;
@@ -311,6 +316,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     auto pending = project.store->begin_store("pcm", blob);
     bp.output_path = pending.tmp_path;
     bp.pcms = project.imported_pcms(resolved);
+    auto transfer = project.request_index(path_id, bp);
 
     // The modules it imports are inputs as much as its own text — the PCM
     // embeds what it read of them — and theirs already carry their own
@@ -345,6 +351,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
         }
         co_return built.error();
     }
+    project.merge_build_index(path_id, transfer, *built, before, command);
 
     // Commit on the thread pool: it fsyncs the freshly written PCM.
     auto committed =

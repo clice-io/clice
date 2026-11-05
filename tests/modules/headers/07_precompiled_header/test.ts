@@ -5,9 +5,9 @@ import { answers, test } from "@clice/tools/testing";
 // with the header forced in. The header's declarations then come from the
 // PCH: parsed as text, they would precede each module declaration. A PCM
 // names the PCH it was built over to its importers, so the module units
-// and the units importing them all read the one clice builds for the
-// index, which keeps the function bodies; the header's Counter::next would
-// otherwise have two definitions. app.cpp, of another target, has no PCH
+// and the units importing them all read the one clice builds, which keeps
+// the function bodies; the header's Counter::next would otherwise have two
+// definitions. app.cpp, of another target, has no PCH
 // of its own.
 answers(
     "every unit compiles",

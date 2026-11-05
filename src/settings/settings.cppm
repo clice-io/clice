@@ -163,7 +163,10 @@ struct Rule {
                   "Whether matching translation units join the "
                   "background index. `false` keeps them out; they still "
                   "compile when opened and still host the headers they "
-                  "include. Any matching rule saying `false` wins.")
+                  "include. A module unit, or the unit writing a "
+                  "precompiled header, is indexed all the same by the build "
+                  "of its module or header, for the files reading it. Any "
+                  "matching rule saying `false` wins.")
     bool index = true;
 
     KANNOTATE(&lint,
@@ -276,7 +279,9 @@ struct ProjectSettings {
                   "file includes at its top, as clangd does, but those of "
                   "templates forwarding their arguments (`make_unique`) and "
                   "of `constexpr` and `auto` functions, which clang always "
-                  "parses. The file opens and rebuilds after an edit several "
+                  "parses, and those of a precompiled header the build "
+                  "declares, which the file loads as the build compiled it. "
+                  "The file opens and rebuilds after an edit several "
                   "times faster and holds less memory; the price is the "
                   "errors and warnings inside those bodies, a header "
                   "template's instantiated from the file among them, and "

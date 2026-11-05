@@ -6,5 +6,6 @@ async function items(a: AnswersContext): Promise<void> {
     }
 }
 
-answers("default", items);
+// The names of other namespaces come from the index.
+answers("default", { indexing: true }, items);
 answers("configured", { config: { code_completion: { all_scopes: false } } }, items);

@@ -210,8 +210,8 @@ struct CompileResult {
     bool index_in_file = false;
 };
 
-/// Build a PCH (and its paired pch.idx index) from preamble content, or
-/// from a whole file the build precompiles for other files.
+/// Build the PCH of a preamble and its paired pch.idx index, or that of a
+/// whole file the build precompiles for other files.
 struct BuildPCHParams {
     std::string file;
     std::string directory;
@@ -249,16 +249,36 @@ struct BuildPCHParams {
     /// (fsync + atomic rename) after the worker reports success.
     std::string output_path;
 
-    /// Tmp path for the pch.idx index, allocated alongside output_path.
-    /// The worker serializes the preamble's index and feature state into
-    /// it; the master commits both blobs together.
+    /// A whole file's build is the compile of the unit writing the header,
+    /// under the unit's own command: it sends the unit's TU index, as the
+    /// unit's compile would (CompileUnitParams::index). A preamble's build
+    /// always writes its own.
+    bool index = false;
+
+    /// Where the build's index goes: a preamble's, with its feature state,
+    /// to the pch.idx the master commits with the PCH; a whole file's, too
+    /// large for a message, to a transfer file
+    /// (CompileUnitParams::index_output_path).
     std::string index_output_path;
+
+    /// See CompileUnitParams::known_variants.
+    std::vector<std::uint64_t> known_variants;
+
+    /// See CompileUnitParams::known_instantiations.
+    std::vector<std::uint64_t> known_instantiations;
+
+    /// See CompileUnitParams::standard_library_instantiations.
+    bool standard_library_instantiations = false;
 };
 
-/// Build the PCM of a unit providing a module.
+/// Build the PCM of a unit providing a module: the unit's compile, under
+/// its own command, which sends the unit's TU index as the unit's compile
+/// would (CompileUnitParams::index).
 struct BuildPCMParams {
     std::string file;
     std::string directory;
+    /// See CompilationInput::project_root.
+    std::string project_root;
     std::vector<std::string> arguments;
     /// Files on disk the command hides (Resolution::hidden).
     vfs::HiddenFiles hidden;
@@ -274,6 +294,18 @@ struct BuildPCMParams {
 
     /// Tmp path allocated by the master's store (see BuildPCHParams).
     std::string output_path;
+
+    /// See CompileUnitParams::index_output_path.
+    std::string index_output_path;
+
+    /// See CompileUnitParams::known_variants.
+    std::vector<std::uint64_t> known_variants;
+
+    /// See CompileUnitParams::known_instantiations.
+    std::vector<std::uint64_t> known_instantiations;
+
+    /// See CompileUnitParams::standard_library_instantiations.
+    bool standard_library_instantiations = false;
 };
 
 /// One unit's compile: a single parse serving the products the frozen plan
@@ -416,6 +448,13 @@ struct PrecompiledBuildResult {
     /// What the build read and looked for — on failure too: a build that
     /// failed on the user's errors fails again until one of them changes.
     std::vector<ReportedInput> deps;
+
+    /// The TU index of the unit a PCM or a whole file's PCH build compiled
+    /// (BuildPCMParams, BuildPCHParams::index).
+    std::vector<std::byte> tu_index_data;
+
+    /// See CompileUnitResult::index_in_file.
+    bool index_in_file = false;
 };
 
 /// A message where it is, located for CLI presentation: 1-based line and

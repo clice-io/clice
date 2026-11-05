@@ -5,6 +5,7 @@ import :index.format;
 import :project.command;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
+import :project.graph.unit;
 import :project.project;
 import :support.anomaly;
 import :support.failure_record;
@@ -42,6 +43,11 @@ struct SavedPCH {
     std::optional<std::string> blob;
 
     std::uint32_t bound;
+
+    /// See PCHEntry::whole_file; absent from the records of a binary
+    /// before it.
+    KANNOTATE(&whole_file, presence = optional)
+    bool whole_file = false;
 
     std::vector<SavedInput> deps;
 
@@ -136,6 +142,29 @@ Inputs Project::read_inputs(const worker::PrecompiledBuildResult& built, const I
     auto inputs = intern_inputs(file_table, built.deps, built.started_at);
     merge_inputs(inputs, {&before});
     return inputs;
+}
+
+void Project::merge_build_index(Fid unit,
+                                IndexTransfer& transfer,
+                                const worker::PrecompiledBuildResult& built,
+                                const Inputs& before,
+                                std::uint64_t command) {
+    // One the build stopped compiling while it ran left the index with its
+    // entries.
+    if(!is_unit(unit)) {
+        return;
+    }
+    auto path = file_table.resolve(unit);
+    auto tu_index = transfer.receive(built.tu_index_data, built.index_in_file);
+    if(!tu_index) {
+        LOG_WARN("The index the build of {} sent is lost: {}", path, tu_index.error());
+        return;
+    }
+    // A build measures no peak: the unit's last compile's stands.
+    auto manifest = index.manifest(unit);
+    if(!merge_index(unit, *tu_index, before, command, manifest ? manifest->peak : 0)) {
+        LOG_WARN("The index the build of {} sent did not merge", path);
+    }
 }
 
 template <typename Params>
@@ -237,6 +266,7 @@ std::string Project::serialize_precompiled_records() {
         entry.key = e.getKey().str();
         entry.blob = st.blob;
         entry.bound = st.bound;
+        entry.whole_file = st.whole_file;
         dump_deps(st.inputs, entry.deps);
         if(!st.base.empty()) {
             entry.base = st.base;
@@ -321,23 +351,27 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
         auto pch_path = store->lookup("pch", *entry.blob);
         if(!pch_path)
             continue;
-        // A PCH without its pch.idx index is an incomplete pair
+        // A preamble's PCH without its pch.idx index is an incomplete pair
         // (crash between the two commits): drop it so the next compile
         // rebuilds both.
-        auto index_path = store->lookup_aux("pch", *entry.blob);
-        if(!index_path) {
-            store->invalidate("pch", *entry.blob);
-            continue;
+        std::optional<std::string> index_path;
+        if(!entry.whole_file) {
+            index_path = store->lookup_aux("pch", *entry.blob);
+            if(!index_path) {
+                store->invalidate("pch", *entry.blob);
+                continue;
+            }
         }
 
         auto& st = pchs[entry.key];
         st.blob = std::move(*entry.blob);
         st.path = *pch_path;
         st.bound = entry.bound;
+        st.whole_file = entry.whole_file;
         st.inputs = load_deps(entry.deps);
         st.base = entry.base.value_or("");
         st.base_blob = entry.base_blob.value_or("");
-        st.index_path = *index_path;
+        st.index_path = index_path.value_or("");
     }
 
     for(auto& entry: data.pcm) {

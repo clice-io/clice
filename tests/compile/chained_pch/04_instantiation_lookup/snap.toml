@@ -350,6 +350,7 @@ definition = ["include/base.h │ int ⟦apply⟧(T value) {"]
 declaration = ["include/base.h │ int ⟦apply⟧(T value) {"]
 references = [
     "include/base.h │ int ⟦apply⟧(T value) {",
+    "include/base.h │ return ⟦apply⟧(Early{});",
     "int total = made + wrapped->size() + ⟦apply⟧(Local{});",
     "return total + ⟦apply⟧(Gadget{}) + apply(Later{}) + apply(Early{}) + base_use() + top_use();",
     "return total + apply(Gadget{}) + ⟦apply⟧(Later{}) + apply(Early{}) + base_use() + top_use();",
@@ -371,10 +372,13 @@ T = Local
 range = "int total = made + wrapped->size() + ⟦apply⟧(Local{});"
 
 [locations.early]
-wrong = "should list helper(value) in base.h, which apply<Early> reads, as it does once the file is indexed"
 definition = ["include/base.h │ int ⟦helper⟧(Early);"]
 declaration = ["include/base.h │ int ⟦helper⟧(Early);"]
-references = ["include/base.h │ int ⟦helper⟧(Early);", "return ⟦helper⟧(early) + helper(gadget) + helper(later);"]
+references = [
+    "include/base.h │ return ⟦helper⟧(value);",
+    "include/base.h │ int ⟦helper⟧(Early);",
+    "return ⟦helper⟧(early) + helper(gadget) + helper(later);",
+]
 
 [locations.early.hover]
 markdown = '''
@@ -387,10 +391,13 @@ int helper(Early)
 range = "return ⟦helper⟧(early) + helper(gadget) + helper(later);"
 
 [locations.gadget]
-wrong = "should list where apply<Gadget> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
 definition = ["include/extra.h │ int ⟦helper⟧(Gadget);"]
 declaration = ["include/extra.h │ int ⟦helper⟧(Gadget);"]
-references = ["include/extra.h │ int ⟦helper⟧(Gadget);", "return helper(early) + ⟦helper⟧(gadget) + helper(later);"]
+references = [
+    "include/base.h │ return ⟦helper⟧(value);",
+    "include/extra.h │ int ⟦helper⟧(Gadget);",
+    "return helper(early) + ⟦helper⟧(gadget) + helper(later);",
+]
 
 [locations.gadget.hover]
 markdown = '''
@@ -403,10 +410,13 @@ int helper(Gadget)
 range = "return helper(early) + ⟦helper⟧(gadget) + helper(later);"
 
 [locations.later]
-wrong = "should list helper(value) in base.h, which apply<Later> reads, as it does once the file is indexed"
 definition = ["int ⟦helper⟧(Later);"]
 declaration = ["int ⟦helper⟧(Later);"]
-references = ["int ⟦helper⟧(Later);", "return helper(early) + helper(gadget) + ⟦helper⟧(later);"]
+references = [
+    "include/base.h │ return ⟦helper⟧(value);",
+    "int ⟦helper⟧(Later);",
+    "return helper(early) + helper(gadget) + ⟦helper⟧(later);",
+]
 
 [locations.later.hover]
 markdown = '''

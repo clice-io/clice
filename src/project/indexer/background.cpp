@@ -44,11 +44,16 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                    project.index.needs_reindex(path_id) ||
                    project.index.indexed_command(path_id) != project.command_identity(path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
+        // A build compiling the unit indexes it but brings no such
+        // diagnostics: only an open document lacking them compiles it for
+        // them.
+        bool wants_skipped = skipped && (!project.compiled_by_build(path_id) ||
+                                         serving->lacks_skipped_diagnostics(path_id));
         auto result = co_await project.compile_unit(
             path_id,
             {.index = true,
              .errors = errors,
-             .skipped_diagnostics = skipped,
+             .skipped_diagnostics = wants_skipped,
              .outdated = [this, taken] { return reindexes.outdated(taken); }});
         if(!result) {
             // The graph shut down: nothing ran, so the reindex
@@ -68,7 +73,7 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
             case Status::Completed: {
                 record(path_id, {.errors = std::move(result->errors)});
                 if(auto pending = reindexes.peek(path_id);
-                   skipped && pending && pending->seq == taken.seq) {
+                   wants_skipped && pending && pending->seq == taken.seq) {
                     serving->report_skipped_diagnostics(path_id,
                                                         result->text_hash,
                                                         std::move(result->skipped_diagnostics));

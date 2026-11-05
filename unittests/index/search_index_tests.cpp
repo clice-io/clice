@@ -158,7 +158,9 @@ ZEST_CASE(Loads) {
     ZEXPECT(built.run_count() == 1u);
     ZEXPECT(built.size() == corpus.snapshot.entries.size());
     SearchIndex empty;
-    ZEXPECT(!empty.load(llvm::MemoryBuffer::getMemBufferCopy("junk")));
+    std::vector<std::unique_ptr<llvm::MemoryBuffer>> junk;
+    junk.push_back(llvm::MemoryBuffer::getMemBufferCopy("junk"));
+    ZEXPECT(!empty.replace(0, std::move(junk)));
     ZEXPECT(!empty.loaded());
     ZEXPECT(empty.search(*SymbolQuery::parse("foo"), 10, {}).hits.empty());
     ZEXPECT(built.search(*SymbolQuery::parse("foo"), 100, {}).exhausted);
@@ -175,7 +177,9 @@ ZEST_CASE(DamagedPosting) {
     ranges::fill(blob->token_postings, 0xff);
     auto bytes = index::encode(*blob);
     SearchIndex built;
-    ZASSERT(built.load(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))));
+    std::vector<std::unique_ptr<llvm::MemoryBuffer>> damaged;
+    damaged.push_back(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
+    ZASSERT(built.replace(0, std::move(damaged)));
     ZEXPECT(!built.damaged());
     // The exact matches come from the name order, the fuzzy ones from
     // the posting lists.

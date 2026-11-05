@@ -575,7 +575,6 @@ std::string build_pch(Project& project,
                   .project_root = project_root.str(),
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
         .output_file = output,
-        .skip_bodies = project.settings.project.skip_header_bodies,
     });
     // The writer's own source is no dep of its unit, but the PCH holds it.
     auto& files = project.file_table;
@@ -650,7 +649,10 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
     if(resolution.synthesized) {
         input.add_synthesized(resolution.synthesized->files);
     }
-    if(auto writer = project.pch_writer(path_id, resolution)) {
+    // As the server parses: over the precompiled header the build declares
+    // when its build is the compile of the unit writing it.
+    if(auto writer = project.pch_writer(path_id, resolution);
+       writer && project.declared_pch_request(*writer).writer) {
         if(auto pch = build_pch(project, *writer, file.path, input.project_root); !pch.empty()) {
             input.pch = {std::move(pch), 0};
         }

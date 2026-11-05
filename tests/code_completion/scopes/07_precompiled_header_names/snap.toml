@@ -7,6 +7,13 @@ items = [
         insert = "geometry::area_of_circle(${1:double radius})",
         snippet = true,
     },
+    { label = "AREA_UNIT", kind = "Constant", insert = "AREA_UNIT" },
+    { label = "shapes::area_of_square", kind = "Function", insert = "shapes::area_of_square($0)", snippet = true },
+]
+
+[answers.macro_no_preamble.completion]
+items = [
+    { label = "AREA_UNIT", kind = "Constant", insert = "AREA_UNIT" },
 ]
 
 [answers.other_namespaces.completion]
@@ -25,4 +32,10 @@ items = [
         insert = "shapes::area_of_square(${1:double side})",
         snippet = true,
     },
+    { label = "AREA_UNIT", kind = "Constant", insert = "AREA_UNIT" },
+]
+
+[answers.macro_over_preamble.completion]
+items = [
+    { label = "AREA_UNIT", kind = "Constant", insert = "AREA_UNIT" },
 ]

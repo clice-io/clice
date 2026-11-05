@@ -82,6 +82,44 @@ ZEST_CASE(StaleFormatDropsPch) {
     ZASSERT(f.project.pchs.empty());
 }
 
+ZEST_CASE(WholeFileNeedsNoIndex) {
+    // A precompiled header the build declares pairs with no pch.idx index:
+    // its entry loads from the store without one, where a preamble's
+    // missing its index is an incomplete pair and goes.
+    TempDir tmp;
+    auto setup = [&](IndexerFixture& f) {
+        open_store(tmp, f.project);
+        f.project.store->register_namespace(
+            {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx"});
+    };
+
+    {
+        IndexerFixture f;
+        setup(f);
+        for(auto key: {"whole", "preamble"}) {
+            auto pending = f.project.store->begin_store("pch", key);
+            ZASSERT(!fs::write_file(pending.tmp_path, "pch-bytes"));
+            ZASSERT(f.project.store->commit(std::move(pending)));
+            auto& st = f.project.pchs[key];
+            st.blob = key;
+            st.path = std::string(key) + ".pch";
+        }
+        f.project.pchs["whole"].whole_file = true;
+        f.project.mark_precompiled_dirty();
+        f.save();
+    }
+
+    IndexerFixture f;
+    setup(f);
+    f.load();
+    ZEXPECT(f.project.pchs.size() == std::size_t(1));
+    auto whole = f.project.pchs.find("whole");
+    ZASSERT(whole != f.project.pchs.end());
+    ZEXPECT(whole->second.whole_file);
+    ZEXPECT(!whole->second.path.empty());
+    ZEXPECT(whole->second.index_path.empty());
+}
+
 ZEST_CASE(OlderRecordsLoad) {
     // Records an older binary wrote have no `trials`, but its header modes:
     // the PCH and PCM entries beside them still load.

@@ -20,14 +20,21 @@ std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path);
 
 /// A PCH the cache holds, in Project::pchs under its key (hex of
 /// xxh3_128bits over preamble text + directories + canonical flags), so
-/// files with identical preambles share one PCH; the product is the pair of
-/// the PCH and its pch.idx index, committed and evicted together.
+/// files with identical preambles share one PCH; a preamble's product is
+/// the pair of the PCH and its pch.idx index, committed and evicted
+/// together.
 ///
-/// Everything derived from the PCH build beyond validity metadata — the
-/// preamble's symbol index, document links, inactive regions, the open
-/// conditional stack — lives in the pch.idx index.
+/// Everything derived from a preamble's PCH build beyond validity metadata
+/// — the preamble's symbol index, document links, inactive regions, the
+/// open conditional stack — lives in the pch.idx index. A precompiled
+/// header the build declares pairs with none: what its build indexes is
+/// the writing unit's, in the project index.
 struct PCHEntry : Precompiled<FailureRecord> {
     std::uint32_t bound = 0;
+
+    /// A precompiled header the build declares, built whole
+    /// (Project::declared_pch_request).
+    bool whole_file = false;
 
     /// The key of the precompiled header the build declares that this
     /// preamble's PCH is built over and chains onto; empty for none.
@@ -86,6 +93,17 @@ struct PCHRequest {
     /// (declared_pch_request), built already: the preamble's PCH is built
     /// over it, and what it read is the preamble's input too.
     std::string base;
+
+    /// The unit writing the precompiled header the build declares, when the
+    /// build compiles it under the unit's own command: the build is the
+    /// unit's compile, and its index the unit's, recorded under the identity
+    /// of that command as the request rendered it. None for a preamble's.
+    struct Writer {
+        Fid unit;
+        std::uint64_t command = 0;
+    };
+
+    std::optional<Writer> writer;
 };
 
 /// The PCH of a document's preamble (Project::preamble_pch): the request

@@ -159,8 +159,11 @@ void Project::reconcile_index(index::IndexReport& report) {
     for(auto unit: units) {
         auto path = file_table.resolve(unit);
         // An index built before the rule would otherwise serve on: the
-        // background index never rebuilds an excluded unit.
-        if(!rules.indexable(path)) {
+        // background index never rebuilds an excluded unit. A build
+        // compiling the unit indexes it all the same, for what its importers
+        // or the units loading its header read, as a header's declarations
+        // are through the units including it: that index stays.
+        if(!rules.indexable(path) && !compiled_by_build(unit)) {
             LOG_INFO("A rule keeps {} out of the index; dropping its entries", path);
             index.drop(unit, report);
             continue;

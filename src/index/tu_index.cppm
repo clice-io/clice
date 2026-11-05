@@ -1,7 +1,6 @@
 module clice:index.tu_index;
 
 import :index.instantiation_shard;
-import :index.search_index;
 import :index.shard;
 import :index.symbol;
 import :support.prelude;
@@ -151,6 +150,14 @@ public:
     /// declaring the file-local symbol.
     llvm::SmallVector<std::uint32_t, 4> sections_naming(SymbolHash hash) const;
 
+    /// The paths `hash`'s entries may lie in, `instantiated` for its
+    /// instantiation sections: its reference files', or instantiation
+    /// files', for a symbol of the table — among them the files a
+    /// precompiled header or a module declares a local symbol in, which
+    /// hold no section of the TU's — else the file whose section declares
+    /// the file-local one.
+    llvm::SmallVector<std::uint32_t, 4> paths_naming(SymbolHash hash, bool instantiated) const;
+
     /// The instantiation sections that may name `hash`, ascending: its
     /// instantiation files' for an external symbol of the table, its
     /// reference files' for another, else the file-local symbol's own.
@@ -185,10 +192,6 @@ public:
     /// TU index. Borrows the TU index.
     llvm::StringRef preamble_diagnostics() const;
 
-    /// The preamble's completable names (TUIndexBlob::names), searchable;
-    /// empty for an ordinary TU index.
-    const SearchIndex& names() const;
-
 private:
     /// The section holding `path_id`'s entries, or nullopt when the file had
     /// none (no entries means no contribution). Sections ascend by path id.
@@ -197,10 +200,6 @@ private:
     /// The path id of the section whose own symbols hold `hash`, for a
     /// symbol the table leaves out.
     std::optional<std::uint32_t> local_path(SymbolHash hash) const;
-
-    /// The paths `hash`'s entries may lie in, `instantiated` for its
-    /// instantiation sections.
-    llvm::SmallVector<std::uint32_t, 4> paths_naming(SymbolHash hash, bool instantiated) const;
 
 private:
     /// The verified TU index bytes (owned iff `owned` is set); accessors
@@ -219,8 +218,6 @@ private:
     /// by hash, the first section first; built on the first lookup past
     /// the table.
     mutable std::optional<std::vector<std::pair<SymbolHash, std::uint32_t>>> local_paths;
-
-    mutable std::optional<SearchIndex> name_index;
 };
 
 }  // namespace clice::index

@@ -309,10 +309,9 @@ document_links = [
 diagnostics = []
 
 [locations.local]
-wrong = "should list shape.radius in base.h, which twice<Local> reads, as it does once the file is indexed"
 definition = ["double ⟦radius⟧;"]
 declaration = ["double ⟦radius⟧;"]
-references = ["double ⟦radius⟧;"]
+references = ["include/base.h │ return 2 * shape.⟦radius⟧;", "double ⟦radius⟧;"]
 
 [locations.local.hover]
 markdown = '''
@@ -328,10 +327,9 @@ double radius
 range = "double ⟦radius⟧;"
 
 [locations.scoped]
-wrong = "should list shape.radius in base.h, which twice<Scoped> reads, as it does once the file is indexed"
 definition = ["double ⟦radius⟧ = 0;"]
 declaration = ["double ⟦radius⟧ = 0;"]
-references = ["double ⟦radius⟧ = 0;"]
+references = ["include/base.h │ return 2 * shape.⟦radius⟧;", "double ⟦radius⟧ = 0;"]
 
 [locations.scoped.hover]
 markdown = '''
@@ -392,6 +390,7 @@ definition = ["include/base.h │ const double ⟦scale⟧ = 2.0;"]
 declaration = ["include/base.h │ const double ⟦scale⟧ = 2.0;"]
 references = [
     "include/base.h │ const double ⟦scale⟧ = 2.0;",
+    "include/base.h │ return value * ⟦scale⟧;",
     "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();",
 ]
 

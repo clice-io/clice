@@ -290,7 +290,7 @@ ZEST_CASE(OverloadsPastLimit) {
     )");
     index_workspace();
 
-    auto found = index::completables(query, "", {.qualifier = {"lib"}}, {}, 1);
+    auto found = index::completables(query, "", {.qualifier = {"lib"}}, 1);
     std::vector<std::string> names;
     for(auto& name: found.names) {
         names.push_back(name.symbol.name);
@@ -311,7 +311,7 @@ ZEST_CASE(OverloadsListedOnce) {
     )");
     index_workspace();
 
-    auto found = index::completables(query, "t", {.qualifier = {"lib"}}, {}, 10);
+    auto found = index::completables(query, "t", {.qualifier = {"lib"}}, 10);
     std::vector<std::string> names;
     for(auto& name: found.names) {
         names.push_back(name.symbol.name);

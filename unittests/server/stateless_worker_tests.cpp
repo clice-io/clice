@@ -1,8 +1,10 @@
 module clice;
 
 import :feature.hover;
+import :index.tu_index;
 import :semantic.display;
 import :semantic.symbol;
+import :support.bytes;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils;
 import :worker.protocol;
@@ -264,6 +266,13 @@ ZEST_CASE(BuildPCMRequest) {
                 }
             }
             ZEXPECT(source_dep);
+            // The build is the unit's compile: it sends the unit's index.
+            auto index = index::TUIndex::from_bytes(as_chars(build.tu_index_data));
+            ZEXPECT(index.loaded());
+            if(index.loaded()) {
+                ZEXPECT(index.path(index.focus_file()).ends_with("test_module.cppm"));
+                ZEXPECT(index.section_count() != 0u);
+            }
         }
         test_done = true;
         w.peer->close_output();

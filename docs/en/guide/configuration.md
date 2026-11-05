@@ -140,7 +140,7 @@ Index what the standard library's own template instantiations and macros resolve
 | -------------------- | ------ | ------- |
 | `skip_header_bodies` | `bool` | `true`  |
 
-Skip the bodies of the functions in the headers an open file includes at its top, as clangd does, but those of templates forwarding their arguments (`make_unique`) and of `constexpr` and `auto` functions, which clang always parses. The file opens and rebuilds after an edit several times faster and holds less memory; the price is the errors and warnings inside those bodies, a header template's instantiated from the file among them, and whether a declaration is unused, which show only when the background index has compiled the file as it is saved. The background index and every command but `clice inspect` still compile the bodies.
+Skip the bodies of the functions in the headers an open file includes at its top, as clangd does, but those of templates forwarding their arguments (`make_unique`) and of `constexpr` and `auto` functions, which clang always parses, and those of a precompiled header the build declares, which the file loads as the build compiled it. The file opens and rebuilds after an edit several times faster and holds less memory; the price is the errors and warnings inside those bodies, a header template's instantiated from the file among them, and whether a declaration is unused, which show only when the background index has compiled the file as it is saved. The background index and every command but `clice inspect` still compile the bodies.
 
 </div>
 
@@ -654,7 +654,7 @@ After `.` on a pointer, list the members `->` reaches and turn the `.` into `->`
 | ------------ | ------ | ------- |
 | `all_scopes` | `bool` | `true`  |
 
-Where an unqualified name is being typed, also offer the project's names of other namespaces it matches, inserting the qualifier they need; one in several namespaces is offered once per namespace. Names the file reaches already are offered as they are; for the others see `insert_includes` and `insert_imports`. Needs the index for names the file does not reach.
+Where an unqualified name is being typed, also offer the project's names of other namespaces it matches, inserting the qualifier they need; one in several namespaces is offered once per namespace. Names the file reaches already are offered as they are; for the others see `insert_includes` and `insert_imports`. The names of other namespaces come from the index.
 
 </div>
 
@@ -818,7 +818,7 @@ Whether clice runs the compiler of matching files' commands to ask how it compil
 | ------- | ------ | ------- |
 | `index` | `bool` | `true`  |
 
-Whether matching translation units join the background index. `false` keeps them out; they still compile when opened and still host the headers they include. Any matching rule saying `false` wins.
+Whether matching translation units join the background index. `false` keeps them out; they still compile when opened and still host the headers they include. A module unit, or the unit writing a precompiled header, is indexed all the same by the build of its module or header, for the files reading it. Any matching rule saying `false` wins.
 
 </div>
 

@@ -326,8 +326,22 @@ void IndexQuery::for_each_disk_file(SymbolHash hash,
                                     llvm::function_ref<void(Fid)> visit) const {
     if(index.find_symbol(hash)) {
         index.for_each_reference_file(hash, visit);
-    } else if(anchor.valid()) {
-        index.for_each_file_of_local(hash, anchor, visit);
+        return;
+    }
+    if(!anchor.valid()) {
+        return;
+    }
+    index.for_each_file_of_local(hash, anchor, visit);
+    // An open buffer's compile names the files declaring the locals it reads
+    // through a precompiled header or a module, whose builds indexed them:
+    // no unit of the buffer's lists them in the shared locals yet.
+    if(live && live->is_open(anchor)) {
+        live->for_each_session_index([&](const TUIndex& state) {
+            for(auto path_id: state.paths_naming(hash, false)) {
+                visit(files.intern(Spelling::absolute(state.path(path_id))));
+            }
+            return true;
+        });
     }
 }
 
