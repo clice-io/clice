@@ -145,6 +145,7 @@
 #include "clang/Sema/Designator.h"
 #include "clang/Sema/HeuristicResolver.h"
 #include "clang/Sema/Lookup.h"
+#include "clang/Sema/MultiplexExternalSemaSource.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaCodeCompletion.h"
 #include "clang/Tooling/CompilationDatabase.h"

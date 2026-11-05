@@ -1,0 +1,4 @@
+[answers.qualified.completion]
+items = [
+    { label = "length", kind = "Variable", detail = "const struct length" },
+]

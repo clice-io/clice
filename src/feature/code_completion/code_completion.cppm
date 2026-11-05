@@ -4,7 +4,6 @@ import :command.search_config;
 import :compile.compilation;
 import :feature.documentation;
 import :index.query;
-import :index.search;
 import :support.json;
 import :support.prelude;
 import :syntax.completion;
@@ -156,56 +155,27 @@ struct Completion {
     std::optional<IncludePlace> include;
 };
 
-/// What a compile of the code completes with (code_complete): the names
-/// the index offers, and whether it holds more of them.
+/// What a compile of the code completes with (code_complete): the names of
+/// other scopes the index offers for the name typed (ScopeCandidate), and
+/// whether it holds more of them.
 struct CompileCompletion {
-    std::vector<ScopeCandidate> candidates;
-    bool more_candidates = false;
-
-    /// After a qualifier, whether the index holds more names of other
-    /// scopes, which the qualifier's namespace may bring in.
-    bool more_elsewhere = false;
-
-    /// The compile reads the names of namespaces the files it loads declare
-    /// — a precompiled preamble, the modules it imports — and their macros
-    /// by name alone (load_names: those the typed name matches, and the
-    /// candidates'; with nothing typed, a scope the index holds few of
-    /// whole), not all (clang's LoadExternal off); after a member access,
-    /// none. Not in a directive, where reading their macros whole costs
-    /// less than matching every identifier.
-    bool by_name = false;
-
-    /// The name typed so far, empty before its first character, whose
-    /// candidates offer_names takes; none after a member access and where
-    /// no name is completed.
+    /// The name typed before the point, whose candidates offer_names takes;
+    /// none before its first character, in a number and in a directive.
     std::optional<std::string> prefix;
 
-    /// Where the name being typed is looked up, with by_name.
-    index::CompletionScope scope;
+    std::vector<ScopeCandidate> candidates;
+    bool more_candidates = false;
 };
 
+/// The completion at the point of `params`. Of the files the compile loads,
+/// Sema reads the names the typed one matches where it lists names
+/// (TypedNames), and all of them where nothing is typed yet.
 auto code_complete(CompilationParams params,
                    const CodeCompletionOptions& options = {},
                    const DocumentationOptions& documentation = {},
                    const CompletionClient& client = {},
                    PositionEncoding encoding = PositionEncoding::UTF16,
                    const CompileCompletion& names = {}) -> Completion;
-
-/// The identifier being typed at `offset` of `text`, from its start to
-/// `offset`, and the scope a qualifier before it names.
-struct TypedName {
-    llvm::StringRef prefix;
-    index::CompletionScope scope;
-
-    /// After `.` or `->`: a member, which Sema reads from its class whole.
-    /// Not after an arrow that may begin a trailing return type.
-    bool member = false;
-};
-
-/// None in a number, and after a qualifier spelled other than by names
-/// (`T<int>::`, `decltype(x)::`).
-auto typed_name(llvm::StringRef text, std::uint32_t offset, const clang::LangOptions& dialect)
-    -> std::optional<TypedName>;
 
 /// The reply listing `items` under `code_completion.limit`: the best ranked
 /// stay, ties by label, and a list cut short is marked incomplete.
@@ -215,7 +185,7 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
 /// The most names one completion offers from the index (ScopeCandidate).
 constexpr inline std::size_t scope_candidate_limit = 100;
 
-/// The project's names the index offers where `compile` completes
+/// The project's names the index offers for the name `compile` types
 /// (ScopeCandidate), with whether it holds more: those the file reaches,
 /// and those it reaches once it includes or imports what declares them.
 void offer_names(const index::IndexQuery& query,

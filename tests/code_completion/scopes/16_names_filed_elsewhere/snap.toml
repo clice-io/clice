@@ -1,0 +1,13 @@
+[answers.qualified.completion]
+items = [
+    { label = "pick_c(int x)", kind = "Function", detail = "int" },
+    { label = "pick_own()", kind = "Function", detail = "int" },
+    { label = "pick_source()", kind = "Function", detail = "int" },
+]
+
+[answers.unqualified.completion]
+items = [
+    { label = "pick_c(int x)", kind = "Function", detail = "int" },
+    { label = "pick_own()", kind = "Function", detail = "int" },
+    { label = "pick_source()", kind = "Function", detail = "int" },
+]

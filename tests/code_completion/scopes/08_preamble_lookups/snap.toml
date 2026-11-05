@@ -1510,7 +1510,6 @@ items = [
     { label = "helper_value(int x)", kind = "Function", detail = "int", insert = "helper_value()" },
     { label = "run()", kind = "Function", detail = "int", insert = "run()" },
 ]
-incomplete = true
 
 ["a namespace bringing in names"."brings in none".completion]
 items = [

@@ -1761,6 +1761,7 @@ using ::clang::MultipleIncludeOpt;
 using ::clang::MultiplexASTDeserializationListener;
 using ::clang::MultiplexASTMutationListener;
 using ::clang::MultiplexConsumer;
+using ::clang::MultiplexExternalSemaSource;
 using ::clang::MustTailAttr;
 using ::clang::MutableArrayRef;
 using ::clang::NSConsumedAttr;

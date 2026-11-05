@@ -50,8 +50,8 @@ test("an include added before the compile", async (t) => {
     await park.release();
 });
 
-// A namespace's using-declaration may bring in any name: past the names the
-// index offers, its list is incomplete, unlike one bringing in none.
+// A namespace's using-declaration brings in a name Sema lists there with the
+// namespace's own: its list is whole, as one bringing in none is.
 test("a namespace bringing in names", async (t) => {
     const s = await t.start();
     await s.indexed();

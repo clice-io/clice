@@ -26,54 +26,6 @@ namespace clice::feature {
 // What the server completes without a compile, and how it finishes the
 // list a compile returns.
 
-auto typed_name(llvm::StringRef text, std::uint32_t offset, const clang::LangOptions& dialect)
-    -> std::optional<TypedName> {
-    auto prefix = Prefix::from(text, offset);
-    if(!prefix.spelling.empty() && clang::isDigit(prefix.spelling.front())) {
-        return std::nullopt;
-    }
-    TypedName typed{.prefix = prefix.spelling};
-    // An arrow after a name or a subscript accesses a member; after `)` or
-    // `}` it may begin a trailing return type or a return type requirement.
-    auto accesses_member = [&](llvm::StringRef before) {
-        if(before.ends_with(".")) {
-            return true;
-        }
-        if(!before.consume_back("->")) {
-            return false;
-        }
-        before = before.rtrim();
-        auto name = Prefix::from(before, static_cast<std::uint32_t>(before.size())).spelling;
-        return before.ends_with("]") ||
-               (!name.empty() && (name == "this" ||
-                                  keyword_kind(name, keywords(dialect)) == clang::tok::identifier));
-    };
-    auto before = text.take_front(prefix.typed.begin).rtrim();
-    if(accesses_member(before)) {
-        typed.member = true;
-        return typed;
-    }
-    while(before.consume_back("::")) {
-        before = before.rtrim();
-        auto name = Prefix::from(before, static_cast<std::uint32_t>(before.size())).spelling;
-        if(name.empty() || keyword_kind(name, keywords(dialect)) != clang::tok::identifier) {
-            if(before.ends_with(">") || before.ends_with(")")) {
-                return std::nullopt;
-            }
-            typed.scope.absolute = true;
-            break;
-        }
-        if(clang::isDigit(name.front())) {
-            return std::nullopt;
-        }
-        typed.scope.qualifier.insert(typed.scope.qualifier.begin(), name.str());
-        before = before.drop_back(name.size()).rtrim();
-    }
-    // A member named through its class (`x.Base::`).
-    typed.member = accesses_member(before);
-    return typed;
-}
-
 auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
     -> protocol::CompletionList {
     protocol::CompletionList list{.is_incomplete = false, .items = std::move(items)};
@@ -91,7 +43,7 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
 void offer_names(const index::IndexQuery& query,
                  const DependencyGraph& graph,
                  CompileCompletion& compile) {
-    if(!compile.prefix) {
+    if(!compile.prefix || compile.prefix->empty()) {
         return;
     }
     auto kind_of = [](SymbolKind kind) {
@@ -110,7 +62,7 @@ void offer_names(const index::IndexQuery& query,
             default: return Kind::Text;
         }
     };
-    auto found = index::completables(query, *compile.prefix, compile.scope, scope_candidate_limit);
+    auto found = index::completables(query, *compile.prefix, scope_candidate_limit);
     for(auto& [symbol, chain, declared]: found.names) {
         bool macro = symbol.kind == SymbolKind::Macro;
         ScopeCandidate candidate{
@@ -145,7 +97,6 @@ void offer_names(const index::IndexQuery& query,
         compile.candidates.push_back(std::move(candidate));
     }
     compile.more_candidates = !found.exhausted;
-    compile.more_elsewhere = !found.others_exhausted;
 }
 
 /// The header, quotes or brackets included, an `#include` for `candidate`
@@ -497,13 +448,10 @@ auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
     }
 
     CompileCompletion compile;
-    if(auto typed = offset ? typed_name(text, *offset, inputs.dialect) : std::nullopt;
-       typed && completing.directive.empty()) {
-        compile.by_name = true;
-        if(!typed->member) {
-            compile.prefix = typed->prefix.str();
-        }
-        compile.scope = std::move(typed->scope);
+    // A number names nothing.
+    if(auto typed = offset ? Prefix::from(text, *offset).spelling : llvm::StringRef();
+       completing.directive.empty() && !typed.empty() && !clang::isDigit(typed.front())) {
+        compile.prefix = typed.str();
     }
     return compile;
 }

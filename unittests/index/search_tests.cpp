@@ -280,44 +280,23 @@ ZEST_CASE(OverloadsPastLimit) {
         #include "lib.h"
         inline void one() { lib::tick(1); lib::tock(); }
     )");
-    add_file("two.h", R"(
+    add_file("again.h", R"(
         #include "lib.h"
-        inline void two() { lib::tick(2); }
+        inline void again() { lib::tick(2); }
     )");
     add_focus("main.cpp", R"(
         #include "one.h"
-        #include "two.h"
+        #include "again.h"
     )");
     index_workspace();
 
-    auto found = index::completables(query, "", {.qualifier = {"lib"}}, 1);
+    auto found = index::completables(query, "t", 1);
     std::vector<std::string> names;
     for(auto& name: found.names) {
         names.push_back(name.symbol.name);
     }
     ZEXPECT(names == (std::vector<std::string>{"tick", "tick"}));
     ZEXPECT(!found.exhausted);
-}
-
-ZEST_CASE(OverloadsListedOnce) {
-    // The names of any scope, which a using-directive in `lib` may bring
-    // in, find `lib`'s own again.
-    add_focus("main.cpp", R"(
-        namespace lib {
-        void tick(int);
-        void tock();
-        void tick(double);
-        }
-    )");
-    index_workspace();
-
-    auto found = index::completables(query, "t", {.qualifier = {"lib"}}, 10);
-    std::vector<std::string> names;
-    for(auto& name: found.names) {
-        names.push_back(name.symbol.name);
-    }
-    ranges::sort(names);
-    ZEXPECT(names == (std::vector<std::string>{"tick", "tick", "tock"}));
 }
 
 /// Open `buffers` documents, each declaring its own functions in one
