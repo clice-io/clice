@@ -315,7 +315,7 @@ public:
         resolver(unit.context(), {.only_instantiation = false}), readable(unit.context(), {}),
         known_instantiations(options.known_instantiations),
         shared_sections(options.shared_sections),
-        shared_instantiations(options.shared_instantiations),
+        shared_resolutions(options.shared_resolutions),
         standard_library(options.standard_library_instantiations) {
         for(auto& known: options.known_identities) {
             known_variants_at.try_emplace(known.identity, known.variant);
@@ -2170,7 +2170,7 @@ public:
         // instantiations resolved there.
         llvm::StringMap<std::uint32_t> path_ids_of;
         llvm::SmallVector<std::uint32_t> shared_paths;
-        llvm::SmallVector<std::pair<std::uint32_t, std::uint32_t>> shared_keys;
+        llvm::SmallVector<std::pair<std::uint32_t, std::uint32_t>> shared_resolved;
         if(auto* shared = unit.shared_header(); shared && !unit.grafted_includes().empty()) {
             for(auto [path_id, path]: views::enumerate(tree.paths)) {
                 path_ids_of.try_emplace(path, static_cast<std::uint32_t>(path_id));
@@ -2186,8 +2186,9 @@ public:
                     known_sections.try_emplace(path, section);
                     shared_paths.push_back(path_id);
                 }
-                if(!shared_instantiations[include.file].empty()) {
-                    shared_keys.emplace_back(path_id, include.file);
+                auto& resolutions = shared_resolutions[include.file];
+                if(!resolutions.skipped.empty() || !resolutions.made.empty()) {
+                    shared_resolved.emplace_back(path_id, include.file);
                 }
             }
         }
@@ -2255,8 +2256,10 @@ public:
             }
             into.skipped.append_range(file.skipped);
         }
-        for(auto [path_id, file]: shared_keys) {
-            resolved_by_path[path_id].skipped.append_range(shared_instantiations[file]);
+        for(auto [path_id, file]: shared_resolved) {
+            auto& into = resolved_by_path[path_id];
+            into.skipped.append_range(shared_resolutions[file].skipped);
+            into.used.append_range(shared_resolutions[file].made);
         }
         // An external symbol lists the files whose instantiations name it on
         // their own; any other reaches them as its reference files.
@@ -2424,6 +2427,9 @@ public:
             ranges::sort(file.skipped);
             file.skipped.erase(ranges::unique(file.skipped).begin(), file.skipped.end());
             section.skipped = std::move(file.skipped);
+            ranges::sort(file.used);
+            file.used.erase(ranges::unique(file.used).begin(), file.used.end());
+            section.used = std::move(file.used);
             instantiation_sections.push_back(std::move(section));
         }
         auto encode_ms = encode_timer.ms_f();
@@ -2507,6 +2513,7 @@ private:
     struct Resolved {
         FileInstantiations walked;
         std::vector<SymbolHash> skipped;
+        std::vector<ResolutionHash> used;
     };
 
     /// The names the written code spells through a macro: the ones a
@@ -2564,8 +2571,8 @@ private:
     /// See TUIndexOptions::shared_sections.
     llvm::ArrayRef<KnownIdentity> shared_sections;
 
-    /// See TUIndexOptions::shared_instantiations.
-    llvm::ArrayRef<std::vector<std::uint64_t>> shared_instantiations;
+    /// See TUIndexOptions::shared_resolutions.
+    llvm::ArrayRef<HeldResolutions> shared_resolutions;
 
     /// Whether the standard library's own instantiations and expansions are
     /// walked (TUIndexOptions::standard_library_instantiations).

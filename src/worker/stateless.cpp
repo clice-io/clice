@@ -572,7 +572,7 @@ static worker::CompileUnitResult
         auto options = index_options(params);
         if(unit->shared_header()) {
             options.shared_sections = shared->sections;
-            options.shared_instantiations = shared->instantiations;
+            options.shared_resolutions = shared->resolutions;
         }
         auto blob = index::build_tu_index(*unit, options);
         index_bytes = blob.size();

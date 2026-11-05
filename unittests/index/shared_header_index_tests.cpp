@@ -73,7 +73,7 @@ std::string index_over(TempDir& tmp,
     index::TUIndexOptions options;
     if(shared) {
         options.shared_sections = shared->sections;
-        options.shared_instantiations = shared->instantiations;
+        options.shared_resolutions = shared->resolutions;
     }
     return std::string(as_chars(index::build_tu_index(*unit, options)));
 }
@@ -121,18 +121,19 @@ std::vector<std::string> sections(const index::TUIndex& view) {
     return lines;
 }
 
-/// Each file's instantiation keys, walked or skipped, as `file key`.
-std::vector<std::string> instantiation_keys(const index::TUIndex& view) {
+/// The resolutions each file's instantiation section uses, made or used as
+/// stored, as `file resolution`.
+std::vector<std::string> resolutions(const index::TUIndex& view) {
     std::vector<std::string> lines;
     for(std::uint32_t i = 0; i < view.instantiation_count(); i += 1) {
         auto file = path::filename(view.path(view.instantiation_path(i)));
-        std::vector<std::uint64_t> keys(view.skipped_instantiations(i).begin(),
-                                        view.skipped_instantiations(i).end());
+        std::vector<std::uint64_t> used(view.used_resolutions(i).begin(),
+                                        view.used_resolutions(i).end());
         if(auto blob = view.instantiation_blob(i); !blob.empty()) {
-            keys.append_range(index::InstantiationShard::from_bytes(blob).keys());
+            used.append_range(index::InstantiationShard::from_bytes(blob).resolutions());
         }
-        for(auto key: keys) {
-            lines.push_back(std::format("{} {:016x}", file, key));
+        for(auto resolution: used) {
+            lines.push_back(std::format("{} {:016x}", file, resolution));
         }
     }
     ranges::sort(lines);
@@ -196,8 +197,8 @@ int use() { return outer(Outer{}) + other(Inner{}); }
     ZASSERT(grafted.loaded());
     ZEXPECT(includes(grafted) == includes(walked));
     ZEXPECT(sections(grafted) == sections(walked));
-    ZEXPECT(!instantiation_keys(walked).empty());
-    ZEXPECT(instantiation_keys(grafted) == instantiation_keys(walked));
+    ZEXPECT(!resolutions(walked).empty());
+    ZEXPECT(resolutions(grafted) == resolutions(walked));
     // Its headers' variants travel as bare hashes.
     for(std::uint32_t i = 0; i < grafted.section_count(); i += 1) {
         if(grafted.section_path(i) != grafted.focus_file()) {
@@ -274,6 +275,52 @@ int use() { return Box<Mine>{}.count(); }
         over.insert_range(records(own, "box.h"));
         ZEXPECT(over == walked);
     }
+};
+
+ZEST_CASE(PCHResolutionsOutliveIt) {
+    // The shared header's index resolves what box.h's inline code
+    // instantiates; the unit uses it as stored, and keeps it once the
+    // shared header's index is dropped after its pass.
+    TempDir tmp;
+    tmp.touch("shared.hxx", "#pragma once\n#include \"box.h\"\n");
+    tmp.touch("box.h", R"cpp(#pragma once
+template <typename T>
+struct Box {
+    T value;
+    void show() { value.print(); }
+};
+struct Inner {
+    void print() {}
+};
+#define SHOW(box) (box).show()
+inline void inner() { SHOW(Box<Inner>{}); }
+)cpp");
+    tmp.touch("main.cpp", "#include \"box.h\"\nvoid use() { inner(); }\n");
+    auto pch = tmp.path("shared.pch");
+    std::string own;
+    auto shared = build_shared(tmp, pch, &own);
+    ZASSERT(shared);
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    ZASSERT(f.merge(own));
+    ZASSERT(f.merge(index_over(tmp, pch, &*shared)));
+    auto box = f.project.file_table.intern(Spelling::absolute(tmp.path("box.h")));
+    auto records = [&] {
+        std::size_t count = 0;
+        if(auto* held = f.project.index.instantiation_shard(box)) {
+            held->for_each_record([&](const index::InstantiationRecord&) {
+                count += 1;
+                return true;
+            });
+        }
+        return count;
+    };
+    auto before = records();
+    ZEXPECT(before != 0U);
+    f.drop_index(f.project.file_table.intern(Spelling::absolute(tmp.path("shared.hxx"))));
+    f.save();
+    ZEXPECT(records() == before);
 };
 
 };  // ZEST_SUITE(SharedHeaderIndex)

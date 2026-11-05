@@ -24,7 +24,9 @@ struct SharedHeaderFileOf {
 
     std::uint8_t reach = 0;
 
-    Seq<std::uint64_t> instantiations;
+    Seq<std::uint64_t> skipped;
+
+    Seq<std::uint64_t> made;
 };
 
 template <template <typename> typename Seq>
@@ -75,9 +77,9 @@ std::vector<T> copy(const Seq& seq) {
 }  // namespace
 
 SharedHeaderIndex shared_header_index(const SharedHeaderRecord& record, llvm::StringRef tu_index) {
-    SharedHeaderIndex index{.record = record, .sections = {}, .instantiations = {}};
+    SharedHeaderIndex index{.record = record, .sections = {}, .resolutions = {}};
     index.sections.resize(record.files.size());
-    index.instantiations.resize(record.files.size());
+    index.resolutions.resize(record.files.size());
     auto view = TUIndex::from_bytes(tu_index);
     if(!view.loaded()) {
         return index;
@@ -97,13 +99,11 @@ SharedHeaderIndex shared_header_index(const SharedHeaderRecord& record, llvm::St
         if(it == files.end()) {
             continue;
         }
-        auto& keys = index.instantiations[it->second];
-        keys.append_range(view.skipped_instantiations(i));
+        auto& resolutions = index.resolutions[it->second];
+        resolutions.skipped.assign_range(view.skipped_instantiations(i));
         if(auto blob = view.instantiation_blob(i); !blob.empty()) {
-            keys.append_range(InstantiationShard::from_bytes(blob).keys());
+            resolutions.made.assign_range(InstantiationShard::from_bytes(blob).resolutions());
         }
-        ranges::sort(keys);
-        keys.erase(ranges::unique(keys).begin(), keys.end());
     }
     return index;
 }
@@ -112,14 +112,16 @@ std::vector<std::byte> encode_shared_header(const SharedHeaderIndex& index) {
     auto& record = index.record;
     SharedHeaderBlob blob;
     blob.format_version = index_format_version;
-    for(auto [file, section, keys]: views::zip(record.files, index.sections, index.instantiations)) {
+    for(auto [file, section, resolutions]:
+        views::zip(record.files, index.sections, index.resolutions)) {
         blob.files.push_back({.path = file.path,
                               .content_hash = file.content_hash,
                               .variant = section.variant,
                               .identity = section.identity,
                               .own_identity = section.own,
                               .reach = section.reach,
-                              .instantiations = keys});
+                              .skipped = resolutions.skipped,
+                              .made = resolutions.made});
     }
     for(auto& header: record.headers) {
         blob.headers.push_back({.file = header.file,
@@ -153,8 +155,10 @@ std::optional<SharedHeaderIndex> decode_shared_header(llvm::StringRef bytes) {
                                   .own = file.own_identity,
                                   .reach = file.reach,
                                   .variant = file.variant});
-        index.instantiations.push_back(copy<std::uint64_t>(file.instantiations));
-        if(!ranges::is_sorted(index.instantiations.back())) {
+        auto& resolutions = index.resolutions.emplace_back(
+            HeldResolutions{.skipped = copy<std::uint64_t>(file.skipped),
+                            .made = copy<std::uint64_t>(file.made)});
+        if(!ranges::is_sorted(resolutions.skipped) || !ranges::is_sorted(resolutions.made)) {
             return std::nullopt;
         }
     }

@@ -118,6 +118,10 @@ public:
     /// The known keys of section `i`'s file the run skipped, ascending.
     llvm::ArrayRef<std::uint64_t> skipped_instantiations(std::uint32_t i) const;
 
+    /// The stored resolutions of section `i`'s file the run uses as they
+    /// are, ascending.
+    llvm::ArrayRef<std::uint64_t> used_resolutions(std::uint32_t i) const;
+
     /// A reader over section `i`'s blob, wrapped on first use and cached
     /// like section_shard; an empty shard when the blob is empty or fails
     /// verification.

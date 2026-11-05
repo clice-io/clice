@@ -183,6 +183,15 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
                 used.push_back(*found->resolution);
             }
         }
+        for(auto resolution: view.used_resolutions(section)) {
+            if(!stored || !ranges::binary_search(stored->resolutions(), resolution)) {
+                LOG_INFO("Rerun {}: {} stores no resolution it used",
+                         tu_path,
+                         files.resolve(global_id));
+                return std::unexpected(MergeError::Outdated);
+            }
+            used.push_back(resolution);
+        }
 
         auto bytes = view.instantiation_blob(section);
         std::optional<InstantiationShard> fresh;

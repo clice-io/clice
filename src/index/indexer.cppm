@@ -8,6 +8,7 @@ module;
 module clice:index.indexer;
 
 import :compile.compilation;
+import :index.shared_header;
 import :index.symbol;
 import :support.prelude;
 
@@ -47,10 +48,9 @@ struct TUIndexOptions {
     /// travelling as its bare hash.
     llvm::ArrayRef<KnownIdentity> shared_sections;
 
-    /// Per file of the record, the keys of the instantiations the shared
-    /// header's index holds there (SharedHeaderIndex): a file the unit
-    /// includes lists them as skipped.
-    llvm::ArrayRef<std::vector<std::uint64_t>> shared_instantiations;
+    /// Per file of the record, what the shared header's index resolved
+    /// there (SharedHeaderIndex): a file the unit includes uses it.
+    llvm::ArrayRef<HeldResolutions> shared_resolutions;
 
     /// Walk the standard library's own instantiations and macro expansions
     /// too (decls::in_standard_library): what `std::sort` resolves in the

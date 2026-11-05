@@ -134,7 +134,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
         auto& section = instantiation_sections[i];
         auto path_id = section.path_id;
         if(path_id >= count || (i != 0 && path_id <= previous_path_id) ||
-           !strictly_ascending(section.skipped)) {
+           !strictly_ascending(section.skipped) || !strictly_ascending(section.used)) {
             LOG_DEBUG("Rejecting TU index: instantiation sections are not strictly ascending");
             return {};
         }
@@ -281,6 +281,10 @@ llvm::StringRef TUIndex::instantiation_blob(std::uint32_t i) const {
 
 llvm::ArrayRef<std::uint64_t> TUIndex::skipped_instantiations(std::uint32_t i) const {
     return view_of(data).instantiations[i].skipped;
+}
+
+llvm::ArrayRef<std::uint64_t> TUIndex::used_resolutions(std::uint32_t i) const {
+    return view_of(data).instantiations[i].used;
 }
 
 const InstantiationShard& TUIndex::instantiation_shard(std::uint32_t i) const {

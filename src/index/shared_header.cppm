@@ -7,6 +7,15 @@ import :support.prelude;
 
 namespace clice::index {
 
+/// What a shared header's index resolved in one file.
+struct HeldResolutions {
+    /// The keys of the known instantiations it skipped, ascending.
+    std::vector<std::uint64_t> skipped;
+
+    /// The resolutions it made, ascending.
+    std::vector<std::uint64_t> made;
+};
+
 /// What the build of a shared header learned (SharedHeaderRecord), with each
 /// file's section in the shared header's own TU index: a unit loading the
 /// PCH sends the variant of each held header it includes by its bare hash,
@@ -18,10 +27,10 @@ struct SharedHeaderIndex {
     /// header's index left without entries.
     std::vector<KnownIdentity> sections;
 
-    /// Per file of the record, the keys of the instantiations the shared
-    /// header's index walked or skipped there, ascending: a unit loading
-    /// the PCH uses what they resolve as a skipped key's.
-    std::vector<std::vector<std::uint64_t>> instantiations;
+    /// Per file of the record, what the shared header's index resolved
+    /// there, by its instantiations and its macro expansions: a unit
+    /// loading the PCH uses it as it is.
+    std::vector<HeldResolutions> resolutions;
 };
 
 /// `record`, of a shared header's build, with the sections of `tu_index`,

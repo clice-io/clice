@@ -498,8 +498,10 @@ struct FileSectionOf {
 using FileSection = FileSectionOf<codec::blob::Owned>;
 
 /// One file's instantiations in the TU index: the instantiation blob of what
-/// the run resolved there, empty when it resolved nothing, and the known keys
-/// whose definition the file holds that the run skipped, ascending.
+/// the run resolved there, empty when it resolved nothing, the known keys
+/// whose definition the file holds that the run skipped, ascending, and the
+/// stored resolutions the run uses as they are, ascending: what a shared
+/// header's index resolved in a header the run read from its PCH.
 template <template <typename> typename Seq>
 struct InstantiationSectionOf {
     std::uint32_t path_id = 0;
@@ -507,6 +509,8 @@ struct InstantiationSectionOf {
     Seq<std::byte> blob;
 
     Seq<std::uint64_t> skipped;
+
+    Seq<std::uint64_t> used;
 };
 
 using InstantiationSection = InstantiationSectionOf<codec::blob::Owned>;
