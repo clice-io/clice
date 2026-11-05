@@ -202,17 +202,13 @@ struct Pairing {
     /// implementation unit's, or an internal partition's written in a
     /// source; empty for any other file.
     llvm::StringRef implemented_module(Fid unit) {
+        if(graph.internal_partition(unit)) {
+            return side_of(unit) == Side::Implementation ? graph.module_of(unit).split(':').first
+                                                         : llvm::StringRef();
+        }
         auto* declared = declaration_of(unit);
-        if(!declared) {
-            return {};
-        }
-        if(declared->is_implementation_unit()) {
-            return declared->module_name;
-        }
-        if(declared->is_internal_partition() && side_of(unit) == Side::Implementation) {
-            return llvm::StringRef(declared->module_name).split(':').first;
-        }
-        return {};
+        return declared && declared->is_implementation_unit() ? llvm::StringRef(declared->module_name)
+                                                              : llvm::StringRef();
     }
 
     /// A unit implementing a module pairs with the interface of its module,
