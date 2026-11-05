@@ -201,8 +201,7 @@ std::vector<std::byte> encode_record(const FileRecord& file) {
 std::optional<FileRecord> decode_file(llvm::StringRef data) {
     auto* root = view_record<FileBlob>(data);
     if(!root || !strictly_ascending(root->consumed) ||
-       (root->generation == 0) != root->stored.empty() ||
-       !strictly_ascending(root->identities) ||
+       (root->generation == 0) != root->stored.empty() || !strictly_ascending(root->identities) ||
        root->identity_owns.size() != root->identities.size() ||
        root->identity_reaches.size() != root->identities.size() ||
        root->identity_variants.size() != root->identities.size() ||

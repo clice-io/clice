@@ -284,11 +284,11 @@ inline IndexedTU index_file(TempDir& tmp,
         return {};
     }
     IndexedTU result;
-    result.data = std::string(as_chars(index::build_tu_index(*unit,
-                                                             {.known_variants = known,
-                                                              .known_instantiations =
-                                                                  known_instantiations,
-                                                              .known_identities = known_identities})));
+    result.data =
+        std::string(as_chars(index::build_tu_index(*unit,
+                                                   {.known_variants = known,
+                                                    .known_instantiations = known_instantiations,
+                                                    .known_identities = known_identities})));
     auto view = index::TUIndex::from_bytes(result.data);
     if(!view.loaded()) {
         return {};

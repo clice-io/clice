@@ -50,8 +50,7 @@ static std::uint32_t add_include_chain(CompilationUnit& unit,
         // (not the presumed include loc, which names the containing
         // file's includer and sat one level off) bottoms out at no_node
         // for directives written in the focus file.
-        auto parent =
-            add_include_chain(unit, unit.file_id(include_loc), tree, path_table, grafted);
+        auto parent = add_include_chain(unit, unit.file_id(include_loc), tree, path_table, grafted);
         tree.nodes[index].parent = parent;
     }
 

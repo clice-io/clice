@@ -85,19 +85,17 @@ int b() { return twice(unbox(Box<int>{2})) + unbox(Box<char>{'c'}) + (Box<long>{
         ZEXPECT(walked.skipped_instantiations(i) == unwalked.skipped_instantiations(i));
     }
     std::vector<std::pair<index::SymbolHash, std::vector<std::uint32_t>>> walked_symbols;
-    walked.for_each_symbol([&](index::SymbolHash hash,
-                               const index::SymbolView&,
-                               llvm::ArrayRef<std::uint32_t> files) {
-        walked_symbols.emplace_back(hash, files.vec());
-        return true;
-    });
+    walked.for_each_symbol(
+        [&](index::SymbolHash hash, const index::SymbolView&, llvm::ArrayRef<std::uint32_t> files) {
+            walked_symbols.emplace_back(hash, files.vec());
+            return true;
+        });
     std::vector<std::pair<index::SymbolHash, std::vector<std::uint32_t>>> unwalked_symbols;
-    unwalked.for_each_symbol([&](index::SymbolHash hash,
-                                 const index::SymbolView&,
-                                 llvm::ArrayRef<std::uint32_t> files) {
-        unwalked_symbols.emplace_back(hash, files.vec());
-        return true;
-    });
+    unwalked.for_each_symbol(
+        [&](index::SymbolHash hash, const index::SymbolView&, llvm::ArrayRef<std::uint32_t> files) {
+            unwalked_symbols.emplace_back(hash, files.vec());
+            return true;
+        });
     ZEXPECT(walked_symbols == unwalked_symbols);
 };
 
@@ -130,12 +128,11 @@ struct Ints {
     auto unwalked = index::TUIndex::from_bytes(unwalked_data);
     auto names = [](const index::TUIndex& view) {
         std::vector<std::string> names;
-        view.for_each_symbol([&](index::SymbolHash,
-                                 const index::SymbolView& symbol,
-                                 llvm::ArrayRef<std::uint32_t>) {
-            names.push_back(symbol.name.str());
-            return true;
-        });
+        view.for_each_symbol(
+            [&](index::SymbolHash, const index::SymbolView& symbol, llvm::ArrayRef<std::uint32_t>) {
+                names.push_back(symbol.name.str());
+                return true;
+            });
         ranges::sort(names);
         return names;
     };

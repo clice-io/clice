@@ -148,8 +148,8 @@ bool defines(const clang::Decl* decl) {
 /// One hash of two.
 std::uint64_t combine(std::uint64_t first, std::uint64_t second) {
     std::array<std::uint64_t, 2> both{first, second};
-    return llvm::xxh3_64bits(llvm::ArrayRef(reinterpret_cast<const std::uint8_t*>(both.data()),
-                                            sizeof(both)));
+    return llvm::xxh3_64bits(
+        llvm::ArrayRef(reinterpret_cast<const std::uint8_t*>(both.data()), sizeof(both)));
 }
 
 /// The type of a value; of a function, the type it returns.
@@ -314,8 +314,7 @@ public:
         known_variants(options.known_variants),
         resolver(unit.context(), {.only_instantiation = false}), readable(unit.context(), {}),
         known_instantiations(options.known_instantiations),
-        shared_sections(options.shared_sections),
-        shared_resolutions(options.shared_resolutions),
+        shared_sections(options.shared_sections), shared_resolutions(options.shared_resolutions),
         standard_library(options.standard_library_instantiations) {
         for(auto& known: options.known_identities) {
             known_variants_at.try_emplace(known.identity, known.variant);
@@ -2307,7 +2306,8 @@ public:
         for(auto& [hash, decl]: symbol_decls) {
             auto& symbol = symbols[hash];
             for(const auto* redecl: decl->redecls()) {
-                if(redecl->isImplicit() || redecl->getLocation().isInvalid() || !from_text(redecl)) {
+                if(redecl->isImplicit() || redecl->getLocation().isInvalid() ||
+                   !from_text(redecl)) {
                     continue;
                 }
                 auto fid = SM.getFileID(SM.getExpansionLoc(redecl->getLocation()));
@@ -2594,7 +2594,7 @@ private:
     /// reach into (guess_allowed), and the bound on it.
     llvm::DenseMap<clang::FileID, std::uint8_t> reaches;
 
-    static constexpr std::uint8_t max_reach = 8;
+    constexpr static std::uint8_t max_reach = 8;
 
     /// The include closures (closure_of): per path its slot, per slot the
     /// path, its closure and whether that is complete; the entries of each

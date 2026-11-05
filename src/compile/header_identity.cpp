@@ -77,9 +77,7 @@ private:
         pending[fid] = 0;
     }
 
-    void If(clang::SourceLocation location,
-            clang::SourceRange,
-            ConditionValueKind value) override {
+    void If(clang::SourceLocation location, clang::SourceRange, ConditionValueKind value) override {
         condition(location, 1, value);
     }
 

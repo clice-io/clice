@@ -234,7 +234,8 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
             MacroOptions own;
             auto arguments = without_macros(llvm::ArrayRef(rendered.argv).drop_back(), own);
             for(auto it = arguments.begin(); it != arguments.end();) {
-                it = *it == "-x" && it + 1 != arguments.end() ? arguments.erase(it, it + 2) : it + 1;
+                it =
+                    *it == "-x" && it + 1 != arguments.end() ? arguments.erase(it, it + 2) : it + 1;
             }
             // In the order the command gives them: a later one wins.
             for(std::size_t i = 0; i < rendered.argv.size(); i += 1) {

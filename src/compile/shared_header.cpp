@@ -196,12 +196,14 @@ private:
         auto index = static_cast<std::uint32_t>(headers.size());
         if(frame.entry && (frame.forced || guarded) &&
            held.try_emplace(&frame.entry->getFileEntry(), index).second) {
-            headers.push_back({.entry = *frame.entry,
-                               .forced = frame.forced,
-                               .record = {.file = file_index(*frame.entry),
-                                          .reads = std::move(frame.reads),
-                                          .writes = std::move(frame.writes),
-                                          .includes = std::move(frame.includes)}});
+            headers.push_back({
+                .entry = *frame.entry,
+                .forced = frame.forced,
+                .record = {.file = file_index(*frame.entry),
+                           .reads = std::move(frame.reads),
+                           .writes = std::move(frame.writes),
+                           .includes = std::move(frame.includes)}
+            });
             if(frame.entered_by != none) {
                 below.includes[frame.entered_by].held = index;
             }
@@ -225,9 +227,9 @@ private:
             include.parent = include.parent == none ? frame.entered_by : include.parent + base;
             include.writes += writes;
             // The reads of the file before it that its includer kept.
-            include.reads = reads + static_cast<std::uint32_t>(
-                                        ranges::lower_bound(kept_reads, include.reads) -
-                                        kept_reads.begin());
+            include.reads =
+                reads + static_cast<std::uint32_t>(ranges::lower_bound(kept_reads, include.reads) -
+                                                   kept_reads.begin());
             below.includes.push_back(include);
         }
         below.writes.append_range(frame.writes);
@@ -336,9 +338,12 @@ private:
         auto name = name_hash(spelling);
         initial.try_emplace(name, state);
         auto& frame = stack.back();
-        if(!frame.written.contains(name) && frame.read_names.insert({name, std::uint8_t(frame.system)}).second) {
-            frame.reads.push_back(
-                {.macro = {.name = name, .state = state}, .system = frame.system});
+        if(!frame.written.contains(name) &&
+           frame.read_names.insert({name, std::uint8_t(frame.system)}).second) {
+            frame.reads.push_back({
+                .macro = {.name = name, .state = state},
+                .system = frame.system
+            });
         }
     }
 
@@ -483,7 +488,6 @@ public:
     }
 
 private:
-
     void FileSkipped(const clang::FileEntryRef& entry,
                      const clang::Token& name,
                      clang::SrcMgr::CharacteristicKind) override {
@@ -506,11 +510,15 @@ private:
     /// The unit includes `header` the first time: the header's run is
     /// checked, its writes applied, the held headers it includes entered
     /// in turn, and its includes grafted.
-    void enter(std::uint32_t index, clang::FileID includer, std::uint32_t parent, std::uint32_t line) {
+    void enter(std::uint32_t index,
+               clang::FileID includer,
+               std::uint32_t parent,
+               std::uint32_t line) {
         entered.set(index);
         auto& header = record.headers[index];
         auto node = static_cast<std::uint32_t>(grafted.size());
-        grafted.push_back({.includer = includer, .parent = parent, .line = line, .file = header.file});
+        grafted.push_back(
+            {.includer = includer, .parent = parent, .line = line, .file = header.file});
         // Its run read and wrote between its includes, what the headers
         // those enter wrote seen by the reads after them.
         std::uint32_t read = 0;

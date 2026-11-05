@@ -149,8 +149,8 @@ std::optional<SharedHeaderIndex> decode_shared_header(llvm::StringRef bytes) {
     auto& record = index.record;
     auto files = root->files.size();
     for(auto& file: root->files) {
-        record.files.push_back({.path = llvm::StringRef(file.path).str(),
-                                .content_hash = file.content_hash});
+        record.files.push_back(
+            {.path = llvm::StringRef(file.path).str(), .content_hash = file.content_hash});
         index.sections.push_back({.identity = file.identity,
                                   .own = file.own_identity,
                                   .reach = file.reach,

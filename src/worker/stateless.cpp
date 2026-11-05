@@ -95,7 +95,8 @@ static std::optional<std::string> write_preamble_index(llvm::StringRef blob,
 static std::shared_ptr<const index::SharedHeaderIndex> read_shared_record(llvm::StringRef path) {
     static std::vector<std::pair<std::string, std::shared_ptr<const index::SharedHeaderIndex>>>
         recent;
-    if(auto it = ranges::find(recent, path, [](auto& entry) { return llvm::StringRef(entry.first); });
+    if(auto it =
+           ranges::find(recent, path, [](auto& entry) { return llvm::StringRef(entry.first); });
        it != recent.end()) {
         return it->second;
     }
@@ -520,8 +521,8 @@ static worker::CompileUnitResult
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .tidy = params.tidy,
         .header_identities = params.index,
-        .shared = shared ? std::shared_ptr<const SharedHeaderRecord>(shared, &shared->record)
-                         : nullptr,
+        .shared =
+            shared ? std::shared_ptr<const SharedHeaderRecord>(shared, &shared->record) : nullptr,
         .stop = stop,
     };
     bool unreadable = !params.shared_record.empty() && !shared;

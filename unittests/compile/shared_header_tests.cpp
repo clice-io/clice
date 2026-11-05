@@ -51,7 +51,9 @@ Compiled compile_over(Tester& tester,
         compiled.record = std::make_shared<SharedHeaderRecord>(built->shared_record());
     }
 
-    CompilationParams unit{.kind = CompilationKind::Whole, .input = input, .shared = compiled.record};
+    CompilationParams unit{.kind = CompilationKind::Whole,
+                           .input = input,
+                           .shared = compiled.record};
     unit.input.pch = {pch, 0};
     unit.input.arguments.insert(unit.input.arguments.end() - 1, own.begin(), own.end());
     compiled.unit = clice::compile(std::move(unit));
