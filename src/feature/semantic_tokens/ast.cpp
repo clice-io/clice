@@ -5,7 +5,7 @@ import :feature.inactive_regions;
 import :feature.semantic_tokens;
 import :feature.semantic_tokens.stream;
 import :semantic.decls;
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :semantic.semantics;
 import :semantic.symbol;
 import :semantic.token_class;

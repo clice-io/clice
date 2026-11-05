@@ -7,7 +7,7 @@ import :feature.hover.card;
 import :feature.hover;
 import :semantic.decls;
 import :semantic.display;
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :semantic.selection;
 import :semantic.semantics;
 import :semantic.symbol;

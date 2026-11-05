@@ -1,4 +1,4 @@
-module clice:semantic.resolver;
+module clice:semantic.template_resolver;
 
 import :compile.compilation;
 import :support.prelude;
@@ -87,7 +87,7 @@ public:
     /// no candidates: instantiation adds the operands' associated operators
     /// and the built-in ones, so the operators its definition happened to
     /// see say nothing, and differ between the units including it.
-    llvm::SmallVector<const clang::NamedDecl*, 4> lookup(const clang::CallExpr* expr);
+    llvm::SmallVector<const clang::NamedDecl*, 4> callees(const clang::CallExpr* expr);
 
     /// The overloads a dependent call being written, its arguments so far
     /// `written`, may call — clang's signature help ignores such a call: the
@@ -125,5 +125,15 @@ private:
     /// have different AST node pointers.
     llvm::DenseMap<const void*, clang::QualType> resolved;
 };
+
+/// The pattern a specialization the unit names but never instantiated would
+/// be instantiated from: the partial specialization real instantiation would
+/// choose, else the primary template's pattern — also when the choice is
+/// ambiguous or cannot be verified.
+auto instantiation_pattern(const clang::ClassTemplateSpecializationDecl& specialization)
+    -> const clang::NamedDecl*;
+
+auto instantiation_pattern(const clang::VarTemplateSpecializationDecl& specialization)
+    -> const clang::NamedDecl*;
 
 }  // namespace clice::types

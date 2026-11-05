@@ -2,7 +2,7 @@ module clice;
 
 import :compile.compilation;
 import :semantic.decls;
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :semantic.semantics;
 import :semantic.types;
 
@@ -1628,7 +1628,7 @@ void stmt_references(const clang::Stmt* S,
     if(auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(S)) {
         if(resolver) {
             if(call) {
-                refer_candidates(out, resolver->lookup(call), DSDRE->getNameInfo());
+                refer_candidates(out, resolver->callees(call), DSDRE->getNameInfo());
             } else {
                 refer_candidates(out, resolver->lookup(DSDRE), DSDRE->getNameInfo());
             }
@@ -1642,7 +1642,7 @@ void stmt_references(const clang::Stmt* S,
         /// As a callee, the candidate set shrinks to the overloads that can
         /// accept the call's argument count.
         if(call && resolver) {
-            refer_candidates(out, resolver->lookup(call), OE->getNameInfo());
+            refer_candidates(out, resolver->callees(call), OE->getNameInfo());
         } else {
             refer_candidates(out, OE->decls(), OE->getNameInfo());
         }
@@ -1671,7 +1671,7 @@ void stmt_references(const clang::Stmt* S,
     if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(S)) {
         if(resolver) {
             if(call) {
-                refer_candidates(out, resolver->lookup(call), DSME->getMemberNameInfo());
+                refer_candidates(out, resolver->callees(call), DSME->getMemberNameInfo());
             } else {
                 refer_candidates(out, resolver->lookup(DSME), DSME->getMemberNameInfo());
             }

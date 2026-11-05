@@ -9,7 +9,7 @@ module;
 module clice;
 
 import :semantic.decls;
-import :semantic.unifier;
+import :semantic.template_resolver;
 import :support.text;
 import :syntax.lexer;
 
@@ -246,45 +246,6 @@ bool is_instantiation(const clang::Decl* decl) {
 
 namespace {
 
-/// The pattern an undeclared specialization would be instantiated from:
-/// match the partial specializations against the written arguments the way
-/// real instantiation would. Falls back to the primary template when no
-/// partial matches, the match is ambiguous, or the winner's match could not
-/// be verified (see deduce_arguments).
-template <typename Partial, typename Spec>
-const clang::NamedDecl* undeclared_pattern(const Spec* spec) {
-    auto* primary = spec->getSpecializedTemplate();
-    auto& context = spec->getASTContext();
-    auto arguments = spec->getTemplateArgs().asArray();
-
-    llvm::SmallVector<Partial*> partials;
-    primary->getPartialSpecializations(partials);
-
-    llvm::SmallVector<types::PartialMatch<Partial>, 4> matched;
-    for(auto* partial: partials) {
-        llvm::SmallVector<clang::TemplateArgument> deduced;
-        auto deduction = types::deduce_arguments(context,
-                                                 partial->getTemplateParameters(),
-                                                 partial->getTemplateArgs().asArray(),
-                                                 arguments,
-                                                 deduced);
-        /// FIXME: the match is structural, without the SFINAE probe of the resolver's
-        /// viable_partials: a detection partial (`has_x<T, void_t<typename T::x>>`)
-        /// wins for any T, so a specialization only named here is the partial's, one
-        /// instantiated elsewhere the primary's.
-        if(deduction != types::Deduction::Failed) {
-            matched.push_back(
-                {.partial = partial, .verified = deduction == types::Deduction::Matched});
-        }
-    }
-
-    auto choice = types::select_partial(context, matched);
-    if(choice.result != types::PartialResult::Selected) {
-        return primary->getTemplatedDecl();
-    }
-    return choice.winner;
-}
-
 const clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(const clang::Decl* D) {
     if(const auto* CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(D->getDeclContext())) {
         return CTSD->getTemplateInstantiationPattern();
@@ -371,7 +332,7 @@ auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* 
             /// Instantiation is lazy: an undeclared specialization carries no
             /// pattern link yet. Select the pattern instantiation would use so
             /// the identity matches the instantiated case.
-            return undeclared_pattern<clang::ClassTemplatePartialSpecializationDecl>(CTSD);
+            return types::instantiation_pattern(*CTSD);
         } else if(kind == clang::TSK_ExplicitSpecialization) {
             /// If the decl is an full specialization, return itself.
             return CTSD;
@@ -394,7 +355,7 @@ auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* 
             if(explicitly_specialized(VTSD)) {
                 return VTSD;
             }
-            return undeclared_pattern<clang::VarTemplatePartialSpecializationDecl>(VTSD);
+            return types::instantiation_pattern(*VTSD);
         }
     }
 

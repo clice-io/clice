@@ -2,7 +2,7 @@ module clice;
 
 import :compile.compilation;
 import :feature.code_actions.action;
-import :semantic.resolver;
+import :semantic.template_resolver;
 
 namespace clice::feature::action {
 

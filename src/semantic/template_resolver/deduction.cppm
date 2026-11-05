@@ -2,7 +2,8 @@ module;
 
 /// Sema-free structural unification of template argument lists, replacing
 /// `Sema::DeduceTemplateArguments` and `Sema::getMoreSpecializedPartialSpecialization`
-/// for pseudo-instantiation.
+/// for pseudo-instantiation, and the folding of the constant expressions it
+/// checks a match with.
 ///
 /// Differences from clang's deduction, by design:
 ///   - Works on sugared types: a parameter binds the argument *as written*
@@ -14,7 +15,7 @@ module;
 ///     adjustments, array bound promotion). Failure means "this pattern
 ///     doesn't match", which degrades to an unresolved name.
 
-module clice:semantic.unifier;
+module clice:semantic.template_resolver.deduction;
 
 import :support.prelude;
 
@@ -120,5 +121,20 @@ std::optional<bool> type_trait(const clang::Expr* expr,
 /// If `expr` is a (possibly parenthesized/casted) reference to a non-type
 /// template parameter, return its declaration.
 const clang::NonTypeTemplateParmDecl* referenced_nttp(const clang::Expr* expr);
+
+/// A parameter pack an expansion pattern names.
+struct PackParameter {
+    /// Null for a canonical type parameter, which carries only its depth
+    /// and index.
+    const clang::NamedDecl* decl;
+
+    unsigned depth;
+
+    unsigned index;
+};
+
+/// The parameter packs `pattern` names — type, value and template packs —
+/// each once.
+llvm::SmallVector<PackParameter, 2> packs_in(const clang::TemplateArgument& pattern);
 
 }  // namespace clice::types

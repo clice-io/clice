@@ -1,6 +1,6 @@
 module clice:semantic.types;
 
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :support.prelude;
 
 /// Type-centric AST helpers: mapping types to the declarations they refer

@@ -11,7 +11,7 @@ import :semantic.decls;
 import :semantic.display;
 import :semantic.documentation;
 import :semantic.identity;
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :semantic.semantics;
 import :semantic.token_class;
 import :semantic.types;
@@ -805,7 +805,7 @@ public:
             }
             // A dependent call reaches every candidate the resolver finds
             // for it, as its weak references do.
-            for(auto* candidate: resolver.lookup(CE)) {
+            for(auto* candidate: resolver.callees(CE)) {
                 call(candidate->getUnderlyingDecl(), range);
             }
             return;

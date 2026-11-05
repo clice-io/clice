@@ -1,0 +1,315 @@
+module clice;
+
+import :semantic.template_resolver.deduction;
+import :semantic.template_resolver.instantiator;
+import :support.logging;
+
+namespace clice::types {
+
+namespace {
+
+bool same_declarations(clang::DeclContext::lookup_result lhs,
+                       clang::DeclContext::lookup_result rhs) {
+    auto canonical = [](clang::DeclContext::lookup_result members) {
+        llvm::SmallPtrSet<const clang::Decl*, 4> decls;
+        for(auto* member: members) {
+            decls.insert(member->getCanonicalDecl());
+        }
+        return decls;
+    };
+    return canonical(lhs) == canonical(rhs);
+}
+
+}  // namespace
+
+clang::Decl* PseudoInstantiator::preferred(lookup_result members) {
+    clang::Decl* decl = nullptr;
+    ranges::for_each(members, [&](auto member) { decl = member; });
+    return decl;
+}
+
+PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::QualType type,
+                                                             clang::DeclarationName name) {
+    auto written = type;
+    type = resolve_object(type);
+
+    if(auto* record = type->getAsCXXRecordDecl()) {
+        /// A member class reached through a dependent name
+        /// (`Host<T>::Nested`), or rewritten with its enclosing class as
+        /// its qualifier, is the bare member of the pattern; looking it
+        /// up again through its qualifier leaves the enclosing
+        /// specialization's bindings on the stack, so what its members
+        /// are written in (`T`) stays bound.
+        clang::NestedNameSpecifier qualifier = std::nullopt;
+        if(auto* DNT = written->getAs<clang::DependentNameType>()) {
+            qualifier = DNT->getQualifier();
+        } else if(auto* RT = type->getAs<clang::RecordType>()) {
+            qualifier = RT->getQualifier();
+        }
+        if(qualifier && record->isDependentContext()) {
+            auto frames = stack.size();
+            auto* member = preferred(lookup(qualifier, record->getDeclName()));
+            if(member && member->getCanonicalDecl() == record->getCanonicalDecl()) {
+                auto members = lookup_in_record(record, name);
+                if(members.empty()) {
+                    stack.truncate(frames);
+                }
+                return members;
+            }
+            stack.truncate(frames);
+        }
+
+        /// A specialization the TU never instantiated has no members
+        /// yet; look them up in the pattern it would instantiate from.
+        if(auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record);
+           spec && !spec->hasDefinition()) {
+            return lookup(spec->getSpecializedTemplate(), name, spec->getTemplateArgs().asArray());
+        }
+        return lookup_in_record(record, name);
+    }
+
+    auto TST = type->getAs<clang::TemplateSpecializationType>();
+    if(!TST) {
+        return lookup_result();
+    }
+
+    clang::Decl* TD = TST->getTemplateName().getAsTemplateDecl();
+    if(auto dependent = !TD ? TST->getTemplateName().getAsDependentTemplateName() : nullptr) {
+        // If this dependent specialization was already resolved (possibly to
+        // itself when unresolvable), skip the redundant lookup.
+        if(pack_narrowing == 0 && resolved.count(TST)) {
+            return lookup_result();
+        }
+
+        auto name = dependent->getName().getIdentifier();
+        if(!name) {
+            return {};
+        }
+
+        TD = preferred(lookup(dependent->getQualifier(), name));
+    }
+
+    if(auto CTD = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(TD)) {
+        return lookup(CTD, name, TST->template_arguments());
+    } else if(auto TATD = llvm::dyn_cast_or_null<clang::TypeAliasTemplateDecl>(TD)) {
+        if(deduce_template_arguments(TATD, TST->template_arguments()) != Deduction::Failed) {
+            auto type = substitute(TATD->getTemplatedDecl()->getUnderlyingType());
+            stack.pop();
+            return lookup(type, name);
+        }
+    }
+
+    return lookup_result();
+}
+
+PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::NestedNameSpecifier NNS,
+                                                             clang::DeclarationName name) {
+    // Handle each NestedNameSpecifier kind:
+    // - Type: concrete or dependent type used as qualifier (e.g. `vector<T>::`);
+    //   dependent chains (`base::type::inner`) are DependentNameTypes resolved
+    //   recursively through the type lookup
+    // - Global/Namespace/MicrosoftSuper: not dependent, cannot resolve further
+    switch(NNS.getKind()) {
+        case clang::NestedNameSpecifier::Kind::Type: {
+            return lookup(clang::QualType(NNS.getAsType(), 0), name);
+        }
+
+        /// Namespaces and the global scope are ordinary declaration
+        /// contexts; a plain lookup returns the full overload set.
+        case clang::NestedNameSpecifier::Kind::Namespace: {
+            return NNS.getAsNamespaceAndPrefix().Namespace->getNamespace()->lookup(name);
+        }
+
+        case clang::NestedNameSpecifier::Kind::Global: {
+            return context.getTranslationUnitDecl()->lookup(name);
+        }
+
+        case clang::NestedNameSpecifier::Kind::Null:
+        case clang::NestedNameSpecifier::Kind::MicrosoftSuper: {
+            return {};
+        }
+    }
+
+    return lookup_result();
+}
+
+PseudoInstantiator::lookup_result
+    PseudoInstantiator::lookup_in_record(clang::CXXRecordDecl* record,
+                                         clang::DeclarationName name) {
+    auto members = record->lookup(name);
+    if(members.empty()) {
+        return lookup_in_bases(record, name);
+    }
+    /// A using-declaration naming a member of a dependent base stands
+    /// for what it names there.
+    if(members.isSingleResult()) {
+        if(auto* named = llvm::dyn_cast<clang::UnresolvedUsingValueDecl>(members.front())) {
+            return lookup(named->getQualifier(), name);
+        }
+        if(auto* named = llvm::dyn_cast<clang::UnresolvedUsingTypenameDecl>(members.front())) {
+            return lookup(named->getQualifier(), name);
+        }
+    }
+    return members;
+}
+
+PseudoInstantiator::lookup_result PseudoInstantiator::lookup_in_bases(clang::CXXRecordDecl* CRD,
+                                                                      clang::DeclarationName name) {
+    if(!CRD->hasDefinition()) {
+        return lookup_result();
+    }
+
+    auto frames = stack.size();
+    lookup_result found;
+    for(auto& base: CRD->bases()) {
+        auto base_frames = stack.size();
+        auto members = lookup_in_base(base, name);
+        if(members.empty()) {
+            stack.truncate(base_frames);
+            continue;
+        }
+        if(found.empty()) {
+            LOG_DEBUG(
+                "{}"
+                "found '{}' via base '{}'",
+                pad(),
+                name.getAsString(),
+                base.getType().getAsString());
+            found = members;
+            continue;
+        }
+        stack.truncate(base_frames);
+        /// FIXME: no dominance through virtual bases: with B<T> and C<T> both
+        /// virtually deriving A<T>, B's `type` hides A's in `D : C<T>, B<T>`, yet the
+        /// two paths read as ambiguous here and the lookup answers nothing.
+        if(!same_declarations(found, members)) {
+            LOG_DEBUG(
+                "{}"
+                "'{}' is ambiguous among the bases",
+                pad(),
+                name.getAsString());
+            stack.truncate(frames);
+            return lookup_result();
+        }
+    }
+    return found;
+}
+
+PseudoInstantiator::lookup_result
+    PseudoInstantiator::lookup_in_base(const clang::CXXBaseSpecifier& base,
+                                       clang::DeclarationName name) {
+    auto type = base.getType();
+    if(type->isDependentType()) {
+        return lookup(substitute(type), name);
+    }
+    /// A dependent derived class may still inherit a fixed base; plain
+    /// lookup suffices there.
+    if(auto* record = type->getAsCXXRecordDecl()) {
+        return lookup_in_record(record, name);
+    }
+    return lookup_result();
+}
+
+PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::ClassTemplateDecl* CTD,
+                                                             clang::DeclarationName name,
+                                                             TemplateArguments written) {
+    // Detect recursive lookup of the same CTD + name.
+    // e.g. callback_traits<F> : callback_traits<decltype(&F::operator())>
+    // would infinitely recurse through lookup_in_bases.
+    auto key = std::make_pair(static_cast<const void*>(CTD), name.getAsOpaquePtr());
+    if(!looking_up.insert(key).second) {
+        /// The empty result here means "already in progress", not "absent";
+        /// the pseudo-SFINAE probe must not read it as a proof of absence.
+        inconclusive = true;
+        return lookup_result();
+    }
+    auto done = llvm::make_scope_exit([&] { looking_up.erase(key); });
+
+    llvm::SmallVector<clang::TemplateArgument, 4> arguments;
+    if(!fill_defaults(CTD, written, arguments)) {
+        return lookup_result();
+    }
+
+    LOG_DEBUG(
+        "{}"
+        "lookup '{}' in '{}'",
+        pad(),
+        name.getAsString(),
+        CTD->getNameAsString());
+    indent += 1;
+
+    /// An ambiguous or unverified winner degrades to unresolved:
+    /// neither a partial nor the primary may be chosen (see
+    /// select_partial).
+    auto choice = match_partial(CTD, arguments);
+    if(choice.result == PartialResult::Ambiguous || choice.result == PartialResult::Unverified) {
+        LOG_DEBUG(
+            "{}"
+            "no certain partial; looking through each",
+            pad());
+        auto members = lookup_through_any(CTD, arguments, name);
+        indent -= 1;
+        return members;
+    }
+    auto* best = choice.winner;
+
+    if(best && deduce_template_arguments(best, arguments) != Deduction::Failed) {
+        LOG_DEBUG(
+            "{}"
+            "matched partial '{}'",
+            pad(),
+            best->getNameAsString());
+        if(auto members = lookup_in_record(best, name); !members.empty()) {
+            indent -= 1;
+            return members;
+        }
+        stack.pop();
+    }
+
+    if(deduce_template_arguments(CTD, arguments) != Deduction::Failed) {
+        LOG_DEBUG("{}using primary template", pad());
+        if(auto members = lookup_in_record(CTD->getTemplatedDecl(), name); !members.empty()) {
+            indent -= 1;
+            return members;
+        }
+        stack.pop();
+    }
+
+    indent -= 1;
+    return lookup_result();
+}
+
+PseudoInstantiator::lookup_result
+    PseudoInstantiator::lookup_through_any(clang::ClassTemplateDecl* CTD,
+                                           TemplateArguments arguments,
+                                           clang::DeclarationName name) {
+    auto frames = stack.size();
+    std::optional<lookup_result> common;
+    for(auto& match: viable_partials(CTD, arguments)) {
+        lookup_result members;
+        if(deduce_template_arguments(match.partial, arguments) != Deduction::Failed) {
+            members = lookup_in_record(match.partial, name);
+        }
+        stack.truncate(frames);
+        if(members.empty() || (common && !same_declarations(*common, members))) {
+            return lookup_result();
+        }
+        common = members;
+    }
+    if(deduce_template_arguments(CTD, arguments) == Deduction::Failed) {
+        return lookup_result();
+    }
+    auto members = lookup_in_record(CTD->getTemplatedDecl(), name);
+    if(members.empty() || (common && !same_declarations(*common, members))) {
+        stack.truncate(frames);
+        return lookup_result();
+    }
+    return members;
+}
+
+PseudoInstantiator::lookup_result PseudoInstantiator::lookup_member(clang::QualType object,
+                                                                    clang::DeclarationName name) {
+    return object.isNull() ? lookup_result() : lookup(object, name);
+}
+
+}  // namespace clice::types

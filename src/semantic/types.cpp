@@ -8,7 +8,7 @@ module;
 module clice;
 
 import :semantic.decls;
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :semantic.types;
 
 namespace clice::types {

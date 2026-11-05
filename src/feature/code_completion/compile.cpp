@@ -10,7 +10,7 @@ import :feature.documentation;
 import :index.search;
 import :semantic.display;
 import :semantic.identity;
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :support.fuzzy_matcher;
 import :support.markup;
 import :syntax.completion;

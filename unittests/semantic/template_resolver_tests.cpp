@@ -1,6 +1,6 @@
 module clice;
 
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :semantic.semantics;
 import :unittests.utils.tester;
 import :unittests.utils;
@@ -1989,7 +1989,7 @@ ZEST_CASE(CallArityFilter) {
 
     /// One argument: `foo(int, int)` is filtered out, both single-parameter
     /// overloads survive.
-    auto candidates = unit->get<types::TemplateResolver>().lookup(finder.expr);
+    auto candidates = unit->get<types::TemplateResolver>().callees(finder.expr);
     ZEXPECT(candidates.size() == 2u);
 }
 
@@ -2623,7 +2623,7 @@ ZEST_CASE(QualifiedCallArity) {
 
     /// One argument: `foo(int, int)` is filtered out, both single-parameter
     /// overloads survive.
-    auto candidates = unit->get<types::TemplateResolver>().lookup(finder.expr);
+    auto candidates = unit->get<types::TemplateResolver>().callees(finder.expr);
     ZEXPECT(candidates.size() == 2u);
 }
 
@@ -2658,7 +2658,7 @@ ZEST_CASE(PackArgumentCall) {
     finder.TraverseAST(unit->context());
     ZASSERT(finder.expr != nullptr);
 
-    auto candidates = unit->get<types::TemplateResolver>().lookup(finder.expr);
+    auto candidates = unit->get<types::TemplateResolver>().callees(finder.expr);
     ZEXPECT(candidates.size() == 2u);
 }
 
@@ -3807,7 +3807,7 @@ ZEST_CASE(ExplicitObjectArity) {
 
     /// One written argument plus the unspelled object: only the
     /// two-parameter explicit-object overload survives.
-    auto candidates = unit->get<types::TemplateResolver>().lookup(finder.expr);
+    auto candidates = unit->get<types::TemplateResolver>().callees(finder.expr);
     ZEXPECT(candidates.size() == 1u);
 }
 
@@ -4924,7 +4924,7 @@ ZEST_CASE(ResolvedCallee) {
     finder.TraverseAST(unit->context());
     ZASSERT(finder.expr != nullptr);
 
-    auto candidates = unit->get<types::TemplateResolver>().lookup(finder.expr);
+    auto candidates = unit->get<types::TemplateResolver>().callees(finder.expr);
     ZASSERT(candidates.size() == 1u);
     ZEXPECT(candidates.front()->getName() == "take");
 }
