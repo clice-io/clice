@@ -1823,7 +1823,7 @@ public:
             return closures[root];
         }
         if(entries_by_path.empty()) {
-            for(auto& entry: views::keys(unit.directives())) {
+            for(auto& [entry, directive]: unit.directives()) {
                 if(!unit.is_builtin_file(entry)) {
                     entries_by_path[unit.file_path(entry)].push_back(entry);
                 }
@@ -1956,7 +1956,7 @@ public:
     /// entries say (written_in).
     void choose_known(llvm::ArrayRef<const clang::Decl*> walked) {
         auto focus = unit.focus_file().file();
-        for(auto fid: views::keys(unit.header_identities())) {
+        for(auto& [fid, own]: unit.header_identities()) {
             if(fid == focus || unit.is_builtin_file(fid) || unit.from_context(fid)) {
                 continue;
             }
