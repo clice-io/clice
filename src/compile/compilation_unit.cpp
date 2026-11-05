@@ -44,6 +44,12 @@ auto CompilationUnit::file_id(clang::SourceLocation location) -> clang::FileID {
 
 auto CompilationUnit::decompose(clang::SourceLocation location) -> FileOffset {
     auto [fid, offset] = SM().getDecomposedLoc(location);
+    // What the PCH read of the focus file — the preamble's macros, a global
+    // module fragment's declarations — lies in its copy of the file, at the
+    // offsets the buffer has.
+    if(fid.isValid() && fid == SM().getPreambleFileID()) {
+        fid = SM().getMainFileID();
+    }
     if(params.kind == CompilationKind::Completion && fid == SM().getMainFileID() &&
        offset > params.completion.offset) {
         offset -= 1;

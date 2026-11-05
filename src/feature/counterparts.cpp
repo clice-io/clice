@@ -19,12 +19,12 @@ namespace {
 
 /// Which side of the split between declaring and defining a file is on.
 enum class Side : std::uint8_t {
-    /// Headers, module interface units, and the internal partitions other
-    /// units import.
+    /// Headers, module interface units, and the internal partitions the
+    /// index finds imported.
     Interface,
-    /// Sources, module implementation units, the internal partitions no
-    /// unit imports, and the template definitions a header pulls in
-    /// (`.inl`, `.tpp`, ...).
+    /// Sources, module implementation units, the other internal partitions,
+    /// and the template definitions a header pulls in (`.inl`, `.tpp`,
+    /// ...).
     Implementation,
     /// `.inc` and `.def` files: pieces of their includers' text, with no
     /// counterpart of their own.
@@ -33,7 +33,7 @@ enum class Side : std::uint8_t {
 
 Side classify(FileTable& files,
               const DependencyGraph& graph,
-              const llvm::DenseSet<Fid>& imported,
+              const index::ProjectIndex& project,
               Fid file) {
     llvm::StringRef path = files.resolve(file);
     auto extension = path::extension(path);
@@ -47,7 +47,9 @@ Side classify(FileTable& files,
     // for them, as a header does; one none imports can only define what its
     // module declares, as an implementation unit does.
     if(graph.internal_partition(file)) {
-        return imported.contains(file) ? Side::Interface : Side::Implementation;
+        bool imported = false;
+        project.for_each_importer(file, [&](Fid) { imported = true; });
+        return imported ? Side::Interface : Side::Implementation;
     }
     if(is_header_path(path) || !graph.module_of(file).empty()) {
         return Side::Interface;
@@ -73,7 +75,6 @@ struct Pairing {
     FileTable& files;
     const DependencyGraph& graph;
     llvm::ArrayRef<Fid> members;
-    const llvm::DenseSet<Fid>& imported;
     Fid file;
     CanonicalRef self;
     Side side;
@@ -89,7 +90,7 @@ struct Pairing {
     Side side_of(Fid other) {
         auto [it, inserted] = sides.try_emplace(other);
         if(inserted) {
-            it->second = classify(files, graph, imported, other);
+            it->second = classify(files, graph, ctx.query.project(), other);
         }
         return it->second;
     }
@@ -100,6 +101,17 @@ struct Pairing {
             it->second = ctx.query.declaring_shard(other);
         }
         return it->second;
+    }
+
+    /// The module declaration of a unit's text as the build last saw it.
+    const ScanResult* declaration_of(Fid unit) {
+        auto hash = files.disk.seen_hash(unit);
+        if(!hash) {
+            return nullptr;
+        }
+        auto& scans = graph.quick_scans.results;
+        auto it = scans.find({unit, *hash});
+        return it != scans.end() ? it->second.get() : nullptr;
     }
 
     /// Directory steps from the file's directory to `other`'s.
@@ -191,14 +203,14 @@ struct Pairing {
     }
 
     /// The module a unit on the implementation side implements: an
-    /// implementation unit's, or that of an internal partition no unit
-    /// imports; empty for any other file.
+    /// implementation unit's, or that of an internal partition the index
+    /// finds no unit importing; empty for any other file.
     llvm::StringRef implemented_module(Fid unit) {
         if(graph.internal_partition(unit)) {
             return side_of(unit) == Side::Implementation ? graph.module_of(unit).split(':').first
                                                          : llvm::StringRef();
         }
-        auto* declared = graph.scan_of(files, unit);
+        auto* declared = declaration_of(unit);
         return declared && declared->is_implementation_unit()
                    ? llvm::StringRef(declared->module_name)
                    : llvm::StringRef();
@@ -309,7 +321,6 @@ CounterpartRanking rank_counterparts(std::vector<CounterpartCandidate> candidate
 query::Result<CounterpartsResult> counterparts(query::Context& ctx,
                                                const DependencyGraph& graph,
                                                llvm::ArrayRef<Fid> members,
-                                               const llvm::DenseSet<Fid>& imported,
                                                const Spelling& path) {
     if(!fs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
@@ -322,10 +333,9 @@ query::Result<CounterpartsResult> counterparts(query::Context& ctx,
         .files = files,
         .graph = graph,
         .members = members,
-        .imported = imported,
         .file = file,
         .self = files.resolve(file),
-        .side = classify(files, graph, imported, file),
+        .side = classify(files, graph, ctx.query.project(), file),
     };
     if(pairing.side == Side::Fragment) {
         return result;

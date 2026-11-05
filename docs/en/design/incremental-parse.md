@@ -110,7 +110,7 @@ Before triggering a PCH rebuild, the preamble must be checked for syntactic comp
 #include "lib          // unclosed quote, user is typing a filename
 ```
 
-Building a PCH from an incomplete preamble produces a PCH containing erroneous preprocessor state. Subsequent compilations loading this erroneous PCH would see a flood of spurious errors. Therefore the preamble ends before its first unfinished directive: the finished directives above it are precompiled as usual — a line being added at the end of the include block leaves the preamble text, and so its PCH, as it was — and the unfinished line is parsed with the body, where it reports its own error.
+Building a PCH from an incomplete preamble produces a PCH containing erroneous preprocessor state. Subsequent compilations loading this erroneous PCH would see a flood of spurious errors. Therefore the preamble ends before its first unfinished directive: the finished directives above it are precompiled as usual — a line being added at the end of the include block leaves the preamble text, and so its PCH, as it was — and the unfinished line is parsed with the body, where it reports its own error. In a global module fragment that declares anything itself the file parses whole until the directive is finished: the body would parse the fragment's declarations ahead of the module declaration.
 
 ### PCH Build Pipeline
 

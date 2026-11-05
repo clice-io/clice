@@ -363,8 +363,8 @@ public:
     /// The spelled tokens of the focus file, its lexical scan's (a view,
     /// not a copy); empty for the whole-TU shape. They cover the whole file
     /// even under a preamble PCH — what the PCH consumes is the preamble's
-    /// AST and directives (those travel through the pch.idx index
-    /// instead), not its spelling.
+    /// directives (those travel through the pch.idx index instead) and its
+    /// AST, not its spelling.
     llvm::ArrayRef<Token> spelled_tokens() const {
         return tokens;
     }

@@ -569,7 +569,8 @@ private:
 
     auto file_text(clang::FileID fid) -> SourceText&;
 
-    /// Where the file location `location` lies (see file_content).
+    /// Where the file location `location` lies (see file_content), the
+    /// PCH's copy of the focus file being the focus file.
     auto decompose(clang::SourceLocation location) -> FileOffset;
 
     /// The parser splits a `>>` closing two template argument lists in two:

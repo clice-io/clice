@@ -978,11 +978,6 @@ struct Project {
                                       const Resolution& resolution,
                                       std::optional<llvm::StringRef> content);
 
-    /// The internal partitions another unit of their module imports, from
-    /// the scans of the disk text of every unit of a module that has one
-    /// (scan_imports), all at once.
-    async::task<llvm::DenseSet<Fid>> imported_partitions();
-
     /// The PCMs a compile importing `modules` reads, under their modules'
     /// names: theirs and, below each that built, those of the modules it
     /// imports in turn — clang loads every module below an import, and a built

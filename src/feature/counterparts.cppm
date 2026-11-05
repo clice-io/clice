@@ -68,12 +68,11 @@ struct CounterpartsResult {
 /// the index already know: the same name among the files of `graph`, the
 /// build's dependency graph, declarations and their definitions across the
 /// two, and the module declarations of `members`, the build's units. Of the
-/// internal partitions, those in `imported`, which other units import,
-/// declare; the rest define.
+/// internal partitions, those the index records another unit importing
+/// declare, the rest define.
 query::Result<CounterpartsResult> counterparts(query::Context& ctx,
                                                const DependencyGraph& graph,
                                                llvm::ArrayRef<Fid> members,
-                                               const llvm::DenseSet<Fid>& imported,
                                                const Spelling& path);
 
 }  // namespace clice::feature

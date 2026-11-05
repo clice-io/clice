@@ -55,15 +55,6 @@ llvm::StringRef DependencyGraph::module_of(Fid path_id) const {
     return it == module_by_path.end() ? llvm::StringRef() : llvm::StringRef(it->second);
 }
 
-const ScanResult* DependencyGraph::scan_of(const FileTable& files, Fid unit) const {
-    auto hash = files.disk.seen_hash(unit);
-    if(!hash) {
-        return nullptr;
-    }
-    auto it = quick_scans.results.find({unit, *hash});
-    return it != quick_scans.results.end() ? it->second.get() : nullptr;
-}
-
 llvm::ArrayRef<Fid> DependencyGraph::lookup_module(llvm::StringRef module_name) const {
     auto it = module_to_path.find(module_name);
     if(it != module_to_path.end()) {

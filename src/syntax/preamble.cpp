@@ -49,10 +49,14 @@ std::uint32_t preamble_bound(llvm::StringRef content, std::uint32_t limit) {
         } else {
             line_code = true;
             end = token.range.end;
-            while(!lexer.next().is_eof() && !lexer.next().is_at_start_of_line) {
-                if(auto next = lexer.advance(); !next.is_eod()) {
-                    end = next.range.end;
-                }
+        }
+        // The rest of a line that is no directive is code, after `module;`
+        // too.
+        while(token.kind != clang::tok::hash && !lexer.next().is_eof() &&
+              !lexer.next().is_at_start_of_line) {
+            if(auto next = lexer.advance(); !next.is_eod()) {
+                line_code = true;
+                end = next.range.end;
             }
         }
         if(past_limit) {
@@ -150,14 +154,21 @@ bool preamble_declares(llvm::StringRef content, std::uint32_t bound) {
     Lexer lexer(content, dialect_of());
     for(auto token = lexer.advance(); !token.is_eof() && token.range.begin < bound;
         token = lexer.advance()) {
-        if(!token.is_at_start_of_line || token.kind == clang::tok::hash) {
+        if(token.is_directive_hash()) {
+            lexer.advance_until(clang::tok::eod);
             continue;
         }
-        bool opens_fragment = token.is_identifier() && token.text(content) == "module" &&
+        // The lexer ends `module;` as it does a directive.
+        if(token.is_eod()) {
+            continue;
+        }
+        bool opens_fragment = token.is_at_start_of_line && token.is_identifier() &&
+                              token.text(content) == "module" &&
                               lexer.next().kind == clang::tok::semi;
         if(!opens_fragment) {
             return true;
         }
+        lexer.advance();
     }
     return false;
 }

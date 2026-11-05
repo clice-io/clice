@@ -558,8 +558,9 @@ struct DocumentLinkParams {
 };
 
 /// Request the folding ranges of an open file's AST. Unlike the links they
-/// cover the preamble too: a preamble holds only directives, whose folds
-/// come from a lexical scan of the whole file.
+/// cover the preamble too: the folds of its directives come from a lexical
+/// scan of the whole file, and a global module fragment's declarations are
+/// read back from the PCH.
 struct FoldingRangeParams {
     std::string path;
 };

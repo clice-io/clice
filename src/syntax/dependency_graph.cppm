@@ -52,10 +52,6 @@ public:
         return internal_partitions.contains(path_id);
     }
 
-    /// The quick scan of the unit's text as `files` last saw it on disk,
-    /// with the module declaration the build compiles; null before one.
-    const ScanResult* scan_of(const FileTable& files, Fid unit) const;
-
     /// Set the direct include list for a (file, config) pair.
     void set_includes(Fid path_id,
                       std::uint32_t config_id,

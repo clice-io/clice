@@ -722,16 +722,20 @@ private:
 
     // Take the untaken spelled tokens of S in the preamble a PCH parsed,
     // which the stream never held: a global module fragment's declarations.
+    // A macro's argument is taken where it is written, the rest of its
+    // expansion at the invocation's name, as TokenMap::origin maps them.
     void take_preamble(clang::SourceRange S, std::uint32_t self) {
-        auto begin = unit.produced_at(S.getBegin());
-        auto end = unit.produced_at(S.getEnd());
-        if(!begin.file.isValid() || begin.file != SM.getPreambleFileID() ||
-           end.file != begin.file) {
+        auto preamble = SM.getPreambleFileID();
+        if(preamble.isInvalid() || !SM.isInFileID(SM.getFileLoc(S.getBegin()), preamble) ||
+           !SM.isInFileID(SM.getFileLoc(S.getEnd()), preamble)) {
             return;
         }
+        auto begin = unit.seen_at(S.getBegin());
+        auto end = unit.seen_at(S.getEnd());
         auto& token_map = unit.focus_file().tokens();
         auto first = token_map.spelled_at_or_after(begin.offset);
-        auto last = token_map.spelled_at_or_after(end.offset + 1);
+        // A macro can spell its argument before the tokens around it.
+        auto last = std::max(first, token_map.spelled_at_or_after(end.offset + 1));
         for(auto index = taken_preamble.find_first_unset_in(first, last); index != -1;
             index = taken_preamble.find_first_unset_in(index + 1, last)) {
             taken_preamble.set(index);

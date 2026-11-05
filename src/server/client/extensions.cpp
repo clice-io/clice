@@ -227,16 +227,14 @@ void LSPClient::register_extensions() {
                 co_return to_raw(result);
             }
             auto& project = resolved.project->project;
-            auto imported = co_await project.imported_partitions();
             feature::query::Context context{
-                .query = project.index_query,
+                .query = resolved.project->project.index_query,
                 .root = project.root,
                 .documentation = project.settings.documentation,
             };
             auto found = feature::counterparts(context,
                                                project.dep_graph,
                                                project.members(),
-                                               imported,
                                                Spelling::absolute(resolved.path));
             // A buffer not on disk yet has no counterparts to offer.
             if(!found) {

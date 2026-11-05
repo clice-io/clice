@@ -82,6 +82,11 @@ export module foo;
     ZEXPECT(preamble_bound(src) == src.find("Forward;") + 8);
 }
 
+ZEST_CASE(FragmentDeclarationOnOpener) {
+    llvm::StringRef src = "module; class Forward;\nexport module foo;\n";
+    ZEXPECT(preamble_bound(src) == src.find("Forward;") + 8);
+}
+
 ZEST_CASE(FragmentImport) {
     llvm::StringRef src = R"(
 module;
@@ -274,6 +279,11 @@ ZEST_SUITE(PreambleDeclares) {
 
 ZEST_CASE(FragmentDeclaration) {
     llvm::StringRef content = "module;\n#include <a>\nclass Forward;\nexport module m;\n";
+    ZEXPECT(preamble_declares(content, preamble_bound(content)));
+}
+
+ZEST_CASE(DeclarationOnOpener) {
+    llvm::StringRef content = "module; class Forward;\nexport module m;\n";
     ZEXPECT(preamble_declares(content, preamble_bound(content)));
 }
 
