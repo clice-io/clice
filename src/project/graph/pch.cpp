@@ -346,7 +346,7 @@ PCHRequest Project::declared_pch_request(const CommandRef& unit) {
         };
         auto& params = request.params;
         request.pch_key = cache_key({clang::getClangFullVersion(),
-                                     pch_build_rule(false),
+                                     pch_build_rule(false, false),
                                      database_key.str(),
                                      params.directory,
                                      params.file,
@@ -460,8 +460,9 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     }
     auto own_path = preamble_uses_macros(text, bound) ? llvm::StringRef(path) : llvm::StringRef();
     bool skip_bodies = settings.project.skip_header_bodies;
+    bool modular = imports.modular();
     auto pch_key = cache_key({clang::getClangFullVersion(),
-                              pch_build_rule(skip_bodies),
+                              pch_build_rule(skip_bodies, modular),
                               database_key.str(),
                               resolution.directory,
                               path::parent(path),
@@ -484,6 +485,7 @@ PreamblePCH Project::preamble_pch(Fid path_id,
                         .content = std::string(text),
                         .preamble_bound = bound,
                         .skip_bodies = skip_bodies,
+                        .modular = modular,
                     }, .base = base.str(),
                        },
         .partial = partial,

@@ -1,0 +1,16 @@
+[test.compiling]
+declaration = ["math.cppm │ int ⟦add⟧(int left, int right) {"]
+references = [
+    "geo.cppm │ return math::⟦add⟧(width, 0) * height;",
+    "return math::⟦add⟧(1, 2) + area(3, 4);",
+    "math.cppm │ int ⟦add⟧(int left, int right) {",
+]
+
+[test.compiled]
+definition = ["math.cppm │ int ⟦add⟧(int left, int right) {"]
+declaration = ["math.cppm │ int ⟦add⟧(int left, int right) {"]
+references = [
+    "geo.cppm │ return math::⟦add⟧(width, 0) * height;",
+    "return math::⟦add⟧(1, 2) + area(3, 4);",
+    "math.cppm │ int ⟦add⟧(int left, int right) {",
+]

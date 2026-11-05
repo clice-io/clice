@@ -191,7 +191,23 @@ def generate(name, clice):
     if len(std) != 1:
         raise SystemExit(f"{name}: libc++'s module sources for {triple}: {std}")
 
-    subprocess.run([clice, "index", "--workspace", work], check=True)
+    report = subprocess.run(
+        [clice, "index", "--workspace", work, "--json"],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout
+    # A unit that does not compile leaves out of the modules what it fails
+    # to declare (a clice without its resource headers fails them all).
+    if units := json.loads(report)["compiled_with_errors"]:
+        raise SystemExit(
+            "\n".join(
+                f"{name}: {unit['unit']} does not compile: {error['file']}:"
+                f"{error['line']}: {error['message']}"
+                for unit in units
+                for error in unit["errors"][:1]
+            )
+        )
     plan = subprocess.run(
         [
             clice,

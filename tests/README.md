@@ -501,6 +501,8 @@ UPDATE_SNAPSHOTS=1 …               rewrite outputs, print the summary
 CLICE_TEST_JITTER=50 …             random delays up to 50 ms where the server's own work
                                    races a test's actions: an output that changes left
                                    an order unpinned
+CLICE_KEEP_LOGS=<dir> …            keep the server logs of the cases that fail under
+                                   <dir>/<case>/<copy>, as CI uploads them
 npm run coverage -w tests     after a full run
 npm test -w tools                  the tools' own tests, the framework's among them
 ```

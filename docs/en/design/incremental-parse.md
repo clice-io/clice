@@ -42,7 +42,7 @@ Incremental compilation is organized around four core concepts: preamble separat
 
 ### Preamble Separation
 
-The preamble is the region at the top of a source file consisting of preprocessor directives (`#include`, `#define`, `#pragma`, etc.) and module declarations (`module;`). Its end position is identified by a byte offset (bound) -- the byte position just before the first line of non-preprocessor content.
+The preamble is the region at the top of a source file consisting of preprocessor directives (`#include`, `#define`, `#pragma`, etc.) and module declarations (`module;`). Its end position is identified by a byte offset (bound) -- the byte position just before the first line of non-preprocessor content. In a module unit the preamble is the whole global module fragment, up to the module declaration, declarations written in it included: Clang accepts a module declaration only at the start of the file or after a global module fragment it parsed itself, and a PCH does not carry the fragment.
 
 The preamble is compiled into a PCH file and cached on disk. Subsequent compilations load the PCH and only need to process user code after the bound. If the preamble is empty (bound is zero), no PCH is needed and the entire PCH flow is skipped.
 
@@ -98,7 +98,7 @@ When preamble content changes, the new PCH uses a different hash for its filenam
 
 ### Preamble Boundary Computation
 
-The preamble boundary is determined through lexical scanning: the project's `Lexer` scans line by line from the start of the file, identifying preprocessor directives beginning with `#` and `module;` global module fragment declarations. Scanning stops at the first line of non-preprocessor content, and the byte offset at that point is returned as the boundary.
+The preamble boundary is determined through lexical scanning: the project's `Lexer` scans line by line from the start of the file, identifying preprocessor directives beginning with `#` and `module;` global module fragment declarations. Scanning stops at the first line of non-preprocessor content, or in a global module fragment at the module declaration, and the byte offset at that point is returned as the boundary.
 
 This lexer-based detection does not require starting a full preprocessor and is very fast.
 
@@ -139,6 +139,8 @@ Compute preamble boundary (before an unfinished directive) and hash
 Cache hit requires two conditions: the preamble hash matches the cached value (preamble content unchanged), and two-layer invalidation detection passes (dependency file contents unchanged). Both conditions must be satisfied simultaneously.
 
 A preamble that imports C++20 modules, itself or through the headers it includes, also depends on what those modules were built from: rebuilding one of them, or a missing one becoming available, rebuilds its PCH.
+
+The PCH of a module unit, or of a file that imports modules, leaves Clang's `preferred_name` attributes out, as Clang leaves them out of the modules it writes: kept, a class template specialization that the PCH and a module both declare, such as `std::basic_string_view<char>`, can be read as two distinct types. In such a file the types the preamble declares print as the template names them (`basic_string_view<char>` rather than `string_view`), as the module's already do.
 
 PCH builds are executed by stateless worker processes (see [multi-process architecture](multi-process.md)). The worker uses Clang's Preamble compilation mode, processing only the preamble portion before the bound. Upon completion, it returns the PCH file path and list of dependency files.
 

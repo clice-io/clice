@@ -38,6 +38,13 @@ Side classify(FileTable& files, const DependencyGraph& graph, Fid file) {
     if(is_context_header_path(path)) {
         return Side::Implementation;
     }
+    // An internal partition written in a source defines what its module's
+    // interface declares, as an implementation unit does; one in a module
+    // interface file declares, as a header does.
+    if(graph.internal_partition(file)) {
+        return suffix_type(path) == clang::driver::types::TY_CXXModule ? Side::Interface
+                                                                       : Side::Implementation;
+    }
     if(is_header_path(path) || !graph.module_of(file).empty()) {
         return Side::Interface;
     }
@@ -189,12 +196,29 @@ struct Pairing {
         }
     }
 
-    /// A module implementation unit pairs with the interface of its module,
+    /// The module a unit on the implementation side implements: an
+    /// implementation unit's, or an internal partition's written in a
+    /// source; empty for any other file.
+    llvm::StringRef implemented_module(Fid unit) {
+        auto* declared = declaration_of(unit);
+        if(!declared) {
+            return {};
+        }
+        if(declared->is_implementation_unit()) {
+            return declared->module_name;
+        }
+        if(declared->is_internal_partition() && side_of(unit) == Side::Implementation) {
+            return llvm::StringRef(declared->module_name).split(':').first;
+        }
+        return {};
+    }
+
+    /// A unit implementing a module pairs with the interface of its module,
     /// a primary module interface with every unit implementing it.
     void pair_by_module() {
-        if(auto* own = declaration_of(file); own && own->is_implementation_unit()) {
-            for(auto interface: graph.lookup_module(own->module_name)) {
-                found[interface].module = own->module_name;
+        if(auto module = implemented_module(file); !module.empty()) {
+            for(auto interface: graph.lookup_module(module)) {
+                found[interface].module = module.str();
             }
             return;
         }
@@ -203,9 +227,7 @@ struct Pairing {
             return;
         }
         for(auto unit: members) {
-            auto* declared = declaration_of(unit);
-            if(declared && declared->is_implementation_unit() &&
-               declared->module_name == provided) {
+            if(implemented_module(unit) == provided) {
                 found[unit].module = provided.str();
             }
         }

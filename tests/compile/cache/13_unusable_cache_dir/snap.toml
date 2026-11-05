@@ -1,0 +1,15 @@
+[test.diagnostics]
+diagnostics = [
+    {
+        at = "import ⟦circle;⟧",
+        severity = "error",
+        message = "could not build module 'circle': the cache directory ${WS}/.clice cannot be used",
+        source = "clang",
+        code = "err_module_not_built",
+    },
+]
+
+[test.guidance]
+value = [
+    "Cannot use the cache directory ${WS}/.clice: Not a directory; no preamble or module is precompiled, and the index is not saved",
+]

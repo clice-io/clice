@@ -1,0 +1,10 @@
+[test.lost]
+errors = [
+    {
+        at = "import ⟦M;⟧",
+        severity = "error",
+        message = "module 'M' not found",
+        source = "clang",
+        code = "err_module_not_found",
+    },
+]

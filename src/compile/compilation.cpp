@@ -348,6 +348,26 @@ bool macro_spells(clang::Preprocessor& pp,
     return spells;
 }
 
+/// Leave preferred_name out of the class templates a preamble declares and
+/// out of their specializations (CompilationParams::modular).
+static void drop_preferred_names(clang::ASTContext& context) {
+    llvm::SmallVector<clang::DeclContext*> contexts{context.getTranslationUnitDecl()};
+    while(!contexts.empty()) {
+        for(auto* decl: contexts.pop_back_val()->noload_decls()) {
+            if(llvm::isa<clang::NamespaceDecl, clang::LinkageSpecDecl>(decl)) {
+                contexts.push_back(llvm::cast<clang::DeclContext>(decl));
+            } else if(auto* class_template = llvm::dyn_cast<clang::ClassTemplateDecl>(decl)) {
+                class_template->getTemplatedDecl()->dropAttr<clang::PreferredNameAttr>();
+                for(auto* specialization: class_template->specializations()) {
+                    for(auto* redecl: specialization->redecls()) {
+                        redecl->dropAttr<clang::PreferredNameAttr>();
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// A wrapper ast consumer, so that we can cancel the ast parse
 class CompilationUnit::ParseConsumer final : public clang::MultiplexConsumer {
 public:
@@ -487,6 +507,9 @@ public:
                     collect_decl(decl);
                 }
             }
+        }
+        if(unit.params.kind == CompilationKind::Preamble && unit.params.modular) {
+            drop_preferred_names(context);
         }
         // The PCH writer stores each import with the location where the
         // preprocessor made its module visible, and the reader skips the

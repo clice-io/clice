@@ -72,6 +72,47 @@ export module foo;
     ZEXPECT(preamble_bound(marker_only) == marker_only.find(';') + 1);
 }
 
+ZEST_CASE(FragmentDeclarations) {
+    llvm::StringRef src = R"(
+module;
+#include <a>
+class Forward;
+export module foo;
+)";
+    ZEXPECT(preamble_bound(src) == src.find("Forward;") + 8);
+}
+
+ZEST_CASE(FragmentImport) {
+    llvm::StringRef src = R"(
+module;
+import base;
+#include <a>
+export module foo;
+)";
+    ZEXPECT(preamble_bound(src) == src.find("<a>") + 3);
+}
+
+ZEST_CASE(FragmentWithoutModuleDeclaration) {
+    llvm::StringRef src = R"(
+module;
+#include <a>
+int x;
+)";
+    ZEXPECT(preamble_bound(src) == src.find("<a>") + 3);
+}
+
+ZEST_CASE(FragmentCutBeforeDeclaration) {
+    llvm::StringRef src = R"(
+module;
+#include <a>
+class Forward;
+#include <b>
+export module foo;
+)";
+    ZEXPECT(preamble_bound(src, src.find("class")) == 0u);
+    ZEXPECT(preamble_bound(src, src.find("#include <b>")) == src.find("Forward;") + 8);
+}
+
 ZEST_CASE(BoundBeforeLimit) {
     llvm::StringRef content = "#include <vector>\n#ifdef FO\n#endif\nint x;";
     ZEXPECT(preamble_bound(content, content.find("#ifdef")) == content.find('\n'));

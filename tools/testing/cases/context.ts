@@ -8,6 +8,7 @@ import { withTimeout } from "../../promise.ts";
 import { runCommand, splitCommand, type CommandOptions, type CommandRun } from "../cli/run.ts";
 import { replay } from "../server/replay.ts";
 import { block, type ShowOptions, type Shown } from "../render/shown.ts";
+import { keepLogs } from "../logs/logs.ts";
 import { Serve, gateLogs, type Faults, type ServerOptions } from "../server/serve.ts";
 import { SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
 import { markerOf, runAnswers } from "./answers.ts";
@@ -226,6 +227,7 @@ class TestRun implements TestContext {
                 failed,
             ),
         );
+        keepLogs(this.case.id, this.root);
         if (process.env["CLICE_KEEP_WORKSPACE"] === undefined) {
             this.workspace.remove();
         } else {

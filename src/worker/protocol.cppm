@@ -245,6 +245,9 @@ struct BuildPCHParams {
     /// See CompilationParams::skip_bodies.
     bool skip_bodies = false;
 
+    /// See CompilationParams::modular.
+    bool modular = false;
+
     /// Tmp path allocated by the master's store; the master commits
     /// (fsync + atomic rename) after the worker reports success.
     std::string output_path;

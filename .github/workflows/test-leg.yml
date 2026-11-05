@@ -254,7 +254,17 @@ jobs:
         timeout-minutes: 20
         env:
           CLICE_TEST_JITTER: ${{ inputs.jitter }}
+          CLICE_KEEP_LOGS: ${{ runner.temp }}/case-logs
         run: pixi run -e test-run cases-test ${{ inputs.build_type }} ${{ matrix.shard }}/${{ strategy.job-total }}
+
+      - name: Upload the logs of failed cases
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: case-logs-${{ inputs.target }}-${{ inputs.build_type }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/case-logs
+          if-no-files-found: ignore
+          retention-days: 7
 
   editor:
     needs: build
