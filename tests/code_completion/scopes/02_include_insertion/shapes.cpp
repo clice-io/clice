@@ -1,3 +1,4 @@
+#include "canvas.h"
 #include "shapes.h"
 #include "sizes.h"
 #include "standard.h"

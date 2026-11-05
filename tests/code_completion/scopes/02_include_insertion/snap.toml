@@ -204,6 +204,19 @@ items = [
     },
 ]
 
+[default.shadowed_global.completion]
+items = [
+    { label = "Canvas", kind = "Variable", detail = "int", insert = "Canvas" },
+    {
+        label = "::Canvas",
+        kind = "Class",
+        insert = "::Canvas",
+        edits = [
+            { at = "⟦⟧ @-26", text = '#include "canvas.h"' },
+        ],
+    },
+]
+
 [default.c_file.completion]
 items = []
 
@@ -221,6 +234,11 @@ items = [
 
 [default.c_tag.completion]
 items = []
+
+[default.c_hidden.completion]
+items = [
+    { label = "color_green", kind = "Variable", detail = "int", insert = "color_green" },
+]
 
 [[default.module_unit.completion.items]]
 label = "shapes::Circle"
@@ -293,6 +311,11 @@ items = []
 [configured.deprecated.completion]
 items = []
 
+[configured.shadowed_global.completion]
+items = [
+    { label = "Canvas", kind = "Variable", detail = "int", insert = "Canvas" },
+]
+
 [configured.c_file.completion]
 items = []
 
@@ -301,6 +324,11 @@ items = []
 
 [configured.c_tag.completion]
 items = []
+
+[configured.c_hidden.completion]
+items = [
+    { label = "color_green", kind = "Variable", detail = "int", insert = "color_green" },
+]
 
 [configured.module_unit.completion]
 items = []

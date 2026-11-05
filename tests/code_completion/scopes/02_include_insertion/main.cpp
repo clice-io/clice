@@ -22,3 +22,8 @@ double draw() {
 }
 
 }  // namespace app
+
+void paint() {
+    int Canvas = 0;
+    Canva§(shadowed_global) * target;
+}

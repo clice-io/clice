@@ -13,3 +13,6 @@ items = []
 
 [answers.deleted.completion]
 items = []
+
+[answers.final_in_another_base.completion]
+items = []

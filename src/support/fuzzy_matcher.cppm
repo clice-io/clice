@@ -24,10 +24,11 @@ enum class CharRole : std::uint8_t {
 };
 
 /// Split `text` into words. A word begins at the start, after a
-/// separator, at an uppercase letter following a lowercase one (`fooBar`)
-/// and at the last uppercase letter of a run that lowercase follows (the
-/// `R` of `XMLRequest`). Digits and non-ASCII bytes count as lowercase.
-/// `roles` has `text`'s size.
+/// separator, at an uppercase letter following a lowercase one or a digit
+/// (`fooBar`), at the last uppercase letter of a run that lowercase follows
+/// (the `R` of `XMLRequest`) and at a digit following a letter (the `32` of
+/// `int32_t`). Non-ASCII bytes count as lowercase. `roles` has `text`'s
+/// size.
 void segment(llvm::StringRef text, llvm::MutableArrayRef<CharRole> roles);
 
 /// Matches one pattern against many names, scoring each.
@@ -102,6 +103,12 @@ private:
 
     Cell& cell(std::size_t p, std::size_t n, Run run, bool typo);
     bool prepare(llvm::StringRef name);
+
+    /// Whether a match lands every pattern character on an anchor or right
+    /// after the one before, without a typo and starting on an anchor: the
+    /// table fill() builds finds it too, at many times the cost, and most
+    /// names with the letters in order have none.
+    bool reachable() const;
     void fill();
     std::optional<std::pair<int, Cell*>> best();
     llvm::SmallVector<std::uint8_t, 32> matched_positions();
@@ -109,6 +116,8 @@ private:
     MatchOptions options;
     llvm::SmallVector<char, 32> pat;
     llvm::SmallVector<char, 32> low_pat;
+    /// Per lowercase byte, the pattern positions holding it.
+    std::array<std::uint64_t, 256> positions{};
     bool pat_has_upper = false;
     /// Whether the pattern and the name fit the bounds; past them a
     /// match is partial, never exact.

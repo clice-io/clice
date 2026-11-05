@@ -85,17 +85,36 @@ std::vector<WrittenDesignator> written_designators(llvm::StringRef text,
                                                    std::uint32_t offset,
                                                    const clang::LangOptions& dialect);
 
+/// The module an open unit's buffer declares (ScanResult::provided_module),
+/// which the graph learns once the file is saved.
+struct OpenModule {
+    Fid file;
+    std::string name;
+    bool internal = false;
+};
+
+/// The modules the project provides and the units providing them: the
+/// graph's, an open unit's as its buffer declares it (`open`).
+struct ModuleProviders {
+    llvm::StringMap<llvm::SmallVector<Fid, 2>> modules;
+
+    /// The providers of internal partitions.
+    llvm::DenseSet<Fid> internal;
+};
+
+auto module_providers(const DependencyGraph& graph, llvm::ArrayRef<OpenModule> open = {})
+    -> ModuleProviders;
+
 /// The names an implementation unit's module declaration can take that
-/// start with `prefix`: the modules the graph's interfaces provide.
-std::vector<std::string> complete_module_declaration(const DependencyGraph& graph,
+/// start with `prefix`: the modules the interfaces provide.
+std::vector<std::string> complete_module_declaration(const ModuleProviders& providers,
                                                      llvm::StringRef prefix);
 
 /// The names an `import` in the unit whose module declaration `unit`
-/// scanned can take that start with `prefix`: the graph's other provided
-/// modules, and the partitions of the unit's own module but its own,
-/// spelled `:partition` — in an interface unit, its interface partitions
-/// only.
-std::vector<std::string> complete_module_import(const DependencyGraph& graph,
+/// scanned can take that start with `prefix`: the other provided modules,
+/// and the partitions of the unit's own module but its own, spelled
+/// `:partition` — in an interface unit, its interface partitions only.
+std::vector<std::string> complete_module_import(const ModuleProviders& providers,
                                                 llvm::StringRef prefix,
                                                 const ScanResult& unit);
 

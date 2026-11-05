@@ -14,10 +14,12 @@ import :semantic.token_class;
 import :support.fuzzy_matcher;
 import :syntax.completion;
 import :syntax.dependency_graph;
+import :syntax.include_pragmas;
 import :syntax.include_resolver;
 import :syntax.lexer;
 import :syntax.scan;
 import :vfs.dir_cache;
+import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
 
@@ -25,54 +27,6 @@ namespace clice::feature {
 
 // What the server completes without a compile, and how it finishes the
 // list a compile returns.
-
-auto typed_name(llvm::StringRef text, std::uint32_t offset, const clang::LangOptions& dialect)
-    -> std::optional<TypedName> {
-    auto prefix = Prefix::from(text, offset);
-    if(!prefix.spelling.empty() && clang::isDigit(prefix.spelling.front())) {
-        return std::nullopt;
-    }
-    TypedName typed{.prefix = prefix.spelling};
-    // An arrow after a name or a subscript accesses a member; after `)` or
-    // `}` it may begin a trailing return type or a return type requirement.
-    auto accesses_member = [&](llvm::StringRef before) {
-        if(before.ends_with(".")) {
-            return true;
-        }
-        if(!before.consume_back("->")) {
-            return false;
-        }
-        before = before.rtrim();
-        auto name = Prefix::from(before, static_cast<std::uint32_t>(before.size())).spelling;
-        return before.ends_with("]") ||
-               (!name.empty() && (name == "this" ||
-                                  keyword_kind(name, keywords(dialect)) == clang::tok::identifier));
-    };
-    auto before = text.take_front(prefix.typed.begin).rtrim();
-    if(accesses_member(before)) {
-        typed.member = true;
-        return typed;
-    }
-    while(before.consume_back("::")) {
-        before = before.rtrim();
-        auto name = Prefix::from(before, static_cast<std::uint32_t>(before.size())).spelling;
-        if(name.empty() || keyword_kind(name, keywords(dialect)) != clang::tok::identifier) {
-            if(before.ends_with(">") || before.ends_with(")")) {
-                return std::nullopt;
-            }
-            typed.scope.absolute = true;
-            break;
-        }
-        if(clang::isDigit(name.front())) {
-            return std::nullopt;
-        }
-        typed.scope.qualifier.insert(typed.scope.qualifier.begin(), name.str());
-        before = before.drop_back(name.size()).rtrim();
-    }
-    // A member named through its class (`x.Base::`).
-    typed.member = accesses_member(before);
-    return typed;
-}
 
 auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
     -> protocol::CompletionList {
@@ -110,7 +64,9 @@ void offer_names(const index::IndexQuery& query,
             default: return Kind::Text;
         }
     };
-    auto found = index::completables(query, *compile.prefix, compile.scope, scope_candidate_limit);
+    namespace stdlib = clang::tooling::stdlib;
+    bool builds_std = !graph.lookup_module("std").empty();
+    auto found = index::completables(query, *compile.prefix, scope_candidate_limit);
     for(auto& [symbol, chain, declared]: found.names) {
         bool macro = symbol.kind == SymbolKind::Macro;
         ScopeCandidate candidate{
@@ -142,22 +98,35 @@ void offer_names(const index::IndexQuery& query,
         if(declared.valid() && index::has_flag(symbol.flags, index::SymbolFlags::Exported)) {
             candidate.module = graph.module_of(declared).str();
         }
+        if(builds_std && candidate.module.empty() && !candidate.scope.empty() &&
+           candidate.scope.front() == "std") {
+            std::string qualifier;
+            for(const auto& segment: candidate.scope) {
+                qualifier += segment + "::";
+            }
+            candidate.std_module =
+                stdlib::Symbol::named(qualifier, candidate.name, stdlib::Lang::CXX).has_value();
+        }
         compile.candidates.push_back(std::move(candidate));
     }
     compile.more_candidates = !found.exhausted;
-    compile.more_elsewhere = !found.others_exhausted;
 }
 
 /// The header, quotes or brackets included, an `#include` for `candidate`
 /// names in `file`, as `arguments` spells it: a standard name's from the
 /// standard library's own table (the C library's for a C file, `c`),
-/// another's the header the index says declares it. None when only a
-/// library's internal header is known.
-static std::optional<std::string> include_for(const index::IndexQuery& query,
-                                              const ScopeCandidate& candidate,
-                                              bool c,
-                                              Fid file,
-                                              IncludeArguments& arguments) {
+/// another's the header the index says declares it, or the one its IWYU
+/// pragmas name instead (`pragmas_of`): a private header's mapping, or a
+/// header including it that exports it, included the same way in turn.
+/// None when only a library's internal header is known.
+static std::optional<std::string>
+    include_for(const index::IndexQuery& query,
+                const DependencyGraph& graph,
+                const ScopeCandidate& candidate,
+                bool c,
+                Fid file,
+                IncludeArguments& arguments,
+                llvm::function_ref<const IncludePragmas&(Fid)> pragmas_of) {
     auto& files = query.file_table();
     namespace stdlib = clang::tooling::stdlib;
     std::string qualifier;
@@ -185,12 +154,46 @@ static std::optional<std::string> include_for(const index::IndexQuery& query,
             headers.push_back(site.file);
         }
     }
-    for(auto header: headers) {
-        if(header == file || is_context_header_path(files.resolve(header))) {
-            continue;
+    llvm::SmallVector<Fid, 4> visited;
+    auto include_of = [&](auto& self, Fid header) -> std::optional<std::string> {
+        auto path = files.resolve(header);
+        if(header == file || is_context_header_path(path) || ranges::contains(visited, header)) {
+            return std::nullopt;
         }
-        if(auto argument = arguments.of(files.resolve(header))) {
-            return argument;
+        visited.push_back(header);
+        auto& pragmas = pragmas_of(header);
+        if(!pragmas.include_instead.empty()) {
+            return pragmas.include_instead;
+        }
+        if(!pragmas.is_private) {
+            return arguments.of(path);
+        }
+        // An export names the private header as its includer wrote it:
+        // beside the includer, or under a search directory.
+        for(auto includer: graph.get_includers(header)) {
+            auto& exporter = pragmas_of(includer);
+            llvm::StringRef exporter_path = files.resolve(includer);
+            bool exports = ranges::any_of(exporter.exports, [&](llvm::StringRef name) {
+                llvm::StringRef spelled = path;
+                auto beside = path::join(path::parent(exporter_path), name);
+                path::normalize(beside);
+                if(spelled == beside) {
+                    return true;
+                }
+                return spelled.size() > name.size() && spelled.ends_with(name) &&
+                       path::is_separator(spelled[spelled.size() - name.size() - 1]);
+            });
+            if(exports) {
+                if(auto spelled = self(self, includer)) {
+                    return spelled;
+                }
+            }
+        }
+        return std::nullopt;
+    };
+    for(auto header: headers) {
+        if(auto spelled = include_of(include_of, header)) {
+            return spelled;
         }
     }
     return std::nullopt;
@@ -200,12 +203,25 @@ auto finish_completion(protocol::CompletionList list,
                        const IncludePlace& include,
                        llvm::ArrayRef<ScopeCandidate> candidates,
                        const index::IndexQuery& query,
+                       const DependencyGraph& graph,
                        Fid file,
                        const SearchConfig& search,
                        vfs::Scope& scope,
                        std::uint32_t limit) -> protocol::CompletionList {
     IncludeInsertion insertion{.opens_fragment = include.opens_fragment};
     IncludeArguments arguments(search, query.file_table().spelling(file), scope);
+    // Read from the disk, once a header.
+    llvm::DenseMap<Fid, IncludePragmas> pragmas;
+    auto pragmas_of = [&](Fid header) -> const IncludePragmas& {
+        auto [it, inserted] = pragmas.try_emplace(header);
+        if(inserted) {
+            auto path = query.file_table().resolve(header);
+            if(auto read = vfs::read_observed(path)) {
+                it->second = include_pragmas(read->text, dialect_of(path, include.c));
+            }
+        }
+        return it->second;
+    };
     std::erase_if(list.items, [&](protocol::CompletionItem& item) {
         auto symbol = data_symbol(item.data);
         if(!symbol) {
@@ -216,7 +232,7 @@ auto finish_completion(protocol::CompletionList list,
             return each.symbol == *symbol;
         });
         assert(candidate != candidates.end() && "the worker names a candidate it was given");
-        auto header = include_for(query, *candidate, include.c, file, arguments);
+        auto header = include_for(query, graph, *candidate, include.c, file, arguments, pragmas_of);
         if(!header) {
             return true;
         }
@@ -388,23 +404,45 @@ auto module_completion(const CompletionName& completing,
                        llvm::StringRef text,
                        const PositionMap& map,
                        PositionEncoding encoding,
+                       Fid file,
                        llvm::StringRef path,
                        const DependencyGraph& graph,
+                       std::vector<OpenModule> open,
                        FileTable& files,
+                       llvm::function_ref<ScanResult(llvm::StringRef)> declared_module,
                        std::uint32_t limit) -> protocol::CompletionList {
     std::vector<std::string> module_names;
+    ModuleProviders providers;
     if(completing.kind == CompletionName::Kind::ModuleDeclaration) {
-        module_names = complete_module_declaration(graph, completing.prefix);
+        // The declaration being typed provides nothing yet.
+        open.push_back({.file = file});
+        providers = module_providers(graph, open);
+        module_names = complete_module_declaration(providers, completing.prefix);
     } else {
         // The module declaration precedes every import, and the
         // scan stops before the import being typed: the scanner
         // rejects a buffer with an unclosed directive whole. Its
         // lexer needs the NUL terminator a copy provides.
         auto declared = text.take_front(text.rfind('\n', completing.replace.begin) + 1).str();
-        // FIXME: a module declaration inside `#if` scans as none, so the unit's own
-        // module is offered and its partitions are not; an import typed in the global
-        // module fragment, where none may go, is offered names too.
-        module_names = complete_module_import(graph, completing.prefix, scan_quick(declared));
+        auto unit = scan_quick(declared);
+        if(unit.need_preprocess) {
+            // The fragment `module;` opened lasts unless the preprocessor
+            // reads a declaration after it.
+            bool opened = unit.in_global_fragment;
+            unit = declared_module(declared);
+            unit.in_global_fragment = opened && unit.module_name.empty();
+        }
+        if(unit.in_global_fragment) {
+            // No import may go there.
+            return completion_list({}, limit);
+        }
+        open.push_back({
+            .file = file,
+            .name = unit.provided_module().str(),
+            .internal = unit.is_internal_partition(),
+        });
+        providers = module_providers(graph, open);
+        module_names = complete_module_import(providers, completing.prefix, unit);
     }
     auto directory = path::parent(path);
     auto up_to = [&](Fid provider) {
@@ -422,7 +460,7 @@ auto module_completion(const CompletionName& completing,
         if(name.starts_with(":")) {
             return std::uint32_t(0);
         }
-        return ranges::min(graph.lookup_module(name) | views::transform(up_to));
+        return ranges::min(providers.modules.find(name)->getValue() | views::transform(up_to));
     };
     std::vector<protocol::CompletionItem> items;
     items.reserve(module_names.size());
@@ -488,22 +526,22 @@ auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
                                          text,
                                          inputs.positions,
                                          inputs.encoding,
+                                         inputs.file,
                                          inputs.path,
                                          inputs.graph,
+                                         inputs.open_modules(),
                                          inputs.files,
+                                         inputs.declared_module,
                                          limit);
             default: break;
         }
     }
 
     CompileCompletion compile;
-    if(auto typed = offset ? typed_name(text, *offset, inputs.dialect) : std::nullopt;
-       typed && completing.directive.empty()) {
-        compile.by_name = true;
-        if(!typed->member) {
-            compile.prefix = typed->prefix.str();
-        }
-        compile.scope = std::move(typed->scope);
+    // A number names nothing.
+    if(auto typed = offset ? Prefix::from(text, *offset).spelling : llvm::StringRef();
+       completing.directive.empty() && !typed.empty() && !clang::isDigit(typed.front())) {
+        compile.prefix = typed.str();
     }
     return compile;
 }

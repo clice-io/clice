@@ -49,6 +49,18 @@
       "markers": []
     },
     {
+      "path": "fragment.cppm",
+      "text": "module;\nCirc\nexport module fragment;\n",
+      "markers": [
+        {
+          "name": "global_fragment",
+          "begin": 12,
+          "end": 12,
+          "range": false
+        }
+      ]
+    },
+    {
       "path": "gui.cppm",
       "text": "export module gui;\n#if 0\nimport optional;\n#endif\n\nexport namespace gui {\n\nvoid show() {\n    Circ c;\n}\n\n}  // namespace gui\n",
       "markers": [
@@ -177,6 +189,15 @@
         {
           "label": "same_partition",
           "marker": "same_partition",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "global_fragment",
+          "marker": "global_fragment",
           "value": {
             "completion": {
               "items": []
@@ -325,6 +346,15 @@
         {
           "label": "same_partition",
           "marker": "same_partition",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "global_fragment",
+          "marker": "global_fragment",
           "value": {
             "completion": {
               "items": []

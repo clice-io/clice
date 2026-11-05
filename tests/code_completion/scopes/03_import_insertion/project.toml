@@ -3,6 +3,7 @@
 "app.cppm" = []
 "app_detail.cppm" = []
 "app_measure.cppm" = []
+"fragment.cppm" = []
 "gui.cppm" = []
 "main.cpp" = []
 "shapes.cppm" = []

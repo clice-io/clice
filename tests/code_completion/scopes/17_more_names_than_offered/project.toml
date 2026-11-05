@@ -1,0 +1,3 @@
+[units]
+"main.cpp" = []
+"main.c" = ["-std=c11"]

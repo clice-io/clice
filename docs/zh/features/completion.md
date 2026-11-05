@@ -289,7 +289,7 @@ tests/code_completion/functions_snippets/03_overload_bundle
 
 **调用括号**
 
-补全时会为调用添加括号，除非名称后已有实参，或该名称并非用于调用
+补全时会为调用添加括号，除非名称后已有实参，或该名称并非用于调用；非模板函数后的 `<` 表示比较，而不是实参列表的开始
 
 ```case
 tests/code_completion/functions_snippets/06_call_parentheses

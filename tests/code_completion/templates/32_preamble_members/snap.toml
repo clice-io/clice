@@ -1,6 +1,6 @@
 [answers.members.completion]
 items = [
-    { label = "detail()", kind = "Method", detail = "Detail *" },
     { label = "size()", kind = "Method", detail = "int" },
+    { label = "detail()", kind = "Method", detail = "Detail *" },
     { label = "template", kind = "Keyword" },
 ]

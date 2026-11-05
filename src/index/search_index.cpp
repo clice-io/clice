@@ -1,5 +1,6 @@
 module clice;
 
+import :command.file_kind;
 import :index.columns;
 import :index.format;
 import :index.search_index;
@@ -1080,17 +1081,29 @@ bool SearchIndex::damaged() const {
 
 SearchResult SearchIndex::search(const SymbolQuery& query,
                                  std::uint32_t limit,
-                                 llvm::function_ref<bool(std::uint32_t)> wanted_file) const {
+                                 llvm::function_ref<llvm::StringRef(std::uint32_t)> path_of) const {
     if(segments.empty() || limit == 0 || !query.by_pattern()) {
         return {};
     }
 
-    // Whether each file is among the query's paths, judged once a file.
+    // Whether each file is among the query's paths, and whether it is a
+    // header, judged once a file.
     llvm::DenseMap<std::uint32_t, bool> wanted;
     auto is_wanted = [&](std::uint32_t file) {
         auto [it, inserted] = wanted.try_emplace(file);
         if(inserted) {
-            it->second = wanted_file(file);
+            auto path = path_of(file);
+            it->second = ranges::any_of(query.paths, [&](const std::string& each) {
+                return path_matches(each, path);
+            });
+        }
+        return it->second;
+    };
+    llvm::DenseMap<std::uint32_t, bool> headers;
+    auto is_header = [&](std::uint32_t file) {
+        auto [it, inserted] = headers.try_emplace(file);
+        if(inserted) {
+            it->second = is_header_path(path_of(file));
         }
         return it->second;
     };
@@ -1131,11 +1144,14 @@ SearchResult SearchIndex::search(const SymbolQuery& query,
             }
             narrow(std::move(allowed));
         }
-        if(query.external_only && !segment.columns->local_entries.empty()) {
+        if(query.nameable_only && !segment.columns->local_entries.empty()) {
             Bitmap allowed;
             allowed.addRange(0, segment.count());
-            for(auto entry: segment.columns->local_entries) {
-                allowed.remove(entry);
+            for(auto [entry, file]:
+                views::zip(segment.columns->local_entries, segment.columns->local_paths)) {
+                if(!is_header(file)) {
+                    allowed.remove(entry);
+                }
             }
             narrow(std::move(allowed));
         }

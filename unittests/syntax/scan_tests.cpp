@@ -473,6 +473,14 @@ export import my.nested:part;
     ZEXPECT(result.modules.empty());
 }
 
+// A text ending in a global module fragment: `module;` and no declaration
+// after it yet.
+ZEST_CASE(EndsInGlobalFragment) {
+    ZEXPECT(scan_quick("module;\n#include \"a.h\"\n").in_global_fragment);
+    ZEXPECT(!scan_quick("module;\nexport module m;\n").in_global_fragment);
+    ZEXPECT(!scan_quick("#include \"a.h\"\n").in_global_fragment);
+}
+
 // Private module fragment marker should not override the real module declaration.
 ZEST_CASE(PrivateModuleFragment) {
     auto result = scan_quick(R"(

@@ -194,11 +194,12 @@ public:
     bool damaged() const;
 
     /// At most `limit` hits, best first. Empty for a query by id or
-    /// place. `wanted_file` says whether a file (a path id) is one of the
-    /// query's paths; it is asked only when the query names paths.
+    /// place. `path_of` spells a file (a path id); it is asked only when the
+    /// query names paths or keeps the names of internal linkage of headers
+    /// alone (SymbolQuery::nameable_only).
     SearchResult search(const SymbolQuery& query,
                         std::uint32_t limit,
-                        llvm::function_ref<bool(std::uint32_t)> wanted_file) const;
+                        llvm::function_ref<llvm::StringRef(std::uint32_t)> path_of) const;
 
 private:
     struct Segment;

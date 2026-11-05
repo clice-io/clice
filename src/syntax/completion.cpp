@@ -189,13 +189,16 @@ CompletionName completion_name(llvm::StringRef text,
     };
 
     auto& first = tokens.front();
-    // A header name half typed from `begin`, the text after an include's
-    // keyword or `__has_include(`: taken textually up to the cursor. In
+    // A header name half typed after the token at `index`, an include's
+    // keyword or the `(` of `__has_include(`: from the token after it, past
+    // the comments between, taken textually up to the cursor. In
     // `__has_include(` the name ends at the parenthesis closing the call.
-    auto header_name = [&](std::uint32_t begin, bool parenthesized) -> CompletionName {
-        // FIXME: a comment before the header name (`#include /* c */ <`) is not
-        // skipped: no include completion is offered there, and a `<` trigger
-        // answers empty.
+    auto header_name = [&](std::size_t index, bool parenthesized) -> CompletionName {
+        auto begin = tokens[index].range.end;
+        if(auto rest = after(index);
+           !rest.empty() && !rest.front().is_eod() && rest.front().range.begin <= offset) {
+            begin = rest.front().range.begin;
+        }
         auto argument = text.slice(begin, offset).ltrim();
         CompletionName::Kind kind;
         if(argument.consume_front("\"")) {
@@ -253,27 +256,28 @@ CompletionName completion_name(llvm::StringRef text,
         auto name = keyword.text(text);
         CompletionName result;
         if(name == "include" || name == "include_next") {
-            result = header_name(keyword.range.end, /*parenthesized=*/false);
+            result = header_name(1, /*parenthesized=*/false);
         } else if(name == "if" || name == "elif") {
             // In a condition, a `__has_include(` whose header name the cursor
             // is in: the lexer reads a whole one as a single token.
-            std::optional<std::uint32_t> header_begin;
+            std::optional<std::size_t> paren;
             bool after_has_include = false;
-            for(auto& token: after(1)) {
+            for(std::size_t index = 2; index < tokens.size(); index += 1) {
+                auto& token = tokens[index];
                 if(token.is_eod() || !before_cursor(token)) {
                     break;
                 }
                 if(after_has_include && token.kind == clang::tok::l_paren) {
-                    header_begin = token.range.end;
+                    paren = index;
                 } else if(token.is_header_name()) {
-                    header_begin.reset();
+                    paren.reset();
                 }
                 after_has_include =
                     token.is_identifier() && (token.text(text) == "__has_include" ||
                                               token.text(text) == "__has_include_next");
             }
-            if(header_begin) {
-                result = header_name(*header_begin, /*parenthesized=*/true);
+            if(paren) {
+                result = header_name(*paren, /*parenthesized=*/true);
             }
         }
         result.directive = name.str();
@@ -300,15 +304,21 @@ CompletionName completion_name(llvm::StringRef text,
         return {};
     }
 
-    // FIXME: a `;` inside a comment (`import /* ; */ m`) counts too: no module
-    // names are offered after it.
-    if(text.slice(first.range.begin, offset).contains(';')) {
+    if(ranges::any_of(tokens, [&](const Token& token) {
+           return token.kind == clang::tok::semi && before_cursor(token);
+       })) {
         return {};
     }
 
     // `import->x` in C is a member access on a variable named `import`,
-    // and `module.x` one on `module`.
-    auto prefix = text.slice(keyword.range.end, offset).ltrim();
+    // and `module.x` one on `module`. The name begins past the comments
+    // after the keyword.
+    auto begin = keyword.range.end;
+    if(auto rest = after(at);
+       !rest.empty() && !rest.front().is_eod() && rest.front().range.begin <= offset) {
+        begin = rest.front().range.begin;
+    }
+    auto prefix = text.slice(begin, offset).ltrim();
     if(!ranges::all_of(
            prefix,
            [](char c) { return is_module_name_char(c) || clang::isHorizontalWhitespace(c); }) ||
@@ -329,12 +339,38 @@ CompletionName completion_name(llvm::StringRef text,
             closed};
 }
 
-std::vector<std::string> complete_module_declaration(const DependencyGraph& graph,
+auto module_providers(const DependencyGraph& graph, llvm::ArrayRef<OpenModule> open)
+    -> ModuleProviders {
+    ModuleProviders providers;
+    for(auto& entry: graph.modules()) {
+        for(auto file: entry.getValue()) {
+            if(ranges::contains(open, file, &OpenModule::file)) {
+                continue;
+            }
+            providers.modules[entry.getKey()].push_back(file);
+            if(graph.internal_partition(file)) {
+                providers.internal.insert(file);
+            }
+        }
+    }
+    for(const auto& each: open) {
+        if(each.name.empty()) {
+            continue;
+        }
+        providers.modules[each.name].push_back(each.file);
+        if(each.internal) {
+            providers.internal.insert(each.file);
+        }
+    }
+    return providers;
+}
+
+std::vector<std::string> complete_module_declaration(const ModuleProviders& providers,
                                                      llvm::StringRef prefix) {
     std::vector<std::string> results;
-    for(auto& entry: graph.modules()) {
+    for(auto& entry: providers.modules) {
         auto name = entry.getKey();
-        if(!entry.getValue().empty() && !name.contains(':') && name.starts_with(prefix)) {
+        if(!name.contains(':') && name.starts_with(prefix)) {
             results.push_back(name.str());
         }
     }
@@ -342,18 +378,12 @@ std::vector<std::string> complete_module_declaration(const DependencyGraph& grap
     return results;
 }
 
-std::vector<std::string> complete_module_import(const DependencyGraph& graph,
+std::vector<std::string> complete_module_import(const ModuleProviders& providers,
                                                 llvm::StringRef prefix,
                                                 const ScanResult& unit) {
-    // TODO: the graph's declarations are only refreshed on file save;
-    // unsaved new module files won't appear in completions until written
-    // to disk.
     auto [module, own_partition] = llvm::StringRef(unit.module_name).split(':');
     std::vector<std::string> results;
-    for(auto& entry: graph.modules()) {
-        if(entry.getValue().empty()) {
-            continue;
-        }
+    for(auto& entry: providers.modules) {
         // A partition is imported by its own module alone, by the partition
         // name; a unit never imports its own module or itself.
         auto [owner, partition] = entry.getKey().split(':');
@@ -365,7 +395,7 @@ std::vector<std::string> complete_module_import(const DependencyGraph& graph,
             name = owner.str();
         } else {
             if(module.empty() || owner != module || partition == own_partition ||
-               (unit.is_interface_unit && graph.internal_partition(entry.getValue().front()))) {
+               (unit.is_interface_unit && providers.internal.contains(entry.getValue().front()))) {
                 continue;
             }
             name = std::format(":{}", partition);

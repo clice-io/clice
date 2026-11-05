@@ -110,8 +110,10 @@ namespace clice::index {
 /// manifest and file record name the command it was built under; v54: a
 /// preamble's completable names take in those of internal linkage and the
 /// macros of the compiler and the command line; v55: a preamble's TU index
-/// carries no names, which completion reads from the files a compile loads.
-constexpr inline std::uint32_t index_format_version = 55;
+/// carries no names, which completion reads from the files a compile loads;
+/// v56: the search index splits a name into words where digits follow a
+/// letter.
+constexpr inline std::uint32_t index_format_version = 56;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it, so one past it stops the

@@ -22,6 +22,12 @@ items = [
 more = 90
 incomplete = true
 
+[default.displaced.completion]
+items = [
+    { label = "shade_deep", kind = "Variable", detail = "int" },
+    { label = "shade", kind = "Constant" },
+]
+
 [configured.pos.completion]
 items = [
     { label = "alpha_one", kind = "Variable", detail = "int" },
@@ -31,5 +37,11 @@ incomplete = true
 [configured.many.completion]
 items = [
     { label = "cap_a0", kind = "Variable", detail = "int" },
+]
+incomplete = true
+
+[configured.displaced.completion]
+items = [
+    { label = "shade_deep", kind = "Variable", detail = "int" },
 ]
 incomplete = true

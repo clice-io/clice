@@ -13,6 +13,11 @@ items = [
     { label = "convert(T value)", kind = "Function", detail = "int", insert = "convert" },
 ]
 
+[default.compared.completion]
+items = [
+    { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute(${1:int x})", snippet = true },
+]
+
 [default.using_declaration.completion]
 items = [
     { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute" },
@@ -31,6 +36,11 @@ items = [
 [delimiters.template_arguments.completion]
 items = [
     { label = "convert(T value)", kind = "Function", detail = "int", insert = "convert" },
+]
+
+[delimiters.compared.completion]
+items = [
+    { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute($0)", snippet = true },
 ]
 
 [delimiters.using_declaration.completion]

@@ -36,6 +36,10 @@ struct ScanResult {
         return is_implementation_unit() ? llvm::StringRef() : llvm::StringRef(module_name);
     }
 
+    /// Whether the text ends in a global module fragment: `module;` opened
+    /// it, and no module declaration follows.
+    bool in_global_fragment = false;
+
     /// Whether the module declaration is beyond the lexical scan — inside a
     /// conditional directive, or in text the directive scanner rejects —
     /// signaling the caller should fall back to the preprocessor-based scan.

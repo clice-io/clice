@@ -4,12 +4,12 @@ import :command.search_config;
 import :compile.compilation;
 import :feature.documentation;
 import :index.query;
-import :index.search;
 import :support.json;
 import :support.prelude;
 import :syntax.completion;
 import :syntax.dependency_graph;
 import :syntax.position;
+import :syntax.scan;
 import :vfs.dir_cache;
 import :vfs.file_table;
 import :vfs.ids;
@@ -83,7 +83,10 @@ struct CodeCompletionOptions {
     KANNOTATE(&insert_imports,
               description =
                   "With `all_scopes`, also offer names exported by modules "
-                  "the file does not import yet, adding the `import`.")
+                  "the file does not import yet, adding the `import`. Where "
+                  "the project builds the `std` module, a file that imports "
+                  "modules or is a module unit takes the standard library's "
+                  "names with `import std;` rather than their headers.")
     bool insert_imports = true;
 
     KANNOTATE(&limit,
@@ -131,6 +134,10 @@ struct ScopeCandidate {
     /// unit declares it.
     std::string module;
 
+    /// A standard library name the project's `std` module exports: a file
+    /// using modules imports it rather than including its header.
+    bool std_module = false;
+
     /// The symbol, by which the server picks the header declaring it.
     std::uint64_t symbol = 0;
 };
@@ -156,34 +163,21 @@ struct Completion {
     std::optional<IncludePlace> include;
 };
 
-/// What a compile of the code completes with (code_complete): the names
-/// the index offers, and whether it holds more of them.
+/// What a compile of the code completes with (code_complete): the names of
+/// other scopes the index offers for the name typed (ScopeCandidate), and
+/// whether it holds more of them.
 struct CompileCompletion {
-    std::vector<ScopeCandidate> candidates;
-    bool more_candidates = false;
-
-    /// After a qualifier, whether the index holds more names of other
-    /// scopes, which the qualifier's namespace may bring in.
-    bool more_elsewhere = false;
-
-    /// The compile reads the names of namespaces the files it loads declare
-    /// — a precompiled preamble, the modules it imports — and their macros
-    /// by name alone (load_names: those the typed name matches, and the
-    /// candidates'; with nothing typed, a scope the index holds few of
-    /// whole), not all (clang's LoadExternal off); after a member access,
-    /// none. Not in a directive, where reading their macros whole costs
-    /// less than matching every identifier.
-    bool by_name = false;
-
-    /// The name typed so far, empty before its first character, whose
-    /// candidates offer_names takes; none after a member access and where
-    /// no name is completed.
+    /// The name typed before the point, whose candidates offer_names takes;
+    /// none before its first character, in a number and in a directive.
     std::optional<std::string> prefix;
 
-    /// Where the name being typed is looked up, with by_name.
-    index::CompletionScope scope;
+    std::vector<ScopeCandidate> candidates;
+    bool more_candidates = false;
 };
 
+/// The completion at the point of `params`. Of the files the compile loads,
+/// Sema reads the names the typed one matches where it lists names
+/// (TypedNames), and all of them where nothing is typed yet.
 auto code_complete(CompilationParams params,
                    const CodeCompletionOptions& options = {},
                    const DocumentationOptions& documentation = {},
@@ -191,31 +185,16 @@ auto code_complete(CompilationParams params,
                    PositionEncoding encoding = PositionEncoding::UTF16,
                    const CompileCompletion& names = {}) -> Completion;
 
-/// The identifier being typed at `offset` of `text`, from its start to
-/// `offset`, and the scope a qualifier before it names.
-struct TypedName {
-    llvm::StringRef prefix;
-    index::CompletionScope scope;
-
-    /// After `.` or `->`: a member, which Sema reads from its class whole.
-    /// Not after an arrow that may begin a trailing return type.
-    bool member = false;
-};
-
-/// None in a number, and after a qualifier spelled other than by names
-/// (`T<int>::`, `decltype(x)::`).
-auto typed_name(llvm::StringRef text, std::uint32_t offset, const clang::LangOptions& dialect)
-    -> std::optional<TypedName>;
-
 /// The reply listing `items` under `code_completion.limit`: the best ranked
 /// stay, ties by label, and a list cut short is marked incomplete.
 auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
     -> protocol::CompletionList;
 
-/// The most names one completion offers from the index (ScopeCandidate).
+/// The most names one completion takes from the index (ScopeCandidate), and
+/// reads of the files its compile loads where a name is typed (TypedNames).
 constexpr inline std::size_t scope_candidate_limit = 100;
 
-/// The project's names the index offers where `compile` completes
+/// The project's names the index offers for the name `compile` types
 /// (ScopeCandidate), with whether it holds more: those the file reaches,
 /// and those it reaches once it includes or imports what declares them.
 void offer_names(const index::IndexQuery& query,
@@ -230,6 +209,7 @@ auto finish_completion(protocol::CompletionList list,
                        const IncludePlace& include,
                        llvm::ArrayRef<ScopeCandidate> candidates,
                        const index::IndexQuery& query,
+                       const DependencyGraph& graph,
                        Fid file,
                        const SearchConfig& search,
                        vfs::Scope& scope,
@@ -259,22 +239,28 @@ auto directive_completion(const CompletionName& completing,
                           const CompletionClient& client) -> protocol::CompletionList;
 
 /// The modules an `import` or a module declaration being typed
-/// (`completing`) in `text`, the file at `path`, may name: the unit's own
-/// partitions first, then the modules whose interface lies nearest the
+/// (`completing`) in `text`, the file `file` at `path`, may name: the unit's
+/// own partitions first, then the modules whose interface lies nearest the
 /// file — the fewest directories up from it to one holding the interface.
+/// The other open units provide what their buffers declare (`open`), the
+/// file what its text does.
 auto module_completion(const CompletionName& completing,
                        llvm::StringRef text,
                        const PositionMap& map,
                        PositionEncoding encoding,
+                       Fid file,
                        llvm::StringRef path,
                        const DependencyGraph& graph,
+                       std::vector<OpenModule> open,
                        FileTable& files,
+                       llvm::function_ref<ScanResult(llvm::StringRef)> declared_module,
                        std::uint32_t limit) -> protocol::CompletionList;
 
 /// A completion request as the server has it before any compile.
 struct CompletionInputs {
-    /// The path and text of the file completed in, and the point completed
-    /// at in the client's encoding.
+    /// The file completed in, its path and text, and the point completed at
+    /// in the client's encoding.
+    Fid file;
     llvm::StringRef path;
     llvm::StringRef text;
     const PositionMap& positions;
@@ -297,6 +283,15 @@ struct CompletionInputs {
     /// The header search of the file's command, asked only where an
     /// include path is completed.
     llvm::function_ref<SearchConfig()> search;
+
+    /// The module declaration of the text given, read by the preprocessor
+    /// under the file's command: asked where an import is completed below
+    /// a declaration a conditional holds.
+    llvm::function_ref<ScanResult(llvm::StringRef)> declared_module;
+
+    /// The modules the other open units' buffers declare, asked where a
+    /// module name is completed.
+    llvm::function_ref<std::vector<OpenModule>()> open_modules;
     vfs::Scope& scope;
 };
 

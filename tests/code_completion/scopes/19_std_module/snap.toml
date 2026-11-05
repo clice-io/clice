@@ -1,0 +1,38 @@
+[answers.module_unit.completion]
+items = [
+    {
+        label = "std::deque",
+        kind = "Class",
+        insert = "std::deque<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-2", text = "import std;" },
+        ],
+    },
+]
+
+[answers.importer.completion]
+items = [
+    {
+        label = "std::deque",
+        kind = "Class",
+        insert = "std::deque<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-2", text = "import std;" },
+        ],
+    },
+]
+
+[answers.without_imports.completion]
+items = [
+    {
+        label = "std::deque",
+        kind = "Class",
+        insert = "std::deque<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧void draw() {", text = "#include <deque>" },
+        ],
+    },
+]

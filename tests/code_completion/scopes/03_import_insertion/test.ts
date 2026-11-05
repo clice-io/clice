@@ -6,6 +6,8 @@ async function items(a: AnswersContext): Promise<void> {
     }
 }
 
+// A name typed in fragment.cppm's global module fragment gets no import:
+// none may go there.
 const paths = { server: "what the file does not import yet comes from the server's index" };
 answers("default", { paths, indexing: true }, items);
 answers(

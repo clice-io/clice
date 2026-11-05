@@ -1,0 +1,12 @@
+[answers.qualified.completion]
+items = [
+    { label = "Vec", kind = "Class" },
+    { label = "operator<(Vec, Vec)", kind = "Function", detail = "bool" },
+    { label = "operator==(…) +2 overloads", kind = "Function" },
+    { label = "scale(…) +1 overload", kind = "Function" },
+]
+
+[answers.unqualified.completion]
+items = [
+    { label = "operator", kind = "Keyword" },
+]

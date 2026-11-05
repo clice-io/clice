@@ -11,6 +11,7 @@ void bar() {
     int a = compu§(bare);
     int b = compu§(followed)(1);
     int c = conve§(template_arguments)<int>(1);
+    bool d = compu§(compared) < 2;
 }
 
 using ns::compu§(using_declaration);

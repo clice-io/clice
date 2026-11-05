@@ -46,10 +46,11 @@ public:
     /// an entity it skips anonymous namespaces and knows no modules.
     std::uint64_t parent(const clang::NamedDecl* decl);
 
-private:
-    /// The hash of a type, taken canonically.
+    /// The hash of a type, taken canonically: equal across translation
+    /// units, as the entities it names are.
     std::uint64_t type_hash(clang::QualType type);
 
+private:
     /// The hash of an expression: clang's canonical profile with stable
     /// leaves (ExprHasher).
     std::uint64_t expr_hash(const clang::Expr* expr);

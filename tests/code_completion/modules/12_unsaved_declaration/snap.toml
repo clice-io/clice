@@ -1,0 +1,7 @@
+["renamed in the buffer".renamed.completion]
+items = [
+    { label = "geometry2d", kind = "Module", insert = "geometry2d;", replace = "import ⟦geo⟧" },
+]
+
+["renamed in its own buffer".own.completion]
+items = []

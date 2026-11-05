@@ -1,0 +1,7 @@
+[answers.after_comment.completion]
+items = [
+    { label = "Month", kind = "Class" },
+    { label = "february", kind = "Variable", detail = "const Month" },
+    { label = "january", kind = "Variable", detail = "const Month" },
+    { label = "tick()", kind = "Function", detail = "void" },
+]

@@ -1,0 +1,2 @@
+# The points sit in code the compile does not read, which compiles cleanly.
+compiles = true

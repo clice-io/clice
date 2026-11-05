@@ -199,7 +199,8 @@ ZEST_SUITE(FuzzyMatcher) {
 ZEST_CASE(Segmentation) {
     ZEXPECT(segmented("std::basic_string") == "+--  +---- +-----");
     ZEXPECT(segmented("XMLHttpRequest") == "+--+---+------");
-    ZEXPECT(segmented("t3h PeNgU1N oF d00m!!!!!!!!") == "+-- +-+-+-+ ++ +---        ");
+    ZEXPECT(segmented("t3h PeNgU1N oF d00m!!!!!!!!") == "++- +-+-+++ ++ ++--        ");
+    ZEXPECT(segmented("int32_t") == "+--+- +");
     ZEXPECT(segmented("ab\xF0\x9F\x99\x82"
                       "cd") == "+-------");
     ZEXPECT(segmented("HTMLElement") == "+---+------");
@@ -207,6 +208,8 @@ ZEST_CASE(Segmentation) {
 
 ZEST_CASE(Accepts) {
     ZEXPECT(annotated("", "unique_ptr") == "unique_ptr");
+    ZEXPECT(annotated("i32", "int32_t") == "[i]nt[32]_t");
+    ZEXPECT(annotated("u8", "utf8_decode") == "[u]tf[8]_decode");
     ZEXPECT(annotated("u_p", "unique_ptr") == "[u]nique[_p]tr");
     ZEXPECT(annotated("up", "unique_ptr") == "[u]nique_[p]tr");
     ZEXPECT(!matches("uq", "unique_ptr"));
@@ -499,6 +502,49 @@ ZEST_CASE(QueryTokens) {
     for(auto& alternative: alternatives) {
         ZEXPECT(!alternative.tokens.empty());
     }
+}
+
+/// Whether a path through `name` lands each character of `pattern` on a
+/// word's first letter, a separator, an uppercase letter of a name with
+/// lowercase ones, or right after the character before, the first on such
+/// a place: what the matcher accepts without typos, found by brute force.
+bool has_path(llvm::StringRef pattern, llvm::StringRef name) {
+    llvm::SmallVector<CharRole> roles(name.size());
+    segment(name, roles);
+    bool has_lower = ranges::any_of(name, [](char c) { return llvm::isLower(c); });
+    auto lands = [&](std::size_t n) {
+        return roles[n] != CharRole::Tail || (llvm::isUpper(name[n]) && has_lower);
+    };
+    auto search = [&](auto& self, std::size_t p, std::size_t from, bool after_match) -> bool {
+        if(p == pattern.size()) {
+            return true;
+        }
+        for(auto n = from; n < name.size(); n += 1) {
+            if(llvm::toLower(name[n]) == llvm::toLower(pattern[p]) &&
+               (lands(n) || (after_match && n == from)) && self(self, p + 1, n + 1, true)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    return search(search, 0, 0, false);
+}
+
+/// The matcher accepts exactly the names a path runs through: checked over
+/// subsequences of the corpus names' letters, most of which have none.
+ZEST_CASE(AcceptsExactlyThePaths) {
+    std::string differs;
+    for(auto name: corpus) {
+        auto pool = letters(name);
+        for(std::size_t length = 2; length <= 4 && length <= pool.size(); length += 1) {
+            subsequences(pool, length, 80, [&](llvm::StringRef pattern) {
+                if(matches(pattern, name) != has_path(pattern, name) && differs.empty()) {
+                    differs = pattern.str() + " in " + name.str();
+                }
+            });
+        }
+    }
+    ZEXPECT(differs == "");
 }
 
 /// A name the matcher accepts carries every token of the pattern — the

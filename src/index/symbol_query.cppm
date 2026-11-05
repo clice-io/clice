@@ -80,9 +80,10 @@ struct SymbolQuery {
     /// only some files see has no project-wide entry.
     std::vector<std::string> paths;
 
-    /// Leave out the names of internal linkage, which only their own unit
-    /// can name.
-    bool external_only = false;
+    /// Leave out the names of internal linkage a source file declares, which
+    /// only its own unit can name; every unit including a header names
+    /// those of the header.
+    bool nameable_only = false;
 
     /// Take from the scope the names a qualified lookup in it finds — its
     /// direct members and its enumerations' enumerators — rather than

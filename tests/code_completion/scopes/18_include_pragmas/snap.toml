@@ -1,0 +1,82 @@
+[answers.mapped.completion]
+items = [
+    {
+        label = "lib::impl_value",
+        kind = "Function",
+        insert = "lib::impl_value($0)",
+        snippet = true,
+        edits = [
+            {
+                at = "⟦⟧// A private header is not included itself: the header its pragma names",
+                text = '#include "lib/api.h"',
+            },
+        ],
+    },
+]
+
+[answers.exported.completion]
+items = [
+    {
+        label = "lib::exported_value",
+        kind = "Function",
+        insert = "lib::exported_value($0)",
+        snippet = true,
+        edits = [
+            {
+                at = "⟦⟧// A private header is not included itself: the header its pragma names",
+                text = '#include "lib/umbrella.h"',
+            },
+        ],
+    },
+]
+
+[answers.exported_relative.completion]
+items = [
+    {
+        label = "lib::relative_value",
+        kind = "Function",
+        insert = "lib::relative_value($0)",
+        snippet = true,
+        edits = [
+            {
+                at = "⟦⟧// A private header is not included itself: the header its pragma names",
+                text = '#include "lib/api/facade.h"',
+            },
+        ],
+    },
+]
+
+[answers.exported_block.completion]
+items = [
+    {
+        label = "lib::bundled_value",
+        kind = "Function",
+        insert = "lib::bundled_value($0)",
+        snippet = true,
+        edits = [
+            {
+                at = "⟦⟧// A private header is not included itself: the header its pragma names",
+                text = '#include "lib/bundle.h"',
+            },
+        ],
+    },
+]
+
+[answers.private_alone.completion]
+items = []
+
+[answers.exported_by_private.completion]
+items = [
+    {
+        label = "lib::inner_value",
+        kind = "Function",
+        insert = "lib::inner_value($0)",
+        snippet = true,
+        edits = [
+            {
+                at = "⟦⟧// A private header is not included itself: the header its pragma names",
+                text = '#include "lib/api.h"',
+            },
+        ],
+    },
+]
