@@ -357,12 +357,12 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         auto global_id = file_ids_map[view.section_path(section)];
         auto* record = file_record(global_id);
         auto& held = record->identities;
-        auto it = ranges::lower_bound(held, known.identity, {}, &KnownIdentity::identity);
-        if(it != held.end() && *it == known) {
+        if(auto it = ranges::lower_bound(held, known.identity, {}, &KnownIdentity::identity);
+           it != held.end() && *it == known) {
             continue;
         }
         auto& identities = change_file(global_id).identities;
-        it = ranges::lower_bound(identities, known.identity, {}, &KnownIdentity::identity);
+        auto it = ranges::lower_bound(identities, known.identity, {}, &KnownIdentity::identity);
         if(it != identities.end() && it->identity == known.identity) {
             *it = known;
         } else {
