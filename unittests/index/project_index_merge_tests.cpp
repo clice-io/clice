@@ -271,6 +271,29 @@ ZEST_CASE(KnownVariantsFromManifest) {
                 .hashes.empty());
 }
 
+ZEST_CASE(IdentitiesFollowTheStoredVariants) {
+    TempDir tmp;
+    tmp.touch("shared.h", "#pragma once\ninline int shared_fn() { return 1; }\n");
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+
+    auto a_id = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
+    auto known = project.index.known_variants(a_id, project.dep_graph.include_closure(a_id));
+    ZASSERT(known.identities.size() == 1U);
+    auto first = known.identities.front();
+    ZEXPECT(project.index.shard(header_id)->variants() == std::vector{first.variant});
+
+    // A new generation of the header: its variant leaves, and the identity
+    // with it.
+    tmp.touch("shared.h", "#pragma once\ninline int shared_fn() { return 2; }\n");
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    known = project.index.known_variants(a_id, project.dep_graph.include_closure(a_id));
+    ZASSERT(known.identities.size() == 1U);
+    ZEXPECT(known.identities.front().identity != first.identity);
+    ZEXPECT(known.identities.front().variant != first.variant);
+};
+
 ZEST_CASE(HeaderRegenerationReplaces) {
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");

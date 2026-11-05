@@ -258,14 +258,16 @@ struct IndexedTU {
     std::string tu_path;
 };
 
-/// Index a real on-disk file in-process into its TU index bytes, the
-/// sections of `known` variants left empty and the `known_instantiations`
-/// not walked.
+/// Index a real on-disk file in-process into its TU index bytes, as the
+/// background index does: the sections of `known` variants left empty, the
+/// `known_instantiations` not walked and the files of `known_identities`
+/// not either.
 inline IndexedTU index_file(TempDir& tmp,
                             llvm::StringRef file,
                             std::vector<std::string> extra_args = {},
                             llvm::ArrayRef<std::uint64_t> known = {},
-                            llvm::ArrayRef<std::uint64_t> known_instantiations = {}) {
+                            llvm::ArrayRef<std::uint64_t> known_instantiations = {},
+                            llvm::ArrayRef<index::KnownIdentity> known_identities = {}) {
     std::string resource = std::string(resource_dir());
     std::vector<std::string> args =
         {"clang++", "-fsyntax-only", "-resource-dir", resource, "-c", std::string(file)};
@@ -275,15 +277,18 @@ inline IndexedTU index_file(TempDir& tmp,
     cp.kind = CompilationKind::Whole;
     cp.input.directory = std::string(tmp.root);
     cp.input.arguments = std::move(args);
+    cp.header_identities = true;
 
     auto unit = compile(std::move(cp));
     if(!unit->completed()) {
         return {};
     }
     IndexedTU result;
-    result.data = std::string(as_chars(index::build_tu_index(
-        *unit,
-        {.known_variants = known, .known_instantiations = known_instantiations})));
+    result.data = std::string(as_chars(index::build_tu_index(*unit,
+                                                             {.known_variants = known,
+                                                              .known_instantiations =
+                                                                  known_instantiations,
+                                                              .known_identities = known_identities})));
     auto view = index::TUIndex::from_bytes(result.data);
     if(!view.loaded()) {
         return {};
