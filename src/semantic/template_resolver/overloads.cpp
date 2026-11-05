@@ -501,18 +501,25 @@ Callees PseudoInstantiator::callee_candidates(
     /// A using-declaration naming a member of a dependent base stands for
     /// what it names there, beside the class's own overloads.
     llvm::SmallVector<const clang::NamedDecl*, 4> named;
-    auto add = [&](const clang::NamedDecl* decl) {
-        if(ranges::none_of(named, [&](const clang::NamedDecl* other) {
-               return other->getCanonicalDecl() == decl->getCanonicalDecl();
-           })) {
+    llvm::DenseMap<const clang::Decl*, const clang::Decl*> reached_through;
+    auto add = [&](const clang::NamedDecl* decl, const clang::Decl* used) {
+        auto [found, added] = reached_through.try_emplace(decl->getCanonicalDecl(), used);
+        if(added) {
             named.push_back(decl);
+        } else if(used && found->second && found->second != used) {
+            /// One declaration through two specializations of its class
+            /// (`using Base<T>::get; using Base<T*>::get;`): the frames of
+            /// the two lookups are not kept apart.
+            callees.complete = false;
         }
     };
     for(auto* candidate: candidates) {
         if(auto* used = llvm::dyn_cast<clang::UnresolvedUsingValueDecl>(candidate)) {
-            ranges::for_each(lookup(used->getQualifier(), used->getDeclName()), add);
+            for(auto* decl: lookup(used->getQualifier(), used->getDeclName())) {
+                add(decl, used->getCanonicalDecl());
+            }
         } else {
-            add(candidate);
+            add(candidate, nullptr);
         }
     }
     candidates.assign(named.begin(), named.end());

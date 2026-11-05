@@ -1,0 +1,48 @@
+[answers.call_arity_filter.template_resolver]
+declarations = ["int ⟦foo⟧(int); @-6", "int ⟦foo⟧(T);"]
+
+[answers.qualified_call_arity.template_resolver]
+declarations = ["static int ⟦foo⟧(int);", "static int ⟦foo⟧(T);"]
+
+[answers.pack_argument_call.template_resolver]
+declarations = ["int ⟦foo⟧(int); @-6", "int ⟦foo⟧(int, int); @-5"]
+
+[answers.explicit_object_arity.template_resolver]
+declarations = ["int ⟦foo⟧(this S&, int);"]
+
+[answers.resolved_callee.template_resolver]
+declarations = ["void ⟦take⟧(int first, int second);"]
+
+[answers.arrow_without_pointer]
+template_resolver = {}
+
+[answers.arrow_through_smart_pointer.template_resolver]
+declarations = ["int ⟦val⟧;"]
+
+[answers.member_chain_lookup.template_resolver]
+declarations = ["int ⟦leaf⟧;"]
+
+[answers.pack_parameter_member.template_resolver]
+declarations = ["T ⟦value⟧;"]
+
+[answers.reference_parameter_member.template_resolver]
+declarations = ["T ⟦level⟧;"]
+
+[answers.decltype_call_scope.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T;"]
+
+[answers.decltype_explicit_template_call.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int; @-8"]
+
+[answers.decltype_deduced_template_call.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int; @-9"]
+
+[answers.decltype_call_needs_adl.template_resolver]
+type = "typename decltype(make(N::Arg<X>{}))::type"
+
+[answers.using_two_specializations]
+wrong = "Base<T>::get takes value as it is, Base<T*>::get not at all: got is a T"
+template_resolver = {}

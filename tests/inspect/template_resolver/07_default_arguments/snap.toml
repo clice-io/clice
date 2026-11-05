@@ -1,0 +1,61 @@
+[answers.partial_default_argument.template_resolver]
+type = "T"
+declarations = ["using ⟦type⟧ = T; @-5"]
+
+[answers.default_argument.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-14"
+declarations = ["using ⟦type⟧ = typename U2::type;"]
+
+[answers.nttp_default_argument.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T; @-5"]
+
+[answers.default_arg_earlier_param.template_resolver]
+type = "X *"
+declarations = ["using ⟦type⟧ = U; @-5"]
+
+[answers.pack_default_interplay.template_resolver]
+type = "type_list<X, int>"
+record = "struct ⟦type_list⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = type_list<T, U, Vs...>;"]
+
+[answers.inherited_default_argument.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = U; @-5"]
+
+[answers.alias_default_argument.template_resolver]
+type = "pair<X, int>"
+record = "struct ⟦pair⟧ {};"
+declarations = ["using ⟦type⟧ = TT<A>; @-5"]
+
+[answers.defaults_in_canonical.template_resolver]
+type = "target<X, int>"
+record = "struct ⟦target⟧ {};"
+declarations = ["using ⟦type⟧ = TT<A>; @-5"]
+
+[answers.dependent_value_default.template_resolver]
+type = "value<X>"
+record = "struct ⟦value⟧ {};"
+declarations = ["using ⟦type⟧ = value<M>;"]
+
+[answers.promoted_dependent_value.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int; @-6"]
+
+[answers.dependent_conditional_value.template_resolver]
+type = "typename P<X>::type"
+
+[answers.signed_overflow_value.template_resolver]
+type = "typename P<X>::type"
+
+[answers.member_value_default.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int; @-5"]
+
+[answers.dependent_typed_member_value.template_resolver]
+type = "long"
+declarations = ["using ⟦type⟧ = long;"]
+
+[answers.mutable_value_default.template_resolver]
+type = "typename Gemm<X>::type"

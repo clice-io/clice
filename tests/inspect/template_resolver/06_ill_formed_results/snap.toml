@@ -1,0 +1,40 @@
+[answers.void_reference.template_resolver]
+type = "T &"
+declarations = ["using ⟦type⟧ = T&;"]
+
+[answers.pointer_to_reference.template_resolver]
+type = "T *"
+declarations = ["using ⟦type⟧ = T*;"]
+
+[answers.atomic_reference.template_resolver]
+type = "_Atomic(T)"
+declarations = ["using ⟦type⟧ = _Atomic(T);"]
+
+[answers.negative_array_bound.template_resolver]
+type = "U[N]"
+declarations = ["using ⟦type⟧ = U[N];"]
+
+[answers.compound_value_degrade.template_resolver]
+type = "value<N + 1>"
+record = "struct ⟦value⟧ {};"
+declarations = ["using ⟦type⟧ = value<N + 1>;"]
+
+[answers.void_function_param.template_resolver]
+type = "void (T)"
+declarations = ["using ⟦type⟧ = void(T);"]
+
+[answers.void_member_pointee.template_resolver]
+type = "T C::*"
+declarations = ["using ⟦type⟧ = T C::*;"]
+
+[answers.surplus_arguments.template_resolver]
+type = "TT<A, int>"
+declarations = ["using ⟦type⟧ = TT<A, int>;"]
+
+[answers.function_return_array.template_resolver]
+type = "T ()"
+declarations = ["using ⟦type⟧ = T();"]
+
+[answers.dependent_template_head.template_resolver]
+type = "T::template tmpl<int>"
+declarations = ["using ⟦type⟧ = TT<int>;"]

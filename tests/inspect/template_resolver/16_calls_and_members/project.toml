@@ -1,0 +1,2 @@
+# c++23 for the explicit object parameter.
+flags = ["-std=c++23"]

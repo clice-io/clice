@@ -164,13 +164,27 @@ struct CallArgument {
     const clang::Expr* expr = nullptr;
 };
 
+/// What a lookup found, with what tells two finds of one declaration apart:
+/// the arguments the lookup bound the template it is a member of to (empty
+/// for a class that is no template's pattern), and the type an alias among
+/// them names under those.
+struct Found {
+    clang::DeclContext::lookup_result members;
+
+    llvm::SmallVector<clang::TemplateArgument, 4> owner;
+
+    clang::QualType aliased;
+};
+
 /// The functions a dependent call may call.
 struct Callees {
     llvm::SmallVector<const clang::NamedDecl*, 4> candidates;
 
-    /// Whether the call may call no other function: false for a call
+    /// Whether the candidates tell what the call calls: false for a call
     /// needing argument-dependent lookup whose arguments' types do not all
-    /// resolve — its instantiation may find more.
+    /// resolve — its instantiation may find more —, and for one reaching a
+    /// declaration through two specializations of its class, whose bindings
+    /// are not kept apart.
     bool complete = true;
 
     /// The call's arguments, resolved in the caller's terms; none when one
@@ -486,11 +500,13 @@ private:
 
     lookup_result lookup_in_base(const clang::CXXBaseSpecifier& base, clang::DeclarationName name);
 
-    /// The arguments the lookup that found `members`, its frames those past
-    /// `since`, bound the template they are members of to; empty for the
-    /// members of a class that is no template's pattern.
-    llvm::SmallVector<clang::TemplateArgument, 4> owner_arguments(lookup_result members,
-                                                                  unsigned since);
+    /// `members`, found by a lookup whose frames are those past `since`.
+    Found found_by(lookup_result members, unsigned since);
+
+    /// Whether two finds name one thing: the same declarations of the same
+    /// specialization, or an alias reading as the same type in both, as
+    /// clang takes it.
+    bool same_found(const Found& lhs, const Found& rhs);
 
     lookup_result lookup(clang::ClassTemplateDecl* CTD,
                          clang::DeclarationName name,

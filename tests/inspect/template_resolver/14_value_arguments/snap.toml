@@ -1,0 +1,45 @@
+[answers.nttp_passthrough.template_resolver]
+type = "box<X, 5>"
+record = "struct ⟦box⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = box<T, N>;"]
+
+[answers.nttp_bool_value.template_resolver]
+type = "box<X, true>"
+record = "struct ⟦box⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = box<T, B>;"]
+
+[answers.nttp_enum_value.template_resolver]
+type = "box<X, nttp_enum_value::Green>"
+record = "struct ⟦box⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = box<T, C>;"]
+
+[answers.repeated_value_pattern.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int; @-5"]
+
+[answers.typed_value_mismatch.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]
+
+[answers.auto_value_type.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]
+
+[answers.dependent_typed_value.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T;"]
+
+[answers.compound_value_match.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int; @-5"]
+
+[answers.compound_value_unverified.template_resolver]
+type = "typename trait<X, X + 2>::type"
+
+[answers.compound_value_concrete.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = typename trait<A, B>::type;"]
+
+[answers.compound_value_argument.template_resolver]
+type = "int"
+declarations = ["using ⟦inner⟧ = typename Arr<N + 1>::type;"]

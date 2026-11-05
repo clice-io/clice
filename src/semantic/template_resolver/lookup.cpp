@@ -165,8 +165,7 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup_in_bases(clang::CXX
     }
 
     auto frames = stack.size();
-    lookup_result found;
-    llvm::SmallVector<clang::TemplateArgument, 4> found_in;
+    std::optional<Found> found;
     for(auto& base: CRD->bases()) {
         auto base_frames = stack.size();
         auto members = lookup_in_base(base, name);
@@ -174,38 +173,22 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup_in_bases(clang::CXX
             stack.truncate(base_frames);
             continue;
         }
-        auto owner = owner_arguments(members, base_frames);
-        if(found.empty()) {
+        auto here = found_by(members, base_frames);
+        if(!found) {
             LOG_DEBUG(
                 "{}"
                 "found '{}' via base '{}'",
                 pad(),
                 name.getAsString(),
                 base.getType().getAsString());
-            found = members;
-            found_in = std::move(owner);
+            found = std::move(here);
             continue;
-        }
-        bool same_owner = ranges::equal(
-            found_in,
-            owner,
-            [&](const clang::TemplateArgument& lhs, const clang::TemplateArgument& rhs) {
-                return context.isSameTemplateArgument(lhs, rhs);
-            });
-        /// An alias found in two specializations names one type when both
-        /// read it as the same, as clang takes it.
-        auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(members.front());
-        if(!same_owner && alias && members.isSingleResult() && same_declarations(found, members)) {
-            auto type = substitute(alias->getUnderlyingType());
-            stack.truncate(base_frames);
-            auto other = substitute(alias->getUnderlyingType());
-            same_owner = !type.isNull() && !other.isNull() && context.hasSameType(type, other);
         }
         stack.truncate(base_frames);
         /// FIXME: no dominance through virtual bases: with B<T> and C<T> both
         /// virtually deriving A<T>, B's `type` hides A's in `D : C<T>, B<T>`, yet the
         /// two paths read as ambiguous here and the lookup answers nothing.
-        if(!same_declarations(found, members) || !same_owner) {
+        if(!same_found(*found, here)) {
             LOG_DEBUG(
                 "{}"
                 "'{}' is ambiguous among the bases",
@@ -215,11 +198,11 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup_in_bases(clang::CXX
             return lookup_result();
         }
     }
-    return found;
+    return found ? found->members : lookup_result();
 }
 
-llvm::SmallVector<clang::TemplateArgument, 4>
-    PseudoInstantiator::owner_arguments(lookup_result members, unsigned since) {
+Found PseudoInstantiator::found_by(lookup_result members, unsigned since) {
+    Found found{.members = members};
     auto* owner = llvm::dyn_cast<clang::CXXRecordDecl>(members.front()->getDeclContext());
     const clang::Decl* pattern = nullptr;
     if(owner && llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(owner)) {
@@ -227,16 +210,34 @@ llvm::SmallVector<clang::TemplateArgument, 4>
     } else if(owner) {
         pattern = owner->getDescribedClassTemplate();
     }
-    if(!pattern) {
-        return {};
-    }
-    for(unsigned f = stack.size(); f > since; f -= 1) {
+    for(unsigned f = stack.size(); pattern && f > since; f -= 1) {
         auto& frame = stack.frames()[f - 1];
         if(frame.decl->getCanonicalDecl() == pattern->getCanonicalDecl()) {
-            return frame.arguments;
+            found.owner = frame.arguments;
+            break;
         }
     }
-    return {};
+    if(auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(members.front());
+       alias && members.isSingleResult()) {
+        found.aliased = substitute(alias->getUnderlyingType());
+    }
+    return found;
+}
+
+bool PseudoInstantiator::same_found(const Found& lhs, const Found& rhs) {
+    if(!same_declarations(lhs.members, rhs.members)) {
+        return false;
+    }
+    if(ranges::equal(
+           lhs.owner,
+           rhs.owner,
+           [&](const clang::TemplateArgument& left, const clang::TemplateArgument& right) {
+               return context.isSameTemplateArgument(left, right);
+           })) {
+        return true;
+    }
+    return !lhs.aliased.isNull() && !rhs.aliased.isNull() &&
+           context.hasSameType(lhs.aliased, rhs.aliased);
 }
 
 PseudoInstantiator::lookup_result
@@ -329,23 +330,25 @@ PseudoInstantiator::lookup_result
                                            TemplateArguments arguments,
                                            clang::DeclarationName name) {
     auto frames = stack.size();
-    std::optional<lookup_result> common;
+    std::optional<Found> common;
     for(auto& match: viable_partials(CTD, arguments)) {
-        lookup_result members;
+        std::optional<Found> here;
         if(deduce_template_arguments(match.partial, arguments) != Deduction::Failed) {
-            members = lookup_in_record(match.partial, name);
+            if(auto members = lookup_in_record(match.partial, name); !members.empty()) {
+                here = found_by(members, frames);
+            }
         }
         stack.truncate(frames);
-        if(members.empty() || (common && !same_declarations(*common, members))) {
+        if(!here || (common && !same_found(*common, *here))) {
             return lookup_result();
         }
-        common = members;
+        common = std::move(here);
     }
     if(deduce_template_arguments(CTD, arguments) == Deduction::Failed) {
         return lookup_result();
     }
     auto members = lookup_in_record(CTD->getTemplatedDecl(), name);
-    if(members.empty() || (common && !same_declarations(*common, members))) {
+    if(members.empty() || (common && !same_found(*common, found_by(members, frames)))) {
         stack.truncate(frames);
         return lookup_result();
     }

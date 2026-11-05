@@ -1,0 +1,20 @@
+[answers.standard_map.template_resolver]
+type = "V *"
+
+[answers.standard_string.template_resolver]
+type = "T *"
+
+[answers.standard.template_resolver]
+type = "T &"
+
+[answers.standard_subscript.template_resolver]
+type = "std::vector<T> &"
+
+[answers.standard_const_overload.template_resolver]
+type = "const std::vector<T> &"
+
+[answers.standard_map_subscript.template_resolver]
+type = "std::vector<V> &"
+
+[answers.standard_map_iterator.template_resolver]
+type = "std::vector<V> *"

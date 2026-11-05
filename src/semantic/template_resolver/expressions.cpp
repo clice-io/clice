@@ -410,8 +410,6 @@ bool PseudoInstantiator::rvalue(const clang::Expr* base) {
 
 clang::QualType PseudoInstantiator::call_type(const clang::CallExpr* call) {
     auto* callee = call->getCallee()->IgnoreParenImpCasts();
-    /// A call whose argument-dependent lookup waits for instantiation may
-    /// call what the visible overloads say nothing about.
     auto callees = call_candidates(call);
     if(!callees.complete) {
         return clang::QualType();

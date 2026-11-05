@@ -1,0 +1,54 @@
+[answers.sfinae_rebind_present.template_resolver]
+type = "alloc<float>"
+record = "struct ⟦alloc⟧ { @-19"
+declarations = ["using ⟦type⟧ = typename A::template rebind<U>::other; @-5"]
+
+[answers.sfinae_rebind_absent.template_resolver]
+type = "plain<int>"
+record = "struct ⟦plain⟧ {};"
+declarations = ["using ⟦type⟧ = typename replace_first<A, U>::type;"]
+
+[answers.detector_member_present.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-19"
+declarations = ["using ⟦type⟧ = typename T::element; @-10"]
+
+[answers.detector_member_absent.template_resolver]
+type = "type_list<no_elem<X>>"
+record = "struct ⟦type_list⟧ {}; @-19"
+declarations = ["using ⟦type⟧ = type_list<T>; @-15"]
+
+[answers.detector_via_base.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-22"
+declarations = ["using ⟦type⟧ = typename T::element; @-13"]
+
+[answers.nested_rebind_detector.template_resolver]
+type = "alloc<float>"
+record = "struct ⟦alloc⟧ { @-24"
+declarations = ["using ⟦type⟧ = typename rebind_inner<A, U>::type;"]
+
+[answers.recursive_detector_probe.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-14"
+declarations = ["using ⟦type⟧ = typename wrap<T>::type;"]
+
+[answers.dependent_scope_inconclusive.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int; @-6"]
+
+[answers.template_member_probe.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-17"]
+
+[answers.dependent_base_probe.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int; @-6"]
+
+[answers.private_member_probe.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-16"]
+
+[answers.value_member_probe.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-16"]

@@ -1,0 +1,86 @@
+[answers.type_parameter_type.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T; @-5"]
+
+[answers.single_level.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = type_list<T>;"]
+
+[answers.single_level_not_dependent.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int; @-5"]
+
+[answers.multi_level.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-19"
+declarations = ["using ⟦type⟧ = typename B<T3>::type; @-5"]
+
+[answers.multi_level_not_dependent.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = typename B<T3>::type; @-5"]
+
+[answers.argument_dependent.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-14"
+declarations = ["using ⟦type⟧ = type_list<T2>;"]
+
+[answers.alias_argument.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-15"
+declarations = ["using ⟦type⟧ = type_list<typename base::type>;"]
+
+[answers.alias_dependent.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-15"
+declarations = ["using ⟦type⟧ = typename base::type;"]
+
+[answers.alias_template.template_resolver]
+type = "type_list<X, Y>"
+record = "struct ⟦type_list⟧ {}; @-15"
+
+[answers.multi_nested.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-10"
+declarations = ["using ⟦type⟧ = type_list<T1>; @-5"]
+
+[answers.typedef_chain.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = step3;"]
+
+[answers.dependent_base_typedef.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = typename base::value_type;"]
+
+[answers.identity_alias.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = identity<T>;"]
+
+[answers.self_referential_alias.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T; @-5"]
+
+[answers.typedef_chain_four_templates.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-24"
+declarations = ["using ⟦type⟧ = typename C<T4>::type;"]
+
+[answers.injected_class_name.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T; @-6"]
+
+[answers.alias_template_chain.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = second<T>;"]
+
+[answers.class_template_alias_target.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T; @-8"]
+
+[answers.redecl_split_definition.template_resolver]
+type = "X *"
+declarations = ["using ⟦type⟧ = T*; @+5"]
+
+[answers.redecl_alias_forward.template_resolver]
+type = "X *"
+declarations = ["using ⟦type⟧ = T*; @+5"]
