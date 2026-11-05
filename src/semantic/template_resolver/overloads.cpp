@@ -328,7 +328,11 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
             if(type.isNull() || type->isDependentType()) {
                 return std::nullopt;
             }
-            if(never_initializes(context, argument.type, argument.lvalue, type)) {
+            /// An argument clang typed is checked as written, where a null
+            /// pointer constant or a braced list shows.
+            if(argument.expr && !argument.expr->isTypeDependent()
+                   ? never_initializes(context, *argument.expr, type)
+                   : never_initializes(context, argument.type, argument.lvalue, type)) {
                 unviable.insert(decl);
                 return Ranks{};
             }
