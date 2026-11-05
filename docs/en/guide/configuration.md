@@ -146,6 +146,16 @@ Skip the bodies of the functions in the headers an open file includes at its top
 
 <div class="config-option">
 
+| Option       | Type   | Default |
+| ------------ | ------ | ------- |
+| `shared_pch` | `bool` | `true`  |
+
+Have the background index parse the headers most of the units compiled under one command include once, into a precompiled header clice builds for them while it indexes them, instead of in every unit; each unit still indexes as its own parse would, compiling without it where it would have parsed one of those headers otherwise — a macro of its own the header reads. Units reading a precompiled header their build declares parse over that one instead.
+
+</div>
+
+<div class="config-option">
+
 | Option     | Type     | Default |
 | ---------- | -------- | ------- |
 | `readonly` | `string` | `"off"` |
