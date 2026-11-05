@@ -5,13 +5,11 @@ import :support.fuzzy_matcher;
 
 namespace clice::feature {
 
-namespace {
-
 /// Whether `name` may be one of the matches of `lower`, the typed name
 /// lowercased: its characters in `name` in order, the first on what may
 /// begin a word — the start, past a separator, an uppercase letter. The
 /// matcher's cost would add up over every identifier of a large preamble.
-bool may_match(llvm::StringRef lower, llvm::StringRef name) {
+static bool may_match(llvm::StringRef lower, llvm::StringRef name) {
     std::size_t next = 0;
     for(std::size_t i = 0; i < name.size() && next < lower.size(); i += 1) {
         char c = name[i];
@@ -26,8 +24,6 @@ bool may_match(llvm::StringRef lower, llvm::StringRef name) {
     }
     return next == lower.size();
 }
-
-}  // namespace
 
 TypedNames::TypedNames(clang::Sema& sema,
                        clang::ExternalSemaSource& reader,
@@ -155,7 +151,11 @@ clang::IdentifierIterator* TypedNames::Identifiers::getIdentifiers() {
         explicit Found(std::vector<llvm::StringRef> names) : names(std::move(names)) {}
 
         llvm::StringRef Next() override {
-            return next < names.size() ? names[next++] : llvm::StringRef();
+            if(next == names.size()) {
+                return {};
+            }
+            next += 1;
+            return names[next - 1];
         }
 
     private:
@@ -164,12 +164,11 @@ clang::IdentifierIterator* TypedNames::Identifiers::getIdentifiers() {
         std::size_t next = 0;
     };
     // An identifier comes with the declarations the loaded files make of it
-    // in the translation unit, and with its macro.
+    // in the translation unit; its macro the macros' own read counts.
     auto& sema = names.sema;
     return new Found(names.read_matching([&](llvm::StringRef name) {
         auto* identifier = &sema.getASTContext().Idents.get(name);
-        return sema.IdResolver.begin(identifier) != sema.IdResolver.end() ||
-               identifier->hasMacroDefinition();
+        return sema.IdResolver.begin(identifier) != sema.IdResolver.end();
     }));
 }
 

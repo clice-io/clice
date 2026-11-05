@@ -50,12 +50,12 @@
     },
     {
       "path": "fragment.cppm",
-      "text": "// No import goes in a global module fragment.\nmodule;\nCirc\nexport module fragment;\n",
+      "text": "module;\nCirc\nexport module fragment;\n",
       "markers": [
         {
           "name": "global_fragment",
-          "begin": 59,
-          "end": 59,
+          "begin": 12,
+          "end": 12,
           "range": false
         }
       ]

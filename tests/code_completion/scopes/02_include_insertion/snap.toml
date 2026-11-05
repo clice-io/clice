@@ -235,6 +235,11 @@ items = [
 [default.c_tag.completion]
 items = []
 
+[default.c_hidden.completion]
+items = [
+    { label = "color_green", kind = "Variable", detail = "int", insert = "color_green" },
+]
+
 [[default.module_unit.completion.items]]
 label = "shapes::Circle"
 kind = "Class"
@@ -319,6 +324,11 @@ items = []
 
 [configured.c_tag.completion]
 items = []
+
+[configured.c_hidden.completion]
+items = [
+    { label = "color_green", kind = "Variable", detail = "int", insert = "color_green" },
+]
 
 [configured.module_unit.completion]
 items = []

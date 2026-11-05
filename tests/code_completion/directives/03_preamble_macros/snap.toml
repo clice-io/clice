@@ -1,14 +1,12 @@
 ["a directive typed after the includes".macros.completion]
 items = [
     { label = "DIR_ALPHA", kind = "Keyword" },
-    { label = "DIR_A_H", kind = "Keyword" },
     { label = "DIR_BETA", kind = "Keyword" },
 ]
 
 ["a directive typed between the includes".macros.completion]
 items = [
     { label = "DIR_ALPHA", kind = "Keyword" },
-    { label = "DIR_A_H", kind = "Keyword" },
 ]
 
 ["a directive typed between the includes".names.completion]

@@ -674,7 +674,7 @@ With `all_scopes`, also offer names declared, and macros defined, in headers the
 | ---------------- | ------ | ------- |
 | `insert_imports` | `bool` | `true`  |
 
-With `all_scopes`, also offer names exported by modules the file does not import yet, adding the `import`.
+With `all_scopes`, also offer names exported by modules the file does not import yet, adding the `import`. Where the project builds the `std` module, a file that imports modules or is a module unit takes the standard library's names with `import std;` rather than their headers.
 
 </div>
 

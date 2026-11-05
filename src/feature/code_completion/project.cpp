@@ -45,7 +45,7 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
 void offer_names(const index::IndexQuery& query,
                  const DependencyGraph& graph,
                  CompileCompletion& compile) {
-    if(!compile.prefix || compile.prefix->empty()) {
+    if(!compile.prefix) {
         return;
     }
     auto kind_of = [](SymbolKind kind) {
@@ -169,14 +169,20 @@ static std::optional<std::string>
             }
             continue;
         }
-        // An export names the private header as its includer wrote it.
+        // An export names the private header as its includer wrote it:
+        // beside the includer, or under a search directory.
         for(auto includer: graph.get_includers(header)) {
             auto& exporter = pragmas_of(includer);
+            llvm::StringRef exporter_path = files.resolve(includer);
             bool exports = ranges::any_of(exporter.exports, [&](llvm::StringRef name) {
                 llvm::StringRef spelled = path;
-                auto rest = spelled.drop_back(name.size());
-                return spelled.ends_with(name) &&
-                       (rest.empty() || llvm::sys::path::is_separator(rest.back()));
+                auto beside = path::join(path::parent(exporter_path), name);
+                path::normalize(beside);
+                if(spelled == beside) {
+                    return true;
+                }
+                return spelled.size() > name.size() && spelled.ends_with(name) &&
+                       path::is_separator(spelled[spelled.size() - name.size() - 1]);
             });
             if(exports) {
                 if(auto argument = arguments.of(files.resolve(includer))) {

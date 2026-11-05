@@ -4,3 +4,4 @@
 #include <snap§(pos)
 */
 #include /* the snapshot */ <snap§(after_comment)
+#if __has_include(/* the snapshot */ <snap§(has_include_after_comment)

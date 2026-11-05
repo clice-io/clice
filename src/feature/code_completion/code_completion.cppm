@@ -190,7 +190,8 @@ auto code_complete(CompilationParams params,
 auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
     -> protocol::CompletionList;
 
-/// The most names one completion offers from the index (ScopeCandidate).
+/// The most names one completion takes from the index (ScopeCandidate), and
+/// reads of the files its compile loads where a name is typed (TypedNames).
 constexpr inline std::size_t scope_candidate_limit = 100;
 
 /// The project's names the index offers for the name `compile` types

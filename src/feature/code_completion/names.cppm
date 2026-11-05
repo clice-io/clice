@@ -115,10 +115,11 @@ private:
     /// The namespaces read.
     llvm::DenseSet<const clang::DeclContext*> read;
 
-    /// The names read and the identifiers tried, of every scope: a list
-    /// shows `limit` items at most, the innermost scope's first, as Sema
-    /// reads it first.
+    /// The names read, of every scope: a list shows `limit` items at most,
+    /// the innermost scope's first, as Sema reads it first.
     std::size_t found_total = 0;
+
+    /// The identifiers tried, of every scope.
     std::size_t tried_total = 0;
 
     bool cut = false;

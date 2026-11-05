@@ -137,7 +137,7 @@
     },
     {
       "path": "plain.c",
-      "text": "void run(void) {\n    Circ;\n    int color = color_r;\n    Swat *swatch;\n}\n",
+      "text": "void run(void) {\n    Circ;\n    int color = color_r;\n    Swat *swatch;\n}\n\nvoid hide(void) {\n    int color_green = 0;\n    int other = color_gr;\n}\n",
       "markers": [
         {
           "name": "c_file",
@@ -155,6 +155,12 @@
           "name": "c_tag",
           "begin": 60,
           "end": 60,
+          "range": false
+        },
+        {
+          "name": "c_hidden",
+          "begin": 140,
+          "end": 140,
           "range": false
         }
       ]
@@ -861,6 +867,22 @@
           }
         },
         {
+          "label": "c_hidden",
+          "marker": "c_hidden",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "color_green",
+                  "kind": "Variable",
+                  "detail": "int",
+                  "insert": "color_green"
+                }
+              ]
+            }
+          }
+        },
+        {
           "label": "module_unit",
           "marker": "module_unit",
           "value": {
@@ -1109,6 +1131,22 @@
           "value": {
             "completion": {
               "items": []
+            }
+          }
+        },
+        {
+          "label": "c_hidden",
+          "marker": "c_hidden",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "color_green",
+                  "kind": "Variable",
+                  "detail": "int",
+                  "insert": "color_green"
+                }
+              ]
             }
           }
         },

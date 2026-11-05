@@ -1030,6 +1030,7 @@ public:
             }
         }
         completion.CodeCompleter = consumer;
+        more_names = more_names || (answered && more);
         return answered;
     }
 
@@ -1763,8 +1764,9 @@ public:
                         add_requirement(pattern, candidate.Priority);
                         break;
                     }
-                    // After `#ifdef` a macro comes as a pattern of its name, and
-                    // an include guard is no more wanted there.
+                    // After `#ifdef` a macro comes as a pattern of its name, an
+                    // include guard among them, which Sema's other lists of
+                    // macros leave out.
                     if(context.getKind() == clang::CodeCompletionContext::CCC_MacroNameUse) {
                         auto& pp = sema.getPreprocessor();
                         auto* info = pp.getMacroInfo(pp.getIdentifierInfo(pattern.getTypedText()));
@@ -1783,10 +1785,6 @@ public:
                         break;
                     }
                     auto* info = sema.getPreprocessor().getMacroInfo(candidate.Macro);
-                    // An include guard is its own header's; the index offers none either.
-                    if(info && info->isUsedForHeaderGuard()) {
-                        break;
-                    }
                     bool function_like = info && info->isFunctionLike();
 
                     Candidate item{
@@ -2198,8 +2196,29 @@ public:
         // The declarations the list keeps: those of the best `limit` labels,
         // a bundle of overloads one, as completion_list ranks them.
         {
+            // In bundle mode one item of a label is shown (dedup_priority),
+            // the first added among equals: a declaration an item added
+            // already displaces is no candidate.
+            llvm::StringMap<int> displacing;
+            if(options.bundle_overloads) {
+                for(auto& entry: collected) {
+                    if(entry.item.kind != protocol::CompletionItemKind::Snippet) {
+                        auto [it, inserted] =
+                            displacing.try_emplace(entry.item.label, entry.dedup_priority);
+                        it->second = std::max(it->second, entry.dedup_priority);
+                    }
+                }
+            }
+            auto displaced = [&](const Pending& each) {
+                auto it = displacing.find(each.item.label);
+                return it != displacing.end() &&
+                       it->second >= dedup_priority(each.item.kind, each.item.macro);
+            };
             llvm::StringMap<std::pair<float, std::optional<std::uint32_t>>> best;
             for(auto& each: pending) {
+                if(displaced(each)) {
+                    continue;
+                }
                 auto [it, inserted] =
                     best.try_emplace(each.item.label, each.score, each.item.order);
                 if(!inserted && each.score > it->second.first) {

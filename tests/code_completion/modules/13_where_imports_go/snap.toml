@@ -1,0 +1,7 @@
+[answers.conditional_declaration.completion]
+items = [
+    { label = ":core", kind = "Module", insert = ":core;", replace = "import ⟦:⟧" },
+]
+
+[answers.global_fragment.completion]
+items = []
