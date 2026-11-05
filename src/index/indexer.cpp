@@ -118,6 +118,18 @@ bool has_dependent_base(const clang::CXXRecordDecl* record) {
            });
 }
 
+/// Whether the walk of the file holding a declaration relates it: one
+/// instantiating a template made is no text of the file.
+bool from_text(const clang::Decl* decl) {
+    for(; !llvm::isa<clang::TranslationUnitDecl>(decl);
+        decl = clang::Decl::castFromDeclContext(decl->getDeclContext())) {
+        if(decls::is_instantiation(decl)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /// Whether the walk relates a declaration as a definition (the
 /// semantics' relations of a written declaration).
 bool defines(const clang::Decl* decl) {
@@ -2226,7 +2238,7 @@ public:
         for(auto& [hash, decl]: symbol_decls) {
             auto& symbol = symbols[hash];
             for(const auto* redecl: decl->redecls()) {
-                if(redecl->isImplicit() || redecl->getLocation().isInvalid()) {
+                if(redecl->isImplicit() || redecl->getLocation().isInvalid() || !from_text(redecl)) {
                     continue;
                 }
                 auto fid = SM.getFileID(SM.getExpansionLoc(redecl->getLocation()));

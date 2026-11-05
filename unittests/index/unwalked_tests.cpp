@@ -101,6 +101,48 @@ int b() { return twice(unbox(Box<int>{2})) + unbox(Box<char>{'c'}) + (Box<long>{
     ZEXPECT(walked_symbols == unwalked_symbols);
 };
 
+ZEST_CASE(InstantiatedMemberNamed) {
+    // The return type of `at` is a typedef of the instantiated class, which
+    // no walk of map.h relates: the unit's table names it either way.
+    TempDir tmp;
+    tmp.touch("map.h", R"cpp(#pragma once
+template <class Policy>
+struct Map {
+    template <class P>
+    using Mapped = decltype(P::value());
+    template <class P = Policy>
+    Mapped<P> at() { return P::value(); }
+};
+struct Ints {
+    static int value() { return 1; }
+};
+)cpp");
+    tmp.touch("a.cpp", "#include \"map.h\"\nint a() { return Map<Ints>{}.at(); }\n");
+    tmp.touch("b.cpp", "#include \"map.h\"\nint b() { return Map<Ints>{}.at() + 1; }\n");
+    auto a_data = index_file(tmp, tmp.path("a.cpp")).data;
+    auto a = index::TUIndex::from_bytes(a_data);
+    auto header = section_of(a, "map.h");
+    ZASSERT(header);
+    auto known = a.section_identity(*header);
+    auto walked_data = index_file(tmp, tmp.path("b.cpp"), {}, {known.variant}).data;
+    auto unwalked_data = index_file(tmp, tmp.path("b.cpp"), {}, {known.variant}, {}, {known}).data;
+    auto walked = index::TUIndex::from_bytes(walked_data);
+    auto unwalked = index::TUIndex::from_bytes(unwalked_data);
+    auto names = [](const index::TUIndex& view) {
+        std::vector<std::string> names;
+        view.for_each_symbol([&](index::SymbolHash,
+                                 const index::SymbolView& symbol,
+                                 llvm::ArrayRef<std::uint32_t>) {
+            names.push_back(symbol.name.str());
+            return true;
+        });
+        ranges::sort(names);
+        return names;
+    };
+    ZEXPECT(ranges::contains(names(walked), "Mapped"));
+    ZEXPECT(names(unwalked) == names(walked));
+};
+
 ZEST_CASE(OtherContextWalked) {
     TempDir tmp;
     tmp.touch("config.h", R"cpp(#pragma once
