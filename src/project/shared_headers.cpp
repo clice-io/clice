@@ -43,6 +43,30 @@ bool guarded(llvm::StringRef file, const clang::LangOptions& dialect) {
            lexical_scan(text, dialect).include_guard.has_value();
 }
 
+/// A compile's macro options (`-D`, `-U`), each with its value, as the
+/// arguments spell them.
+using MacroOptions = std::set<std::pair<std::string, std::string>>;
+
+/// `arguments` but its macro options, which go to `macros`.
+std::vector<std::string> without_macros(llvm::ArrayRef<const char*> arguments,
+                                        MacroOptions& macros) {
+    std::vector<std::string> rest;
+    for(std::size_t i = 0; i < arguments.size(); i += 1) {
+        llvm::StringRef argument = arguments[i];
+        if(argument == "-D" || argument == "-U") {
+            if(i + 1 < arguments.size()) {
+                macros.emplace(argument.str(), arguments[i + 1]);
+                i += 1;
+            }
+        } else if(argument.starts_with("-D") || argument.starts_with("-U")) {
+            macros.emplace(argument.take_front(2).str(), argument.drop_front(2).str());
+        } else {
+            rest.push_back(argument.str());
+        }
+    }
+    return rest;
+}
+
 /// The files of `unit`'s closure in the order its compile first enters them,
 /// as the scan reads its includes, conditional or not.
 llvm::DenseMap<Fid, std::uint32_t> entry_order(const DependencyGraph& graph, Fid unit) {
@@ -69,13 +93,18 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
         return;
     }
 
+    // Units compiled under one command but for their macro options (the
+    // kernel's KBUILD_MODNAME): the shared header takes the options all of
+    // them have, and each unit's compile reads its own others as its text's.
     struct Group {
         CommandRef command;
 
         std::vector<Fid> units;
+
+        MacroOptions macros;
     };
 
-    llvm::MapVector<std::pair<std::uint64_t, const char*>, Group> groups;
+    llvm::MapVector<std::uint64_t, Group> groups;
     for(auto unit: units) {
         if(!is_unit(unit) || !dep_graph.module_of(unit).empty()) {
             continue;
@@ -87,9 +116,16 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
            commands.pch_output(ref.command) || pch_writer(unit, selection)) {
             continue;
         }
-        auto& group = groups[{commands.command_hash(ref.command), ref.language.value}];
+        MacroOptions macros;
+        auto rest = without_macros(toolchain.render(ref, "shared").argv, macros);
+        rest.push_back(commands.get(ref.command).directory);
+        rest.push_back(language.str());
+        auto& group = groups[llvm::xxh3_64bits(llvm::join(rest, "\n"))];
         if(group.units.empty()) {
             group.command = ref;
+            group.macros = std::move(macros);
+        } else {
+            std::erase_if(group.macros, [&](auto& macro) { return !macros.contains(macro); });
         }
         group.units.push_back(unit);
     }
@@ -142,6 +178,7 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
             }
         }
 
+        auto language = llvm::StringRef(group.command.language.value);
         auto& dialect = this->dialect(group.command.file, nullptr);
         for(auto level: views::iota(std::size_t(0), held.size())) {
             auto& members = assigned[level];
@@ -179,11 +216,8 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
                                     llvm::sys::path::convert_to_slash(file_table.resolve(root)));
             }
             auto name = std::format("{:016x}.{}",
-                                    llvm::xxh3_64bits(std::format("{}:{}:{}",
-                                                                  key.first,
-                                                                  key.second,
-                                                                  level)),
-                                    llvm::StringRef(key.second) == "c" ? "h" : "hxx");
+                                    llvm::xxh3_64bits(std::format("{}:{}", key, level)),
+                                    language == "c" ? "h" : "hxx");
             auto file = path::join(directory, name);
             if(auto made = fs::create_directories(directory); !made) {
                 LOG_WARN("Cannot create {} for the shared headers: {}",
@@ -197,12 +231,29 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
             }
 
             auto rendered = toolchain.render(group.command, file);
-            std::vector<std::string> arguments(rendered.argv.begin(), rendered.argv.end() - 1);
+            MacroOptions own;
+            auto arguments = without_macros(llvm::ArrayRef(rendered.argv).drop_back(), own);
             for(auto it = arguments.begin(); it != arguments.end();) {
                 it = *it == "-x" && it + 1 != arguments.end() ? arguments.erase(it, it + 2) : it + 1;
             }
+            // In the order the command gives them: a later one wins.
+            for(std::size_t i = 0; i < rendered.argv.size(); i += 1) {
+                llvm::StringRef argument = rendered.argv[i];
+                std::pair<std::string, std::string> macro;
+                if((argument == "-D" || argument == "-U") && i + 1 < rendered.argv.size()) {
+                    macro = {argument.str(), rendered.argv[i + 1]};
+                    i += 1;
+                } else if(argument.starts_with("-D") || argument.starts_with("-U")) {
+                    macro = {argument.take_front(2).str(), argument.drop_front(2).str()};
+                } else {
+                    continue;
+                }
+                if(group.macros.contains(macro)) {
+                    arguments.push_back(macro.first + macro.second);
+                }
+            }
             arguments.push_back("-x");
-            arguments.push_back(std::format("{}-header", key.second));
+            arguments.push_back(std::format("{}-header", language));
             arguments.push_back(file);
             PCHRequest request{
                 .params = {.file = file,
