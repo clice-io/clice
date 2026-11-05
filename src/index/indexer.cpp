@@ -354,7 +354,7 @@ public:
         }
         auto hash = unit.get<EntityTable>().entity(decl);
         auto [it, success] = symbols.try_emplace(hash);
-        if(success && !unwalked.files.empty()) {
+        if(success) {
             symbol_decls.try_emplace(hash, decl);
         }
         if(success) {
@@ -2133,6 +2133,33 @@ public:
             }
         }
 
+        // A header the shared header's PCH held, and a file it entered, is
+        // what the shared header's index made of it: its variant, and the
+        // instantiations resolved there.
+        llvm::StringMap<std::uint32_t> path_ids_of;
+        llvm::SmallVector<std::uint32_t> shared_paths;
+        llvm::SmallVector<std::pair<std::uint32_t, std::uint32_t>> shared_keys;
+        if(auto* shared = unit.shared_header(); shared && !unit.grafted_includes().empty()) {
+            for(auto [path_id, path]: views::enumerate(tree.paths)) {
+                path_ids_of.try_emplace(path, static_cast<std::uint32_t>(path_id));
+            }
+            llvm::DenseSet<std::uint32_t> files;
+            for(auto& include: unit.grafted_includes()) {
+                if(include.skipped || !files.insert(include.file).second) {
+                    continue;
+                }
+                auto& path = shared->files[include.file].path;
+                auto path_id = path_ids_of.lookup(path);
+                if(auto& section = shared_sections[include.file]; section.variant != 0) {
+                    known_sections.try_emplace(path, section);
+                    shared_paths.push_back(path_id);
+                }
+                if(!shared_instantiations[include.file].empty()) {
+                    shared_keys.emplace_back(path_id, include.file);
+                }
+            }
+        }
+
         // Entries are keyed by FileID while they accumulate, by path from here
         // on. A header entered several times (its FileIDs differ, its path
         // id does not) contributes the union of its FileIDs' entries:
@@ -2196,6 +2223,9 @@ public:
             }
             into.skipped.append_range(file.skipped);
         }
+        for(auto [path_id, file]: shared_keys) {
+            resolved_by_path[path_id].skipped.append_range(shared_instantiations[file]);
+        }
         // An external symbol lists the files whose instantiations name it on
         // their own; any other reaches them as its reference files.
         auto named_in = [&](SymbolHash hash, std::uint32_t path_id) {
@@ -2234,7 +2264,11 @@ public:
                 symbol.file = path_id;
             }
         };
-        // An unwalked file declares what its walk would have related.
+        // A file whose known variant the unit sends — one it left unwalked,
+        // one a shared header's PCH held — declares what its walk would have
+        // related. Another precompiled header's own index relates what it
+        // declares: a symbol below external scope, which no other index
+        // describes, takes its definition from the declaration.
         for(auto& [hash, decl]: symbol_decls) {
             auto& symbol = symbols[hash];
             for(const auto* redecl: decl->redecls()) {
@@ -2242,12 +2276,23 @@ public:
                     continue;
                 }
                 auto fid = SM.getFileID(SM.getExpansionLoc(redecl->getLocation()));
-                if(!unwalked.files.contains(fid) || tree.node_of(fid) == no_node) {
-                    continue;
+                std::optional<std::uint32_t> known;
+                if(unwalked.files.contains(fid) && tree.node_of(fid) != no_node) {
+                    known = tree.path_id(fid);
+                } else if(!path_ids_of.empty() && SM.isLoadedFileID(fid) &&
+                          !unit.is_builtin_file(fid)) {
+                    auto path = unit.file_path(fid);
+                    if(known_sections.contains(path)) {
+                        known = path_ids_of.lookup(path);
+                    }
                 }
-                auto path_id = tree.path_id(fid);
-                symbol.reference_files.add(path_id);
-                adopt(symbol, path_id, defines(redecl));
+                if(known) {
+                    symbol.reference_files.add(*known);
+                    adopt(symbol, *known, defines(redecl));
+                } else if(redecl->isFromASTFile() && symbol.scope != SymbolScope::External &&
+                          defines(redecl)) {
+                    symbol.flags |= SymbolFlags::HasDefinition;
+                }
             }
         }
         for(auto& [path_id, file_index]: by_path) {
@@ -2296,30 +2341,7 @@ public:
                 }
             }
         }
-        // A header the shared header's PCH held, and a file it entered, is
-        // what the shared header's index made of it: its variant, and the
-        // instantiations resolved there.
-        if(auto* shared = unit.shared_header(); shared && !unit.grafted_includes().empty()) {
-            llvm::StringMap<std::uint32_t> path_ids_of;
-            for(auto [path_id, path]: views::enumerate(tree.paths)) {
-                path_ids_of.try_emplace(path, static_cast<std::uint32_t>(path_id));
-            }
-            llvm::DenseSet<std::uint32_t> files;
-            for(auto& include: unit.grafted_includes()) {
-                if(include.skipped || !files.insert(include.file).second) {
-                    continue;
-                }
-                auto& path = shared->files[include.file].path;
-                auto path_id = path_ids_of.lookup(path);
-                if(auto& section = shared_sections[include.file]; section.variant != 0) {
-                    known_sections.try_emplace(path, section);
-                    path_ids.push_back(path_id);
-                }
-                if(auto& keys = shared_instantiations[include.file]; !keys.empty()) {
-                    resolved_by_path[path_id].skipped.append_range(keys);
-                }
-            }
-        }
+        path_ids.append(shared_paths.begin(), shared_paths.end());
         ranges::sort(path_ids);
         path_ids.erase(ranges::unique(path_ids).begin(), path_ids.end());
         std::vector<FileSection> sections;
@@ -2554,8 +2576,9 @@ private:
 
     llvm::StringMap<KnownIdentity> known_sections;
 
-    /// While files go unwalked, the declaration each symbol was registered
-    /// from: their redeclarations there stand for the walk's relations.
+    /// The declaration each symbol was registered from: its redeclarations
+    /// in a file the unit sends the known variant of, or reads from a
+    /// precompiled header, stand for relations this walk does not make.
     llvm::DenseMap<SymbolHash, const clang::NamedDecl*> symbol_decls;
 
     /// Per file, its written relations as records would say them

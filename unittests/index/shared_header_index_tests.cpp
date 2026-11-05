@@ -44,13 +44,16 @@ std::optional<index::SharedHeaderIndex> build_shared(TempDir& tmp, llvm::StringR
     return index::decode_shared_header(as_chars(index::encode_shared_header(index)));
 }
 
-/// The TU index of `main.cpp` in `tmp` loading the PCH at `pch`.
-std::string index_over(TempDir& tmp, llvm::StringRef pch, const index::SharedHeaderIndex& shared) {
-    CompilationParams params{
-        .kind = CompilationKind::Whole,
-        .header_identities = true,
-        .shared = std::shared_ptr<const SharedHeaderRecord>(std::shared_ptr<void>(), &shared.record),
-    };
+/// The TU index of `main.cpp` in `tmp` loading the PCH at `pch`, with its
+/// record as a shared header's when given one.
+std::string index_over(TempDir& tmp,
+                       llvm::StringRef pch,
+                       const index::SharedHeaderIndex* shared = nullptr) {
+    CompilationParams params{.kind = CompilationKind::Whole, .header_identities = true};
+    if(shared) {
+        params.shared =
+            std::shared_ptr<const SharedHeaderRecord>(std::shared_ptr<void>(), &shared->record);
+    }
     params.input.directory = std::string(tmp.root);
     params.input.arguments = {"clang++",
                               "-fsyntax-only",
@@ -62,10 +65,25 @@ std::string index_over(TempDir& tmp, llvm::StringRef pch, const index::SharedHea
     params.input.pch = {pch.str(), 0};
     auto unit = compile(std::move(params));
     ZEXPECT(unit->shared_rejection().empty());
-    return std::string(
-        as_chars(index::build_tu_index(*unit,
-                                       {.shared_sections = shared.sections,
-                                        .shared_instantiations = shared.instantiations})));
+    index::TUIndexOptions options;
+    if(shared) {
+        options.shared_sections = shared->sections;
+        options.shared_instantiations = shared->instantiations;
+    }
+    return std::string(as_chars(index::build_tu_index(*unit, options)));
+}
+
+/// The flags of the symbol named `name` in the TU index; none for none.
+std::optional<index::SymbolFlags> flags_of(const index::TUIndex& view, llvm::StringRef name) {
+    std::optional<index::SymbolFlags> flags;
+    view.for_each_symbol(
+        [&](index::SymbolHash, const index::SymbolView& symbol, llvm::ArrayRef<std::uint32_t>) {
+            if(symbol.name == name) {
+                flags = symbol.flags;
+            }
+            return true;
+        });
+    return flags;
 }
 
 /// The include tree as `includer line -> file`, a skipped include marked.
@@ -143,7 +161,7 @@ int use() { return outer(Outer{}) + other(Inner{}); }
     ZASSERT(shared);
 
     auto walked_data = index_file(tmp, tmp.path("main.cpp"), {"-std=c++20"}).data;
-    auto grafted_data = index_over(tmp, pch, *shared);
+    auto grafted_data = index_over(tmp, pch, &*shared);
     auto walked = index::TUIndex::from_bytes(walked_data);
     auto grafted = index::TUIndex::from_bytes(grafted_data);
     ZASSERT(walked.loaded());
@@ -158,6 +176,35 @@ int use() { return outer(Outer{}) + other(Inner{}); }
             ZEXPECT(grafted.section_blob(i).empty());
         }
     }
+};
+
+ZEST_CASE(LocalOfThePCHDefined) {
+    // A constant of a header the PCH holds has internal linkage: the unit's
+    // own table describes it, defined, whether it parses the header or
+    // reads it from a precompiled header, shared or the build's.
+    TempDir tmp;
+    tmp.touch("shared.hxx", "#pragma once\n#include \"limits.h\"\n");
+    tmp.touch("limits.h", "#pragma once\nconstexpr int limit = 3;\n");
+    tmp.touch("main.cpp", "#include \"limits.h\"\nint use() { return limit; }\n");
+    auto pch = tmp.path("shared.pch");
+    auto shared = build_shared(tmp, pch);
+    ZASSERT(shared);
+
+    auto walked_data = index_file(tmp, tmp.path("main.cpp"), {"-std=c++20"}).data;
+    auto walked = index::TUIndex::from_bytes(walked_data);
+    auto walked_flags = flags_of(walked, "limit");
+    ZASSERT(walked_flags);
+    ZEXPECT(has_flag(*walked_flags, index::SymbolFlags::HasDefinition));
+
+    auto grafted_data = index_over(tmp, pch, &*shared);
+    auto grafted = index::TUIndex::from_bytes(grafted_data);
+    ZEXPECT(flags_of(grafted, "limit") == walked_flags);
+
+    auto declared_data = index_over(tmp, pch);
+    auto declared = index::TUIndex::from_bytes(declared_data);
+    auto declared_flags = flags_of(declared, "limit");
+    ZASSERT(declared_flags);
+    ZEXPECT(has_flag(*declared_flags, index::SymbolFlags::HasDefinition));
 };
 
 };  // ZEST_SUITE(SharedHeaderIndex)
