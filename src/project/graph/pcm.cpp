@@ -494,8 +494,11 @@ async::task<Imports> Project::scan_imports(Fid path_id,
         for(auto& arg: resolution.arguments) {
             argv.push_back(arg.c_str());
         }
-        auto scanned = co_await async::queue(
-            [&] { return scan_precise(argv, resolution.directory, content, std::move(vfs)); });
+        // Taken here: the graph may be rebuilt while the scan runs.
+        auto& cache = *dep_graph.directives;
+        auto scanned = co_await async::queue([&] {
+            return scan_precise(cache, argv, resolution.directory, content, std::move(vfs));
+        });
         scan = {.directives = directives,
                 .bound = bound,
                 .arguments = arguments_hash,

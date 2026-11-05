@@ -154,7 +154,8 @@ ScanResult ServedProject::declared_module(Fid path_id, llvm::StringRef text) {
     for(auto& argument: rendered.arguments) {
         argv.push_back(argument.c_str());
     }
-    return scan_module_decl(argv,
+    return scan_module_decl(*project.dep_graph.directives,
+                            argv,
                             rendered.directory,
                             text,
                             llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden)));

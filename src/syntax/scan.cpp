@@ -160,11 +160,12 @@ namespace {
 
 class DirectivesGetter : public clang::DependencyDirectivesGetter {
 public:
-    explicit DirectivesGetter(clang::FileManager& file_mgr) : file_mgr(&file_mgr) {}
+    DirectivesGetter(clang::FileManager& file_mgr, DirectiveCache& cache) :
+        file_mgr(&file_mgr), cache(&cache) {}
 
     std::unique_ptr<clang::DependencyDirectivesGetter>
         cloneFor(clang::FileManager& new_file_mgr) override {
-        return std::make_unique<DirectivesGetter>(new_file_mgr);
+        return std::make_unique<DirectivesGetter>(new_file_mgr, *cache);
     }
 
     std::optional<llvm::ArrayRef<clang::dependency_directives_scan::Directive>>
@@ -173,20 +174,24 @@ public:
             return std::nullopt;
         }
 
-        auto buffer = file_mgr->getBufferForFile(file);
-        if(!buffer) {
+        // The file entry keeps its modification time in seconds.
+        auto status = file_mgr->getVirtualFileSystem().status(file.getName());
+        if(!status) {
             return std::nullopt;
         }
-
-        // Directive::Tokens are ArrayRefs into the entry's tokens, so the
-        // entry is scanned in its final, never-moving place.
-        auto& entry = entries.emplace_back();
-        entry.source = (*buffer)->getBuffer().str();
-        if(clang::scanSourceForDependencyDirectives(entry.source, entry.tokens, entry.directives)) {
-            entries.pop_back();
-            return std::nullopt;
+        auto entry = cache->find(*status);
+        if(!entry) {
+            auto buffer = file_mgr->getBufferForFile(file);
+            if(!buffer) {
+                return std::nullopt;
+            }
+            entry = cache->add(*status, (*buffer)->getBuffer());
+            if(!entry) {
+                return std::nullopt;
+            }
         }
-        return llvm::ArrayRef(entry.directives);
+        held.push_back(entry);
+        return llvm::ArrayRef(entry->directives);
     }
 
     /// Lexed by clang's ordinary lexer, not from its directives: the scanned
@@ -197,15 +202,12 @@ public:
     clang::OptionalFileEntryRef scanned;
 
 private:
-    struct Entry {
-        /// The file's text, which the tokens point into.
-        std::string source;
-        llvm::SmallVector<clang::dependency_directives_scan::Token> tokens;
-        llvm::SmallVector<clang::dependency_directives_scan::Directive> directives;
-    };
-
     clang::FileManager* file_mgr;
-    std::deque<Entry> entries;
+
+    DirectiveCache* cache;
+
+    /// The entries handed to this scan, which it reads until it ends.
+    std::vector<std::shared_ptr<const DirectiveCache::Entry>> held;
 };
 
 /// Collects the imports the preprocessor reaches, each with its offset in
@@ -249,6 +251,7 @@ private:
 /// the entered preprocessor; the module declaration it reached is read
 /// into `result` before the source file is ended.
 void scan_with_preprocessor(
+    DirectiveCache& cache,
     llvm::ArrayRef<const char*> arguments,
     llvm::StringRef directory,
     std::optional<llvm::StringRef> content,
@@ -289,7 +292,7 @@ void scan_with_preprocessor(
     instance->getDiagnostics().setSuppressAllDiagnostics(true);
     instance->createFileManager();
 
-    auto getter = std::make_unique<DirectivesGetter>(instance->getFileManager());
+    auto getter = std::make_unique<DirectivesGetter>(instance->getFileManager(), cache);
     auto& directives = *getter;
     instance->setDependencyDirectivesGetter(std::move(getter));
 
@@ -317,6 +320,31 @@ void scan_with_preprocessor(
 
 }  // namespace
 
+std::shared_ptr<const DirectiveCache::Entry> DirectiveCache::find(const llvm::vfs::Status& status) {
+    std::lock_guard lock(mutex);
+    auto it = entries.find(status.getUniqueID());
+    if(it == entries.end() || it->second->size != status.getSize() ||
+       it->second->modified != status.getLastModificationTime()) {
+        return nullptr;
+    }
+    return it->second;
+}
+
+std::shared_ptr<const DirectiveCache::Entry> DirectiveCache::add(const llvm::vfs::Status& status,
+                                                                 llvm::StringRef text) {
+    auto entry = std::make_shared<Entry>();
+    entry->size = status.getSize();
+    entry->modified = status.getLastModificationTime();
+    if(clang::scanSourceForDependencyDirectives(text, entry->tokens, entry->directives)) {
+        return nullptr;
+    }
+    if(entry->modified != llvm::sys::TimePoint<>()) {
+        std::lock_guard lock(mutex);
+        entries[status.getUniqueID()] = entry;
+    }
+    return entry;
+}
+
 std::shared_ptr<const ScanResult> QuickScanCache::scan_of(Fid fid,
                                                           std::uint64_t content_hash,
                                                           llvm::StringRef content) {
@@ -327,12 +355,14 @@ std::shared_ptr<const ScanResult> QuickScanCache::scan_of(Fid fid,
     return it->second;
 }
 
-ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
+ScanResult scan_precise(DirectiveCache& cache,
+                        llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
                         std::optional<llvm::StringRef> content,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     ScanResult result;
     scan_with_preprocessor(
+        cache,
         arguments,
         directory,
         content,
@@ -348,12 +378,14 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
     return result;
 }
 
-ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
+ScanResult scan_module_decl(DirectiveCache& cache,
+                            llvm::ArrayRef<const char*> arguments,
                             llvm::StringRef directory,
                             std::optional<llvm::StringRef> content,
                             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     ScanResult result;
-    scan_with_preprocessor(arguments,
+    scan_with_preprocessor(cache,
+                           arguments,
                            directory,
                            content,
                            std::move(vfs),

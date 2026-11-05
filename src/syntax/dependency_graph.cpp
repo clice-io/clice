@@ -345,9 +345,11 @@ bool DependencyGraph::reaches_import(Fid path_id) const {
 
 void DependencyGraph::reset() {
     auto kept = std::move(quick_scans);
+    auto cache = std::move(directives);
     auto generation = edges_changed + 1;
     *this = DependencyGraph();
     quick_scans = std::move(kept);
+    directives = std::move(cache);
     edges_changed = generation;
 }
 
@@ -649,6 +651,7 @@ struct FileScanner {
                     {path_id, group.command, group.language, CommandSource::Database},
                     cdb.spelling(path_id));
                 auto declared = scan_module_decl(
+                    *graph.directives,
                     rendered.argv,
                     cdb.commands().get(group.command).directory,
                     observed->text,

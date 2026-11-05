@@ -147,6 +147,36 @@ struct QuickScanCache {
                                               llvm::StringRef content);
 };
 
+/// The dependency directives of the headers the preprocessor scans read
+/// (scan_precise, scan_module_decl), shared by all of them: a header is
+/// read and minimized once while its size and modification time stay,
+/// where each scan would do it again. Scans run on the thread pool at once,
+/// so it locks, and a scan keeps the entries it was handed until it ends:
+/// a header changed meanwhile replaces its entry. A file the disk does not
+/// hold (an in-memory one, modified at the epoch) is minimized for its scan
+/// alone.
+class DirectiveCache {
+public:
+    struct Entry {
+        std::uint64_t size = 0;
+        llvm::sys::TimePoint<> modified;
+        llvm::SmallVector<clang::dependency_directives_scan::Token> tokens;
+        llvm::SmallVector<clang::dependency_directives_scan::Directive> directives;
+    };
+
+    /// The entry of the file `status` describes, if it is current.
+    std::shared_ptr<const Entry> find(const llvm::vfs::Status& status);
+
+    /// The directives of `text`, the contents of the file `status`
+    /// describes, kept for the next scans; null when it does not minimize.
+    std::shared_ptr<const Entry> add(const llvm::vfs::Status& status, llvm::StringRef text);
+
+private:
+    std::mutex mutex;
+
+    llvm::DenseMap<llvm::sys::fs::UniqueID, std::shared_ptr<const Entry>> entries;
+};
+
 /// Precise preprocessing-based scan: runs the real preprocessor, so
 /// conditionals are evaluated and macros expand. This is the only
 /// trustworthy source of module dependency edges — `import MACRO;` is
@@ -156,7 +186,8 @@ struct QuickScanCache {
 /// name. Fills the module name and the imports with their offsets.
 /// An engaged `content` remaps the scanned file to it — even when empty:
 /// an emptied buffer must scan as empty, not fall back to the disk.
-ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
+ScanResult scan_precise(DirectiveCache& cache,
+                        llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
                         std::optional<llvm::StringRef> content = std::nullopt,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = nullptr);
@@ -170,7 +201,8 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
 /// declaration is found, so it only processes the file preamble (global module
 /// fragment + conditionals around the module declaration). Only populates
 /// `module_name` and `is_interface_unit` in the returned ScanResult.
-ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
+ScanResult scan_module_decl(DirectiveCache& cache,
+                            llvm::ArrayRef<const char*> arguments,
                             llvm::StringRef directory,
                             std::optional<llvm::StringRef> content = std::nullopt,
                             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = nullptr);
