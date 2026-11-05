@@ -295,16 +295,18 @@ void TokenMap::finish(llvm::ArrayRef<Token> scanned,
     // The code a PCH parsed before the stream began: a global module
     // fragment's declarations.
     bool directive = false;
+    std::size_t region = 0;
     for(auto [index, token]: views::enumerate(
             spelled.take_while([&](const Token& token) { return token.range.begin < preamble; }))) {
         directive |= token.is_directive_hash();
-        bool active = true;
-        for(std::size_t region = 0; region + 1 < inactive.size(); region += 2) {
-            active &=
-                token.range.begin < inactive[region] || inactive[region + 1] <= token.range.begin;
-        }
-        if(!directive && active) {
-            away[index] = false;
+        if(!directive) {
+            auto at = token.range.begin;
+            while(region + 1 < inactive.size() && inactive[region + 1] <= at) {
+                region += 2;
+            }
+            if(region + 1 >= inactive.size() || at < inactive[region]) {
+                away[index] = false;
+            }
         }
         directive &= !token.is_eod();
     }

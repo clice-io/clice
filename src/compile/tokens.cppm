@@ -37,7 +37,7 @@ public:
     /// Ends the collection after the parse and maps the stream onto
     /// `scanned`, the focus file's lexical scan, which outlives the map.
     /// The text before `preamble` a PCH parsed, its regions `inactive`
-    /// (begin/end offset pairs) left out.
+    /// (ascending begin/end offset pairs) left out.
     void finish(llvm::ArrayRef<Token> scanned,
                 std::uint32_t preamble,
                 llvm::ArrayRef<std::uint32_t> inactive);
