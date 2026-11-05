@@ -31,3 +31,20 @@ range = "return getter.get(1).⟦large⟧;"
 [answers.array_decay]
 wrong = "both overloads take the array as an exact match, so the one that is not a template wins: the card should show Large::large"
 hover = {}
+
+[answers.same_alias.hover]
+markdown = '''
+**type** `type` · struct `Named<T>`
+
+```cpp
+using type = Shared
+```
+```cpp
+struct Shared {
+  int shared;
+}
+```
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "typename Both::⟦type⟧ value;"

@@ -186,13 +186,22 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup_in_bases(clang::CXX
             found_in = std::move(owner);
             continue;
         }
-        stack.truncate(base_frames);
         bool same_owner = ranges::equal(
             found_in,
             owner,
             [&](const clang::TemplateArgument& lhs, const clang::TemplateArgument& rhs) {
                 return context.isSameTemplateArgument(lhs, rhs);
             });
+        /// An alias found in two specializations names one type when both
+        /// read it as the same, as clang takes it.
+        auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(members.front());
+        if(!same_owner && alias && members.isSingleResult() && same_declarations(found, members)) {
+            auto type = substitute(alias->getUnderlyingType());
+            stack.truncate(base_frames);
+            auto other = substitute(alias->getUnderlyingType());
+            same_owner = !type.isNull() && !other.isNull() && context.hasSameType(type, other);
+        }
+        stack.truncate(base_frames);
         /// FIXME: no dominance through virtual bases: with B<T> and C<T> both
         /// virtually deriving A<T>, B's `type` hides A's in `D : C<T>, B<T>`, yet the
         /// two paths read as ambiguous here and the lookup answers nothing.

@@ -8,41 +8,6 @@ namespace clice::types {
 
 namespace {
 
-/// Does `type` still refer to a parameter of `params`?
-bool mentions_parameters(clang::QualType type, const clang::TemplateParameterList* params) {
-    struct Finder : clang::RecursiveASTVisitor<Finder> {
-        const clang::TemplateParameterList* params = nullptr;
-        bool found = false;
-
-        bool owns(const clang::NamedDecl* decl) const {
-            return decl && ranges::contains(*params, decl);
-        }
-
-        bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
-            found |= T->getDecl() ? owns(T->getDecl()) : T->getDepth() == params->getDepth();
-            return !found;
-        }
-
-        /// A function parameter named in a trailing return type
-        /// (`-> decltype(f(key))`) stands for its type.
-        bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
-            auto* decl = expr->getDecl();
-            found |= owns(decl) || (llvm::isa<clang::ParmVarDecl>(decl) &&
-                                    mentions_parameters(decl->getType(), params));
-            return !found;
-        }
-
-        bool TraverseTemplateName(clang::TemplateName name) {
-            found |= owns(name.getAsTemplateDecl());
-            return !found && RecursiveASTVisitor::TraverseTemplateName(name);
-        }
-    } finder;
-
-    finder.params = params;
-    finder.TraverseType(type);
-    return finder.found;
-}
-
 /// Whether `type` holds an `auto` no deduction filled in: a dependent
 /// initializer leaves it so until instantiation.
 bool undeduced(clang::QualType type) {
@@ -341,10 +306,12 @@ clang::QualType PseudoInstantiator::loop_element(const clang::VarDecl* var) {
         /// `begin()` is called on the variable the range initializes.
         select_by_object(candidates, range);
         iterator = common_return_type(candidates, {});
-    } else if(auto found = argument_dependent_lookup(begin, {range})) {
+    } else if(auto found = argument_dependent_lookup(begin,
+                                                     {
+                                                         {.type = range, .lvalue = true}
+    })) {
         /// A class without member `begin` or `end` is iterated through the
         /// `begin(range)` argument-dependent lookup finds.
-        drop_by_arity(*found, 1, /*member_call=*/false);
         iterator = common_return_type(*found,
                                       {
         },
@@ -419,8 +386,10 @@ clang::QualType PseudoInstantiator::deref_type(clang::QualType object, bool rval
     llvm::SmallVector<const clang::NamedDecl*, 4> candidates(members.begin(), members.end());
     drop_by_arity(candidates, 0, /*member_call=*/true);
     select_by_object(candidates, object, rvalue);
-    if(auto found = argument_dependent_lookup(star, {object})) {
-        drop_by_arity(*found, 1, /*member_call=*/false);
+    if(auto found = argument_dependent_lookup(star,
+                                              {
+                                                  {.type = object, .lvalue = !rvalue}
+    })) {
         candidates.append(found->begin(), found->end());
     }
     return common_return_type(candidates,
@@ -441,9 +410,6 @@ bool PseudoInstantiator::rvalue(const clang::Expr* base) {
 
 clang::QualType PseudoInstantiator::call_type(const clang::CallExpr* call) {
     auto* callee = call->getCallee()->IgnoreParenImpCasts();
-    /// The arguments are written in the caller's terms: resolved before
-    /// the lookup leaves the frames of the callee's class on the stack.
-    auto arguments = call_arguments({call->getArgs(), call->getNumArgs()});
     /// A call whose argument-dependent lookup waits for instantiation may
     /// call what the visible overloads say nothing about.
     auto callees = call_candidates(call);
@@ -452,8 +418,8 @@ clang::QualType PseudoInstantiator::call_type(const clang::CallExpr* call) {
     }
     return common_return_type(callees.candidates,
                               decls::explicit_template_arguments(callee),
-                              arguments ? llvm::ArrayRef<CallArgument>(*arguments)
-                                        : llvm::ArrayRef<CallArgument>());
+                              callees.arguments ? llvm::ArrayRef<CallArgument>(*callees.arguments)
+                                                : llvm::ArrayRef<CallArgument>());
 }
 
 clang::QualType PseudoInstantiator::common_return_type(

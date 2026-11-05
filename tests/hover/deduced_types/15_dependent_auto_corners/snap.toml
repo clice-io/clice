@@ -99,3 +99,25 @@ auto&& r = Tied<T>::make().arr[0]
 **Type:** `int&`
 '''
 range = "auto&& ⟦r⟧ = Tied<T>::make().arr[0];"
+
+[answers.unrelated_operator.hover]
+markdown = '''
+**variable** `row` · function `unrelated_operator`
+
+```cpp
+auto& row
+```
+**Type:** `lib::Item&`
+'''
+range = "for(auto& ⟦row⟧: rows) {}"
+
+[answers.converted_argument.hover]
+markdown = '''
+**variable** `value` · function `unrelated_operator`
+
+```cpp
+auto& value = ::get(values, 0)
+```
+**Type:** `T&`
+'''
+range = "auto& ⟦value⟧ = ::get(values, 0);"

@@ -150,15 +150,8 @@ void drop_by_arity(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
                    unsigned count,
                    bool member_call);
 
-/// The functions a dependent call may call.
-struct Callees {
-    llvm::SmallVector<const clang::NamedDecl*, 4> candidates;
-
-    /// Whether the call may call no other function: false for a call
-    /// needing argument-dependent lookup whose arguments' types do not all
-    /// resolve — its instantiation may find more.
-    bool complete = true;
-};
+/// Whether `type` still refers to a parameter of `params`.
+bool mentions_parameters(clang::QualType type, const clang::TemplateParameterList* params);
 
 /// An argument of a call as deduction sees it: its type, resolved, and
 /// whether it is an lvalue.
@@ -168,13 +161,27 @@ struct CallArgument {
     bool lvalue;
 };
 
-/// The functions named `name` that argument-dependent lookup finds for
-/// arguments of `types`: those of the namespaces their types are associated
-/// with, and the friends their associated classes declare. None when one of
-/// the types is still dependent: its associated namespaces wait for
-/// instantiation.
+/// The functions a dependent call may call.
+struct Callees {
+    llvm::SmallVector<const clang::NamedDecl*, 4> candidates;
+
+    /// Whether the call may call no other function: false for a call
+    /// needing argument-dependent lookup whose arguments' types do not all
+    /// resolve — its instantiation may find more.
+    bool complete = true;
+
+    /// The call's arguments, resolved in the caller's terms; none when one
+    /// does not resolve or expands a pack.
+    std::optional<llvm::SmallVector<CallArgument, 4>> arguments;
+};
+
+/// The functions named `name` that argument-dependent lookup finds for a
+/// call with `arguments` and that may take them: those of the namespaces
+/// the arguments' types are associated with, and the friends their
+/// associated classes declare. None when one of the types is still
+/// dependent: its associated namespaces wait for instantiation.
 std::optional<llvm::SmallVector<const clang::NamedDecl*, 4>>
-    argument_dependent_lookup(clang::DeclarationName name, llvm::ArrayRef<clang::QualType> types);
+    argument_dependent_lookup(clang::DeclarationName name, llvm::ArrayRef<CallArgument> arguments);
 
 /// The core pseudo-instantiation engine, one query's state. Resolves
 /// dependent names by looking up members in primary templates and partial

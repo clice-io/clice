@@ -69,3 +69,41 @@ void forwarded() {
     auto&& §(xvalue_argument)x = ::identity(Tied<T>::make().value);
     auto&& §(reference_member)r = Tied<T>::make().arr[0];
 }
+
+namespace lib {
+struct Item {
+    int item;
+};
+
+struct Other {
+    int other;
+};
+
+struct Iter {
+    Item& operator*();
+    Iter& operator++();
+    bool operator!=(const Iter& other) const;
+};
+
+Other& operator*(Other& other);
+
+template <class T>
+struct Vec {
+    T value;
+};
+}  // namespace lib
+
+template <class T>
+struct Rows {
+    lib::Iter begin();
+    lib::Iter end();
+};
+
+template <class T>
+T& get(lib::Vec<T>& rows, unsigned long index);
+
+template <class T>
+void unrelated_operator(Rows<T> rows, lib::Vec<T> values) {
+    for(auto& §(unrelated_operator)row: rows) {}
+    auto& §(converted_argument)value = ::get(values, 0);
+}

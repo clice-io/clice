@@ -297,6 +297,40 @@ PseudoInstantiator::TemplateArguments
     return changed ? TemplateArguments(storage) : patterns;
 }
 
+bool mentions_parameters(clang::QualType type, const clang::TemplateParameterList* params) {
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::TemplateParameterList* params = nullptr;
+        bool found = false;
+
+        bool owns(const clang::NamedDecl* decl) const {
+            return decl && ranges::contains(*params, decl);
+        }
+
+        bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
+            found |= T->getDecl() ? owns(T->getDecl()) : T->getDepth() == params->getDepth();
+            return !found;
+        }
+
+        /// A function parameter named in a trailing return type
+        /// (`-> decltype(f(key))`) stands for its type.
+        bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
+            auto* decl = expr->getDecl();
+            found |= owns(decl) || (llvm::isa<clang::ParmVarDecl>(decl) &&
+                                    mentions_parameters(decl->getType(), params));
+            return !found;
+        }
+
+        bool TraverseTemplateName(clang::TemplateName name) {
+            found |= owns(name.getAsTemplateDecl());
+            return !found && RecursiveASTVisitor::TraverseTemplateName(name);
+        }
+    } finder;
+
+    finder.params = params;
+    finder.TraverseType(type);
+    return finder.found;
+}
+
 llvm::SmallVector<clang::TemplateArgument, 4>
     PseudoInstantiator::deduce_call(clang::FunctionTemplateDecl* FTD,
                                     const clang::FunctionDecl* function,
@@ -371,8 +405,12 @@ llvm::SmallVector<clang::TemplateArgument, 4>
         if(index == arguments.size()) {
             break;
         }
-        patterns.emplace_back(pattern_of(type));
-        types.emplace_back(argument_for(type, arguments[index]));
+        /// One naming no parameter of the template deduces nothing either:
+        /// its argument converts.
+        if(mentions_parameters(type, params)) {
+            patterns.emplace_back(pattern_of(type));
+            types.emplace_back(argument_for(type, arguments[index]));
+        }
         index += 1;
     }
 

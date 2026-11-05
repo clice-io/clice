@@ -35,6 +35,27 @@ bool arity_viable(const clang::FunctionDecl* FD, unsigned count, bool member_cal
     return count >= FD->getMinRequiredArguments() && takes(FD, count);
 }
 
+/// Whether every one of `arguments`, resolved, may initialize its
+/// parameter of `FD`: none certain to fail (never_initializes), matched by
+/// position up to a parameter pack.
+bool may_take(const clang::FunctionDecl* FD,
+              llvm::ArrayRef<CallArgument> arguments,
+              bool member_call) {
+    auto parameters = FD->parameters().drop_front(passed(FD, 0, member_call));
+    for(auto [parameter, argument]: views::zip(parameters, arguments)) {
+        if(parameter->isParameterPack()) {
+            break;
+        }
+        if(never_initializes(FD->getASTContext(),
+                             argument.type.getNonReferenceType(),
+                             argument.lvalue,
+                             parameter->getType())) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /// Whether an argument expands a pack (`f(xs...)`), which may instantiate
 /// to any number of arguments: fixed-arity filtering would remove viable
 /// overloads.
@@ -149,13 +170,13 @@ struct Associated {
 }  // namespace
 
 std::optional<llvm::SmallVector<const clang::NamedDecl*, 4>>
-    argument_dependent_lookup(clang::DeclarationName name, llvm::ArrayRef<clang::QualType> types) {
+    argument_dependent_lookup(clang::DeclarationName name, llvm::ArrayRef<CallArgument> arguments) {
     Associated associated;
-    for(auto type: types) {
-        if(type.isNull() || type->isDependentType()) {
+    for(auto& argument: arguments) {
+        if(argument.type.isNull() || argument.type->isDependentType()) {
             return std::nullopt;
         }
-        associated.add(type);
+        associated.add(argument.type);
     }
 
     /// A friend declared only in a class is visible to the lookup through
@@ -175,7 +196,10 @@ std::optional<llvm::SmallVector<const clang::NamedDecl*, 4>>
     for(const auto* scope: associated.namespaces) {
         for(auto* decl: scope->lookup(name)) {
             const auto* function = as_function(decl);
-            if(function && visible(function) && seen.insert(decl->getCanonicalDecl()).second) {
+            if(function && visible(function) &&
+               arity_viable(function, arguments.size(), /*member_call=*/false) &&
+               may_take(function, arguments, /*member_call=*/false) &&
+               seen.insert(decl->getCanonicalDecl()).second) {
                 found.push_back(decl);
             }
         }
@@ -419,6 +443,9 @@ Callees PseudoInstantiator::callee_candidates(
     callee = callee->IgnoreParenImpCasts();
     bool member_call =
         llvm::isa<clang::UnresolvedMemberExpr, clang::CXXDependentScopeMemberExpr>(callee);
+    /// Resolved before a lookup leaves the frames of the callee's class on
+    /// the stack.
+    callees.arguments = call_arguments(arguments);
     clang::QualType object;
     bool rvalue_object = false;
     if(auto OE = llvm::dyn_cast<clang::OverloadExpr>(callee)) {
@@ -442,10 +469,8 @@ Callees PseudoInstantiator::callee_candidates(
         if(auto* ULE = llvm::dyn_cast<clang::UnresolvedLookupExpr>(OE);
            ULE && ULE->requiresADL() && !arguments.empty()) {
             std::optional<llvm::SmallVector<const clang::NamedDecl*, 4>> found;
-            if(auto passed = call_arguments(arguments)) {
-                auto types = ranges::to<llvm::SmallVector<clang::QualType, 4>>(
-                    views::transform(*passed, &CallArgument::type));
-                found = argument_dependent_lookup(ULE->getName(), types);
+            if(callees.arguments) {
+                found = argument_dependent_lookup(ULE->getName(), *callees.arguments);
             }
             if(found) {
                 candidates.append(found->begin(), found->end());
@@ -494,7 +519,8 @@ Callees PseudoInstantiator::callee_candidates(
     }
     drop_unviable(candidates, [&](const clang::FunctionDecl* FD) {
         return (!explicit_arguments || FD->getDescribedFunctionTemplate()) &&
-               viable(FD, member_call);
+               viable(FD, member_call) &&
+               (!callees.arguments || may_take(FD, *callees.arguments, member_call));
     });
     select_by_object(candidates, object, rvalue_object);
     return callees;

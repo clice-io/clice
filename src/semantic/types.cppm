@@ -75,4 +75,11 @@ auto never_initializes(clang::ASTContext& context,
                        const clang::Expr& argument,
                        clang::QualType parameter) -> bool;
 
+/// The same for a value of `type`, an lvalue when `lvalue`, that is neither
+/// a null pointer constant nor a string literal.
+auto never_initializes(clang::ASTContext& context,
+                       clang::QualType type,
+                       bool lvalue,
+                       clang::QualType parameter) -> bool;
+
 }  // namespace clice::types

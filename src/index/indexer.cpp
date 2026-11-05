@@ -771,11 +771,11 @@ public:
 
     /// Whether the file holding `at`, a name in a dependent call's overload
     /// set, sees `candidate` on its own: the focus file always, a header
-    /// when a declaration of it is in the header or in what the header
-    /// includes before `at`. What its includers bring in before it differs
-    /// from one unit to the next, and recording it would split the header's
-    /// index into variants that differ by those alone; what instantiations
-    /// call, the instantiation shards hold.
+    /// when a declaration of it is in the header, in what the header
+    /// includes before `at`, or in a module it imports before then. What its includers bring in
+    /// before it differs from one unit to the next, and recording it would split the header's index
+    /// into variants that differ by those alone; what instantiations call, the instantiation shards
+    /// hold.
     bool sees_on_its_own(const clang::NamedDecl* candidate, clang::SourceLocation at) {
         auto& SM = unit.context().getSourceManager();
         auto [file, offset] = SM.getDecomposedExpansionLoc(at);
@@ -799,6 +799,17 @@ public:
                 break;
             }
             if(include.fid.isValid() && declared_in(reach(include.fid))) {
+                return true;
+            }
+        }
+        for(auto& import: directive->second.imports) {
+            if(SM.getDecomposedExpansionLoc(import.location).second >= offset) {
+                break;
+            }
+            if(ranges::any_of(candidate->redecls(), [&](const clang::Decl* redecl) {
+                   auto* module = redecl->getOwningModule();
+                   return module && module->getTopLevelModuleName() == import.full_name;
+               })) {
                 return true;
             }
         }

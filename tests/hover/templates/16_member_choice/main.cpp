@@ -61,3 +61,17 @@ template <class T>
 int array_decay(int (&a)[3]) {
     return Decay<T>::take(a).§(array_decay)large;
 }
+
+struct Shared {
+    int shared;
+};
+
+template <class T>
+struct Named {
+    using type = Shared;
+};
+
+template <class T>
+struct Both : Named<T>, Named<T*> {
+    typename Both::§(same_alias)type value;
+};
