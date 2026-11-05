@@ -11,8 +11,10 @@ namespace clice {
 /// A module unit's build that failed: on the user's code, on an import that
 /// failed in turn, or by crashing a worker.
 struct ModuleBuildFailed {
-    /// The key of the build that failed (PCMEntry::key); empty when an
-    /// import failed it and it never ran.
+    /// The key of the build that failed (PCMEntry::key), on which a build
+    /// is refused; empty when the failure decides nothing on the build's
+    /// inputs: an import failed it and it never ran, no cache can store its
+    /// PCM, or an import's PCM left the disk under it.
     std::string key;
 
     /// The build's first error, or how the worker it crashed died; empty

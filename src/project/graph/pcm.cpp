@@ -60,6 +60,12 @@ bool drop_evicted(PCMEntry& entry) {
     return true;
 }
 
+/// A PCM the build was handed, or the PCH it builds over, left the disk.
+bool lost_import(const worker::BuildPCMParams& params) {
+    return (!params.pch.empty() && !fs::exists(params.pch)) ||
+           ranges::any_of(params.pcms, [](const auto& pcm) { return !fs::exists(pcm.second); });
+}
+
 /// The failed builds from a module through the imports that failed it in
 /// turn: to the module whose own build failed, or around a cycle of imports
 /// failing each other.
@@ -247,13 +253,19 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // string.
     std::string module_name(project.dep_graph.module_of(path_id));
     if(module_name.empty()) {
+        LOG_INFO("PCM build for {} skipped: it declares no module",
+                 project.file_table.resolve(path_id));
         co_return Result::Failed;
     }
     auto file_path = std::string(project.file_table.resolve(path_id));
     bp.file = file_path;
 
     if(!project.store) {
-        LOG_WARN("PCM build skipped for module {}: cache store is unavailable", module_name);
+        auto& cache_dir = project.settings.project.cache_dir;
+        auto cause = cache_dir.empty()
+                         ? std::string("no cache directory to store its module file in")
+                         : std::format("the cache directory {} cannot be used", cache_dir);
+        project.pcms[path_id].failure = {{.record = {.cause = std::move(cause)}}, {}};
         co_return Result::Failed;
     }
 
@@ -330,21 +342,28 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     if(auto own = current_input(project.file_table, path_id)) {
         known.push_back(*own);
     }
-    auto built =
-        co_await project.send_precompiled(attempt,
-                                          bp,
-                                          std::format("module {}", module_name),
-                                          std::move(known),
-                                          before,
-                                          [&](FailureRecord record, Inputs inputs) {
-                                              // An attempt overtaken in flight records its inputs
-                                              // all the same: they no longer match, and its
-                                              // successor rebuilds.
-                                              project.pcms[path_id].failure = {
-                                                  {.key = pcm_key, .record = std::move(record)},
-                                                  std::move(inputs)
-                                              };
-                                          });
+    auto built = co_await project.send_precompiled(
+        attempt,
+        bp,
+        std::format("module {}", module_name),
+        std::move(known),
+        before,
+        [&](FailureRecord record, Inputs inputs) {
+            // A build whose imports left the disk under it failed on the
+            // missing file: the next wait builds them again, and the module
+            // with them.
+            auto key = pcm_key;
+            if(!record.crashed() && lost_import(bp)) {
+                key.clear();
+                record.cause = "an import's module file left the cache during the build";
+            }
+            // An attempt overtaken in flight records its inputs all the same:
+            // they no longer match, and its successor rebuilds.
+            project.pcms[path_id].failure = {
+                {.key = std::move(key), .record = std::move(record)},
+                std::move(inputs)
+            };
+        });
     if(!built) {
         if(built.error() == Result::Failed) {
             project.pcms[path_id].retire(&*project.store, "pcm");

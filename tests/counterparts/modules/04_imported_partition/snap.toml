@@ -1,0 +1,66 @@
+[editor."detail.cpp".counterparts]
+preferred = "shapes.cpp"
+candidates = [
+    { path = "shapes.cpp", reasons = ["defines 1 of 1 declaration"] },
+]
+
+[editor."edges.cppm".counterparts]
+preferred = "shapes.cppm"
+candidates = [
+    { path = "shapes.cppm", reasons = ["declares 1 of 1 definition", "interface of module shapes"] },
+]
+
+[editor."shapes.cpp".counterparts]
+preferred = "shapes.cppm"
+candidates = [
+    { path = "shapes.cppm", reasons = ["declares 1 of 2 definitions", "same name", "interface of module shapes"] },
+    { path = "detail.cpp", reasons = ["declares 1 of 2 definitions"] },
+]
+
+["command line"."$ clice index"]
+stdout = '''
+Indexed 4 translation units in #s: 4 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["command line"."$ clice query counterparts detail.cpp"]
+stdout = '''
+{
+  "result": {
+    "file": "${WS}/detail.cpp",
+    "candidates": [
+      {
+        "path": "${WS}/shapes.cpp",
+        "reasons": [
+          "defines 1 of 1 declaration"
+        ]
+      }
+    ],
+    "preferred": "${WS}/shapes.cpp"
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["command line"."$ clice query counterparts edges.cppm"]
+stdout = '''
+{
+  "result": {
+    "file": "${WS}/edges.cppm",
+    "candidates": [
+      {
+        "path": "${WS}/shapes.cppm",
+        "reasons": [
+          "declares 1 of 1 definition",
+          "interface of module shapes"
+        ]
+      }
+    ],
+    "preferred": "${WS}/shapes.cppm"
+  },
+  "stale": []
+}
+'''
+exit = 0

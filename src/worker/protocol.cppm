@@ -245,6 +245,9 @@ struct BuildPCHParams {
     /// See CompilationParams::skip_bodies.
     bool skip_bodies = false;
 
+    /// See CompilationParams::modular.
+    bool modular = false;
+
     /// Tmp path allocated by the master's store; the master commits
     /// (fsync + atomic rename) after the worker reports success.
     std::string output_path;
@@ -555,8 +558,9 @@ struct DocumentLinkParams {
 };
 
 /// Request the folding ranges of an open file's AST. Unlike the links they
-/// cover the preamble too: a preamble holds only directives, whose folds
-/// come from a lexical scan of the whole file.
+/// cover the preamble too: the folds of its directives come from a lexical
+/// scan of the whole file, and a global module fragment's declarations are
+/// read back from the PCH.
 struct FoldingRangeParams {
     std::string path;
 };

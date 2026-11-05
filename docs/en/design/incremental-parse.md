@@ -42,7 +42,7 @@ Incremental compilation is organized around four core concepts: preamble separat
 
 ### Preamble Separation
 
-The preamble is the region at the top of a source file consisting of preprocessor directives (`#include`, `#define`, `#pragma`, etc.) and module declarations (`module;`). Its end position is identified by a byte offset (bound) -- the byte position just before the first line of non-preprocessor content.
+The preamble is the region at the top of a source file consisting of preprocessor directives (`#include`, `#define`, `#pragma`, etc.) and module declarations (`module;`). Its end position is identified by a byte offset (bound) -- the byte position just before the first line of non-preprocessor content. In a module unit the preamble is the whole global module fragment, up to the module declaration, declarations written in it included: Clang accepts a module declaration only as the first declaration a compile parses itself, those of the PCH not counting. The compile loading the PCH reads the fragment's own declarations back from it, for the features that read the file's declarations.
 
 The preamble is compiled into a PCH file and cached on disk. Subsequent compilations load the PCH and only need to process user code after the bound. If the preamble is empty (bound is zero), no PCH is needed and the entire PCH flow is skipped.
 
@@ -98,7 +98,7 @@ When preamble content changes, the new PCH uses a different hash for its filenam
 
 ### Preamble Boundary Computation
 
-The preamble boundary is determined through lexical scanning: the project's `Lexer` scans line by line from the start of the file, identifying preprocessor directives beginning with `#` and `module;` global module fragment declarations. Scanning stops at the first line of non-preprocessor content, and the byte offset at that point is returned as the boundary.
+The preamble boundary is determined through lexical scanning: the project's `Lexer` scans line by line from the start of the file, identifying preprocessor directives beginning with `#` and `module;` global module fragment declarations. Scanning stops at the first line of non-preprocessor content, or in a global module fragment at the module declaration, and the byte offset at that point is returned as the boundary.
 
 This lexer-based detection does not require starting a full preprocessor and is very fast.
 
@@ -110,7 +110,7 @@ Before triggering a PCH rebuild, the preamble must be checked for syntactic comp
 #include "lib          // unclosed quote, user is typing a filename
 ```
 
-Building a PCH from an incomplete preamble produces a PCH containing erroneous preprocessor state. Subsequent compilations loading this erroneous PCH would see a flood of spurious errors. Therefore the preamble ends before its first unfinished directive: the finished directives above it are precompiled as usual — a line being added at the end of the include block leaves the preamble text, and so its PCH, as it was — and the unfinished line is parsed with the body, where it reports its own error.
+Building a PCH from an incomplete preamble produces a PCH containing erroneous preprocessor state. Subsequent compilations loading this erroneous PCH would see a flood of spurious errors. Therefore the preamble ends before its first unfinished directive: the finished directives above it are precompiled as usual — a line being added at the end of the include block leaves the preamble text, and so its PCH, as it was — and the unfinished line is parsed with the body, where it reports its own error. In a global module fragment that declares anything itself the file parses whole until the directive is finished: the body would parse the fragment's declarations ahead of the module declaration.
 
 ### PCH Build Pipeline
 

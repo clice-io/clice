@@ -508,6 +508,7 @@ private:
             semantics.tokens = tokens.spelled();
             semantics.pp_ignored = tokens.preprocessed_away();
             taken.resize(tokens.expanded().size());
+            taken_preamble.resize(tokens.spelled().size());
         }
 
         stack.push_back(Semantics::invalid);
@@ -705,6 +706,7 @@ private:
         auto& token_map = unit.focus_file().tokens();
         auto tokens = token_map.expanded(S);
         if(tokens.empty()) {
+            take_preamble(S, self);
             return;
         }
         auto begin = static_cast<unsigned>(tokens.data() - token_map.expanded().data());
@@ -715,6 +717,29 @@ private:
             if(auto spelled = token_map.origin(index)) {
                 add_token_entry(*spelled, self);
             }
+        }
+    }
+
+    // Take the untaken spelled tokens of S in the preamble a PCH parsed,
+    // which the stream never held: a global module fragment's declarations.
+    // A macro's argument is taken where it is written, the rest of its
+    // expansion at the invocation's name, as TokenMap::origin maps them.
+    void take_preamble(clang::SourceRange S, std::uint32_t self) {
+        auto preamble = SM.getPreambleFileID();
+        if(preamble.isInvalid() || !SM.isInFileID(SM.getFileLoc(S.getBegin()), preamble) ||
+           !SM.isInFileID(SM.getFileLoc(S.getEnd()), preamble)) {
+            return;
+        }
+        auto begin = unit.seen_at(S.getBegin());
+        auto end = unit.seen_at(S.getEnd());
+        auto& token_map = unit.focus_file().tokens();
+        auto first = token_map.spelled_at_or_after(begin.offset);
+        // A macro can spell its argument before the tokens around it.
+        auto last = std::max(first, token_map.spelled_at_or_after(end.offset + 1));
+        for(auto index = taken_preamble.find_first_unset_in(first, last); index != -1;
+            index = taken_preamble.find_first_unset_in(index + 1, last)) {
+            taken_preamble.set(index);
+            add_token_entry(index, self);
         }
     }
 
@@ -781,9 +806,7 @@ private:
         std::erase_if(modules, [&](const LexicalInfo::ModuleDeclaration& module) {
             switch(module.kind) {
                 // The introducer is necessarily the file's first token, so no
-                // conditional can disable it — and under a preamble PCH its
-                // spelled token counts as preprocessed away, so a liveness
-                // check would wrongly drop it.
+                // conditional can disable it.
                 case LexicalInfo::ModuleDeclaration::Kind::GlobalFragment: return false;
 
                 // The DefinitionLoc anchor subsumes liveness: a duplicate in
@@ -943,6 +966,9 @@ private:
 
     /// Per expanded token, whether a node took it.
     llvm::BitVector taken;
+
+    /// Per spelled token, whether a node took it from the preamble.
+    llvm::BitVector taken_preamble;
 
     llvm::SmallVector<std::uint32_t, 64> stack;
 

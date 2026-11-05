@@ -19,17 +19,22 @@ namespace {
 
 /// Which side of the split between declaring and defining a file is on.
 enum class Side : std::uint8_t {
-    /// Headers, and the module units other units import.
+    /// Headers, module interface units, and the internal partitions the
+    /// index finds imported.
     Interface,
-    /// Sources, module implementation units, and the template definitions
-    /// a header pulls in (`.inl`, `.tpp`, ...).
+    /// Sources, module implementation units, the other internal partitions,
+    /// and the template definitions a header pulls in (`.inl`, `.tpp`,
+    /// ...).
     Implementation,
     /// `.inc` and `.def` files: pieces of their includers' text, with no
     /// counterpart of their own.
     Fragment,
 };
 
-Side classify(FileTable& files, const DependencyGraph& graph, Fid file) {
+Side classify(FileTable& files,
+              const DependencyGraph& graph,
+              const index::ProjectIndex& project,
+              Fid file) {
     llvm::StringRef path = files.resolve(file);
     auto extension = path::extension(path);
     if(extension == ".inc" || extension == ".def") {
@@ -37,6 +42,14 @@ Side classify(FileTable& files, const DependencyGraph& graph, Fid file) {
     }
     if(is_context_header_path(path)) {
         return Side::Implementation;
+    }
+    // An internal partition the other units of its module import declares
+    // for them, as a header does; one none imports can only define what its
+    // module declares, as an implementation unit does.
+    if(graph.internal_partition(file)) {
+        bool imported = false;
+        project.for_each_importer(file, [&](Fid) { imported = true; });
+        return imported ? Side::Interface : Side::Implementation;
     }
     if(is_header_path(path) || !graph.module_of(file).empty()) {
         return Side::Interface;
@@ -77,7 +90,7 @@ struct Pairing {
     Side side_of(Fid other) {
         auto [it, inserted] = sides.try_emplace(other);
         if(inserted) {
-            it->second = classify(files, graph, other);
+            it->second = classify(files, graph, ctx.query.project(), other);
         }
         return it->second;
     }
@@ -189,12 +202,26 @@ struct Pairing {
         }
     }
 
-    /// A module implementation unit pairs with the interface of its module,
+    /// The module a unit on the implementation side implements: an
+    /// implementation unit's, or that of an internal partition the index
+    /// finds no unit importing; empty for any other file.
+    llvm::StringRef implemented_module(Fid unit) {
+        if(graph.internal_partition(unit)) {
+            return side_of(unit) == Side::Implementation ? graph.module_of(unit).split(':').first
+                                                         : llvm::StringRef();
+        }
+        auto* declared = declaration_of(unit);
+        return declared && declared->is_implementation_unit()
+                   ? llvm::StringRef(declared->module_name)
+                   : llvm::StringRef();
+    }
+
+    /// A unit implementing a module pairs with the interface of its module,
     /// a primary module interface with every unit implementing it.
     void pair_by_module() {
-        if(auto* own = declaration_of(file); own && own->is_implementation_unit()) {
-            for(auto interface: graph.lookup_module(own->module_name)) {
-                found[interface].module = own->module_name;
+        if(auto module = implemented_module(file); !module.empty()) {
+            for(auto interface: graph.lookup_module(module)) {
+                found[interface].module = module.str();
             }
             return;
         }
@@ -203,9 +230,7 @@ struct Pairing {
             return;
         }
         for(auto unit: members) {
-            auto* declared = declaration_of(unit);
-            if(declared && declared->is_implementation_unit() &&
-               declared->module_name == provided) {
+            if(implemented_module(unit) == provided) {
                 found[unit].module = provided.str();
             }
         }
@@ -310,7 +335,7 @@ query::Result<CounterpartsResult> counterparts(query::Context& ctx,
         .members = members,
         .file = file,
         .self = files.resolve(file),
-        .side = classify(files, graph, file),
+        .side = classify(files, graph, ctx.query.project(), file),
     };
     if(pairing.side == Side::Fragment) {
         return result;

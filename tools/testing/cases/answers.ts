@@ -11,6 +11,7 @@ import { Inspect } from "../inspect/inspect.ts";
 import type { Client } from "../render/client.ts";
 import { block, type ShowOptions, type Shown } from "../render/shown.ts";
 import { plain, type Table } from "../render/value.ts";
+import { keepLogs } from "../logs/logs.ts";
 import { Serve, gateLogs } from "../server/serve.ts";
 import { SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
 import { at, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
@@ -144,7 +145,8 @@ function copy(c: Case, prefix: string): { root: string; copied: string[] } {
     return { root, copied };
 }
 
-function remove(root: string): void {
+function remove(c: Case, root: string): void {
+    keepLogs(c.id, root);
     if (process.env["CLICE_KEEP_WORKSPACE"] === undefined) {
         fs.rmSync(root, { recursive: true, force: true });
     } else {
@@ -183,7 +185,7 @@ async function onInspect(
         return shows;
     } finally {
         client.close();
-        remove(root);
+        remove(c, root);
     }
 }
 
@@ -250,7 +252,7 @@ async function onServer(
     }
     const failed = failure !== undefined;
     const gated = [...(await s.finish(failed)), ...gateLogs(workspace, {}, failed)];
-    remove(root);
+    remove(c, root);
     throwFailures(failure, gated);
     return shows;
 }

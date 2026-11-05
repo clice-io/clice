@@ -1308,8 +1308,7 @@ public:
         } else if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
             pattern = record->getTemplateInstantiationPattern();
         }
-        auto& SM = unit.context().getSourceManager();
-        return SM.getFileID(SM.getFileLoc((pattern ? pattern : decl)->getLocation()));
+        return unit.seen_at((pattern ? pattern : decl)->getLocation()).file;
     }
 
     /// Whether a file's instantiations belong to this run's index: not to
@@ -1509,11 +1508,10 @@ public:
             // that another file declares: only the units walking the
             // instantiation list the key's file among the files naming it
             // (TUManifest::shared_locals).
-            auto& SM = unit.context().getSourceManager();
             auto foreign = [&](SymbolHash hash) {
                 auto it = internal_decls.find(hash);
                 return it != internal_decls.end() &&
-                       SM.getFileID(SM.getFileLoc(it->second->getLocation())) != home;
+                       unit.seen_at(it->second->getLocation()).file != home;
             };
             bool names_foreign = ranges::any_of(records, [&](const InstantiationRecord& record) {
                 return foreign(record.target) || (has_from(record.kind) && foreign(record.from));
@@ -1605,7 +1603,7 @@ public:
                (!standard_library && library_macro(expansion, location))) {
                 return;
             }
-            auto [fid, offset] = SM.getDecomposedLoc(location);
+            auto [fid, offset] = unit.written_at(location);
             if(!resolves_in(fid)) {
                 return;
             }
@@ -1775,13 +1773,12 @@ public:
         // unit reaches through `auto`) is named in the declaring files as
         // much as in the unit's own. A header module's files (-fmodules) are
         // no unit's to index.
-        auto& SM = unit.context().getSourceManager();
         llvm::SmallVector<std::pair<SymbolHash, clang::FileID>> declaring_files;
         llvm::DenseSet<clang::FileID> queued(indexed_fids.begin(), indexed_fids.end());
         for(auto [hash, decl]: internal_decls) {
             for(const auto* redecl: decl->redecls()) {
                 auto* module = redecl->getOwningModule();
-                auto fid = SM.getFileID(SM.getFileLoc(redecl->getLocation()));
+                auto fid = unit.seen_at(redecl->getLocation()).file;
                 if(redecl->isFromASTFile() && !(module && module->isHeaderLikeModule()) &&
                    fid.isValid() && !unit.from_context(fid)) {
                     declaring_files.emplace_back(hash, fid);
@@ -1838,16 +1835,13 @@ public:
 
         // Instantiations by path alike: what each FileID of a header resolves
         // is one set of resolutions and keys.
-        // A `#define` of the focus file's preamble lies in the PCH's copy of
-        // the file, at the offsets the buffer has.
         llvm::DenseMap<std::uint32_t, Resolved> resolved_by_path;
         for(auto& [fid, file]: resolved) {
-            auto home = fid == SM.getPreambleFileID() ? unit.focus_file().file() : fid;
-            if(home != unit.focus_file().file() && tree.node_of(home) == no_node) {
+            if(fid != unit.focus_file().file() && tree.node_of(fid) == no_node) {
                 continue;
             }
-            auto path_id = tree.path_id(home);
-            path_fids.try_emplace(path_id, home);
+            auto path_id = tree.path_id(fid);
+            path_fids.try_emplace(path_id, fid);
             auto& into = resolved_by_path[path_id];
             auto offset = static_cast<std::uint32_t>(into.walked.resolutions.size());
             for(auto& resolution: file.walked.resolutions) {
