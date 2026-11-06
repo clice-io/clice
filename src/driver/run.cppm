@@ -335,10 +335,6 @@ struct Lifetime {
         aux.spawn(run.files.disk.end_turns(run.loop));
     }
 
-    async::cancellation_token token() {
-        return stop.token();
-    }
-
     /// Shuts the project down and stops the watchers; whether the run was
     /// interrupted.
     async::task<bool> finish() {

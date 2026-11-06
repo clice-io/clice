@@ -163,7 +163,7 @@ async::task<UnitResult>
     merge_inputs(imports, {&precompiled});
     IndexTransfer transfer;
     if(request.index) {
-        transfer = project.request_index(path_id, params);
+        transfer = project.request_index(path_id, params.indexing);
     }
 
     RequestCost cost;
@@ -319,24 +319,6 @@ async::task<Result> attempt_compile(Project& project,
     std::unreachable();
 }
 
-template <typename Params>
-IndexTransfer ask_for_index(Project& project, Fid unit, Params& params) {
-    if(!std::exchange(project.unit_history[unit].send_in_full, false)) {
-        auto include_closure = project.dep_graph.include_closure(unit);
-        params.known_variants = project.index.known_variants(unit, include_closure);
-        params.known_instantiations =
-            project.index.known_instantiations(unit, std::move(include_closure));
-    }
-    params.standard_library_instantiations =
-        project.settings.project.standard_library_instantiations;
-    IndexTransfer transfer;
-    if(project.store) {
-        transfer.file = project.store->begin_transfer();
-        params.index_output_path = transfer.file->tmp_path;
-    }
-    return transfer;
-}
-
 }  // namespace
 
 bool Project::compiled_by_build(Fid unit) {
@@ -370,16 +352,19 @@ std::expected<llvm::StringRef, std::string> IndexTransfer::receive(std::span<con
     return mapping.bytes();
 }
 
-IndexTransfer Project::request_index(Fid unit, worker::CompileUnitParams& params) {
-    return ask_for_index(*this, unit, params);
-}
-
-IndexTransfer Project::request_index(Fid unit, worker::BuildPCMParams& params) {
-    return ask_for_index(*this, unit, params);
-}
-
-IndexTransfer Project::request_index(Fid unit, worker::BuildPCHParams& params) {
-    return ask_for_index(*this, unit, params);
+IndexTransfer Project::request_index(Fid unit, worker::IndexRequest& request) {
+    if(!std::exchange(unit_history[unit].send_in_full, false)) {
+        auto include_closure = dep_graph.include_closure(unit);
+        request.known_variants = index.known_variants(unit, include_closure);
+        request.known_instantiations = index.known_instantiations(unit, std::move(include_closure));
+    }
+    request.standard_library_instantiations = settings.project.standard_library_instantiations;
+    IndexTransfer transfer;
+    if(store) {
+        transfer.file = store->begin_transfer();
+        request.output_path = transfer.file->tmp_path;
+    }
+    return transfer;
 }
 
 std::expected<void, index::MergeError> Project::merge_index(Fid unit,

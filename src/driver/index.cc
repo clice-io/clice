@@ -187,7 +187,7 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     background.start({.errors = true});
     Lifetime lifetime(run);
     lifetime.aux.spawn(progress_ticker(run, options));
-    co_await async::with_token(background.wait_idle(), lifetime.token());
+    co_await async::with_token(background.wait_idle(), lifetime.stop.token());
     // The counts read every shard and symbol record: taken before the final
     // save, damage they meet first is discarded there like any other.
     if(!lifetime.stop_requested) {

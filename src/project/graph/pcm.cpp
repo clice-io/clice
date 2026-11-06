@@ -319,7 +319,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     auto pending = project.store->begin_store("pcm", blob);
     bp.output_path = pending.tmp_path;
     bp.pcms = project.imported_pcms(resolved);
-    auto transfer = project.request_index(path_id, bp);
+    auto transfer = project.request_index(path_id, bp.indexing);
 
     // The modules it imports are inputs as much as its own text — the PCM
     // embeds what it read of them — and theirs already carry their own

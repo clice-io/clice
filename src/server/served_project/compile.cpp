@@ -678,8 +678,8 @@ async::task<Result> ServedProject::CompileAttempt::run() {
 
 async::task<std::optional<Result>> ServedProject::CompileAttempt::command(bool first) {
     params = {};
-    params.known_instantiations = known_instantiations;
-    params.standard_library_instantiations =
+    params.indexing.known_instantiations = known_instantiations;
+    params.indexing.standard_library_instantiations =
         project.settings.project.standard_library_instantiations;
     params.skip_bodies = project.settings.project.skip_header_bodies;
     params.path = file_path;
@@ -839,7 +839,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
     });
     if(project.store) {
         transfer = project.store->begin_transfer();
-        params.index_output_path = transfer->tmp_path;
+        params.indexing.output_path = transfer->tmp_path;
     }
     auto& pool = served.server.pool;
     auto result = co_await deliver(

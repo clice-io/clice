@@ -1049,9 +1049,7 @@ struct Project {
     /// last result named one the index had lost, and with the standard
     /// library's own instantiations as the settings say. Returns how the
     /// index comes back.
-    IndexTransfer request_index(Fid unit, worker::CompileUnitParams& params);
-    IndexTransfer request_index(Fid unit, worker::BuildPCMParams& params);
-    IndexTransfer request_index(Fid unit, worker::BuildPCHParams& params);
+    IndexTransfer request_index(Fid unit, worker::IndexRequest& request);
 
     /// Merge the TU index of a compile of `unit` (request_index) and take
     /// its report: read over `imports` — what the PCMs and the precompiled

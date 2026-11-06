@@ -151,10 +151,10 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     IndexTransfer transfer;
     if(!bp.whole_file) {
         pending_idx = project.store->begin_store_aux("pch", blob);
-        bp.index_output_path = pending_idx->tmp_path;
+        bp.indexing.output_path = pending_idx->tmp_path;
     } else if(request.writer) {
         bp.index = true;
-        transfer = project.request_index(request.writer->unit, bp);
+        transfer = project.request_index(request.writer->unit, bp.indexing);
     }
 
     // What the imported modules' PCMs and the PCH built over were built
