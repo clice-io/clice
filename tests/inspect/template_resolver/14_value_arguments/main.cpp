@@ -367,6 +367,12 @@ struct test {
     using §(builtin_same)input = typename conditional<__is_same(K, const K*), int, char>::type;
 };
 
+template <typename K>
+struct test_reference {
+    // `K = int&` makes `K&` the type `K` is.
+    using §(builtin_same_reference)input = typename conditional<__is_same(K, K&), int, char>::type;
+};
+
 }  // namespace builtin_same
 
 namespace unused_member_value {

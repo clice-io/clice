@@ -708,3 +708,28 @@ void run(Box<T>& box) {
 }
 
 }  // namespace object_binding_tie
+
+namespace explicit_object_binding {
+
+struct Good {};
+
+struct Bad {};
+
+template <typename T>
+struct Box {
+    Good pick(this Box&, long);
+
+    Bad pick(this Box&&, int);
+};
+
+template <typename T>
+struct Source {
+    using type = int;
+};
+
+template <typename T>
+void run(Box<T>& box, typename Source<T>::type value) {
+    auto §(explicit_object_binding)chosen = box.pick(value);
+}
+
+}  // namespace explicit_object_binding

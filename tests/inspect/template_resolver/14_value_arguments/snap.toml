@@ -69,6 +69,9 @@ type = "typename conditional<same<K, V>, int, char>::type"
 type = "char"
 declarations = ["using ⟦type⟧ = F; @-5"]
 
+[answers.builtin_same_reference]
+template_resolver = {}
+
 [answers.unused_member_value.template_resolver]
 type = "char"
 declarations = ["using ⟦type⟧ = F; @-5"]

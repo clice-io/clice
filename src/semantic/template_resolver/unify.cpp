@@ -470,8 +470,13 @@ std::optional<bool> same_type(clang::ASTContext& context,
     }
     auto built_on = [](clang::QualType outer, clang::QualType inner) {
         auto* parameter = inner.getCanonicalType().getTypePtr();
-        return llvm::isa<clang::TemplateTypeParmType>(parameter) &&
-               encloses(outer.getCanonicalType().getTypePtr(), parameter);
+        auto* type = outer.getCanonicalType().getTypePtr();
+        /// A reference to the parameter itself collapses to it when the
+        /// parameter turns out a reference (`K&` with `K = int&`).
+        if(llvm::isa<clang::ReferenceType>(type)) {
+            type = type->getPointeeType().getCanonicalType().getTypePtr();
+        }
+        return llvm::isa<clang::TemplateTypeParmType>(parameter) && encloses(type, parameter);
     };
     if(!types_may_match(context, lhs, rhs) || built_on(lhs, rhs) || built_on(rhs, lhs)) {
         return false;

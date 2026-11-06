@@ -102,3 +102,9 @@ wrong = "the template binds the object without adding const, which beats the con
 
 [answers.object_binding_tie.template_resolver]
 type = "Bad"
+
+[answers.explicit_object_binding]
+wrong = "Box&& binds no lvalue object: chosen is a Good"
+
+[answers.explicit_object_binding.template_resolver]
+type = "Bad"
