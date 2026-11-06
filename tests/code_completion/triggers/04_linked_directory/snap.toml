@@ -1,0 +1,14 @@
+[test.member.completion]
+items = [
+    { label = "member", kind = "Field", detail = "int" },
+    { label = "other", kind = "Field", detail = "int" },
+]
+
+[test.typed.completion]
+items = [
+    { label = "other", kind = "Field", detail = "int" },
+]
+
+[test.arguments.signature_help]
+signatures = ["scale(⟦int value⟧, int factor) -> int"]
+active = 0
