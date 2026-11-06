@@ -440,14 +440,20 @@ typename Traits<T>::type convert(T value) { return value; }
 };
 
 ZEST_CASE(CallsThroughHeldHeaders) {
-    // relay.h sees std::forward through wrap.h, which the PCH holds: the
-    // unit loading it skips wrap.h's include and still finds the candidate.
+    // relay.h sees ns::pass through wrap.h, which the PCH holds: the unit
+    // loading it skips wrap.h's include and still finds the candidate.
     TempDir tmp;
-    tmp.touch("wrap.h", "#pragma once\n#include <utility>\n");
+    tmp.touch("pass.h", R"cpp(#pragma once
+namespace ns {
+template <typename T>
+T& pass(T& value) { return value; }
+}
+)cpp");
+    tmp.touch("wrap.h", "#pragma once\n#include \"pass.h\"\n");
     tmp.touch("relay.h", R"cpp(#pragma once
 #include "wrap.h"
 template <typename F>
-int relay(F&& f) { return std::forward<F>(f)(); }
+int relay(F&& f) { return ns::pass<F>(f)(); }
 )cpp");
     tmp.touch("shared.hxx", "#pragma once\n#include \"wrap.h\"\n");
     tmp.touch("main.cpp", "#include \"relay.h\"\nint use() { return relay([] { return 1; }); }\n");
