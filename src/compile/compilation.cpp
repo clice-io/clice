@@ -83,8 +83,7 @@ std::unique_ptr<clang::CompilerInvocation>
     // another name (the editor's, through a link), the file is parsed from a
     // copy of that name's content cache, which the completion point clang
     // marks later in the original never reaches.
-    auto& inputs = invocation->getFrontendOpts().Inputs;
-    llvm::StringRef opened = inputs.size() == 1 && inputs[0].isFile() ? inputs[0].getFile() : "";
+    auto opened = invocation->getFrontendOpts().Inputs[0].getFile();
     for(auto& [file, text]: input.buffers) {
         auto& buffer = remapped_buffers.emplace_back();
         if(file == input.focus && !input.suffix.empty()) {
@@ -94,8 +93,7 @@ std::unique_ptr<clang::CompilerInvocation>
         } else {
             buffer = llvm::MemoryBuffer::getMemBuffer(text);
         }
-        pp_opts.addRemappedFile(file == input.focus && !opened.empty() ? opened : file,
-                                buffer.get());
+        pp_opts.addRemappedFile(file == input.focus ? opened : file, buffer.get());
     }
     if(params.kind != CompilationKind::Preamble) {
         pp_opts.Includes.append_range(input.forced_includes);
