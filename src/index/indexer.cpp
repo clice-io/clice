@@ -1799,7 +1799,7 @@ public:
     bool reached(clang::SourceLocation at, const clang::NamedDecl* decl, bool guess) {
         auto& SM = unit.context().getSourceManager();
         auto fid = SM.getFileID(SM.getExpansionLoc(at));
-        if(fid.isInvalid() || fid == unit.focus_file().file() || unit.is_builtin_file(fid)) {
+        if(fid.isInvalid() || fid == unit.focus_file().file() || !has_file(fid)) {
             return true;
         }
         auto* declared = declared_in(decl);
@@ -1819,7 +1819,7 @@ public:
         auto from = fid;
         for(std::uint32_t depth = 1; depth <= bound; depth += 1) {
             from = SM.getFileID(SM.getIncludeLoc(from));
-            if(from.isInvalid() || unit.is_builtin_file(from)) {
+            if(from.isInvalid() || !has_file(from)) {
                 return false;
             }
             bool focus = from == unit.focus_file().file();
@@ -1853,7 +1853,7 @@ public:
                     break;
                 }
                 auto file = SM.getFileID(SM.getExpansionLoc(location));
-                if(unit.is_builtin_file(file)) {
+                if(!has_file(file)) {
                     built_in = true;
                     break;
                 }
@@ -1878,7 +1878,7 @@ public:
         }
         if(entries_by_path.empty()) {
             for(auto& [entry, directive]: unit.directives()) {
-                if(!unit.is_builtin_file(entry)) {
+                if(has_file(entry)) {
                     entries_by_path[unit.file_path(entry)].push_back(entry);
                 }
             }
@@ -1889,7 +1889,7 @@ public:
                 for(auto& include: grafted) {
                     // The command's -include, which no file includes.
                     if(include.parent == SharedHeaderRecord::none &&
-                       unit.is_builtin_file(include.includer)) {
+                       !has_file(include.includer)) {
                         continue;
                     }
                     auto includer =
@@ -1907,7 +1907,7 @@ public:
             llvm::SmallVector<std::uint32_t, 8> slots;
             for(auto entry: entries_by_path.lookup(closure_paths[slot])) {
                 for(auto& include: unit.directives().find(entry)->second.includes) {
-                    if(include.fid.isValid() && !unit.is_builtin_file(include.fid)) {
+                    if(include.fid.isValid() && has_file(include.fid)) {
                         slots.push_back(closure_slot(include.fid));
                     }
                 }
@@ -1971,6 +1971,13 @@ public:
         return closures[root];
     }
 
+    /// Whether the file is one on disk: neither built in nor made up for
+    /// the compile (an includer context's), which no closure or identity
+    /// takes in.
+    bool has_file(clang::FileID fid) {
+        return fid.isValid() && unit.context().getSourceManager().getFileEntryRefForID(fid);
+    }
+
     std::uint32_t closure_slot(clang::FileID fid) {
         if(auto it = fid_slots.find(fid); it != fid_slots.end()) {
             return it->second;
@@ -2024,7 +2031,7 @@ public:
                 unit.header_identities());
             ranges::sort(entries, {}, [](auto& entry) { return entry.first.getHashValue(); });
             for(auto [entry, identity]: entries) {
-                if(unit.is_builtin_file(entry)) {
+                if(!has_file(entry)) {
                     continue;
                 }
                 auto path = unit.file_path(entry);
@@ -2046,6 +2053,9 @@ public:
     /// of its closure, and those of the files its guesses reach into
     /// (guess_allowed); 0 for none.
     std::uint64_t identity_of(clang::FileID fid) {
+        if(!has_file(fid)) {
+            return 0;
+        }
         auto with_closure = [&](clang::FileID file) -> std::uint64_t {
             auto own = own_identity(file);
             return own == 0 ? 0 : combine(own, closure_text(file));
@@ -2055,7 +2065,7 @@ public:
         auto from = fid;
         for(auto depth = reach_of(fid); depth > 0 && identity != 0; depth -= 1) {
             from = SM.getFileID(SM.getIncludeLoc(from));
-            if(from.isInvalid() || unit.is_builtin_file(from)) {
+            if(from.isInvalid() || !has_file(from)) {
                 break;
             }
             auto includer = with_closure(from);
@@ -2072,7 +2082,7 @@ public:
         auto entries =
             views::transform(unit.header_identities(), [](auto& entry) { return entry.first; });
         for(auto fid: entries) {
-            if(fid == focus || unit.is_builtin_file(fid) || unit.from_context(fid)) {
+            if(fid == focus || !has_file(fid) || unit.from_context(fid)) {
                 continue;
             }
             auto identity = identity_of(fid);
@@ -2449,7 +2459,7 @@ public:
                 if(unwalked.files.contains(fid) && tree.node_of(fid) != no_node) {
                     known = tree.path_id(fid);
                 } else if(!shared_known.empty() && SM.isLoadedFileID(fid) &&
-                          !unit.is_builtin_file(fid)) {
+                          has_file(fid)) {
                     if(auto it = path_ids_of.find(unit.file_path(fid));
                        it != path_ids_of.end() && shared_known.contains(it->second)) {
                         known = it->second;
