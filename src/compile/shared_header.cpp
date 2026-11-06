@@ -74,11 +74,14 @@ public:
     /// entry is read as the parser stands in the declaration context of
     /// the entry; an identifier no macro names here is read as 0.
     void token(const clang::Token& token) {
-        if(!token.isAnnotation() && !token.isOneOf(clang::tok::eod, clang::tok::eof)) {
+        if(token.isAnnotation()) {
+            return;
+        }
+        if(!token.isOneOf(clang::tok::eod, clang::tok::eof)) {
             take_contexts(1);
         }
         auto* info = token.getIdentifierInfo();
-        if(!info || token.isAnnotation() || info->hasMacroDefinition()) {
+        if(!info || info->hasMacroDefinition()) {
             return;
         }
         read(info->getName(), 0);
@@ -504,11 +507,14 @@ public:
     }
 
     void token(const clang::Token& token) {
-        if(!token.isAnnotation() && !token.isOneOf(clang::tok::eod, clang::tok::eof)) {
+        if(token.isAnnotation()) {
+            return;
+        }
+        if(!token.isOneOf(clang::tok::eod, clang::tok::eof)) {
             check_sites(1);
         }
         auto* info = token.getIdentifierInfo();
-        if(!info || token.isAnnotation() || info->hasMacroDefinition()) {
+        if(!info || info->hasMacroDefinition()) {
             return;
         }
         check(info->getName(), 0, token.getLocation());
