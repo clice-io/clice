@@ -514,10 +514,8 @@ public:
     // changes.cpp
 
     /// Files the project knows changed on disk (MasterServer::
-    /// apply_disk_changes): rescan their include edges and module
-    /// declarations, recompile the open documents reading them, queue the
-    /// closed units reading them, invalidate the PCMs built from them. A
-    /// file seen missing is removed.
+    /// apply_disk_changes): the project follows (Project::files_changed),
+    /// and the open documents reading them recompile.
     void disk_changed(llvm::ArrayRef<Fid> files);
 
     /// Reload what the looks found changed of the project's databases
@@ -534,45 +532,27 @@ public:
     /// loop.
     async::task<bool> poll_sources();
 
-    /// Whether the build's databases resolve elsewhere than at the load
-    /// (resolved_databases): another build, whose commands a reload would
-    /// record as the ones this index was built with.
-    bool databases_moved() const;
-
     /// Before a file's first compile: register, load and watch the
     /// databases in the directories from the file's up to the root, which
     /// startup discovery (the root and its direct subdirectories) did not
     /// look at — a file of a deeper project compiles from its own database —
-    /// and follow the loads. Nothing when a rule declares sources, the file
-    /// has a command already, or it lies outside the root.
+    /// and follow the loads (Project::discover_databases).
     void discover_around(Fid path_id);
 
     /// The directories below the root whose configuration file decides what
-    /// the project loads (nested_project): each direct subdirectory, and
-    /// each one on the way down to a database it loads or waits for, a
-    /// provisional member or an open document, the ones the rule left out
-    /// among them.
+    /// the project loads, the open documents' among them
+    /// (Project::configuration_dirs).
     std::vector<CanonicalPath> configuration_dirs() const;
 
-    /// Every unit whose compile or build depends on the file — the single
-    /// answer to "who read this": the root TUs the lexical scan sees
-    /// including it, the TUs whose index records reading, looking for or
-    /// importing a module built from it, the open documents whose inputs
-    /// (each_input) name it, the module units whose last PCM build read it,
-    /// failed builds included — the scan cannot resolve a macro include,
-    /// never follows an import, and never sees a file before it exists.
-    llvm::SmallVector<Fid> readers(Fid path_id) const;
-
-    /// Whether anything here derives from the file: an open document, a
-    /// command, an include edge, index entries, a compile that read it or
-    /// looked for it. The disk changes of files it does not know are not
-    /// this project's to cascade.
-    /// FIXME: a rule with a default command and no patterns gives every file a
-    /// command, so such a project takes every other project's changes too.
+    /// Whether anything here derives from the file: an open document, what
+    /// the project knows (Project::knows), a compile of an open document
+    /// that read it. The disk changes of files it does not know are not this
+    /// project's to follow.
     bool knows(Fid path_id);
 
-    /// The files every open document's compile depends on (closure).
-    void append_open_inputs(llvm::SmallVectorImpl<Fid>& files) const;
+    /// The open documents and the files their compiles read, as the
+    /// project's change handling needs them.
+    llvm::SmallVector<OpenFile> open_files() const;
 
     /// The project's context choices hold again or no longer do after the
     /// build or the include graph changed: an open document whose choice
@@ -891,112 +871,22 @@ private:
     /// recompiles, and routing follows.
     void commands_changed(CDBDiff delta);
 
+    /// What a change of the project's inputs did to the open documents: the
+    /// stale ones compile again, the reindexed ones book their skipped-body
+    /// diagnostics, and when commands changed, so do the ones whose command
+    /// moved, and routing and the watched settings follow.
+    void follow(const Affected& affected);
+
     /// The end of every batch of changes: the context choices are checked
     /// again, the background index runs what the batch queued, and a client
     /// holding answers of open documents that went stale is asked to pull
     /// again (`refresh`).
     void finish_changes(bool refresh);
 
-    /// Rescan the file's disk state (include edges, module maps). A module
-    /// name the rescan gave its first provider cascades to the consumers
-    /// holding unresolved-import edges against it; a name the file stopped
-    /// providing cascades through the provider's real node instead.
-    void rescan_disk_state(Fid path_id, bool& refresh);
-
-    /// The cascade for "this file's on-disk content is new": rescan the
-    /// file's disk state, then split every affected file into open
-    /// (recompile) and closed (reindex).
-    void cascade_disk_content_change(Fid path_id, bool& refresh);
-
-    /// Cascade a module unit's compile-graph invalidation (its PCM and the
-    /// units importing it), splitting dirtied units open/closed.
-    void cascade_compile_graph(Fid path_id, bool& refresh);
-
-    /// Treat every reader of a file that changed or vanished: open ones
-    /// recompile, closed ones reindex, module units check their PCM again
-    /// (which voids a build in flight).
-    void mark_readers(llvm::ArrayRef<Fid> readers, bool& refresh);
-
-    /// A module name just gained its first provider: cascade through its
-    /// unresolved-import node and route the dirtied consumers to recompiles and
-    /// ContentChanged reindexes.
-    void provider_appeared(llvm::StringRef module_name, bool& refresh);
-
-    /// The providers of `module_name` but `except` changed: the importers
-    /// of every other one choose among them again.
-    void cascade_providers(llvm::StringRef module_name, Fid except, bool& refresh);
-
-    /// A dependency of the file changed: it recompiles when it is open, and
-    /// reindexes unless its document's compile serves it.
-    void mark_dependent(Fid path_id, bool& refresh);
-
     /// What a file's inputs changing does to its open document, if any
     /// (inputs_changed); `refresh` is set when the document is compiled,
     /// whose client is then asked to pull again.
     void mark_stale(Fid path_id, bool& refresh);
-
-    /// Queue the file's background index again: `content` when its own
-    /// content changed, else only a dependency's.
-    void reindex(Fid path_id, bool content);
-
-    /// What the disk holds for each of a database's inputs, in
-    /// CompilationDatabase::inputs order: the content hash, nullopt when
-    /// there are no bytes to read.
-    using Hashes = llvm::SmallVector<std::optional<std::uint64_t>>;
-
-    /// One registered database's watch state.
-    struct WatchedDatabase {
-        SourceID id;
-
-        /// What was last adopted: the reads of the database's last load, or
-        /// a deletion acted on.
-        Hashes applied;
-
-        /// Half-write guard: what the previous tick saw while it differed
-        /// from `applied`; a tick seeing it again reloads.
-        std::optional<Hashes> pending;
-
-        /// The database's inputs, in CompilationDatabase::inputs order. The
-        /// database is watched by the path the source names: a symlinked
-        /// one may be pointed elsewhere since its load.
-        llvm::SmallVector<std::shared_ptr<const vfs::Flag>, 0> inputs;
-    };
-
-    /// The hashes of the database's last load.
-    Hashes loaded_hashes(SourceID id) const;
-
-    /// Watch the response files the database's last load read, besides the
-    /// database.
-    void watch_inputs(WatchedDatabase& database);
-
-    /// Register `id` for watching, from its last load.
-    void watch_database(SourceID id);
-
-    /// When no rule declares a source, register and watch the databases
-    /// found at the watched places: the root and its direct subdirectories
-    /// (listed again when the root directory moves), and every directory
-    /// from an open document still without a command up to the root —
-    /// which is how a database generated after startup is picked up.
-    void discover_databases();
-
-    /// Watch the HEAD and index of the git checkout the project lies in.
-    void watch_checkout();
-
-    /// One database's tick, its reload's delta merged into `delta`. Once
-    /// its inputs have held the same other content for two consecutive
-    /// ticks (or `force`), it reloads. A discovered database vanishing or
-    /// returning flips its presence, and the files whose default entry
-    /// moves with it change command (see Project::source_order); its entries
-    /// keep serving meanwhile.
-    void tick_database(WatchedDatabase& database, bool force, CDBDiff& delta);
-
-    /// The files the database and another one both list: the ones whose
-    /// default entry may move with the database's presence.
-    llvm::SmallVector<Fid> shared_files(SourceID id) const;
-
-    /// The source of each file's default entry, as the build ranks them
-    /// now; none for a file the build no longer compiles.
-    llvm::SmallVector<std::optional<SourceID>> default_sources(llvm::ArrayRef<Fid> files) const;
 
 private:
     /// The open documents routed here.
@@ -1038,29 +928,6 @@ private:
     /// Whether start() began watching the databases: never for the rootless
     /// project, nor before it starts.
     bool watching = false;
-
-    llvm::SmallVector<WatchedDatabase> watched_databases;
-
-    /// The root directory, whose stamp moves when an entry appears or goes.
-    std::shared_ptr<const vfs::Flag> root_flag;
-
-    /// The root's stamp at the listing `listed` came from; nullopt while no
-    /// listing can be trusted to hold.
-    std::optional<vfs::Stamp> listed_at;
-
-    /// The places database_places names under the root.
-    llvm::SmallVector<Spelling> listed;
-
-    /// The watched places with no database registered there yet.
-    llvm::StringMap<std::shared_ptr<const vfs::Flag>> places;
-
-    /// The places a registered database is known to stand at.
-    llvm::StringSet<> registered;
-
-    /// The checkout's HEAD and index: every git operation that changes the
-    /// worktree rewrites the index, and then every file under the project
-    /// root is due for a look.
-    llvm::SmallVector<std::shared_ptr<const vfs::Flag>> checkout;
 
     /// The project's background tasks (checkpoints, flushes, polls, the
     /// control listener); cancelled and joined in shutdown().

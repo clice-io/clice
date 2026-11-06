@@ -209,7 +209,9 @@ void MasterServer::save_document(Fid path_id) {
     }
     llvm::SmallVector<Fid> closures{path_id};
     for(auto& project: projects) {
-        project->append_open_inputs(closures);
+        for(auto& open: project->open_files()) {
+            closures.append(open.read);
+        }
     }
     files.disk.look(closures);
     apply_disk_changes();

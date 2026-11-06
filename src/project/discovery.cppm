@@ -1,6 +1,9 @@
 module clice:project.discovery;
 
+import :command.database;
 import :support.prelude;
+import :vfs.disk_state;
+import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -69,6 +72,54 @@ std::pair<std::uint32_t, llvm::StringRef> discovery_rank(llvm::StringRef databas
 /// refactoring edits — hidden ones, package caches, `cache_dir` and build
 /// trees (a directory holding CMakeCache.txt or build.ninja).
 bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file);
+
+/// What the disk holds for each of a database's inputs, in
+/// CompilationDatabase::inputs order: the content hash, nullopt when there
+/// are no bytes to read.
+using InputHashes = llvm::SmallVector<std::optional<std::uint64_t>>;
+
+/// One registered database's watch state.
+struct WatchedDatabase {
+    SourceID id;
+
+    /// What was last adopted: the reads of the database's last load, or
+    /// a deletion acted on.
+    InputHashes applied;
+
+    /// Half-write guard: what the previous look saw while it differed
+    /// from `applied`; a look seeing it again reloads.
+    std::optional<InputHashes> pending;
+
+    /// The database's inputs, in CompilationDatabase::inputs order. The
+    /// database is watched by the path the source names: a symlinked
+    /// one may be pointed elsewhere since its load.
+    llvm::SmallVector<std::shared_ptr<const vfs::Flag>, 0> inputs;
+};
+
+/// What a project watches on disk besides the files it reads: its
+/// databases, the places one may appear at, and its git checkout
+/// (Project::watch_databases).
+struct DiskWatch {
+    llvm::SmallVector<WatchedDatabase> databases;
+
+    /// The root directory, whose stamp moves when an entry appears or goes.
+    std::shared_ptr<const vfs::Flag> root;
+
+    /// The root's stamp at the listing `listed` came from; nullopt while no
+    /// listing can be trusted to hold.
+    std::optional<vfs::Stamp> listed_at;
+
+    /// The places database_places names under the root.
+    llvm::SmallVector<Spelling> listed;
+
+    /// The watched places with no database registered there yet.
+    llvm::StringMap<std::shared_ptr<const vfs::Flag>> places;
+
+    /// The checkout's HEAD and index: every git operation that changes the
+    /// worktree rewrites the index, and then every file under the project
+    /// root is due for a look.
+    llvm::SmallVector<std::shared_ptr<const vfs::Flag>> checkout;
+};
 
 /// What a refactoring may edit of the project at `root`, outside its cache
 /// directory (feature::RenameScope).

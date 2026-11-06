@@ -466,7 +466,7 @@ ZEST_CASE(FailedModuleHeaderCascades) {
     error.cause = "use of undeclared identifier 'x'";
     project.pcms[mod].failure = {{.record = error}, {{.file = header}}};
 
-    ZASSERT(ranges::contains(served.readers(header), mod));
+    ZASSERT(ranges::contains(served.project.readers(header), mod));
     served.disk_changed({header});
     ZASSERT(served.project.background_index.queue().pending_reason(user) ==
             ReindexReason::DepsOnly);

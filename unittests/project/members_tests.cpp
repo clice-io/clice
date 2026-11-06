@@ -687,7 +687,7 @@ ZEST_CASE(MembersFollowCommands) {
                   {tmp.root, tmp.path("kept.cpp"), {"-DCHANGED"}}
     }));
     auto epoch = project.commands_epoch;
-    ZEXPECT(!project.update_members({.changed = {kept}, .removed = {gone}}).empty());
+    ZEXPECT(!project.update_members({.changed = {kept}, .removed = {gone}}).commands.empty());
     ZEXPECT(project.commands_epoch == epoch + 1);
     ZEXPECT(!project.index.indexed(gone));
     ZEXPECT(!f.queue.pending_reason(gone).has_value());
@@ -696,7 +696,7 @@ ZEST_CASE(MembersFollowCommands) {
     ZEXPECT(f.queue.pending_reason(kept) == ReindexReason::ContentChanged);
 
     auto graph = project.dep_graph.generation();
-    ZEXPECT(project.update_members({}).empty());
+    ZEXPECT(project.update_members({}).commands.empty());
     ZEXPECT(project.commands_epoch == epoch + 1);
     ZEXPECT(project.dep_graph.generation() == graph);
     ZEXPECT(IndexerFixture::pending_files(f.queue) == llvm::SmallVector<Fid>{kept});

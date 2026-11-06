@@ -167,10 +167,7 @@ void ServedProject::start() {
     // Watched from the project load on: each database is baselined at the
     // read its entries came from.
     watching = true;
-    for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
-        watch_database(SourceID(i));
-    }
-    watch_checkout();
+    project.watch_databases();
     for(auto& [path_id, document]: documents) {
         discover_around(path_id);
     }

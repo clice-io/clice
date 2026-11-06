@@ -535,10 +535,6 @@ async::task<Imports> Project::scan_imports(Fid path_id,
     co_return imports;
 }
 
-llvm::SmallVector<NodeId> Project::provider_appeared(llvm::StringRef name) {
-    return graph.invalidate(unresolved_import(name));
-}
-
 Work Project::module_work(Fid module) {
     return {
         .run = [this, module](Attempt& attempt) { return build_module(*this, attempt, module); },
@@ -694,14 +690,6 @@ std::unordered_map<std::string, std::string>
         }
     }
     return paths;
-}
-
-llvm::SmallVector<Fid> Project::invalidate_module(Fid path_id) {
-    llvm::SmallVector<Fid> dirtied;
-    for(auto id: graph.invalidate(module_node(path_id))) {
-        dirtied.push_back(id.file());
-    }
-    return dirtied;
 }
 
 }  // namespace clice

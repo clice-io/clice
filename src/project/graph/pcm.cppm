@@ -107,9 +107,10 @@ struct ImportScan {
 
 /// The graph identity of an import that resolves to nothing: a node that
 /// never runs an attempt and exists only to be edged at. When the name's
-/// first provider appears, provider_appeared() invalidates it and the ordinary
-/// cascade reaches every consumer whose scan declared the edge — no side
-/// bookkeeping of who failed against the name. The high bit keeps the key
+/// first provider appears, the change's cascade invalidates it
+/// (Project::files_changed, update_members) and reaches every consumer whose
+/// scan declared the edge — no side bookkeeping of who failed against the
+/// name. The high bit keeps the key
 /// space disjoint from path_ids.
 inline NodeId unresolved_import(llvm::StringRef name) {
     return {NodeKind::PCM, (1ull << 63) | (llvm::xxh3_64bits(name) >> 1)};

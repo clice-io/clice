@@ -67,6 +67,33 @@ enum class CompiledBy : std::uint8_t {
     Run,
 };
 
+/// An open document, as a change of the project's inputs needs it: the
+/// project does not know the documents its owner has open, which the owner
+/// hands it.
+struct OpenFile {
+    Fid file;
+
+    /// The files its last compile read.
+    llvm::SmallVector<Fid> read;
+};
+
+/// What a change of the project's inputs means for the open documents
+/// (files_changed, update_members).
+struct Affected {
+    /// The open files whose compile the change made stale through what they
+    /// read. One whose own command changed is in `commands`: whether its
+    /// document compiles under it is the owner's to tell.
+    llvm::SmallVector<Fid> stale;
+
+    /// The open files it queued to reindex, their skipped-body diagnostics
+    /// forgotten.
+    llvm::SmallVector<Fid> reindexed;
+
+    /// The files whose commands appeared, changed or left — the provisional
+    /// members' among them.
+    CDBDiff commands;
+};
+
 /// A project: its build — the rules, the compilation databases and the
 /// members they make, the commands each file compiles under — and what it
 /// builds from it: its PCHs, its modules and its units' index, persisted in
@@ -76,9 +103,9 @@ enum class CompiledBy : std::uint8_t {
 /// tracks the disk, shared by every file.
 ///
 /// Its owner — the server, or a command-line run — opens it once (open),
-/// tells it what changed on disk (rescan_disk_file, forget_file) and in the
-/// databases (update_members), starts its background index when the run
-/// indexes, and shuts it down (shutdown). A project builds through `loop`
+/// tells it what changed on disk (files_changed) and in the databases
+/// (update_members), starts its background index when the run indexes, and
+/// shuts it down (shutdown). A project builds through `loop`
 /// and `pool`, which an owner that builds (the server, `clice index`,
 /// `clice lint`) hands it at construction and keeps alive past it; the
 /// read-only entry points construct it without them and never reach the
@@ -155,6 +182,10 @@ struct Project {
     /// every index structure that borrows database bytes (`shards`), so
     /// destruction runs shards → database → store.
     std::unique_ptr<index::BlobDatabase> database;
+
+    /// What the project watches on disk besides the files it reads; nothing
+    /// until its owner watches the databases (watch_databases).
+    DiskWatch disk_watch;
 
     /// The real paths the build's databases resolved to at load
     /// (resolved_databases): a look finding others tells the build moved to
@@ -443,6 +474,12 @@ struct Project {
     /// (ServedProject::poll_sources).
     llvm::SmallVector<Fid> refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked);
 
+    /// Whether some unit of the build the index is to hold has no record in
+    /// it yet (see feature::RenameScope::units_pending).
+    bool units_pending();
+
+    // changes.cpp
+
     /// The files whose compiles read `file`: the units including it, also
     /// through a file their commands force in, by the dependency graph; the
     /// units whose indexed compiles read it, looked for it in vain, or
@@ -450,23 +487,20 @@ struct Project {
     /// was built from it, or whose build failed on it.
     llvm::SmallVector<Fid> readers(Fid file) const;
 
-    /// Whether some unit of the build the index is to hold has no record in
-    /// it yet (see feature::RenameScope::units_pending).
-    bool units_pending();
+    /// Whether anything of the project derives from the file: a command, an
+    /// include edge, index entries, a build that read it or looked for it.
+    /// The disk changes of files it does not know are not its to follow.
+    /// FIXME: a rule with a default command and no patterns gives every file a
+    /// command, so such a project takes every other project's changes too.
+    bool knows(Fid file);
 
-    /// Rescan a file whose disk content changed (rescan_dependency_graph),
-    /// so host lookups and context queries see includes the change added
-    /// or removed, and its module declaration. The module-graph cascade is
-    /// the served project's change handling (invalidate_module).
-    void rescan_disk_file(Fid path_id);
-
-    /// A file vanished from disk: it stops providing its module name (a
-    /// replacement provider would otherwise sit behind it and never be
-    /// selected) and its import syntax (the last import-bearing file must
-    /// release the project-wide scan gate), and its outgoing edges go, so
-    /// it stops being a host candidate. Incoming edges stay — includers'
-    /// text still names it, and their own rescans own those edges.
-    void forget_file(Fid path_id);
+    /// Files it knows changed on disk: their include edges and module
+    /// declarations are scanned again, the PCMs built from them and the
+    /// units reading them go stale, the closed units reindex, and a file
+    /// seen missing is forgotten. `open` are the owner's open documents: one
+    /// whose last compile read a changed file goes stale even where the scan
+    /// cannot tell (a macro include).
+    Affected files_changed(llvm::ArrayRef<Fid> files, llvm::ArrayRef<OpenFile> open);
 
     /// What rebuilding the dependency graph changed.
     struct Rebuilt {
@@ -493,28 +527,16 @@ struct Project {
     /// unit includes one, and the graph takes them in.
     Rebuilt rebuild_dependency_graph();
 
-    /// What a change of the build's commands changed (update_members).
-    struct MembersChanged {
-        /// The files whose commands appeared, changed or left — the
-        /// provisional members' among them.
-        CDBDiff commands;
-
-        /// How the dependency graph followed.
-        Rebuilt graph;
-
-        bool empty() const {
-            return commands.empty();
-        }
-    };
-
     /// Follow a change of the build's commands: `commands`, what a database
     /// reload or a walk of the default sources changed; none when only the
     /// provisional members may have (a file just recorded). The provisional
     /// members follow, the dependency graph is rebuilt, and the index follows
     /// each file whose command changed: a unit the build stopped compiling
     /// leaves it, one whose command changed keeps serving until its reindex
-    /// merges. The only writer of commands_epoch.
-    MembersChanged update_members(CDBDiff commands);
+    /// merges. The PCMs whose providers or commands changed go stale with
+    /// their importers. `open` as files_changed's. The only writer of
+    /// commands_epoch.
+    Affected update_members(CDBDiff commands, llvm::ArrayRef<OpenFile> open = {});
 
     // discovery.cpp
 
@@ -538,6 +560,45 @@ struct Project {
 
     /// What a refactoring may edit of the project (EditableFiles).
     EditableFiles editable_files() const;
+
+    /// Whether the build's databases resolve elsewhere than at the load
+    /// (resolved_databases): another build, whose commands a reload would
+    /// record as the ones this index was built with.
+    bool databases_moved() const;
+
+    /// Watch the databases registered so far, from their last loads, and
+    /// the HEAD and index of the git checkout the project lies in.
+    void watch_databases();
+
+    /// Look at the databases (`force` skips the content gate and the
+    /// two-tick debounce, the half-written-file guard): register the ones
+    /// found since (discover_databases, `open` the owner's open files) and
+    /// reload the watched ones that changed. Returns what the reloads changed,
+    /// for update_members. A discovered database vanishing or returning
+    /// flips its presence, and the files whose default entry moves with it
+    /// change command (see source_order); its entries keep serving
+    /// meanwhile.
+    CDBDiff look_at_databases(bool force, llvm::ArrayRef<Fid> open);
+
+    /// When no rule declares a source, register and watch the databases at
+    /// the places a file may compile from that startup discovery did not
+    /// look at: the root and its direct subdirectories (listed again when
+    /// the root directory moves), and every directory from each of `files`
+    /// still without a command, inside the root, up to the root — which is
+    /// how a database generated after startup is picked up. The places stay
+    /// watched; the next look loads what they hold. `now` looks above
+    /// `files` alone and loads at once, a registered database whose load
+    /// failed so far (absent at startup, unreadable at an earlier open)
+    /// tried again — with polling off nothing else would. Returns what the
+    /// loads changed, for update_members.
+    CDBDiff discover_databases(llvm::ArrayRef<Fid> files, bool now);
+
+    /// The directories below the root whose configuration file decides what
+    /// the project loads (nested_project): each direct subdirectory, and
+    /// each one on the way down to a database it loads or waits for, a
+    /// provisional member or one of the owner's `open` files, the ones the
+    /// rule left out among them.
+    std::vector<CanonicalPath> configuration_dirs(llvm::ArrayRef<Fid> open) const;
 
     // command/resolve.cpp
 
@@ -904,15 +965,6 @@ struct Project {
                                                            const Resolution& resolution,
                                                            BuildOptions options);
 
-    /// Mark a module unit and its transitive importers dirty, overtaking
-    /// in-flight attempts: their next attempts check their builds again, and a
-    /// build whose key and inputs still hold is kept — the single write point
-    /// for PCM content invalidation. A product-only loss (cache eviction) is
-    /// the node's check instead (module_work), which re-dirties the module alone:
-    /// what its importers read is unchanged. Returns the dirtied nodes' files,
-    /// of every kind.
-    llvm::SmallVector<Fid> invalidate_module(Fid path_id);
-
     /// The crash of the module's last build, while what it is known to have
     /// read holds: every importer that finds it books it against its own
     /// document instead of burning a worker of its own.
@@ -928,11 +980,6 @@ struct Project {
     /// until its key or one of its inputs changes. Returns whether it had
     /// failed.
     bool forget_module_failure(Fid module);
-
-    /// A module name gained a provider it lacked: invalidate the dependents of
-    /// its unresolved import (their keys name the import as unresolved, so
-    /// their next attempts rebuild) and return them for serving-side treatment.
-    llvm::SmallVector<NodeId> provider_appeared(llvm::StringRef name);
 
     /// The direct module dependencies of the unit under the arguments
     /// `resolution` renders, the ones its compile runs: a context choice or a

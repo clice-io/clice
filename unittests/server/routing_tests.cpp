@@ -793,7 +793,7 @@ ZEST_CASE(AnyLookReportsChange) {
     auto header = fixture.intern(tmp.path("header.h"));
     fixture.watch_databases();
     tmp.touch("header.h", R"(int x = 2222;)");
-    project.rescan_disk_file(header);
+    rescan_dependency_graph(project.cdb, project.toolchain, project.dep_graph, header);
 
     auto first = workspace_tick(fixture);
     ZASSERT(!first.joined);
