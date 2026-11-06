@@ -905,6 +905,14 @@ public:
                 if(declared_in(brought.files, brought.modules)) {
                     return true;
                 }
+                // A header a shared header's PCH holds the unit never
+                // entered: what it includes is grafted.
+                if(SM.isLoadedFileID(include.fid) && has_file(include.fid)) {
+                    if(auto* slots = this->declared_in(candidate);
+                       slots && closure_declares(include.fid, *slots)) {
+                        return true;
+                    }
+                }
             }
         }
         return false;
@@ -1922,10 +1930,7 @@ public:
             if(module && module->isNamedModule()) {
                 return reach(from).modules.contains(module->getTopLevelModuleName());
             }
-            const auto& closure = closure_of(from);
-            return ranges::any_of(*declared, [&](std::uint32_t slot) {
-                return slot < closure.size() && closure.test(slot);
-            });
+            return closure_declares(from, *declared);
         };
         if(sees(fid)) {
             return true;
@@ -1951,6 +1956,15 @@ public:
             }
         }
         return false;
+    }
+
+    /// Whether one of the files `declared` (closure slots) is in `from`'s
+    /// closure.
+    bool closure_declares(clang::FileID from, llvm::ArrayRef<std::uint32_t> declared) {
+        const auto& closure = closure_of(from);
+        return ranges::any_of(declared, [&](std::uint32_t slot) {
+            return slot < closure.size() && closure.test(slot);
+        });
     }
 
     /// The closure slots of the files declaring `decl`; null for one some

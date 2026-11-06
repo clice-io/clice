@@ -439,6 +439,33 @@ typename Traits<T>::type convert(T value) { return value; }
     ZEXPECT(over.section_identity(*in_over) == walked.section_identity(*in_walked));
 };
 
+ZEST_CASE(CallsThroughHeldHeaders) {
+    // relay.h sees std::forward through wrap.h, which the PCH holds: the
+    // unit loading it skips wrap.h's include and still finds the candidate.
+    TempDir tmp;
+    tmp.touch("wrap.h", "#pragma once\n#include <utility>\n");
+    tmp.touch("relay.h", R"cpp(#pragma once
+#include "wrap.h"
+template <typename F>
+int relay(F&& f) { return std::forward<F>(f)(); }
+)cpp");
+    tmp.touch("shared.hxx", "#pragma once\n#include \"wrap.h\"\n");
+    tmp.touch("main.cpp", "#include \"relay.h\"\nint use() { return relay([] { return 1; }); }\n");
+    auto pch = tmp.path("shared.pch");
+    auto shared = build_shared(tmp, pch);
+    ZASSERT(shared);
+    auto walked_data = index_file(tmp, tmp.path("main.cpp"), {"-std=c++20"}).data;
+    auto walked = index::TUIndex::from_bytes(walked_data);
+    auto over_data = index_over(tmp, pch, &*shared);
+    auto over = index::TUIndex::from_bytes(over_data);
+    auto in_walked = section_of(walked, "relay.h");
+    auto in_over = section_of(over, "relay.h");
+    ZASSERT(in_walked);
+    ZASSERT(in_over);
+    ZEXPECT(!guessed(walked, *in_walked).empty());
+    ZEXPECT(guessed(over, *in_over) == guessed(walked, *in_walked));
+};
+
 ZEST_CASE(PCHLookupsAbsent) {
     // probe.h looks for flag.h, which is not there: creating it changes
     // what the unit compiles to.
