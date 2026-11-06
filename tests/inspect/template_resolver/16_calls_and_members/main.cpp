@@ -765,3 +765,44 @@ void run(typename Source<T>::integer whole, typename Source<T>::floating fractio
 }
 
 }  // namespace constraint_per_call
+
+namespace enclosing_class_bases {
+
+struct Good {};
+
+struct Bad {};
+
+namespace base {
+
+struct B {};
+
+}  // namespace base
+
+namespace lib {
+
+struct Outer : base::B {
+    struct Inner {};
+};
+
+Bad choose(Outer::Inner, const Outer&);
+
+}  // namespace lib
+
+namespace base {
+
+Good choose(lib::Outer::Inner, lib::Outer&);
+
+}  // namespace base
+
+template <typename T>
+struct Source {
+    using inner = lib::Outer::Inner;
+};
+
+template <typename T>
+void run(typename Source<T>::inner inner, lib::Outer& outer) {
+    // `Outer` encloses the first argument's class and is the second's: its base brings `base`.
+    auto §(enclosing_class_bases)chosen = choose(inner, outer);
+}
+
+}  // namespace enclosing_class_bases

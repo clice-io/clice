@@ -114,3 +114,6 @@ type = "Good"
 
 [answers.constraint_second_call.template_resolver]
 type = "Bad"
+
+[answers.enclosing_class_bases.template_resolver]
+type = "Good"

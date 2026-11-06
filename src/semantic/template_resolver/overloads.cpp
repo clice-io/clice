@@ -114,6 +114,10 @@ struct Associated {
 
     llvm::SmallPtrSet<const clang::CXXRecordDecl*, 4> classes;
 
+    /// The classes whose bases and arguments are added: a class enclosing
+    /// another is associated without them, until an argument names it.
+    llvm::SmallPtrSet<const clang::CXXRecordDecl*, 4> visited;
+
     /// Specializations clang has not instantiated, which hold neither the
     /// friends nor the bases their pattern declares.
     llvm::SmallVector<const clang::ClassTemplateSpecializationDecl*, 2> uninstantiated;
@@ -134,9 +138,10 @@ struct Associated {
 
     void add(const clang::CXXRecordDecl* record) {
         record = record->getDefinition() ? record->getDefinition() : record;
-        if(!classes.insert(record->getCanonicalDecl()).second) {
+        if(!visited.insert(record->getCanonicalDecl()).second) {
             return;
         }
+        classes.insert(record->getCanonicalDecl());
         enclosing(record);
         if(const auto* outer = llvm::dyn_cast<clang::CXXRecordDecl>(record->getDeclContext())) {
             classes.insert(outer->getCanonicalDecl());
