@@ -120,25 +120,10 @@ struct ServedProjectFixture {
         co_return built->loaded.has_value();
     }
 
-    // Accessors of the change tests (changes_tests.cpp, databases_tests.cpp).
+    // Accessors of the change tests (changes_tests.cpp).
 
     void commands_changed(CDBDiff delta) {
         served->commands_changed(std::move(delta));
-    }
-
-    /// Watch the project's databases and its git checkout as start() does,
-    /// from the loads the test made itself.
-    void watch_databases() {
-        served->watching = true;
-        served->project.watch_databases();
-    }
-
-    /// The delta reload_databases follows (commands_changed), not followed
-    /// (Project::look_at_databases).
-    CDBDiff database_delta(bool force) {
-        return served->project.look_at_databases(
-            force,
-            llvm::to_vector(llvm::make_first_range(served->documents)));
     }
 };
 
