@@ -16,7 +16,7 @@ test("a host indexed later", async (t) => {
     const slow = await s.park("index", "slow_host.cpp", { at: "reply" });
     t.disk.database();
     expect(await s.poll("cdb")).toBe(1);
-    s.open("shared.h", { pull: false });
+    expect(await s.errors("shared.h")).toEqual([]);
     await t.show("before", s.hover(t.marker("slow")));
     // Counted without waiting for the server to go idle, which the parked
     // index keeps it from.
