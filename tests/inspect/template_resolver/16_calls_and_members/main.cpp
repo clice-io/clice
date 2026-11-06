@@ -628,3 +628,29 @@ void run(typename Source<T>::type value) {
 }
 
 }  // namespace const_rvalue_binding
+
+namespace explicit_object_template {
+
+struct Good {};
+
+struct Bad {};
+
+template <typename T>
+struct Box {
+    template <typename U>
+    Good pick(this Box&, U&);
+
+    Bad pick(this Box&, const int&);
+};
+
+template <typename T>
+struct Source {
+    using type = int;
+};
+
+template <typename T>
+void run(Box<T>& box, typename Source<T>::type& value) {
+    auto §(explicit_object_template)chosen = box.pick(value);
+}
+
+}  // namespace explicit_object_template

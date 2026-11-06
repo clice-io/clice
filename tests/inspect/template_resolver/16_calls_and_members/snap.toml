@@ -89,3 +89,7 @@ wrong = "binding the rvalue to const U&& beats binding it to const int&: chosen 
 
 [answers.const_rvalue_binding.template_resolver]
 type = "Bad"
+
+[answers.explicit_object_template]
+wrong = "U& binds the int lvalue better than const int&: chosen is a Good"
+template_resolver = {}

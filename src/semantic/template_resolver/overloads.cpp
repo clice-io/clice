@@ -397,6 +397,12 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
                 unviable.insert(decl);
                 return std::nullopt;
             }
+            /// Deduction from the call does not take an explicit object.
+            if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(FD);
+               method && method->isExplicitObjectMemberFunction()) {
+                waits = true;
+                return std::nullopt;
+            }
             auto deduced = deduce_call(FTD, FD, arguments);
             if(deduced.empty()) {
                 return std::nullopt;
