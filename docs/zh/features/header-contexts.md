@@ -49,6 +49,20 @@ tests/contexts/switching/01_two_hosts
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**其他宿主文件编译的代码**
+
+头文件中只有另一个宿主文件才会编译的代码，同样保留着色、大纲、折叠范围、链接和悬停
+
+`shared.h` 中，`fast_path()` 在 `fast_host.cpp` 包含它时定义，`slow_path()` 在 `slow_host.cpp` 包含它时定义。在第一个宿主文件的上下文中显示时，第二个分支作为非活动代码淡化显示，但仍保留语义着色、大纲条目、折叠范围和包含指令的链接，悬停 `slow_path` 也会显示其声明：clice 的索引收录了该头文件的每个上下文，只要文件仍与保存时一致，各项答案中其他上下文的代码就取自索引。
+
+```case
+tests/contexts/switching/14_other_host_code
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 包含的代码片段
