@@ -481,7 +481,8 @@ ZEST_CASE(LocalsOutliveIt) {
     TempDir tmp;
     tmp.touch("shared.hxx", "#pragma once\n#include \"call.h\"\n");
     tmp.touch("helper.h", "#pragma once\nstatic int helper() { return 1; }\n");
-    tmp.touch("call.h", "#pragma once\n#include \"helper.h\"\ninline int call() { return helper(); }\n");
+    tmp.touch("call.h",
+              "#pragma once\n#include \"helper.h\"\ninline int call() { return helper(); }\n");
     tmp.touch("main.cpp", "#include \"call.h\"\nint use() { return call() + helper(); }\n");
     auto pch = tmp.path("shared.pch");
     std::string own;
@@ -492,7 +493,10 @@ ZEST_CASE(LocalsOutliveIt) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        f.list_units(tmp, {{"main.cpp", {"-std=c++20"}}});
+        f.list_units(tmp,
+                     {
+                         {"main.cpp", {"-std=c++20"}}
+        });
         ZASSERT(f.merge(own));
         ZASSERT(f.merge(over));
         auto header = f.project.file_table.intern(Spelling::absolute(tmp.path("shared.hxx")));
@@ -507,7 +511,10 @@ ZEST_CASE(LocalsOutliveIt) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
-    f.list_units(tmp, {{"main.cpp", {"-std=c++20"}}});
+    f.list_units(tmp,
+                 {
+                     {"main.cpp", {"-std=c++20"}}
+    });
     f.load();
     auto unit = f.project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
     auto manifest = f.project.index.manifest(unit);

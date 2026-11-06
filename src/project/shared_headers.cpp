@@ -339,8 +339,10 @@ void Project::release_shared_headers() {
                     }
                     auto& locals = manifest->shared_locals;
                     for(auto& local: own->shared_locals) {
-                        auto it =
-                            ranges::lower_bound(locals, local.symbol, {}, &index::SharedLocal::symbol);
+                        auto it = ranges::lower_bound(locals,
+                                                      local.symbol,
+                                                      {},
+                                                      &index::SharedLocal::symbol);
                         if(it == locals.end() || it->symbol != local.symbol) {
                             locals.insert(it, local);
                             continue;
