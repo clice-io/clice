@@ -43,11 +43,13 @@ declarations = ["using ⟦type⟧ = typename A::template rebind<T>::other;"]
 type = "X"
 declarations = ["using ⟦type⟧ = typename apply<T::template rebind, U>::type;"]
 
-[answers.concrete_outer_member_template]
-wrong = "Inner<X> is a member template of the concrete Outer<int>: type should resolve to X *"
-
 [answers.concrete_outer_member_template.template_resolver]
-type = "typename Outer<int>::template Inner<X>::type"
+type = "X *"
+declarations = ["using ⟦type⟧ = U*;"]
+
+[answers.concrete_outer_member_record.template_resolver]
+type = "typename Outer<int>::template Inner<X>"
+record = "struct ⟦Inner⟧ { @-10"
 
 [answers.nested_class_member.template_resolver]
 type = "X *"

@@ -132,16 +132,7 @@ std::optional<llvm::APSInt> PseudoInstantiator::initial_value(const clang::VarDe
         llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(var->getDeclContext());
     if(auto* pattern = var->getInstantiatedFromStaticDataMember();
        pattern && specialization && !var->getInit()) {
-        auto frames = stack.size();
-        auto from = specialization->getSpecializedTemplateOrPartial();
-        if(auto* partial = from.dyn_cast<clang::ClassTemplatePartialSpecializationDecl*>()) {
-            stack.push(partial,
-                       partial->getTemplateParameters(),
-                       specialization->getTemplateInstantiationArgs().asArray());
-        } else {
-            push_parameters(llvm::cast<clang::ClassTemplateDecl*>(from),
-                            specialization->getTemplateArgs().asArray());
-        }
+        auto frames = push_specialization(specialization);
         auto value = initial_value(pattern);
         stack.truncate(frames);
         return value;

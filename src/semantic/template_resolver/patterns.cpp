@@ -16,6 +16,14 @@ bool has_dependent_base(const clang::CXXRecordDecl* record) {
     });
 }
 
+clang::ClassTemplateDecl* member_pattern(const clang::ClassTemplateDecl* CTD) {
+    if(CTD->getTemplatedDecl()->hasDefinition() ||
+       !llvm::isa<clang::ClassTemplateSpecializationDecl>(CTD->getDeclContext())) {
+        return nullptr;
+    }
+    return CTD->getInstantiatedFromMemberTemplate();
+}
+
 namespace {
 
 /// The explicit specializations among `specializations` that `arguments`
@@ -165,6 +173,9 @@ llvm::SmallVector<clang::VarTemplateSpecializationDecl*, 2>
 
 clang::CXXRecordDecl* PseudoInstantiator::select_pattern(clang::ClassTemplateDecl* CTD,
                                                          TemplateArguments written) {
+    if(auto* from = member_pattern(CTD)) {
+        CTD = from;
+    }
     llvm::SmallVector<clang::TemplateArgument, 4> arguments;
     if(!fill_defaults(CTD, written, arguments)) {
         return nullptr;

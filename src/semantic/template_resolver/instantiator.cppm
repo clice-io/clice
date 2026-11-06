@@ -153,6 +153,13 @@ void drop_by_arity(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
 /// Whether `type` still refers to a parameter of `params`.
 bool mentions_parameters(clang::QualType type, const clang::TemplateParameterList* params);
 
+/// The member template a member template of a class template's
+/// specialization was instantiated from, while its own definition waits for
+/// an instantiation that needs one: `Outer<int>::Inner` is a declaration
+/// until some `Outer<int>::Inner<char>` is used, its members are
+/// `Outer<T>::Inner`'s. Null for any other template.
+clang::ClassTemplateDecl* member_pattern(const clang::ClassTemplateDecl* CTD);
+
 /// Whether `record`'s definition inherits from a still-dependent base, which
 /// may bring a member only once it instantiates; an undefined record tells
 /// nothing either.
@@ -433,6 +440,11 @@ private:
     /// find them wherever the default was written. Returns the frame count
     /// to truncate back to.
     unsigned push_parameters(clang::TemplateDecl* TD, TemplateArguments arguments);
+
+    /// Push the parameters of the pattern `spec` instantiates from — its
+    /// template's or a partial specialization's — bound to its arguments.
+    /// Returns the frame count to truncate back to.
+    unsigned push_specialization(const clang::ClassTemplateSpecializationDecl* spec);
 
     /// `arguments` with the default template arguments of `TD`'s parameters
     /// after them filled in, into `out`; false when they do not fit the

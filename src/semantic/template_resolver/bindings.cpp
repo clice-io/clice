@@ -61,6 +61,20 @@ unsigned PseudoInstantiator::push_parameters(clang::TemplateDecl* TD, TemplateAr
     return frames;
 }
 
+unsigned
+    PseudoInstantiator::push_specialization(const clang::ClassTemplateSpecializationDecl* spec) {
+    auto from = spec->getSpecializedTemplateOrPartial();
+    if(auto* partial = from.dyn_cast<clang::ClassTemplatePartialSpecializationDecl*>()) {
+        auto frames = stack.size();
+        stack.push(partial,
+                   partial->getTemplateParameters(),
+                   spec->getTemplateInstantiationArgs().asArray());
+        return frames;
+    }
+    return push_parameters(llvm::cast<clang::ClassTemplateDecl*>(from),
+                           spec->getTemplateArgs().asArray());
+}
+
 bool PseudoInstantiator::fill_defaults(clang::TemplateDecl* TD,
                                        TemplateArguments arguments,
                                        llvm::SmallVectorImpl<clang::TemplateArgument>& out) {

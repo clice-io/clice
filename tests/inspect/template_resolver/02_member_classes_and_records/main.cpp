@@ -230,7 +230,10 @@ struct Outer {
 
 template <typename X>
 struct test {
+    // `Outer<int>::Inner` waits for an instantiation to have members: they are
+    // `Outer<T>::Inner`'s.
     using §(concrete_outer_member_template)input = typename Outer<int>::template Inner<X>::type;
+    using §(concrete_outer_member_record)inner = typename Outer<int>::template Inner<X>;
 };
 
 }  // namespace concrete_outer_member_template

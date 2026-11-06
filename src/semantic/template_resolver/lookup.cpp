@@ -258,6 +258,18 @@ PseudoInstantiator::lookup_result
 PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::ClassTemplateDecl* CTD,
                                                              clang::DeclarationName name,
                                                              TemplateArguments written) {
+    /// Read through the member template it was instantiated from, with the
+    /// enclosing specialization's arguments bound.
+    if(auto* from = member_pattern(CTD)) {
+        auto frames = push_specialization(
+            llvm::cast<clang::ClassTemplateSpecializationDecl>(CTD->getDeclContext()));
+        auto members = lookup(from, name, written);
+        if(members.empty()) {
+            stack.truncate(frames);
+        }
+        return members;
+    }
+
     // Detect recursive lookup of the same CTD + name.
     // e.g. callback_traits<F> : callback_traits<decltype(&F::operator())>
     // would infinitely recurse through lookup_in_bases.
