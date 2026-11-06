@@ -903,12 +903,11 @@ struct Project {
     Work module_work(NodeId module);
 
     /// The PCM an import of `module` reads in a compile of `importer` under
-    /// `command`: the build under the first entry of the module the compile
-    /// can read (ModuleCompatibility::reads), the module's own command first
-    /// and the entries of the database the compile's command comes from
-    /// before the others, as the real build gives it; else the build under
-    /// its own command anyway, whose reading then fails with clang's reason —
-    /// the build no entry describes is never made up. A build system lists a
+    /// `command`: a build the compile can read (ModuleCompatibility::reads),
+    /// under an entry of the database the compile's command comes from before
+    /// any other, as the real build gives it, and among either the module's
+    /// own command first; else the build under its own command anyway, whose reading then fails
+    /// with clang's reason — the build no entry describes is never made up. A build system lists a
     /// module once per configuration it builds it in: CMake once per set of
     /// its importers' language flags, a project once per build directory.
     NodeId module_build(Fid module, Fid importer, const Resolution& command);
