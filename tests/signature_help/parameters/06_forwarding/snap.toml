@@ -1,6 +1,43 @@
-[answers.forwarded]
-wrong = "shows the forwarding pack instead of Widget's width and height (clangd#517)"
-
 [answers.forwarded.signature_help]
-signatures = ["make(⟦Args &&...args⟧) -> T *"]
+signatures = [
+    "make(⟦int width⟧, int height) -> Widget *",
+    "make(⟦const Widget &⟧) -> Widget *",
+    "make(⟦Widget &&⟧) -> Widget *",
+]
+active = 0
+
+[answers.second_argument.signature_help]
+signatures = ["make(int width, ⟦int height⟧) -> Widget *"]
+active = 0
+
+[answers.private_constructor.signature_help]
+signatures = ["open(⟦int port⟧) -> Socket *", "open(⟦const Socket &⟧) -> Socket *", "open(⟦Socket &&⟧) -> Socket *"]
+active = 0
+
+[answers.through_make_unique.signature_help]
+signatures = [
+    "wrap(⟦int width⟧, int height) -> unique_ptr<Widget>",
+    "wrap(⟦const Widget &⟧) -> unique_ptr<Widget>",
+    "wrap(⟦Widget &&⟧) -> unique_ptr<Widget>",
+]
+active = 0
+
+[answers.braced_variable.signature_help]
+signatures = [
+    "build(⟦int width⟧, int height) -> Widget",
+    "build(⟦const Widget &⟧) -> Widget",
+    "build(⟦Widget &&⟧) -> Widget",
+]
+active = 0
+
+[answers.class_template_member.signature_help]
+signatures = [
+    "emplace(⟦int width⟧, int height) -> Widget &",
+    "emplace(⟦const Widget &⟧) -> Widget &",
+    "emplace(⟦Widget &&⟧) -> Widget &",
+]
+active = 0
+
+[answers.own_types.signature_help]
+signatures = ["record(⟦Args &&...args⟧) -> void"]
 active = 0

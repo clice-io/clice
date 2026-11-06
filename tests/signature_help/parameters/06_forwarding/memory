@@ -1,0 +1,18 @@
+#pragma once
+
+void* operator new(decltype(sizeof 0) size, void* place) noexcept;
+
+namespace std {
+template <class T>
+T&& forward(T& value) noexcept;
+
+template <class T>
+struct unique_ptr {
+    explicit unique_ptr(T* pointer);
+};
+
+template <class T, class... Args>
+unique_ptr<T> make_unique(Args&&... args) {
+    return unique_ptr<T>(new T(std::forward<Args>(args)...));
+}
+}  // namespace std
