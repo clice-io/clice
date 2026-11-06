@@ -15,7 +15,6 @@ import :server.master;
 import :server.served_project;
 import :settings.settings;
 import :support.logging;
-import :vfs.cache_store;
 import :vfs.path;
 import :worker.probe;
 import :worker.protocol;
@@ -112,13 +111,6 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
                      first->severity == SettingsIssue::Severity::Error
                          ? std::format(". {} is served until it is fixed and saved", unserved)
                          : std::string());
-    }
-    if(broken()) {
-        return;
-    }
-    auto& cfg = project.settings.project;
-    if(cfg.cache_dir_defaulted) {
-        CacheStore::write_ignore_markers(cfg.cache_dir);
     }
 }
 

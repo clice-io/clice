@@ -169,6 +169,9 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
         return {};
     }
     bool read_only = options.cache == Cache::Read;
+    if(!read_only && project.settings.project.cache_dir_defaulted) {
+        CacheStore::write_ignore_markers(cache_dir);
+    }
     // Read-only, the default cache directory exists as soon as the settings
     // resolves it, so only the versioned store inside it proves an index
     // was ever built — and a live server (even one on an older layout)

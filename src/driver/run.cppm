@@ -12,7 +12,6 @@ import :support.anomaly;
 import :support.logging;
 import :support.prelude;
 import :support.process;
-import :vfs.cache_store;
 import :vfs.file_table;
 import :vfs.path;
 import :worker.pool;
@@ -271,10 +270,6 @@ inline bool start_batch(BatchRun& run,
         cfg.stateless_worker_count = workers;
         cfg.min_stateless_worker_count = std::min(cfg.min_stateless_worker_count, workers);
         cfg.max_stateless_worker_count = workers;
-    }
-
-    if(cfg.cache_dir_defaulted) {
-        CacheStore::write_ignore_markers(cfg.cache_dir);
     }
 
     if(!cfg.logging_dir.empty()) {
