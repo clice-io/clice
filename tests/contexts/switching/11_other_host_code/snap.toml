@@ -1,0 +1,52 @@
+[test."shared.h"]
+tokens = [
+    { at = "⟦#pragma⟧ once", type = "directive" },
+    { at = "⟦#ifdef⟧ FAST", type = "directive" },
+    { at = "#ifdef ⟦FAST⟧", type = "macro", modifiers = ["empty"] },
+    { at = "⟦inline⟧ int fast_path() {", type = "keyword" },
+    { at = "inline ⟦int⟧ fast_path() {", type = "primitive" },
+    { at = "inline int ⟦fast_path⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦return⟧ LIMIT;", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦LIMIT⟧;", type = "macro" },
+    { at = "⟦#else⟧", type = "directive" },
+    { at = "⟦inline⟧ int slow_path() {", type = "keyword", modifiers = ["inactive"] },
+    { at = "inline ⟦int⟧ slow_path() {", type = "primitive", modifiers = ["inactive"] },
+    { at = "inline int ⟦slow_path⟧() {", type = "function", modifiers = ["definition", "global", "inactive"] },
+    { at = "inline int slow_path⟦()⟧ {", type = "plain", modifiers = ["inactive"] },
+    { at = "inline int slow_path() ⟦{⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦return⟧ LIMIT * 2;", type = "keyword", modifiers = ["controlFlow", "inactive"] },
+    { at = "return ⟦LIMIT⟧ * 2;", type = "macro", modifiers = ["inactive"] },
+    { at = "return LIMIT ⟦*⟧ 2;", type = "operator", modifiers = ["inactive"] },
+    { at = "return LIMIT * ⟦2⟧;", type = "number", modifiers = ["inactive"] },
+    { at = "return LIMIT * 2⟦;⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦}⟧ @10", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦#endif⟧", type = "directive" },
+]
+outline = [
+    { name = "fast_path", kind = "Function", at = "inline int ⟦fast_path⟧() {" },
+    { name = "slow_path", kind = "Function", at = "inline int ⟦slow_path⟧() {" },
+]
+folds = [
+    { kind = "conditionDirective", at = "#ifdef FAST⟦ … ⟧ (5 lines)" },
+    { kind = "functionBody", at = "inline int fast_path() ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "conditionDirective", at = "#else⟦ … ⟧ (5 lines)" },
+    { kind = "functionBody", at = "inline int slow_path() ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+]
+
+[test."shared.h".context]
+automatic = true
+
+[test."shared.h".context.context]
+label = "fast_host.cpp"
+description = "${WS}/fast_host.cpp"
+host = "fast_host.cpp"
+
+[test."shared.h".hover]
+markdown = '''
+**function** `slow_path`
+
+```cpp
+inline int slow_path()
+```
+'''
+range = "inline int ⟦slow_path⟧() {"

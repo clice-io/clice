@@ -2,7 +2,9 @@ module clice;
 
 import :index.instantiation_shard;
 import :index.project_index;
+import :index.shard;
 import :server.served_project;
+import :support.bytes;
 
 namespace clice {
 
@@ -47,8 +49,26 @@ index::IndexSource buffer_source(const ServedProject& served,
     return source;
 }
 
+/// How many entries a shard holds: a merge only adds to the entries of
+/// the shards it takes, so equal counts are equal entries.
+std::size_t entry_count(const index::Shard& shard) {
+    std::size_t count = 0;
+    shard.for_each_occurrence([&](const index::Occurrence&) {
+        count += 1;
+        return true;
+    });
+    shard.for_each_relation([&](index::SymbolHash, const index::Relation&) {
+        count += 1;
+        return true;
+    });
+    return count;
+}
+
 /// The open document's own file index when it describes the buffer: the
-/// compile is current, or it compiled these very bytes.
+/// compile is current, or it compiled these very bytes. While the buffer
+/// is also the text the file's shard indexed, the two merged: the compile
+/// indexed the one context it ran in, the shard every context the file
+/// compiles in.
 const index::Shard* buffer_shard(const ServedProject& served, const ServedDocument& document) {
     auto& compiled = document.latest;
     if(!compiled || !compiled->index || !compiled->index->loaded()) {
@@ -59,11 +79,28 @@ const index::Shard* buffer_shard(const ServedProject& served, const ServedDocume
     auto& state = *compiled->index;
     auto& shard = state.shard_of(state.focus_file());
     auto& session = *document.session;
-    if(served.current(session.path_id) ||
-       shard.matches_content(session.text().size(), session.hash)) {
+    if(!served.current(session.path_id) &&
+       !shard.matches_content(session.text().size(), session.hash)) {
+        return nullptr;
+    }
+    auto* stored = served.matching_shard(session);
+    if(!stored || stored->content_hash() != shard.content_hash()) {
         return &shard;
     }
-    return nullptr;
+    if(!document.merged || document.merged->compile != compiled) {
+        auto keep = served.project.index.live_variants(session.path_id);
+        keep.erase(ranges::remove(keep, shard.variants().front()).begin(), keep.end());
+        auto bytes = index::merge_shards(*stored, keep, llvm::ArrayRef(&shard, 1));
+        auto merged =
+            index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
+        bool adds = entry_count(merged) != entry_count(shard);
+        document.merged = ServedDocument::MergedIndex{
+            .compile = compiled,
+            .shard = std::move(merged),
+            .adds = adds,
+        };
+    }
+    return &document.merged->shard;
 }
 
 /// The overlay TU index of an open document's PCH, or null when it has no
@@ -101,6 +138,26 @@ std::optional<index::IndexSource> ServedProject::buffer_index(Fid file) const {
         return std::nullopt;
     }
     return buffer_source(*this, index::IndexSource::Kind::Shard, *document, *shard);
+}
+
+bool ServedProject::other_contexts(Fid file) const {
+    auto* document = find_document(file);
+    return document && buffer_shard(*this, *document) && document->merged &&
+           document->merged->compile == document->latest && document->merged->adds;
+}
+
+bool ServedProject::compiled_at(Fid file, std::uint32_t offset) const {
+    auto* document = find_document(file);
+    if(!document || !document->latest || !document->latest->index) {
+        return false;
+    }
+    auto& state = *document->latest->index;
+    bool named = false;
+    state.shard_of(state.focus_file()).occurrences_at(offset, [&](const index::Occurrence&) {
+        named = true;
+        return false;
+    });
+    return named;
 }
 
 void ServedProject::for_each_session(

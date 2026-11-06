@@ -41,10 +41,20 @@ void ServedProject::attempt_finished(Fid path_id) {
 }
 
 void ServedProject::index_changed(llvm::ArrayRef<Fid> path_ids) {
+    // A document's answers merge its shard while the buffer is the text the
+    // shard indexed: a shard that changed under it changes them.
+    bool merged = false;
+    for(auto id: path_ids) {
+        if(auto* document = find_document(id)) {
+            document->merged.reset();
+            merged |= matching_shard(*document->session) != nullptr;
+        }
+    }
     auto* client = server.client;
-    if(client && ranges::any_of(path_ids, [&](Fid id) {
-           return find_document(id) && !index_current(id) && client->index_served.contains(id);
-       })) {
+    if(client && (merged || ranges::any_of(path_ids, [&](Fid id) {
+                      return find_document(id) && !index_current(id) &&
+                             client->index_served.contains(id);
+                  }))) {
         client->refresh();
     }
 }

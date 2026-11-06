@@ -111,6 +111,45 @@ auto semantic_tokens(SourceText& source,
         options);
 }
 
+void merge_other_contexts(std::vector<SemanticToken>& tokens, llvm::ArrayRef<SemanticToken> index) {
+    auto inactive = mask(SemanticTokenModifier::Inactive);
+    auto begin_of = [](const SemanticToken& token) {
+        return token.range.begin;
+    };
+    // The AST merges the adjacent tokens of inactive code it classifies
+    // alike (`f()` one plain token): the index's tokens split them.
+    std::vector<SemanticToken> merged;
+    merged.reserve(tokens.size());
+    auto next = index.begin();
+    for(const auto& token: tokens) {
+        if(!(token.modifiers & inactive)) {
+            merged.push_back(token);
+            continue;
+        }
+        next = ranges::lower_bound(next, index.end(), token.range.begin, {}, begin_of);
+        auto at = token.range.begin;
+        for(; next != index.end() && next->range.end <= token.range.end; ++next) {
+            if(next->range.begin > at) {
+                merged.push_back({
+                    {at, next->range.begin},
+                    token.kind,
+                    token.modifiers
+                });
+            }
+            merged.push_back({next->range, next->kind, next->modifiers | inactive});
+            at = next->range.end;
+        }
+        if(at < token.range.end) {
+            merged.push_back({
+                {at, token.range.end},
+                token.kind,
+                token.modifiers
+            });
+        }
+    }
+    tokens = std::move(merged);
+}
+
 void merge_preamble_macros(const index::TUIndex& preamble, std::vector<SemanticToken>& tokens) {
     llvm::DenseMap<std::uint32_t, std::uint32_t> modifiers;
     preamble.shard_of(preamble.focus_file())

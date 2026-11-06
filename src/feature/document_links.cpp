@@ -130,4 +130,21 @@ auto link_at(llvm::ArrayRef<index::DocumentLink> links, std::uint32_t offset)
     return it != links.end() ? &*it : nullptr;
 }
 
+void merge_other_contexts(std::vector<index::DocumentLink>& links,
+                          llvm::ArrayRef<index::DocumentLink> index) {
+    auto count = links.size();
+    for(const auto& link: index) {
+        if(ranges::none_of(links, [&](const index::DocumentLink& known) {
+               return known.range == link.range && known.target == link.target;
+           })) {
+            links.push_back(link);
+        }
+    }
+    if(links.size() != count) {
+        ranges::stable_sort(links, {}, [](const index::DocumentLink& link) {
+            return link.range.begin;
+        });
+    }
+}
+
 }  // namespace clice::feature

@@ -15,11 +15,19 @@ test("closed", async (t) => {
     });
 });
 
+// Open, objects.c compiles its first pass; its answers take the second
+// from the index, dimmed where the first pass leaves the code inactive.
 test("open", async (t) => {
     const s = await t.start();
     await s.indexed();
     expect(await s.errors("objects.c")).toEqual([]);
-    await t.show("objects.c", s.contexts("objects.c"));
+    await t.show("contexts", s.contexts("objects.c"));
+    await t.show("objects.c", {
+        tokens: s.semanticTokens("objects.c"),
+        outline: s.documentSymbols("objects.c"),
+        hover: s.hover(t.marker("second")),
+        links: s.documentLinks("objects.c"),
+    });
     await t.show("main.c", {
         objects: s.definition(t.marker("use")),
         symbols: s.workspaceSymbols("obj"),

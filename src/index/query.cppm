@@ -66,9 +66,10 @@ public:
     virtual bool is_open(Fid file) const = 0;
 
     /// The index serving an open buffer right now: its own file index
-    /// (freshness clauses 1 and 3), else its shard while the buffer is
-    /// byte-identical to the text the shard indexed (clause 4), both in
-    /// buffer coordinates. Nullopt while the buffer has moved on from both.
+    /// (freshness clauses 1 and 3) — merged with its shard while the buffer
+    /// is also the text the shard indexed —, else that shard alone (clause
+    /// 4), all in buffer coordinates. Nullopt while the buffer has moved on
+    /// from both.
     virtual std::optional<IndexSource> buffer_index(Fid file) const = 0;
 
     /// Every open buffer whose file index serves it (clause 3), as its index.
@@ -237,8 +238,10 @@ inline bool is_function(SymbolKind kind) {
 ///      is byte-identical to the content the shard was built from. This
 ///      is what serves documents opened for reading before any compile is
 ///      invested in them; the moment the buffer diverges the shard
-///      withdraws and clauses 1-3 govern again. Arbitration is strict: a
-///      current file index always wins over the shard (never both).
+///      withdraws and clauses 1-3 govern again. While both describe the
+///      buffer, the file index serves merged with the shard: the buffer's
+///      compile indexed the one context it ran in, the shard every context
+///      the file compiles in.
 ///
 ///   Symbol identity lookups (symbol_info: hash → name/kind) are not
 ///   gated: a hash identifies one symbol, so even a stale shard answers

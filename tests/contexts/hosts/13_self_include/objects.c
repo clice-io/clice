@@ -4,7 +4,7 @@
 struct objdescr obj_descr[] =
 #else
 #define OBJECT(name, desc, weight, cost) { weight, cost }
-struct objclass objects[] =
+struct objclass §(second)objects[] =
 #endif
 {
 OBJECT("arrow", "pointy stick", 1, 2),

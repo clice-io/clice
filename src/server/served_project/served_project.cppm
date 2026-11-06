@@ -222,6 +222,21 @@ struct ServedDocument {
 
     /// See ServingMode for the write discipline.
     ServingMode serving = ServingMode::Escalated;
+
+    /// The latest compile's file index merged with the file's shard, which
+    /// merges every context the file compiles in: made on first read while
+    /// the buffer holds the very bytes both indexed, dropped when the shard
+    /// changes (ServedProject::index_changed).
+    struct MergedIndex {
+        std::shared_ptr<const DocumentCompile> compile;
+        index::Shard shard;
+
+        /// The shard holds entries the compile's index does not: the
+        /// file's other contexts.
+        bool adds = false;
+    };
+
+    mutable std::optional<MergedIndex> merged;
 };
 
 /// LSP's ContentModified: the request's answer would describe a buffer the
@@ -758,6 +773,15 @@ public:
     /// The project's shard of the file while the document's buffer holds
     /// the very bytes it indexed.
     const index::Shard* matching_shard(const Session& session) const;
+
+    /// Whether the index serving the open document holds what its latest
+    /// compile did not see: the file's other contexts, which the answers
+    /// the AST gives are completed with.
+    bool other_contexts(Fid file) const;
+
+    /// Whether the open document's latest compile names something at
+    /// `offset`: code its context compiled, which the AST answers for.
+    bool compiled_at(Fid file, std::uint32_t offset) const;
 
     /// Set while compiles may run and requests resolve commands. A project
     /// made while its root's previous one still shuts down

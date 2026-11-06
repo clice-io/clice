@@ -134,4 +134,10 @@ auto document_symbols(SourceText& source,
                       const index::IndexSource& index,
                       const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
 
+/// Adds to the outline the AST gives the entries only `index`, the outline
+/// of the index serving the file, holds: the declarations of the file's
+/// other contexts, where the index nests them.
+void merge_other_contexts(std::vector<DocumentSymbol>& outline,
+                          llvm::ArrayRef<DocumentSymbol> index);
+
 }  // namespace clice::feature

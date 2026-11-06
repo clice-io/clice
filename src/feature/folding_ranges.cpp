@@ -1071,4 +1071,25 @@ auto folding_ranges(SourceText& source,
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); });
 }
 
+void merge_other_contexts(std::vector<FoldingRange>& folds, llvm::ArrayRef<FoldingRange> index) {
+    llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, std::size_t> known;
+    for(auto [position, fold]: views::enumerate(folds)) {
+        known.try_emplace({fold.range.begin, fold.range.end}, position);
+    }
+    auto count = folds.size();
+    for(const auto& fold: index) {
+        auto it = known.find({fold.range.begin, fold.range.end});
+        if(it == known.end()) {
+            folds.push_back(fold);
+        } else if(!folds[it->second].kind) {
+            // A block in inactive code folds by its braces alone; the
+            // index knows the declaration owning it.
+            folds[it->second] = fold;
+        }
+    }
+    if(folds.size() != count) {
+        ranges::stable_sort(folds, {}, [](const FoldingRange& fold) { return fold.range.begin; });
+    }
+}
+
 }  // namespace clice::feature

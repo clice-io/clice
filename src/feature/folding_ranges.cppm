@@ -85,4 +85,9 @@ auto folding_ranges(SourceText& source,
                     const index::IndexQuery& query,
                     const index::IndexSource& index) -> std::vector<FoldingRange>;
 
+/// Adds to the folds the AST gives those only `index`, the folds of the
+/// index serving the file, makes — the blocks of the file's other contexts —
+/// and the kind of a block the AST folds by its braces alone.
+void merge_other_contexts(std::vector<FoldingRange>& folds, llvm::ArrayRef<FoldingRange> index);
+
 }  // namespace clice::feature

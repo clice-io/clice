@@ -421,6 +421,13 @@ bool holds(llvm::ArrayRef<Node> nodes, std::uint32_t outer_index, const Node& in
     if(inner.group == outer_index) {
         return true;
     }
+    // Declarations of one scope are siblings wherever they are written: a
+    // file the index read in several contexts (a table a file includes
+    // itself to expand twice) writes one inside the other.
+    if(outer.entry.entity != 0 && inner.entry.entity != 0 &&
+       outer.entry.parent == inner.entry.parent) {
+        return false;
+    }
     // What an invocation's arguments name lists beside what its body makes.
     if(outer.group &&
        (outer.group == inner.group || nodes[*outer.group].invocation.contains(inner.anchor))) {
@@ -1130,6 +1137,40 @@ auto document_symbols(SourceText& source,
         extract_index_entries(*index.shard),
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },
         options);
+}
+
+void merge_other_contexts(std::vector<DocumentSymbol>& outline,
+                          llvm::ArrayRef<DocumentSymbol> index) {
+    auto merge = [](this auto& self,
+                    std::vector<DocumentSymbol>& into,
+                    llvm::ArrayRef<DocumentSymbol> from) -> void {
+        using Key = std::tuple<std::uint32_t, std::uint32_t, std::string_view>;
+        auto key = [](const DocumentSymbol& symbol) {
+            return Key(symbol.selection_range.begin, symbol.selection_range.end, symbol.name);
+        };
+        std::map<Key, std::size_t> known;
+        for(auto [position, symbol]: views::enumerate(into)) {
+            known.try_emplace(key(symbol), position);
+        }
+        std::vector<DocumentSymbol> added;
+        for(const auto& symbol: from) {
+            if(auto it = known.find(key(symbol)); it != known.end()) {
+                self(into[it->second].children, symbol.children);
+            } else {
+                added.push_back(symbol);
+            }
+        }
+        if(added.empty()) {
+            return;
+        }
+        into.insert(into.end(),
+                    std::make_move_iterator(added.begin()),
+                    std::make_move_iterator(added.end()));
+        ranges::stable_sort(into, {}, [](const DocumentSymbol& symbol) {
+            return symbol.range.begin;
+        });
+    };
+    merge(outline, index);
 }
 
 }  // namespace clice::feature
