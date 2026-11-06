@@ -575,6 +575,7 @@ static worker::CompileUnitResult
                                      : unit->shared_rejection();
        !rejection.empty()) {
         LOG_INFO("{} parsed without its shared header's PCH: {}", params.file, rejection);
+        result.shared_rejected = true;
     }
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;

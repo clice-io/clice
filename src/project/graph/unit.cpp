@@ -226,6 +226,9 @@ async::task<UnitResult>
         history().crashed_over_pch.clear();
         auto run_ms = timer.ms();
         auto& value = reply.value();
+        if(!params.shared_record.empty()) {
+            project.shared_header_used(path_id, value.shared_rejected);
+        }
         auto index_bytes = transfer.receive(value.tu_index_data, value.index_in_file);
         if(!index_bytes) {
             co_return UnitResult{.status = Status::Failed, .error = std::move(index_bytes.error())};

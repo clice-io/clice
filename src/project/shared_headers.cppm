@@ -20,6 +20,12 @@ struct SharedHeaders {
         Fid file;
 
         PCHRequest request;
+
+        /// How many units of the pass parsed over its PCH, and how many
+        /// were given it and parsed without it.
+        std::uint32_t loaded = 0;
+
+        std::uint32_t rejected = 0;
     };
 
     std::vector<Header> headers;

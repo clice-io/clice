@@ -271,6 +271,33 @@ ZEST_CASE(KnownVariantsFromManifest) {
                 .hashes.empty());
 }
 
+ZEST_CASE(SpelledInMacroUntilWritten) {
+    // a.cpp sees Thing only as FWD declares it; b.cpp sees it written by
+    // hand too.
+    TempDir tmp;
+    tmp.touch("fwd.h", "#pragma once\n#define FWD(X) class X;\nFWD(Thing)\n");
+    tmp.touch("thing.h", "#pragma once\n#include \"fwd.h\"\nclass Thing { int x; };\n");
+    tmp.touch("a.cpp", "#include \"fwd.h\"\nThing* a;\n");
+    tmp.touch("b.cpp", "#include \"thing.h\"\nThing b;\n");
+    auto flags = [&] {
+        index::SymbolFlags found = index::SymbolFlags::None;
+        project.index.for_each_symbol(
+            [&](index::SymbolHash, const index::SymbolView& symbol, std::uint32_t) {
+                if(symbol.name == "Thing") {
+                    found = symbol.flags;
+                }
+                return true;
+            });
+        return found;
+    };
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    ZEXPECT(index::has_flag(flags(), index::SymbolFlags::SpelledInMacro));
+    ZASSERT(merge(index_file(tmp, tmp.path("b.cpp")).data));
+    ZEXPECT(!index::has_flag(flags(), index::SymbolFlags::SpelledInMacro));
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    ZEXPECT(!index::has_flag(flags(), index::SymbolFlags::SpelledInMacro));
+};
+
 ZEST_CASE(IdentitiesFollowStoredVariants) {
     TempDir tmp;
     tmp.touch("shared.h", "#pragma once\ninline int shared_fn() { return 1; }\n");

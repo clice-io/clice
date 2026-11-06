@@ -320,7 +320,20 @@ std::optional<PCHRequest> Project::shared_header_request(Fid unit) const {
     if(it == shared_headers.units.end()) {
         return std::nullopt;
     }
-    return shared_headers.headers[it->second].request;
+    auto& header = shared_headers.headers[it->second];
+    if(header.loaded + header.rejected >= least_units && header.rejected > header.loaded) {
+        return std::nullopt;
+    }
+    return header.request;
+}
+
+void Project::shared_header_used(Fid unit, bool rejected) {
+    auto it = shared_headers.units.find(unit);
+    if(it == shared_headers.units.end()) {
+        return;
+    }
+    auto& header = shared_headers.headers[it->second];
+    (rejected ? header.rejected : header.loaded) += 1;
 }
 
 void Project::release_shared_headers() {

@@ -433,7 +433,9 @@ public:
             }
         }
 
-        if(unit.params.stop->load()) {
+        // A parse the shared header's PCH misleads goes again without it:
+        // the rest of this one is wasted.
+        if(unit.params.stop->load() || (unit.params.shared && !unit.rejection.empty())) {
             return false;
         }
 

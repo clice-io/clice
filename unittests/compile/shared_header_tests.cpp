@@ -68,6 +68,11 @@ bool from_pch(CompilationUnit& unit, llvm::StringRef name) {
     return !found.empty() && found.front()->isFromASTFile();
 }
 
+/// Whether the unit declares `name` at file scope.
+bool declares(CompilationUnit& unit, llvm::StringRef name) {
+    return !unit.tu()->lookup(&unit.context().Idents.get(name)).empty();
+}
+
 /// The grafted includes as `file:line`, a skipped one marked, nested ones
 /// indented under theirs.
 std::vector<std::string> grafted(const Compiled& compiled) {
@@ -293,6 +298,8 @@ int use() { return big(); }
 )cpp");
     auto compiled = compile_over(*this);
     ZEXPECT(compiled.unit->shared_rejection().contains("BUF"));
+    // Parsed again without the PCH, to its end.
+    ZEXPECT(declares(*compiled.unit, "use"));
 };
 
 ZEST_CASE(IncludedInExternC) {

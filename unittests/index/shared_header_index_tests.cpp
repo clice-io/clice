@@ -11,6 +11,7 @@ import :index.tu_index;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
+import :vfs.ids;
 import :vfs.path;
 
 namespace clice::testing {
@@ -521,6 +522,29 @@ ZEST_CASE(LocalsOutliveIt) {
     ZASSERT(manifest);
     ZASSERT(manifest->shared_locals.size() == 1U);
     ZEXPECT(manifest->shared_locals.front().files.size() == 3U);
+};
+
+ZEST_CASE(MostUnitsReject) {
+    // Once more of the units given a shared header parse without it than
+    // over it, the rest are not given it.
+    TempDir tmp;
+    IndexerFixture f;
+    auto file = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+    auto& headers = f.project.shared_headers;
+    headers.headers.push_back({.file = file("shared.hxx"), .request = {}});
+    std::vector<Fid> units;
+    for(int i = 0; i < 10; i += 1) {
+        units.push_back(file(std::format("u{}.cpp", i)));
+        headers.units[units.back()] = 0;
+    }
+    for(int i = 0; i < 8; i += 1) {
+        f.project.shared_header_used(units[i], i % 2 == 0);
+    }
+    ZEXPECT(f.project.shared_header_request(units[8]).has_value());
+    f.project.shared_header_used(units[8], true);
+    ZEXPECT(!f.project.shared_header_request(units[9]).has_value());
 };
 
 ZEST_CASE(GuessesUnderForcedInclude) {

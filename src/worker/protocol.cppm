@@ -533,6 +533,10 @@ struct CompileUnitResult {
 
     /// The hash of the text skipped_diagnostics describe.
     std::uint64_t text_hash = 0;
+
+    /// The unit was given a shared header's PCH and parsed without it
+    /// (CompilationUnit::shared_rejection).
+    bool shared_rejected = false;
 };
 
 /// Preprocess a unit for its include tree: where its compile enters each

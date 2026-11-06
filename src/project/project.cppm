@@ -1048,8 +1048,14 @@ struct Project {
     void plan_shared_headers(llvm::ArrayRef<Fid> units);
 
     /// The request building the PCH of the shared header `unit`'s index run
-    /// loads in this pass; none for none.
+    /// loads in this pass; none for none, and none once most of the units
+    /// given it parsed without it, which costs each of them a parse cut
+    /// short.
     std::optional<PCHRequest> shared_header_request(Fid unit) const;
+
+    /// `unit`'s index run, given its shared header's PCH, parsed over it or
+    /// without it.
+    void shared_header_used(Fid unit, bool rejected);
 
     /// The pass is over: drop each shared header's index, its PCH and its
     /// file.

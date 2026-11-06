@@ -530,7 +530,8 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
             auto target = stored ? *stored : Symbol{};
             bool symbol_changed = !stored;
             bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
-            if(target.name.empty() && !identity.name.empty()) {
+            bool described = !target.name.empty();
+            if(!described && !identity.name.empty()) {
                 target.parent = identity.parent;
                 target.kind = identity.kind;
                 target.token_class.kind = identity.token_class.kind;
@@ -564,6 +565,16 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
                 target.file = file;
             }
             auto flags = target.flags | identity.flags;
+            // Every declaration spelled by a macro holds only while no unit
+            // sees one written by hand: a unit seeing only a macro's
+            // forward declaration (`FWD(Expr)`) does not undo another's.
+            if(described && !identity.name.empty() &&
+               !(has_flag(target.flags, SymbolFlags::SpelledInMacro) &&
+                 has_flag(identity.flags, SymbolFlags::SpelledInMacro))) {
+                flags = static_cast<SymbolFlags>(
+                    static_cast<std::uint16_t>(flags) &
+                    ~static_cast<std::uint16_t>(SymbolFlags::SpelledInMacro));
+            }
             symbol_changed = symbol_changed || flags != target.flags;
             target.flags = flags;
             auto modifiers = target.token_class.modifiers | identity.token_class.modifiers;
