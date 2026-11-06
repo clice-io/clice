@@ -2,6 +2,6 @@
 #include "wrap.h"
 #include "unused.h"
 
-width use() {
+int use() {
     return wrapped();
 }
