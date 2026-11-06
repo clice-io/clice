@@ -1156,8 +1156,12 @@ int main() {}
     ZEXPECT(edges >= 1u);
 
     // A rebuild keeps the scans: the rescan skips the read and the lex for
-    // every unchanged file (stat-validated through the shared pairs).
+    // every unchanged file (stat-validated through the shared pairs). The
+    // precise scans' directives stay too, read by scans still running on
+    // the thread pool.
+    auto* directives = graph.directives.get();
     graph.reset();
+    ZEXPECT(graph.directives.get() == directives);
     auto warm = scan_all(cdb, toolchain, graph);
     ZEXPECT(warm.scan_cache_hits > std::size_t(0));
     ZEXPECT(graph.edge_count() == edges);

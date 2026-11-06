@@ -338,7 +338,9 @@ std::shared_ptr<const DirectiveCache::Entry> DirectiveCache::add(const llvm::vfs
     if(clang::scanSourceForDependencyDirectives(text, entry->tokens, entry->directives)) {
         return nullptr;
     }
-    if(entry->modified != llvm::sys::TimePoint<>()) {
+    auto modified_ns =
+        chrono::duration_cast<chrono::nanoseconds>(entry->modified.time_since_epoch()).count();
+    if(entry->modified != llvm::sys::TimePoint<>() && vfs::stable_mtime(modified_ns)) {
         std::lock_guard lock(mutex);
         entries[status.getUniqueID()] = entry;
     }

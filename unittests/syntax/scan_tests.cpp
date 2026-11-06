@@ -210,18 +210,37 @@ ZEST_CASE(SharedDirectivesFollowChanges) {
     TempDir tmp;
     tmp.touch("main.cpp", R"(#include "header.h")");
     tmp.touch("header.h", "import aa;");
+    // Out of the mtime guard window, or the first scan keeps nothing.
+    auto modified = file_mtime_ns(tmp.path("header.h")) - 10'000'000'000;
+    ZASSERT(set_file_mtime(tmp.path("header.h"), modified));
     auto main_path = tmp.path("main.cpp");
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
     auto first = scan_precise(cache, args, tmp.root);
     ZASSERT(first.modules.size() == 1u);
     ZEXPECT(first.modules[0] == "aa");
 
-    auto modified = file_mtime_ns(tmp.path("header.h"));
     tmp.touch("header.h", "import bb;");
     ZASSERT(set_file_mtime(tmp.path("header.h"), modified + 1'000'000));
     auto second = scan_precise(cache, args, tmp.root);
     ZASSERT(second.modules.size() == 1u);
     ZEXPECT(second.modules[0] == "bb");
+}
+
+ZEST_CASE(RecentHeaderNotShared) {
+    // A filesystem with a coarse time granularity gives a rewrite within
+    // its tick the modification time of the text before: a header written
+    // that recently is minimized for its scan alone.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(#include "header.h")");
+    tmp.touch("header.h", "import aa;");
+    auto modified = file_mtime_ns(tmp.path("header.h"));
+    auto main_path = tmp.path("main.cpp");
+    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
+    ZEXPECT(scan_precise(cache, args, tmp.root).modules == std::vector<std::string>{"aa"});
+
+    tmp.touch("header.h", "import bb;");
+    ZASSERT(set_file_mtime(tmp.path("header.h"), modified));
+    ZEXPECT(scan_precise(cache, args, tmp.root).modules == std::vector<std::string>{"bb"});
 }
 
 ZEST_CASE(PreciseHonorsWorkingDirectory) {

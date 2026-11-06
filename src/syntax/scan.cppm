@@ -153,14 +153,18 @@ struct QuickScanCache {
 /// where each scan would do it again. Scans run on the thread pool at once,
 /// so it locks, and a scan keeps the entries it was handed until it ends:
 /// a header changed meanwhile replaces its entry. A file the disk does not
-/// hold (an in-memory one, modified at the epoch) is minimized for its scan
-/// alone.
+/// hold (an in-memory one, modified at the epoch), or one modified too
+/// recently for its time to tell a later write apart (vfs::mtime_guard_ns),
+/// is minimized for its scan alone.
 class DirectiveCache {
 public:
     struct Entry {
         std::uint64_t size = 0;
+
         llvm::sys::TimePoint<> modified;
+
         llvm::SmallVector<clang::dependency_directives_scan::Token> tokens;
+
         llvm::SmallVector<clang::dependency_directives_scan::Directive> directives;
     };
 
