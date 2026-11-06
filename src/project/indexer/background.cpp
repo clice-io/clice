@@ -82,6 +82,12 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                         unused_includes,
                         std::move(result->background_diagnostics));
                 }
+                // Opened during the run, the document shows what the run did
+                // not compute: the next run brings it.
+                if(serving && !unused_includes && serving->shows_unused_includes(path_id) &&
+                   serving->lacks_background_diagnostics(path_id)) {
+                    index_first(path_id);
+                }
                 indexed_units += 1;
                 LOG_PERF("index",
                          "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",

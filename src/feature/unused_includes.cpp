@@ -583,7 +583,8 @@ private:
     /// macros they expand or test but neither define nor include: the file
     /// needs it before the first `#include` bringing such a header without
     /// it. A header naming a class it declares ahead may need it whole, as
-    /// an inline function taking its `sizeof` does.
+    /// an inline function taking its `sizeof` does; one naming a class it
+    /// does not declare needs a declaration first.
     void add_header_needs() {
         llvm::DenseMap<index::SymbolHash, llvm::SmallVector<std::uint32_t, 2>> declarations;
         llvm::DenseMap<index::SymbolHash, llvm::SmallVector<std::uint32_t, 2>> definitions;
@@ -615,14 +616,17 @@ private:
         std::map<std::uint32_t, std::vector<llvm::SmallVector<std::uint32_t, 2>>> uses;
         for(auto& [file, symbols]: named) {
             for(auto symbol: symbols) {
-                auto it = definitions.find(symbol);
-                if(it == definitions.end()) {
-                    it = declarations.find(symbol);
-                    if(it == declarations.end()) {
-                        continue;
-                    }
+                llvm::SmallVector<std::uint32_t, 2> declared;
+                if(auto it = declarations.find(symbol); it != declarations.end()) {
+                    declared = it->second;
                 }
-                uses[file].push_back(it->second);
+                if(auto it = definitions.find(symbol); it != definitions.end()) {
+                    uses[file].push_back(it->second);
+                    declared.append(it->second.begin(), it->second.end());
+                }
+                if(!declared.empty()) {
+                    uses[file].push_back(std::move(declared));
+                }
             }
         }
         for(auto& [fid, directive]: unit.directives()) {

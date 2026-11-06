@@ -25,7 +25,9 @@ IncludePragmas include_pragmas(llvm::StringRef text, const clang::LangOptions& d
         } else if(token.is_pp_keyword) {
             in_include = takes_header_name(token.text(text));
         } else if(in_include && token.is_header_name()) {
+            // A spliced directive's header name starts at its splice.
             auto name = token.text(text);
+            name = name.drop_front(name.find_first_of("<\""));
             included = name.size() >= 2 ? name.drop_front().drop_back().str() : std::string();
             included_end = token.range.end;
             if(exporting) {
