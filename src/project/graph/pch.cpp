@@ -269,9 +269,12 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     entry.base_blob = std::move(base_blob);
     entry.index_path = index_path.value_or("");
     // Replace the previous blob's mapping (same key, rebuilt content);
-    // in-flight holders of the old shared_ptr stay valid.
+    // in-flight holders of the old shared_ptr stay valid. Handed to a parse
+    // still waiting for it: with none, nothing would ever take it.
     entry.index = loaded;
-    entry.built_index = std::move(loaded);
+    if(!attempt.token().cancelled()) {
+        entry.built_index = std::move(loaded);
+    }
 
     LOG_INFO("PCH built for {}: {}", bp.file, entry.path);
 
@@ -577,9 +580,19 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
             }
         }
         if(!built.refused) {
+            // A parse leaving without the index its build opened lets it go:
+            // it stays mapped while a compile holds it.
+            auto handoff = llvm::make_scope_exit([&] {
+                if(auto it = pchs.find(key); it != pchs.end()) {
+                    it->second.built_index.reset();
+                }
+            });
             built.result = co_await wait(std::move(*plan.request));
             if(built.result == Result::Stale) {
                 co_return std::nullopt;
+            }
+            if(built.result == Result::Success && built_pch(key)) {
+                built.index = std::move(pchs.find(key)->second.built_index);
             }
         }
     }
@@ -589,7 +602,6 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
         auto& pch = pchs.find(*built.preamble)->second;
         built.loaded = built.preamble;
         built.pch = {pch.path, pch.bound};
-        built.index = std::move(pch.built_index);
     } else if(auto* pch = built.base ? built_pch(*built.base) : nullptr) {
         built.loaded = built.base;
         built.pch = {pch->path, 0};

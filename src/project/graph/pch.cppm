@@ -54,7 +54,8 @@ struct PCHEntry : Precompiled<FailureRecord> {
     std::weak_ptr<index::TUIndex> index;
 
     /// The blob the build opened and verified on the thread pool, until the
-    /// parse it was built for takes it (BuiltPCH::index).
+    /// parse waiting for it takes it (BuiltPCH::index); none when no parse
+    /// waited any more.
     std::shared_ptr<index::TUIndex> built_index;
 
     /// The parses that died reading the key's pairs or found them unreadable

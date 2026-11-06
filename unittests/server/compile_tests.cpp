@@ -19,6 +19,7 @@ import :syntax.token;
 import :unittests.server.served_project_fixture;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils;
+import :unittests.utils.async;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :vfs.cache_store;
@@ -1436,6 +1437,79 @@ ZEST_CASE(PoisonPreambleShared) {
         ZEXPECT(crashed(third));
         ZEXPECT(deaths == 1);
 
+        co_await fixture.server.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    fixture.loop.schedule(task);
+    fixture.loop.run();
+    ZEXPECT(done);
+
+    logging::reset_anomaly_for_testing();
+}
+
+ZEST_CASE(AbandonedPCHKeepsNoIndex) {
+    // A parse that leaves while its PCH builds takes nothing, and the build
+    // committing after it hands its index to no one: the index stays mapped
+    // only while a compile holds it.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+    auto src = tmp.path("a.cpp");
+
+    ServedProjectFixture fixture(tmp.root);
+    auto& project = fixture.served->project;
+    register_pch_store(fixture, tmp);
+    auto session = fixture.open(src, "#define X 1\nint x;\n");
+    auto& probe = fixture.server.probe;
+    fixture.server.pool.probe = &probe;
+    async::event held;
+    std::uint64_t hold = 0;
+    auto connection = probe.on_held.connect([&](std::uint64_t id) {
+        hold = id;
+        held.set();
+    });
+
+    std::string directory = tmp.path(".");
+    auto arguments = make_args(src);
+    auto published = [&] {
+        return ranges::any_of(project.pchs,
+                              [](const auto& entry) { return !entry.getValue().path.empty(); });
+    };
+
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(fixture.server.pool.start(opts));
+
+        probe.hold(BuildKind::PCH, std::string(project.file_table.resolve(session->path_id)));
+        async::cancellation_source source;
+        async::task_group<> group;
+        auto parse = [&]() -> async::task<> {
+            co_await async::with_token(fixture.build_pch(session,
+                                                         session->generation,
+                                                         fixture.generation(session->path_id),
+                                                         directory,
+                                                         arguments),
+                                       source.token());
+        };
+        group.spawn(parse());
+        co_await held.wait();
+        source.cancel();
+        co_await group.join();
+        probe.release(hold);
+        co_await wait_until(published);
+
+        for(auto& entry: project.pchs) {
+            ZEXPECT(!entry.getValue().built_index);
+            ZEXPECT(!entry.getValue().index.lock());
+        }
+
+        co_await fixture.served->shutdown();
         co_await fixture.server.pool.stop();
         done = true;
     };
