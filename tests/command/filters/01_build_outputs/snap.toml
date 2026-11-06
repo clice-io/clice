@@ -133,3 +133,27 @@ error: Toolchain query failed: Cannot find driver: missing-g++
 error: The command stays a driver command: Cannot find driver: missing-g++
 '''
 exit = 1
+
+["other outputs"."$ clice command convert -- missing-clang++ -std=c++20 -MJ main.o.json -ftime-trace=main.json -save-temps=obj --serialize-diagnostics main.dia main.cpp"]
+stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-clang++
+error: The command stays a driver command: Cannot find driver: missing-clang++
+'''
+exit = 1
+
+["other outputs"."$ clice command convert -- missing-g++ -std=gnu++20 -Wa,-adhlns=main.lst -Xassembler --noexecstack main.cpp"]
+stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=gnu++20 ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-g++
+error: The command stays a driver command: Cannot find driver: missing-g++
+'''
+exit = 1
+
+["other outputs"."$ clice command convert -- cl-missing.exe /std:c++20 /c /Famain.asm /FRmain.sbr /Femain.exe /sourceDependencies main.json /showIncludes /showFilenames main.cpp"]
+stdout = "cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /std:c++20 ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: cl-missing.exe
+error: The command stays a driver command: Cannot find driver: cl-missing.exe
+'''
+exit = 1
