@@ -470,12 +470,11 @@ void LSPClient::register_editing() {
                     co_return co_await stop_reply(std::move(*stop));
                 }
             }
-            auto query = served->editing_query();
             auto cursor = served->cursor_at(path_id, position);
             if(!cursor) {
                 co_return codec::raw_value{"null"};
             }
-            auto at = feature::rename_at(query, *cursor);
+            auto at = feature::rename_at(served->editing_query(), *cursor);
             if(!at) {
                 co_await async::fail(request_failed(std::move(at.error())));
             }
@@ -498,6 +497,7 @@ void LSPClient::register_editing() {
                 co_await async::fail(content_modified());
             }
             auto old_name = std::move(at->target.symbol.symbol.name);
+            auto query = served->editing_query();
             at = feature::rename_at(query, *cursor);
             if(!at) {
                 co_await async::fail(request_failed(std::move(at.error())));
