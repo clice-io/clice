@@ -23,6 +23,7 @@ test("the link picks the build", async (t) => {
     expect(await s.errors("main.cpp")).toEqual([]);
     await s.indexed();
     await t.show("release", {
+        menu: s.configurations(),
         symbols: s.workspaceSymbols("_only"),
         inactive: s.inactiveLines("main.cpp"),
     });

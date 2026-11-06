@@ -1,17 +1,35 @@
+import * as path from "path";
 import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
 import { LanguageStatus } from "./status";
 import type {
+    LinkedBuild,
     ListConfigurationsResult,
     SwitchConfigurationResult,
 } from "@clice/tools/protocol" with { "resolution-mode": "import" };
 
+/// The directory of a linked build's first database, as the workspace
+/// names it.
+function buildDirectory(build: LinkedBuild): string {
+    const database = vscode.Uri.parse(build.databases[0] ?? "");
+    return vscode.workspace.asRelativePath(path.dirname(database.fsPath));
+}
+
+/// A linked build in a word: the configuration sharing its databases, else
+/// the last two directories of its first one.
+function buildName(build: LinkedBuild): string {
+    if (build.configuration) {
+        return build.configuration;
+    }
+    return buildDirectory(build).split(/[\\/]/).slice(-2).join("/");
+}
+
 /** The build configuration switcher: a language status item naming the
  * configuration the project of the active editor runs (only while its
- * rules declare any) and a quick pick that persists a new choice for that
- * project and restarts the server, since a selection takes effect at the
- * next start. */
+ * rules declare any) and the build its links resolve to, and a quick pick
+ * that persists a new choice for that project, which the server applies by
+ * asking to be restarted. */
 export function registerBuildConfiguration(client: ClientHandle, ext: vscode.ExtensionContext) {
     const status = new LanguageStatus("clice.configuration", "clice: build configuration");
     const switchConfiguration: vscode.Command = {
@@ -55,7 +73,7 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
             return;
         }
         status.show(
-            result.active,
+            result.build ? `${result.active} → ${buildName(result.build)}` : result.active,
             result.selected && result.selected !== result.active
                 ? `the build configuration; ${result.selected} is selected for the next start`
                 : "the build configuration",
@@ -89,7 +107,14 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
             if (name === result.defaultConfiguration) {
                 notes.push("default");
             }
-            return { label: name, description: notes.join(", ") };
+            if (name === result.build?.configuration) {
+                notes.push(`the links of ${result.active} resolve here`);
+            }
+            const linked =
+                name === result.active && result.build
+                    ? { detail: `follows its links to ${buildDirectory(result.build)}` }
+                    : {};
+            return { label: name, description: notes.join(", "), ...linked };
         });
         const chosen = await vscode.window.showQuickPick(items, {
             title: "Switch Build Configuration",

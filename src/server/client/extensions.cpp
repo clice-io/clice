@@ -19,6 +19,17 @@ ext::ListConfigurationsResult list_configurations(const Project& project) {
         result.configurations.push_back(tag.str());
     }
     result.active = project.rules.configuration().str();
+    if(!project.resolved_databases.empty()) {
+        auto& build = result.build.emplace();
+        // A key without resolved paths is the configuration whose index
+        // the build shares.
+        if(project.database_key.resolved.empty()) {
+            build.configuration = project.database_key.configuration;
+        }
+        for(auto database: llvm::split(project.resolved_databases, '\n')) {
+            build.databases.push_back(feature::to_uri(database));
+        }
+    }
     result.selected = read_selected_configuration(project.settings.project.cache_dir);
     result.default_configuration = project.settings.fallback_configuration().str();
     return result;

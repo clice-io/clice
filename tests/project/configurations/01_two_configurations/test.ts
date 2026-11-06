@@ -20,6 +20,7 @@ test("menu and selection", async (t) => {
     await t.show("start", s.configurations());
     expect(Object.keys(await s.client.listConfigurations()).sort()).toEqual([
         "active",
+        "build",
         "configurations",
         "defaultConfiguration",
         "selected",
