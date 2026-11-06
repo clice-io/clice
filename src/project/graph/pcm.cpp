@@ -107,10 +107,8 @@ llvm::SetVector<Fid> module_closure(const Project& project, llvm::ArrayRef<Fid> 
         if(!project.built_pcm(read[i])) {
             continue;
         }
-        for(auto dep: project.graph.dependencies(module_node(read[i]))) {
-            if(dep.kind == NodeKind::PCM && !is_unresolved_import(dep)) {
-                read.insert(dep.file());
-            }
+        for(auto module: imported_modules(project.graph, module_node(read[i]))) {
+            read.insert(module);
         }
     }
     return read;

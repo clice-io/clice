@@ -125,6 +125,18 @@ inline NodeId module_node(Fid module) {
     return {NodeKind::PCM, module.raw};
 }
 
+/// The module units whose PCMs a node of the graph waits on: its imports
+/// that resolve.
+inline llvm::SmallVector<Fid> imported_modules(const TaskGraph& graph, NodeId importer) {
+    llvm::SmallVector<Fid> modules;
+    for(auto dep: graph.dependencies(importer)) {
+        if(dep.kind == NodeKind::PCM && !is_unresolved_import(dep)) {
+            modules.push_back(dep.file());
+        }
+    }
+    return modules;
+}
+
 /// How many times a compile waits on its imports for all of them to be
 /// present at once: a rebuild can itself evict another module under budget
 /// pressure. Past that a module build fails unrecorded, and a parse fails

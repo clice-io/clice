@@ -219,11 +219,7 @@ void ServedProject::retry_after_save(Session& session) {
     llvm::SmallVector<Fid> modules{session.path_id};
     llvm::DenseSet<Fid> seen{session.path_id};
     auto add_imports = [&](NodeId importer) {
-        for(auto dep: project.graph.dependencies(importer)) {
-            if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {
-                continue;
-            }
-            auto module = dep.file();
+        for(auto module: imported_modules(project.graph, importer)) {
             if(seen.insert(module).second) {
                 modules.push_back(module);
             }
@@ -316,11 +312,8 @@ void ServedProject::each_input(Fid path_id, llvm::function_ref<void(const Inputs
             visit(pch->inputs);
         }
     }
-    for(auto dep: project.graph.dependencies(ast_node(path_id))) {
-        if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {
-            continue;
-        }
-        if(auto* inputs = project.module_inputs(dep.file())) {
+    for(auto module: imported_modules(project.graph, ast_node(path_id))) {
+        if(auto* inputs = project.module_inputs(module)) {
             visit(*inputs);
         }
     }
