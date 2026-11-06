@@ -3,9 +3,33 @@ module clice:project.saved;
 import :index.database;
 import :index.project_index;
 import :support.prelude;
+import :vfs.file_table;
 import :vfs.path;
 
 namespace clice {
+
+/// The table of paths a persisted record names its files by, `paths`: each
+/// portable across checkouts (ProjectIndex::portable) and written once.
+class PathTable {
+public:
+    PathTable(const index::ProjectIndex& index, FileTable& files, std::vector<std::string>& paths) :
+        index(index), files(files), paths(paths) {}
+
+    /// The index of the file's path, added at its first use.
+    std::uint32_t add(Fid file);
+
+    /// The file at `at`; nullopt past the table or for an empty path.
+    std::optional<Fid> file(std::uint32_t at) const;
+
+private:
+    const index::ProjectIndex& index;
+
+    FileTable& files;
+
+    std::vector<std::string>& paths;
+
+    llvm::StringMap<std::uint32_t> indices;
+};
 
 /// What the index database records of the build's members (blob kind
 /// Members): per source file, the databases that listed it when the index

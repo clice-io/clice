@@ -671,21 +671,27 @@ bool Project::load_saved(bool reconcile, index::IndexReport& report) {
     return true;
 }
 
+std::uint32_t PathTable::add(Fid file) {
+    auto path = index.portable(files.resolve(file));
+    auto [it, inserted] = indices.try_emplace(path, static_cast<std::uint32_t>(paths.size()));
+    if(inserted) {
+        paths.push_back(path);
+    }
+    return it->second;
+}
+
+std::optional<Fid> PathTable::file(std::uint32_t at) const {
+    if(at >= paths.size() || paths[at].empty()) {
+        return std::nullopt;
+    }
+    return files.intern(index.local(paths[at]));
+}
+
 std::string Project::serialize_precompiled_records() {
     Records data;
     data.pch_index_format = index::index_format_version;
     data.trials_scoring = feature::missing_context_scoring;
-    llvm::StringMap<std::uint32_t> index_map;
-
-    auto intern = [&](Fid fid) -> std::uint32_t {
-        auto path = index.portable(file_table.resolve(fid));
-        auto [it, inserted] =
-            index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
-        if(inserted) {
-            data.paths.push_back(path);
-        }
-        return it->second;
-    };
+    PathTable table(index, file_table, data.paths);
 
     // Deps persist as (spelling, hash) pairs so they self-heal against any
     // index state. A version-less dep (missing or unhashable at capture)
@@ -693,7 +699,7 @@ std::string Project::serialize_precompiled_records() {
     auto dump_deps = [&](const Inputs& snap, std::vector<SavedInput>& out) {
         for(auto& dep: snap) {
             auto hash = dep.version.valid() ? file_table.version(dep.version).content_hash : 0;
-            out.push_back({intern(dep.file), hash, dep.absent});
+            out.push_back({table.add(dep.file), hash, dep.absent});
         }
     };
 
@@ -720,7 +726,7 @@ std::string Project::serialize_precompiled_records() {
         SavedPCM entry;
         entry.key = st.key;
         entry.blob = st.blob;
-        entry.source_file = intern(path_id);
+        entry.source_file = table.add(path_id);
         entry.module_name = dep_graph.module_of(path_id).str();
         dump_deps(st.inputs, entry.deps);
         data.pcm.push_back(std::move(entry));
@@ -728,7 +734,7 @@ std::string Project::serialize_precompiled_records() {
 
     hosting.self_containment.for_each([&](const SelfContainmentKey& key, const auto& entry) {
         SavedSelfContainment saved{
-            .header = intern(key.first),
+            .header = table.add(key.first),
             .command = key.second,
             .self_contained = entry.result.self_contained,
             .text = file_table.version(entry.result.text).content_hash,
@@ -756,16 +762,11 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
         return;
     }
 
-    auto file_of = [&](std::uint32_t idx) -> std::optional<Fid> {
-        if(idx >= data.paths.size() || data.paths[idx].empty()) {
-            return std::nullopt;
-        }
-        return file_table.intern(index.local(data.paths[idx]));
-    };
+    PathTable table(index, file_table, data.paths);
     auto load_deps = [&](const std::vector<SavedInput>& dep_entries) -> Inputs {
         Inputs inputs;
         for(auto& dep: dep_entries) {
-            auto dep_file = file_of(dep.path);
+            auto dep_file = table.file(dep.path);
             if(!dep_file)
                 continue;
             auto& input = inputs.emplace_back();
@@ -824,7 +825,7 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
         // the module rebuild once.
         if(!pcm_path || entry.deps.empty())
             continue;
-        auto source = file_of(entry.source_file);
+        auto source = table.file(entry.source_file);
         if(!source)
             continue;
         auto& st = pcms[*source];
@@ -838,7 +839,7 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
         data.trials.clear();
     }
     for(auto& saved: data.trials) {
-        auto header = file_of(saved.header);
+        auto header = table.file(saved.header);
         if(!header) {
             continue;
         }

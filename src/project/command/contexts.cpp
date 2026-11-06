@@ -3,6 +3,7 @@ module clice;
 import :index.project_index;
 import :project.command;
 import :project.project;
+import :project.saved;
 import :support.json;
 import :support.logging;
 import :syntax.dependency_graph;
@@ -252,20 +253,11 @@ bool Project::choice_holds(Fid file, const ContextChoice& choice) {
 
 void Project::save_choices(llvm::ArrayRef<std::pair<Fid, const ContextChoice*>> choices) {
     SavedChoices data;
-    llvm::StringMap<std::uint32_t> indices;
-    auto intern = [&](Fid fid) -> std::uint32_t {
-        auto path = index.portable(file_table.resolve(fid));
-        auto [it, inserted] =
-            indices.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
-        if(inserted) {
-            data.paths.push_back(path);
-        }
-        return it->second;
-    };
+    PathTable paths(index, file_table, data.paths);
     for(auto& [file, choice]: choices) {
         data.contexts.push_back({
-            .file = intern(file),
-            .host = choice->host.valid() ? intern(choice->host) : ~0u,
+            .file = paths.add(file),
+            .host = choice->host.valid() ? paths.add(choice->host) : ~0u,
             .occurrence = choice->occurrence.value_or(~0u),
             .base_hash = choice->base,
         });
@@ -290,32 +282,27 @@ std::vector<std::pair<Fid, ContextChoice>> Project::saved_choices() {
         LOG_WARN("Failed to parse the context choices");
         return choices;
     }
-    auto path = [&](std::uint32_t index) -> llvm::StringRef {
-        return index < data.paths.size() ? llvm::StringRef(data.paths[index]) : "";
-    };
+    PathTable paths(index, file_table, data.paths);
     for(auto& saved: data.contexts) {
-        auto file = path(saved.file);
-        if(file.empty()) {
-            continue;
-        }
+        auto file = paths.file(saved.file);
         // A choice of a command saved before its base was recorded no longer
         // names one.
-        if(file.empty() || (saved.base_hash.empty() && !saved.command_hash.empty())) {
+        if(!file || (saved.base_hash.empty() && !saved.command_hash.empty())) {
             continue;
         }
         ContextChoice choice;
         if(saved.host != ~0u) {
-            auto host = path(saved.host);
-            if(host.empty()) {
+            auto host = paths.file(saved.host);
+            if(!host) {
                 continue;
             }
-            choice.host = file_table.intern(index.local(host));
+            choice.host = *host;
         }
         if(saved.occurrence != ~0u) {
             choice.occurrence = saved.occurrence;
         }
         choice.base = saved.base_hash;
-        choices.emplace_back(file_table.intern(index.local(file)), std::move(choice));
+        choices.emplace_back(*file, std::move(choice));
     }
     return choices;
 }
