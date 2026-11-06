@@ -92,7 +92,7 @@ enum class ArgClass : std::uint8_t {
     /// the files on disk: the precompiled header the command reads
     /// (`-include-pch`), whether it writes one (`-emit-pch`, and its `-o`),
     /// whether it names a module output (`-fmodule-output`, wherever that
-    /// goes). In the command hash, never rendered.
+    /// goes). In the command hash, never in compile renders.
     Precompiled,
 
     /// Unrecognized token, kept verbatim (identity is the spelling). In the

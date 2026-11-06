@@ -230,20 +230,19 @@ ModuleCompatibility compatibility(Project& project, const Rendered& command) {
 /// ModuleContexts::listed of a module unit, from its entries.
 llvm::SmallVector<ModuleContexts::Context, 2> list_module_contexts(Project& project, Fid unit) {
     llvm::SmallVector<ModuleContexts::Context, 2> listed;
-    llvm::SmallVector<CommandID, 2> commands;
+    llvm::SmallVector<std::uint64_t, 2> hashes;
     for(auto& entry: project.entries(unit)) {
-        if(auto known = ranges::find(commands, entry.command); known != commands.end()) {
-            auto& databases = listed[known - commands.begin()].databases;
+        auto hash = project.commands.command_hash(entry.command);
+        if(auto known = ranges::find(hashes, hash); known != hashes.end()) {
+            auto& databases = listed[known - hashes.begin()].databases;
             if(!ranges::contains(databases, entry.source)) {
                 databases.push_back(entry.source);
             }
             continue;
         }
-        commands.push_back(entry.command);
-        listed.push_back({
-            .id = listed.empty() ? 0 : context_id(project.commands.command_hash(entry.command)),
-            .databases = {entry.source},
-        });
+        hashes.push_back(hash);
+        listed.push_back(
+            {.id = listed.empty() ? 0 : context_id(hash), .databases = {entry.source}});
     }
     if(listed.size() < 2) {
         return llvm::SmallVector<ModuleContexts::Context, 2>(1);

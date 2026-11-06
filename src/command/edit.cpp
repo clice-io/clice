@@ -91,6 +91,12 @@ CommandID
                 .option = parsed,
                 .prefix = written.consume_back("*") && written == parsed.spelling,
             });
+            // A command keeps its module output without the path
+            // (CommandTable::local_arg).
+            if(remove.option.id == clang_options::OPT_fmodule_output_EQ) {
+                remove.option.id = clang_options::OPT_fmodule_output;
+                remove.option.values.clear();
+            }
             // Anchored like the base command's paths, so a relative value
             // names the file the rule's configuration means; the `*`
             // wildcard stays a wildcard.

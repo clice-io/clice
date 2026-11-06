@@ -126,7 +126,11 @@ CommandID CommandTable::save(Command command, llvm::ArrayRef<LocalArg> args) {
     // precompiled header a command writes, it would set every other
     // command apart.
     if(!writes_pch(view)) {
-        llvm::erase_if(view, [](const Arg& arg) { return arg.opt_id == clang_options::OPT_o; });
+        view.erase(
+            ranges::remove_if(view,
+                              [](const Arg& arg) { return arg.opt_id == clang_options::OPT_o; })
+                .begin(),
+            view.end());
     }
     command.args = view;
     auto id = commands.get(command);
@@ -227,7 +231,7 @@ llvm::StringRef CommandTable::forced_language(CommandID id) const {
 }
 
 std::optional<Spelling> CommandTable::pch_output(CommandID id) const {
-    for(auto& arg: get(id).args) {
+    for(auto& arg: views::reverse(get(id).args)) {
         if(arg.opt_id == clang_options::OPT_o && arg.values.size() == 1) {
             return Spelling::absolute(arg.values[0]);
         }

@@ -573,7 +573,7 @@ ZEST_CASE(DatabaseTranslatesNVCC) {
     ZEXPECT(contains(flags, "-x"));
     ZEXPECT(contains(flags, "cuda"));
     ZEXPECT(contains(flags, "MY_FLAG=1"));
-    /// nvcc-only leftovers are unknown-class: full view keeps them for
+    /// nvcc-only leftovers are unknown-class: the command keeps them for
     /// identity, the compile render must not pass them to clang.
     ZEXPECT(!ranges::contains(render_entry(db, "/tmp/kern.cu"),
                               llvm::StringRef("-forward-unknown-to-host-compiler")));

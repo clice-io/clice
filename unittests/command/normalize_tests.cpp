@@ -61,7 +61,8 @@ ZEST_CASE(PerFileClSelectors) {
 
 ZEST_CASE(WrapperStripped) {
     /// A compiler launcher takes no part in the command identity, nor do
-    /// its own options.
+    /// its own options, chained launchers, or ccache's guard of the token
+    /// after it.
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
@@ -70,12 +71,14 @@ ZEST_CASE(WrapperStripped) {
     database.add_command("/fake",
                          "c.cpp",
                          "ccache --set-config cache_dir=/tmp/cc clang++ -std=c++20 c.cpp"sv);
+    database.add_command("/fake", "d.cpp", "sccache clang++ -std=c++20 d.cpp"sv);
+    database.add_command("/fake", "e.cpp", "distcc icecc clang++ -std=c++20 e.cpp"sv);
+    database.add_command("/fake", "f.cpp", "ccache clang++ --ccache-skip -std=c++20 f.cpp"sv);
 
-    auto& a = database.candidate_entries(fake("a.cpp")).front();
-    auto& b = database.candidate_entries(fake("b.cpp")).front();
-    auto& c = database.candidate_entries(fake("c.cpp")).front();
-    ZEXPECT(a.command == b.command);
-    ZEXPECT(c.command == b.command);
+    auto b = database.candidate_entries(fake("b.cpp")).front().command;
+    for(auto file: {"a.cpp", "c.cpp", "d.cpp", "e.cpp", "f.cpp"}) {
+        ZEXPECT(database.candidate_entries(fake(file)).front().command == b);
+    }
 };
 
 ZEST_CASE(InternedCommand) {
@@ -133,22 +136,6 @@ ZEST_CASE(LeftOutOptionsShare) {
     ZEXPECT(command("a.cpp") == command("b.cpp"));
     ZEXPECT(print_argv(commands.render_full(command("b.cpp"))) == "clang++ -std=c++20 -fPIC");
     ZEXPECT(command("c.cpp") == command("d.cpp"));
-};
-
-ZEST_CASE(LaunchersStripped) {
-    /// Every launcher leaves the command, chained ones too, and ccache's
-    /// guard of the token after it.
-    FileTable file_table;
-    CommandTable commands;
-    CompilationDatabase database{file_table, commands};
-    database.add_command("/fake", "a.cpp", "clang++ -std=c++20 a.cpp"sv);
-    database.add_command("/fake", "b.cpp", "sccache clang++ -std=c++20 b.cpp"sv);
-    database.add_command("/fake", "c.cpp", "distcc icecc clang++ -std=c++20 c.cpp"sv);
-    database.add_command("/fake", "d.cpp", "ccache clang++ --ccache-skip -std=c++20 d.cpp"sv);
-    auto a = database.candidate_entries(fake("a.cpp")).front().command;
-    for(auto file: {"b.cpp", "c.cpp", "d.cpp"}) {
-        ZEXPECT(database.candidate_entries(fake(file)).front().command == a);
-    }
 };
 
 ZEST_CASE(ModuleEmbeddingDiscarded) {

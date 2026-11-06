@@ -398,7 +398,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     if(auto option = per_file_option(command_table, new_entries); !option.empty()) {
         LOG_WARN(
             "Compilation database {}: nearly every entry has a command of its own, set apart by "
-            "the value of {}, so no two share a compiler query or an index. If {} names a file "
+            "the value of {}, so clice resolves and scans each on its own. If {} names a file "
             "the build writes, clice should leave it out of the command: report it.",
             path,
             option,

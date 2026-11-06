@@ -510,8 +510,8 @@ ZEST_CASE(ReorderChangesSelection) {
 };
 
 ZEST_CASE(CodegenChangeIgnored) {
-    // Entry identity is the Frontend canonical hash, which drops codegen-only
-    // flags. Swapping one codegen flag for another therefore yields no change.
+    // Codegen-only flags leave the command, and with it the entry identity:
+    // swapping one for another therefore yields no change.
     // (Note: -O* is NOT codegen-only here — it defines __OPTIMIZE__ and is
     // kept, so an -O change does count; see OptLevelIsSemantic.)
     TempDir tmp;

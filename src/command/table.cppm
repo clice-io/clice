@@ -189,7 +189,7 @@ public:
     std::vector<const char*> render_full(CommandID id, llvm::StringRef input = {});
 
 private:
-    /// Append the Frontend-view fragments of `id` (the hash input) to out.
+    /// Append the fragments of `id` the hash reads to out.
     void render_identity(CommandID id, std::string& out);
 
 private:
