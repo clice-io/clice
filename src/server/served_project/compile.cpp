@@ -216,8 +216,8 @@ void ServedProject::retry_after_save(Session& session) {
     // so a save retries its failed preamble too. Either refusal leaves the
     // compile standing, so only a fresh attempt asks for the PCH or PCM again.
     bool retry = session.crash_record(feature::RequestKind::PCM) != nullptr;
-    llvm::SmallVector<NodeId> modules{module_node(session.path_id)};
-    llvm::DenseSet<NodeId> seen{modules.front()};
+    auto modules = project.module_nodes(session.path_id);
+    llvm::DenseSet<NodeId> seen(modules.begin(), modules.end());
     auto add_imports = [&](NodeId importer) {
         for(auto dep: project.graph.dependencies(importer)) {
             if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {

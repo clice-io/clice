@@ -1,5 +1,6 @@
 module clice:project.graph.pcm;
 
+import :command.invocation;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :support.failure_record;
@@ -156,7 +157,7 @@ struct ModuleVariants {
     struct Variant {
         std::uint32_t id = 0;
 
-        std::uint64_t compatibility = 0;
+        ModuleCompatibility compatibility;
     };
 
     llvm::SmallVector<Variant, 2> listed;
@@ -164,8 +165,8 @@ struct ModuleVariants {
     /// Project::commands_epoch when `listed` was taken.
     std::uint64_t epoch = 0;
 
-    /// The variants importers were given, whose nodes a change of the unit
-    /// invalidates with its own.
+    /// The variants importers were given: the unit's PCM nodes besides its
+    /// own (Project::module_nodes).
     llvm::SmallVector<std::uint32_t, 1> picked;
 };
 

@@ -46,7 +46,7 @@ std::unique_ptr<clang::CompilerInvocation>
     return invocation;
 }
 
-std::uint64_t module_compatibility(const clang::CompilerInvocation& invocation) {
+ModuleCompatibility module_compatibility(const clang::CompilerInvocation& invocation) {
     using Kind = clang::LangOptions::CompatibilityKind;
     auto& language = invocation.getLangOpts();
     llvm::SmallVector<std::uint64_t, 256> values;
@@ -63,17 +63,16 @@ std::uint64_t module_compatibility(const clang::CompilerInvocation& invocation) 
     std::string buffer(reinterpret_cast<const char*>(values.data()),
                        values.size() * sizeof(std::uint64_t));
     auto& target = invocation.getTargetOpts();
-    llvm::SmallVector<llvm::StringRef> features(target.FeaturesAsWritten.begin(),
-                                                target.FeaturesAsWritten.end());
-    ranges::sort(features);
-    auto append = [&](llvm::StringRef part) {
+    for(llvm::StringRef part: {llvm::StringRef(target.Triple), llvm::StringRef(target.ABI)}) {
         buffer += part;
         buffer += '\0';
+    }
+    ModuleCompatibility compatibility{
+        .language = llvm::xxh3_64bits(buffer),
+        .features = target.FeaturesAsWritten,
     };
-    append(target.Triple);
-    append(target.ABI);
-    ranges::for_each(features, append);
-    return llvm::xxh3_64bits(buffer);
+    ranges::sort(compatibility.features);
+    return compatibility;
 }
 
 }  // namespace clice

@@ -198,13 +198,13 @@ std::optional<Resolution> build_command(Project& project, NodeId module) {
 }
 
 /// module_compatibility of the arguments `command` renders.
-std::uint64_t compatibility(Project& project, const Rendered& command) {
+ModuleCompatibility compatibility(Project& project, const Rendered& command) {
     llvm::SmallString<1024> joined(command.directory);
     for(auto& arg: command.arguments) {
         joined.push_back('\0');
         joined.append(arg);
     }
-    auto [it, inserted] = project.compatibilities.try_emplace(llvm::xxh3_64bits(joined), 0);
+    auto [it, inserted] = project.compatibilities.try_emplace(llvm::xxh3_64bits(joined));
     if(!inserted) {
         return it->second;
     }
@@ -252,7 +252,6 @@ llvm::SmallVector<ModuleVariants::Variant, 2> list_variants(Project& project, Fi
 /// new one.
 async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node) {
     auto path_id = node.file();
-    // Only the build under the unit's own command is the unit's compile.
     bool own_command = module_variant(node) == 0;
 
     // Inputs that moved may import otherwise: a scan taken before is no
@@ -640,9 +639,10 @@ NodeId Project::module_build(Fid module, const Rendered& importer) {
     if(variants.listed.size() < 2) {
         return module_node(module);
     }
-    auto readable = ranges::find(variants.listed,
-                                 compatibility(*this, importer),
-                                 &ModuleVariants::Variant::compatibility);
+    auto wanted = compatibility(*this, importer);
+    auto readable = ranges::find_if(variants.listed, [&](const ModuleVariants::Variant& variant) {
+        return wanted.reads(variant.compatibility);
+    });
     if(readable == variants.listed.begin() || readable == variants.listed.end()) {
         return module_node(module);
     }
@@ -800,17 +800,21 @@ std::unordered_map<std::string, std::string>
     return paths;
 }
 
+llvm::SmallVector<NodeId> Project::module_nodes(Fid unit) const {
+    llvm::SmallVector<NodeId> nodes{module_node(unit)};
+    if(auto it = module_variants.find(unit); it != module_variants.end()) {
+        for(auto variant: it->second.picked) {
+            nodes.push_back(module_node(unit, variant));
+        }
+    }
+    return nodes;
+}
+
 llvm::SmallVector<Fid> Project::invalidate_module(Fid path_id) {
     llvm::SmallVector<Fid> dirtied;
-    auto invalidate = [&](NodeId module) {
+    for(auto module: module_nodes(path_id)) {
         for(auto id: graph.invalidate(module)) {
             dirtied.push_back(id.file());
-        }
-    };
-    invalidate(module_node(path_id));
-    if(auto it = module_variants.find(path_id); it != module_variants.end()) {
-        for(auto variant: it->second.picked) {
-            invalidate(module_node(path_id, variant));
         }
     }
     return dirtied;

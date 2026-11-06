@@ -222,6 +222,64 @@ ZEST_CASE(BuildsIndexModules) {
     }
 }
 
+ZEST_CASE(EntryBuildLeavesIndex) {
+    // An importer under C++23 reads the module's build under its C++23
+    // entry, which leaves the module's index to the build under its own
+    // command.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport long mv() { return __cplusplus; }\n");
+    tmp.touch("newer.cpp", "import m;\nlong use() { return mv(); }\n");
+
+    IndexerFixture f;
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"),    {}            },
+                  {tmp.root, tmp.path("m.cppm"),    {"-std=c++23"}},
+                  {tmp.root, tmp.path("newer.cpp"), {"-std=c++23"}},
+    }));
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ZASSERT(store);
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    f.project.store.emplace(std::move(*store));
+
+    auto id = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+    std::optional<UnitResult::Status> result;
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(f.pool.start(opts));
+
+        UnitRequest request;
+        request.index = true;
+        result = (co_await f.project.compile_unit(id("newer.cpp"), std::move(request)))->status;
+
+        co_await f.project.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(done);
+
+    ZEXPECT(result == UnitResult::Status::Completed);
+    ZASSERT(f.project.pcms.size() == 1u);
+    auto& [module, build] = *f.project.pcms.begin();
+    ZEXPECT(module_variant(module) != 0u);
+    ZEXPECT(!build.path.empty());
+    ZEXPECT(f.project.index.shard(id("m.cppm")) == nullptr);
+    ZEXPECT(f.project.index.shard(id("newer.cpp")) != nullptr);
+}
+
 ZEST_CASE(ExcludedModuleStillIndexed) {
     // A module unit a rule keeps out of the index is still indexed by the
     // PCM build its importer waits on, as a header the rule covers is by

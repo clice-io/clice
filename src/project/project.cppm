@@ -2,6 +2,7 @@ module clice:project.project;
 
 import :command.database;
 import :command.edit;
+import :command.invocation;
 import :command.normalize;
 import :command.table;
 import :command.toolchain;
@@ -294,7 +295,7 @@ struct Project {
 
     /// module_compatibility of the arguments a command renders, by their
     /// hash with the directory's.
-    llvm::DenseMap<std::uint64_t, std::uint64_t> compatibilities;
+    llvm::DenseMap<std::uint64_t, ModuleCompatibility> compatibilities;
 
     ImportScans import_scans;
 
@@ -903,8 +904,8 @@ struct Project {
 
     /// The PCM an import of `module` reads in a compile under `importer`: the
     /// build under the module's own command when the compile can read it
-    /// (module_compatibility), else under the first other entry of the module
-    /// it can, else its own anyway, whose reading then fails with clang's
+    /// (ModuleCompatibility::reads), else under the first other entry of the
+    /// module it can, else its own anyway, whose reading then fails with clang's
     /// reason — the build no entry describes is never made up. A build
     /// system lists a module once per configuration it builds it in: CMake
     /// once per set of its importers' language flags, a project once per
@@ -944,6 +945,10 @@ struct Project {
                                                            llvm::StringRef text,
                                                            const Resolution& resolution,
                                                            BuildOptions options);
+
+    /// The PCM nodes of a module unit: its build under its own command, and
+    /// those under the other entries importers were given (module_build).
+    llvm::SmallVector<NodeId> module_nodes(Fid unit) const;
 
     /// Mark a module unit's PCMs and their transitive importers dirty, overtaking
     /// in-flight attempts: their next attempts check their builds again, and a
