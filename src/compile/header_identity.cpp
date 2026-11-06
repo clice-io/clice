@@ -265,11 +265,8 @@ std::uint64_t CompilationUnit::macro_state(const clang::MacroInfo* macro,
 }
 
 std::uint64_t CompilationUnit::declaration_context() {
-    std::uint64_t context = 0;
-    if(!instance->hasSema()) {
-        return context;
-    }
     auto& sema = instance->getSema();
+    std::uint64_t context = 0;
     for(auto* dc = sema.CurContext; dc; dc = dc->getParent()) {
         context = mix(context, static_cast<std::uint64_t>(dc->getDeclKind()));
         if(auto* named = llvm::dyn_cast<clang::NamedDecl>(dc)) {
@@ -278,16 +275,12 @@ std::uint64_t CompilationUnit::declaration_context() {
             context = mix(context, static_cast<std::uint64_t>(linkage->getLanguage()));
         }
     }
-    return context;
+    return mix(context, sema.PragmaAttributeStack.size());
 }
 
-std::uint64_t CompilationUnit::declaration_pragmas() {
-    if(!instance->hasSema()) {
-        return 0;
-    }
-    auto& sema = instance->getSema();
-    return mix(clang::Sema::AlignPackInfo::getRawEncoding(sema.AlignPackStack.CurrentValue),
-               sema.PragmaAttributeStack.size());
+std::uint64_t CompilationUnit::record_packing() {
+    return clang::Sema::AlignPackInfo::getRawEncoding(
+        instance->getSema().AlignPackStack.CurrentValue);
 }
 
 }  // namespace clice

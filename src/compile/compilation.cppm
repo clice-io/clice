@@ -604,7 +604,7 @@ private:
     class DiagnosticRecorder;
     class DirectiveRecorder;
     class IdentityRecorder;
-    class SharedHeaderJudge;
+    class SharedHeaderChecker;
     class SharedHeaderRecorder;
     class ParseConsumer;
     class ParseAction;
@@ -627,7 +627,7 @@ private:
 
     /// The callbacks deciding `rejection` and filling `grafted`, see
     /// shared_header.cpp.
-    std::unique_ptr<clang::PPCallbacks> shared_header_judge();
+    std::unique_ptr<clang::PPCallbacks> shared_header_checker();
 
     /// Hand `watch` every token the preprocessor hands the parser.
     void watch_tokens(std::function<void(const clang::Token&)> watch) {
@@ -640,12 +640,14 @@ private:
     std::uint64_t macro_state(const clang::MacroInfo* macro, const clang::IdentifierInfo& name);
 
     /// A hash of the declaration context the parser is in: its chain of
-    /// named scopes and language linkages.
+    /// named scopes and language linkages, and the attributes `#pragma clang
+    /// attribute` gives the declarations there.
     std::uint64_t declaration_context();
 
-    /// A hash of what `#pragma pack` and `#pragma clang attribute` give the
-    /// declarations the parser reads next.
-    std::uint64_t declaration_pragmas();
+    /// A hash of the alignment `#pragma pack` gives the records the parser
+    /// reads next: clang applies it before it reads on, unlike the
+    /// declaration context.
+    std::uint64_t record_packing();
 
     auto SM() -> clang::SourceManager& {
         return instance->getSourceManager();

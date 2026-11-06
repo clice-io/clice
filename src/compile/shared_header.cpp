@@ -71,14 +71,15 @@ public:
         unit(unit), sm(unit.SM()), pp(unit.instance->getPreprocessor()) {}
 
     /// A token the preprocessor handed the parser: the second after an
-    /// entry is read as the parser stands in the declaration context of
-    /// the entry; an identifier no macro names here is read as 0.
+    /// include is read as the parser stands in the declaration context of
+    /// the include; an identifier no macro names here is read as 0.
     void token(const clang::Token& token) {
-        if(token.isAnnotation()) {
+        if(token.is(clang::tok::eod)) {
             return;
         }
-        if(!token.isOneOf(clang::tok::eod, clang::tok::eof)) {
-            take_contexts(1);
+        take_contexts(1);
+        if(token.isAnnotation()) {
+            return;
         }
         auto* info = token.getIdentifierInfo();
         if(!info || info->hasMacroDefinition()) {
@@ -108,8 +109,10 @@ public:
             auto* guard = info.getControllingMacro(nullptr);
             if(header.forced || info.isPragmaOnce || (guard && pp.getMacroInfo(guard))) {
                 kept[index] = static_cast<std::uint32_t>(record.headers.size());
-                header.record.context = contexts.lookup(header.fid);
-                header.record.pragmas = pragmas.lookup(header.fid);
+                header.record.context = contexts[header.site];
+                for(auto& include: header.record.includes) {
+                    include.context = contexts[include.context];
+                }
                 record.headers.push_back(std::move(header.record));
                 if(header.forced) {
                     record.forced.push_back(kept[index]);
@@ -156,6 +159,11 @@ private:
         /// Entered by the command's -include.
         bool forced = false;
 
+        /// Into `contexts`, and the `#pragma pack` it was entered under.
+        std::uint32_t site = 0;
+
+        std::uint64_t packing = 0;
+
         /// The include of the file below it on the stack that entered it.
         std::uint32_t entered_by = none;
 
@@ -182,11 +190,11 @@ private:
                      clang::FileID) override {
         if(reason == EnterFile) {
             auto fid = sm.getFileID(location);
-            pending.emplace_back(fid, 0);
-            pragmas.try_emplace(fid, unit.declaration_pragmas());
             Frame frame{.fid = fid,
                         .entry = sm.getFileEntryRefForID(fid),
-                        .system = clang::SrcMgr::isSystem(kind)};
+                        .system = clang::SrcMgr::isSystem(kind),
+                        .site = site(),
+                        .packing = unit.record_packing()};
             if(!stack.empty()) {
                 auto& below = stack.back();
                 frame.forced = below.fid == pp.getPredefinesFileID();
@@ -214,9 +222,10 @@ private:
            held.try_emplace(&frame.entry->getFileEntry(), index).second) {
             headers.push_back({
                 .entry = *frame.entry,
-                .fid = frame.fid,
+                .site = frame.site,
                 .forced = frame.forced,
                 .record = {.file = file_index(*frame.entry),
+                           .packing = frame.packing,
                            .reads = std::move(frame.reads),
                            .writes = std::move(frame.writes),
                            .includes = std::move(frame.includes)}
@@ -269,15 +278,24 @@ private:
         }
     }
 
-    /// `tokens` more tokens are read since the entries pending: the parser
+    /// A place whose declaration context is taken once the parser reads
+    /// two tokens on, into `contexts`.
+    std::uint32_t site() {
+        auto site = static_cast<std::uint32_t>(contexts.size());
+        contexts.push_back(0);
+        pending.emplace_back(site, 0);
+        return site;
+    }
+
+    /// `tokens` more tokens are read since the places pending: the parser
     /// stands in the context of those it has read two after.
     void take_contexts(std::uint32_t tokens) {
-        llvm::erase_if(pending, [&](auto& entry) {
+        std::erase_if(pending, [&](auto& entry) {
             entry.second += tokens;
             if(entry.second < 2) {
                 return false;
             }
-            contexts.try_emplace(entry.first, unit.declaration_context());
+            contexts[entry.first] = unit.declaration_context();
             return true;
         });
     }
@@ -301,7 +319,9 @@ private:
                                   .file = file_index(*file),
                                   .held = unresolved,
                                   .writes = static_cast<std::uint32_t>(frame.writes.size()),
-                                  .reads = static_cast<std::uint32_t>(frame.reads.size())});
+                                  .reads = static_cast<std::uint32_t>(frame.reads.size()),
+                                  .context = site(),
+                                  .packing = unit.record_packing()});
     }
 
     void MacroDefined(const clang::Token& name, const clang::MacroDirective* directive) override {
@@ -408,6 +428,7 @@ private:
         }
         auto& frame = stack.back();
         frame.written.insert(name);
+        frame.held_wrote.erase(name);
         frame.writes.push_back({.name = name, .state = unit.macro_state(now, *info)});
     }
 
@@ -426,7 +447,8 @@ private:
     struct Header {
         clang::FileEntryRef entry;
 
-        clang::FileID fid;
+        /// Into `contexts`.
+        std::uint32_t site = 0;
 
         bool forced = false;
 
@@ -464,14 +486,12 @@ private:
     /// The macros written.
     llvm::DenseMap<std::uint64_t, Write> written;
 
-    /// The entries whose declaration context is not taken yet, with how
-    /// many tokens the parser read since.
-    llvm::SmallVector<std::pair<clang::FileID, std::uint32_t>> pending;
+    /// The declaration context of each entry and include (site).
+    std::vector<std::uint64_t> contexts;
 
-    /// The declaration context of each entry, and its pragmas.
-    llvm::DenseMap<clang::FileID, std::uint64_t> contexts;
-
-    llvm::DenseMap<clang::FileID, std::uint64_t> pragmas;
+    /// The sites whose context is not taken yet, with how many tokens the
+    /// parser read since.
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> pending;
 };
 
 /// Checks, in a unit loading a shared header's PCH, that parsing each held
@@ -484,9 +504,9 @@ private:
 /// the system library: a system header reading a macro only system headers
 /// write (ISO C 7.1.2 lets standard headers be included in any order).
 /// Grafts what each held header included on the unit's include tree.
-class CompilationUnit::SharedHeaderJudge : public clang::PPCallbacks {
+class CompilationUnit::SharedHeaderChecker : public clang::PPCallbacks {
 public:
-    SharedHeaderJudge(CompilationUnit& unit, const SharedHeaderRecord& record) :
+    SharedHeaderChecker(CompilationUnit& unit, const SharedHeaderRecord& record) :
         unit(unit), sm(unit.SM()), pp(unit.instance->getPreprocessor()), record(record),
         entered(record.headers.size()) {
         for(auto [index, file]: views::enumerate(record.files)) {
@@ -507,11 +527,12 @@ public:
     }
 
     void token(const clang::Token& token) {
-        if(token.isAnnotation()) {
+        if(token.is(clang::tok::eod)) {
             return;
         }
-        if(!token.isOneOf(clang::tok::eod, clang::tok::eof)) {
-            check_sites(1);
+        check_sites(1);
+        if(token.isAnnotation()) {
+            return;
         }
         auto* info = token.getIdentifierInfo();
         if(!info || info->hasMacroDefinition()) {
@@ -567,8 +588,8 @@ private:
                 {.includer = includer, .line = line, .file = it->second, .skipped = true});
             return;
         }
-        if(unit.declaration_pragmas() != record.headers[header].pragmas) {
-            reject(std::format("{} is included under pragmas its PCH did not see",
+        if(unit.record_packing() != record.headers[header].packing) {
+            reject(std::format("{} is included under a #pragma pack its PCH did not see",
                                record.files[record.headers[header].file].path));
         }
         sites.emplace_back(header, 0);
@@ -579,7 +600,7 @@ private:
     /// stands in the declaration context of those it has read two after,
     /// the one the PCH declares the header in.
     void check_sites(std::uint32_t tokens) {
-        llvm::erase_if(sites, [&](auto& site) {
+        std::erase_if(sites, [&](auto& site) {
             site.second += tokens;
             if(site.second < 2) {
                 return false;
@@ -633,6 +654,11 @@ private:
                 grafted.push_back(
                     {.parent = above, .line = include.line, .file = include.file, .skipped = true});
             } else {
+                auto& nested = record.headers[include.held];
+                if(include.context != nested.context || include.packing != nested.packing) {
+                    reject(std::format("{} is included where its PCH does not declare it",
+                                       record.files[nested.file].path));
+                }
                 enter(include.held, {}, above, include.line);
             }
         }
@@ -791,7 +817,7 @@ private:
 
     /// The held headers the unit's text included whose declaration context
     /// is not checked yet, with how many tokens the parser read since.
-    llvm::SmallVector<std::pair<std::uint32_t, std::uint32_t>> sites;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> sites;
 };
 
 std::unique_ptr<clang::PPCallbacks> CompilationUnit::shared_header_recorder() {
@@ -803,12 +829,12 @@ std::unique_ptr<clang::PPCallbacks> CompilationUnit::shared_header_recorder() {
     return recorder;
 }
 
-std::unique_ptr<clang::PPCallbacks> CompilationUnit::shared_header_judge() {
-    auto judge = std::make_unique<SharedHeaderJudge>(*this, *params.shared);
-    auto* watch = judge.get();
+std::unique_ptr<clang::PPCallbacks> CompilationUnit::shared_header_checker() {
+    auto checker = std::make_unique<SharedHeaderChecker>(*this, *params.shared);
+    auto* watch = checker.get();
     watch_tokens([watch](const clang::Token& token) { watch->token(token); });
     after_parse.push_back([watch] { watch->finish(); });
-    return judge;
+    return checker;
 }
 
 }  // namespace clice

@@ -189,7 +189,7 @@ IncludeArguments::IncludeArguments(const SearchConfig& search,
 }
 
 std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
-    auto argument = resolving(header);
+    auto argument = found_as(header);
     if(argument && internal_header(argument->starts_with("<"),
                                    llvm::StringRef(*argument).drop_front().drop_back())) {
         return std::nullopt;
@@ -197,7 +197,7 @@ std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
     return argument;
 }
 
-std::optional<std::string> IncludeArguments::resolving(CanonicalRef header) {
+std::optional<std::string> IncludeArguments::found_as(CanonicalRef header) {
     auto [known_entry, inserted] = known.try_emplace(llvm::StringRef(header));
     auto& argument = known_entry->second;
     if(!inserted) {

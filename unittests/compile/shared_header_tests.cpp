@@ -347,6 +347,73 @@ int use() { return api(detail::helper()); }
     ZEXPECT(from_pch(*compiled.unit, "api"));
 };
 
+ZEST_CASE(IncludedInNamespaceAtEnd) {
+    add_file("shared.hxx", "#pragma once\n#include \"api.h\"\n");
+    add_file("api.h", "#pragma once\nint api(int);\n");
+    add_focus("main.cpp", "namespace ns {\n#include \"api.h\"\n}\n");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().contains("api.h"));
+};
+
+ZEST_CASE(IncludedUnderAttribute) {
+    add_file("shared.hxx", "#pragma once\n#include \"api.h\"\n");
+    add_file("api.h", "#pragma once\nint api(int);\n");
+    add_focus(
+        "main.cpp",
+        R"cpp(#pragma clang attribute push(__attribute__((annotate("tagged"))), apply_to = function)
+#include "api.h"
+#pragma clang attribute pop
+)cpp");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().contains("api.h"));
+};
+
+ZEST_CASE(IncludedAfterAttributePop) {
+    add_file("shared.hxx", "#pragma once\n#include \"api.h\"\n");
+    add_file("api.h", "#pragma once\nint api(int);\n");
+    add_focus(
+        "main.cpp",
+        R"cpp(#pragma clang attribute push(__attribute__((annotate("tagged"))), apply_to = function)
+int before();
+#pragma clang attribute pop
+#include "api.h"
+int use() { return api(1); }
+)cpp");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().empty());
+};
+
+ZEST_CASE(RewrittenAfterHeldHeader) {
+    // list.inc, which has no guard, rewrites what the held header it
+    // includes defined; table.h reads what list.inc left.
+    add_file("shared.hxx", "#pragma once\n#include \"table.h\"\n");
+    add_file("count.h", "#pragma once\n#define COUNT 2\n");
+    add_file("list.inc", "#include \"count.h\"\n#undef COUNT\n#define COUNT 3\n");
+    add_file("table.h", R"cpp(#pragma once
+#include "list.inc"
+#if COUNT == 3
+int three();
+#endif
+)cpp");
+    add_focus("main.cpp", "#include \"table.h\"\nint use() { return three(); }\n");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().empty());
+    ZEXPECT(from_pch(*compiled.unit, "three"));
+};
+
+ZEST_CASE(NestedInExternC) {
+    // The PCH declares api.h where first.h includes it; the unit first
+    // includes it through second.h, inside `extern "C"`.
+    add_file("shared.hxx", "#pragma once\n#include \"first.h\"\n#include \"second.h\"\n");
+    add_file("api.h", "#pragma once\nint api(int);\n");
+    add_file("first.h", "#pragma once\n#include \"api.h\"\n");
+    add_file("second.h", "#pragma once\nextern \"C\" {\n#include \"api.h\"\n}\n");
+    add_focus("main.cpp",
+              "#include \"second.h\"\n#include \"first.h\"\nint use() { return api(1); }\n");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().contains("api.h"));
+};
+
 };  // ZEST_SUITE(SharedHeader)
 
 }  // namespace

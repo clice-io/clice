@@ -1,7 +1,3 @@
-module;
-
-#include "support/logging.macros.h"
-
 module clice;
 
 import :command.argument;
@@ -12,6 +8,7 @@ import :project.graph.precompiled;
 import :project.project;
 import :project.shared_headers;
 import :support.logging;
+import :syntax.dependency_graph;
 import :syntax.include_resolver;
 import :syntax.lexical_scan;
 import :syntax.preamble;
@@ -41,23 +38,22 @@ bool guarded(llvm::StringRef text, const clang::LangOptions& dialect) {
            lexical_scan(text, dialect).include_guard.has_value();
 }
 
-/// A compile's macro options (`-D`, `-U`), each with its value, as the
-/// arguments spell them.
-using MacroOptions = std::set<std::pair<std::string, std::string>>;
+/// A macro option (`-D`, `-U`) with its value, as the arguments spell it.
+using MacroOption = std::pair<std::string, std::string>;
 
-/// `arguments` but its macro options, which go to `macros`.
+/// `arguments` but its macro options, which go to `macros` in order.
 std::vector<std::string> without_macros(llvm::ArrayRef<const char*> arguments,
-                                        MacroOptions& macros) {
+                                        std::vector<MacroOption>& macros) {
     std::vector<std::string> rest;
     for(std::size_t i = 0; i < arguments.size(); i += 1) {
         llvm::StringRef argument = arguments[i];
         if(argument == "-D" || argument == "-U") {
             if(i + 1 < arguments.size()) {
-                macros.emplace(argument.str(), arguments[i + 1]);
+                macros.emplace_back(argument.str(), arguments[i + 1]);
                 i += 1;
             }
         } else if(argument.starts_with("-D") || argument.starts_with("-U")) {
-            macros.emplace(argument.take_front(2).str(), argument.drop_front(2).str());
+            macros.emplace_back(argument.take_front(2).str(), argument.drop_front(2).str());
         } else {
             rest.push_back(argument.str());
         }
@@ -110,7 +106,7 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
 
         std::vector<Fid> units;
 
-        MacroOptions macros;
+        std::set<MacroOption> macros;
     };
 
     llvm::MapVector<std::uint64_t, Group> groups;
@@ -125,11 +121,12 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
            commands.pch_output(ref.command) || pch_writer(unit, selection)) {
             continue;
         }
-        MacroOptions macros;
-        auto rest = without_macros(toolchain.render(ref, "shared").argv, macros);
+        std::vector<MacroOption> options;
+        auto rest = without_macros(toolchain.render(ref, "shared").argv, options);
         rest.push_back(commands.get(ref.command).directory);
         rest.push_back(language.str());
         auto& group = groups[llvm::xxh3_64bits(llvm::join(rest, "\n"))];
+        std::set<MacroOption> macros(options.begin(), options.end());
         if(group.units.empty()) {
             group.command = ref;
             group.macros = std::move(macros);
@@ -213,7 +210,7 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
                 if(!content || !guarded(*content, dialect)) {
                     return std::nullopt;
                 }
-                if(auto spelled = spellings.resolving(path)) {
+                if(auto spelled = spellings.found_as(path)) {
                     return spelled;
                 }
                 if(llvm::StringRef(*content).contains("include_next") ||
@@ -270,26 +267,16 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
             }
 
             auto rendered = toolchain.render(group.command, file);
-            MacroOptions own;
-            auto arguments = without_macros(llvm::ArrayRef(rendered.argv).drop_back(), own);
+            std::vector<MacroOption> options;
+            auto arguments = without_macros(llvm::ArrayRef(rendered.argv).drop_back(), options);
             for(auto it = arguments.begin(); it != arguments.end();) {
                 it =
                     *it == "-x" && it + 1 != arguments.end() ? arguments.erase(it, it + 2) : it + 1;
             }
             // In the order the command gives them: a later one wins.
-            for(std::size_t i = 0; i < rendered.argv.size(); i += 1) {
-                llvm::StringRef argument = rendered.argv[i];
-                std::pair<std::string, std::string> macro;
-                if((argument == "-D" || argument == "-U") && i + 1 < rendered.argv.size()) {
-                    macro = {argument.str(), rendered.argv[i + 1]};
-                    i += 1;
-                } else if(argument.starts_with("-D") || argument.starts_with("-U")) {
-                    macro = {argument.take_front(2).str(), argument.drop_front(2).str()};
-                } else {
-                    continue;
-                }
-                if(group.macros.contains(macro)) {
-                    arguments.push_back(macro.first + macro.second);
+            for(auto& option: options) {
+                if(group.macros.contains(option)) {
+                    arguments.push_back(option.first + option.second);
                 }
             }
             arguments.push_back("-x");
@@ -305,7 +292,7 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
             };
             auto& params = request.params;
             request.pch_key = cache_key({clang::getClangFullVersion(),
-                                         pch_build_rule(false),
+                                         pch_build_rule(false, false),
                                          database_key.str(),
                                          params.directory,
                                          params.file,

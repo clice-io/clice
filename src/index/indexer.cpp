@@ -1,11 +1,13 @@
 module clice;
 
 import :compile.compilation;
+import :compile.shared_header;
 import :index.format;
 import :index.include_tree;
 import :index.indexer;
 import :index.instantiation_shard;
 import :index.shard;
+import :index.shared_header;
 import :index.symbol;
 import :semantic.decls;
 import :semantic.display;
@@ -1840,6 +1842,11 @@ public:
             if(auto* shared = unit.shared_header()) {
                 auto grafted = unit.grafted_includes();
                 for(auto& include: grafted) {
+                    // The command's -include, which no file includes.
+                    if(include.parent == SharedHeaderRecord::none &&
+                       unit.is_builtin_file(include.includer)) {
+                        continue;
+                    }
                     auto includer =
                         include.parent == SharedHeaderRecord::none
                             ? unit.file_path(include.includer)
@@ -1979,7 +1986,9 @@ public:
     /// declarations around the files walked they include.
     void choose_known() {
         auto focus = unit.focus_file().file();
-        for(auto& [fid, own]: unit.header_identities()) {
+        auto entries =
+            views::transform(unit.header_identities(), [](auto& entry) { return entry.first; });
+        for(auto fid: entries) {
             if(fid == focus || unit.is_builtin_file(fid) || unit.from_context(fid)) {
                 continue;
             }
@@ -1995,7 +2004,7 @@ public:
             }
         }
         auto& SM = unit.context().getSourceManager();
-        for(auto& [fid, own]: unit.header_identities()) {
+        for(auto fid: entries) {
             if(unwalked.files.contains(fid)) {
                 continue;
             }
@@ -2012,7 +2021,8 @@ public:
                 from = includer;
             }
         }
-        for(auto& [fid, offsets]: unwalked.includes) {
+        for(auto& offsets: views::transform(unwalked.includes,
+                                            [](auto& entry) -> auto& { return entry.second; })) {
             ranges::sort(offsets);
             offsets.erase(ranges::unique(offsets).begin(), offsets.end());
         }
@@ -2414,7 +2424,7 @@ public:
                 }
             }
         }
-        for(auto& [path_id, known]: shared_known) {
+        for(auto path_id: views::transform(shared_known, [](auto& entry) { return entry.first; })) {
             path_ids.push_back(path_id);
         }
         ranges::sort(path_ids);

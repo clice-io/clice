@@ -265,11 +265,11 @@ struct BuildPCHParams {
     std::string index_output_path;
 
     /// The build of a shared header (Project::plan_shared_headers), a whole
-    /// file's: it writes
-    /// what the headers its PCH holds read and wrote, with the sections of
-    /// its index (index::SharedHeaderIndex), to `record_output_path`, which
-    /// the master commits with the PCH.
+    /// file's: it writes what the headers its PCH holds read and wrote, with
+    /// the sections of its index (index::SharedHeaderIndex), to
+    /// `record_output_path`, which the master commits with the PCH.
     bool shared = false;
+
     std::string record_output_path;
 
     /// See CompileUnitParams::known_variants.

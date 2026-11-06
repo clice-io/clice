@@ -35,7 +35,7 @@ struct SharedHeaderHeaderOf {
 
     std::uint64_t context = 0;
 
-    std::uint64_t pragmas = 0;
+    std::uint64_t packing = 0;
 
     Seq<SharedHeaderRecord::Read> reads;
 
@@ -95,7 +95,6 @@ SharedHeaderIndex shared_header_index(const SharedHeaderRecord& record, llvm::St
     for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
         if(auto it = files.find(view.path(view.section_path(i))); it != files.end()) {
             index.sections[it->second] = view.section_identity(i);
-            index.sections[it->second].variant = view.section_hash(i);
         }
     }
     for(std::uint32_t i = 0; i < view.instantiation_count(); i += 1) {
@@ -130,7 +129,7 @@ std::vector<std::byte> encode_shared_header(const SharedHeaderIndex& index) {
     for(auto& header: record.headers) {
         blob.headers.push_back({.file = header.file,
                                 .context = header.context,
-                                .pragmas = header.pragmas,
+                                .packing = header.packing,
                                 .reads = header.reads,
                                 .writes = header.writes,
                                 .includes = header.includes});
@@ -176,7 +175,7 @@ std::optional<SharedHeaderIndex> decode_shared_header(llvm::StringRef bytes) {
         auto& into = record.headers.emplace_back();
         into.file = header.file;
         into.context = header.context;
-        into.pragmas = header.pragmas;
+        into.packing = header.packing;
         into.reads = copy<SharedHeaderRecord::Read>(header.reads);
         into.writes = copy<MacroState>(header.writes);
         into.includes = copy<SharedHeaderRecord::Include>(header.includes);

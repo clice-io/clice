@@ -2,7 +2,6 @@ module clice;
 
 import :index.symbol;
 import :index.tu_index;
-import :semantic.symbol;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -10,34 +9,6 @@ import :unittests.utils;
 namespace clice::testing {
 
 namespace {
-
-/// The section of `file` in a TU index, its position among the sections.
-std::optional<std::uint32_t> section_of(const index::TUIndex& view, llvm::StringRef file) {
-    for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
-        if(view.path(view.section_path(i)).ends_with(file)) {
-            return i;
-        }
-    }
-    return std::nullopt;
-}
-
-/// The symbols a section names by WeakReference, as their name and
-/// signature.
-std::vector<std::string> guessed(const index::TUIndex& view, std::uint32_t section) {
-    std::vector<std::string> names;
-    view.section_shard(section).for_each_relation(
-        [&](index::SymbolHash hash, const index::Relation& relation) {
-            if(relation.kind == RelationKind::WeakReference) {
-                if(auto symbol = view.find_symbol(hash)) {
-                    names.push_back(std::format("{}{}", symbol->name, symbol->signature));
-                }
-            }
-            return true;
-        });
-    ranges::sort(names);
-    names.erase(ranges::unique(names).begin(), names.end());
-    return names;
-}
 
 ZEST_SUITE(UnwalkedHeaders) {
 

@@ -89,10 +89,11 @@ public:
     /// search directories (resolved, however the command spells them),
     /// angled past the quoted segment — whichever of these the command's
     /// lookup order actually resolves to `header`, since a shorter one can
-    /// name a same-named file in an earlier directory. None for none.
-    std::optional<std::string> resolving(CanonicalRef header);
+    /// name a same-named file in an earlier directory. None when none of
+    /// these resolves to it.
+    std::optional<std::string> found_as(CanonicalRef header);
 
-    /// resolving's, none when that names a library's internal header,
+    /// found_as's, none when that names a library's internal header,
     /// which its public headers include and its users never should:
     /// libstdc++'s and glibc's `bits/`, libc++'s `__`-prefixed directories
     /// and files.

@@ -8,7 +8,6 @@ import :index.shard;
 import :index.shared_header;
 import :index.symbol;
 import :index.tu_index;
-import :semantic.symbol;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -22,7 +21,8 @@ namespace {
 /// record with its sections, and its own TU index into `tu_index`.
 std::optional<index::SharedHeaderIndex> build_shared(TempDir& tmp,
                                                      llvm::StringRef pch,
-                                                     std::string* tu_index = nullptr) {
+                                                     std::string* tu_index = nullptr,
+                                                     llvm::ArrayRef<std::string> extra = {}) {
     CompilationParams params{
         .kind = CompilationKind::PrecompiledHeader,
         .output_file = pch.str(),
@@ -38,6 +38,7 @@ std::optional<index::SharedHeaderIndex> build_shared(TempDir& tmp,
                               std::string(resource_dir()),
                               "-c",
                               tmp.path("shared.hxx")};
+    params.input.arguments.insert(params.input.arguments.end() - 1, extra.begin(), extra.end());
     auto unit = compile(std::move(params));
     if(!unit->has_output() || !collect_errors(*unit).empty()) {
         return std::nullopt;
@@ -55,7 +56,8 @@ std::optional<index::SharedHeaderIndex> build_shared(TempDir& tmp,
 /// record as a shared header's when given one.
 std::string index_over(TempDir& tmp,
                        llvm::StringRef pch,
-                       const index::SharedHeaderIndex* shared = nullptr) {
+                       const index::SharedHeaderIndex* shared = nullptr,
+                       llvm::ArrayRef<std::string> extra = {}) {
     CompilationParams params{.kind = CompilationKind::Whole, .header_identities = true};
     if(shared) {
         params.shared =
@@ -69,6 +71,7 @@ std::string index_over(TempDir& tmp,
                               std::string(resource_dir()),
                               "-c",
                               tmp.path("main.cpp")};
+    params.input.arguments.insert(params.input.arguments.end() - 1, extra.begin(), extra.end());
     params.input.pch = {pch.str(), 0};
     auto unit = compile(std::move(params));
     ZEXPECT(unit->shared_rejection().empty());
@@ -166,16 +169,6 @@ std::set<std::string> records(const index::TUIndex& view, llvm::StringRef file) 
     return lines;
 }
 
-/// The section of the file named `file` in the TU index; none for none.
-std::optional<std::uint32_t> section_named(const index::TUIndex& view, llvm::StringRef file) {
-    for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
-        if(llvm::StringRef(path::filename(view.path(view.section_path(i)))) == file) {
-            return i;
-        }
-    }
-    return std::nullopt;
-}
-
 /// The occurrences of `shard` as `begin-end symbol`.
 std::set<std::string> occurrences(const index::Shard& shard) {
     std::set<std::string> lines;
@@ -187,24 +180,6 @@ std::set<std::string> occurrences(const index::Shard& shard) {
         return true;
     });
     return lines;
-}
-
-/// The symbols a section names by WeakReference, as their name and
-/// signature.
-std::vector<std::string> guessed(const index::TUIndex& view, std::uint32_t section) {
-    std::vector<std::string> names;
-    view.section_shard(section).for_each_relation(
-        [&](index::SymbolHash hash, const index::Relation& relation) {
-            if(relation.kind == RelationKind::WeakReference) {
-                if(auto symbol = view.find_symbol(hash)) {
-                    names.push_back(std::format("{}{}", symbol->name, symbol->signature));
-                }
-            }
-            return true;
-        });
-    ranges::sort(names);
-    names.erase(ranges::unique(names).begin(), names.end());
-    return names;
 }
 
 ZEST_SUITE(SharedHeaderIndex) {
@@ -402,9 +377,9 @@ int use() { return Alpha_value() + Beta; }
     auto walked_data = index_file(tmp, tmp.path("main.cpp"), {"-std=c++20"}).data;
     auto walked = index::TUIndex::from_bytes(walked_data);
 
-    auto in_own = section_named(own, "kinds.def");
-    auto in_over = section_named(over, "kinds.def");
-    auto in_walked = section_named(walked, "kinds.def");
+    auto in_own = section_of(own, "kinds.def");
+    auto in_over = section_of(over, "kinds.def");
+    auto in_walked = section_of(walked, "kinds.def");
     ZASSERT(in_own);
     ZASSERT(in_over);
     ZASSERT(in_walked);
@@ -449,13 +424,36 @@ void call(T value) { helper(value); }
     auto walked = index::TUIndex::from_bytes(walked_data);
     auto over_data = index_over(tmp, pch, &*shared);
     auto over = index::TUIndex::from_bytes(over_data);
-    auto in_walked = section_named(walked, "impl.h");
-    auto in_over = section_named(over, "impl.h");
+    auto in_walked = section_of(walked, "impl.h");
+    auto in_over = section_of(over, "impl.h");
     ZASSERT(in_walked);
     ZASSERT(in_over);
     ZEXPECT(guessed(walked, *in_walked) == std::vector<std::string>{"helper(int)"});
     ZEXPECT(guessed(over, *in_over) == guessed(walked, *in_walked));
     ZEXPECT(over.section_identity(*in_over) == walked.section_identity(*in_walked));
+};
+
+ZEST_CASE(GuessesUnderForcedInclude) {
+    // The command forces a header in, which no file of the unit includes.
+    TempDir tmp;
+    tmp.touch("forced.h", "#pragma once\n#define FORCED 1\n");
+    tmp.touch("shared.hxx", "#pragma once\n#include \"helpers.h\"\n");
+    tmp.touch("helpers.h", "#pragma once\nvoid helper(int);\n");
+    tmp.touch("impl.h", R"cpp(#pragma once
+#include "helpers.h"
+template <typename T>
+void call(T value) { helper(value); }
+)cpp");
+    tmp.touch("main.cpp", "#include \"impl.h\"\nvoid use() { call(FORCED); }\n");
+    std::vector<std::string> forced = {"-include", tmp.path("forced.h")};
+    auto pch = tmp.path("shared.pch");
+    auto shared = build_shared(tmp, pch, nullptr, forced);
+    ZASSERT(shared);
+    auto over_data = index_over(tmp, pch, &*shared, forced);
+    auto over = index::TUIndex::from_bytes(over_data);
+    auto in_over = section_of(over, "impl.h");
+    ZASSERT(in_over);
+    ZEXPECT(guessed(over, *in_over) == std::vector<std::string>{"helper(int)"});
 };
 
 };  // ZEST_SUITE(SharedHeaderIndex)

@@ -52,9 +52,18 @@ struct SharedHeaderRecord {
         /// guard, whose includes follow it.
         std::uint32_t held = none;
 
-        /// How many of the header's writes and reads came before it.
+        /// How many of the header's writes came before it.
         std::uint32_t writes = 0;
+
+        /// How many of the header's reads came before it.
         std::uint32_t reads = 0;
+
+        /// The declaration context and the `#pragma pack` at the include, as
+        /// a held header's (Header::context, Header::packing): a unit whose
+        /// first include of the header is this one parses it there.
+        std::uint64_t context = 0;
+
+        std::uint64_t packing = 0;
 
         friend bool operator==(const Include&, const Include&) = default;
     };
@@ -79,9 +88,9 @@ struct SharedHeaderRecord {
         /// (CompilationUnit::declaration_context).
         std::uint64_t context = 0;
 
-        /// What the pragmas the build entered it under give its
-        /// declarations (CompilationUnit::declaration_pragmas).
-        std::uint64_t pragmas = 0;
+        /// The `#pragma pack` the build entered it under
+        /// (CompilationUnit::record_packing).
+        std::uint64_t packing = 0;
 
         /// What its run read, in order, with the state it read.
         std::vector<Read> reads;

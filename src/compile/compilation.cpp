@@ -937,7 +937,7 @@ CompilationStatus CompilationUnit::run() {
         instance->getPreprocessor().addPPCallbacks(shared_header_recorder());
     }
     if(params.shared) {
-        instance->getPreprocessor().addPPCallbacks(shared_header_judge());
+        instance->getPreprocessor().addPPCallbacks(shared_header_checker());
     }
 
     // Past the end of the focus file clang instantiates the templates the

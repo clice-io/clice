@@ -6,9 +6,12 @@ import :feature.diagnostics;
 import :index.database;
 import :index.indexer;
 import :index.project_index;
+import :index.shard;
+import :index.symbol;
 import :index.tu_index;
 import :project.indexer;
 import :project.project;
+import :semantic.symbol;
 import :settings.rules;
 import :support.bytes;
 import :support.prelude;
@@ -295,6 +298,34 @@ inline IndexedTU index_file(TempDir& tmp,
     }
     result.tu_path = std::string(view.path(view.focus_file()));
     return result;
+}
+
+/// The section of the file whose path ends with `file` in the TU index.
+inline std::optional<std::uint32_t> section_of(const index::TUIndex& view, llvm::StringRef file) {
+    for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
+        if(view.path(view.section_path(i)).ends_with(file)) {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+/// The symbols a section names by WeakReference, as their name and
+/// signature.
+inline std::vector<std::string> guessed(const index::TUIndex& view, std::uint32_t section) {
+    std::vector<std::string> names;
+    view.section_shard(section).for_each_relation(
+        [&](index::SymbolHash hash, const index::Relation& relation) {
+            if(relation.kind == RelationKind::WeakReference) {
+                if(auto symbol = view.find_symbol(hash)) {
+                    names.push_back(std::format("{}{}", symbol->name, symbol->signature));
+                }
+            }
+            return true;
+        });
+    ranges::sort(names);
+    names.erase(ranges::unique(names).begin(), names.end());
+    return names;
 }
 
 inline void open_store(TempDir& tmp, Project& project) {

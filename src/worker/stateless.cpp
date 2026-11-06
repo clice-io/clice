@@ -6,6 +6,7 @@ module clice;
 
 import :compile.compilation;
 import :compile.diagnostic;
+import :compile.shared_header;
 import :feature.code_completion;
 import :feature.diagnostics;
 import :feature.document_links;
