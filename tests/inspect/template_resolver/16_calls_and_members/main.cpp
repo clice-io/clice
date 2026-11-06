@@ -581,3 +581,50 @@ void run(Box<T>& box, typename Source<T>::type value) {
 }
 
 }  // namespace constrained_member
+
+namespace constrained_without_arguments {
+
+struct Good {};
+
+struct Bad {};
+
+template <typename T>
+struct Box {
+    Bad pick()
+        requires false;
+
+    template <typename... Us>
+    Good pick(Us...);
+};
+
+template <typename T>
+void run(Box<T>& box) {
+    // The constraint rules the member that is no template out, with no argument to rank.
+    auto §(constrained_without_arguments)chosen = box.pick();
+}
+
+}  // namespace constrained_without_arguments
+
+namespace const_rvalue_binding {
+
+struct Good {};
+
+struct Bad {};
+
+template <typename U>
+Good choose(const U&& value);
+
+Bad choose(const int& value);
+
+template <typename T>
+struct Source {
+    using type = int;
+};
+
+template <typename T>
+void run(typename Source<T>::type value) {
+    auto §(const_rvalue_binding)chosen =
+        const_rvalue_binding::choose(static_cast<typename Source<T>::type&&>(value));
+}
+
+}  // namespace const_rvalue_binding

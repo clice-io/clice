@@ -80,3 +80,12 @@ template_resolver = {}
 
 [answers.constrained_member.template_resolver]
 type = "Good"
+
+[answers.constrained_without_arguments.template_resolver]
+type = "Good"
+
+[answers.const_rvalue_binding]
+wrong = "binding the rvalue to const U&& beats binding it to const int&: chosen is a Good"
+
+[answers.const_rvalue_binding.template_resolver]
+type = "Bad"

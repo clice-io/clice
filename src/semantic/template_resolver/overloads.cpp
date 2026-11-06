@@ -370,11 +370,12 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
         return 0;
     };
     /// How `decl` converts each argument at the rank of an exact match;
-    /// empty when one needs more, nullopt when that waits for
-    /// instantiation. A function template's parameters are read with what
+    /// none when one needs more or that waits for instantiation, which
+    /// `waits` tells. A function template's parameters are read with what
     /// deduction gives them; an argument the C-style ellipsis takes is the
     /// worst match there is.
     using Ranks = llvm::SmallVector<Conversion, 4>;
+    bool waits = false;
     /// Those an argument cannot initialize their parameter with once
     /// deduction made it concrete (`const U&&` takes no lvalue), whose
     /// constraints fail, or a parameter of which nothing deduces.
@@ -382,6 +383,7 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
     auto exact = [&](const clang::NamedDecl* decl) -> std::optional<Ranks> {
         auto* FD = as_function(decl);
         if(!FD) {
+            waits = true;
             return std::nullopt;
         }
         /// A member defined out of line is written in its own template
@@ -393,11 +395,11 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
         if(auto* FTD = FD->getDescribedFunctionTemplate()) {
             if(leaves_undeduced(context, FTD)) {
                 unviable.insert(decl);
-                return Ranks{};
+                return std::nullopt;
             }
             auto deduced = deduce_call(FTD, FD, arguments);
             if(deduced.empty()) {
-                return Ranks{};
+                return std::nullopt;
             }
             stack.push(FTD, FTD->getTemplateParameters(), deduced);
             FTD->getAssociatedConstraints(constraints);
@@ -409,18 +411,19 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
         for(auto& constraint: constraints) {
             auto satisfied = evaluate(constraint.ConstraintExpr);
             if(!satisfied) {
+                waits = true;
                 return std::nullopt;
             }
             if(satisfied->isZero()) {
                 unviable.insert(decl);
-                return Ranks{};
+                return std::nullopt;
             }
         }
         Ranks ranks;
         auto parameters = FD->parameters().drop_front(passed(FD, 0, member_call));
         for(auto [index, argument]: views::enumerate(arguments)) {
             if(static_cast<std::size_t>(index) >= parameters.size()) {
-                return Ranks{};
+                return std::nullopt;
             }
             auto* parameter = parameters[index];
             if(parameter->isParameterPack()) {
@@ -439,7 +442,7 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
                 for(auto [element, taking]: views::zip(*elements, rest)) {
                     auto taken = rank(element.getAsType(), taking.type);
                     if(!taken) {
-                        return Ranks{};
+                        return std::nullopt;
                     }
                     ranks.push_back(*taken);
                 }
@@ -447,6 +450,7 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
             }
             auto type = substitute(parameter->getType());
             if(type.isNull() || type->isDependentType()) {
+                waits = true;
                 return std::nullopt;
             }
             /// An argument clang typed is checked as written, where a null
@@ -455,11 +459,11 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
                    ? never_initializes(context, *argument.expr, type)
                    : never_initializes(context, argument.type, argument.lvalue, type)) {
                 unviable.insert(decl);
-                return Ranks{};
+                return std::nullopt;
             }
             auto taken = rank(type, argument.type);
             if(!taken) {
-                return Ranks{};
+                return std::nullopt;
             }
             ranks.push_back(*taken);
         }
@@ -471,11 +475,8 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
         Ranks ranks;
     };
     llvm::SmallVector<Exact, 4> exacts;
-    bool waits = false;
     for(auto* candidate: candidates) {
-        auto taken = exact(candidate);
-        waits |= !taken;
-        if(taken && taken->size() == arguments.size()) {
+        if(auto taken = exact(candidate)) {
             exacts.push_back({candidate, std::move(*taken)});
         }
     }
