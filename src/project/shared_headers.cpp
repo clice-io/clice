@@ -325,8 +325,29 @@ std::optional<PCHRequest> Project::shared_header_request(Fid unit) const {
 
 void Project::release_shared_headers() {
     index::IndexReport report;
-    for(auto& header: shared_headers.headers) {
+    for(auto [number, header]: views::enumerate(shared_headers.headers)) {
         if(index.indexed(header.file)) {
+            // The symbols below external scope that the header's index
+            // finds in several of its files: a unit loading it names them
+            // there without walking them, and keeps the link once the
+            // header's index is gone.
+            if(auto own = index.manifest(header.file); own && !own->shared_locals.empty()) {
+                for(auto [unit, loaded]: shared_headers.units) {
+                    auto manifest = loaded == number ? index.manifest(unit) : std::nullopt;
+                    if(!manifest) {
+                        continue;
+                    }
+                    for(auto& local: own->shared_locals) {
+                        if(!ranges::contains(manifest->shared_locals, local)) {
+                            manifest->shared_locals.push_back(local);
+                        }
+                    }
+                    ranges::stable_sort(manifest->shared_locals, {}, &index::SharedLocal::symbol);
+                    for(auto file: index.apply_manifest(unit, std::move(*manifest))) {
+                        report.add_index_changed(file);
+                    }
+                }
+            }
             index.drop(header.file, report);
         }
         discard_pch(header.request.pch_key);

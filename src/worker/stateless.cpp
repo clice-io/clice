@@ -515,6 +515,10 @@ static worker::CompileUnitResult
     if(!params.shared_record.empty()) {
         shared = read_shared_record(params.shared_record);
     }
+    bool unheld = shared && shared->record.unheld;
+    if(unheld) {
+        shared = nullptr;
+    }
     CompilationParams cp{
         .kind = CompilationKind::Whole,
         .input = {.arguments = params.arguments,
@@ -563,7 +567,9 @@ static worker::CompileUnitResult
     }
     worker::CompileUnitResult result;
     result.success = true;
-    if(auto rejection = unreadable ? "its record is unreadable" : unit->shared_rejection();
+    if(auto rejection = unheld       ? "it holds a header it includes unguarded"
+                        : unreadable ? "its record is unreadable"
+                                     : unit->shared_rejection();
        !rejection.empty()) {
         LOG_INFO("{} parsed without its shared header's PCH: {}", params.file, rejection);
     }

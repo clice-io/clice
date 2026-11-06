@@ -456,6 +456,57 @@ int flagged();
     ZEXPECT(ranges::contains(absent, "flag.h"));
 };
 
+ZEST_CASE(UnguardedRoot) {
+    // box.h's `#pragma once` lies in a branch not taken: a unit including
+    // it would parse it again over the PCH.
+    TempDir tmp;
+    tmp.touch("shared.hxx", "#pragma once\n#include \"box.h\"\n#include \"guarded.h\"\n");
+    tmp.touch("box.h", "#if 0\n#pragma once\n#endif\nstruct Box {};\n");
+    tmp.touch("guarded.h", "#pragma once\nstruct Guarded {};\n");
+    auto pch = tmp.path("shared.pch");
+    auto shared = build_shared(tmp, pch);
+    ZASSERT(shared);
+    ZEXPECT(shared->record.unheld);
+
+    tmp.touch("shared.hxx", "#pragma once\n#include \"guarded.h\"\n");
+    auto guarded = build_shared(tmp, pch);
+    ZASSERT(guarded);
+    ZEXPECT(!guarded->record.unheld);
+};
+
+ZEST_CASE(LocalsOutliveIt) {
+    // helper has internal linkage, and only the headers the PCH holds name
+    // it: the unit's manifest links them once the shared header's index is
+    // dropped.
+    TempDir tmp;
+    tmp.touch("shared.hxx", "#pragma once\n#include \"call.h\"\n");
+    tmp.touch("helper.h", "#pragma once\nstatic int helper() { return 1; }\n");
+    tmp.touch("call.h",
+              "#pragma once\n#include \"helper.h\"\ninline int call() { return helper(); }\n");
+    tmp.touch("main.cpp", "#include \"call.h\"\nint use() { return call(); }\n");
+    auto pch = tmp.path("shared.pch");
+    std::string own;
+    auto shared = build_shared(tmp, pch, &own);
+    ZASSERT(shared);
+    auto over = index_over(tmp, pch, &*shared);
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    ZASSERT(f.merge(own));
+    ZASSERT(f.merge(over));
+    auto header = f.project.file_table.intern(Spelling::absolute(tmp.path("shared.hxx")));
+    auto unit = f.project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+    auto& headers = f.project.shared_headers;
+    headers.headers.push_back({.file = header, .request = {}});
+    headers.files.insert(header);
+    headers.units[unit] = 0;
+    f.project.release_shared_headers();
+    f.save();
+    auto manifest = f.project.index.manifest(unit);
+    ZASSERT(manifest);
+    ZEXPECT(!manifest->shared_locals.empty());
+};
+
 ZEST_CASE(GuessesUnderForcedInclude) {
     // The command forces a header in, which no file of the unit includes.
     TempDir tmp;

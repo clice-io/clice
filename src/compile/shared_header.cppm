@@ -152,6 +152,11 @@ struct SharedHeaderRecord {
     /// a unit including the headers would have looked there too.
     std::vector<std::string> absent;
 
+    /// A file the shared header includes is no header the PCH holds, its
+    /// guard inactive where its build read it: a unit including the file
+    /// would parse it again, so none loads the PCH.
+    bool unheld = false;
+
     friend bool operator==(const SharedHeaderRecord&, const SharedHeaderRecord&) = default;
 };
 

@@ -200,6 +200,14 @@ public:
         }
         ranges::sort(record.initial, {}, &MacroState::name);
         record.absent = unit.absent();
+        record.unheld = ranges::any_of(stack.front().includes, [&](auto& include) {
+            auto index = include.held;
+            if(index == unresolved) {
+                auto it = held.find(&file_entries[include.file].getFileEntry());
+                index = it == held.end() ? none : it->second;
+            }
+            return index == none || kept[index] == none;
+        });
     }
 
 private:
