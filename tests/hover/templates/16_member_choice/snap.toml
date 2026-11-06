@@ -1,0 +1,59 @@
+[answers.dominance]
+wrong = "VA<T> is a virtual base of both bases, so VB<T>::type hides VA<T>::type: the card should show VB's type"
+hover = {}
+
+[answers.explicit_arguments.hover]
+markdown = '''
+**field** `small` · struct `Small`
+
+```cpp
+int small
+```
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "return rows.template pick<int>().⟦small⟧;"
+
+[answers.const_object.hover]
+markdown = '''
+**field** `large` · struct `Large`
+
+```cpp
+int large
+```
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "return getter.get(1).⟦large⟧;"
+
+[answers.array_decay.hover]
+markdown = '''
+**field** `large` · struct `Large`
+
+```cpp
+int large
+```
+**Offset:** 0 bytes
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "return Decay<T>::take(a).⟦large⟧;"
+
+[answers.same_alias.hover]
+markdown = '''
+**type** `type` · struct `Named<T>`
+
+```cpp
+using type = Shared
+```
+```cpp
+struct Shared {
+  int shared;
+}
+```
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "typename Both::⟦type⟧ value;"

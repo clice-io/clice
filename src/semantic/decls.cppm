@@ -44,6 +44,20 @@ const clang::NamespaceDecl* outermost_namespace(const clang::Decl* decl);
 /// Check whether the decl is an implicit template instantiation.
 bool is_implicit_instantiation(const clang::NamedDecl* decl);
 
+/// Whether a declaration of the class or variable template specialization
+/// `spec` explicitly specializes it. An explicit specialization named
+/// before it is declared keeps that first, undeclared node as its
+/// canonical declaration.
+template <typename Spec>
+bool explicitly_specialized(const Spec* spec) {
+    for(auto* redecl: spec->redecls()) {
+        if(llvm::cast<Spec>(redecl)->getSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// Check whether the decl heads a template-instantiation subtree: an
 /// implicit instantiation, or the specialization an explicit instantiation
 /// directive creates. Everything instantiated reuses the pattern's source

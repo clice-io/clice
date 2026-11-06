@@ -49,6 +49,7 @@ import {
     type Refused,
     type Renameable,
     type Renamed,
+    type Resolution,
     type Popup,
     type Signatures,
     type Token,
@@ -862,6 +863,12 @@ export class Serve extends Client {
                     ...(notices.length === 0 ? {} : { notice: notices.join("\n") }),
                 };
             }),
+        );
+    }
+
+    protected fetchResolution(at: Anchor): Promise<Resolution> {
+        throw new Error(
+            `the server answers no template resolver request (asked about ${at.path}): the test declares paths: { inspect: why }`,
         );
     }
 

@@ -50,6 +50,7 @@ const REQUESTS = [
     "formatting",
     "prepareRename",
     "rename",
+    "templateResolver",
 ] as const;
 
 export type Requests = Pick<Client, (typeof REQUESTS)[number]>;

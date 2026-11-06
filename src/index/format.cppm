@@ -112,10 +112,13 @@ namespace clice::index {
 /// macros of the compiler and the command line; v55: a preamble's TU index
 /// carries no names, which completion reads from the files a compile loads;
 /// v56: the search index splits a name into words where digits follow a
-/// letter; v57: units find the variants of headers by identity, with the
-/// names below external scope each variant shares, and a unit loading a
-/// shared header's PCH uses what that header's index stores.
-constexpr inline std::uint32_t index_format_version = 57;
+/// letter; v57: the template resolver answers dependent names, calls and
+/// patterns as instantiation would, and a header records of a dependent
+/// call's overload set the candidates it sees on its own; v58: units find
+/// the variants of headers by identity, with the names below external scope
+/// each variant shares, and a unit loading a shared header's PCH uses what
+/// that header's index stores.
+constexpr inline std::uint32_t index_format_version = 58;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it, so one past it stops the

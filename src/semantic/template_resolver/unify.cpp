@@ -1,6 +1,6 @@
 module clice;
 
-import :semantic.unifier;
+import :semantic.template_resolver.deduction;
 
 namespace clice::types {
 
@@ -108,75 +108,23 @@ bool template_compatible(const clang::TemplateTemplateParmDecl* TTP, clang::Temp
     return kinds_match(std::min(params->size(), candidate->size()));
 }
 
-/// Indices of the deduction-depth parameter packs referenced inside an
-/// expansion pattern; a zero-length expansion must still bind them (to the
-/// empty pack) so cardinality conflicts with other occurrences show up.
-struct PackIndexFinder : clang::RecursiveASTVisitor<PackIndexFinder> {
-    unsigned depth;
-    llvm::SmallVector<unsigned, 2> indices;
-
-    explicit PackIndexFinder(unsigned depth) : depth(depth) {}
-
-    bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
-        if(T->isParameterPack() && T->getDepth() == depth) {
-            indices.push_back(T->getIndex());
-        }
-        return true;
-    }
-
-    bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
-        if(auto NTTP = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(expr->getDecl());
-           NTTP && NTTP->isParameterPack() && NTTP->getDepth() == depth) {
-            indices.push_back(NTTP->getIndex());
-        }
-        return true;
-    }
-
-    bool TraverseTemplateName(clang::TemplateName name) {
-        if(auto TTP =
-               llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(name.getAsTemplateDecl());
-           TTP && TTP->isParameterPack() && TTP->getDepth() == depth) {
-            indices.push_back(TTP->getIndex());
-        }
-        return RecursiveASTVisitor::TraverseTemplateName(name);
-    }
-
-    void traverse(const clang::TemplateArgument& argument) {
-        switch(argument.getKind()) {
-            case clang::TemplateArgument::Type: {
-                TraverseType(argument.getAsType());
-                break;
-            }
-            case clang::TemplateArgument::Expression: {
-                TraverseStmt(argument.getAsExpr());
-                break;
-            }
-            case clang::TemplateArgument::Template:
-            case clang::TemplateArgument::TemplateExpansion: {
-                TraverseTemplateName(argument.getAsTemplateOrTemplatePattern());
-                break;
-            }
-            default: {
-                break;
-            }
-        }
-    }
-};
-
 /// One unification of a pattern list against an argument list, recording
 /// what each parameter at `depth` binds.
 class Unifier {
 public:
     using TemplateArguments = llvm::ArrayRef<clang::TemplateArgument>;
 
-    /// `open` are value arguments that may hold any value — defaults that
-    /// do not fold: a value pattern meeting one is undecided. Any other
-    /// argument whose value is not known matches no value a pattern fixes.
+    /// What the match leaves undecided is as DeductionOptions says, `open`
+    /// its unfolded defaults; unless `ordering`: the arguments are then
+    /// another pattern's, as partial ordering matches them, whose
+    /// parameters stand for unique types and values — two of them are
+    /// never one type, and one matches no value a pattern fixes.
     explicit Unifier(clang::ASTContext& context,
                      unsigned depth,
                      unsigned size,
-                     llvm::ArrayRef<const clang::Expr*> open = {}) :
-        context(context), depth(depth), bindings(size), open(open) {}
+                     llvm::ArrayRef<const clang::Expr*> open,
+                     bool ordering) :
+        context(context), depth(depth), bindings(size), open(open), ordering(ordering) {}
 
     /// Unify `patterns` (a partial specialization's argument pattern or a
     /// primary template's injected arguments) against `arguments`. On success,
@@ -201,10 +149,10 @@ public:
         return deferred_checks;
     }
 
-    /// Whether a value pattern met an open argument: the match then holds
-    /// or not once its value is known.
+    /// Whether the match holds for some of what the arguments' parameters
+    /// may stand for only.
     bool undecided() const {
-        return undecided_values;
+        return undecided_match;
     }
 
 private:
@@ -234,8 +182,9 @@ private:
     unsigned depth;
     llvm::SmallVector<clang::TemplateArgument, 4> bindings;
     llvm::ArrayRef<const clang::Expr*> open;
+    bool ordering;
     llvm::SmallVector<Deferred, 1> deferred_checks;
-    bool undecided_values = false;
+    bool undecided_match = false;
 
     /// Element-wise matching state for a structured pack expansion pattern:
     /// while `expanding`, pack parameters accumulate one element per matched
@@ -257,6 +206,316 @@ const clang::NonTypeTemplateParmDecl* referenced_nttp(const clang::Expr* expr) {
         return llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(DRE->getDecl());
     }
     return nullptr;
+}
+
+llvm::SmallVector<PackParameter, 2> packs_in(const clang::TemplateArgument& pattern) {
+    struct PackFinder : clang::RecursiveASTVisitor<PackFinder> {
+        llvm::SmallVector<PackParameter, 2> packs;
+
+        void add(const clang::NamedDecl* decl, unsigned depth, unsigned index) {
+            if(ranges::none_of(packs, [&](const PackParameter& pack) {
+                   return pack.decl == decl && pack.depth == depth && pack.index == index;
+               })) {
+                packs.push_back({.decl = decl, .depth = depth, .index = index});
+            }
+        }
+
+        bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
+            if(T->isParameterPack()) {
+                add(T->getDecl(), T->getDepth(), T->getIndex());
+            }
+            return true;
+        }
+
+        bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
+            if(auto NTTP = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(expr->getDecl());
+               NTTP && NTTP->isParameterPack()) {
+                add(NTTP, NTTP->getDepth(), NTTP->getIndex());
+            }
+            return true;
+        }
+
+        bool TraverseTemplateName(clang::TemplateName name) {
+            if(auto TTP = llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(
+                   name.getAsTemplateDecl());
+               TTP && TTP->isParameterPack()) {
+                add(TTP, TTP->getDepth(), TTP->getIndex());
+            }
+            return RecursiveASTVisitor::TraverseTemplateName(name);
+        }
+    } finder;
+
+    finder.TraverseTemplateArgument(pattern);
+    return std::move(finder.packs);
+}
+
+namespace {
+
+bool types_may_match(clang::ASTContext& context, clang::QualType lhs, clang::QualType rhs);
+
+bool arguments_may_match(clang::ASTContext& context,
+                         const clang::TemplateArgument& lhs,
+                         const clang::TemplateArgument& rhs) {
+    using Kind = clang::TemplateArgument;
+    auto open = [](const clang::TemplateArgument& argument) {
+        switch(argument.getKind()) {
+            case Kind::Expression: return argument.getAsExpr()->isValueDependent();
+            case Kind::Template: return argument.getAsTemplate().isDependent();
+            default: return false;
+        }
+    };
+    if(open(lhs) || open(rhs)) {
+        return true;
+    }
+    /// A template-id holds its value arguments as written, a specialization
+    /// converted.
+    auto value = [&](const clang::TemplateArgument& argument) -> std::optional<llvm::APSInt> {
+        if(argument.getKind() == Kind::Integral) {
+            return argument.getAsIntegral();
+        }
+        if(argument.getKind() == Kind::Expression) {
+            return argument.getAsExpr()->getIntegerConstantExpr(context);
+        }
+        return std::nullopt;
+    };
+    if(auto left = value(lhs), right = value(rhs); left && right) {
+        return llvm::APSInt::isSameValue(*left, *right);
+    }
+    if(lhs.getKind() == Kind::Type && rhs.getKind() == Kind::Type) {
+        return types_may_match(context, lhs.getAsType(), rhs.getAsType());
+    }
+    return context.isSameTemplateArgument(lhs, rhs);
+}
+
+bool types_may_match(clang::ASTContext& context, clang::QualType lhs, clang::QualType rhs) {
+    lhs = lhs.getCanonicalType();
+    rhs = rhs.getCanonicalType();
+    if(!lhs->isDependentType() && !rhs->isDependentType()) {
+        return context.hasSameType(lhs, rhs);
+    }
+    if(llvm::isa<clang::TemplateTypeParmType>(lhs) || llvm::isa<clang::TemplateTypeParmType>(rhs)) {
+        return true;
+    }
+    /// A template-id whose template waits for instantiation (`TT<int>`,
+    /// `T::template rebind<U>`) may become anything.
+    auto open_template = [](clang::QualType type) {
+        auto* TST = type->getAs<clang::TemplateSpecializationType>();
+        return TST && TST->getTemplateName().isDependent();
+    };
+    if(open_template(lhs) || open_template(rhs)) {
+        return true;
+    }
+    if(lhs->getTypeClass() != rhs->getTypeClass()) {
+        /// An rvalue reference to what may turn out an lvalue reference
+        /// collapses to one (`T&&` with `T = int&`).
+        if(lhs->isReferenceType() && rhs->isReferenceType()) {
+            auto* rvalue =
+                llvm::isa<clang::RValueReferenceType>(lhs) ? lhs.getTypePtr() : rhs.getTypePtr();
+            return rvalue->getPointeeType()->isDependentType() &&
+                   types_may_match(context, lhs->getPointeeType(), rhs->getPointeeType());
+        }
+        /// A bound waiting for instantiation may become any other.
+        if((llvm::isa<clang::DependentSizedArrayType>(lhs) && rhs->isConstantArrayType()) ||
+           (lhs->isConstantArrayType() && llvm::isa<clang::DependentSizedArrayType>(rhs))) {
+            return types_may_match(context,
+                                   context.getAsArrayType(lhs)->getElementType(),
+                                   context.getAsArrayType(rhs)->getElementType());
+        }
+        /// A template-id and the record of a specialization of it compare
+        /// by their arguments.
+        clang::TemplateName lhs_name, rhs_name;
+        llvm::ArrayRef<clang::TemplateArgument> lhs_arguments, rhs_arguments;
+        auto template_id = [](clang::QualType type,
+                              clang::TemplateName& name,
+                              llvm::ArrayRef<clang::TemplateArgument>& arguments) {
+            if(auto* TST = type->getAs<clang::TemplateSpecializationType>()) {
+                name = TST->getTemplateName();
+                arguments = TST->template_arguments();
+                return true;
+            }
+            if(auto* CTSD = llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(
+                   type->getAsCXXRecordDecl())) {
+                name = clang::TemplateName(CTSD->getSpecializedTemplate());
+                arguments = CTSD->getTemplateArgs().asArray();
+                return true;
+            }
+            return false;
+        };
+        if(template_id(lhs, lhs_name, lhs_arguments) && template_id(rhs, rhs_name, rhs_arguments)) {
+            return context.hasSameTemplateName(lhs_name, rhs_name) &&
+                   types::may_match(context, lhs_arguments, rhs_arguments);
+        }
+        /// A dependent form whose shape instantiation does not fix
+        /// (`typename T::type`, `decltype(e)`, `__typeof__(e)`) may become
+        /// anything.
+        auto shaped = llvm::IsaPred<clang::PointerType,
+                                    clang::ReferenceType,
+                                    clang::MemberPointerType,
+                                    clang::ArrayType,
+                                    clang::FunctionType,
+                                    clang::TemplateSpecializationType,
+                                    clang::TagType,
+                                    clang::InjectedClassNameType,
+                                    clang::ComplexType,
+                                    clang::VectorType,
+                                    clang::AtomicType,
+                                    clang::BitIntType>;
+        auto opaque = [&](clang::QualType type) {
+            return type->isDependentType() && !shaped(type.getTypePtr());
+        };
+        return opaque(lhs) || opaque(rhs);
+    }
+    switch(lhs->getTypeClass()) {
+        case clang::Type::Pointer:
+            return types_may_match(context, lhs->getPointeeType(), rhs->getPointeeType());
+        case clang::Type::LValueReference:
+        case clang::Type::RValueReference:
+            return types_may_match(context,
+                                   lhs->getAs<clang::ReferenceType>()->getPointeeType(),
+                                   rhs->getAs<clang::ReferenceType>()->getPointeeType());
+        case clang::Type::ConstantArray:
+        case clang::Type::DependentSizedArray:
+        case clang::Type::IncompleteArray:
+            return types_may_match(context,
+                                   context.getAsArrayType(lhs)->getElementType(),
+                                   context.getAsArrayType(rhs)->getElementType());
+        case clang::Type::TemplateSpecialization: {
+            auto* left = llvm::cast<clang::TemplateSpecializationType>(lhs);
+            auto* right = llvm::cast<clang::TemplateSpecializationType>(rhs);
+            return context.hasSameTemplateName(left->getTemplateName(), right->getTemplateName()) &&
+                   types::may_match(context,
+                                    left->template_arguments(),
+                                    right->template_arguments());
+        }
+        default: return true;
+    }
+}
+
+}  // namespace
+
+bool may_match(clang::ASTContext& context,
+               llvm::ArrayRef<clang::TemplateArgument> lhs,
+               llvm::ArrayRef<clang::TemplateArgument> rhs) {
+    auto flatten = [](llvm::ArrayRef<clang::TemplateArgument> arguments) {
+        llvm::SmallVector<clang::TemplateArgument, 4> flat;
+        for(auto& argument: arguments) {
+            if(argument.getKind() == clang::TemplateArgument::Pack) {
+                flat.append(argument.pack_begin(), argument.pack_end());
+            } else {
+                flat.push_back(argument);
+            }
+        }
+        return flat;
+    };
+    auto left = flatten(lhs);
+    auto right = flatten(rhs);
+    for(auto [l, r]: views::zip(left, right)) {
+        if(l.isPackExpansion() || r.isPackExpansion()) {
+            return true;
+        }
+        if(!arguments_may_match(context, l, r)) {
+            return false;
+        }
+    }
+    /// The shorter list may still take defaults.
+    return true;
+}
+
+namespace {
+
+bool holds(clang::QualType type, const clang::Type* parameter);
+
+/// Whether the canonical `type` is built on the canonical template
+/// parameter `parameter`: it is a pointer, reference, array, function or
+/// member pointer on what holds it, or a class template's specialization
+/// with it among its arguments. Another template's specialization may name
+/// an alias template (`TT<K>` with `TT` bound to one), and a dependent name
+/// anything.
+bool encloses(const clang::Type* type, const clang::Type* parameter) {
+    switch(type->getTypeClass()) {
+        case clang::Type::Pointer:
+        case clang::Type::LValueReference:
+        case clang::Type::RValueReference: {
+            return holds(type->getPointeeType(), parameter);
+        }
+        case clang::Type::ConstantArray:
+        case clang::Type::IncompleteArray:
+        case clang::Type::DependentSizedArray: {
+            return holds(llvm::cast<clang::ArrayType>(type)->getElementType(), parameter);
+        }
+        case clang::Type::MemberPointer: {
+            auto* pointer = llvm::cast<clang::MemberPointerType>(type);
+            auto qualifier = pointer->getQualifier();
+            return holds(pointer->getPointeeType(), parameter) ||
+                   (qualifier.getKind() == clang::NestedNameSpecifier::Kind::Type &&
+                    holds(clang::QualType(qualifier.getAsType(), 0), parameter));
+        }
+        case clang::Type::FunctionProto: {
+            auto* function = llvm::cast<clang::FunctionProtoType>(type);
+            return holds(function->getReturnType(), parameter) ||
+                   ranges::any_of(function->getParamTypes(),
+                                  [&](clang::QualType type) { return holds(type, parameter); });
+        }
+        case clang::Type::TemplateSpecialization: {
+            auto* specialization = llvm::cast<clang::TemplateSpecializationType>(type);
+            if(!llvm::isa_and_present<clang::ClassTemplateDecl>(
+                   specialization->getTemplateName().getAsTemplateDecl())) {
+                return false;
+            }
+            auto held = [&](const clang::TemplateArgument& argument) {
+                return argument.getKind() == clang::TemplateArgument::Type &&
+                       holds(argument.getAsType(), parameter);
+            };
+            return ranges::any_of(specialization->template_arguments(),
+                                  [&](const clang::TemplateArgument& argument) {
+                                      return argument.getKind() == clang::TemplateArgument::Pack
+                                                 ? ranges::any_of(argument.pack_elements(), held)
+                                                 : held(argument);
+                                  });
+        }
+        default: return false;
+    }
+}
+
+/// Whether `type` is `parameter`, qualified or not, or is built on it.
+bool holds(clang::QualType type, const clang::Type* parameter) {
+    auto* canonical = type.getCanonicalType().getTypePtr();
+    return canonical == parameter || encloses(canonical, parameter);
+}
+
+/// Whether two arguments for one parameter may turn out the same.
+bool may_be_same(clang::ASTContext& context,
+                 const clang::TemplateArgument& lhs,
+                 const clang::TemplateArgument& rhs) {
+    if(lhs.getKind() == clang::TemplateArgument::Type &&
+       rhs.getKind() == clang::TemplateArgument::Type) {
+        return same_type(context, lhs.getAsType(), rhs.getAsType()) != false;
+    }
+    return arguments_may_match(context, lhs, rhs);
+}
+
+}  // namespace
+
+std::optional<bool> same_type(clang::ASTContext& context,
+                              clang::QualType lhs,
+                              clang::QualType rhs) {
+    if(context.hasSameType(lhs, rhs)) {
+        return true;
+    }
+    auto built_on = [](clang::QualType outer, clang::QualType inner) {
+        auto* parameter = inner.getCanonicalType().getTypePtr();
+        auto* type = outer.getCanonicalType().getTypePtr();
+        /// A reference to the parameter itself collapses to it when the
+        /// parameter turns out a reference (`K&` with `K = int&`).
+        if(llvm::isa<clang::ReferenceType>(type)) {
+            type = type->getPointeeType().getCanonicalType().getTypePtr();
+        }
+        return llvm::isa<clang::TemplateTypeParmType>(parameter) && encloses(type, parameter);
+    };
+    if(!types_may_match(context, lhs, rhs) || built_on(lhs, rhs) || built_on(rhs, lhs)) {
+        return false;
+    }
+    return std::nullopt;
 }
 
 bool Unifier::equivalent(const clang::TemplateArgument& lhs,
@@ -289,7 +548,11 @@ bool Unifier::bind(unsigned index, const clang::TemplateArgument& argument) {
     }
 
     if(!equivalent(existing, argument)) {
-        return false;
+        if(ordering || !may_be_same(context, existing, argument)) {
+            return false;
+        }
+        undecided_match = true;
+        return true;
     }
 
     /// Same argument bound twice; keep the more sugared spelling.
@@ -690,8 +953,9 @@ bool Unifier::unify(const clang::TemplateArgument& pattern,
             if(argument.getKind() == clang::TemplateArgument::Expression) {
                 auto expr = argument.getAsExpr();
                 if(expr->isValueDependent()) {
-                    bool undecided = ranges::contains(open, expr);
-                    undecided_values |= undecided;
+                    bool undecided = !ordering && (pattern.getIntegralType()->isBooleanType() ||
+                                                   ranges::contains(open, expr));
+                    undecided_match |= undecided;
                     return undecided;
                 }
                 if(context.hasSameType(pattern.getIntegralType(), expr->getType())) {
@@ -806,10 +1070,9 @@ bool Unifier::unify(TemplateArguments patterns, TemplateArguments arguments) {
             /// non-zero length, empty groups belong to packs guarded away by
             /// nested expansions and stay unbound.
             if(length == 0) {
-                PackIndexFinder finder(depth);
-                finder.traverse(inner);
-                for(auto index: finder.indices) {
-                    if(!bind(index, clang::TemplateArgument::CreatePackCopy(context, {}))) {
+                for(auto& pack: packs_in(inner)) {
+                    if(pack.depth == depth &&
+                       !bind(pack.index, clang::TemplateArgument::CreatePackCopy(context, {}))) {
                         return false;
                     }
                 }
@@ -838,188 +1101,6 @@ bool Unifier::unify(TemplateArguments patterns, TemplateArguments arguments) {
 }
 
 namespace {
-
-llvm::APSInt truth(bool value) {
-    return llvm::APSInt(llvm::APInt(1, value ? 1 : 0), /*isUnsigned=*/true);
-}
-
-struct Folder {
-    clang::ASTContext& context;
-    llvm::function_ref<std::optional<llvm::APSInt>(const clang::Expr*)> value_of;
-
-    /// A node whose type is still dependent (`Config<T>::k + 1`) keeps the
-    /// width its operands gave it.
-    std::optional<llvm::APSInt> typed(const llvm::APSInt& value, clang::QualType type) {
-        return type->isDependentType() ? value : convert_integral(context, value, type);
-    }
-
-    /// Sema promotes the operands of an arithmetic node whose type is known;
-    /// under a still-dependent one (`-Config<T>::n`) the folding applies the
-    /// integral promotion itself.
-    llvm::APSInt promoted(const llvm::APSInt& value, clang::QualType type) {
-        auto width = context.getIntWidth(context.IntTy);
-        if(!type->isDependentType() || value.getBitWidth() >= width) {
-            return value;
-        }
-        return llvm::APSInt(value.extend(width), /*isUnsigned=*/false);
-    }
-
-    std::optional<llvm::APSInt> fold(const clang::Expr* expr) {
-        if(!expr->isValueDependent()) {
-            return expr->getIntegerConstantExpr(context);
-        }
-
-        expr = expr->IgnoreParens();
-        if(auto* cast = llvm::dyn_cast<clang::CastExpr>(expr)) {
-            auto value = fold(cast->getSubExpr());
-            return value ? convert_integral(context, *value, cast->getType()) : std::nullopt;
-        }
-
-        if(auto* unary = llvm::dyn_cast<clang::UnaryOperator>(expr)) {
-            auto value = fold(unary->getSubExpr());
-            if(!value) {
-                return std::nullopt;
-            }
-            *value = promoted(*value, unary->getType());
-            switch(unary->getOpcode()) {
-                case clang::UO_Plus: break;
-                case clang::UO_Minus: {
-                    if(value->isSigned() && value->isMinSignedValue()) {
-                        return std::nullopt;
-                    }
-                    *value = -*value;
-                    break;
-                }
-                case clang::UO_Not: *value = ~*value; break;
-                case clang::UO_LNot: *value = truth(value->isZero()); break;
-                default: return std::nullopt;
-            }
-            return typed(*value, unary->getType());
-        }
-
-        if(auto* binary = llvm::dyn_cast<clang::BinaryOperator>(expr)) {
-            return fold_binary(binary);
-        }
-
-        if(auto* conditional = llvm::dyn_cast<clang::ConditionalOperator>(expr)) {
-            auto condition = fold(conditional->getCond());
-            if(!condition) {
-                return std::nullopt;
-            }
-            auto* chosen =
-                condition->isZero() ? conditional->getFalseExpr() : conditional->getTrueExpr();
-            auto value = fold(chosen);
-            if(!value) {
-                return std::nullopt;
-            }
-            auto type = conditional->getType();
-            if(!type->isDependentType()) {
-                return typed(*value, type);
-            }
-
-            /// Under a still-dependent type Sema has not brought the branches
-            /// to their common type; the other branch must already agree.
-            auto other = fold(chosen == conditional->getTrueExpr() ? conditional->getFalseExpr()
-                                                                   : conditional->getTrueExpr());
-            if(!other) {
-                return std::nullopt;
-            }
-            auto result = promoted(*value, type);
-            auto rest = promoted(*other, type);
-            if(result.getBitWidth() != rest.getBitWidth() ||
-               result.isUnsigned() != rest.isUnsigned()) {
-                return std::nullopt;
-            }
-            return result;
-        }
-
-        auto value = value_of(expr);
-        return value ? typed(*value, expr->getType()) : std::nullopt;
-    }
-
-    std::optional<llvm::APSInt> fold_binary(const clang::BinaryOperator* binary) {
-        auto op = binary->getOpcode();
-        auto lhs = fold(binary->getLHS());
-        auto rhs = fold(binary->getRHS());
-
-        /// An operand that does not fold may stand for a substitution
-        /// failure, which leaves the whole expression false: `false` decides
-        /// `&&` regardless, `true` decides `||` only beside a known operand.
-        if(op == clang::BO_LAnd && ((lhs && lhs->isZero()) || (rhs && rhs->isZero()))) {
-            return typed(truth(false), binary->getType());
-        }
-        if(!lhs || !rhs) {
-            return std::nullopt;
-        }
-        if(op == clang::BO_LAnd || op == clang::BO_LOr) {
-            return typed(truth(op == clang::BO_LAnd ? lhs->getBoolValue() && rhs->getBoolValue()
-                                                    : lhs->getBoolValue() || rhs->getBoolValue()),
-                         binary->getType());
-        }
-        lhs = promoted(*lhs, binary->getType());
-        rhs = promoted(*rhs, binary->getType());
-
-        if(op == clang::BO_Shl || op == clang::BO_Shr) {
-            if(rhs->isNegative() || rhs->uge(lhs->getBitWidth())) {
-                return std::nullopt;
-            }
-            auto amount = static_cast<unsigned>(rhs->getZExtValue());
-            auto result = op == clang::BO_Shl ? *lhs << amount : *lhs >> amount;
-            return typed(result, binary->getType());
-        }
-
-        /// Sema has already brought both operands to their common type; a
-        /// mismatch means an operand we folded through an unmodeled path.
-        if(lhs->getBitWidth() != rhs->getBitWidth() || lhs->isUnsigned() != rhs->isUnsigned()) {
-            return std::nullopt;
-        }
-
-        /// Signed overflow leaves the expression no constant at all.
-        bool overflow = false;
-        bool is_signed = lhs->isSigned();
-        auto signed_result = [](llvm::APInt value) {
-            return llvm::APSInt(std::move(value), /*isUnsigned=*/false);
-        };
-        llvm::APSInt result;
-        switch(op) {
-            case clang::BO_Mul: {
-                result = is_signed ? signed_result(lhs->smul_ov(*rhs, overflow)) : *lhs * *rhs;
-                break;
-            }
-            case clang::BO_Div:
-            case clang::BO_Rem: {
-                if(rhs->isZero()) {
-                    return std::nullopt;
-                }
-                overflow = is_signed && lhs->isMinSignedValue() && rhs->isAllOnes();
-                result = op == clang::BO_Div ? *lhs / *rhs : *lhs % *rhs;
-                break;
-            }
-            case clang::BO_Add: {
-                result = is_signed ? signed_result(lhs->sadd_ov(*rhs, overflow)) : *lhs + *rhs;
-                break;
-            }
-            case clang::BO_Sub: {
-                result = is_signed ? signed_result(lhs->ssub_ov(*rhs, overflow)) : *lhs - *rhs;
-                break;
-            }
-            case clang::BO_And: result = *lhs & *rhs; break;
-            case clang::BO_Xor: result = *lhs ^ *rhs; break;
-            case clang::BO_Or: result = *lhs | *rhs; break;
-            case clang::BO_LT: result = truth(*lhs < *rhs); break;
-            case clang::BO_GT: result = truth(*lhs > *rhs); break;
-            case clang::BO_LE: result = truth(*lhs <= *rhs); break;
-            case clang::BO_GE: result = truth(*lhs >= *rhs); break;
-            case clang::BO_EQ: result = truth(*lhs == *rhs); break;
-            case clang::BO_NE: result = truth(*lhs != *rhs); break;
-            default: return std::nullopt;
-        }
-        if(overflow) {
-            return std::nullopt;
-        }
-        return typed(result, binary->getType());
-    }
-};
 
 /// The value of a converted argument, when it is one.
 std::optional<llvm::APSInt> constant_value(clang::ASTContext& context,
@@ -1097,108 +1178,6 @@ bool same_expression(clang::ASTContext& context,
     return false;
 }
 
-/// The category a type's shape puts it in, for the traits it decides.
-enum class Category : std::uint8_t {
-    /// A template parameter or a dependent name: it may become anything.
-    Unknown,
-    Void,
-    NullPointer,
-    Integral,
-    Floating,
-    Enum,
-    Class,
-    Union,
-    Pointer,
-    MemberPointer,
-    LValueReference,
-    RValueReference,
-    Array,
-    Function,
-};
-
-Category category_of(clang::QualType type) {
-    const auto* canonical = type.getCanonicalType().getTypePtr();
-    switch(canonical->getTypeClass()) {
-        case clang::Type::Builtin: {
-            if(canonical->isDependentType()) {
-                return Category::Unknown;
-            }
-            if(canonical->isVoidType()) {
-                return Category::Void;
-            }
-            if(canonical->isNullPtrType()) {
-                return Category::NullPointer;
-            }
-            if(canonical->isIntegerType()) {
-                return Category::Integral;
-            }
-            return canonical->isFloatingType() ? Category::Floating : Category::Unknown;
-        }
-        case clang::Type::Pointer: return Category::Pointer;
-        case clang::Type::MemberPointer: return Category::MemberPointer;
-        case clang::Type::LValueReference: return Category::LValueReference;
-        case clang::Type::RValueReference: return Category::RValueReference;
-        case clang::Type::ConstantArray:
-        case clang::Type::IncompleteArray:
-        case clang::Type::DependentSizedArray: return Category::Array;
-        case clang::Type::FunctionProto:
-        case clang::Type::FunctionNoProto: return Category::Function;
-        case clang::Type::Enum: return Category::Enum;
-        case clang::Type::Record:
-        case clang::Type::InjectedClassName: {
-            auto* record = canonical->getAsRecordDecl();
-            return record && record->isUnion() ? Category::Union : Category::Class;
-        }
-        case clang::Type::TemplateSpecialization: {
-            auto* specialization = llvm::cast<clang::TemplateSpecializationType>(canonical);
-            auto* pattern = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
-                specialization->getTemplateName().getAsTemplateDecl());
-            if(!pattern) {
-                return Category::Unknown;
-            }
-            return pattern->getTemplatedDecl()->isUnion() ? Category::Union : Category::Class;
-        }
-        default: return Category::Unknown;
-    }
-}
-
-/// What the standard type-category trait `name` (`is_object`, without
-/// `_v`) says of a type of `category`; none for another trait or an unknown
-/// category.
-std::optional<bool> category_trait(llvm::StringRef name, Category category) {
-    if(category == Category::Unknown) {
-        return std::nullopt;
-    }
-    bool arithmetic = category == Category::Integral || category == Category::Floating;
-    bool fundamental =
-        arithmetic || category == Category::Void || category == Category::NullPointer;
-    bool reference = category == Category::LValueReference || category == Category::RValueReference;
-    return llvm::StringSwitch<std::optional<bool>>(name)
-        .Case("is_void", category == Category::Void)
-        .Case("is_null_pointer", category == Category::NullPointer)
-        .Case("is_integral", category == Category::Integral)
-        .Case("is_floating_point", category == Category::Floating)
-        .Case("is_array", category == Category::Array)
-        .Case("is_enum", category == Category::Enum)
-        .Case("is_union", category == Category::Union)
-        .Case("is_class", category == Category::Class)
-        .Case("is_function", category == Category::Function)
-        .Case("is_pointer", category == Category::Pointer)
-        .Case("is_lvalue_reference", category == Category::LValueReference)
-        .Case("is_rvalue_reference", category == Category::RValueReference)
-        .Case("is_member_pointer", category == Category::MemberPointer)
-        .Case("is_reference", reference)
-        .Case("is_arithmetic", arithmetic)
-        .Case("is_fundamental", fundamental)
-        .Case("is_compound", !fundamental)
-        .Case("is_object",
-              !reference && category != Category::Void && category != Category::Function)
-        .Case("is_scalar",
-              arithmetic || category == Category::Enum || category == Category::Pointer ||
-                  category == Category::MemberPointer || category == Category::NullPointer)
-        .Default(std::nullopt);
-}
-
 /// Whether a constraint is satisfied. Its top-level `&&` and `||`
 /// (through parentheses) join separately checked atomic constraints, so a
 /// satisfied disjunct decides a disjunction and an unsatisfied conjunct a
@@ -1227,92 +1206,13 @@ std::optional<bool>
 
 }  // namespace
 
-std::optional<bool> type_trait(const clang::Expr* expr,
-                               llvm::function_ref<clang::QualType(clang::QualType)> bound) {
-    expr = expr->IgnoreParenImpCasts();
-    auto standard = [](const clang::Decl* decl) {
-        return decl && decl->getDeclContext()->isStdNamespace();
-    };
-    auto single_type = [](llvm::ArrayRef<clang::TemplateArgumentLoc> arguments) {
-        return arguments.size() == 1 &&
-                       arguments.front().getArgument().getKind() == clang::TemplateArgument::Type
-                   ? arguments.front().getArgument().getAsType()
-                   : clang::QualType();
-    };
-
-    llvm::StringRef name;
-    clang::QualType operand;
-    if(auto* trait = llvm::dyn_cast<clang::TypeTraitExpr>(expr)) {
-        if(trait->getNumArgs() != 1) {
-            return std::nullopt;
-        }
-        /// The builtin is the trait's name after `__`: `__is_object`.
-        name = clang::getTraitSpelling(trait->getTrait());
-        name.consume_front("__");
-        operand = trait->getArg(0)->getType();
-    } else if(auto* lookup = llvm::dyn_cast<clang::UnresolvedLookupExpr>(expr)) {
-        if(lookup->getNumDecls() == 0 || !standard(*lookup->decls_begin())) {
-            return std::nullopt;
-        }
-        name = lookup->getName().getAsIdentifierInfo()
-                   ? lookup->getName().getAsIdentifierInfo()->getName()
-                   : llvm::StringRef();
-        if(!name.consume_back("_v")) {
-            return std::nullopt;
-        }
-        operand = single_type(lookup->template_arguments());
-    } else if(auto* member = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(expr)) {
-        auto qualifier = member->getQualifier();
-        if(member->getDeclName().getAsString() != "value" ||
-           qualifier.getKind() != clang::NestedNameSpecifier::Kind::Type) {
-            return std::nullopt;
-        }
-        auto* specialization = qualifier.getAsType()->getAs<clang::TemplateSpecializationType>();
-        auto* trait =
-            specialization ? specialization->getTemplateName().getAsTemplateDecl() : nullptr;
-        if(!standard(trait) || specialization->template_arguments().size() != 1 ||
-           specialization->template_arguments().front().getKind() !=
-               clang::TemplateArgument::Type) {
-            return std::nullopt;
-        }
-        name = trait->getName();
-        operand = specialization->template_arguments().front().getAsType();
-    }
-    if(operand.isNull()) {
-        return std::nullopt;
-    }
-    return category_trait(name, category_of(bound(operand)));
-}
-
-std::optional<llvm::APSInt> convert_integral(clang::ASTContext& context,
-                                             const llvm::APSInt& value,
-                                             clang::QualType type) {
-    if(type->isDependentType() || !type->isIntegralOrEnumerationType()) {
-        return std::nullopt;
-    }
-    auto width = context.getIntWidth(type);
-    if(type->isBooleanType()) {
-        return llvm::APSInt(llvm::APInt(width, value.getBoolValue() ? 1 : 0), /*isUnsigned=*/true);
-    }
-    auto result = value.extOrTrunc(width);
-    result.setIsUnsigned(type->isUnsignedIntegerOrEnumerationType());
-    return result;
-}
-
-std::optional<llvm::APSInt> evaluate_integral(
-    clang::ASTContext& context,
-    const clang::Expr* expr,
-    llvm::function_ref<std::optional<llvm::APSInt>(const clang::Expr*)> value_of) {
-    return Folder{.context = context, .value_of = value_of}.fold(expr);
-}
-
 Deduction deduce_arguments(clang::ASTContext& context,
                            clang::TemplateParameterList* params,
                            llvm::ArrayRef<clang::TemplateArgument> patterns,
                            llvm::ArrayRef<clang::TemplateArgument> arguments,
                            llvm::SmallVectorImpl<clang::TemplateArgument>& deduced,
-                           llvm::ArrayRef<const clang::Expr*> open) {
-    Unifier unifier(context, params->getDepth(), params->size(), open);
+                           const DeductionOptions& options) {
+    Unifier unifier(context, params->getDepth(), params->size(), options.open, false);
     if(!unifier.unify(patterns, arguments)) {
         return Deduction::Failed;
     }
@@ -1329,7 +1229,9 @@ Deduction deduce_arguments(clang::ASTContext& context,
             continue;
         }
 
-        return Deduction::Failed;
+        if(!options.partial) {
+            return Deduction::Failed;
+        }
     }
 
     /// A parameter of the list as what it deduced to.
@@ -1343,7 +1245,7 @@ Deduction deduce_arguments(clang::ASTContext& context,
         return deduced[parameter->getIndex()].getAsType();
     };
     auto value_of = [&](const clang::Expr* expr) -> std::optional<llvm::APSInt> {
-        if(auto trait = type_trait(expr, bound)) {
+        if(auto trait = type_trait(context, expr, bound)) {
             return llvm::APSInt(llvm::APInt(1, *trait ? 1 : 0), /*isUnsigned=*/true);
         }
         auto NTTP = referenced_nttp(expr);
@@ -1383,6 +1285,16 @@ Deduction deduce_arguments(clang::ASTContext& context,
     return deduction;
 }
 
+bool may_name(clang::ASTContext& context,
+              llvm::ArrayRef<clang::TemplateArgument> specialized,
+              llvm::ArrayRef<clang::TemplateArgument> arguments,
+              const DeductionOptions& options) {
+    /// The arguments of an explicit specialization name no parameter to
+    /// bind.
+    Unifier unifier(context, ~0u, 0, options.open, false);
+    return unifier.unify(specialized, arguments) && unifier.undecided();
+}
+
 namespace {
 
 /// Partial ordering via symmetric deduction: `left` is more specialized than
@@ -1394,7 +1306,7 @@ bool more_specialized(clang::ASTContext& context, Partial* left, Partial* right)
     /// pattern fixes.
     auto matches = [&](Partial* pattern, Partial* argument) {
         auto params = pattern->getTemplateParameters();
-        Unifier unifier(context, params->getDepth(), params->size());
+        Unifier unifier(context, params->getDepth(), params->size(), {}, /*ordering=*/true);
         return unifier.unify(pattern->getTemplateArgs().asArray(),
                              argument->getTemplateArgs().asArray()) &&
                !unifier.undecided();

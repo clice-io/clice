@@ -2,7 +2,7 @@ module clice:semantic.semantics;
 
 import :compile.compilation;
 import :compile.directive;
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :semantic.symbol;
 import :support.prelude;
 import :syntax.lexical_scan;

@@ -1,0 +1,35 @@
+[answers.non_type.completion]
+items = [
+    { label = "copy()", kind = "Method", detail = "Array<U, M>" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.pack.completion]
+items = [
+    { label = "again()", kind = "Method", detail = "Pack<Cs...>" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.qualified.completion]
+items = [
+    { label = "X", kind = "Class" },
+    { label = "f(U value)", kind = "Method", detail = "int" },
+]
+
+[answers.value_pack.completion]
+items = [
+    { label = "again()", kind = "Method", detail = "Seq<Ks...>" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.template_pack.completion]
+items = [
+    { label = "again()", kind = "Method", detail = "Kinds<Hs...>" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.qualified_pack.completion]
+items = [
+    { label = "view()", kind = "Method", detail = "Pack<const Ws...>" },
+    { label = "template", kind = "Keyword" },
+]

@@ -64,6 +64,103 @@ A<char*> instantiated_partial;
             class_template("A")->getTemplatedDecl()->getCanonicalDecl());
 };
 
+ZEST_CASE(UndeclaredDetectionPartial) {
+    add_focus("main.cpp", R"cpp(
+template <typename...> using void_t = void;
+template <typename T, typename = void> struct has_x { };
+template <typename T> struct has_x<T, void_t<typename T::x>> { };
+
+struct With { using x = int; };
+struct Without { };
+
+has_x<With>* detected_use;
+has_x<Without>* missing_use;
+)cpp");
+    ZASSERT(compile());
+
+    auto of = [&](llvm::StringRef name) -> clang::ClassTemplateSpecializationDecl* {
+        for(auto* spec: class_template("has_x")->specializations()) {
+            auto* record = spec->getTemplateArgs()[0].getAsType()->getAsCXXRecordDecl();
+            if(record && record->getName() == name) {
+                return spec;
+            }
+        }
+        return nullptr;
+    };
+    auto* detected = of("With");
+    auto* missing = of("Without");
+    ZASSERT((detected && missing));
+    ZASSERT(missing->getSpecializationKind() == clang::TSK_Undeclared);
+
+    /// Substituting `Without` into the partial's pattern fails: real
+    /// instantiation uses the primary, and so does the identity.
+    ZEXPECT(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(decls::normalize(detected)));
+    ZEXPECT(decls::normalize(missing) ==
+            class_template("has_x")->getTemplatedDecl()->getCanonicalDecl());
+};
+
+ZEST_CASE(UndeclaredDetectionThroughUsing) {
+    add_focus("main.cpp", R"cpp(
+template <typename...> using void_t = void;
+template <typename T, typename = void> struct has_x { };
+template <typename T> struct has_x<T, void_t<typename T::x>> { };
+
+struct Base {
+protected:
+    using x = int;
+};
+struct Exposed : Base {
+    using Base::x;
+};
+
+has_x<Exposed>* exposed_use;
+)cpp");
+    ZASSERT(compile());
+
+    clang::ClassTemplateSpecializationDecl* exposed = nullptr;
+    for(auto* spec: class_template("has_x")->specializations()) {
+        exposed = spec;
+    }
+    ZASSERT(exposed);
+    ZASSERT(exposed->getSpecializationKind() == clang::TSK_Undeclared);
+
+    /// The public using-declaration makes the protected alias usable from
+    /// outside: real instantiation takes the partial, and so does the
+    /// identity.
+    ZEXPECT(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(decls::normalize(exposed)));
+};
+
+ZEST_CASE(UndeclaredDetectionHiddenByUsing) {
+    add_focus("main.cpp", R"cpp(
+template <typename...> using void_t = void;
+template <typename T, typename = void> struct has_x { };
+template <typename T> struct has_x<T, void_t<typename T::x>> { };
+
+struct Base {
+    using x = int;
+};
+struct Hidden : Base {
+private:
+    using Base::x;
+};
+
+has_x<Hidden>* hidden_use;
+)cpp");
+    ZASSERT(compile());
+
+    clang::ClassTemplateSpecializationDecl* hidden = nullptr;
+    for(auto* spec: class_template("has_x")->specializations()) {
+        hidden = spec;
+    }
+    ZASSERT(hidden);
+    ZASSERT(hidden->getSpecializationKind() == clang::TSK_Undeclared);
+
+    /// The private using-declaration hides Base's public alias: real
+    /// instantiation uses the primary, and so does the identity.
+    ZEXPECT(decls::normalize(hidden) ==
+            class_template("has_x")->getTemplatedDecl()->getCanonicalDecl());
+};
+
 ZEST_CASE(AmbiguousPartialsPrimary) {
     add_focus("main.cpp", R"cpp(
 template <typename T, typename U> struct B { };

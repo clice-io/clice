@@ -13,7 +13,7 @@ import :semantic.decls;
 import :semantic.designators;
 import :semantic.display;
 import :semantic.identity;
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :semantic.semantics;
 import :semantic.symbol;
 import :semantic.types;
@@ -1563,7 +1563,7 @@ private:
             // resolver's filtered candidate set stands in; only a
             // unique candidate gives trustworthy parameter names — with
             // several overloads left we must not pick one arbitrarily.
-            auto candidates = unit.get<types::TemplateResolver>().lookup(expr);
+            auto candidates = unit.get<types::TemplateResolver>().callees(expr);
             if(candidates.size() != 1) {
                 return;
             }

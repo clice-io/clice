@@ -27,6 +27,7 @@ import type {
     Refused,
     Renameable,
     Renamed,
+    Resolution,
     Popup,
     Signatures,
     Token,
@@ -127,6 +128,17 @@ interface RawToken {
     range: RawRange;
     kind: string;
     modifiers: string[];
+}
+
+interface RawLocation {
+    path: string;
+    range: proto.Range;
+}
+
+interface RawResolution {
+    type: string | null;
+    record: RawLocation | null;
+    declarations: RawLocation[];
 }
 
 interface RawInlayHint {
@@ -523,6 +535,20 @@ export class Inspect extends Client {
 
     protected fetchRename(at: Anchor): Promise<Renamed | Refused | null> {
         return this.cannot("rename", at);
+    }
+
+    protected async fetchResolution(at: Anchor): Promise<Resolution> {
+        const context = this.context();
+        const located = (raw: RawLocation): Location => ({
+            path: context.pathOfFile(raw.path),
+            range: raw.range,
+        });
+        const raw = (await this.atPoint("template-resolver", at)) as RawResolution | null;
+        return {
+            type: raw?.type ?? undefined,
+            record: raw?.record == null ? undefined : located(raw.record),
+            declarations: (raw?.declarations ?? []).map(located),
+        };
     }
 
     /// A request inspect cannot answer fails at once.

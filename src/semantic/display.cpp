@@ -3424,29 +3424,27 @@ auto ReadableTypes::standard_name(const clang::PredefinedSugarType& type)
     return cached->second;
 }
 
-auto ReadableTypes::argument_of(const clang::Type& type) const -> const clang::TemplateArgument* {
-    const auto* param = llvm::dyn_cast<clang::TemplateTypeParmType>(&type);
+auto ReadableTypes::arguments_of(const clang::NamedDecl* param, unsigned index, bool pack) const
+    -> std::optional<llvm::ArrayRef<clang::TemplateArgument>> {
     const auto* pattern =
         substitution ? substitution->getTemplateName().getAsTemplateDecl() : nullptr;
-    if(!param || !pattern || !param->getDecl()) {
-        return nullptr;
+    if(!param || !pattern) {
+        return std::nullopt;
     }
-    auto index = param->getIndex();
     const auto arguments = substitution->template_arguments();
-    /// A pack's arguments are many, and an expansion among them stands for
-    /// many: the template's own name stays.
-    if(param->isParameterPack() ||
-       ranges::any_of(arguments.take_front(index + 1), [](const clang::TemplateArgument& argument) {
+    /// An expansion among the arguments before a parameter stands for many:
+    /// the template's own name stays.
+    if(index >= arguments.size() ||
+       ranges::any_of(arguments.take_front(index), [](const clang::TemplateArgument& argument) {
            return argument.isPackExpansion();
        })) {
-        return nullptr;
+        return std::nullopt;
     }
     /// The parameter of any of its declarations: libstdc++ declares `map`
     /// again after its definition, whose members name the definition's.
     auto declares = [&](const clang::TemplateDecl& decl) {
         const auto* params = decl.getTemplateParameters();
-        return param->getDepth() == params->getDepth() && index < params->size() &&
-               params->getParam(index) == param->getDecl();
+        return index < params->size() && params->getParam(index) == param;
     };
     const auto* redeclarable = llvm::dyn_cast<clang::RedeclarableTemplateDecl>(pattern);
     bool own = redeclarable ? ranges::any_of(redeclarable->redecls(),
@@ -3454,11 +3452,17 @@ auto ReadableTypes::argument_of(const clang::Type& type) const -> const clang::T
                                                  return declares(*redecl);
                                              })
                             : declares(*pattern);
-    if(!own || index >= arguments.size()) {
-        return nullptr;
+    if(!own) {
+        return std::nullopt;
     }
-    const auto& argument = arguments[index];
-    return argument.getKind() == clang::TemplateArgument::Type ? &argument : nullptr;
+    if(pack) {
+        return arguments.drop_front(index);
+    }
+    /// A single parameter an expansion stands for is no one argument.
+    if(arguments[index].isPackExpansion()) {
+        return std::nullopt;
+    }
+    return arguments.slice(index, 1);
 }
 
 auto ReadableTypes::readable(clang::QualType type,
@@ -3529,9 +3533,14 @@ auto ReadableTypes::readable(clang::QualType type,
     /// The argument is the code's type, which the substitution does not reach
     /// again: `_Tp` of `vector<vector<T>>` reads `vector<T>`, whose `T` is
     /// the code's own.
-    if(const auto* argument = argument_of(*T)) {
-        llvm::SaveAndRestore<const clang::TemplateSpecializationType*> plain(substitution, nullptr);
-        return qualified(same(argument->getAsType()));
+    if(const auto* param = llvm::dyn_cast<clang::TemplateTypeParmType>(T);
+       param && !param->isParameterPack()) {
+        if(auto argument = arguments_of(param->getDecl(), param->getIndex(), false);
+           argument && argument->front().getKind() == clang::TemplateArgument::Type) {
+            llvm::SaveAndRestore<const clang::TemplateSpecializationType*> plain(substitution,
+                                                                                 nullptr);
+            return qualified(same(argument->front().getAsType()));
+        }
     }
     /// A builtin transform, `__remove_cv(int)`, is the library's spelling.
     if(const auto* transform = llvm::dyn_cast<clang::UnaryTransformType>(T);
@@ -3701,8 +3710,66 @@ auto ReadableTypes::readable(clang::QualType type,
         return type;
     }
 
+    /// What an expansion of a pack of the template the substitution names
+    /// (`Bs...`, `const Bs...`) reads as: the arguments the pack takes, the
+    /// code's own, each with the qualifiers the pattern adds.
+    clang::Qualifiers qualifiers;
+    auto expanded = [&](const clang::TemplateArgument& argument)
+        -> std::optional<llvm::ArrayRef<clang::TemplateArgument>> {
+        const clang::NamedDecl* pack = nullptr;
+        unsigned index = 0;
+        qualifiers = {};
+        if(argument.getKind() == clang::TemplateArgument::Type) {
+            const auto* expansion = argument.getAsType()->getAs<clang::PackExpansionType>();
+            if(const auto* param =
+                   expansion ? expansion->getPattern()->getAs<clang::TemplateTypeParmType>()
+                             : nullptr) {
+                pack = param->getDecl();
+                index = param->getIndex();
+                qualifiers = expansion->getPattern().getCanonicalType().getQualifiers();
+            }
+        } else if(argument.getKind() == clang::TemplateArgument::Expression) {
+            const auto* expansion = llvm::dyn_cast<clang::PackExpansionExpr>(argument.getAsExpr());
+            const auto* name = expansion ? llvm::dyn_cast<clang::DeclRefExpr>(
+                                               expansion->getPattern()->IgnoreParenImpCasts())
+                                         : nullptr;
+            if(const auto* param =
+                   name ? llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(name->getDecl())
+                        : nullptr) {
+                pack = param;
+                index = param->getIndex();
+            }
+        } else if(argument.getKind() == clang::TemplateArgument::TemplateExpansion) {
+            if(const auto* param = llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(
+                   argument.getAsTemplateOrTemplatePattern().getAsTemplateDecl())) {
+                pack = param;
+                index = param->getIndex();
+            }
+        }
+        return pack ? arguments_of(pack, index, true) : std::nullopt;
+    };
     llvm::SmallVector<clang::TemplateArgument, 4> rewritten;
     for(const auto& argument: arguments) {
+        if(auto elements = argument.isPackExpansion() ? expanded(argument) : std::nullopt) {
+            llvm::SaveAndRestore<const clang::TemplateSpecializationType*> plain(substitution,
+                                                                                 nullptr);
+            for(const auto& element: *elements) {
+                if(qualifiers.empty() || element.getKind() != clang::TemplateArgument::Type) {
+                    rewritten.push_back(readable(element, scope, source, sugar));
+                    continue;
+                }
+                auto type = element.getAsType();
+                if(const auto* expansion = type->getAs<clang::PackExpansionType>()) {
+                    type = context.getPackExpansionType(
+                        context.getQualifiedType(expansion->getPattern(), qualifiers),
+                        expansion->getNumExpansions());
+                } else {
+                    type = context.getQualifiedType(type, qualifiers);
+                }
+                rewritten.push_back(readable(clang::TemplateArgument(type), scope, source, sugar));
+            }
+            continue;
+        }
         rewritten.push_back(readable(argument, scope, source, sugar));
     }
     /// A specialization prints every argument it has; the template-id it
@@ -3756,9 +3823,18 @@ auto ReadableTypes::readable(const clang::TemplateArgument& argument,
                                        argument.getIsDefaulted());
     }
     /// An argument naming what only the template has, `sizeof...(Ts)`, reads
-    /// as its value.
+    /// as its value; one naming a value parameter of the template the
+    /// substitution names, as the argument it takes.
     if(argument.getKind() == clang::TemplateArgument::Expression) {
         const auto* expr = argument.getAsExpr();
+        if(const auto* name = llvm::dyn_cast<clang::DeclRefExpr>(expr->IgnoreParenImpCasts())) {
+            if(const auto* param = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(name->getDecl());
+               param && !param->isParameterPack()) {
+                if(auto bound = arguments_of(param, param->getIndex(), false)) {
+                    return bound->front();
+                }
+            }
+        }
         if(!expr->isValueDependent() && template_bound(*expr)) {
             if(auto value = expr->getIntegerConstantExpr(context)) {
                 return clang::TemplateArgument(context,

@@ -1,6 +1,6 @@
 module clice:semantic.types;
 
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :support.prelude;
 
 /// Type-centric AST helpers: mapping types to the declarations they refer
@@ -73,6 +73,13 @@ auto writable(clang::QualType type) -> bool;
 /// needs and does not have.
 auto never_initializes(clang::ASTContext& context,
                        const clang::Expr& argument,
+                       clang::QualType parameter) -> bool;
+
+/// The same for a value of `type`, an lvalue when `lvalue`, that is neither
+/// a null pointer constant nor a string literal.
+auto never_initializes(clang::ASTContext& context,
+                       clang::QualType type,
+                       bool lvalue,
                        clang::QualType parameter) -> bool;
 
 }  // namespace clice::types

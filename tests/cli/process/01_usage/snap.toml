@@ -187,6 +187,7 @@ Subcommands:
   selection-range     The selection ranges at a point
   semantic-tokens     The file's semantic tokens
   signature-help      The signature help at a point
+  template-resolver   What the template resolver answers at a point
 '''
 exit = 0
 

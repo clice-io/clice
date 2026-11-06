@@ -19,6 +19,7 @@ import {
     renderOutline,
     renderPrepareRename,
     renderRename,
+    renderResolution,
     renderSelection,
     renderSignatures,
     renderTokenAt,
@@ -38,6 +39,7 @@ import {
     type Refused,
     type Renameable,
     type Renamed,
+    type Resolution,
     type Popup,
     type Signatures,
     type Token,
@@ -126,6 +128,7 @@ export abstract class Client {
     ): Promise<TextEdit[] | null>;
     protected abstract fetchPrepareRename(at: Anchor): Promise<Renameable | Refused | null>;
     protected abstract fetchRename(at: Anchor, newName: string): Promise<Renamed | Refused | null>;
+    protected abstract fetchResolution(at: Anchor): Promise<Resolution>;
 
     // The requests.
 
@@ -146,6 +149,15 @@ export abstract class Client {
                     parts,
                     ...(full ? { limit: completion.items.length } : {}),
                 }),
+        );
+    }
+
+    /// What the template resolver answers at `at`: clice's own, which
+    /// only `clice inspect` asks.
+    templateResolver(at: Anchor): Promise<Resolution> {
+        const scope = this.scopeAt(at);
+        return shown(this.fetchResolution(at), "template_resolver", (resolution) =>
+            renderResolution(resolution, scope),
         );
     }
 

@@ -1,0 +1,5 @@
+[answers.overload_set]
+implementation = ["void ⟦helper⟧(int value) {}", "void ⟦helper⟧(double value) {}"]
+
+[answers.using_member]
+implementation = ["void ⟦act⟧() {}"]

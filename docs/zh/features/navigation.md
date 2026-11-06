@@ -666,7 +666,7 @@ tests/navigation/templates/03_overload_candidates
 
 在依赖下标、调用或 `auto` 变量的结果上访问成员时，解析到类模板中声明的成员
 
-调用存在 `const` 重载时，由对象是否为 const 决定解析到哪一个重载；参数不同的各个重载则全部列出。
+调用存在 `const` 重载时，由对象是否为 const 决定解析到哪一个重载；参数不同的各个重载中，解析到形参类型与实参类型完全一致的那一个，而写出显式模板实参时，只会解析到其中的模板。
 
 ```case
 tests/navigation/templates/04_dependent_expressions

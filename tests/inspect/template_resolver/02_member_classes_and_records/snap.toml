@@ -1,0 +1,76 @@
+[answers.outer_dependent_member_class.template_resolver]
+type = "type_list<X, Y, Z>"
+record = "struct ⟦type_list⟧ {}; @-15"
+declarations = ["using ⟦type⟧ = type_list<T1, T2, T3>;"]
+
+[answers.inner_dependent_member_class.template_resolver]
+type = "type_list<T, T>"
+record = "struct ⟦type_list⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = type_list<U, T>; @-3"]
+
+[answers.inner_partial_member.template_resolver]
+type = "type_list<T, T>"
+record = "struct ⟦type_list⟧ {}; @-12"
+declarations = ["using ⟦type⟧ = type_list<U, T>; @-3"]
+
+[answers.nested_lookup.template_resolver]
+type = "type_list<X, Y>"
+record = "struct ⟦type_list⟧ {}; @-12"
+declarations = ["using ⟦type⟧ = type_list<T, U>;"]
+
+[answers.nested_member_depth_mix.template_resolver]
+type = "type_list<X *, Y>"
+record = "struct ⟦type_list⟧ {}; @-14"
+declarations = ["using ⟦type⟧ = type_list<outer_type, U>;"]
+
+[answers.outer_param_mismatch.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-12"]
+
+[answers.outer_param_match.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = U; @-6"]
+
+[answers.template_default_forward.template_resolver]
+type = "template_default_forward::box<X>"
+record = "struct ⟦box⟧ {};"
+
+[answers.concrete_scope_member_template.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = typename A::template rebind<T>::other;"]
+
+[answers.concrete_scope_template_argument.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = typename apply<T::template rebind, U>::type;"]
+
+[answers.concrete_outer_member_template.template_resolver]
+type = "X *"
+declarations = ["using ⟦type⟧ = U*;"]
+
+[answers.concrete_outer_member_record.template_resolver]
+type = "typename Outer<int>::template Inner<X>"
+record = "struct ⟦Inner⟧ { @-10"
+
+[answers.nested_class_member.template_resolver]
+type = "X *"
+declarations = ["using ⟦value⟧ = T*;"]
+
+[answers.plain_record_member.template_resolver]
+type = "int"
+declarations = ["using ⟦value⟧ = int;"]
+
+[answers.explicit_specialization_member.template_resolver]
+type = "char"
+declarations = ["using ⟦inner⟧ = char;"]
+
+[answers.record_of_member_alias.template_resolver]
+type = "Vec<X>"
+record = "struct ⟦Vec⟧ {"
+declarations = ["using ⟦value_type⟧ = T;"]
+
+[answers.record_of_partial_pattern.template_resolver]
+type = "Traits<X *>"
+record = "struct ⟦Traits⟧<T*> {};"
+
+[answers.record_of_parameter.template_resolver]
+type = "X"

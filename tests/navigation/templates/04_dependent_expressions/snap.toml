@@ -11,10 +11,10 @@ definition = ["void ⟦push⟧(const T& value);"]
 definition = ["const T& ⟦front⟧() const;"]
 
 [answers.parameters]
-definition = ["void ⟦take⟧(int count);", "void ⟦take⟧(long count) const;"]
+definition = ["void ⟦take⟧(int count);"]
 
 [answers.template_overload]
-definition = ["void ⟦pick⟧();", "void ⟦pick⟧() const;"]
+definition = ["void ⟦pick⟧() const;"]
 
 [answers.deduced]
 definition = ["void ⟦push⟧(const T& value);"]

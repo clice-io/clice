@@ -1,0 +1,38 @@
+[answers.template_template_replace.template_resolver]
+type = "box<int>"
+record = "struct ⟦box⟧ {}; @-15"
+declarations = ["using ⟦type⟧ = TT<U, Ts...>;"]
+
+[answers.rebind_trailing_args.template_resolver]
+type = "triple<float, X, Y>"
+record = "struct ⟦triple⟧ {};"
+declarations = ["using ⟦type⟧ = TT<New, Rest...>;"]
+
+[answers.template_pack_extract.template_resolver]
+type = "type_list<X, Y>"
+record = "struct ⟦type_list⟧ {}; @-12"
+declarations = ["using ⟦type⟧ = TT<Us...>; @-5"]
+
+[answers.template_swap_args.template_resolver]
+type = "pair<Y, X>"
+record = "struct ⟦pair⟧ {}; @-12"
+declarations = ["using ⟦type⟧ = TT<B, A>;"]
+
+[answers.template_pack_deduce.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int;"]
+
+[answers.alias_template_head.template_resolver]
+type = "pair<X, int>"
+record = "struct ⟦pair⟧ {}; @-12"
+declarations = ["using ⟦type⟧ = TT<A, B>;"]
+
+[answers.dependent_name_argument.template_resolver]
+type = "apply<X::template tmpl>"
+record = "struct ⟦apply⟧ {};"
+declarations = ["using ⟦type⟧ = apply<T::template tmpl>;"]
+
+[answers.template_through_layer.template_resolver]
+type = "type_list<X, Y>"
+record = "struct ⟦type_list⟧ {}; @-14"
+declarations = ["using ⟦type⟧ = typename apply<TT, Us...>::type;"]

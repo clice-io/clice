@@ -288,9 +288,12 @@ private:
 
     bool reserved(const clang::NamedDecl* decl) const;
 
-    /// The argument `type`, a parameter of the template `substitution` names,
-    /// reads as; null for any other type, or a parameter it gives none.
-    auto argument_of(const clang::Type& type) const -> const clang::TemplateArgument*;
+    /// The arguments `param`, the parameter of the template `substitution`
+    /// names at `index` in its list, reads as: one, or for a pack every one
+    /// from there; none for a parameter of another template, or one the
+    /// arguments do not line up with.
+    auto arguments_of(const clang::NamedDecl* param, unsigned index, bool pack) const
+        -> std::optional<llvm::ArrayRef<clang::TemplateArgument>>;
 
     /// Whether `type` names something the library keeps to itself anywhere,
     /// its qualifier and template arguments included.
