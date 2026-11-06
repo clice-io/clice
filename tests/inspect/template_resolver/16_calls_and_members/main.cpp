@@ -654,3 +654,36 @@ void run(Box<T>& box, typename Source<T>::type& value) {
 }
 
 }  // namespace explicit_object_template
+
+namespace inline_child_overload {
+
+struct Good {};
+
+struct Bad {};
+
+namespace lib {
+
+struct X {};
+
+inline namespace v1 {
+
+Good choose(X);
+
+}  // namespace v1
+
+}  // namespace lib
+
+Bad choose(...);
+
+template <typename T>
+struct Source {
+    using type = lib::X;
+};
+
+template <typename T>
+void run(typename Source<T>::type value) {
+    // Lookup in `lib` finds what its inline namespaces declare.
+    auto §(inline_child_overload)chosen = choose(value);
+}
+
+}  // namespace inline_child_overload

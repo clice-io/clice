@@ -93,3 +93,6 @@ type = "Bad"
 [answers.explicit_object_template]
 wrong = "U& binds the int lvalue better than const int&: chosen is a Good"
 template_resolver = {}
+
+[answers.inline_child_overload.template_resolver]
+type = "Good"
