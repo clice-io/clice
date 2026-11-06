@@ -90,6 +90,10 @@ ZEST_CASE(IdentityHashes) {
     /// Driver-ignored flags never enter the identity.
     database.add_command("/fake", "r.cpp", "clang++ -std=c++20 -frandom-seed=r.o r.cpp"sv);
     ZEXPECT(hash_of("a.cpp") == hash_of("r.cpp"));
+    /// Where a module unit writes its BMI never enters the identity.
+    database.add_command("/fake", "m1.cppm", "clang++ -std=c++20 -fmodule-output=m1.pcm m1.cppm"sv);
+    database.add_command("/fake", "m2.cppm", "clang++ -std=c++20 -fmodule-output=m2.pcm m2.cppm"sv);
+    ZEXPECT(hash_of("m1.cppm") == hash_of("m2.cppm"));
 
     /// The input slot's position is part of the identity.
     database.add_command("/fake", "p1.cpp", "clang++ p1.cpp -Wall"sv);
