@@ -555,6 +555,7 @@ ZEST_CASE(SynthesizedContextSkipped) {
     // A header context's synthesized files name nothing on disk, and what
     // they declare is the host's to index: no entries, no dependency.
     auto synthesized = TestVFS::path(".clice-context.h");
+    auto host = TestVFS::path("host.cpp");
     add_focus("main.cpp",
               std::format(R"(
 #include "{}"
@@ -565,7 +566,7 @@ int main() {{ gen(); return 0; }}
     params.input.add_synthesized({
         {.path = synthesized,
          .content = "inline void gen() {}\n",
-         .origin = {.source = TestVFS::path("host.cpp"), .runs = {{.length = 21}}}},
+         .origin = {.source = host, .runs = {{.length = 21}}}},
     });
     ZASSERT(try_compile());
 
@@ -573,10 +574,10 @@ int main() {{ gen(); return 0; }}
         llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
     ZASSERT(index.loaded());
     for(std::uint32_t i = 0; i < index.path_count(); i += 1) {
-        ZEXPECT(index.path(i) != synthesized);
+        ZEXPECT(index.path(i) != host);
     }
-    ZEXPECT(!ranges::any_of(unit->deps(),
-                            [&](const ReportedInput& dep) { return dep.path == synthesized; }));
+    ZEXPECT(
+        !ranges::any_of(unit->deps(), [&](const ReportedInput& dep) { return dep.path == host; }));
 }
 
 ZEST_CASE(UnreadableBlobCleared) {

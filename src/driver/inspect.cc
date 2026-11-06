@@ -325,9 +325,7 @@ std::optional<codec::raw_value> run_template_resolver(const FeatureParams& param
         }
         auto begin = unit.source_of({file, range.begin});
         auto end = unit.source_of({file, range.end});
-        if(!begin || !end) {
-            return std::nullopt;
-        }
+        assert(begin && end && "a declaration spelled in text a header context added");
         auto [it, inserted] = texts.try_emplace(begin->path);
         if(inserted) {
             if(auto text = vfs::read_text(begin->path)) {

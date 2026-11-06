@@ -1,0 +1,11 @@
+[answers.header.template_resolver]
+type = "X"
+declarations = ["list.h │ using ⟦type⟧ = T;"]
+
+[answers.host.template_resolver]
+type = "X *"
+declarations = ["main.cpp │ using ⟦type⟧ = T*;"]
+
+[answers.through_host.template_resolver]
+type = "X"
+declarations = ["list.h │ using ⟦type⟧ = T;"]

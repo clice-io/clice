@@ -407,9 +407,6 @@ public:
     /// file_content, never falls back to a fake buffer.
     auto loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef>;
 
-    /// The positions of file_content(fid).
-    auto positions(clang::FileID fid) -> PositionMap;
-
     /// The comments of file_content(fid).
     auto comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment>;
 

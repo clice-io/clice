@@ -1087,10 +1087,6 @@ void EntityTable::add_path(Hasher& hasher, clang::SourceLocation location) {
         return;
     }
     auto fid = unit.produced_at(location).file;
-    add_file(hasher, fid);
-}
-
-void EntityTable::add_file(Hasher& hasher, clang::FileID fid) {
     if(unit.is_builtin_file(fid)) {
         hasher.add(llvm::StringRef());
         return;

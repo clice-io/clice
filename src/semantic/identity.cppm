@@ -64,7 +64,6 @@ private:
     void add_location(Hasher& hasher, clang::SourceLocation location);
     std::uint64_t macro_history(clang::SourceLocation location);
     void add_path(Hasher& hasher, clang::SourceLocation location);
-    void add_file(Hasher& hasher, clang::FileID fid);
     void add_place(Hasher& hasher, FileOffset position);
     SourceOffset source_of(FileOffset position);
     void add_declaration_name(Hasher& hasher, clang::DeclarationName name);

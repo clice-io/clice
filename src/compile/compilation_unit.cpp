@@ -258,10 +258,6 @@ auto CompilationUnit::loaded_file_content(clang::FileID fid) -> std::optional<ll
     return SM().getBufferDataOrNone(fid);
 }
 
-auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
-    return file_text(fid).positions();
-}
-
 auto CompilationUnit::lexical(clang::FileID fid) -> const LexicalInfo& {
     return file_text(fid).lexical();
 }
@@ -440,7 +436,7 @@ auto FocusFile::content() -> llvm::StringRef {
 }
 
 auto FocusFile::positions() -> PositionMap {
-    return unit.positions(file());
+    return text().positions();
 }
 
 auto FocusFile::tokens() -> const TokenMap& {
