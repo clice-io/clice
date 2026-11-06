@@ -1,0 +1,99 @@
+[direct.macro]
+definition = ["real/main.cpp │ #define ⟦FAST⟧(CHECK) make(#CHECK, true),"]
+
+[direct.function]
+definition = ["real/main.cpp │ static Entry ⟦make⟧(const char* name, Flag fast) {"]
+
+[direct.alias]
+definition = ["real/main.cpp │ using ⟦Flag⟧ = bool;"]
+
+[direct.type]
+definition = ["real/main.cpp │ struct ⟦Entry⟧ {"]
+
+[direct.hints]
+inlay_hints = [
+    {
+        line = 'make(⟨name:⟩"beta", ⟨fast:⟩Flag(false)),',
+        hints = [
+            {
+                label = "name:",
+                links = [
+                    { value = "name", target = "real/main.cpp │ static Entry make(const char* ⟦name⟧, Flag fast) {" },
+                ],
+            },
+            {
+                label = "fast:",
+                links = [
+                    { value = "fast", target = "real/main.cpp │ static Entry make(const char* name, Flag ⟦fast⟧) {" },
+                ],
+            },
+        ],
+    },
+    {
+        line = 'Entry{⟨.name=⟩"gamma", ⟨.fast=⟩false},',
+        hints = [
+            {
+                label = ".name=",
+                links = [
+                    { value = "name", target = "real/main.cpp │ const char* ⟦name⟧;" },
+                ],
+            },
+            {
+                label = ".fast=",
+                links = [
+                    { value = "fast", target = "real/main.cpp │ bool ⟦fast⟧;" },
+                ],
+            },
+        ],
+    },
+]
+
+["through a link".macro]
+definition = ["real/main.cpp │ #define ⟦FAST⟧(CHECK) make(#CHECK, true),"]
+
+["through a link".function]
+definition = ["real/main.cpp │ static Entry ⟦make⟧(const char* name, Flag fast) {"]
+
+["through a link".alias]
+definition = ["real/main.cpp │ using ⟦Flag⟧ = bool;"]
+
+["through a link".type]
+definition = ["real/main.cpp │ struct ⟦Entry⟧ {"]
+
+["through a link".hints]
+inlay_hints = [
+    {
+        line = 'make(⟨name:⟩"beta", ⟨fast:⟩Flag(false)),',
+        hints = [
+            {
+                label = "name:",
+                links = [
+                    { value = "name", target = "real/main.cpp │ static Entry make(const char* ⟦name⟧, Flag fast) {" },
+                ],
+            },
+            {
+                label = "fast:",
+                links = [
+                    { value = "fast", target = "real/main.cpp │ static Entry make(const char* name, Flag ⟦fast⟧) {" },
+                ],
+            },
+        ],
+    },
+    {
+        line = 'Entry{⟨.name=⟩"gamma", ⟨.fast=⟩false},',
+        hints = [
+            {
+                label = ".name=",
+                links = [
+                    { value = "name", target = "real/main.cpp │ const char* ⟦name⟧;" },
+                ],
+            },
+            {
+                label = ".fast=",
+                links = [
+                    { value = "fast", target = "real/main.cpp │ bool ⟦fast⟧;" },
+                ],
+            },
+        ],
+    },
+]
