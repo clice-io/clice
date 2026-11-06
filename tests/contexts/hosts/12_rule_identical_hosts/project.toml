@@ -1,0 +1,3 @@
+[units]
+"widget.cpp" = ["-DWIDGET_A"]
+"other.cpp" = ["-DWIDGET_B"]
