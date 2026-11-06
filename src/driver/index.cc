@@ -184,7 +184,7 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
             }
         });
     }
-    background.start(/*errors=*/true);
+    background.start({.errors = true});
     Lifetime lifetime(run);
     lifetime.aux.spawn(progress_ticker(run, options));
     co_await async::with_token(background.wait_idle(), lifetime.token());

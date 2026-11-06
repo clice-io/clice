@@ -188,6 +188,11 @@ struct DocumentCompile {
         return pch_failed ? base_pch_key : pch_key;
     }
 
+    /// The pch.idx index of the preamble's PCH the parse loaded, while it
+    /// is the preamble's (Project::preamble_index): held here, it stays
+    /// loaded while a compile of a document reads it.
+    std::shared_ptr<index::TUIndex> preamble_index;
+
     /// The generation of the document's graph node the compile ran at
     /// (TaskGraph::generation): the compile describes the buffer and what it
     /// read while that is still the node's. None before a compile finished,
@@ -298,28 +303,21 @@ Value empty_value() {
 /// keeps a removed project alive until it completes.
 class ServedProject final :
     public index::LiveSources,
-    public ServingSide,
     public std::enable_shared_from_this<ServedProject> {
 public:
     /// `root` is the project's directory; empty for the rootless project a
-    /// server without folders runs, which loads nothing.
+    /// server without folders runs, which loads nothing. What the project
+    /// tells of its index reaches the documents: an index attempt ending
+    /// (the index_first in decide_serving promised the index would serve the
+    /// cold document, and one that finishes without a servable shard ends
+    /// that promise — it escalates like the disabled-indexing branch, or the
+    /// document answers empty until its first edit; its run's skipped-body
+    /// diagnostics show), shards changing (documents without a current file
+    /// index serve these very shards, freshness clause 4: the client asks
+    /// again for what it pulled from them), and the records beside the index
+    /// changing (schedule_metadata_flush).
     ServedProject(MasterServer& server, CanonicalPath root);
     ~ServedProject();
-
-    std::size_t open_documents() const override {
-        return documents.size();
-    }
-
-    /// The index_first in decide_serving promised the index would serve the
-    /// cold document; an attempt that finishes without a servable shard ends
-    /// that promise — it escalates like the disabled-indexing branch, or the
-    /// document answers empty until its first edit.
-    void attempt_finished(Fid path_id) override;
-
-    /// Documents without a current file index serve these very shards
-    /// (freshness clause 4): the client asks again for what it pulled from
-    /// them.
-    void index_changed(llvm::ArrayRef<Fid> path_ids) override;
 
     // served_project.cpp
 
@@ -488,12 +486,6 @@ public:
     /// buffer, then the crash notes; nothing once the document closed.
     std::vector<feature::FileDiagnostic> finished_diagnostics(const Session& session) const;
 
-    /// Whether the file's escalated document holds text no background run
-    /// has reported on, as after a restart, when the index is current and
-    /// runs nothing. Only a file of its own database entry is reported on
-    /// (UnitRequest::skipped_diagnostics).
-    bool lacks_skipped_diagnostics(Fid path_id) const override;
-
     /// Interrupt every in-flight parse and wait for the detached compile
     /// joins. The attempts themselves finish in TaskGraph::shutdown — the
     /// interruption is what keeps that finish prompt (an attempt's stateful
@@ -581,12 +573,6 @@ public:
 
     /// The files every open document's compile depends on (closure).
     void append_open_inputs(llvm::SmallVectorImpl<Fid>& files) const;
-
-    /// Whether an open document's own compile serves the file's index
-    /// (ServingSide::compiled_by_session): an escalated document's does,
-    /// unless it skips the bodies of the headers — then only a background
-    /// run shows what the skipped bodies hold (report_skipped_diagnostics).
-    bool compiled_by_session(Fid path_id) const override;
 
     /// The project's context choices hold again or no longer do after the
     /// build or the include graph changed: an open document whose choice
@@ -790,7 +776,15 @@ private:
     /// Schedule a save carrying dirty precompiled records or context choices; no-op
     /// when one is already scheduled or the server is shutting down (the
     /// final shutdown save covers it).
-    void schedule_metadata_flush() override;
+    void schedule_metadata_flush();
+
+    /// Book a background run for the document's skipped-body diagnostics when
+    /// it shows them and lacks those of its text, as after a restart, when
+    /// the index is current and runs nothing, or after a change of its
+    /// inputs dropped them: first in the queue, or (`first` off) in its
+    /// turn. Only a file of its own database entry is reported on
+    /// (UnitRequest::skipped_diagnostics).
+    void book_skipped_diagnostics(const ServedDocument& document, bool first);
     async::task<> metadata_flush_task();
 
     /// The periodic Project::checkpoint().
@@ -847,15 +841,12 @@ private:
     /// (readers holding the old shared_ptr are unaffected).
     void update_latest(Fid path_id, llvm::function_ref<void(DocumentCompile&)> edit);
 
-    /// A background index run of the file reported `diagnostics` for the
-    /// text hashing to `text_hash`: what the editor's compile, which skips
-    /// the function bodies of the headers the file includes at its top, can
-    /// get wrong (feature::skipped_diagnostics). They show on the document
-    /// while it holds that text, open now or later
-    /// (shown_skipped_diagnostics).
-    void report_skipped_diagnostics(Fid path_id,
-                                    std::uint64_t text_hash,
-                                    std::vector<feature::FileDiagnostic> diagnostics) override;
+    /// The file's last background run brought new skipped-body diagnostics:
+    /// what the editor's compile, which skips the function bodies of the
+    /// headers the file includes at its top, can get wrong
+    /// (feature::skipped_diagnostics). They show on the document while it
+    /// holds the text they describe — a compile owed shows them as it commits.
+    void show_skipped_diagnostics(Fid path_id);
 
     /// What of the file's last background run shows beside `output`, a
     /// compile of the document's text: what the compile does not report
@@ -1030,6 +1021,12 @@ private:
     /// The background index's progress, relayed to the master.
     Signal<>::Connection progress_conn;
 
+    Signal<Fid>::Connection attempt_conn;
+
+    Signal<llvm::ArrayRef<Fid>>::Connection index_conn;
+
+    Signal<>::Connection metadata_conn;
+
     /// Detached ensure_compiled joins from request_compile; the attempts
     /// live in the graph's task group.
     async::task_group<> started_compiles;
@@ -1037,17 +1034,6 @@ private:
     /// The cancel of each document's in-flight compile send, which edited()
     /// and stop_compiles() fire to interrupt the worker's parse.
     llvm::DenseMap<Fid, std::unique_ptr<async::cancellation_source>> compile_interrupts;
-
-    /// A background run's diagnostics of a file (see
-    /// report_skipped_diagnostics).
-    struct SkippedDiagnostics {
-        std::uint64_t text_hash = 0;
-
-        std::vector<feature::FileDiagnostic> diagnostics;
-    };
-
-    /// The last background run's diagnostics of every file, open or not.
-    llvm::DenseMap<Fid, SkippedDiagnostics> skipped;
 
     /// Whether start() began watching the databases: never for the rootless
     /// project, nor before it starts.

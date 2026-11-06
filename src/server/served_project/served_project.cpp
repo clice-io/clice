@@ -25,29 +25,32 @@ namespace clice {
 ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
     server(server), project(server.files, std::move(root), &server.loop, &server.pool) {
     project.index_query.attach(*this);
-    project.serving = this;
-    progress_conn = project.background_index.on_progress_changed.connect(
-        [this]() { this->server.index_progress_changed(*this); });
+    auto& background = project.background_index;
+    progress_conn =
+        background.on_progress_changed.connect([this] { this->server.index_progress_changed(*this); });
+    attempt_conn = background.on_attempt_finished.connect([this](Fid path_id) {
+        auto* document = find_document(path_id);
+        if(!document) {
+            return;
+        }
+        if(document->serving == ServingMode::IndexOnly && !matching_shard(*document->session)) {
+            escalate(path_id);
+        }
+        show_skipped_diagnostics(path_id);
+    });
+    index_conn = project.on_index_changed.connect([this](llvm::ArrayRef<Fid> path_ids) {
+        auto* client = this->server.client;
+        if(client && ranges::any_of(path_ids, [&](Fid id) {
+               return find_document(id) && !index_current(id) &&
+                      client->index_served.contains(id);
+           })) {
+            client->refresh();
+        }
+    });
+    metadata_conn = project.on_metadata_changed.connect([this] { schedule_metadata_flush(); });
 }
 
 ServedProject::~ServedProject() = default;
-
-void ServedProject::attempt_finished(Fid path_id) {
-    auto* document = find_document(path_id);
-    if(document && document->serving == ServingMode::IndexOnly &&
-       !matching_shard(*document->session)) {
-        escalate(path_id);
-    }
-}
-
-void ServedProject::index_changed(llvm::ArrayRef<Fid> path_ids) {
-    auto* client = server.client;
-    if(client && ranges::any_of(path_ids, [&](Fid id) {
-           return find_document(id) && !index_current(id) && client->index_served.contains(id);
-       })) {
-        client->refresh();
-    }
-}
 
 /// Where a problem of the settings is, as compilers name a place, its file
 /// spelled `file`.
@@ -141,7 +144,8 @@ void ServedProject::start() {
             !project.rules.declares_sources() && !project.found_unreadable_database();
     }
     if(project.settings.project.enable_indexing) {
-        project.background_index.start();
+        project.background_index.start(
+            {.skipped_diagnostics = project.settings.project.skip_header_bodies});
     }
     server.load_choices(*this);
 
@@ -235,11 +239,10 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
     // and its requests' PCH adoptions read, before its first compile too.
     project.graph.add(ast_node(path_id));
     auto& document = documents[path_id];
-    document = ServedDocument{
-        .session = std::move(session),
-        .serving = project.settings.project.readonly == ReadonlyMode::Off ? ServingMode::Escalated
-                                                                          : ServingMode::IndexOnly,
-    };
+    document = ServedDocument{.session = std::move(session), .serving = ServingMode::IndexOnly};
+    if(project.settings.project.readonly == ReadonlyMode::Off) {
+        escalate(path_id);
+    }
     // What the disk holds under the buffer: a later save or outside
     // write is then a change from it, even for a file nothing else knew.
     project.file_table.disk.current(path_id);
@@ -259,16 +262,15 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
 void ServedProject::decide_serving(ServedDocument& document) {
     // An escalated document needs no decision: builds stay pull-driven. When
     // they skip the bodies of the headers, the file's background run shows
-    // what those hold (report_skipped_diagnostics), and goes first when none
+    // what those hold (show_skipped_diagnostics), and goes first when none
     // has reported on its text.
     auto& session = *document.session;
     auto path_id = session.path_id;
     auto& background = project.background_index;
     if(document.serving == ServingMode::Escalated) {
-        if(project.settings.project.skip_header_bodies && background.started() &&
-           lacks_skipped_diagnostics(path_id) && !background.queue().in_flight(path_id) &&
+        if(background.started() && !background.queue().in_flight(path_id) &&
            !background.failed(path_id)) {
-            background.index_first(path_id);
+            book_skipped_diagnostics(document, true);
         }
         return;
     }
@@ -300,19 +302,7 @@ void ServedProject::release(Fid path_id) {
     project.graph.invalidate(ast_node(path_id));
     project.buffer_scans.forget(path_id);
     documents.erase(path_id);
-    // The document's compile may have stood in for the file's background
-    // index (ServingSide::compiled_by_session); the disk's turn again, unless
-    // it was deleted meanwhile or its index run failed for good, which
-    // waits for a change.
-    auto& background = project.background_index;
-    if(!project.file_table.disk.seen_missing(path_id) && !background.failed(path_id) &&
-       background.enqueue(path_id, ReindexReason::DepsOnly)) {
-        background.schedule();
-    }
-    // PCH entries are content-keyed and may be shared with other documents,
-    // so nothing entry-level to clean up — but the loaded-index budget
-    // shrinks with the open count, and this is the moment it does.
-    project.enforce_loaded_budget();
+    project.background_index.take_back(path_id);
     server.return_freed_memory();
     LOG_DEBUG("Released {}", path);
 }
@@ -322,7 +312,7 @@ void ServedProject::record_saved(Fid path_id) {
         return;
     }
     // The open files the save made stale show what their background run
-    // finds as soon as it can (report_skipped_diagnostics).
+    // finds as soon as it can (show_skipped_diagnostics).
     if(project.settings.project.skip_header_bodies) {
         auto& background = project.background_index;
         for(auto& [open, document]: documents) {

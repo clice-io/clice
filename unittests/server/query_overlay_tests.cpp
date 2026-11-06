@@ -55,7 +55,6 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     auto& st = project.pchs["key"];
     st.path = "unused.pch";
     st.index_path = blob_path;
-    st.index = nullptr;
 
     focus_path = std::string(full_index.path(full_index.focus_file()));
     auto it = sources.all_files.find(path::filename(focus_path));
@@ -67,6 +66,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     compiled->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit)))));
     compiled->pch_key = "key";
+    compiled->preamble_index = project.preamble_index("key");
     compiled->generation = fx.generation(session->path_id);
     entry.latest = std::move(compiled);
 }
@@ -481,6 +481,7 @@ int main() { return 0; }
     auto& other_entry = fx.entry(other->path_id);
     auto other_compiled = std::make_shared<DocumentCompile>();
     other_compiled->pch_key = "key";
+    other_compiled->preamble_index = project.preamble_index("key");
     other_compiled->generation = fx.generation(other->path_id);
     other_entry.latest = std::move(other_compiled);
 

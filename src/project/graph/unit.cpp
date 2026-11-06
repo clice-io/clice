@@ -2,6 +2,7 @@ module clice;
 
 import :compile.tidy;
 import :index.project_index;
+import :project.background;
 import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
@@ -107,8 +108,7 @@ async::task<UnitResult>
         if(built == Result::Stale) {
             co_return UnitResult{.status = Status::Preempted};
         }
-        if(built == Result::Success && project.index.indexed_command(path_id) == command &&
-           !project.index.needs_reindex(path_id)) {
+        if(built == Result::Success && project.index_holds(path_id)) {
             co_return UnitResult{.status = Status::Completed};
         }
     }
@@ -342,6 +342,21 @@ IndexTransfer ask_for_index(Project& project, Fid unit, Params& params) {
 bool Project::compiled_by_build(Fid unit) {
     return !dep_graph.module_of(unit).empty() ||
            commands.pch_output(select_command(unit).ref.command);
+}
+
+CompiledBy Project::compiled_by(Fid unit) {
+    if(background_index.left_to_document(unit)) {
+        return CompiledBy::Document;
+    }
+    return compiled_by_build(unit) ? CompiledBy::Build : CompiledBy::Run;
+}
+
+bool Project::index_command_holds(Fid unit) {
+    return index.indexed_command(unit) == command_identity(unit);
+}
+
+bool Project::index_holds(Fid unit) {
+    return index_command_holds(unit) && !index.needs_reindex(unit);
 }
 
 std::expected<llvm::StringRef, std::string> IndexTransfer::receive(std::span<const std::byte> data,

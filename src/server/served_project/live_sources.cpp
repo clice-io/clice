@@ -8,12 +8,6 @@ namespace clice {
 
 namespace {
 
-/// The preamble index of PCH `key`, loaded on its first read: the live
-/// sources are views, and the load only fills the project's cache.
-std::shared_ptr<index::TUIndex> preamble_of(const Project& project, llvm::StringRef key) {
-    return const_cast<Project&>(project).preamble_index(key);
-}
-
 /// An open document's index as the live sources hand it out: `shard` in
 /// the buffer's coordinates, with the instantiations that serve beside it.
 index::IndexSource buffer_source(const ServedProject& served,
@@ -67,14 +61,9 @@ const index::Shard* buffer_shard(const ServedProject& served, const ServedDocume
 }
 
 /// The overlay TU index of an open document's PCH, or null when it has no
-/// PCH or the index is unreadable. Returned by value: a reference into the
-/// map value would not survive a rehash.
-std::shared_ptr<index::TUIndex> overlay_of(const ServedProject& served,
-                                           const ServedDocument& document) {
-    if(!document.latest || !document.latest->loaded_pch()) {
-        return nullptr;
-    }
-    return preamble_of(served.project, *document.latest->loaded_pch());
+/// PCH or the index is unreadable.
+std::shared_ptr<index::TUIndex> overlay_of(const ServedDocument& document) {
+    return document.latest ? document.latest->preamble_index : nullptr;
 }
 
 }  // namespace
@@ -126,7 +115,7 @@ void ServedProject::for_each_session_index(
 void ServedProject::for_each_preamble(
     llvm::function_ref<bool(const index::IndexSource&)> visit) const {
     for(auto& [file, document]: documents) {
-        auto state = overlay_of(*this, document);
+        auto state = overlay_of(document);
         if(!state) {
             continue;
         }
@@ -160,7 +149,7 @@ void ServedProject::for_each_overlay(llvm::function_ref<bool(const index::TUInde
         if(!compiled || !compiled->loaded_pch() || !seen.insert(*compiled->loaded_pch()).second) {
             continue;
         }
-        if(auto state = preamble_of(project, *compiled->loaded_pch()); state && !visit(*state)) {
+        if(auto& state = compiled->preamble_index; state && !visit(*state)) {
             return;
         }
     }
@@ -171,7 +160,7 @@ std::shared_ptr<index::TUIndex> ServedProject::preamble_index(Fid file) const {
     if(!document) {
         return nullptr;
     }
-    auto state = overlay_of(*this, *document);
+    auto state = overlay_of(*document);
     if(!state || !state->matches_preamble(document->session->text())) {
         return nullptr;
     }

@@ -28,6 +28,7 @@ import :settings.rules;
 import :settings.settings;
 import :support.failure_record;
 import :support.prelude;
+import :support.signal;
 import :syntax.dependency_graph;
 import :vfs.cache_store;
 import :vfs.file_table;
@@ -55,53 +56,15 @@ struct ContextChoices {
     bool dirty = false;
 };
 
-/// The server's side of a served project: what the project asks of the
-/// documents open in it, and tells it of the index they read. A run of the
-/// command line has none (Project::serving).
-struct ServingSide {
-    /// How many documents are open: the loaded-index budget follows it.
-    virtual std::size_t open_documents() const = 0;
-
-    /// Whether an open document's own compile serves the file: a pending
-    /// reindex other than a change of its own content then is cleared
-    /// without a background compile, which would compile the file a second
-    /// time. The serving side books the file again when the document
-    /// closes.
-    virtual bool compiled_by_session(Fid file) const = 0;
-
-    /// Under `skip_header_bodies`, every index run also brings back the
-    /// diagnostics an editor can get wrong on its file
-    /// (UnitRequest::skipped_diagnostics), handed here with the hash of the
-    /// text they describe — unless a reindex booked during the run says
-    /// they describe inputs that changed.
-    virtual void report_skipped_diagnostics(Fid file,
-                                            std::uint64_t text_hash,
-                                            std::vector<feature::FileDiagnostic> diagnostics) = 0;
-
-    /// Whether the serving side lacks those diagnostics for the file: its
-    /// run goes ahead even when its index is current.
-    virtual bool lacks_skipped_diagnostics(Fid file) const = 0;
-
-    /// An index attempt of the file finished with no retry pending, before
-    /// its waiters wake (contract 15): the serving side decides whether the
-    /// finished state can ever serve an open session and escalates it
-    /// otherwise, so the waking waiters re-derive their route against the
-    /// escalated state. Also told of an index_first the background index
-    /// refuses — a file a rule keeps out of the index — since no attempt
-    /// will ever finish for it.
-    virtual void attempt_finished(Fid file) = 0;
-
-    /// Shards that may be index-served changed (merged, re-masked, dropped
-    /// or shed): the serving side refreshes the clients that read them.
-    virtual void index_changed(llvm::ArrayRef<Fid> files) = 0;
-
-    /// What the database carries beside the index changed — a precompiled
-    /// record, the context choices: the serving side saves it soon, where a
-    /// command-line run saves on its own cadence.
-    virtual void schedule_metadata_flush() = 0;
-
-protected:
-    ~ServingSide() = default;
+/// Who compiles a unit (Project::compiled_by).
+enum class CompiledBy : std::uint8_t {
+    /// An open document's own compile: its index stands for the unit's
+    /// until the document closes (BackgroundIndex::leave_to_document).
+    Document,
+    /// A build: its PCM's, or that of the precompiled header it writes.
+    Build,
+    /// Its own run.
+    Run,
 };
 
 /// A project: its build — the rules, the compilation databases and the
@@ -134,10 +97,6 @@ struct Project {
     async::event_loop* loop;
 
     WorkerPool* pool;
-
-    /// The server serving the project's documents; null for a command-line
-    /// run.
-    ServingSide* serving = nullptr;
 
     /// The project's root: the `${workspace}` value, the anchor of rules and
     /// databases no configuration file supplied, the enumeration root of
@@ -266,20 +225,23 @@ struct Project {
 
     void mark_precompiled_dirty() {
         precompiled_dirty = true;
-        if(serving) {
-            serving->schedule_metadata_flush();
-        }
+        on_metadata_changed.emit();
     }
+
+    /// Emitted when what the database carries beside the index changed — a
+    /// precompiled record, the context choices: an owner saving on its own
+    /// cadence saves it soon.
+    Signal<> on_metadata_changed;
+
+    /// Emitted when shards a read may serve changed — merged, re-masked,
+    /// dropped or shed.
+    Signal<llvm::ArrayRef<Fid>> on_index_changed;
 
     /// The PCHs the cache holds, keyed by content key (preamble text +
     /// canonical flags), so files with identical preambles share one PCH:
     /// a mirror of the cache store's state, which names their paths, with
     /// what failed of building and reading them.
     llvm::StringMap<PCHEntry> pchs;
-
-    /// Keys of the entries whose pch.idx index is currently loaded, most
-    /// recently used first (see enforce_loaded_budget).
-    llvm::SmallVector<std::string, 8> loaded_pch_indexes;
 
     /// The PCMs of the module units, by unit.
     llvm::DenseMap<Fid, PCMEntry> pcms;
@@ -885,22 +847,13 @@ struct Project {
     /// is discarded from the store as well — otherwise every later session
     /// re-adopts the corrupt pair from the precompiled records and silently
     /// degrades again. With the pair gone the next acquisition is a miss and
-    /// rebuilds both halves. Loads count against the loaded-index budget (see
-    /// enforce_loaded_budget).
+    /// rebuilds both halves. It stays loaded while someone holds it.
     std::shared_ptr<index::TUIndex> preamble_index(llvm::StringRef pch_key);
 
     /// Forget the entries whose pairs the store's LRU evicted from disk (inside
     /// a commit, maybe on a worker thread), or the content-keyed map grows
     /// for the server's lifetime even for keys never requested again.
     void forget_evicted_pchs();
-
-    /// Unload pch.idx indexes beyond the budget (one per open document, plus
-    /// 2), least recently used first. Without this every preamble key ever
-    /// touched keeps its blob mapped for the server's lifetime — tens of MB per
-    /// key on real projects, released by neither didClose nor store eviction.
-    /// Unloading only drops the entry's reference: consumers holding the
-    /// shared_ptr finish safely, and the next use reopens the blob from disk.
-    void enforce_loaded_budget();
 
     // graph/pcm.cpp
 
@@ -1033,6 +986,18 @@ struct Project {
     /// (compile_unit), but for the products only a compile brings.
     bool compiled_by_build(Fid unit);
 
+    /// Who compiles `unit`: an open document it was left to, else a build
+    /// (compiled_by_build), else its own run.
+    CompiledBy compiled_by(Fid unit);
+
+    /// Whether the unit's index was built under the command the build
+    /// compiles it under now (command_identity).
+    bool index_command_holds(Fid unit);
+
+    /// Whether the unit's index holds: built under its command of now, from
+    /// inputs that hold (ProjectIndex::needs_reindex).
+    bool index_holds(Fid unit);
+
     /// Ask a compile of `unit` — its run's, or a build that is the unit's
     /// compile (its PCM, the precompiled header it writes) — for the unit's
     /// TU index as the project index takes it: without what the index
@@ -1126,8 +1091,8 @@ struct Project {
     /// Take an index report — of the load, a save or a unit's merge: book its
     /// reindexes, before the attempt that merged finishes and its waiters
     /// wake, so a waker never observes an index as current that the report
-    /// just declared stale; and tell the serving side of its serving-index
-    /// changes.
+    /// just declared stale; and tell of its serving-index changes
+    /// (on_index_changed).
     void take_report(const index::IndexReport& report);
 
     /// Persist the index and the cache store's manifest as they stand, a

@@ -1,5 +1,6 @@
 module clice:project.background;
 
+import :feature.diagnostics;
 import :support.prelude;
 import :support.signal;
 import :vfs.ids;
@@ -90,11 +91,12 @@ public:
     explicit ReindexQueue(unsigned max_requeues) : max_requeues(max_requeues) {}
 
     /// Record (or refresh) why a file is pending, queueing it when it holds
-    /// no place not taken yet. Every recording shields the entry from an
-    /// in-flight attempt's finish; ContentChanged additionally starts a
-    /// fresh crash budget — the crashes the old bytes caused say nothing
-    /// about the fixed ones.
-    void record(Fid id, ReindexReason reason);
+    /// no place not taken yet; `diagnostics` asks the run for the file's
+    /// skipped-body diagnostics, which it keeps until the entry finishes.
+    /// Every recording shields the entry from an in-flight attempt's finish;
+    /// ContentChanged additionally starts a fresh crash budget — the crashes
+    /// the old bytes caused say nothing about the fixed ones.
+    void record(Fid id, ReindexReason reason, bool diagnostics = false);
 
     /// Move the file's place to the front of the places not taken yet. A
     /// place past the running pass stays past it and leads the next pass:
@@ -170,6 +172,13 @@ public:
         return entries.count(id);
     }
 
+    /// Whether a booking of the file's pending reindex asked for its
+    /// skipped-body diagnostics.
+    bool wants_diagnostics(Fid id) const {
+        auto it = entries.find(id);
+        return it != entries.end() && it->second.diagnostics;
+    }
+
     /// Whether an attempt took the file's pending reindex and runs still,
     /// with no newer recording queued after it.
     bool in_flight(Fid id) const {
@@ -202,6 +211,9 @@ private:
         /// whose runs keep dying without the worker naming it (an OOM
         /// kill): without a cap, every requeue would burn another worker.
         unsigned requeues = 0;
+
+        /// A booking asked for the file's skipped-body diagnostics.
+        bool diagnostics = false;
     };
 
     llvm::DenseMap<Fid, Entry> entries;
@@ -224,6 +236,19 @@ private:
     unsigned max_requeues;
 };
 
+/// How a background index's passes run (BackgroundIndex::start).
+struct BackgroundOptions {
+    /// Every attempt brings back the errors its compile reported, for
+    /// last_attempts: the one-shot `clice index` lists them.
+    bool errors = false;
+
+    /// Every attempt of a unit with a database entry brings back the
+    /// diagnostics a compile skipping the bodies of the headers it
+    /// includes can get wrong (skipped_diagnostics): an editor's under
+    /// `skip_header_bodies` shows them.
+    bool skipped_diagnostics = false;
+};
+
 /// The background index of a project: the passes that drive its units
 /// through their compiles (Project::compile_unit) to drain the queue of owed
 /// reindexes, batched by an idle delay and fed to the workers within a
@@ -233,9 +258,8 @@ private:
 /// project opened, `clice index` at once, `clice lint --index` after its
 /// own pass.
 ///
-/// It is serving-neutral: what an open document changes about a file's run
-/// it asks the project's serving side (Project::serving), which a
-/// command-line run has none of.
+/// An open document's own compile can serve a unit's index instead
+/// (leave_to_document), which a command-line run has none of.
 class BackgroundIndex {
 public:
     explicit BackgroundIndex(Project& project) : project(project) {}
@@ -256,6 +280,14 @@ public:
         std::size_t dispatched = 0;
     };
 
+    /// A run's skipped-body diagnostics of a file, of the text hashing to
+    /// `text_hash`.
+    struct SkippedDiagnostics {
+        std::uint64_t text_hash = 0;
+
+        std::vector<feature::FileDiagnostic> diagnostics;
+    };
+
     /// What a file's latest attempt left when it did not index clean: an
     /// index with the errors its compile reported, or a failure for good —
     /// rejected by the worker, an empty or unverifiable result, a spent
@@ -272,16 +304,13 @@ public:
         std::vector<worker::LocatedMessage> errors;
     };
 
-    /// Passes run from now on: what was booked so far, and what the index
-    /// owes — every member it holds nothing of and every unit outdated
-    /// (ProjectIndex::mark_outdated), DepsOnly, so that a cold start with a
-    /// warm index keeps serving the stored shards instead of blanking every
-    /// query until the pass drains, and the units owed the variants a
-    /// rebuild discarded, read fresh by content. With `errors`, every
-    /// attempt brings back the errors its compile reported, for
-    /// last_attempts: the one-shot `clice index` lists them; a server
-    /// reports none and never asks.
-    void start(bool errors = false);
+    /// Passes run from now on, as `options` say: what was booked so far,
+    /// and what the index owes — every member it holds nothing of and every
+    /// unit outdated (ProjectIndex::mark_outdated), DepsOnly, so that a cold
+    /// start with a warm index keeps serving the stored shards instead of
+    /// blanking every query until the pass drains, and the units owed the
+    /// variants a rebuild discarded, read fresh by content.
+    void start(BackgroundOptions options = {});
 
     /// Passes run: started and not stopped.
     bool started() const {
@@ -298,13 +327,43 @@ public:
     /// edit makes it). False for a file the build does not compile as a
     /// unit, or one a rule keeps out of the index: nothing is booked and no
     /// attempt will ever finish.
-    bool enqueue(Fid file, ReindexReason reason);
+    bool enqueue(Fid file, ReindexReason reason, bool diagnostics = false);
 
     /// Someone is reading the file through the index and nothing serves it
-    /// yet: book it at the front of the queue and start a pass without the
-    /// idle delay. A running pass finishes undisturbed; the file then leads
-    /// the next one.
-    void index_first(Fid file);
+    /// yet, or its skipped-body diagnostics (`diagnostics`): book it at the
+    /// front of the queue and start a pass without the idle delay. A running
+    /// pass finishes undisturbed; the file then leads the next one. A file
+    /// the background index refuses finishes its attempt at once
+    /// (on_attempt_finished): none will ever run.
+    void index_first(Fid file, bool diagnostics = false);
+
+    /// An open document's own compile serves the file's index from now on: a
+    /// reindex booked for a dependency alone is not run (Project::
+    /// compiled_by). One booked for the file's own content still is: the
+    /// document's index is no persisted one.
+    void leave_to_document(Fid file);
+
+    /// The file's document closed or moved to another project: its index is
+    /// the background's again, and a reindex is booked, unless the file is
+    /// gone or its index failed for good, which waits for a change.
+    void take_back(Fid file);
+
+    /// Whether an open document's compile serves the file's index.
+    bool left_to_document(Fid file) const {
+        return documents_compile.contains(file);
+    }
+
+    /// The last run's skipped-body diagnostics of the file; null for none,
+    /// or once a reindex booked for a change of its inputs dropped them.
+    const SkippedDiagnostics* skipped_diagnostics(Fid file) const {
+        auto it = skipped.find(file);
+        return it != skipped.end() ? &it->second : nullptr;
+    }
+
+    /// The inputs of the file's skipped-body diagnostics changed.
+    void forget_skipped_diagnostics(Fid file) {
+        skipped.erase(file);
+    }
 
     /// Forget a file's pending reindex: used when the file is removed from
     /// disk — nothing is left to reindex, and a lingering ContentChanged
@@ -364,6 +423,12 @@ public:
     /// completes, pass ends).
     Signal<> on_progress_changed;
 
+    /// Emitted when an index attempt of the file finished with no retry
+    /// pending, or the file was refused (index_first), before the attempt's
+    /// waiters wake (contract 15): an open document waiting on the index
+    /// re-derives its route against what its owner made of the result.
+    Signal<Fid> on_attempt_finished;
+
     /// The files whose latest attempt did not index clean.
     const llvm::DenseMap<Fid, LastAttempt>& last_attempts() const {
         return attempts;
@@ -419,7 +484,7 @@ private:
 
     State state = State::Off;
 
-    bool errors = false;
+    BackgroundOptions options;
 
     /// The pending reindexes and their order. The rules on top of it, each
     /// born from a concrete bug:
@@ -434,6 +499,12 @@ private:
     Progress current;
 
     llvm::DenseMap<Fid, LastAttempt> attempts;
+
+    /// The last skipped-body diagnostics of every file, open or not.
+    llvm::DenseMap<Fid, SkippedDiagnostics> skipped;
+
+    /// The files whose index an open document's compile serves.
+    llvm::DenseSet<Fid> documents_compile;
 
     std::size_t indexed_units = 0;
 

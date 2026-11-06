@@ -56,12 +56,6 @@ void push_moved(llvm::ArrayRef<Fid> files,
 
 }  // namespace
 
-bool ServedProject::compiled_by_session(Fid path_id) const {
-    auto* document = find_document(path_id);
-    return !project.settings.project.skip_header_bodies && document &&
-           document->serving == ServingMode::Escalated;
-}
-
 void ServedProject::mark_stale(Fid path_id, bool& refresh) {
     if(auto* document = find_document(path_id)) {
         inputs_changed(*document->session);
@@ -70,10 +64,12 @@ void ServedProject::mark_stale(Fid path_id, bool& refresh) {
 }
 
 void ServedProject::reindex(Fid path_id, bool content) {
-    skipped.erase(path_id);
-    project.background_index.enqueue(path_id,
-                                     content ? ReindexReason::ContentChanged
-                                             : ReindexReason::DepsOnly);
+    auto& background = project.background_index;
+    background.forget_skipped_diagnostics(path_id);
+    background.enqueue(path_id, content ? ReindexReason::ContentChanged : ReindexReason::DepsOnly);
+    if(auto* document = find_document(path_id)) {
+        book_skipped_diagnostics(*document, false);
+    }
 }
 
 /// An invalidated dependent recompiles when it is open, and reindexes
@@ -81,7 +77,7 @@ void ServedProject::reindex(Fid path_id, bool content) {
 void ServedProject::mark_dependent(Fid path_id, bool& refresh) {
     project.index.mark_outdated(path_id);
     mark_stale(path_id, refresh);
-    if(!compiled_by_session(path_id)) {
+    if(!project.background_index.left_to_document(path_id)) {
         reindex(path_id, false);
     }
 }
@@ -132,7 +128,7 @@ void ServedProject::provider_appeared(llvm::StringRef module_name, bool& refresh
         } else if(id.kind == NodeKind::AST) {
             if(find_document(path_id)) {
                 mark_stale(path_id, refresh);
-                if(!compiled_by_session(path_id)) {
+                if(!project.background_index.left_to_document(path_id)) {
                     reindex(path_id, true);
                 }
             }
@@ -271,7 +267,7 @@ void ServedProject::commands_changed(CDBDiff commands) {
     // canonical flags, so pull-side caches miss naturally.
     auto& delta = changed.commands;
     for(auto path_id: llvm::concat<const Fid>(delta.added, delta.changed, delta.removed)) {
-        skipped.erase(path_id);
+        project.background_index.forget_skipped_diagnostics(path_id);
         cascade_compile_graph(path_id, refresh);
     }
 

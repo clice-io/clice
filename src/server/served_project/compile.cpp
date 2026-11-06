@@ -5,6 +5,7 @@ import :compile.diagnostic;
 import :compile.tidy;
 import :feature.diagnostics;
 import :index.tu_index;
+import :project.background;
 import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
@@ -238,7 +239,7 @@ void ServedProject::retry_after_save(Session& session) {
     if(auto compiled = latest(path_id); compiled && compiled->pch_key) {
         if(compiled->pch_failed) {
             retry |= project.forget_pch_failure(*compiled->pch_key);
-        } else if(auto preamble = project.preamble_index(*compiled->pch_key);
+        } else if(auto& preamble = compiled->preamble_index;
                   preamble && ranges::any_of(preamble_diagnostics(*preamble),
                                              [](const feature::FileDiagnostic& diagnostic) {
                                                  return diagnostic.level >= DiagnosticLevel::Error;
@@ -255,28 +256,34 @@ void ServedProject::retry_after_save(Session& session) {
 std::vector<feature::FileDiagnostic>
     ServedProject::shown_skipped_diagnostics(const Session& session,
                                              const CompileOutput& output) const {
-    auto it = skipped.find(session.path_id);
-    if(it == skipped.end() || it->second.text_hash != session.hash ||
+    auto* skipped = project.background_index.skipped_diagnostics(session.path_id);
+    if(!skipped || skipped->text_hash != session.hash ||
        output.diagnostics.source != CommandSource::Database || active_choice(session.path_id)) {
         return {};
     }
-    return feature::confirmed_skipped(it->second.diagnostics, output.diagnostics);
+    return feature::confirmed_skipped(skipped->diagnostics, output.diagnostics);
 }
 
-bool ServedProject::lacks_skipped_diagnostics(Fid path_id) const {
-    auto* document = find_document(path_id);
-    if(!document || document->serving != ServingMode::Escalated ||
-       project.entries(path_id).empty()) {
-        return false;
+void ServedProject::book_skipped_diagnostics(const ServedDocument& document, bool first) {
+    auto& session = *document.session;
+    auto path_id = session.path_id;
+    if(!project.settings.project.skip_header_bodies ||
+       document.serving != ServingMode::Escalated || project.entries(path_id).empty()) {
+        return;
     }
-    auto it = skipped.find(path_id);
-    return it == skipped.end() || it->second.text_hash != document->session->hash;
+    auto& background = project.background_index;
+    if(auto* skipped = background.skipped_diagnostics(path_id);
+       skipped && skipped->text_hash == session.hash) {
+        return;
+    }
+    if(first) {
+        background.index_first(path_id, /*diagnostics=*/true);
+    } else {
+        background.enqueue(path_id, ReindexReason::DepsOnly, /*diagnostics=*/true);
+    }
 }
 
-void ServedProject::report_skipped_diagnostics(Fid path_id,
-                                               std::uint64_t text_hash,
-                                               std::vector<feature::FileDiagnostic> diagnostics) {
-    skipped[path_id] = {.text_hash = text_hash, .diagnostics = std::move(diagnostics)};
+void ServedProject::show_skipped_diagnostics(Fid path_id) {
     // A compile owed shows them as it commits (CompileAttempt::commit).
     if(!current(path_id)) {
         return;
@@ -354,6 +361,7 @@ void ServedProject::choice_changed(Session& session) {
             compiled.pch_key.reset();
             compiled.pch_failed = false;
             compiled.base_pch_key.reset();
+            compiled.preamble_index.reset();
             compiled.index.reset();
         });
     }
@@ -376,6 +384,11 @@ void ServedProject::escalate(Fid path_id) {
         return;
     }
     document.serving = ServingMode::Escalated;
+    // Its compile serves the file's index, unless it skips the bodies of
+    // the headers: then only a background run shows what they hold.
+    if(!project.settings.project.skip_header_bodies) {
+        project.background_index.leave_to_document(path_id);
+    }
 }
 
 void ServedProject::request_compile(std::shared_ptr<Session> session) {
@@ -992,6 +1005,7 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     next->pch_key = pch_failed ? built.preamble : built.loaded;
     next->pch_failed = pch_failed;
     next->base_pch_key = built.base;
+    next->preamble_index = preamble_index;
     next->host = resolution.host;
     next->command = resolution.ref.command;
     // The AST and the file index commit together — that pairing is what lets
@@ -1127,10 +1141,12 @@ void ServedProject::adopt_pch(const Ticket& ticket,
        built.partial) {
         return;
     }
+    auto preamble = built.preamble ? project.preamble_index(*built.preamble) : nullptr;
     update_latest(path_id, [&](DocumentCompile& compiled) {
         compiled.pch_key = built.preamble ? built.preamble : built.base;
         compiled.pch_failed = false;
         compiled.base_pch_key = built.base;
+        compiled.preamble_index = std::move(preamble);
     });
     session->succeeded(kind, ticket.generation);
 }

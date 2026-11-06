@@ -363,11 +363,9 @@ ZEST_CASE(MergeReportsIndexChanged) {
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
 
-    RecordingServing serving;
-    f.project.serving = &serving;
     ZASSERT(f.merge(indexed.data));
 
-    ZASSERT(ranges::contains(serving.changed,
+    ZASSERT(ranges::contains(f.changed,
                              f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
 }
 
@@ -387,15 +385,14 @@ ZEST_CASE(DropReportsServedIndex) {
     auto tu_id = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
 
-    RecordingServing serving;
-    f.project.serving = &serving;
+    f.changed.clear();
     index::IndexReport report;
     f.project.index.drop(tu_id, report);
     ZASSERT(ranges::contains(report.index_changed(), tu_id));
     ZASSERT(ranges::contains(report.index_changed(), header_id));
 
     f.project.take_report(report);
-    ZASSERT(ranges::contains(serving.changed, header_id));
+    ZASSERT(ranges::contains(f.changed, header_id));
 }
 
 ZEST_CASE(RetireReportsIndexChanged) {
@@ -422,12 +419,11 @@ ZEST_CASE(RetireReportsIndexChanged) {
     auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
     ZASSERT(f.project.index.shard(header_id) != nullptr);
 
-    RecordingServing serving;
-    f.project.serving = &serving;
+    f.changed.clear();
     f.save();
 
     ZASSERT(!f.project.index.shard(header_id));
-    ZASSERT(ranges::contains(serving.changed, header_id));
+    ZASSERT(ranges::contains(f.changed, header_id));
 }
 
 ZEST_CASE(IndexFirstRearmsIdleTimer) {
@@ -537,9 +533,10 @@ ZEST_CASE(SaveKeepsQueuedSchedule) {
 }
 
 ZEST_CASE(IndexFirstSparesRunningPass) {
-    // A file put first while the running pass has it in flight is queued
-    // past the pass and leads the next one. Moved into the running pass,
-    // it would run there a second time and push the pass's last file out.
+    // A file put first once the running pass took it — in flight, or done
+    // as here — is queued past the pass and leads the next one. Moved into
+    // the running pass, it would run there a second time and push the
+    // pass's last file out.
     IndexerFixture f;
     f.project.settings.project.idle_timeout_ms = 0;
 
@@ -549,20 +546,18 @@ ZEST_CASE(IndexFirstSparesRunningPass) {
         f.background.enqueue(files.back(), ReindexReason::DepsOnly);
     }
 
-    // Asked for each dispatched deps-only reindex: the index_first arrives while the
-    // second file is taken.
+    // The index_first arrives as the first file's attempt ends.
     std::vector<llvm::SmallVector<Fid>> passes(1);
-    RecordingServing serving;
-    serving.served = [&](Fid id) {
-        if(passes.size() == 1 && passes.front().size() == 1) {
+    std::vector<std::size_t> completed;
+    auto finished = f.background.on_attempt_finished.connect([&](Fid id) {
+        if(passes.size() == 1 && passes.front().empty()) {
             f.background.index_first(id);
         }
         passes.back().push_back(id);
-        return false;
-    };
-    f.project.serving = &serving;
+    });
     auto conn = f.background.on_progress_changed.connect([&] {
         if(f.background.progress().stage == BackgroundIndex::Progress::Stage::End) {
+            completed.push_back(f.background.progress().completed);
             passes.emplace_back();
         }
     });
@@ -570,8 +565,9 @@ ZEST_CASE(IndexFirstSparesRunningPass) {
     f.loop.run();
 
     ZEXPECT(passes.size() == 3u);
+    ZEXPECT(completed == std::vector<std::size_t>{3, 1});
     ZEXPECT(passes[0] == files);
-    ZEXPECT(passes[1] == llvm::SmallVector<Fid>{files[1]});
+    ZEXPECT(passes[1] == llvm::SmallVector<Fid>{files[0]});
     ZEXPECT(f.background.idle());
 }
 

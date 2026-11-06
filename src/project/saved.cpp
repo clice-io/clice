@@ -285,8 +285,7 @@ void Project::reconcile_index(index::IndexReport& report) {
             index.drop(unit, report);
             continue;
         }
-        auto command = command_identity(unit);
-        if(command == 0) {
+        if(candidates(unit).empty()) {
             if(!persisted) {
                 continue;
             }
@@ -309,7 +308,7 @@ void Project::reconcile_index(index::IndexReport& report) {
         }
         // A unit deleted meanwhile keeps its shard behind (queries withhold
         // it) with nothing left to reindex.
-        if(command != index.indexed_command(unit) && fs::exists(path)) {
+        if(!index_command_holds(unit) && fs::exists(path)) {
             LOG_INFO("Compile command changed since the last session; reindexing {}", path);
             index.mark_outdated(unit);
             report.add_reindex(unit);
@@ -360,8 +359,8 @@ void Project::take_report(const index::IndexReport& report) {
     for(auto id: report.reindex()) {
         background_index.enqueue(id, ReindexReason::ContentChanged);
     }
-    if(serving && !report.index_changed().empty()) {
-        serving->index_changed(report.index_changed());
+    if(!report.index_changed().empty()) {
+        on_index_changed.emit(report.index_changed());
     }
 }
 

@@ -276,9 +276,7 @@ void Project::save_choices(llvm::ArrayRef<std::pair<Fid, const ContextChoice*>> 
     }
     this->choices.bytes = json ? std::move(*json) : std::string();
     this->choices.dirty = true;
-    if(serving) {
-        serving->schedule_metadata_flush();
-    }
+    on_metadata_changed.emit();
 }
 
 std::vector<std::pair<Fid, ContextChoice>> Project::saved_choices() {

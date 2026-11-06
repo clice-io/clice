@@ -227,6 +227,7 @@ ZEST_CASE(SaveMarksDependents) {
 }
 
 ZEST_CASE(SkippedBodiesReindexOpen) {
+    project.settings.project.skip_header_bodies = true;
     auto header = fixture.intern("/proj/h.h");
     auto open_tu = list_unit(project.cdb, "/proj/a.cpp");
     fixture.open("/proj/a.cpp", "");
@@ -234,7 +235,6 @@ ZEST_CASE(SkippedBodiesReindexOpen) {
     project.dep_graph.set_includes(open_tu, 0, {{header}});
     project.dep_graph.set_includes(closed_tu, 0, {{header}});
     project.dep_graph.build_reverse_map();
-    project.settings.project.skip_header_bodies = true;
 
     served.disk_changed({header});
 
@@ -244,7 +244,7 @@ ZEST_CASE(SkippedBodiesReindexOpen) {
     llvm::SmallVector<Fid> reindexed{open_tu, closed_tu};
     ranges::sort(reindexed);
     ZASSERT(queued(ReindexReason::DepsOnly) == reindexed);
-    ZASSERT(!served.compiled_by_session(open_tu));
+    ZASSERT(!project.background_index.left_to_document(open_tu));
 }
 
 ZEST_CASE(TransitiveDependentsEnqueue) {
