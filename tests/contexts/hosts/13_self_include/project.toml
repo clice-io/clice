@@ -1,0 +1,3 @@
+[units]
+"objects.c" = ["-std=c11"]
+"main.c" = ["-std=c11"]
