@@ -572,12 +572,7 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, Renam
 
 Result<CallGraphResult> call_graph(Context& ctx,
                                    index::SymbolQuery locator,
-                                   llvm::StringRef direction) {
-    if(!ranges::contains(std::array<llvm::StringRef, 3>{"callers", "callees", "both"}, direction)) {
-        return std::unexpected(
-            std::format("invalid direction '{}': expected callers, callees or both",
-                        std::string_view(direction)));
-    }
+                                   CallGraphOptions options) {
     auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
@@ -586,7 +581,7 @@ Result<CallGraphResult> call_graph(Context& ctx,
         feature::call_graph(ctx.query,
                             resolved->symbol.hash,
                             resolved->site.file,
-                            {.callers = direction != "callees", .callees = direction != "callers"});
+                            options);
     return CallGraphResult{
         .root = graph_entry<GraphEntry>(*resolved),
         .callers = graph_entries(graph.callers),
@@ -643,13 +638,7 @@ Result<ImplementationResult> implementation(Context& ctx, index::SymbolQuery loc
 
 Result<TypeHierarchyResult> type_hierarchy(Context& ctx,
                                            index::SymbolQuery locator,
-                                           llvm::StringRef direction) {
-    if(!ranges::contains(std::array<llvm::StringRef, 3>{"supertypes", "subtypes", "both"},
-                         direction)) {
-        return std::unexpected(
-            std::format("invalid direction '{}': expected supertypes, subtypes or both",
-                        std::string_view(direction)));
-    }
+                                           TypeHierarchyOptions options) {
     auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
@@ -658,7 +647,7 @@ Result<TypeHierarchyResult> type_hierarchy(Context& ctx,
         ctx.query,
         resolved->symbol.hash,
         resolved->site.file,
-        {.supertypes = direction != "subtypes", .subtypes = direction != "supertypes"});
+        options);
     return TypeHierarchyResult{
         .root = graph_entry<GraphEntry>(*resolved),
         .supertypes = graph_entries(hierarchy.supertypes),

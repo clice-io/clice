@@ -2,6 +2,7 @@ module clice;
 
 import :compile.tidy;
 import :driver.driver;
+import :driver.run;
 import :project.graph.unit;
 import :project.project;
 import :support.logging;

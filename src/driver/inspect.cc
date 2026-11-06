@@ -5,6 +5,7 @@ import :command.table;
 import :compile.compilation;
 import :compile.tidy;
 import :driver.driver;
+import :driver.run;
 import :feature.code_actions;
 import :feature.code_completion;
 import :feature.diagnostics;

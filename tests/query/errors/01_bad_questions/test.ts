@@ -4,9 +4,14 @@ import { test } from "@clice/tools/testing";
 // exits 1, or 2 for arguments the question does not take.
 test(async (t) => {
     await t.cli("query symbol-search add");
+    // An argument the question does not take is reported before the index
+    // is opened.
+    await t.cli("query call-graph add --direction caller");
     await t.cli("index");
     for (const question of [
         "call-graph add --direction sideways",
+        "project-files --filter sources",
+        "type-hierarchy add --direction up",
         "definition nope",
         "document-symbols gone.cpp",
         "file-deps gone.cpp",

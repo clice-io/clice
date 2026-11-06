@@ -1,6 +1,7 @@
 module clice;
 
 import :driver.driver;
+import :driver.run;
 import :feature.query;
 import :index.database;
 import :index.format;

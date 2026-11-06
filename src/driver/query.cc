@@ -2,6 +2,7 @@ module clice;
 
 import :command.file_kind;
 import :driver.driver;
+import :driver.run;
 import :feature.counterparts;
 import :feature.query;
 import :index.project_index;
@@ -70,37 +71,33 @@ std::vector<DepEntry> collect_deps(Project& project,
     return entries;
 }
 
-/// The build's files, `filter` one of all, source, header, module; the
-/// error says why the question cannot be answered.
-std::expected<ProjectFilesResult, std::string> project_files(Project& project,
-                                                             llvm::StringRef filter) {
-    if(!ranges::contains(std::array<llvm::StringRef, 4>{"all", "source", "header", "module"},
-                         filter)) {
-        return std::unexpected(
-            std::format("invalid filter '{}': expected all, source, header or module",
-                        std::string_view(filter)));
-    }
+/// Which of the build's files `clice query files` lists.
+enum class FileFilter : std::uint8_t { All, Source, Header, Module };
+
+/// The build's files `filter` lists.
+ProjectFilesResult project_files(Project& project, FileFilter filter) {
     ProjectFilesResult result;
     llvm::DenseSet<Fid> seen;
     for(auto member: project.members()) {
         auto file_path = project.file_table.resolve(member);
-        if(file_path.empty() || !seen.insert(member).second) {
+        if(file_path.empty()) {
             continue;
         }
+        seen.insert(member);
         auto module_name = project.dep_graph.module_of(member);
-        llvm::StringRef kind = !module_name.empty()        ? "module"
-                               : is_header_path(file_path) ? "header"
-                                                           : "source";
-        if(filter != "all" && filter != kind) {
+        auto [kind, name] = !module_name.empty() ? std::pair(FileFilter::Module, "module")
+                            : is_header_path(file_path) ? std::pair(FileFilter::Header, "header")
+                                                        : std::pair(FileFilter::Source, "source");
+        if(filter != FileFilter::All && filter != kind) {
             continue;
         }
-        FileInfo info{.path = project.file_table.display(member), .kind = kind.str()};
+        FileInfo info{.path = project.file_table.display(member), .kind = name};
         if(!module_name.empty()) {
             info.module_name = module_name.str();
         }
         result.files.push_back(std::move(info));
     }
-    if(filter == "all" || filter == "header") {
+    if(filter == FileFilter::All || filter == FileFilter::Header) {
         project.index.for_each_indexed_file([&](Fid path_id) {
             auto path = project.file_table.resolve(path_id);
             if(!seen.contains(path_id) && is_header_path(path)) {
@@ -114,16 +111,13 @@ std::expected<ProjectFilesResult, std::string> project_files(Project& project,
     return result;
 }
 
-/// The files reachable from `path` along include edges, `direction` one of
-/// includes, includers, both; `depth` levels at most, 0 meaning unbounded.
+/// Which way `clice query file-deps` follows include edges.
+enum class IncludeDirection : std::uint8_t { Includes, Includers, Both };
+
+/// The files reachable from `path` along include edges in `direction`;
+/// `depth` levels at most, 0 meaning unbounded.
 std::expected<FileDepsResult, std::string>
-    file_deps(Project& project, const Spelling& path, llvm::StringRef direction, int depth) {
-    if(!ranges::contains(std::array<llvm::StringRef, 3>{"includes", "includers", "both"},
-                         direction)) {
-        return std::unexpected(
-            std::format("invalid direction '{}': expected includes, includers or both",
-                        std::string_view(direction)));
-    }
+    file_deps(Project& project, const Spelling& path, IncludeDirection direction, int depth) {
     if(depth < 0) {
         return std::unexpected("depth must not be negative");
     }
@@ -136,12 +130,12 @@ std::expected<FileDepsResult, std::string>
         return result;
     }
     result.file = project.file_table.display(*file);
-    if(direction != "includers") {
+    if(direction != IncludeDirection::Includers) {
         result.includes = collect_deps(project, *file, depth, [&](Fid id) {
             return project.dep_graph.get_all_includes(id);
         });
     }
-    if(direction != "includes") {
+    if(direction != IncludeDirection::Includes) {
         result.includers = collect_deps(project, *file, depth, [&](Fid id) {
             return llvm::SmallVector<Fid>(project.dep_graph.get_includers(id));
         });
@@ -196,8 +190,8 @@ struct Options {
 
 KANNOTATE_TYPE(struct ProjectFiles, description = "The build's files");
 struct ProjectFiles {
-    KANNOTATE(&filter, description = "all, source, header or module")
-    std::string filter = "all";
+    KANNOTATE(&filter, description = "Which files to list")
+    FileFilter filter = FileFilter::All;
 
     Options query;
     LogLevelOption log;
@@ -208,8 +202,8 @@ KANNOTATE_TYPE(struct FileDeps,
 struct FileDeps {
     FileTarget target;
 
-    KANNOTATE(&direction, description = "includes, includers or both")
-    std::string direction = "both";
+    KANNOTATE(&direction, description = "Which way to follow the include edges")
+    IncludeDirection direction = IncludeDirection::Both;
 
     KANNOTATE(&depth, description = "Levels to follow, 0 for all")
     int depth = 1;
@@ -284,12 +278,15 @@ struct References {
     LogLevelOption log;
 };
 
+/// Which sides of a call graph `clice query call-graph` walks.
+enum class CallDirection : std::uint8_t { Callers, Callees, Both };
+
 KANNOTATE_TYPE(struct CallGraph, description = "A function's callers and callees");
 struct CallGraph {
     SymbolTarget target;
 
-    KANNOTATE(&direction, description = "callers, callees or both")
-    std::string direction = "both";
+    KANNOTATE(&direction, description = "Which sides to walk")
+    CallDirection direction = CallDirection::Both;
 
     Options query;
     LogLevelOption log;
@@ -303,12 +300,15 @@ struct Implementation {
     LogLevelOption log;
 };
 
+/// Which sides of a type hierarchy `clice query type-hierarchy` walks.
+enum class TypeDirection : std::uint8_t { Supertypes, Subtypes, Both };
+
 KANNOTATE_TYPE(struct TypeHierarchy, description = "A type's supertypes and subtypes");
 struct TypeHierarchy {
     SymbolTarget target;
 
-    KANNOTATE(&direction, description = "supertypes, subtypes or both")
-    std::string direction = "both";
+    KANNOTATE(&direction, description = "Which sides to walk")
+    TypeDirection direction = TypeDirection::Both;
 
     Options query;
     LogLevelOption log;
@@ -399,7 +399,8 @@ int run(ProjectFiles& question) {
     return run_query(question.query,
                      /*with_build=*/true,
                      [&](Project& project, feature::query::Context&) {
-                         return project_files(project, question.filter);
+                         return std::expected<ProjectFilesResult, std::string>(
+                             project_files(project, question.filter));
                      });
 }
 
@@ -471,7 +472,11 @@ int run(References& question) {
 
 int run(CallGraph& question) {
     return ask_symbol(question, [&](feature::query::Context& ctx, index::SymbolQuery locator) {
-        return feature::query::call_graph(ctx, std::move(locator), question.direction);
+        auto direction = question.direction;
+        return feature::query::call_graph(ctx,
+                                          std::move(locator),
+                                          {.callers = direction != CallDirection::Callees,
+                                           .callees = direction != CallDirection::Callers});
     });
 }
 
@@ -483,7 +488,12 @@ int run(Implementation& question) {
 
 int run(TypeHierarchy& question) {
     return ask_symbol(question, [&](feature::query::Context& ctx, index::SymbolQuery locator) {
-        return feature::query::type_hierarchy(ctx, std::move(locator), question.direction);
+        auto direction = question.direction;
+        return feature::query::type_hierarchy(
+            ctx,
+            std::move(locator),
+            {.supertypes = direction != TypeDirection::Subtypes,
+             .subtypes = direction != TypeDirection::Supertypes});
     });
 }
 
