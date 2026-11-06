@@ -122,7 +122,7 @@ CompilerFamily driver_family(llvm::StringRef driver) {
             return CompilerFamily::Clang;
         // Intel must precede GCC: `icc` would otherwise match ends_with("cc").
         if(name.contains("icpc") || name.contains("icc") || name.contains("dpcpp") ||
-           name.contains("icx"))
+           name.contains("icx") || name.contains("icpx"))
             return CompilerFamily::Intel;
         if(name.ends_with("cc") || name.ends_with("c++") || name.ends_with("gcc") ||
            name.ends_with("g++"))

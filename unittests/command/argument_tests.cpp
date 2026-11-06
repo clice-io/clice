@@ -152,6 +152,7 @@ ZEST_CASE(DriverFamily) {
     ZEXPECT(driver_family("Clang-Cl.exe") == ClangCL);
     ZEXPECT(driver_family("nvcc") == NVCC);
     ZEXPECT(driver_family("icx") == Intel);
+    ZEXPECT(driver_family("icpx") == Intel);
     ZEXPECT(driver_family("icc") == Intel);
     ZEXPECT(driver_family("icpc") == Intel);
     ZEXPECT(driver_family("dpcpp") == Intel);
