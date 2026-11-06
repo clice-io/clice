@@ -160,6 +160,14 @@ bool mentions_parameters(clang::QualType type, const clang::TemplateParameterLis
 /// `Outer<T>::Inner`'s. Null for any other template.
 clang::ClassTemplateDecl* member_pattern(const clang::ClassTemplateDecl* CTD);
 
+/// `arguments` canonical, as clang registers a specialization of `params`:
+/// those a parameter pack takes grouped into one. Without `params`, each as
+/// it is.
+llvm::SmallVector<clang::TemplateArgument, 4>
+    canonical_arguments(clang::ASTContext& context,
+                        const clang::TemplateParameterList* params,
+                        llvm::ArrayRef<clang::TemplateArgument> arguments);
+
 /// Whether `record`'s definition inherits from a still-dependent base, which
 /// may bring a member only once it instantiates; an undefined record tells
 /// nothing either.

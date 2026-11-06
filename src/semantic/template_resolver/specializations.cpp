@@ -5,36 +5,11 @@ import :semantic.template_resolver.instantiator;
 
 namespace clice::types {
 
-clang::QualType PseudoInstantiator::make_specialization(clang::TemplateName name,
-                                                        TemplateArguments arguments) {
-    /// A template template parameter can be bound to a dependent template
-    /// name (libc++ binds `_Alloc::template rebind` this way). A
-    /// TemplateSpecializationType cannot carry those (clang asserts);
-    /// rebuild the dependent form with the substituted arguments instead.
-    if(name.getAsDependentTemplateName()) {
-        return context.getTemplateSpecializationType(clang::ElaboratedTypeKeyword::None,
-                                                     name,
-                                                     arguments,
-                                                     /*CanonicalArgs=*/{});
-    }
-
+llvm::SmallVector<clang::TemplateArgument, 4>
+    canonical_arguments(clang::ASTContext& context,
+                        const clang::TemplateParameterList* params,
+                        llvm::ArrayRef<clang::TemplateArgument> arguments) {
     llvm::SmallVector<clang::TemplateArgument, 4> canonical;
-
-    /// A head bound through a template template parameter may carry an
-    /// argument list the parameters cannot accept — too few (defaulted
-    /// trailing parameters must be filled or the canonical list never
-    /// compares equal to a parsed `target<X>`) or too many (rebuilding
-    /// would fabricate an invalid specialization; degrade instead).
-    llvm::SmallVector<clang::TemplateArgument, 4> full;
-    clang::TemplateParameterList* params = nullptr;
-    if(auto TD = name.getAsTemplateDecl()) {
-        params = TD->getTemplateParameters();
-        if(!fill_defaults(TD, arguments, full)) {
-            return clang::QualType();
-        }
-        arguments = full;
-    }
-
     unsigned i = 0;
     if(params) {
         for(auto param: *params) {
@@ -63,6 +38,38 @@ clang::QualType PseudoInstantiator::make_specialization(clang::TemplateName name
     for(; i < arguments.size(); i += 1) {
         canonical.emplace_back(context.getCanonicalTemplateArgument(arguments[i]));
     }
+    return canonical;
+}
+
+clang::QualType PseudoInstantiator::make_specialization(clang::TemplateName name,
+                                                        TemplateArguments arguments) {
+    /// A template template parameter can be bound to a dependent template
+    /// name (libc++ binds `_Alloc::template rebind` this way). A
+    /// TemplateSpecializationType cannot carry those (clang asserts);
+    /// rebuild the dependent form with the substituted arguments instead.
+    if(name.getAsDependentTemplateName()) {
+        return context.getTemplateSpecializationType(clang::ElaboratedTypeKeyword::None,
+                                                     name,
+                                                     arguments,
+                                                     /*CanonicalArgs=*/{});
+    }
+
+    /// A head bound through a template template parameter may carry an
+    /// argument list the parameters cannot accept — too few (defaulted
+    /// trailing parameters must be filled or the canonical list never
+    /// compares equal to a parsed `target<X>`) or too many (rebuilding
+    /// would fabricate an invalid specialization; degrade instead).
+    llvm::SmallVector<clang::TemplateArgument, 4> full;
+    clang::TemplateParameterList* params = nullptr;
+    if(auto TD = name.getAsTemplateDecl()) {
+        params = TD->getTemplateParameters();
+        if(!fill_defaults(TD, arguments, full)) {
+            return clang::QualType();
+        }
+        arguments = full;
+    }
+
+    auto canonical = canonical_arguments(context, params, arguments);
 
     /// Fully concrete results should compare equal to the same type
     /// written in source, whose canonical form is the specialization

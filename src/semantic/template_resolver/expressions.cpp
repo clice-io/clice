@@ -178,10 +178,7 @@ std::optional<llvm::APSInt>
         return std::nullopt;
     }
     if(ranges::none_of(arguments, &clang::TemplateArgument::isDependent)) {
-        auto canonical = ranges::to<llvm::SmallVector<clang::TemplateArgument, 4>>(
-            views::transform(arguments, [&](const clang::TemplateArgument& argument) {
-                return context.getCanonicalTemplateArgument(argument);
-            }));
+        auto canonical = canonical_arguments(context, VTD->getTemplateParameters(), arguments);
         void* position = nullptr;
         if(auto* specialization = VTD->findSpecialization(canonical, position);
            specialization && specialization->isExplicitSpecialization()) {

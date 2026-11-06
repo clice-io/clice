@@ -508,4 +508,17 @@ struct test {
         typename conditional<enabled<typename Source<T>::type>, int, char>::type;
 };
 
+template <typename... Ts>
+constexpr bool any_enabled = false;
+
+template <>
+constexpr bool any_enabled<int> = true;
+
+template <typename T>
+struct test_pack {
+    // Clang holds the specialization's arguments as one pack.
+    using §(explicit_variadic_specialization)input =
+        typename conditional<any_enabled<typename Source<T>::type>, int, char>::type;
+};
+
 }  // namespace explicit_variable_specialization
