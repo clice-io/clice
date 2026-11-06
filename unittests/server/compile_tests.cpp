@@ -718,17 +718,17 @@ ZEST_CASE(ImportScanPerUnit) {
         ZASSERT(fixture.server.pool.start(opts));
 
         ZASSERT(co_await served.ensure_compiled(plain));
-        plain_scans = served.project.import_scans.runs;
+        plain_scans = served.project.import_scan_runs;
         ZASSERT(co_await served.ensure_compiled(main));
-        first_scans = served.project.import_scans.runs;
+        first_scans = served.project.import_scan_runs;
 
         edit(main, "import m;\nint main() { return mv() + 1; }\n");
         ZASSERT(co_await served.ensure_compiled(main));
-        body_scans = served.project.import_scans.runs;
+        body_scans = served.project.import_scan_runs;
 
         edit(main, "import m;\n#define TWO 2\nint main() { return mv() + TWO; }\n");
         ZASSERT(co_await served.ensure_compiled(main));
-        import_scans = served.project.import_scans.runs;
+        import_scans = served.project.import_scan_runs;
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
@@ -981,7 +981,7 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
     ZEXPECT(unit_ok);
     ZEXPECT(header_ok);
     ZEXPECT(served.latest(header->path_id)->host == unit->path_id);
-    ZEXPECT(served.project.import_scans.runs == 0u);
+    ZEXPECT(served.project.import_scan_runs == 0u);
 }
 
 };  // ZEST_SUITE(CompileGuards)

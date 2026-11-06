@@ -1,6 +1,7 @@
 module clice:syntax.scan;
 
 import :support.prelude;
+import :vfs.file_table;
 import :vfs.ids;
 
 namespace clice {
@@ -97,6 +98,11 @@ struct ScanResult {
     /// result depends on: equal hashes, equal precise scans of the file
     /// under one command and disk.
     std::uint64_t directives_hash = 0;
+
+    /// What the preprocessor of a precise scan read: each file it entered,
+    /// with the hash of the bytes read, and each place a lookup that found
+    /// nothing looked (input_path, lookup_places).
+    std::vector<ReportedInput> deps;
 };
 
 /// Quick lexer-based scan, answering exactly two questions: is this file a
@@ -153,13 +159,31 @@ struct QuickScanCache {
 /// legal ([cpp.import] macro-expands an import's tokens, see
 /// ModuleImportScan.ImportMacroExpandedName in scan_tests) — and it resolves a
 /// partition import (`import :part;`) against the enclosing module's
-/// name. Fills the module name and the imports with their offsets.
-/// An engaged `content` remaps the scanned file to it — even when empty:
+/// name. Fills the module name, the imports with their offsets, and what
+/// the scan read (ScanResult::deps). An engaged `content` remaps the scanned file to it — even when empty:
 /// an emptied buffer must scan as empty, not fall back to the disk.
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
                         std::optional<llvm::StringRef> content = std::nullopt,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = nullptr);
+
+/// The path the preprocessor read `entry` at, as the file table names the
+/// file: absolutized against the working directory of `files`, through an
+/// -ivfsoverlay's redirection to the file read. Symlinked spellings of a
+/// file collapse into one path, hardlinked ones do not.
+std::string input_path(clang::FileManager& files, clang::FileEntryRef entry);
+
+/// Every place a lookup of `name` from `includer` that found nothing
+/// looked, absolute as clang looked (`..` resolves past a symlinked
+/// directory): the includer's directory, for a quoted name, then each
+/// search directory the lookup walks. A file created at any of them changes
+/// what the preprocessor sees.
+void lookup_places(clang::FileManager& files,
+                   clang::HeaderSearch& search,
+                   clang::OptionalFileEntryRef includer,
+                   llvm::StringRef name,
+                   bool angled,
+                   llvm::function_ref<void(std::string)> visit);
 
 /// Lightweight preprocessor-based fallback for resolving module declarations
 /// inside conditional directives (#if/#ifdef). When the quick `scan()` detects

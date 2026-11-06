@@ -695,10 +695,10 @@ ZEST_CASE(MembersFollowCommands) {
     ZEXPECT(IndexInternals::outdated(project.index, kept));
     ZEXPECT(f.queue.pending_reason(kept) == ReindexReason::ContentChanged);
 
-    auto disk = project.disk_epoch;
+    auto graph = project.dep_graph.generation();
     ZEXPECT(project.update_members({}).empty());
     ZEXPECT(project.commands_epoch == epoch + 1);
-    ZEXPECT(project.disk_epoch == disk);
+    ZEXPECT(project.dep_graph.generation() == graph);
     ZEXPECT(IndexerFixture::pending_files(f.queue) == llvm::SmallVector<Fid>{kept});
 }
 

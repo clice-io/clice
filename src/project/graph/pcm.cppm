@@ -84,8 +84,11 @@ struct BuiltImports {
     llvm::SmallVector<Fid> failed;
 };
 
-/// A unit's last precise import scan and what it ran against.
+/// A unit's last precise import scan (Project::scan_imports) and what it
+/// ran against beside the files it read: a failed module's every importer
+/// waits on it again, and each wait would preprocess it again.
 struct ImportScan {
+    /// The directives hash of a buffer's text.
     std::uint64_t directives = 0;
 
     /// The preamble bound of the scanned text: the import offsets are
@@ -95,27 +98,11 @@ struct ImportScan {
 
     std::uint64_t arguments = 0;
 
-    std::uint64_t epoch = 0;
-
     std::vector<std::string> imports;
 
     std::vector<std::uint32_t> offsets;
 
     bool module_unit = false;
-};
-
-/// The import scans of open buffers, and of units' disk text (see
-/// Project::scan_imports): kept while the arguments and the project's disk
-/// state (Project::disk_epoch) stay the same — and for a buffer, its directives.
-/// A failed module's every importer waits on it again, and each wait would
-/// preprocess it again.
-struct ImportScans {
-    llvm::DenseMap<Fid, ImportScan> buffers;
-
-    llvm::DenseMap<Fid, ImportScan> disk;
-
-    /// The preprocessor runs the scans took.
-    std::uint64_t runs = 0;
 };
 
 /// The graph identity of an import that resolves to nothing: a node that

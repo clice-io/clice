@@ -298,7 +298,7 @@ void ServedProject::release(Fid path_id) {
     auto path = project.file_table.resolve(path_id);
     server.pool.forget_document(path_id.raw);
     project.graph.invalidate(ast_node(path_id));
-    project.import_scans.buffers.erase(path_id);
+    project.buffer_scans.forget(path_id);
     documents.erase(path_id);
     // The document's compile may have stood in for the file's background
     // index (ServingSide::compiled_by_session); the disk's turn again, unless

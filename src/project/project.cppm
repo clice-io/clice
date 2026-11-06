@@ -239,12 +239,7 @@ struct Project {
     /// replace the file: the file shrinks no more until the next session.
     bool shrink_failed = false;
 
-    /// Moves whenever the disk state the dependency graph scans changes: a
-    /// file rescanned or gone, the graph rebuilt. A preprocessor run's
-    /// answer (an import scan) holds while it stays.
-    std::uint64_t disk_epoch = 1;
-
-    /// The generation of context-affecting project state: the disk state,
+    /// The generation of context-affecting project state: the include graph,
     /// the include trees — a tree moves its host's contexts — and the
     /// self-containment results — a header found self-contained lists the
     /// hosts giving the same command once. clice/queryContext tags its
@@ -252,11 +247,12 @@ struct Project {
     /// an older epoch, so a client can never apply a context picked from a
     /// stale listing without noticing.
     std::uint64_t context_epoch() const {
-        return disk_epoch + hosting.trees.generation() + hosting.self_containment.generation();
+        return dep_graph.generation() + hosting.trees.generation() +
+               hosting.self_containment.generation();
     }
 
     /// Generation of the build's commands: bumped when a database reloads
-    /// or a member appears, not on saves like disk_epoch.
+    /// or a member appears, not on saves like the dependency graph's.
     std::uint64_t commands_epoch = 1;
 
     /// What the project knows of the headers borrowing a unit's command.
@@ -288,7 +284,14 @@ struct Project {
     /// The PCMs of the module units, by unit.
     llvm::DenseMap<Fid, PCMEntry> pcms;
 
-    ImportScans import_scans;
+    /// The import scans of units' disk text and of open buffers
+    /// (scan_imports), each while the files it read hold.
+    Memo<Fid, ImportScan> disk_scans;
+
+    Memo<Fid, ImportScan> buffer_scans;
+
+    /// The preprocessor runs the import scans took.
+    std::uint64_t import_scan_runs = 0;
 
     /// What each unit's compiles in this session showed.
     llvm::DenseMap<Fid, UnitHistory> unit_history;
@@ -992,9 +995,9 @@ struct Project {
     /// that can import nothing pays none: its own text has no module syntax,
     /// neither it nor the host whose command it borrows reaches an import
     /// candidate, and a buffer's directives are the ones the dependency scan
-    /// saw. A scan is reused while its arguments and the project's disk state
-    /// (disk_epoch) stay the same, a buffer's while its directive stream
-    /// does too.
+    /// saw. A scan is reused while its arguments stay the same and the files
+    /// it read and looked for in vain hold, a buffer's while its directive
+    /// stream stays the same too.
     async::task<Imports> scan_imports(Fid path_id,
                                       const Resolution& resolution,
                                       std::optional<llvm::StringRef> content);

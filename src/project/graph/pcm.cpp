@@ -176,13 +176,6 @@ bool refused(Project& project, Fid module, llvm::StringRef pcm_key, llvm::String
 /// edges, wait on them, keep the last build while it holds, else dispatch a
 /// new one.
 async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id) {
-    // Inputs that moved may import otherwise: a scan taken before is no
-    // answer for them, even while no event has reached the disk state yet.
-    if(auto* inputs = project.module_inputs(path_id);
-       inputs && !inputs_hold(project.file_table, *inputs)) {
-        project.import_scans.disk.erase(path_id);
-    }
-
     // The import list is scanner truth, not build output: commit it as
     // the node's edges before building, so a build that fails stays
     // reachable from its imports — fixing or providing one re-dirties it.
@@ -455,15 +448,15 @@ async::task<Imports> Project::scan_imports(Fid path_id,
         joined.append(arg);
     }
     auto arguments_hash = llvm::xxh3_64bits(joined);
-    auto epoch = disk_epoch;
 
-    auto& scans = content ? import_scans.buffers : import_scans.disk;
+    // A buffer's own text is no input of its scan: the directives stand
+    // for it.
+    auto& scans = content ? buffer_scans : disk_scans;
     ImportScan scan;
-    if(auto memo = scans.find(path_id);
-       memo != scans.end() && memo->second.directives == directives &&
-       memo->second.bound == bound && memo->second.arguments == arguments_hash &&
-       memo->second.epoch == epoch) {
-        scan = memo->second;
+    if(auto* memo = scans.lookup(file_table, path_id, content ? path_id : Fid{});
+       memo && memo->result.directives == directives && memo->result.bound == bound &&
+       memo->result.arguments == arguments_hash) {
+        scan = memo->result;
     } else {
         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs =
             llvm::makeIntrusiveRefCnt<vfs::View>(resolution.hidden);
@@ -488,18 +481,20 @@ async::task<Imports> Project::scan_imports(Fid path_id,
             append_include(text, suffix);
             content = text;
         }
-        import_scans.runs += 1;
+        import_scan_runs += 1;
         std::vector<const char*> argv;
         argv.reserve(resolution.arguments.size());
         for(auto& arg: resolution.arguments) {
             argv.push_back(arg.c_str());
         }
+        auto started_at = chrono::duration_cast<chrono::milliseconds>(
+                              chrono::system_clock::now().time_since_epoch())
+                              .count();
         auto scanned = co_await async::queue(
             [&] { return scan_precise(argv, resolution.directory, content, std::move(vfs)); });
         scan = {.directives = directives,
                 .bound = bound,
                 .arguments = arguments_hash,
-                .epoch = epoch,
                 .imports = std::move(scanned.modules),
                 .offsets = std::move(scanned.import_offsets),
                 .module_unit = !scanned.module_name.empty()};
@@ -508,7 +503,19 @@ async::task<Imports> Project::scan_imports(Fid path_id,
             scan.imports.push_back(std::move(scanned.module_name));
             scan.offsets.push_back(std::numeric_limits<std::uint32_t>::max());
         }
-        scans[path_id] = scan;
+        // A header context's files exist in memory alone: the chain files
+        // its text embeds stand for them.
+        if(auto& synthesized = resolution.synthesized) {
+            llvm::StringSet<> memory;
+            for(auto& file: synthesized->files) {
+                memory.insert(CanonicalPath(Spelling::absolute(file.path)).str());
+            }
+            std::erase_if(scanned.deps,
+                          [&](const ReportedInput& input) { return memory.contains(input.path); });
+        }
+        auto inputs = intern_inputs(file_table, scanned.deps, started_at);
+        inputs.append(resolution.inputs.begin(), resolution.inputs.end());
+        scans.commit(path_id, scan, std::move(inputs));
     }
 
     // Every scanned name goes into the edge set, resolved or not: an

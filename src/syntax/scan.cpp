@@ -4,6 +4,7 @@ import :command.invocation;
 import :syntax.lexer;
 import :syntax.scan;
 import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 
@@ -209,11 +210,49 @@ private:
 };
 
 /// Collects the imports the preprocessor reaches, each with its offset in
-/// the scanned file.
-class ImportRecorder : public clang::PPCallbacks {
+/// the scanned file, and what it read (ScanResult::deps).
+class ScanRecorder : public clang::PPCallbacks {
 public:
-    ImportRecorder(ScanResult& result, const clang::SourceManager& sources) :
-        result(result), sources(sources) {}
+    ScanRecorder(ScanResult& result, clang::Preprocessor& pp) :
+        result(result), pp(pp), sources(pp.getSourceManager()) {}
+
+    void LexedFileChanged(clang::FileID current,
+                          LexedFileChangeReason reason,
+                          clang::SrcMgr::CharacteristicKind,
+                          clang::FileID,
+                          clang::SourceLocation) override {
+        if(reason == LexedFileChangeReason::EnterFile && current.isValid()) {
+            entered.insert(current);
+        }
+    }
+
+    void InclusionDirective(clang::SourceLocation location,
+                            const clang::Token&,
+                            llvm::StringRef name,
+                            bool angled,
+                            clang::CharSourceRange,
+                            clang::OptionalFileEntryRef file,
+                            llvm::StringRef,
+                            llvm::StringRef,
+                            const clang::Module*,
+                            bool,
+                            clang::SrcMgr::CharacteristicKind) override {
+        if(!file) {
+            look_in_vain(name, angled, location);
+        }
+    }
+
+    void HasInclude(clang::SourceLocation location,
+                    llvm::StringRef name,
+                    bool angled,
+                    clang::OptionalFileEntryRef file,
+                    clang::SrcMgr::CharacteristicKind) override {
+        if(file) {
+            found.push_back(*file);
+        } else {
+            look_in_vain(name, angled, sources.getFileLoc(location));
+        }
+    }
 
     void moduleImport(clang::SourceLocation location,
                       clang::ModuleIdPath names,
@@ -238,9 +277,54 @@ public:
         result.import_offsets.push_back(offset);
     }
 
+    /// Fill ScanResult::deps once the scan ended: the files entered, by the
+    /// bytes read, and the places looked at that still hold nothing.
+    void finish() {
+        auto& files = sources.getFileManager();
+        llvm::StringSet<> seen;
+        for(auto fid: entered) {
+            auto entry = sources.getFileEntryRefForID(fid);
+            if(!entry) {
+                continue;
+            }
+            auto path = input_path(files, *entry);
+            if(!seen.insert(path).second) {
+                continue;
+            }
+            auto buffer = sources.getBufferDataOrNone(fid);
+            result.deps.push_back({.path = std::move(path),
+                                   .hash = buffer ? llvm::xxh3_64bits(*buffer) : 0});
+        }
+        // A file a check found was looked at, not read: it counts by what
+        // the disk holds as the scan started.
+        for(auto file: found) {
+            if(auto path = input_path(files, file); seen.insert(path).second) {
+                result.deps.push_back({.path = std::move(path)});
+            }
+        }
+        for(auto& place: absent) {
+            if(!fs::exists(place.getKey())) {
+                result.deps.push_back({.path = place.getKey().str(), .absent = true});
+            }
+        }
+    }
+
 private:
+    void look_in_vain(llvm::StringRef name, bool angled, clang::SourceLocation location) {
+        lookup_places(sources.getFileManager(),
+                      pp.getHeaderSearchInfo(),
+                      sources.getFileEntryRefForID(sources.getFileID(location)),
+                      name,
+                      angled,
+                      [&](std::string place) { absent.insert(place); });
+    }
+
     ScanResult& result;
+    clang::Preprocessor& pp;
     const clang::SourceManager& sources;
+    llvm::SetVector<clang::FileID> entered;
+    llvm::SmallVector<clang::FileEntryRef> found;
+    llvm::StringSet<> absent;
 };
 
 /// The setup every preprocessor-driven scan shares: the instance from the
@@ -339,13 +423,61 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
         std::move(vfs),
         result,
         [&](clang::CompilerInstance& instance, clang::FrontendAction& action) {
-            instance.getPreprocessor().addPPCallbacks(
-                std::make_unique<ImportRecorder>(result, instance.getSourceManager()));
+            auto& pp = instance.getPreprocessor();
+            auto recorder = std::make_unique<ScanRecorder>(result, pp);
+            auto& recording = *recorder;
+            pp.addPPCallbacks(std::move(recorder));
             if(auto error = action.Execute()) {
                 llvm::consumeError(std::move(error));
             }
+            recording.finish();
         });
     return result;
+}
+
+std::string input_path(clang::FileManager& files, clang::FileEntryRef entry) {
+    llvm::SmallString<128> spelled(entry.getName());
+    files.makeAbsolutePath(spelled);
+    // An -ivfsoverlay can name a file by a path only the overlay knows;
+    // the file read is the one it redirects to.
+    if(auto& vfs = files.getVirtualFileSystem(); llvm::isa<llvm::vfs::RedirectingFileSystem>(vfs)) {
+        llvm::SmallString<128> redirected;
+        if(!vfs.getRealPath(spelled, redirected)) {
+            spelled = redirected;
+        }
+    }
+    return CanonicalPath(Spelling::absolute(spelled)).str();
+}
+
+void lookup_places(clang::FileManager& files,
+                   clang::HeaderSearch& search,
+                   clang::OptionalFileEntryRef includer,
+                   llvm::StringRef name,
+                   bool angled,
+                   llvm::function_ref<void(std::string)> visit) {
+    auto add = [&](llvm::StringRef directory) {
+        llvm::SmallString<256> candidate(directory);
+        path::push(candidate, name);
+        files.makeAbsolutePath(candidate);
+        visit(Spelling::absolute(candidate).str());
+    };
+    if(path::is_absolute(name)) {
+        visit(Spelling::absolute(name).str());
+        return;
+    }
+    if(!angled && includer) {
+        add(includer->getDir().getName());
+    }
+    for(auto it = angled ? search.angled_dir_begin() : search.quoted_dir_begin();
+        it != search.search_dir_end();
+        ++it) {
+        // FIXME: header maps and framework directories have no plain directory:
+        // a failed lookup through them records no absent input, so a header
+        // created there later goes unnoticed.
+        if(auto directory = it->getDirRef()) {
+            add(directory->getName());
+        }
+    }
 }
 
 ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,

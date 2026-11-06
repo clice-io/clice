@@ -224,7 +224,7 @@ void LSPClient::register_test_hooks() {
                     stats.synthesized_contexts += entry.result.synthesized != nullptr ? 1 : 0;
                 });
 
-                stats.import_scans += served->project.import_scans.runs;
+                stats.import_scans += served->project.import_scan_runs;
                 stats.index_idle = stats.index_idle && served->project.background_index.idle();
             }
             stats.sessions = static_cast<std::uint32_t>(this->server.documents.size());
