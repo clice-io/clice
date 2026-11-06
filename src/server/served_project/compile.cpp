@@ -231,14 +231,14 @@ void ServedProject::retry_after_save(Session& session) {
     };
     add_imports(ast_node(session.path_id));
     for(std::size_t i = 0; i < modules.size(); i += 1) {
-        retry |= project.forget_build_failure(modules[i]);
+        retry |= project.forget_module_failure(modules[i]);
         add_imports(module_node(modules[i]));
     }
     // A PCH that kept its preamble's errors misses the same lookups as a
     // failed build: a save rebuilds it.
     if(auto compiled = latest(path_id); compiled && compiled->pch_key) {
         if(compiled->pch_failed) {
-            retry |= project.forget_build_failure(*compiled->pch_key);
+            retry |= project.forget_pch_failure(*compiled->pch_key);
         } else if(auto preamble = project.preamble_index(*compiled->pch_key);
                   preamble && ranges::any_of(preamble_diagnostics(*preamble),
                                              [](const feature::FileDiagnostic& diagnostic) {
@@ -724,7 +724,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::modules() {
         crashed = true;
     }
     for(auto module: imports.failed) {
-        if(auto* crash = project.build_crash(module)) {
+        if(auto* crash = project.module_build_crash(module)) {
             served.record_crash(session, kind, crash->death, crash->cause);
             crashed = true;
         }
@@ -756,7 +756,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::pch() {
     built = std::move(*waited);
     if(built.preamble) {
         auto* crash = built.refused                    ? &*built.refused
-                      : built.result == Result::Failed ? project.build_crash(*built.preamble)
+                      : built.result == Result::Failed ? project.pch_build_crash(*built.preamble)
                                                        : nullptr;
         if(crash) {
             served.record_crash(session, PCH, crash->death, crash->cause);
@@ -1049,8 +1049,8 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     // FIXME: released even while another open document still fails on that
     // preamble: its next compile runs the failing build once more.
     if(entry.latest && entry.latest->pch_failed && entry.latest->pch_key != next->pch_key &&
-       !project.build_crash(*entry.latest->pch_key)) {
-        project.forget_build_failure(*entry.latest->pch_key);
+       !project.pch_build_crash(*entry.latest->pch_key)) {
+        project.forget_pch_failure(*entry.latest->pch_key);
     }
     entry.latest = std::move(next);
     if(tidy_config) {
@@ -1114,7 +1114,7 @@ void ServedProject::adopt_pch(const Ticket& ticket,
         return;
     }
     if(built.preamble && built.result != Result::Success) {
-        if(auto* crash = project.build_crash(*built.preamble)) {
+        if(auto* crash = project.pch_build_crash(*built.preamble)) {
             record_crash(session, kind, crash->death, crash->cause);
         }
         return;

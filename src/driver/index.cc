@@ -11,7 +11,7 @@ import :index.search_index;
 import :index.shard;
 import :index.symbol_query;
 import :index.tu_manifest;
-import :project.indexer;
+import :project.background;
 import :project.project;
 import :server.control;
 import :support.logging;
@@ -451,7 +451,7 @@ constexpr std::pair<index::BlobKind, llvm::StringLiteral> stored_kinds[] = {
     {index::BlobKind::Version,            "versions"            },
     {index::BlobKind::Header,             "header"              },
     {index::BlobKind::SearchSegment,      "search segments"     },
-    {index::BlobKind::Listings,           "cdb"                 },
+    {index::BlobKind::Members,            "cdb"                 },
     {index::BlobKind::PrecompiledRecords, "precompiled records" },
     {index::BlobKind::ContextChoices,     "contexts"            },
 };

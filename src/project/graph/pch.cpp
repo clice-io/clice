@@ -576,9 +576,9 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
         built.preamble = key;
         // A preamble whose build crashed a worker — for this document or
         // another sharing it — is refused until the parse may retry it.
-        if(auto* crash = build_crash(key)) {
+        if(auto* crash = pch_build_crash(key)) {
             if(options.retry_crashed) {
-                forget_build_failure(key);
+                forget_pch_failure(key);
             } else {
                 built.refused = *crash;
             }
@@ -622,13 +622,13 @@ void Project::discard_pch(llvm::StringRef pch_key) {
     }
 }
 
-const FailureRecord* Project::build_crash(llvm::StringRef pch_key) {
+const FailureRecord* Project::pch_build_crash(llvm::StringRef pch_key) {
     auto it = pchs.find(pch_key);
     auto* failed = it != pchs.end() ? it->second.standing_failure(file_table) : nullptr;
     return failed && failed->crashed() ? failed : nullptr;
 }
 
-bool Project::forget_build_failure(llvm::StringRef pch_key) {
+bool Project::forget_pch_failure(llvm::StringRef pch_key) {
     auto it = pchs.find(pch_key);
     return it != pchs.end() && std::exchange(it->second.failure, std::nullopt).has_value();
 }

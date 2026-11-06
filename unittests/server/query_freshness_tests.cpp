@@ -4,7 +4,7 @@ import :index.query;
 import :index.search;
 import :index.shard;
 import :index.tu_index;
-import :project.indexer;
+import :project.background;
 import :project.project;
 import :server.served_project;
 import :unittests.server.served_project_fixture;

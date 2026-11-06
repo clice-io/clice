@@ -1,4 +1,4 @@
-module clice:project.indexer;
+module clice:project.background;
 
 import :support.prelude;
 import :support.signal;

@@ -3,7 +3,7 @@ module clice;
 import :index.database;
 import :index.project_index;
 import :index.symbol_query;
-import :project.indexer;
+import :project.background;
 import :project.project;
 import :unittests.utils;
 import :unittests.utils.cdb_helper;

@@ -1,11 +1,11 @@
 module clice;
 
 import :index.project_index;
+import :project.background;
 import :project.command;
 import :project.discovery;
 import :project.graph.pcm;
 import :project.graph.task_graph;
-import :project.indexer;
 import :server.client;
 import :server.master;
 import :server.served_project;

@@ -136,14 +136,14 @@ ZEST_CASE(HeaderEdgesFromHost) {
     auto session = fx.open(project.file_table.resolve(header_id),
                            sources.all_files.lookup("header.h").content,
                            1);
-    auto edges = query.project().include_edges(session->path_id);
+    auto edges = query.project().resolved_includes(session->path_id);
     ZASSERT(edges.size() == std::size_t(1));
     ZASSERT(llvm::StringRef(edges[0].target).ends_with("inner.h"));
 
     // The TU's own manifest still answers for the TU itself.
     auto focus_session =
         fx.open(project.file_table.resolve(focus_id), unit->focus_file().content().str(), 1);
-    auto focus_edges = query.project().include_edges(focus_session->path_id);
+    auto focus_edges = query.project().resolved_includes(focus_session->path_id);
     ZASSERT(focus_edges.size() == std::size_t(1));
     ZASSERT(llvm::StringRef(focus_edges[0].target).ends_with("header.h"));
 }

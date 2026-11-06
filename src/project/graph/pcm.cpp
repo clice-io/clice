@@ -556,12 +556,12 @@ std::optional<feature::ModuleFailure> Project::module_failure(Fid module) const 
     return failure;
 }
 
-bool Project::forget_build_failure(Fid module) {
+bool Project::forget_module_failure(Fid module) {
     auto it = pcms.find(module);
     return it != pcms.end() && std::exchange(it->second.failure, std::nullopt).has_value();
 }
 
-const FailureRecord* Project::build_crash(Fid module) {
+const FailureRecord* Project::module_build_crash(Fid module) {
     // FIXME: what a crash is known to read leaves out the headers the module
     // includes: a fix there waits for an importer's edit or save, and its
     // importers fail to index until then.
@@ -589,12 +589,12 @@ async::task<std::optional<BuiltImports>> Project::build_imports(Fid file,
     // build of the module, by a parse that may retry it, re-dirties this one.
     llvm::SmallVector<Fid> waited;
     for(auto module: built.imports.resolved()) {
-        if(auto* crash = build_crash(module)) {
+        if(auto* crash = module_build_crash(module)) {
             if(!options.retry_crashed) {
                 built.refused.push_back(*crash);
                 continue;
             }
-            forget_build_failure(module);
+            forget_module_failure(module);
         }
         waited.push_back(module);
     }

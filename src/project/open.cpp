@@ -4,8 +4,8 @@ import :command.database;
 import :index.database;
 import :index.project_index;
 import :project.discovery;
-import :project.listings;
 import :project.project;
+import :project.saved;
 import :settings.settings;
 import :support.json;
 import :support.logging;
@@ -28,7 +28,7 @@ namespace {
 /// Register and load the build's sources: the databases the rules declare
 /// (existing or not; the server watches for them), else the ones
 /// discovered under the root plus `nearby`, the ones discovery would only
-/// meet later — the persisted index's (see SavedListings::databases),
+/// meet later — the persisted index's (see SavedMembers::databases),
 /// those above the file a run is about (see databases_above).
 void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
     CanonicalRef root = project.root;
@@ -275,9 +275,9 @@ Project::Opened Project::open(const OpenOptions& options) {
     opened.unreadable = open_store(*this, options);
 
     if(database) {
-        listings.read(*database);
+        saved_members.read(*database);
     }
-    auto nearby = listings.databases(index);
+    auto nearby = saved_members.databases(index);
     if(!options.file.empty()) {
         auto above = databases_above(CanonicalRef(options.file).parent(), root);
         nearby.append(above.begin(), above.end());
@@ -285,7 +285,9 @@ Project::Opened Project::open(const OpenOptions& options) {
     switch(options.load) {
         case Load::Rules: break;
         case Load::Databases: load_sources(*this, nearby); break;
-        case Load::Members: load_members(*this, nearby, listings.provisional(index), opened); break;
+        case Load::Members:
+            load_members(*this, nearby, saved_members.provisional(index), opened);
+            break;
     }
 
     if(database && opened.unreadable.empty()) {

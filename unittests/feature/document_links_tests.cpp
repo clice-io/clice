@@ -205,18 +205,18 @@ ZEST_CASE(MissingInclude) {
     ZASSERT(links.empty());
 }
 
-ZEST_CASE(LinksFromEdges) {
+ZEST_CASE(LinksFromIncludes) {
     llvm::StringRef content = R"cpp(#include "first.h"
 #include "skipped.h"
 #include <second>
 )cpp";
-    std::vector<index::IncludeEdge> edges = {
+    std::vector<index::ResolvedInclude> includes = {
         {.line = 1, .target = "/tmp/first.h"       },
         {.line = 3, .target = "/usr/include/second"},
     };
 
     SourceText text(content, dialect_of("main.cpp", false));
-    auto links = feature::document_links(text, edges);
+    auto links = feature::document_links(text, includes);
     ZASSERT(links.size() == std::size_t(2));
     ZASSERT(content.substr(links[0].range.begin, links[0].range.length()) == "\"first.h\"");
     ZASSERT(links[0].target == "/tmp/first.h");

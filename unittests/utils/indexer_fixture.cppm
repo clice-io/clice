@@ -7,7 +7,7 @@ import :index.database;
 import :index.indexer;
 import :index.project_index;
 import :index.tu_index;
-import :project.indexer;
+import :project.background;
 import :project.project;
 import :settings.rules;
 import :support.bytes;
@@ -120,7 +120,7 @@ struct IndexerFixture {
     /// (false = a header of another format, or corrupt).
     bool load() {
         if(project.database) {
-            project.listings.read(*project.database);
+            project.saved_members.read(*project.database);
         }
         index::IndexReport report;
         bool decoded =

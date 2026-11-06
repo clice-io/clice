@@ -593,7 +593,7 @@ ZEST_CASE(RefusedModuleForgotten) {
         async::task_group<> group;
         group.spawn(compile());
         co_await held.wait();
-        ZEXPECT(project.forget_build_failure(crashed));
+        ZEXPECT(project.forget_module_failure(crashed));
         probe.release(hold);
         co_await group.join();
 

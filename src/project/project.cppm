@@ -13,16 +13,16 @@ import :index.query;
 import :index.shard;
 import :index.tu_index;
 import :index.writer_lock;
+import :project.background;
 import :project.command;
 import :project.discovery;
 import :project.graph.pch;
 import :project.graph.pcm;
 import :project.graph.task_graph;
 import :project.graph.unit;
-import :project.indexer;
-import :project.listings;
 import :project.members;
 import :project.memo;
+import :project.saved;
 import :semantic.symbol;
 import :settings.rules;
 import :settings.settings;
@@ -120,7 +120,7 @@ protected:
 /// `clice lint`) hands it at construction and keeps alive past it; the
 /// read-only entry points construct it without them and never reach the
 /// build functions (graph/pch.cpp, graph/pcm.cpp, graph/unit.cpp,
-/// indexer/background.cpp). The task graph's attempts and the background
+/// background/background.cpp). The task graph's attempts and the background
 /// index's tasks use the members before them: an owner awaits shutdown()
 /// before the project dies.
 struct Project {
@@ -223,8 +223,8 @@ struct Project {
     /// live sources of the documents it serves.
     index::IndexQuery index_query{index, file_table, &freshness, nullptr};
 
-    /// What the index database records of the build's listings.
-    SavedListings listings;
+    /// What the index database records of the build's members.
+    SavedMembers saved_members;
 
     /// The editor's context choices, as the index database carries them.
     ContextChoices choices;
@@ -827,13 +827,13 @@ struct Project {
     /// that spawned it (contract 12), and every consumer that finds it books it
     /// against its own document instead of burning a worker of its own. One
     /// document's records cannot contain it alone: the PCH is shared.
-    const FailureRecord* build_crash(llvm::StringRef pch_key);
+    const FailureRecord* pch_build_crash(llvm::StringRef pch_key);
 
     /// Forget the key's failed build, a crash or errors in the user's code, so
     /// the next request builds it again: a consumer whose own record lets it
     /// retry, or that was saved, retries it, and one moving to another key
     /// releases it. Returns whether it had failed.
-    bool forget_build_failure(llvm::StringRef pch_key);
+    bool forget_pch_failure(llvm::StringRef pch_key);
 
     /// Discard a pair the frontend could not consume: remove both blobs from
     /// the store and drop the idle cache entry, so the next acquisition misses
@@ -939,7 +939,7 @@ struct Project {
     /// The crash of the module's last build, while what it is known to have
     /// read holds: every importer that finds it books it against its own
     /// document instead of burning a worker of its own.
-    const FailureRecord* build_crash(Fid module);
+    const FailureRecord* module_build_crash(Fid module);
 
     /// Why the module's last build failed, when it failed on the user's code;
     /// nullopt for any other failure (a crash, an outage).
@@ -950,7 +950,7 @@ struct Project {
     /// retry, or that was saved, retries it. A failed build is otherwise kept
     /// until its key or one of its inputs changes. Returns whether it had
     /// failed.
-    bool forget_build_failure(Fid module);
+    bool forget_module_failure(Fid module);
 
     /// A module name gained a provider it lacked: invalidate the dependents of
     /// its unresolved import (their keys name the import as unresolved, so
@@ -1034,16 +1034,6 @@ struct Project {
 
     // graph/precompiled.cpp
 
-    /// The precompiled records as the index database carries them (blob kind
-    /// PrecompiledRecords): the PCH and PCM validity metadata and the
-    /// self-containment checks, serialized from live state; empty on
-    /// serialization failure.
-    std::string serialize_precompiled_records();
-
-    /// Restore the precompiled records a database held: the PCH and PCM entries
-    /// whose blobs the cache store still has, and the self-containment checks.
-    void load_precompiled_records(llvm::StringRef bytes);
-
     /// What a PCH or PCM build read: what the worker reports, and `before`,
     /// what the modules it imports and the PCH it is built over were built from
     /// as it started — one rebuilt meanwhile stales it.
@@ -1086,11 +1076,11 @@ struct Project {
                          const Inputs& before,
                          llvm::function_ref<void(FailureRecord, Inputs)> fail);
 
-    // listings.cpp
+    // saved.cpp
 
-    /// The build's listings now, as the index database records them
-    /// (SavedListings).
-    SavedListings::Blob listed();
+    /// The build's members now, as the index database records them
+    /// (SavedMembers).
+    SavedMembers::Blob recorded_members();
 
     /// Bring the loaded index in line with the live build: a unit a rule
     /// keeps out of the index leaves it, but for one a build compiles
@@ -1102,8 +1092,6 @@ struct Project {
     /// changed while no server ran is owed a reindex in `report`, its index
     /// serving until the reindex merges.
     void reconcile_index(index::IndexReport& report);
-
-    // save.cpp
 
     /// Save the index and take the report, again while a save owes a retry (a
     /// grown map can still be too small); an idle save then shrinks the
@@ -1141,7 +1129,7 @@ struct Project {
     bool load_saved(bool reconcile, index::IndexReport& report);
 
     /// Persist what the project's database carries: the index's dirty state
-    /// (ProjectIndex::begin_save), then the listings, the precompiled
+    /// (ProjectIndex::begin_save), then the members, the precompiled
     /// records and the context choices, in one write offloaded to the kotatsu
     /// thread pool. What the write fails to commit stays dirty for the next
     /// save; a database the write finds corrupt is replaced by a fresh one,
@@ -1170,10 +1158,20 @@ struct Project {
 
     /// Confirmed corruption heals through rebuildability: condemn the corrupt
     /// database (deleted on close) and continue on a freshly opened empty
-    /// one, the index and the persisted listings starting over with
+    /// one, the index and the persisted members starting over with
     /// it, so the session's rebuild persists instead of waiting for the next
     /// start. A failed reopen leaves persistence disabled for the session.
     void reopen_fresh_database();
+
+    /// The precompiled records as the index database carries them (blob kind
+    /// PrecompiledRecords): the PCH and PCM validity metadata and the
+    /// self-containment checks, serialized from live state; empty on
+    /// serialization failure.
+    std::string serialize_precompiled_records();
+
+    /// Restore the precompiled records a database held: the PCH and PCM entries
+    /// whose blobs the cache store still has, and the self-containment checks.
+    void load_precompiled_records(llvm::StringRef bytes);
 };
 
 /// Whether a database file's free pages are worth a compact copy: a quarter

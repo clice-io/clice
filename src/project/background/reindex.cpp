@@ -1,6 +1,6 @@
 module clice;
 
-import :project.indexer;
+import :project.background;
 
 namespace clice {
 

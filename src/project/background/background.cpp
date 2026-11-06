@@ -1,8 +1,8 @@
 module clice;
 
 import :index.project_index;
+import :project.background;
 import :project.graph.unit;
-import :project.indexer;
 import :project.project;
 import :support.environment;
 import :support.logging;

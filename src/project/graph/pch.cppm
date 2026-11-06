@@ -76,7 +76,7 @@ struct PCHEntry : Precompiled<FailureRecord> {
 /// of the keys' builds and consumption (PCHEntry). The adoption
 /// side stays with the server: which document points at the key and the
 /// documents' failure records — every consumer reads a failed acquisition's
-/// crash from build_crash and books it for itself.
+/// crash from pch_build_crash and books it for itself.
 struct PCHRequest {
     std::string pch_key;
 

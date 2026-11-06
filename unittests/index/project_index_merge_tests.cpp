@@ -10,7 +10,7 @@ import :index.instantiation_shard;
 import :index.project_index;
 import :index.symbol;
 import :index.tu_index;
-import :project.indexer;
+import :project.background;
 import :project.project;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.index_internals;
@@ -453,7 +453,7 @@ ZEST_CASE(IncludeResolutionsPerUnit) {
     auto shared = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
     auto targets = [&] {
         std::vector<std::string> found;
-        auto edges = project.index.include_edges(shared);
+        auto edges = project.index.resolved_includes(shared);
         for(auto& edge: edges) {
             // One directive, resolved two ways.
             ZEXPECT(edge.line == edges.front().line);
