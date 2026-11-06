@@ -1853,6 +1853,9 @@ public:
                             : llvm::StringRef(shared->files[grafted[include.parent].file].path);
                     grafted_by_path[includer].push_back(shared->files[include.file].path);
                 }
+                for(auto& file: shared->files) {
+                    grafted_texts[file.path] = file.content_hash;
+                }
             }
         }
         auto includes_of = [&](std::uint32_t slot) {
@@ -1924,17 +1927,43 @@ public:
     }
 
     std::uint32_t closure_slot(clang::FileID fid) {
-        return closure_slot(unit.file_path(fid));
+        auto slot = closure_slot(unit.file_path(fid));
+        if(slot_texts[slot] == 0) {
+            slot_texts[slot] = combine(llvm::xxh3_64bits(closure_paths[slot]),
+                                       llvm::xxh3_64bits(unit.file_content(fid)));
+        }
+        return slot;
     }
 
+    /// A file the unit reads from a shared header's PCH, by the text its
+    /// build hashed.
     std::uint32_t closure_slot(llvm::StringRef path) {
         auto [it, fresh] = closure_slots.try_emplace(path, closures.size());
         if(fresh) {
             closures.emplace_back();
             closure_done.push_back(false);
+            closure_texts.push_back(0);
             closure_paths.push_back(path.str());
+            auto text = grafted_texts.lookup(path);
+            slot_texts.push_back(text == 0 ? 0 : combine(llvm::xxh3_64bits(path), text));
         }
         return it->second;
+    }
+
+    /// The text of every file of `fid`'s file's closure (closure_of): what
+    /// declares to the file what its walk relates, which an edit to any of
+    /// these files changes, the file itself unchanged.
+    std::uint64_t closure_text(clang::FileID fid) {
+        auto slot = closure_slot(fid);
+        if(closure_texts[slot] != 0) {
+            return closure_texts[slot];
+        }
+        std::uint64_t text = 0;
+        for(auto member: closure_of(fid).set_bits()) {
+            text += slot_texts[member];
+        }
+        closure_texts[slot] = text;
+        return text;
     }
 
     /// A file's own identity in this unit: its entries' header identities
@@ -1964,10 +1993,15 @@ public:
         return std::max(reaches.lookup(fid), known_reaches.lookup(own_identity(fid)));
     }
 
-    /// The identity a variant of `fid` is found by: its own, and those of
-    /// the files its guesses reach into (guess_allowed); 0 for none.
+    /// The identity a variant of `fid` is found by: its own with the text
+    /// of its closure, and those of the files its guesses reach into
+    /// (guess_allowed); 0 for none.
     std::uint64_t identity_of(clang::FileID fid) {
-        auto identity = own_identity(fid);
+        auto with_closure = [&](clang::FileID file) -> std::uint64_t {
+            auto own = own_identity(file);
+            return own == 0 ? 0 : combine(own, closure_text(file));
+        };
+        auto identity = with_closure(fid);
         auto& SM = unit.context().getSourceManager();
         auto from = fid;
         for(auto depth = reach_of(fid); depth > 0 && identity != 0; depth -= 1) {
@@ -1975,7 +2009,7 @@ public:
             if(from.isInvalid() || unit.is_builtin_file(from)) {
                 break;
             }
-            auto includer = own_identity(from);
+            auto includer = with_closure(from);
             identity = includer == 0 ? 0 : combine(identity, includer);
         }
         return identity;
@@ -2214,6 +2248,9 @@ public:
         llvm::DenseMap<std::uint32_t, KnownIdentity> shared_known;
         llvm::SmallVector<std::pair<std::uint32_t, std::uint32_t>> shared_resolved;
         if(auto* shared = unit.shared_header(); shared && !unit.grafted_includes().empty()) {
+            assert(shared_sections.size() == shared->files.size() &&
+                   shared_resolutions.size() == shared->files.size() &&
+                   "a unit over a shared header's PCH is indexed with that header's index");
             for(auto [path_id, path]: views::enumerate(tree.paths)) {
                 path_ids_of.try_emplace(path, static_cast<std::uint32_t>(path_id));
             }
@@ -2507,7 +2544,13 @@ public:
         blob.paths = std::move(tree.paths);
         blob.content_hashes = std::move(tree.content_hashes);
         blob.nodes = std::move(tree.nodes);
-        blob.absent = unit.absent();
+        auto absent = unit.absent();
+        if(auto* shared = unit.shared_header()) {
+            absent.append_range(shared->absent);
+            ranges::sort(absent);
+            absent.erase(ranges::unique(absent).begin(), absent.end());
+        }
+        blob.absent = std::move(absent);
         llvm::SmallVector<SymbolHash> table;
         for(auto& [hash, symbol]: symbols) {
             // A function's own name stays out but where another file names
@@ -2665,19 +2708,25 @@ private:
     constexpr static std::uint8_t max_reach = 8;
 
     /// The include closures (closure_of): per path its slot, per slot the
-    /// path, its closure and whether that is complete; the entries of each
-    /// path.
+    /// path, its text, its closure, whether that is complete and the text
+    /// of its files (closure_text, 0 until asked); the entries of each path.
     llvm::StringMap<std::uint32_t> closure_slots;
 
     std::vector<std::string> closure_paths;
+
+    std::vector<std::uint64_t> slot_texts;
 
     std::vector<llvm::BitVector> closures;
 
     std::vector<bool> closure_done;
 
+    std::vector<std::uint64_t> closure_texts;
+
     llvm::StringMap<llvm::SmallVector<clang::FileID, 1>> entries_by_path;
 
     llvm::StringMap<llvm::SmallVector<llvm::StringRef, 2>> grafted_by_path;
+
+    llvm::StringMap<std::uint64_t> grafted_texts;
 
     /// The files a known variant stands for (choose_known), and per path the
     /// variant with the identity it was found at.

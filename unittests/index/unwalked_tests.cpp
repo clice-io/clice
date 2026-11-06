@@ -143,8 +143,9 @@ inline size measure() { return 1; }
 };
 
 ZEST_CASE(GeneratedEnumeratorsWalked) {
-    // kinds.def is regenerated: its enumeration in kinds.h, the variant of
-    // which the receiver stores, holds what the walk of kinds.def records.
+    // kinds.def lists an enumerator each unit's command names: the
+    // enumeration in kinds.h, whose variant the receiver stores, holds what
+    // the walk of kinds.def records.
     TempDir tmp;
     tmp.touch("kinds.h", R"cpp(#pragma once
 enum Kind {
@@ -153,18 +154,18 @@ enum Kind {
 #undef KIND
 };
 )cpp");
-    tmp.touch("kinds.def", "KIND(Alpha)\n");
+    tmp.touch("kinds.def", "KIND(Alpha)\nKIND(EXTRA)\n");
     tmp.touch("a.cpp", "#include \"kinds.h\"\nKind a() { return Alpha; }\n");
-    tmp.touch("b.cpp", "#include \"kinds.h\"\nKind b() { return Beta; }\n");
-    auto a_data = index_file(tmp, tmp.path("a.cpp")).data;
+    tmp.touch("b.cpp", "#include \"kinds.h\"\nKind b() { return Gamma; }\n");
+    auto a_data = index_file(tmp, tmp.path("a.cpp"), {"-DEXTRA=Beta"}).data;
     auto a = index::TUIndex::from_bytes(a_data);
     auto header = section_of(a, "kinds.h");
     ZASSERT(header);
     auto known = a.section_identity(*header);
 
-    tmp.touch("kinds.def", "KIND(Alpha)\nKIND(Beta)\n");
-    auto walked_data = index_file(tmp, tmp.path("b.cpp")).data;
-    auto unwalked_data = index_file(tmp, tmp.path("b.cpp"), {}, {known.variant}, {}, {known}).data;
+    auto walked_data = index_file(tmp, tmp.path("b.cpp"), {"-DEXTRA=Gamma"}).data;
+    auto unwalked_data =
+        index_file(tmp, tmp.path("b.cpp"), {"-DEXTRA=Gamma"}, {known.variant}, {}, {known}).data;
     auto walked = index::TUIndex::from_bytes(walked_data);
     auto unwalked = index::TUIndex::from_bytes(unwalked_data);
     auto in_walked = section_of(walked, "kinds.def");
@@ -173,6 +174,48 @@ enum Kind {
     ZASSERT(in_unwalked);
     ZEXPECT(unwalked.section_blob(*section_of(unwalked, "kinds.h")).empty());
     ZEXPECT(unwalked.section_hash(*in_unwalked) == walked.section_hash(*in_walked));
+};
+
+ZEST_CASE(IncludedHeaderEdited) {
+    // b.h gains a better match for a.h's call: a.h, unchanged, is walked
+    // again.
+    TempDir tmp;
+    tmp.touch("b.h", "#pragma once\nint pick(long);\n");
+    tmp.touch("a.h", "#pragma once\n#include \"b.h\"\ninline int use() { return pick(0); }\n");
+    tmp.touch("main.cpp", "#include \"a.h\"\n");
+    auto before_data = index_file(tmp, tmp.path("main.cpp")).data;
+    auto before = index::TUIndex::from_bytes(before_data);
+    auto header = section_of(before, "a.h");
+    ZASSERT(header);
+    auto known = before.section_identity(*header);
+
+    tmp.touch("b.h", "#pragma once\nint pick(long);\nint pick(int);\n");
+    auto after_data = index_file(tmp, tmp.path("main.cpp"), {}, {}, {}, {known}).data;
+    auto after = index::TUIndex::from_bytes(after_data);
+    auto again = section_of(after, "a.h");
+    ZASSERT(again);
+    ZEXPECT(after.section_identity(*again).identity != known.identity);
+    ZEXPECT(!after.section_blob(*again).empty());
+};
+
+ZEST_CASE(MacroEditedInPlace) {
+    // CALL names another function, defined at the same place.
+    TempDir tmp;
+    tmp.touch("macros.h", "#pragma once\n#define CALL foo\n");
+    tmp.touch("use.h", "#pragma once\ninline int use() { return CALL(); }\n");
+    tmp.touch("main.cpp", "int foo();\nint bar();\n#include \"macros.h\"\n#include \"use.h\"\n");
+    auto before_data = index_file(tmp, tmp.path("main.cpp")).data;
+    auto before = index::TUIndex::from_bytes(before_data);
+    auto header = section_of(before, "use.h");
+    ZASSERT(header);
+    auto known = before.section_identity(*header);
+
+    tmp.touch("macros.h", "#pragma once\n#define CALL bar\n");
+    auto after_data = index_file(tmp, tmp.path("main.cpp"), {}, {}, {}, {known}).data;
+    auto after = index::TUIndex::from_bytes(after_data);
+    auto again = section_of(after, "use.h");
+    ZASSERT(again);
+    ZEXPECT(after.section_identity(*again).identity != known.identity);
 };
 
 ZEST_CASE(GuessesStayInClosure) {

@@ -69,6 +69,10 @@ struct SharedHeaderBlobOf {
     Seq<SharedHeaderWrittenOf<Seq>> written;
 
     Seq<MacroState> initial;
+
+    std::uint8_t counter = 0;
+
+    Seq<Seq<char>> absent;
 };
 
 using SharedHeaderBlob = SharedHeaderBlobOf<codec::blob::Owned>;
@@ -142,6 +146,8 @@ std::vector<std::byte> encode_shared_header(const SharedHeaderIndex& index) {
                                 .project = written.project});
     }
     blob.initial = record.initial;
+    blob.counter = record.counter;
+    blob.absent = record.absent;
     return encode(blob);
 }
 
@@ -200,6 +206,10 @@ std::optional<SharedHeaderIndex> decode_shared_header(llvm::StringRef bytes) {
                                   .project = written.project != 0});
     }
     record.initial = copy<MacroState>(root->initial);
+    record.counter = root->counter != 0;
+    for(auto& path: root->absent) {
+        record.absent.emplace_back(llvm::StringRef(path));
+    }
     if(!ranges::is_sorted(record.written, {}, &SharedHeaderRecord::Written::name) ||
        !ranges::is_sorted(record.initial, {}, &MacroState::name)) {
         return std::nullopt;

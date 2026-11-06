@@ -635,8 +635,8 @@ private:
     }
 
     /// A hash of the definition `macro`, the same in every compile reading
-    /// it: where it is, or for one with no file (`-D`, the predefines) its
-    /// tokens; a builtin by its name. 0 for none.
+    /// it: its tokens and where it is, if in a file; a builtin by its name.
+    /// 0 for none.
     std::uint64_t macro_state(const clang::MacroInfo* macro, const clang::IdentifierInfo& name);
 
     /// A hash of the declaration context the parser is in: its chain of

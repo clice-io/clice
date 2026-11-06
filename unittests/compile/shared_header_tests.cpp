@@ -414,6 +414,39 @@ ZEST_CASE(NestedInExternC) {
     ZEXPECT(compiled.unit->shared_rejection().contains("api.h"));
 };
 
+ZEST_CASE(CounterInCondition) {
+    add_file("shared.hxx", "#pragma once\n#include \"pick.h\"\n");
+    add_file("pick.h", R"cpp(#pragma once
+#if __COUNTER__ == 0
+int first();
+#else
+int second();
+#endif
+)cpp");
+    add_focus("main.cpp",
+              "int unique = __COUNTER__;\n#include \"pick.h\"\nint use() { return second(); }\n");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().contains("pick.h"));
+};
+
+ZEST_CASE(LibraryOrder) {
+    // Two headers of a library under -isystem: a name of its own is no
+    // standard library's business.
+    add_file("shared.hxx", "#pragma once\n#include <mode.h>\n#include <api.h>\n");
+    add_file("sys/mode.h", "#pragma once\n#define MODE 1\n");
+    add_file("sys/api.h", R"cpp(#pragma once
+#ifdef MODE
+int enabled();
+#else
+int disabled();
+#endif
+)cpp");
+    add_focus("main.cpp",
+              "#include <api.h>\n#include <mode.h>\nint use() { return disabled(); }\n");
+    auto compiled = compile_over(*this, {"-isystem", TestVFS::path("sys")});
+    ZEXPECT(compiled.unit->shared_rejection().contains("MODE"));
+};
+
 };  // ZEST_SUITE(SharedHeader)
 
 }  // namespace

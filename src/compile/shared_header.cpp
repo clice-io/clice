@@ -16,6 +16,22 @@ std::uint64_t name_hash(llvm::StringRef name) {
     return llvm::xxh3_64bits(name);
 }
 
+/// Whether `name` is reserved to the implementation (ISO C 7.1.3).
+bool reserved(llvm::StringRef name) {
+    return name.size() > 1 && name[0] == '_' && (name[1] == '_' || llvm::isUpper(name[1]));
+}
+
+/// Whether a builtin macro gives what the unit counted, or how deep it
+/// stands, rather than a definition: in a condition, each unit reads its
+/// own; in a name made of it, the name differs by a number alone.
+bool unit_specific(llvm::StringRef name) {
+    return name == "__COUNTER__" || name == "__INCLUDE_LEVEL__";
+}
+
+/// The state a held header's condition reads a unit_specific builtin in,
+/// which no unit's simulated state matches.
+constexpr std::uint64_t unmatched = ~std::uint64_t(0);
+
 /// The identifiers of a condition's text that no macro names: what it reads
 /// as 0. Those naming a macro are expansions or `defined`, which the
 /// preprocessor reports itself.
@@ -146,6 +162,7 @@ public:
             }
         }
         ranges::sort(record.initial, {}, &MacroState::name);
+        record.absent = unit.absent();
     }
 
 private:
@@ -167,7 +184,7 @@ private:
         /// The include of the file below it on the stack that entered it.
         std::uint32_t entered_by = none;
 
-        /// The names read, by whether a system header read them.
+        /// The names read, by Read::library.
         llvm::DenseSet<std::pair<std::uint64_t, std::uint8_t>> read_names;
 
         /// What it and the files inside it entered without a guard wrote:
@@ -247,7 +264,7 @@ private:
             auto name = read.macro.name;
             if(frame.held_wrote.contains(name) ||
                (!below.written.contains(name) &&
-                below.read_names.insert({name, std::uint8_t(read.system)}).second)) {
+                below.read_names.insert({name, std::uint8_t(read.library)}).second)) {
                 kept_reads.push_back(static_cast<std::uint32_t>(i));
                 below.reads.push_back(read);
             }
@@ -342,6 +359,22 @@ private:
                       const clang::MacroDefinition& definition,
                       clang::SourceRange,
                       const clang::MacroArgs*) override {
+        auto spelling = name.getIdentifierInfo()->getName();
+        if(auto* macro = definition.getMacroInfo();
+           macro && macro->isBuiltinMacro() && unit_specific(spelling)) {
+            if(!tracked()) {
+                return;
+            }
+            if(spelling == "__COUNTER__") {
+                unit.recorded_shared.counter = true;
+            }
+            if(pp.isParsingIfOrElifDirective()) {
+                stack.back().reads.push_back({
+                    .macro = {.name = name_hash(spelling), .state = unmatched}
+                });
+            }
+            return;
+        }
         read(name, definition);
     }
 
@@ -404,11 +437,12 @@ private:
         auto name = name_hash(spelling);
         initial.try_emplace(name, state);
         auto& frame = stack.back();
+        bool library = frame.system && reserved(spelling);
         if(!frame.written.contains(name) &&
-           frame.read_names.insert({name, std::uint8_t(frame.system)}).second) {
+           frame.read_names.insert({name, std::uint8_t(library)}).second) {
             frame.reads.push_back({
                 .macro = {.name = name, .state = state},
-                .system = frame.system
+                .library = library
             });
         }
     }
@@ -501,8 +535,9 @@ private:
 /// the macros of the unit without the PCH are simulated: the ones the
 /// command gave, then the writes of the unit's own text and of each held
 /// header it includes, in order. A difference is waved through only inside
-/// the system library: a system header reading a macro only system headers
-/// write (ISO C 7.1.2 lets standard headers be included in any order).
+/// the system library: a system header reading a name reserved to the
+/// implementation that only system headers write (ISO C 7.1.2 lets
+/// standard headers be included in any order).
 /// Grafts what each held header included on the unit's include tree.
 class CompilationUnit::SharedHeaderChecker : public clang::PPCallbacks {
 public:
@@ -632,8 +667,8 @@ private:
         std::uint32_t written = 0;
         auto run_until = [&](std::uint32_t reads, std::uint32_t writes) {
             for(; read < reads; read += 1) {
-                auto& [macro, system] = header.reads[read];
-                if(state(macro.name) != macro.state && !(system && !project_written(macro.name))) {
+                auto& [macro, library] = header.reads[read];
+                if(state(macro.name) != macro.state && !(library && !project_written(macro.name))) {
                     reject(std::format("{} would read {} otherwise",
                                        record.files[header.file].path,
                                        spelling(macro.name)));
@@ -680,6 +715,15 @@ private:
                       const clang::MacroDefinition& definition,
                       clang::SourceRange,
                       const clang::MacroArgs*) override {
+        auto spelling = name.getIdentifierInfo()->getName();
+        if(auto* macro = definition.getMacroInfo();
+           macro && macro->isBuiltinMacro() && unit_specific(spelling)) {
+            if(spelling == "__COUNTER__" && record.counter && pp.isParsingIfOrElifDirective()) {
+                reject(std::format("{} would count otherwise",
+                                   sm.getFilename(sm.getExpansionLoc(name.getLocation()))));
+            }
+            return;
+        }
         check(name, definition);
     }
 
@@ -750,7 +794,8 @@ private:
             return;
         }
         location = sm.getExpansionLoc(location);
-        if(sm.isInSystemHeader(location) && !it->project && !own_project.contains(name)) {
+        if(sm.isInSystemHeader(location) && reserved(spelling) && !it->project &&
+           !own_project.contains(name)) {
             return;
         }
         reject(std::format("{} would read {} otherwise", sm.getFilename(location), spelling));

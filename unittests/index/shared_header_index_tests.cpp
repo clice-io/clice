@@ -433,6 +433,29 @@ void call(T value) { helper(value); }
     ZEXPECT(over.section_identity(*in_over) == walked.section_identity(*in_walked));
 };
 
+ZEST_CASE(PCHLookupsAbsent) {
+    // probe.h looks for flag.h, which is not there: creating it changes
+    // what the unit compiles to.
+    TempDir tmp;
+    tmp.touch("shared.hxx", "#pragma once\n#include \"probe.h\"\n");
+    tmp.touch("probe.h", R"cpp(#pragma once
+#if __has_include("flag.h")
+int flagged();
+#endif
+)cpp");
+    tmp.touch("main.cpp", "#include \"probe.h\"\n");
+    auto pch = tmp.path("shared.pch");
+    auto shared = build_shared(tmp, pch);
+    ZASSERT(shared);
+    auto over_data = index_over(tmp, pch, &*shared);
+    auto over = index::TUIndex::from_bytes(over_data);
+    std::vector<std::string> absent;
+    for(std::uint32_t i = 0; i < over.absent_count(); i += 1) {
+        absent.emplace_back(path::filename(over.absent(i)));
+    }
+    ZEXPECT(ranges::contains(absent, "flag.h"));
+};
+
 ZEST_CASE(GuessesUnderForcedInclude) {
     // The command forces a header in, which no file of the unit includes.
     TempDir tmp;

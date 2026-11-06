@@ -73,8 +73,10 @@ struct SharedHeaderRecord {
     struct Read {
         MacroState macro;
 
-        /// Where a system header's text read it.
-        bool system = false;
+        /// A system header's text read a name reserved to the
+        /// implementation (ISO C 7.1.3): the standard library's own
+        /// business, whose headers may be included in any order.
+        bool library = false;
 
         friend bool operator==(const Read&, const Read&) = default;
     };
@@ -133,6 +135,14 @@ struct SharedHeaderRecord {
     /// The state the command gave the macros a header read and none wrote,
     /// those it defined, sorted by name.
     std::vector<MacroState> initial;
+
+    /// A held header expanded `__COUNTER__`: a condition of the unit's
+    /// reading it would count those expansions too.
+    bool counter = false;
+
+    /// The places the build's failed lookups looked (CompilationUnit::absent):
+    /// a unit including the headers would have looked there too.
+    std::vector<std::string> absent;
 
     friend bool operator==(const SharedHeaderRecord&, const SharedHeaderRecord&) = default;
 };

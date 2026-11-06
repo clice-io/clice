@@ -242,12 +242,6 @@ std::uint64_t CompilationUnit::macro_state(const clang::MacroInfo* macro,
         state = llvm::xxh3_64bits(name.getName());
         return state;
     }
-    auto& sm = SM();
-    auto [fid, offset] = sm.getDecomposedLoc(sm.getFileLoc(macro->getDefinitionLoc()));
-    if(auto entry = sm.getFileEntryRefForID(fid)) {
-        state = mix(llvm::xxh3_64bits(file_path(*entry)), offset);
-        return state;
-    }
     // A definition read from a PCH keeps no pointer to its literals' text,
     // which its buffer, in the PCH too, still has.
     auto& pp = instance->getPreprocessor();
@@ -260,6 +254,11 @@ std::uint64_t CompilationUnit::macro_state(const clang::MacroInfo* macro,
         } else if(token.isLiteral()) {
             state = mix(state, llvm::xxh3_64bits(pp.getSpelling(token, buffer)));
         }
+    }
+    auto& sm = SM();
+    auto [fid, offset] = sm.getDecomposedLoc(sm.getFileLoc(macro->getDefinitionLoc()));
+    if(auto entry = sm.getFileEntryRefForID(fid)) {
+        state = mix(state, mix(llvm::xxh3_64bits(file_path(*entry)), offset));
     }
     return state;
 }
