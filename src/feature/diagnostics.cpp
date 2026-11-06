@@ -132,7 +132,7 @@ bool is_unused(const FileDiagnostic& diagnostic) {
         case DiagnosticSource::Clang: return unused_diags.contains(diagnostic.id);
         case DiagnosticSource::ClangTidy:
             return llvm::StringRef(diagnostic.code).starts_with("misc-unused-");
-        case DiagnosticSource::Clice: return false;
+        case DiagnosticSource::Clice: return diagnostic.code == "unused-include";
     }
     std::unreachable();
 }

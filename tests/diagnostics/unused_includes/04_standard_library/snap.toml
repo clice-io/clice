@@ -1,0 +1,11 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = "⟦#include <map>⟧",
+        severity = "warning",
+        message = "Everything this file uses from <map> and the headers it includes comes from its other includes too",
+        source = "clice",
+        code = "unused-include",
+        tags = ["Unnecessary"],
+    },
+]

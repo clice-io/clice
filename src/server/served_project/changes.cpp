@@ -58,7 +58,7 @@ void push_moved(llvm::ArrayRef<Fid> files,
 
 bool ServedProject::compiled_by_session(Fid path_id) const {
     auto* document = find_document(path_id);
-    return !project.settings.project.skip_header_bodies && document &&
+    return !project.settings.background_diagnostics() && document &&
            document->serving == ServingMode::Escalated;
 }
 

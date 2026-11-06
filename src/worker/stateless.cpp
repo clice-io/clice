@@ -12,6 +12,7 @@ import :feature.document_links;
 import :feature.formatting;
 import :feature.inactive_regions;
 import :feature.signature_help;
+import :feature.unused_includes;
 import :index.include_tree;
 import :index.indexer;
 import :index.tu_index;
@@ -515,11 +516,23 @@ static worker::CompileUnitResult
     result.success = true;
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;
-    if(params.index) {
-        auto blob = index::build_tu_index(*unit, index_options(params));
+    std::vector<feature::FileDiagnostic> unused_includes;
+    if(params.index || params.unused_includes) {
+        auto options = index_options(params);
+        // The analysis reads what every header names.
+        if(params.unused_includes) {
+            options.known_variants = {};
+        }
+        auto blob = index::build_tu_index(*unit, options);
         index_bytes = blob.size();
-        if(auto error = send_index(std::move(blob), params.index_output_path, result)) {
-            return {false, std::move(*error)};
+        if(params.unused_includes) {
+            unused_includes =
+                feature::unused_includes(*unit, index::TUIndex::from_bytes(as_chars(blob)));
+        }
+        if(params.index) {
+            if(auto error = send_index(std::move(blob), params.index_output_path, result)) {
+                return {false, std::move(*error)};
+            }
         }
     }
     auto index_ms = index_timer.ms();
@@ -531,6 +544,7 @@ static worker::CompileUnitResult
     }
     if(params.skipped_diagnostics) {
         result.skipped_diagnostics = feature::skipped_diagnostics(*unit);
+        result.skipped_diagnostics.append_range(std::move(unused_includes));
         result.text_hash = llvm::xxh3_64bits(unit->focus_file().content());
     }
 

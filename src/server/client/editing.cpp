@@ -6,6 +6,7 @@ import :feature.code_completion;
 import :feature.protocol;
 import :feature.rename;
 import :feature.signature_help;
+import :feature.unused_includes;
 import :server.client;
 import :server.extension;
 import :server.master;
@@ -392,6 +393,12 @@ void LSPClient::register_editing() {
                             return arguments->of(header);
                         },
                 });
+            if(feature::admits(only, protocol::CodeActionKind::QuickFix)) {
+                resolved.append_range(feature::unused_include_fixes(
+                    project.finished_diagnostics(*session),
+                    session->text(),
+                    session->positions().offset_range(params.range, encoding)));
+            }
             result = feature::to_protocol(
                 std::move(resolved),
                 session->positions(),

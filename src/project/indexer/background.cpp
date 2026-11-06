@@ -39,7 +39,7 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
     // deduplicate cascade storms — may take the shortcut.
     bool content_changed = reindexes.pending_reason(path_id) == ReindexReason::ContentChanged;
     bool served = !content_changed && serving && serving->compiled_by_session(path_id);
-    bool skipped = serving && project.settings.project.skip_header_bodies;
+    bool skipped = serving && project.settings.background_diagnostics();
     if(!served && (content_changed || (skipped && serving->lacks_skipped_diagnostics(path_id)) ||
                    project.index.needs_reindex(path_id) ||
                    project.index.indexed_command(path_id) != project.command_identity(path_id))) {
@@ -54,6 +54,8 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
             {.index = true,
              .errors = errors,
              .skipped_diagnostics = wants_skipped,
+             .unused_includes = wants_skipped && project.settings.diagnostics.unused_includes &&
+                                project.rules.lintable(project.file_table.resolve(path_id)),
              .outdated = [this, taken] { return reindexes.outdated(taken); }});
         if(!result) {
             // The graph shut down: nothing ran, so the reindex

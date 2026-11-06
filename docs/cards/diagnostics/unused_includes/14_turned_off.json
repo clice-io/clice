@@ -1,0 +1,45 @@
+{
+  "id": "diagnostics/unused_includes/14_turned_off",
+  "topic": "diagnostics",
+  "subtopic": "unused_includes",
+  "title": "Turning the warning off",
+  "summary": "`unused_includes = false` turns the warning off",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "a.h",
+      "text": "#pragma once\nint answer();\n",
+      "markers": []
+    },
+    {
+      "path": "b.h",
+      "text": "#pragma once\nint other();\n",
+      "markers": []
+    },
+    {
+      "path": "clice.toml",
+      "text": "[diagnostics]\nunused_includes = false\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"a.h\"\n#include \"b.h\"\n\nint use() {\n    return answer();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "diagnostics": []
+          }
+        }
+      ]
+    }
+  ]
+}

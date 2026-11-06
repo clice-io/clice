@@ -1,0 +1,11 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = '⟦#include "b.h"⟧',
+        severity = "warning",
+        message = 'Nothing this file uses comes from "b.h" or the headers it includes',
+        source = "clice",
+        code = "unused-include",
+        tags = ["Unnecessary"],
+    },
+]

@@ -556,6 +556,13 @@ struct Settings {
     /// settings read from it stay runnable).
     std::vector<codec::rich_error> finalize(CanonicalRef project_root);
 
+    /// Whether an open file shows what a background index run of it
+    /// reports besides its own compile: what the header bodies its compile
+    /// skips raise, and its unused includes.
+    bool background_diagnostics() const {
+        return project.skip_header_bodies || diagnostics.unused_includes;
+    }
+
     /// The distinct configuration tags, in first-appearance order.
     llvm::SmallVector<llvm::StringRef> configurations() const;
 

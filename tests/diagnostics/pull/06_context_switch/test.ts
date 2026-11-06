@@ -13,6 +13,8 @@ test(async (t) => {
     const s = await t.start({ capabilities: PULL });
     expect(await s.errors("int_host.cpp")).toEqual([]);
     await s.diagnostics("bad_host.cpp");
+    // The hosts' background runs report on them, refreshing too.
+    await s.indexed();
     s.open("shared.h");
     expect((await s.switchContext("shared.h", "int_host.cpp")).success).toBe(true);
     await t.show("int host", s.diagnostics("shared.h"));

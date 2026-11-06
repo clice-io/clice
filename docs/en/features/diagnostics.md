@@ -124,7 +124,7 @@ tests/diagnostics/guidance/01_no_database
 ## Tags
 
 - [x] `Deprecated` tag for `-Wdeprecated` diagnostics and clang-tidy findings about deprecated headers and aliases
-- [x] `Unnecessary` tag for unused variable/parameter warnings and `misc-unused-*` clang-tidy findings
+- [x] `Unnecessary` tag for unused variable/parameter warnings, unused includes and `misc-unused-*` clang-tidy findings
 
 ## Publishing
 
@@ -177,7 +177,7 @@ tests/diagnostics/suppression/01_by_code
 
 ## Header Diagnostics
 
-- [ ] Include-cleaner diagnostics for unused and missing `#include` directives
+- [ ] Diagnostics for missing `#include` directives
 - [x] Suppress false `-Wunused-function` for static inline functions in headers ([clangd#1211](https://github.com/clangd/clangd/issues/1211))
 
   ```cpp
@@ -227,6 +227,20 @@ tests/diagnostics/clang_tidy/02_default_checks
 
 <!-- BEGIN CAPABILITY: supported -->
 
+**Checks left out**
+
+A check too slow for an editor is named, not dropped silently
+
+Open files run neither the checks too slow for an editor nor those unreliable on code being edited. clice names the slow ones the `.clang-tidy` enables once, with how to run them; `clice lint` runs every check.
+
+```case
+tests/diagnostics/clang_tidy/03_editor_exclusions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
 **Silencing with NOLINT**
 
 `NOLINT` comments silence findings on their line, and compiler warnings too
@@ -267,9 +281,23 @@ tests/diagnostics/clang_tidy/09_turned_off
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Running the slow checks**
+
+`clang_tidy_slow_checks = true` runs every check the `.clang-tidy` enables
+
+Checks too slow for an editor, such as `misc-const-correctness`, run on open files only when asked for: every compile of the file waits for them.
+
+```case
+tests/diagnostics/clang_tidy/20_slow_checks
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
-- [x] Checks too slow for an editor, and those unreliable on code being edited, left out in the editor; `clice lint` runs them
+- [x] Checks too slow for an editor run on open files only when `clang_tidy_slow_checks` asks for them, and clice names the ones it leaves out; those unreliable on code being edited are always left out; `clice lint` runs them all
 - [x] `performance-use-std-move` left out of both the editor and `clice lint`: in the LLVM clice is built on, it crashes on classes read from a PCH or a module
 - [x] `.clang-tidy` edits apply to open files at their next compile
 - [x] A crash of a clang-tidy check pauses clang-tidy on that file, not its other features
@@ -277,6 +305,110 @@ tests/diagnostics/clang_tidy/09_turned_off
 - [ ] Clang static analyzer support ([clangd#905](https://github.com/clangd/clangd/issues/905))
 - [ ] Version-specific clang-tidy documentation links ([clangd#2136](https://github.com/clangd/clangd/issues/2136))
 - [ ] Diagnostics for preprocessor directives that precede code ([clangd#2501](https://github.com/clangd/clangd/issues/2501))
+
+## Unused Includes
+
+An `#include` a source file can do without is shown faded, with a quick fix removing it, once the background index has compiled the file as it is saved. An include counts as used when the file reaches what it uses through the headers it includes, and the ones reported can all be removed at once.
+
+<!-- BEGIN GENERATED ITEMS: diagnostics/unused_includes -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Includes nothing uses**
+
+An `#include` the file uses nothing from shows faded
+
+A warning marks each `#include` of a source file that brings nothing the file uses, faded as unnecessary code is.
+
+```case
+tests/diagnostics/unused_includes/01_unused
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Used through its includes**
+
+An include the file reaches what it uses through counts as used
+
+A header that is the file's way to what it uses, as an umbrella or public entry header is, stays unreported though the file uses nothing it declares itself.
+
+```case
+tests/diagnostics/unused_includes/02_through_includes
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Brought by another include**
+
+An include whose headers another include brings too is reported
+
+When two includes bring the same headers and the file uses nothing else of the second, the second is reported: the reported ones can all go at once.
+
+```case
+tests/diagnostics/unused_includes/03_brought_twice
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Standard library headers**
+
+A standard header stays when the file names something it provides
+
+A standard library header counts as used when the file names a declaration the standard puts in it, even when the library declares it in an internal header.
+
+```case
+tests/diagnostics/unused_includes/04_standard_library
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Headers get none**
+
+An open header gets no unused-include warning
+
+What a header includes may be there for the files including it, so only source files get the warning.
+
+```case
+tests/diagnostics/unused_includes/12_headers
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Removing unused includes**
+
+A quick fix removes one unused include, or all of them
+
+Each warning offers to remove its `#include` line, and to remove every unused include of the file at once.
+
+```case
+tests/diagnostics/unused_includes/13_quick_fix
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Turning the warning off**
+
+`unused_includes = false` turns the warning off
+
+```case
+tests/diagnostics/unused_includes/14_turned_off
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
 
 ## Diagnostic Display
 

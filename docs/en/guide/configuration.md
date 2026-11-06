@@ -256,7 +256,27 @@ The `[diagnostics]` section controls the diagnostics clice publishes for open fi
 | ------------ | ------ | ------- |
 | `clang_tidy` | `bool` | `true`  |
 
-Run clang-tidy on open files and offer its fixes, with the checks the nearest `.clang-tidy` configures (a small default set without one). Checks too slow for an editor, and those unreliable on code being edited, are left out; files `clice lint` does not check get none. `NOLINT` comments also silence compiler warnings only while this runs.
+Run clang-tidy on open files and offer its fixes, with the checks the nearest `.clang-tidy` configures (a small default set without one). Checks too slow for an editor are left out unless `clang_tidy_slow_checks`, those unreliable on code being edited always are; files `clice lint` does not check get none. `NOLINT` comments also silence compiler warnings only while this runs.
+
+</div>
+
+<div class="config-option">
+
+| Option                   | Type   | Default |
+| ------------------------ | ------ | ------- |
+| `clang_tidy_slow_checks` | `bool` | unset   |
+
+Also run on open files the checks the `.clang-tidy` enables that are too slow for an editor or not measured for one (`misc-const-correctness` doubles the time a large file takes to compile): every compile of the file waits for them. Unset, clice names such checks once when it leaves them out; `false` leaves them out silently. `clice lint` runs them either way.
+
+</div>
+
+<div class="config-option">
+
+| Option            | Type   | Default |
+| ----------------- | ------ | ------- |
+| `unused_includes` | `bool` | `true`  |
+
+Warn on the `#include`s an open source file can do without, all at once: those whose header brings nothing the file uses that its other includes do not bring too. A header the file reaches what it uses through counts as used, its own includes too; a header without an include guard, or kept by an `IWYU pragma: keep`, is never reported. Shown once the background index has compiled the file as it is saved: the warning reads function bodies the editor's own compile skips. Headers get none: what they include may be there for the files including them; nor does a file with errors.
 
 </div>
 

@@ -330,11 +330,13 @@ struct CompileUnitParams {
     std::string pch;
 
     /// Products of the run: the index, the errors the compile reports, the
-    /// diagnostics an editor skipping header bodies misses, and a clang-tidy
+    /// diagnostics an editor skipping header bodies misses, among them the
+    /// file's unused includes (feature::unused_includes), and a clang-tidy
     /// pass under this frozen configuration.
     bool index = false;
     bool errors = false;
     bool skipped_diagnostics = false;
+    bool unused_includes = false;
     std::optional<tidy::TidyParams> tidy;
 
     /// Variant identities the master stores for the files this TU is

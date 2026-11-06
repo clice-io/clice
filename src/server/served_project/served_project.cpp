@@ -258,15 +258,16 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
 }
 
 void ServedProject::decide_serving(ServedDocument& document) {
-    // An escalated document needs no decision: builds stay pull-driven. When
-    // they skip the bodies of the headers, the file's background run shows
-    // what those hold (report_skipped_diagnostics), and goes first when none
-    // has reported on its text.
+    // An escalated document needs no decision: builds stay pull-driven. The
+    // file's background run shows what its compile cannot — what the
+    // skipped bodies of the headers hold, its unused includes
+    // (report_skipped_diagnostics) — and goes first when none has reported
+    // on its text.
     auto& session = *document.session;
     auto path_id = session.path_id;
     auto& background = project.background_index;
     if(document.serving == ServingMode::Escalated) {
-        if(project.settings.project.skip_header_bodies && background.started() &&
+        if(project.settings.background_diagnostics() && background.started() &&
            lacks_skipped_diagnostics(path_id) && !background.queue().in_flight(path_id) &&
            !background.failed(path_id)) {
             background.index_first(path_id);
@@ -324,7 +325,7 @@ void ServedProject::record_saved(Fid path_id) {
     }
     // The open files the save made stale show what their background run
     // finds as soon as it can (report_skipped_diagnostics).
-    if(project.settings.project.skip_header_bodies) {
+    if(project.settings.background_diagnostics()) {
         auto& background = project.background_index;
         for(auto& [open, document]: documents) {
             if(background.queue().pending_reason(open) && !background.queue().in_flight(open)) {

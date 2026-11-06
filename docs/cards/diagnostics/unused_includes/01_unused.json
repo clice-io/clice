@@ -1,0 +1,64 @@
+{
+  "id": "diagnostics/unused_includes/01_unused",
+  "topic": "diagnostics",
+  "subtopic": "unused_includes",
+  "title": "Includes nothing uses",
+  "summary": "An `#include` the file uses nothing from shows faded",
+  "prose": "A warning marks each `#include` of a source file that brings nothing the file uses, faded as unnecessary code is.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "a.h",
+      "text": "#pragma once\nint answer();\n",
+      "markers": []
+    },
+    {
+      "path": "b.h",
+      "text": "#pragma once\nint other();\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"a.h\"\n#include \"b.h\"\n\nint use() {\n    return answer();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "⟦#include \"b.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 14
+                    }
+                  }
+                },
+                "severity": "warning",
+                "message": "Nothing this file uses comes from \"b.h\" or the headers it includes",
+                "source": "clice",
+                "code": "unused-include",
+                "tags": [
+                  "Unnecessary"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

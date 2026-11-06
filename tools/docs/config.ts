@@ -73,7 +73,10 @@ function resolveRef(root: StructSchema, schema: FieldSchema): StructSchema {
 /// width of its own).
 function renderType(field: FieldSchema): string {
     if (field.anyOf !== undefined) {
-        return field.anyOf.map(renderType).join(" or ");
+        return field.anyOf
+            .filter((alternative) => alternative.type !== "null")
+            .map(renderType)
+            .join(" or ");
     }
     if (field.type === undefined && field.enum?.every((name) => typeof name === "string")) {
         return "`string`";
@@ -122,10 +125,14 @@ function renderType(field: FieldSchema): string {
 
 /// The Default cell. A field without a `default` annotation derives its
 /// value from the running machine — the description states how — so the
-/// cell shows a dash rather than any one host's number.
+/// cell shows a dash rather than any one host's number. An optional
+/// field is unset by default, which TOML cannot spell as a value.
 function renderDefault(field: FieldSchema): string {
     if (!("default" in field)) {
         return "—";
+    }
+    if (field.default === null) {
+        return "unset";
     }
     return `\`${JSON.stringify(field.default)}\``;
 }

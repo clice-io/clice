@@ -70,6 +70,7 @@ async::task<UnitResult>
     // (ServedProject::shown_skipped_diagnostics).
     params.skipped_diagnostics =
         request.skipped_diagnostics && resolved.ref.source == CommandSource::Database;
+    params.unused_includes = request.unused_includes && params.skipped_diagnostics;
 
     // A unit waits on the PCMs of its imports: the PCMs handed to the worker
     // below would otherwise race a cold build and parse without the module

@@ -124,7 +124,7 @@ tests/diagnostics/guidance/01_no_database
 ## 标签
 
 - [x] `-Wdeprecated` 诊断和涉及已弃用头文件与别名的 clang-tidy 检查结果的 `Deprecated` 标签
-- [x] 未使用变量/参数警告和 `misc-unused-*` clang-tidy 检查结果的 `Unnecessary` 标签
+- [x] 未使用变量/参数警告、未使用的 include 和 `misc-unused-*` clang-tidy 检查结果的 `Unnecessary` 标签
 
 ## 发布
 
@@ -177,7 +177,7 @@ tests/diagnostics/suppression/01_by_code
 
 ## 头文件诊断
 
-- [ ] 针对未使用或缺少的 `#include` 指令提供 include-cleaner 诊断
+- [ ] 针对缺少的 `#include` 指令提供诊断
 - [x] 抑制头文件中的 static inline 函数所触发的 `-Wunused-function` 误报（[clangd#1211](https://github.com/clangd/clangd/issues/1211)）
 
   ```cpp
@@ -227,6 +227,20 @@ tests/diagnostics/clang_tidy/02_default_checks
 
 <!-- BEGIN CAPABILITY: supported -->
 
+**不运行的检查**
+
+对编辑器来说过慢的检查会点名告知，不会被悄悄略过
+
+已打开的文件既不运行对编辑器来说过慢的检查，也不运行在编辑中的代码上不可靠的检查。对于 `.clang-tidy` 启用的过慢检查，clice 会列出一次它们的名字，并说明如何运行；`clice lint` 会运行所有检查。
+
+```case
+tests/diagnostics/clang_tidy/03_editor_exclusions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
 **使用 NOLINT 抑制诊断**
 
 `NOLINT` 注释会抑制所在行的检查结果，也会抑制编译器警告
@@ -267,9 +281,23 @@ tests/diagnostics/clang_tidy/09_turned_off
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**运行过慢的检查**
+
+设置 `clang_tidy_slow_checks = true` 后，`.clang-tidy` 启用的每一项检查都会运行
+
+对编辑器来说过慢的检查（例如 `misc-const-correctness`）只有在明确要求时才会在已打开的文件上运行：文件的每次编译都要等它们完成。
+
+```case
+tests/diagnostics/clang_tidy/20_slow_checks
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
-- [x] 对编辑器来说过慢的检查，以及在编辑中的代码上不可靠的检查，不在编辑器中运行；`clice lint` 会运行它们
+- [x] 对编辑器来说过慢的检查，只有在 `clang_tidy_slow_checks` 要求时才会在已打开的文件上运行，clice 会列出它略过的检查；在编辑中的代码上不可靠的检查始终不运行；`clice lint` 会运行所有这些检查
 - [x] `performance-use-std-move` 既不在编辑器中运行，也不在 `clice lint` 中运行：在 clice 所基于的 LLVM 中，它处理从 PCH 或模块中读取的类时会崩溃
 - [x] 对 `.clang-tidy` 的修改会在已打开文件下次编译时生效
 - [x] 某个 clang-tidy 检查崩溃时，只暂停该文件的 clang-tidy，不影响它的其他功能
@@ -277,6 +305,110 @@ tests/diagnostics/clang_tidy/09_turned_off
 - [ ] Clang 静态分析器支持（[clangd#905](https://github.com/clangd/clangd/issues/905)）
 - [ ] 特定版本的 clang-tidy 文档链接（[clangd#2136](https://github.com/clangd/clangd/issues/2136)）
 - [ ] 对位于代码之前的预处理指令进行诊断（[clangd#2501](https://github.com/clangd/clangd/issues/2501)）
+
+## 未使用的 include
+
+后台索引按保存后的内容编译过源文件后，文件中可以去掉的 `#include` 会淡化显示，并附带一个删除它的快速修复。文件用到的内容如果是经由某个 include 所包含的头文件得到的，这个 include 也算作已使用；报告出的 include 可以一次全部删除。
+
+<!-- BEGIN GENERATED ITEMS: diagnostics/unused_includes -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**没有被用到的 include**
+
+文件没有用到其中任何内容的 `#include` 会淡化显示
+
+源文件中的 `#include` 如果没有引入文件用到的任何内容，就会被标上一条警告，并像不必要的代码那样淡化显示。
+
+```case
+tests/diagnostics/unused_includes/01_unused
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**经由其包含的头文件被用到**
+
+文件经由某个 include 用到所需的内容时，这个 include 算作已使用
+
+如果文件要经由某个头文件才能用到所需的内容，比如伞形头文件（umbrella header）或公开的入口头文件，那么即使文件没有用到它自己声明的任何东西，它也不会被报告。
+
+```case
+tests/diagnostics/unused_includes/02_through_includes
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**另一个 include 也会引入**
+
+某个 include 引入的头文件如果另一个 include 也会引入，这个 include 就会被报告
+
+两个 include 引入相同的头文件，而文件又没有用到第二个 include 的其他内容时，报告的是第二个：报告出的 include 可以一次全部删除。
+
+```case
+tests/diagnostics/unused_includes/03_brought_twice
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**标准库头文件**
+
+文件用到了标准头文件提供的名字时，这个头文件会保留
+
+标准规定某个声明由某个标准库头文件提供时，只要文件用到了这个声明，该头文件就算作已使用，即使标准库实际把它声明在某个内部头文件中。
+
+```case
+tests/diagnostics/unused_includes/04_standard_library
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**头文件不会收到此警告**
+
+已打开的头文件不会收到未使用 include 的警告
+
+头文件所包含的内容可能是为包含它的文件准备的，因此只有源文件才会收到这一警告。
+
+```case
+tests/diagnostics/unused_includes/12_headers
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**删除未使用的 include**
+
+快速修复可以删除单个未使用的 include，也可以全部删除
+
+每条警告都提供两个操作：删除它所在的 `#include` 行，以及一次删除文件中所有未使用的 include。
+
+```case
+tests/diagnostics/unused_includes/13_quick_fix
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**关闭此警告**
+
+设置 `unused_includes = false` 后，这一警告会关闭
+
+```case
+tests/diagnostics/unused_includes/14_turned_off
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
 
 ## 诊断显示
 

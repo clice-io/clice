@@ -1,0 +1,54 @@
+{
+  "id": "diagnostics/unused_includes/04_standard_library",
+  "topic": "diagnostics",
+  "subtopic": "unused_includes",
+  "title": "Standard library headers",
+  "summary": "A standard header stays when the file names something it provides",
+  "prose": "A standard library header counts as used when the file names a declaration the standard puts in it, even when the library declares it in an internal header.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include <map>\n#include <vector>\n\nstd::size_t count(const std::vector<int>& values) {\n    return values.size();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "⟦#include <map>⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 14
+                    }
+                  }
+                },
+                "severity": "warning",
+                "message": "Everything this file uses from <map> and the headers it includes comes from its other includes too",
+                "source": "clice",
+                "code": "unused-include",
+                "tags": [
+                  "Unnecessary"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

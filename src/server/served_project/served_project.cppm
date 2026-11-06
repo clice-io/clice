@@ -594,8 +594,8 @@ public:
 
     /// Whether an open document's own compile serves the file's index
     /// (ServingSide::compiled_by_session): an escalated document's does,
-    /// unless it skips the bodies of the headers — then only a background
-    /// run shows what the skipped bodies hold (report_skipped_diagnostics).
+    /// unless only a background run shows what the document is to show
+    /// (Settings::background_diagnostics, report_skipped_diagnostics).
     bool compiled_by_session(Fid path_id) const override;
 
     /// The project's context choices hold again or no longer do after the
@@ -860,9 +860,10 @@ private:
     /// A background index run of the file reported `diagnostics` for the
     /// text hashing to `text_hash`: what the editor's compile, which skips
     /// the function bodies of the headers the file includes at its top, can
-    /// get wrong (feature::skipped_diagnostics). They show on the document
-    /// while it holds that text, open now or later
-    /// (shown_skipped_diagnostics).
+    /// get wrong (feature::skipped_diagnostics), and the file's unused
+    /// includes, which only a compile of those bodies can tell
+    /// (feature::unused_includes). They show on the document while it
+    /// holds that text, open now or later (shown_skipped_diagnostics).
     void report_skipped_diagnostics(Fid path_id,
                                     std::uint64_t text_hash,
                                     std::vector<feature::FileDiagnostic> diagnostics) override;
@@ -1043,6 +1044,11 @@ private:
     /// saying so waits for the first document the project serves: a folder
     /// of a multi-root workspace may hold no C or C++ at all.
     bool commands_missing = false;
+
+    /// The clang-tidy Checks lists whose slow checks a guidance has named,
+    /// each once: those the editor leaves out while
+    /// `clang_tidy_slow_checks` is unset.
+    llvm::StringSet<> named_slow_checks;
 
     bool endpoint_recorded = false;
 

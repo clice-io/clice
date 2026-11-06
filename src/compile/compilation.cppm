@@ -55,6 +55,10 @@ struct TidyParams {
     /// interactive command is never rewritten.
     std::vector<std::string> extra_args;
     std::vector<std::string> extra_args_before;
+
+    /// The editor shape also runs the checks not known to be fast
+    /// (tidy::slow_checks).
+    bool slow_checks = false;
 };
 
 class ClangTidyChecker;

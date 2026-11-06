@@ -34,6 +34,9 @@ struct UnitRequest {
     /// the editor compiles as this compile does.
     bool skipped_diagnostics = false;
 
+    /// The file's unused includes among those diagnostics.
+    bool unused_includes = false;
+
     /// A tidy pass under this frozen configuration.
     std::optional<tidy::TidyParams> tidy;
 

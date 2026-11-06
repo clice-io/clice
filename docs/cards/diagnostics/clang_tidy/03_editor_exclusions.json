@@ -1,0 +1,66 @@
+{
+  "id": "diagnostics/clang_tidy/03_editor_exclusions",
+  "topic": "diagnostics",
+  "subtopic": "clang_tidy",
+  "title": "Checks left out",
+  "summary": "A check too slow for an editor is named, not dropped silently",
+  "prose": "Open files run neither the checks too slow for an editor nor those unreliable on code being edited. clice names the slow ones the `.clang-tidy` enables once, with how to run them; `clice lint` runs every check.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-tidy",
+      "text": "Checks: \"-*,bugprone-integer-division,bugprone-use-after-move,misc-const-correctness\"\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "// use-after-move is unreliable on code being edited and const-correctness\n// too slow for an editor: of the three checks enabled, only integer division\n// runs in the editor. `clice lint` runs them all.\nnamespace std {\ntemplate <class T> T&& move(T& t) { return static_cast<T&&>(t); }\n}\nstruct S { int v; };\nint use(S s) { S t = std::move(s); return s.v + t.v; }\ndouble ratio(int a, int b) { return a / b; }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "double ratio(int a, int b) { return ⟦a⟧ / b; }",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 36
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 37
+                    }
+                  }
+                },
+                "severity": "warning",
+                "message": "result of integer division used in a floating point context; possible loss of precision",
+                "source": "clang-tidy",
+                "code": "bugprone-integer-division",
+                "link": "https://clang.llvm.org/extra/clang-tidy/checks/bugprone/integer-division.html",
+                "tags": []
+              }
+            ]
+          }
+        },
+        {
+          "label": "guidance",
+          "value": {
+            "value": [
+              "The clang-tidy configuration of ${WS}/main.cpp enables checks too slow for an editor, or not measured for one, which do not run on open files: misc-const-correctness. Set `clang_tidy_slow_checks = true` under `[diagnostics]` to run them, or `false` to leave them out without this message; `clice lint` runs them."
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

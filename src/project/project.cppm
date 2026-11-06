@@ -69,11 +69,11 @@ struct ServingSide {
     /// closes.
     virtual bool compiled_by_session(Fid file) const = 0;
 
-    /// Under `skip_header_bodies`, every index run also brings back the
-    /// diagnostics an editor can get wrong on its file
-    /// (UnitRequest::skipped_diagnostics), handed here with the hash of the
-    /// text they describe — unless a reindex booked during the run says
-    /// they describe inputs that changed.
+    /// Under Settings::background_diagnostics, every index run also brings
+    /// back the diagnostics an editor can get wrong on its file, its unused
+    /// includes among them (UnitRequest::skipped_diagnostics), handed here
+    /// with the hash of the text they describe — unless a reindex booked
+    /// during the run says they describe inputs that changed.
     virtual void report_skipped_diagnostics(Fid file,
                                             std::uint64_t text_hash,
                                             std::vector<feature::FileDiagnostic> diagnostics) = 0;

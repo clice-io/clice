@@ -1,0 +1,69 @@
+{
+  "id": "diagnostics/unused_includes/02_through_includes",
+  "topic": "diagnostics",
+  "subtopic": "unused_includes",
+  "title": "Used through its includes",
+  "summary": "An include the file reaches what it uses through counts as used",
+  "prose": "A header that is the file's way to what it uses, as an umbrella or public entry header is, stays unreported though the file uses nothing it declares itself.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "api.h",
+      "text": "#pragma once\n#include \"detail.h\"\n",
+      "markers": []
+    },
+    {
+      "path": "detail.h",
+      "text": "#pragma once\nint detail_value();\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"api.h\"\n#include \"unused.h\"\n\nint use() {\n    return detail_value();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "unused.h",
+      "text": "#pragma once\nint other();\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "⟦#include \"unused.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 19
+                    }
+                  }
+                },
+                "severity": "warning",
+                "message": "Nothing this file uses comes from \"unused.h\" or the headers it includes",
+                "source": "clice",
+                "code": "unused-include",
+                "tags": [
+                  "Unnecessary"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
