@@ -25,6 +25,20 @@ ZEST_CASE(BlanksBeforeProgram) {
     ZEXPECT(split_command("\tcc -c x.c", sys::cmd::Quoting::POSIX) == expected);
 }
 
+ZEST_CASE(PlainSplitsAlike) {
+    /// A line quoting and escaping nothing splits at its spaces under every
+    /// quoting; any other is no plain line.
+    llvm::SmallVector<std::string_view> plain;
+    for(auto line: {"  cc -c  x.c ", "/usr/bin/c++ -DA=1 -I/x -o a.o -c a.cpp"}) {
+        ZASSERT(split_plain(line, plain));
+        ZEXPECT(ranges::equal(plain, split_command(line, sys::cmd::Quoting::POSIX)));
+        ZEXPECT(ranges::equal(plain, split_command(line, sys::cmd::Quoting::Windows)));
+    }
+    for(auto line: {R"(cc "-DA=1" x.c)", R"(cc -DA='x' x.c)", R"(cc C:\x.c)", "cc\t-c x.c"}) {
+        ZEXPECT(!split_plain(line, plain));
+    }
+};
+
 ZEST_CASE(JoinedReadsBack) {
     std::vector<std::string> arguments = {"cc", "-DS=\"a b\"", R"(-I C:\x)", "", "it's"};
     ZEXPECT(split_command(join_command(arguments)) == arguments);

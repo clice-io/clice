@@ -68,8 +68,9 @@ struct Normalizer {
                                        Fid file,
                                        llvm::StringRef command);
 
-    /// The tokens of `command`, quoted as the database writes it.
-    std::vector<std::string> split(llvm::StringRef command) const;
+    /// The tokens of `command`, quoted as the database writes it, into
+    /// `tokens`, whose strings keep their storage for the next command.
+    void split(llvm::StringRef command, std::vector<std::string>& tokens) const;
 
     /// What the commands of entries a build compiles alike share: a hash of
     /// `command_line` run from `directory`, with the entry's `file` as the

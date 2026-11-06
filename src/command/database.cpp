@@ -108,7 +108,7 @@ std::string per_file_option(const CommandTable& commands,
 }
 
 std::optional<std::string> repaired_database_text(llvm::StringRef bytes) {
-    if(llvm::json::isUTF8(bytes)) {
+    if(simdjson::validate_utf8(bytes.data(), bytes.size())) {
         return std::nullopt;
     }
     return llvm::json::fixUTF8(bytes);
@@ -255,6 +255,40 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // found at the first such entry, maps the entries so spelled.
     std::optional<fs::cygwin::MountTable> table;
 
+    // An entry's strings: views of the database's own bytes when they hold
+    // no escape, else unescaped into the entry's storage. simdjson's own
+    // get_string writes every string of the document into one buffer, as
+    // large as the database by its end.
+    std::string dir_storage, file_storage, command_storage, arg_storage;
+    auto text_of = [&](auto&& value, std::string& storage) -> std::optional<std::string_view> {
+        simdjson::ondemand::raw_json_string raw;
+        if(value.get_raw_json_string().get(raw)) {
+            return std::nullopt;
+        }
+        const char* first = raw.raw();
+        const char* end = json_buf.data() + json_buf.size();
+        auto* quote = static_cast<const char*>(std::memchr(first, '"', end - first));
+        if(!std::memchr(first, '\\', quote - first)) {
+            return std::string_view(first, quote - first);
+        }
+        const char* last = first;
+        for(; *last != '"'; last += 1) {
+            if(*last == '\\') {
+                last += 1;
+            }
+        }
+        storage.resize(last - first + json_padding);
+        auto* out = reinterpret_cast<std::uint8_t*>(storage.data());
+        std::string_view text;
+        if(json_parser.unescape(raw, out).get(text)) {
+            return std::nullopt;
+        }
+        return text;
+    };
+
+    // The tokens of the entry at hand, their storage kept for the next.
+    std::vector<std::string> args;
+    llvm::SmallVector<std::string_view> plain_args;
     llvm::StringMap<Spelling> working_dirs;
     llvm::DenseMap<SharedKey, CommandID> shared;
     std::uint32_t index = 0;
@@ -272,7 +306,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         }
 
         std::string_view dir_sv, file_sv;
-        if(obj["directory"].get_string().get(dir_sv)) {
+        if(auto text = text_of(obj["directory"], dir_storage)) {
+            dir_sv = *text;
+        } else {
             LOG_ERROR(
                 "Invalid compilation database in {}. Skipping item at index {}: "
                 "'directory' key is missing.",
@@ -281,7 +317,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             continue;
         }
 
-        if(obj["file"].get_string().get(file_sv)) {
+        if(auto text = text_of(obj["file"], file_storage)) {
+            file_sv = *text;
+        } else {
             LOG_ERROR(
                 "Invalid compilation database in {}. Skipping item at index {}: "
                 "'file' key is missing.",
@@ -290,25 +328,33 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             continue;
         }
 
-        std::vector<std::string> args;
         std::optional<llvm::StringRef> command;
         simdjson::ondemand::array args_arr;
         if(!obj["arguments"].get_array().get(args_arr)) {
             bool malformed = false;
+            std::size_t count = 0;
             for(auto arg_val: args_arr) {
-                std::string_view sv;
-                if(arg_val.get_string().get(sv)) {
+                auto text = text_of(arg_val, arg_storage);
+                if(!text) {
                     malformed = true;
                     break;
                 }
-                args.emplace_back(sv);
+                if(count < args.size()) {
+                    args[count].assign(*text);
+                } else {
+                    args.emplace_back(*text);
+                }
+                count += 1;
             }
+            args.resize(count);
             if(malformed || args.empty()) {
                 continue;
             }
         } else {
             std::string_view cmd_sv;
-            if(obj["command"].get_string().get(cmd_sv)) {
+            if(auto text = text_of(obj["command"], command_storage)) {
+                cmd_sv = *text;
+            } else {
                 LOG_ERROR(
                     "Invalid compilation database in {}. Skipping item at index {}: "
                     "neither 'arguments' nor 'command' key is present.",
@@ -386,15 +432,20 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                                        ? command_table.intern(file)
                                        : llvm::StringRef();
 
-        if(command) {
-            args = normalizer.split(*command);
+        // A command quoting and escaping nothing is read as views of the
+        // database's bytes; any other is split into the entry's tokens.
+        bool plain = command && split_plain(*command, plain_args);
+        if(command && !plain) {
+            normalizer.split(*command, args);
         }
-        auto key = normalizer.shared_key(working, file_ref, args);
+        kotatsu::string_list_ref tokens =
+            plain ? kotatsu::string_list_ref(plain_args) : kotatsu::string_list_ref(args);
+        auto key = normalizer.shared_key(working, file_ref, tokens);
         std::optional<CommandID> normalized;
         if(auto known = key ? shared.find(*key) : shared.end(); known != shared.end()) {
             normalized = known->second;
         } else {
-            normalized = normalizer.normalize(working, path_id, args);
+            normalized = normalizer.normalize(working, path_id, tokens);
             // The command of a precompiled header's writer keeps its output.
             if(key && normalized && !command_table.pch_output(*normalized)) {
                 shared.try_emplace(*key, *normalized);

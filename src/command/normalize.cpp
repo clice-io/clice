@@ -317,12 +317,14 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
 std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
                                                Fid file,
                                                llvm::StringRef command) {
-    return normalize(directory, file, split(command));
+    std::vector<std::string> tokens;
+    split(command, tokens);
+    return normalize(directory, file, tokens);
 }
 
-std::vector<std::string> Normalizer::split(llvm::StringRef command) const {
+void Normalizer::split(llvm::StringRef command, std::vector<std::string>& tokens) const {
     // A database written inside Cygwin or MSYS2 quotes its commands for sh.
-    return split_command(command, mounts ? sys::cmd::Quoting::POSIX : host_quoting);
+    split_command(command, mounts ? sys::cmd::Quoting::POSIX : host_quoting, tokens);
 }
 
 std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
