@@ -257,7 +257,10 @@ llvm::SmallVector<ModuleContexts::Context, 2> list_module_contexts(Project& proj
 /// The database `command`, what `file` compiles under, is an entry of; none
 /// for a command no database lists.
 std::optional<SourceID> database_of(Project& project, Fid file, const Candidate& command) {
-    auto owner = command.from().valid() ? command.from() : file;
+    // The command is an entry of the first file it passed through, not of the
+    // last: a header compiles in a provisional member under the command the
+    // member borrowed.
+    auto owner = command.rules_from.empty() ? file : command.rules_from.front();
     for(auto& entry: project.entries(owner)) {
         if(entry.command == command.base) {
             return entry.source;
