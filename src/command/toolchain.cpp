@@ -221,6 +221,18 @@ bool in_query_view(const Arg& arg, CompilerFamily family) {
     std::unreachable();
 }
 
+/// Drops Intel's temporary SYCL header/footer args, which clang reads as -include.
+void drop_intel_sycl_internal_files(std::vector<std::string>& tokens) {
+    for(std::size_t i = 0; i < tokens.size();) {
+        if(tokens[i] != "-include-internal-header" && tokens[i] != "-include-internal-footer") {
+            i += 1;
+            continue;
+        }
+        auto end = std::min(i + 2, tokens.size());
+        tokens.erase(tokens.begin() + i, tokens.begin() + end);
+    }
+}
+
 /// Where among a job's arguments the values of the command's -Xclang
 /// options start: the driver passes them on verbatim, in one run. The end
 /// of `tokens` when the command has none.
@@ -348,6 +360,7 @@ Toolchain::QueryArgv Toolchain::query_argv(const Command& command) {
 
 Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) {
     std::vector<std::string> tokens(job.args.begin() + 2, job.args.end());
+    drop_intel_sycl_internal_files(tokens);
     auto forwarded_from = forwarded_start(tokens, command);
     // An external clang may be newer than the linked one: a flag our cc1
     // does not know parses as unknown, and its values as inputs; both go.

@@ -35,6 +35,48 @@ ZEST_CASE(ClangJobMultiCall) {
     ZEXPECT(job == expected);
 }
 
+ZEST_CASE(SYCLHostJob) {
+    /// icpx and clang print the device pass first. Clice reads the host pass.
+    auto job = parse_clang_host_job(
+        R"("/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" "a.cpp"
+"/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fsycl-is-host" "a.cpp")");
+    std::vector<std::string> host = {"/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang",
+                                     "-cc1",
+                                     "-triple",
+                                     "x86_64-unknown-linux-gnu",
+                                     "-fsycl-is-host",
+                                     "a.cpp"};
+    ZEXPECT(job == host);
+
+    /// A device-only query has no host pass to choose.
+    auto device = parse_clang_host_job(
+        R"("/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" "a.cpp")");
+    std::vector<std::string> only_device = {"/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang",
+                                            "-cc1",
+                                            "-triple",
+                                            "spir64-unknown-unknown",
+                                            "-fsycl-is-device",
+                                            "a.cpp"};
+    ZEXPECT(device == only_device);
+}
+
+ZEST_CASE(CUDAKeepsFirstJob) {
+    /// CUDA is unaffected: an unqueried nvcc keeps the first, device job.
+    auto job = parse_clang_host_job(
+        R"("/usr/bin/clang-22" "-cc1" "-triple" "nvptx64-nvidia-cuda" "-fcuda-is-device" "a.cu"
+"/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "a.cu")");
+    std::vector<std::string> device =
+        {"/usr/bin/clang-22", "-cc1", "-triple", "nvptx64-nvidia-cuda", "-fcuda-is-device", "a.cu"};
+    ZEXPECT(job == device);
+}
+
+ZEST_CASE(UnqueriedSYCLHostJob) {
+    /// clang's own driver prints the same two passes. The fallback reads the host.
+    auto argv = f.resolve(unqueried(add("a.cpp", {"clang++", "-fsycl", "-c"})));
+    ZEXPECT(contains(argv, "-fsycl-is-host"));
+    ZEXPECT(!contains(argv, "-fsycl-is-device"));
+}
+
 ZEST_CASE(NamesStandard) {
     /// `--std` takes its value apart as GCC writes it; `--stdlib` names none.
     ZEXPECT(names_standard({"g++", "-std=c++20"}));

@@ -209,7 +209,7 @@ std::string for_clang(llvm::StringRef arg, const llvm::Triple& target, bool quie
 
 GCCStyleOutput parse_gcc_style_output(llvm::StringRef out, llvm::StringRef err) {
     GCCStyleOutput output;
-    output.clang_job = parse_clang_job(err);
+    output.clang_job = parse_clang_host_job(err);
 
     llvm::SmallVector<llvm::StringRef> lines;
     err.split(lines, '\n', -1, false);

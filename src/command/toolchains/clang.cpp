@@ -26,6 +26,44 @@ struct DriverErrors : clang::DiagnosticConsumer {
     }
 };
 
+template <typename Args>
+bool is_sycl_device_job(const Args& args) {
+    return ranges::any_of(args,
+                          [](auto arg) { return llvm::StringRef(arg) == "-fsycl-is-device"; });
+}
+
+template <typename Accepts>
+std::vector<std::string> first_clang_job(llvm::StringRef output, Accepts accepts) {
+    llvm::SmallVector<llvm::StringRef> lines;
+    output.split(lines, '\n', -1, false);
+    std::vector<std::string> fallback;
+    for(llvm::StringRef line: lines) {
+        line = line.trim();
+        if(!line.starts_with('"')) {
+            continue;
+        }
+        auto args = split_command(line, sys::cmd::Quoting::POSIX);
+
+        // A multi-call llvm (LLVM_TOOL_LLVM_DRIVER_BUILD, as in xclang) runs
+        // cc1 as `llvm clang -cc1`: the tool's name comes before -cc1.
+        auto is_cc1 = [&](std::size_t i) {
+            return i < args.size() && args[i] == "-cc1";
+        };
+        std::size_t cc1 = is_cc1(1) ? 1 : is_cc1(2) ? 2 : 0;
+        if(cc1 == 0) {
+            continue;
+        }
+        args.erase(args.begin() + 1, args.begin() + cc1);
+        if(accepts(args)) {
+            return args;
+        }
+        if(fallback.empty()) {
+            fallback = std::move(args);
+        }
+    }
+    return fallback;
+}
+
 }  // namespace
 
 std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
@@ -75,16 +113,27 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
         return std::unexpected(failure("Failed to build compilation"));
     }
 
-    // We expect to get back exactly one command job, if we didn't something
-    // failed. Offload compilation is an exception as it creates multiple jobs. If
-    // that's the case, we proceed with the first job. If caller needs a
-    // particular job, it should be controlled via options (e.g.
-    // --cuda-{host|device}-only for CUDA) passed to the driver.
+    // A SYCL compilation builds a job for each pass. Clice reads the host
+    // pass. A device-only query and CUDA keep their first job.
     const clang::driver::JobList& jobs = compilation->getJobs();
-    auto cmd = ranges::find_if(jobs, [](const clang::driver::Command& cmd) {
-        return cmd.getCreator().getName() == llvm::StringRef("clang");
-    });
-    if(cmd == jobs.end()) {
+    const clang::driver::Command* first = nullptr;
+    const clang::driver::Command* cmd = nullptr;
+    for(const auto& job: jobs) {
+        if(job.getCreator().getName() != llvm::StringRef("clang")) {
+            continue;
+        }
+        if(!first) {
+            first = &job;
+        }
+        if(!is_sycl_device_job(job.getArguments())) {
+            cmd = &job;
+            break;
+        }
+    }
+    if(!cmd) {
+        cmd = first;
+    }
+    if(!cmd) {
         return std::unexpected(failure("No clang job found"));
     }
 
@@ -225,28 +274,11 @@ std::string standard_from_macros(llvm::StringRef cplusplus,
 }
 
 std::vector<std::string> parse_clang_job(llvm::StringRef output) {
-    llvm::SmallVector<llvm::StringRef> lines;
-    output.split(lines, '\n', -1, false);
-    for(llvm::StringRef line: lines) {
-        line = line.trim();
-        if(!line.starts_with('"')) {
-            continue;
-        }
-        auto args = split_command(line, sys::cmd::Quoting::POSIX);
+    return first_clang_job(output, [](const auto&) { return true; });
+}
 
-        // A multi-call llvm (LLVM_TOOL_LLVM_DRIVER_BUILD, as in xclang) runs
-        // cc1 as `llvm clang -cc1`: the tool's name comes before -cc1.
-        auto is_cc1 = [&](std::size_t i) {
-            return i < args.size() && args[i] == "-cc1";
-        };
-        std::size_t cc1 = is_cc1(1) ? 1 : is_cc1(2) ? 2 : 0;
-        if(cc1 == 0) {
-            continue;
-        }
-        args.erase(args.begin() + 1, args.begin() + cc1);
-        return args;
-    }
-    return {};
+std::vector<std::string> parse_clang_host_job(llvm::StringRef output) {
+    return first_clang_job(output, [](const auto& args) { return !is_sycl_device_job(args); });
 }
 
 }  // namespace clice

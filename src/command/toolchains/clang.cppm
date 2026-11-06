@@ -63,6 +63,9 @@ private:
 /// its arguments as printed. Empty when there is none.
 std::vector<std::string> parse_clang_job(llvm::StringRef output);
 
+/// A SYCL compilation's host pass, else the driver's first job.
+std::vector<std::string> parse_clang_host_job(llvm::StringRef output);
+
 /// The -std value for the macros a driver predefines: `__cplusplus` names
 /// the C++ standard, `__STDC_VERSION__` the C one, and `__STRICT_ANSI__`
 /// tells the ISO mode from the GNU one. A value between two standards
