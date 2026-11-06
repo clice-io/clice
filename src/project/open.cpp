@@ -178,13 +178,13 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
         if(read_only && store.error() == std::errc::no_such_file_or_directory) {
             return unreadable_index(index::LoadResult::Empty, cache_dir);
         }
-        auto why = std::format("Failed to open cache store at {}: {}",
+        auto why = std::format("Cannot use the cache directory {}: {}",
                                std::string_view(cache_dir),
                                store.error().message());
         if(read_only) {
             return why;
         }
-        LOG_WARN("{}", why);
+        LOG_GUIDANCE("{}; no preamble or module is precompiled, and the index is not saved", why);
         return {};
     }
     // Only a run loading the build's members compiles them; registering

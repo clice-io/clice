@@ -72,6 +72,52 @@ export module foo;
     ZEXPECT(preamble_bound(marker_only) == marker_only.find(';') + 1);
 }
 
+ZEST_CASE(FragmentDeclarations) {
+    llvm::StringRef src = R"(
+module;
+#include <a>
+class Forward;
+export module foo;
+)";
+    ZEXPECT(preamble_bound(src) == src.find("Forward;") + 8);
+}
+
+ZEST_CASE(FragmentDeclarationOnOpener) {
+    llvm::StringRef src = "module; class Forward;\nexport module foo;\n";
+    ZEXPECT(preamble_bound(src) == src.find("Forward;") + 8);
+}
+
+ZEST_CASE(FragmentImport) {
+    llvm::StringRef src = R"(
+module;
+import base;
+#include <a>
+export module foo;
+)";
+    ZEXPECT(preamble_bound(src) == src.find("<a>") + 3);
+}
+
+ZEST_CASE(FragmentWithoutModuleDeclaration) {
+    llvm::StringRef src = R"(
+module;
+#include <a>
+int x;
+)";
+    ZEXPECT(preamble_bound(src) == src.find("<a>") + 3);
+}
+
+ZEST_CASE(FragmentCutBeforeDeclaration) {
+    llvm::StringRef src = R"(
+module;
+#include <a>
+class Forward;
+#include <b>
+export module foo;
+)";
+    ZEXPECT(preamble_bound(src, src.find("class")) == 0u);
+    ZEXPECT(preamble_bound(src, src.find("#include <b>")) == src.find("Forward;") + 8);
+}
+
 ZEST_CASE(BoundBeforeLimit) {
     llvm::StringRef content = "#include <vector>\n#ifdef FO\n#endif\nint x;";
     ZEXPECT(preamble_bound(content, content.find("#ifdef")) == content.find('\n'));
@@ -228,6 +274,25 @@ ZEST_CASE(DefinitionPastBound) {
 }
 
 };  // ZEST_SUITE(PreambleUsesMacros)
+
+ZEST_SUITE(PreambleDeclares) {
+
+ZEST_CASE(FragmentDeclaration) {
+    llvm::StringRef content = "module;\n#include <a>\nclass Forward;\nexport module m;\n";
+    ZEXPECT(preamble_declares(content, preamble_bound(content)));
+}
+
+ZEST_CASE(DeclarationOnOpener) {
+    llvm::StringRef content = "module; class Forward;\nexport module m;\n";
+    ZEXPECT(preamble_declares(content, preamble_bound(content)));
+}
+
+ZEST_CASE(FragmentDirectives) {
+    llvm::StringRef content = "module;\n#include <a>\nexport module m;\nint x;\n";
+    ZEXPECT(!preamble_declares(content, preamble_bound(content)));
+}
+
+};  // ZEST_SUITE(PreambleDeclares)
 
 ZEST_SUITE(HasPragmaOnce) {
 

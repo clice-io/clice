@@ -170,7 +170,9 @@ void TokenMap::record_invocation(clang::SourceRange range) {
     invocations.emplace_back(begin, end);
 }
 
-void TokenMap::finish(llvm::ArrayRef<Token> scanned) {
+void TokenMap::finish(llvm::ArrayRef<Token> scanned,
+                      std::uint32_t preamble,
+                      llvm::ArrayRef<std::uint32_t> inactive) {
     // The stream is complete: a clang-tidy check re-lexing through the
     // preprocessor would grow it past the slices taken below.
     pp.setTokenWatcher(nullptr);
@@ -289,6 +291,25 @@ void TokenMap::finish(llvm::ArrayRef<Token> scanned) {
     ranges::sort(producing, [&](std::uint32_t left, std::uint32_t right) {
         return expansions[left].expanded.begin() < expansions[right].expanded.begin();
     });
+
+    // The code a PCH parsed before the stream began: a global module
+    // fragment's declarations.
+    bool directive = false;
+    std::size_t region = 0;
+    for(auto [index, token]: views::enumerate(
+            spelled.take_while([&](const Token& token) { return token.range.begin < preamble; }))) {
+        directive |= token.is_directive_hash();
+        if(!directive) {
+            auto at = token.range.begin;
+            while(region + 1 < inactive.size() && inactive[region + 1] <= at) {
+                region += 2;
+            }
+            if(region + 1 >= inactive.size() || at < inactive[region]) {
+                away[index] = false;
+            }
+        }
+        directive &= !token.is_eod();
+    }
 
     bool before = false;
     for(auto [index, token]: views::enumerate(spelled)) {

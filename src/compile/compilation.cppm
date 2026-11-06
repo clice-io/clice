@@ -204,6 +204,15 @@ struct CompilationParams {
     /// the shape the kind picks (see CompilationKind).
     std::optional<tidy::TidyParams> tidy;
 
+    /// Preamble: the files loading the PCH are module units or import
+    /// modules, so the PCH leaves preferred_name out, as clang leaves it out
+    /// of the modules it writes (llvm/llvm-project#56490). Kept, a
+    /// specialization the PCH declares after a module's
+    /// (`basic_string_view<char>` of a global module fragment's
+    /// <string_view>) has its type read through the attribute before it
+    /// merges, and that type stays apart from the module's.
+    bool modular = false;
+
     /// Skip the bodies of the functions in the files the focus file's
     /// preamble enters (CompilationUnit::in_preamble), but those of
     /// templates likely to forward their arguments: the editor's compiles.
@@ -644,7 +653,8 @@ private:
 
     auto file_text(clang::FileID fid) -> SourceText&;
 
-    /// Where the file location `location` lies (see file_content).
+    /// Where the file location `location` lies (see file_content), the
+    /// PCH's copy of the focus file being the focus file.
     auto decompose(clang::SourceLocation location) -> FileOffset;
 
     /// The parser splits a `>>` closing two template argument lists in two:
@@ -837,10 +847,15 @@ private:
 /// How compile() builds a PCH: its inputs are checked by size alone when
 /// it is loaded, the templates its preamble uses are instantiated in it
 /// unless that raises an error, template bodies are deferred only when the
-/// command asks, function bodies are skipped under skip_bodies, and an
-/// expansion of its own ends it. Keys of cached PCHs include it, so a blob
-/// built under another rule is never reused.
-constexpr llvm::StringRef pch_build_rule(bool skip_bodies) {
+/// command asks, function bodies are skipped under skip_bodies, preferred
+/// names are left out under modular, and an expansion of its own ends it.
+/// Keys of cached PCHs include it, so a blob built under another rule is
+/// never reused.
+constexpr llvm::StringRef pch_build_rule(bool skip_bodies, bool modular) {
+    if(modular) {
+        return skip_bodies ? "size,instantiated,undeferred,ended,skipped,modular"
+                           : "size,instantiated,undeferred,ended,modular";
+    }
     return skip_bodies ? "size,instantiated,undeferred,ended,skipped"
                        : "size,instantiated,undeferred,ended";
 }

@@ -1,5 +1,6 @@
 /// What tests read from the logs: never the narrative, only the error
-/// lines a test did not declare, and the excerpt a failure prints.
+/// lines a test did not declare, and the excerpt a failure prints; and the
+/// logs CLICE_KEEP_LOGS keeps of the cases that failed.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -51,4 +52,37 @@ export function failureExcerpt(lines: readonly LogLine[], limit = 60): string {
         .slice(-limit)
         .map((line) => `${line.file}: ${line.text}`)
         .join("\n");
+}
+
+const keptLogs = process.env["CLICE_KEEP_LOGS"];
+if (keptLogs !== undefined && !path.isAbsolute(keptLogs)) {
+    throw new Error(
+        `CLICE_KEEP_LOGS is ${JSON.stringify(keptLogs)}: it takes an absolute directory`,
+    );
+}
+
+/// The directories keepLogs wrote, by case.
+const kept = new Map<string, string[]>();
+
+/// Under CLICE_KEEP_LOGS=<dir>, copy the logs of a case's copy to
+/// <dir>/<case id>/<copy> before the copy goes; the runner drops a case's
+/// once it passed (dropKeptLogs).
+export function keepLogs(caseId: string, root: string): void {
+    if (keptLogs === undefined) {
+        return;
+    }
+    const copy = path.join(keptLogs, caseId, path.basename(root));
+    for (const file of logFiles(root)) {
+        const target = path.join(copy, path.relative(root, file));
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.copyFileSync(file, target);
+    }
+    kept.set(caseId, [...(kept.get(caseId) ?? []), copy]);
+}
+
+export function dropKeptLogs(caseId: string): void {
+    for (const copy of kept.get(caseId) ?? []) {
+        fs.rmSync(copy, { recursive: true, force: true });
+    }
+    kept.delete(caseId);
 }

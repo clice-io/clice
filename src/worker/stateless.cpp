@@ -223,6 +223,7 @@ static worker::PrecompiledBuildResult
                   .project_root = params.project_root,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .output_file = *output,
+        .modular = params.modular,
         .skip_bodies = params.skip_bodies,
         .header_identities = params.shared,
         .record_shared = params.shared,

@@ -1,0 +1,150 @@
+[compiles.outline]
+document_symbols = [
+    { name = "Forward", kind = "Class", at = "class ⟦Forward⟧;" },
+    {
+        name = "detail",
+        kind = "Namespace",
+        at = "namespace ⟦detail⟧ {",
+        children = [
+            { name = "helper", kind = "Function", at = "int ⟦helper⟧();" },
+        ],
+    },
+    { name = "offset", kind = "Function", at = "static int ⟦offset⟧() {" },
+    { name = "width", kind = "Variable", at = "constexpr int ⟦width⟧ = 4;" },
+    { name = "area", kind = "Variable", at = "constexpr int ⟦area⟧ = width * width;" },
+    { name = "lib:other", kind = "Module", at = "module ⟦lib:other⟧;" },
+    { name = "thrice", kind = "Function", at = "int ⟦thrice⟧(int value) {" },
+]
+
+[compiles.tokens]
+semantic_tokens = [
+    { at = "⟦module⟧;", type = "keyword" },
+    { at = '⟦#include⟧ "legacy.h"', type = "directive" },
+    { at = '#include ⟦"legacy.h"⟧', type = "header" },
+    { at = "⟦class⟧ Forward;", type = "keyword" },
+    { at = "class ⟦Forward⟧;", type = "class", modifiers = ["declaration", "global"] },
+    { at = "⟦#if⟧ 0", type = "directive" },
+    { at = "#if ⟦0⟧", type = "number" },
+    { at = "⟦struct⟧ Hidden {", type = "keyword", modifiers = ["inactive"] },
+    { at = "struct ⟦Hidden⟧ {", type = "plain", modifiers = ["inactive"] },
+    { at = "struct Hidden ⟦{⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦int⟧ x;", type = "primitive", modifiers = ["inactive"] },
+    { at = "int ⟦x;⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦};⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦#endif⟧", type = "directive" },
+    { at = "⟦namespace⟧ detail {", type = "keyword" },
+    { at = "namespace ⟦detail⟧ {", type = "namespace", modifiers = ["definition", "global"] },
+    { at = "⟦int⟧ helper();", type = "primitive" },
+    { at = "int ⟦helper⟧();", type = "function", modifiers = ["declaration", "global"] },
+    { at = "⟦static⟧ int offset() {", type = "keyword" },
+    { at = "static ⟦int⟧ offset() {", type = "primitive" },
+    { at = "static int ⟦offset⟧() {", type = "function", modifiers = ["definition", "internal"] },
+    { at = "⟦return⟧ 1;", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦1⟧;", type = "number" },
+    { at = "⟦constexpr⟧ int width = 4;", type = "keyword" },
+    { at = "constexpr ⟦int⟧ width = 4;", type = "primitive" },
+    {
+        at = "constexpr int ⟦width⟧ = 4;",
+        type = "variable",
+        modifiers = ["definition", "readonly", "internal", "constexpr"],
+    },
+    { at = "constexpr int width ⟦=⟧ 4;", type = "operator" },
+    { at = "constexpr int width = ⟦4⟧;", type = "number" },
+    { at = "⟦constexpr⟧ int area = width * width;", type = "keyword" },
+    { at = "constexpr ⟦int⟧ area = width * width;", type = "primitive" },
+    {
+        at = "constexpr int ⟦area⟧ = width * width;",
+        type = "variable",
+        modifiers = ["definition", "readonly", "internal", "constexpr"],
+    },
+    { at = "constexpr int area ⟦=⟧ width * width;", type = "operator" },
+    {
+        at = "constexpr int area = ⟦width⟧ * width;",
+        type = "variable",
+        modifiers = ["readonly", "internal", "constexpr"],
+    },
+    { at = "constexpr int area = width ⟦*⟧ width;", type = "operator" },
+    {
+        at = "constexpr int area = width * ⟦width⟧;",
+        type = "variable",
+        modifiers = ["readonly", "internal", "constexpr"],
+    },
+    { at = "⟦module⟧ lib:other;", type = "keyword" },
+    { at = "module ⟦lib⟧:other;", type = "module", modifiers = ["definition"] },
+    { at = "module lib:⟦other⟧;", type = "module", modifiers = ["definition"] },
+    { at = "⟦int⟧ thrice(int value) {", type = "primitive" },
+    { at = "int ⟦thrice⟧(int value) {", type = "function", modifiers = ["definition", "global"] },
+    { at = "int thrice(⟦int⟧ value) {", type = "primitive" },
+    { at = "int thrice(int ⟦value⟧) {", type = "parameter", modifiers = ["definition", "local"] },
+    { at = "⟦return⟧ Legacy{value}.value * 3 + offset();", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦Legacy⟧{value}.value * 3 + offset();", type = "struct", modifiers = ["global"] },
+    { at = "return Legacy{⟦value⟧}.value * 3 + offset();", type = "parameter", modifiers = ["local"] },
+    { at = "return Legacy{value}.⟦value⟧ * 3 + offset();", type = "field", modifiers = ["member"] },
+    { at = "return Legacy{value}.value ⟦*⟧ 3 + offset();", type = "operator" },
+    { at = "return Legacy{value}.value * ⟦3⟧ + offset();", type = "number" },
+    { at = "return Legacy{value}.value * 3 ⟦+⟧ offset();", type = "operator" },
+    { at = "return Legacy{value}.value * 3 + ⟦offset⟧();", type = "function", modifiers = ["internal"] },
+]
+
+[compiles.folding]
+folding_ranges = [
+    { kind = "moduleFragment", at = "module;⟦ … ⟧ (17 lines)" },
+    { kind = "conditionDirective", at = "#if 0⟦ … ⟧ (5 lines)" },
+    { at = "struct Hidden ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "static int offset() ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "int thrice(int value) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+]
+
+[compiles.definition]
+definition = ["static int ⟦offset⟧() {"]
+
+[compiles.references]
+references = ["static int ⟦offset⟧() {", "return Legacy{value}.value * 3 + ⟦offset⟧();"]
+
+[compiles.hover.hover]
+markdown = '''
+**class** `Forward`
+
+```cpp
+class Forward
+```
+'''
+range = "class ⟦Forward⟧;"
+
+[compiles."reference hover".hover]
+markdown = '''
+**variable** `width`
+
+```cpp
+constexpr int width = 4
+```
+**Value:** `4`
+'''
+range = "constexpr int area = ⟦width⟧ * width;"
+
+[compiles.symbols]
+workspace_symbols = [
+    { name = "Forward", kind = "Class", at = "other.cppm │ class ⟦Forward⟧;" },
+]
+
+[edits.error]
+errors = [
+    {
+        at = "return ⟦missing⟧;",
+        severity = "error",
+        message = "use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]
+
+[edits.typing]
+errors = [
+    {
+        at = '#include ⟦"leg⟧',
+        severity = "error",
+        message = 'expected "FILENAME" or <FILENAME>',
+        source = "clang",
+        code = "err_pp_expects_filename",
+    },
+]

@@ -1,0 +1,14 @@
+[answers."circle.cppm".counterparts]
+preferred = "circle.cpp"
+candidates = [
+    { path = "circle.cpp", reasons = ["defines 1 of 1 declaration", "same name", "implements module shapes.circle"] },
+]
+
+[answers."circle.cpp".counterparts]
+preferred = "circle.cppm"
+candidates = [
+    {
+        path = "circle.cppm",
+        reasons = ["declares 1 of 1 definition", "same name", "interface of module shapes.circle"],
+    },
+]
