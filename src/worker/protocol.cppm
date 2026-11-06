@@ -330,12 +330,12 @@ struct CompileUnitParams {
     std::string pch;
 
     /// Products of the run: the index, the errors the compile reports, the
-    /// diagnostics an editor skipping header bodies misses, among them the
-    /// file's unused includes (feature::unused_includes), and a clang-tidy
-    /// pass under this frozen configuration.
+    /// diagnostics the editor takes from it, among them the file's unused
+    /// includes, read off the index, and a clang-tidy pass under this
+    /// frozen configuration.
     bool index = false;
     bool errors = false;
-    bool skipped_diagnostics = false;
+    bool background_diagnostics = false;
     bool unused_includes = false;
     std::optional<tidy::TidyParams> tidy;
 
@@ -511,12 +511,13 @@ struct CompileUnitResult {
     /// Findings of the tidy pass (plan product `tidy`).
     std::vector<TidyDiagnostic> tidy_diagnostics;
 
-    /// The diagnostics a compile skipping the function bodies of the
-    /// headers can get wrong (feature::skipped_diagnostics) (plan product
-    /// `skipped_diagnostics`).
-    std::vector<feature::FileDiagnostic> skipped_diagnostics;
+    /// The diagnostics the editor takes from this compile (plan product
+    /// `background_diagnostics`): those a compile skipping the function
+    /// bodies of the headers can get wrong (feature::skipped_diagnostics)
+    /// and the file's unused includes (feature::unused_includes).
+    std::vector<feature::FileDiagnostic> background_diagnostics;
 
-    /// The hash of the text skipped_diagnostics describe.
+    /// The hash of the text background_diagnostics describe.
     std::uint64_t text_hash = 0;
 };
 

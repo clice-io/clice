@@ -19,6 +19,12 @@ struct IncludePragmas {
     /// `begin_exports` … `end_exports` pair encloses: including the header
     /// is including those.
     std::vector<std::string> exports;
+
+    /// The header names, as written without their delimiters, of the
+    /// includes a `keep` marks, the pragma on the include's line, or a
+    /// `begin_keep` … `end_keep` pair encloses: they stay whether used or
+    /// not.
+    std::vector<std::string> keeps;
 };
 
 IncludePragmas include_pragmas(llvm::StringRef text, const clang::LangOptions& dialect);

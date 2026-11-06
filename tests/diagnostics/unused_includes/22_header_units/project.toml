@@ -1,0 +1,4 @@
+# The header is a unit of its own: its compile is a header's.
+[units]
+"main.cpp" = []
+"util.h" = []

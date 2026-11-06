@@ -27,6 +27,8 @@ test({ errors: ["exceeded crash budget"] }, async (t) => {
     // The units join the database once every index run of theirs is
     // parked: the pass that indexes them starts after the parks.
     t.disk.database({ "main.cpp": [] });
+    // Opening main.cpp would run it again for its unused includes, one more
+    // file in the pass the outage parks.
     const s = await t.start({
         config: {
             project: {
@@ -34,6 +36,7 @@ test({ errors: ["exceeded crash budget"] }, async (t) => {
                 min_stateless_worker_count: 1,
                 max_stateless_worker_count: 1,
             },
+            diagnostics: { unused_includes: false },
         },
         killWorkers: true,
     });

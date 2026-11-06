@@ -4,7 +4,7 @@
   "subtopic": "clang_tidy",
   "title": "Checks left out",
   "summary": "A check too slow for an editor is named, not dropped silently",
-  "prose": "Open files run neither the checks too slow for an editor nor those unreliable on code being edited. clice names the slow ones the `.clang-tidy` enables once, with how to run them; `clice lint` runs every check.",
+  "prose": "Open files run neither the checks too slow for an editor nor those unreliable on code being edited. clice names the slow ones the `.clang-tidy` enables once, with how to run them; `clice lint` runs both.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -15,7 +15,12 @@
     },
     {
       "path": "main.cpp",
-      "text": "// use-after-move is unreliable on code being edited and const-correctness\n// too slow for an editor: of the three checks enabled, only integer division\n// runs in the editor. `clice lint` runs them all.\nnamespace std {\ntemplate <class T> T&& move(T& t) { return static_cast<T&&>(t); }\n}\nstruct S { int v; };\nint use(S s) { S t = std::move(s); return s.v + t.v; }\ndouble ratio(int a, int b) { return a / b; }\n",
+      "text": "namespace std {\ntemplate <class T> T&& move(T& t) { return static_cast<T&&>(t); }\n}\nstruct S { int v; };\nint use(S s) { S t = std::move(s); return s.v + t.v; }\ndouble ratio(int a, int b) { return a / b; }\n",
+      "markers": []
+    },
+    {
+      "path": "other.cpp",
+      "text": "int twice(int a) {\n    return a * 2;\n}\n",
       "markers": []
     }
   ],
@@ -33,11 +38,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 8,
+                      "line": 5,
                       "character": 36
                     },
                     "end": {
-                      "line": 8,
+                      "line": 5,
                       "character": 37
                     }
                   }

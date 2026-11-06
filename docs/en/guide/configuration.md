@@ -276,7 +276,7 @@ Also run on open files the checks the `.clang-tidy` enables that are too slow fo
 | ----------------- | ------ | ------- |
 | `unused_includes` | `bool` | `true`  |
 
-Warn on the `#include`s an open source file can do without, all at once: those whose header brings nothing the file uses that its other includes do not bring too. A header the file reaches what it uses through counts as used, its own includes too; a header without an include guard, or kept by an `IWYU pragma: keep`, is never reported. Shown once the background index has compiled the file as it is saved: the warning reads function bodies the editor's own compile skips. Headers get none: what they include may be there for the files including them; nor does a file with errors.
+Warn on the `#include`s an open source file can do without, all at once: those whose header brings nothing the file uses that its other includes do not bring too. A header counts as used when the file reaches what it uses through it, whether the header declares it or one of its own includes does; a header without an include guard or `#pragma once`, or kept by an `IWYU pragma: keep`, is never reported. The background index computes the warning, reading every function body: it shows once the index has compiled the file as saved, for a file of the compilation database that the index covers and `clice lint` checks. Headers get none: what they include may be there for the files including them; nor does a file with errors.
 
 </div>
 

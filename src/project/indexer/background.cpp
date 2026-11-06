@@ -39,23 +39,23 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
     // deduplicate cascade storms — may take the shortcut.
     bool content_changed = reindexes.pending_reason(path_id) == ReindexReason::ContentChanged;
     bool served = !content_changed && serving && serving->compiled_by_session(path_id);
-    bool skipped = serving && project.settings.background_diagnostics();
-    if(!served && (content_changed || (skipped && serving->lacks_skipped_diagnostics(path_id)) ||
+    bool reports = serving && project.settings.background_diagnostics();
+    if(!served && (content_changed || (reports && serving->lacks_background_diagnostics(path_id)) ||
                    project.index.needs_reindex(path_id) ||
                    project.index.indexed_command(path_id) != project.command_identity(path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
         // A build compiling the unit indexes it but brings no such
         // diagnostics: only an open document lacking them compiles it for
         // them.
-        bool wants_skipped = skipped && (!project.compiled_by_build(path_id) ||
-                                         serving->lacks_skipped_diagnostics(path_id));
+        bool wants_background = reports && (!project.compiled_by_build(path_id) ||
+                                            serving->lacks_background_diagnostics(path_id));
+        bool unused_includes = wants_background && serving->shows_unused_includes(path_id);
         auto result = co_await project.compile_unit(
             path_id,
             {.index = true,
              .errors = errors,
-             .skipped_diagnostics = wants_skipped,
-             .unused_includes = wants_skipped && project.settings.diagnostics.unused_includes &&
-                                project.rules.lintable(project.file_table.resolve(path_id)),
+             .background_diagnostics = wants_background,
+             .unused_includes = unused_includes,
              .outdated = [this, taken] { return reindexes.outdated(taken); }});
         if(!result) {
             // The graph shut down: nothing ran, so the reindex
@@ -75,10 +75,12 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
             case Status::Completed: {
                 record(path_id, {.errors = std::move(result->errors)});
                 if(auto pending = reindexes.peek(path_id);
-                   wants_skipped && pending && pending->seq == taken.seq) {
-                    serving->report_skipped_diagnostics(path_id,
-                                                        result->text_hash,
-                                                        std::move(result->skipped_diagnostics));
+                   wants_background && pending && pending->seq == taken.seq) {
+                    serving->report_background_diagnostics(
+                        path_id,
+                        result->text_hash,
+                        unused_includes,
+                        std::move(result->background_diagnostics));
                 }
                 indexed_units += 1;
                 LOG_PERF("index",

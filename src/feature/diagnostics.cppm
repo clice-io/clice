@@ -40,14 +40,17 @@ struct DiagnosticsOptions {
                   "Warn on the `#include`s an open source file can do "
                   "without, all at once: those whose header brings "
                   "nothing the file uses that its other includes do not "
-                  "bring too. A header the file reaches what it uses "
-                  "through counts as used, its own includes too; a "
-                  "header without an include guard, or kept by an "
-                  "`IWYU pragma: keep`, is never reported. Shown once the "
-                  "background index has compiled the file as it is saved: "
-                  "the warning reads function bodies the editor's own "
-                  "compile skips. Headers get none: what they include may "
-                  "be there for the files including them; nor does a file "
+                  "bring too. A header counts as used when the file "
+                  "reaches what it uses through it, whether the header "
+                  "declares it or one of its own includes does; a header "
+                  "without an include guard or `#pragma once`, or kept "
+                  "by an `IWYU pragma: keep`, is never reported. The "
+                  "background index computes the warning, reading every "
+                  "function body: it shows once the index has compiled "
+                  "the file as saved, for a file of the compilation "
+                  "database that the index covers and `clice lint` "
+                  "checks. Headers get none: what they include may be "
+                  "there for the files including them; nor does a file "
                   "with errors.")
     bool unused_includes = true;
 
@@ -171,9 +174,9 @@ struct CompileDiagnostics {
     std::vector<FileDiagnostic> unconfirmed;
 
     /// What the background index's compile of the same text reported that
-    /// this one cannot report or has held back (confirmed_skipped), shown
+    /// this one cannot report or has held back (confirmed_background), shown
     /// after the compile's own.
-    std::vector<FileDiagnostic> skipped;
+    std::vector<FileDiagnostic> background;
 
     /// The host whose includer context the compile needed but could not
     /// rebuild, as the user knows it; empty otherwise.
@@ -184,8 +187,8 @@ struct CompileDiagnostics {
     std::string query_failure;
 };
 
-/// The diagnostics a file shows of its compile: its own, then the skipped
-/// ones, less those `options` suppress and, of those moved to one place
+/// The diagnostics a file shows of its compile: its own, then the
+/// background index's, less those `options` suppress and, of those moved to one place
 /// from elsewhere, all but the first error and the first warning; behind
 /// the warnings at its top saying what they may miss: a command clice
 /// guessed, an includer context it could not rebuild, a compiler it could
@@ -207,13 +210,12 @@ auto take_unconfirmed(std::vector<FileDiagnostic>& diagnostics) -> std::vector<F
 /// Whether two diagnostics show the same: one message at one place.
 bool same_diagnostic(const FileDiagnostic& left, const FileDiagnostic& right);
 
-/// Of the diagnostics a full compile of the same text reported that a
-/// compile skipping the bodies of the headers can get wrong
-/// (skipped_diagnostics), those the file shows beside that compile's: an
-/// unused declaration's warning it held back, now confirmed, and the rest
-/// it did not raise itself.
-auto confirmed_skipped(llvm::ArrayRef<FileDiagnostic> skipped, const CompileDiagnostics& compiled)
-    -> std::vector<FileDiagnostic>;
+/// Of the diagnostics the background index's compile of the same text
+/// reported for the editor (skipped_diagnostics, unused_includes), those
+/// the file shows beside that compile's: an unused declaration's warning
+/// it held back, now confirmed, and the rest it did not raise itself.
+auto confirmed_background(llvm::ArrayRef<FileDiagnostic> background,
+                          const CompileDiagnostics& compiled) -> std::vector<FileDiagnostic>;
 
 /// Why an imported module did not build: from the imported module down,
 /// the modules whose builds failed in turn, and the error the last one

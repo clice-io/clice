@@ -231,7 +231,7 @@ tests/diagnostics/clang_tidy/02_default_checks
 
 A check too slow for an editor is named, not dropped silently
 
-Open files run neither the checks too slow for an editor nor those unreliable on code being edited. clice names the slow ones the `.clang-tidy` enables once, with how to run them; `clice lint` runs every check.
+Open files run neither the checks too slow for an editor nor those unreliable on code being edited. clice names the slow ones the `.clang-tidy` enables once, with how to run them; `clice lint` runs both.
 
 ```case
 tests/diagnostics/clang_tidy/03_editor_exclusions
@@ -285,7 +285,7 @@ tests/diagnostics/clang_tidy/09_turned_off
 
 **Running the slow checks**
 
-`clang_tidy_slow_checks = true` runs every check the `.clang-tidy` enables
+`clang_tidy_slow_checks = true` also runs the checks too slow for an editor
 
 Checks too slow for an editor, such as `misc-const-correctness`, run on open files only when asked for: every compile of the file waits for them.
 
@@ -308,7 +308,7 @@ tests/diagnostics/clang_tidy/20_slow_checks
 
 ## Unused Includes
 
-An `#include` a source file can do without is shown faded, with a quick fix removing it, once the background index has compiled the file as it is saved. An include counts as used when the file reaches what it uses through the headers it includes, and the ones reported can all be removed at once.
+An `#include` a source file of the compilation database can do without is shown faded, with a quick fix removing it, once the background index has compiled the file as it is saved. An include counts as used when the file reaches what it uses through the headers it includes, and the ones reported can all be removed at once.
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/unused_includes -->
 

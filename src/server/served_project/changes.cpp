@@ -70,7 +70,7 @@ void ServedProject::mark_stale(Fid path_id, bool& refresh) {
 }
 
 void ServedProject::reindex(Fid path_id, bool content) {
-    skipped.erase(path_id);
+    background_diagnostics.erase(path_id);
     project.background_index.enqueue(path_id,
                                      content ? ReindexReason::ContentChanged
                                              : ReindexReason::DepsOnly);
@@ -271,7 +271,7 @@ void ServedProject::commands_changed(CDBDiff commands) {
     // canonical flags, so pull-side caches miss naturally.
     auto& delta = changed.commands;
     for(auto path_id: llvm::concat<const Fid>(delta.added, delta.changed, delta.removed)) {
-        skipped.erase(path_id);
+        background_diagnostics.erase(path_id);
         cascade_compile_graph(path_id, refresh);
     }
 

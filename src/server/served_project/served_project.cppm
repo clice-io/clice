@@ -491,8 +491,12 @@ public:
     /// Whether the file's escalated document holds text no background run
     /// has reported on, as after a restart, when the index is current and
     /// runs nothing. Only a file of its own database entry is reported on
-    /// (UnitRequest::skipped_diagnostics).
-    bool lacks_skipped_diagnostics(Fid path_id) const override;
+    /// (UnitRequest::background_diagnostics).
+    bool lacks_background_diagnostics(Fid path_id) const override;
+
+    /// An escalated document of a file `clice lint` checks shows them,
+    /// while the setting is on (DiagnosticsOptions::unused_includes).
+    bool shows_unused_includes(Fid path_id) const override;
 
     /// Interrupt every in-flight parse and wait for the detached compile
     /// joins. The attempts themselves finish in TaskGraph::shutdown — the
@@ -595,7 +599,7 @@ public:
     /// Whether an open document's own compile serves the file's index
     /// (ServingSide::compiled_by_session): an escalated document's does,
     /// unless only a background run shows what the document is to show
-    /// (Settings::background_diagnostics, report_skipped_diagnostics).
+    /// (Settings::background_diagnostics, report_background_diagnostics).
     bool compiled_by_session(Fid path_id) const override;
 
     /// The project's context choices hold again or no longer do after the
@@ -860,13 +864,15 @@ private:
     /// A background index run of the file reported `diagnostics` for the
     /// text hashing to `text_hash`: what the editor's compile, which skips
     /// the function bodies of the headers the file includes at its top, can
-    /// get wrong (feature::skipped_diagnostics), and the file's unused
-    /// includes, which only a compile of those bodies can tell
-    /// (feature::unused_includes). They show on the document while it
-    /// holds that text, open now or later (shown_skipped_diagnostics).
-    void report_skipped_diagnostics(Fid path_id,
-                                    std::uint64_t text_hash,
-                                    std::vector<feature::FileDiagnostic> diagnostics) override;
+    /// get wrong (feature::skipped_diagnostics), and, when
+    /// `unused_includes`, the file's unused includes, which only a compile
+    /// of those bodies can tell (feature::unused_includes). They show on
+    /// the document while it holds that text, open now or later
+    /// (shown_background_diagnostics).
+    void report_background_diagnostics(Fid path_id,
+                                       std::uint64_t text_hash,
+                                       bool unused_includes,
+                                       std::vector<feature::FileDiagnostic> diagnostics) override;
 
     /// What of the file's last background run shows beside `output`, a
     /// compile of the document's text: what the compile does not report
@@ -875,7 +881,7 @@ private:
     /// database entry of the file's, which the run compiles with, or when
     /// the user chose the file's context, which the run does not compile in.
     std::vector<feature::FileDiagnostic>
-        shown_skipped_diagnostics(const Session& session, const CompileOutput& output) const;
+        shown_background_diagnostics(const Session& session, const CompileOutput& output) const;
 
     // answer.cpp
 
@@ -1066,15 +1072,18 @@ private:
     llvm::DenseMap<Fid, std::unique_ptr<async::cancellation_source>> compile_interrupts;
 
     /// A background run's diagnostics of a file (see
-    /// report_skipped_diagnostics).
-    struct SkippedDiagnostics {
+    /// report_background_diagnostics).
+    struct BackgroundDiagnostics {
         std::uint64_t text_hash = 0;
+
+        /// Whether the run brought the file's unused includes.
+        bool unused_includes = false;
 
         std::vector<feature::FileDiagnostic> diagnostics;
     };
 
     /// The last background run's diagnostics of every file, open or not.
-    llvm::DenseMap<Fid, SkippedDiagnostics> skipped;
+    llvm::DenseMap<Fid, BackgroundDiagnostics> background_diagnostics;
 
     /// The include-tree runs in flight, by tree: a second asker waits for
     /// the first.

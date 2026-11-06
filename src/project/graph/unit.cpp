@@ -67,10 +67,10 @@ async::task<UnitResult>
     // unit owed.
     auto command = project.command_identity(path_id);
     // The editor shows them for a file of its own database entry only
-    // (ServedProject::shown_skipped_diagnostics).
-    params.skipped_diagnostics =
-        request.skipped_diagnostics && resolved.ref.source == CommandSource::Database;
-    params.unused_includes = request.unused_includes && params.skipped_diagnostics;
+    // (ServedProject::shown_background_diagnostics).
+    params.background_diagnostics =
+        request.background_diagnostics && resolved.ref.source == CommandSource::Database;
+    params.unused_includes = request.unused_includes && params.background_diagnostics;
 
     // A unit waits on the PCMs of its imports: the PCMs handed to the worker
     // below would otherwise race a cold build and parse without the module
@@ -95,7 +95,7 @@ async::task<UnitResult>
     // when that left the unit's index current, the run wants nothing else
     // of the compile. One that failed leaves the unit to the compile, which
     // indexes it in spite of its errors.
-    if(request.index && !params.tidy && !params.skipped_diagnostics &&
+    if(request.index && !params.tidy && !params.background_diagnostics &&
        project.compiled_by_build(path_id)) {
         Result built;
         if(!project.dep_graph.module_of(path_id).empty()) {
@@ -211,7 +211,7 @@ async::task<UnitResult>
         result.status = Status::Completed;
         result.tidy_diagnostics = std::move(value.tidy_diagnostics);
         result.errors = std::move(value.errors);
-        result.skipped_diagnostics = std::move(value.skipped_diagnostics);
+        result.background_diagnostics = std::move(value.background_diagnostics);
         result.text_hash = value.text_hash;
         result.perf = {.bytes = index_bytes->size(), .index_ms = run_ms, .merge_ms = 0};
         if(request.index) {

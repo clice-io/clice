@@ -29,10 +29,11 @@ struct UnitRequest {
     /// The errors the compile reports, in the result.
     bool errors = false;
 
-    /// The diagnostics an editor skipping header bodies can get wrong, in
-    /// the result: none but for a file of its own database entry, which
-    /// the editor compiles as this compile does.
-    bool skipped_diagnostics = false;
+    /// The diagnostics the editor takes from this compile, in the result
+    /// (worker::CompileUnitResult::background_diagnostics): none but for a
+    /// file of its own database entry, which the editor compiles as this
+    /// compile does.
+    bool background_diagnostics = false;
 
     /// The file's unused includes among those diagnostics.
     bool unused_includes = false;
@@ -131,11 +132,11 @@ struct UnitResult {
     /// The errors a completed compile reported (UnitRequest::errors).
     std::vector<worker::LocatedMessage> errors;
 
-    /// See worker::CompileUnitResult::skipped_diagnostics
-    /// (UnitRequest::skipped_diagnostics).
-    std::vector<feature::FileDiagnostic> skipped_diagnostics;
+    /// See worker::CompileUnitResult::background_diagnostics
+    /// (UnitRequest::background_diagnostics).
+    std::vector<feature::FileDiagnostic> background_diagnostics;
 
-    /// The hash of the text skipped_diagnostics describe.
+    /// The hash of the text background_diagnostics describe.
     std::uint64_t text_hash = 0;
 
     struct Perf {

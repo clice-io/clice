@@ -41,11 +41,16 @@ struct RecordingServing final : ServingSide {
         return served && served(file);
     }
 
-    void report_skipped_diagnostics(Fid,
-                                    std::uint64_t,
-                                    std::vector<feature::FileDiagnostic>) override {}
+    void report_background_diagnostics(Fid,
+                                       std::uint64_t,
+                                       bool,
+                                       std::vector<feature::FileDiagnostic>) override {}
 
-    bool lacks_skipped_diagnostics(Fid) const override {
+    bool lacks_background_diagnostics(Fid) const override {
+        return false;
+    }
+
+    bool shows_unused_includes(Fid) const override {
         return false;
     }
 

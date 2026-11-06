@@ -32,10 +32,13 @@ test("edits pay no import scan", async (t) => {
 });
 
 test("forced header edit", async (t) => {
-    // With the bodies parsed, the open unit's compile indexes it and only the
-    // closed unit runs in the background: a run of the open one, racing it
-    // to the forced header's shard, could make it run once more.
-    const s = await t.start({ config: { project: { skip_header_bodies: false } } });
+    // With the bodies parsed and no unused includes, which a background run
+    // reports, the open unit's compile indexes it and only the closed unit
+    // runs in the background: a run of the open one, racing it to the
+    // forced header's shard, could make it run once more.
+    const s = await t.start({
+        config: { project: { skip_header_bodies: false }, diagnostics: { unused_includes: false } },
+    });
     expect(await s.errors("main.cpp")).toEqual([]);
     // The first index of the closed unit is done before the edits, which
     // would otherwise preempt it and fold it into theirs.

@@ -70,17 +70,25 @@ struct ServingSide {
     virtual bool compiled_by_session(Fid file) const = 0;
 
     /// Under Settings::background_diagnostics, every index run also brings
-    /// back the diagnostics an editor can get wrong on its file, its unused
-    /// includes among them (UnitRequest::skipped_diagnostics), handed here
-    /// with the hash of the text they describe — unless a reindex booked
-    /// during the run says they describe inputs that changed.
-    virtual void report_skipped_diagnostics(Fid file,
-                                            std::uint64_t text_hash,
-                                            std::vector<feature::FileDiagnostic> diagnostics) = 0;
+    /// back the diagnostics an editor can get wrong on its file
+    /// (UnitRequest::background_diagnostics), its unused includes among
+    /// them when `unused_includes`, handed here with the hash of the text
+    /// they describe — unless a reindex booked during the run says they
+    /// describe inputs that changed.
+    virtual void
+        report_background_diagnostics(Fid file,
+                                      std::uint64_t text_hash,
+                                      bool unused_includes,
+                                      std::vector<feature::FileDiagnostic> diagnostics) = 0;
 
     /// Whether the serving side lacks those diagnostics for the file: its
     /// run goes ahead even when its index is current.
-    virtual bool lacks_skipped_diagnostics(Fid file) const = 0;
+    virtual bool lacks_background_diagnostics(Fid file) const = 0;
+
+    /// Whether a run of the file is to bring its unused includes too, which
+    /// cost the run the index of every header: an open document shows
+    /// them.
+    virtual bool shows_unused_includes(Fid file) const = 0;
 
     /// An index attempt of the file finished with no retry pending, before
     /// its waiters wake (contract 15): the serving side decides whether the

@@ -517,9 +517,9 @@ static worker::CompileUnitResult
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;
     std::vector<feature::FileDiagnostic> unused_includes;
-    if(params.index || params.unused_includes) {
+    if(params.index) {
         auto options = index_options(params);
-        // The analysis reads what every header names.
+        // The unused includes read what every header names.
         if(params.unused_includes) {
             options.known_variants = {};
         }
@@ -529,10 +529,8 @@ static worker::CompileUnitResult
             unused_includes =
                 feature::unused_includes(*unit, index::TUIndex::from_bytes(as_chars(blob)));
         }
-        if(params.index) {
-            if(auto error = send_index(std::move(blob), params.index_output_path, result)) {
-                return {false, std::move(*error)};
-            }
+        if(auto error = send_index(std::move(blob), params.index_output_path, result)) {
+            return {false, std::move(*error)};
         }
     }
     auto index_ms = index_timer.ms();
@@ -542,9 +540,9 @@ static worker::CompileUnitResult
     if(params.errors) {
         result.errors = located_errors(*unit);
     }
-    if(params.skipped_diagnostics) {
-        result.skipped_diagnostics = feature::skipped_diagnostics(*unit);
-        result.skipped_diagnostics.append_range(std::move(unused_includes));
+    if(params.background_diagnostics) {
+        result.background_diagnostics = feature::skipped_diagnostics(*unit);
+        result.background_diagnostics.append_range(std::move(unused_includes));
         result.text_hash = llvm::xxh3_64bits(unit->focus_file().content());
     }
 

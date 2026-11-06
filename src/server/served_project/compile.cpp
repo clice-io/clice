@@ -254,30 +254,44 @@ void ServedProject::retry_after_save(Session& session) {
 }
 
 std::vector<feature::FileDiagnostic>
-    ServedProject::shown_skipped_diagnostics(const Session& session,
-                                             const CompileOutput& output) const {
-    auto it = skipped.find(session.path_id);
-    if(it == skipped.end() || it->second.text_hash != session.hash ||
+    ServedProject::shown_background_diagnostics(const Session& session,
+                                                const CompileOutput& output) const {
+    auto it = background_diagnostics.find(session.path_id);
+    if(it == background_diagnostics.end() || it->second.text_hash != session.hash ||
        output.diagnostics.source != CommandSource::Database || active_choice(session.path_id)) {
         return {};
     }
-    return feature::confirmed_skipped(it->second.diagnostics, output.diagnostics);
+    return feature::confirmed_background(it->second.diagnostics, output.diagnostics);
 }
 
-bool ServedProject::lacks_skipped_diagnostics(Fid path_id) const {
+bool ServedProject::lacks_background_diagnostics(Fid path_id) const {
     auto* document = find_document(path_id);
     if(!document || document->serving != ServingMode::Escalated ||
        project.entries(path_id).empty()) {
         return false;
     }
-    auto it = skipped.find(path_id);
-    return it == skipped.end() || it->second.text_hash != document->session->hash;
+    auto it = background_diagnostics.find(path_id);
+    return it == background_diagnostics.end() || it->second.text_hash != document->session->hash ||
+           (!it->second.unused_includes && shows_unused_includes(path_id));
 }
 
-void ServedProject::report_skipped_diagnostics(Fid path_id,
-                                               std::uint64_t text_hash,
-                                               std::vector<feature::FileDiagnostic> diagnostics) {
-    skipped[path_id] = {.text_hash = text_hash, .diagnostics = std::move(diagnostics)};
+bool ServedProject::shows_unused_includes(Fid path_id) const {
+    auto* document = find_document(path_id);
+    return document && document->serving == ServingMode::Escalated &&
+           project.settings.diagnostics.unused_includes &&
+           project.rules.lintable(project.file_table.resolve(path_id));
+}
+
+void
+    ServedProject::report_background_diagnostics(Fid path_id,
+                                                 std::uint64_t text_hash,
+                                                 bool unused_includes,
+                                                 std::vector<feature::FileDiagnostic> diagnostics) {
+    background_diagnostics[path_id] = {
+        .text_hash = text_hash,
+        .unused_includes = unused_includes,
+        .diagnostics = std::move(diagnostics),
+    };
     // A compile owed shows them as it commits (CompileAttempt::commit).
     if(!current(path_id)) {
         return;
@@ -287,12 +301,12 @@ void ServedProject::report_skipped_diagnostics(Fid path_id,
     if(!compiled) {
         return;
     }
-    auto shown = shown_skipped_diagnostics(session, *compiled->output);
-    if(ranges::equal(compiled->output->diagnostics.skipped, shown, feature::same_diagnostic)) {
+    auto shown = shown_background_diagnostics(session, *compiled->output);
+    if(ranges::equal(compiled->output->diagnostics.background, shown, feature::same_diagnostic)) {
         return;
     }
     update_latest(path_id, [&](DocumentCompile& compiled) {
-        compiled.output->diagnostics.skipped = std::move(shown);
+        compiled.output->diagnostics.background = std::move(shown);
     });
     push_output(session, false);
 }
@@ -1051,7 +1065,8 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
                           .query_failure = resolution.query_failure,
                           },
     };
-    next->output->diagnostics.skipped = served.shown_skipped_diagnostics(*session, *next->output);
+    next->output->diagnostics.background =
+        served.shown_background_diagnostics(*session, *next->output);
 
     // The fresh ticket the send checked holds the document here: a move bumps
     // the generation, and nothing suspends since.

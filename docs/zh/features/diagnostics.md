@@ -231,7 +231,7 @@ tests/diagnostics/clang_tidy/02_default_checks
 
 对编辑器来说过慢的检查会点名告知，不会被悄悄略过
 
-已打开的文件既不运行对编辑器来说过慢的检查，也不运行在编辑中的代码上不可靠的检查。对于 `.clang-tidy` 启用的过慢检查，clice 会列出一次它们的名字，并说明如何运行；`clice lint` 会运行所有检查。
+已打开的文件既不运行对编辑器来说过慢的检查，也不运行在编辑中的代码上不可靠的检查。对于 `.clang-tidy` 启用的过慢检查，clice 会列出一次它们的名字，并说明如何运行；`clice lint` 两类都会运行。
 
 ```case
 tests/diagnostics/clang_tidy/03_editor_exclusions
@@ -285,7 +285,7 @@ tests/diagnostics/clang_tidy/09_turned_off
 
 **运行过慢的检查**
 
-设置 `clang_tidy_slow_checks = true` 后，`.clang-tidy` 启用的每一项检查都会运行
+设置 `clang_tidy_slow_checks = true` 后，对编辑器来说过慢的检查也会运行
 
 对编辑器来说过慢的检查（例如 `misc-const-correctness`）只有在明确要求时才会在已打开的文件上运行：文件的每次编译都要等它们完成。
 
@@ -308,7 +308,7 @@ tests/diagnostics/clang_tidy/20_slow_checks
 
 ## 未使用的 include
 
-后台索引按保存后的内容编译过源文件后，文件中可以去掉的 `#include` 会淡化显示，并附带一个删除它的快速修复。文件用到的内容如果是经由某个 include 所包含的头文件得到的，这个 include 也算作已使用；报告出的 include 可以一次全部删除。
+后台索引按保存后的内容编译过编译数据库中的源文件后，文件中可以去掉的 `#include` 会淡化显示，并附带一个删除它的快速修复。文件用到的内容如果是经由某个 include 所包含的头文件得到的，这个 include 也算作已使用；报告出的 include 可以一次全部删除。
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/unused_includes -->
 
@@ -332,7 +332,7 @@ tests/diagnostics/unused_includes/01_unused
 
 文件经由某个 include 用到所需的内容时，这个 include 算作已使用
 
-如果文件要经由某个头文件才能用到所需的内容，比如伞形头文件（umbrella header）或公开的入口头文件，那么即使文件没有用到它自己声明的任何东西，它也不会被报告。
+如果文件要经由某个头文件才能用到所需的内容，比如伞形头文件（umbrella header）或公开的入口头文件，那么即使文件没有用到该头文件本身声明的任何东西，它也不会被报告。
 
 ```case
 tests/diagnostics/unused_includes/02_through_includes

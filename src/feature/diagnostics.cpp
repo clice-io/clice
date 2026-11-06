@@ -384,7 +384,7 @@ auto shown_diagnostics(const CompileDiagnostics& compiled, const DiagnosticsOpti
     // would pile up on its #include.
     std::set<std::pair<std::uint32_t, bool>> relocated;
     auto diagnostics = compiled.own;
-    diagnostics.append_range(compiled.skipped);
+    diagnostics.append_range(compiled.background);
     std::erase_if(diagnostics, [&](const FileDiagnostic& diagnostic) {
         return ranges::contains(options.suppress, diagnostic.code) ||
                (diagnostic.origin != DiagnosticOrigin::File &&
@@ -470,10 +470,10 @@ bool same_diagnostic(const FileDiagnostic& left, const FileDiagnostic& right) {
     return left.range.begin == right.range.begin && left.message == right.message;
 }
 
-auto confirmed_skipped(llvm::ArrayRef<FileDiagnostic> skipped, const CompileDiagnostics& compiled)
-    -> std::vector<FileDiagnostic> {
+auto confirmed_background(llvm::ArrayRef<FileDiagnostic> background,
+                          const CompileDiagnostics& compiled) -> std::vector<FileDiagnostic> {
     std::vector<FileDiagnostic> result;
-    for(const auto& diagnostic: skipped) {
+    for(const auto& diagnostic: background) {
         auto same = [&](const FileDiagnostic& own) {
             return same_diagnostic(own, diagnostic);
         };

@@ -13,6 +13,7 @@ IncludePragmas include_pragmas(llvm::StringRef text, const clang::LangOptions& d
     }
     Lexer lexer(text, dialect, {.keep_comments = true});
     bool exporting = false;
+    bool keeping = false;
     bool in_include = false;
     /// The header name of the include on the line lexed, until a newline.
     std::optional<std::string> included;
@@ -29,6 +30,9 @@ IncludePragmas include_pragmas(llvm::StringRef text, const clang::LangOptions& d
             included_end = token.range.end;
             if(exporting) {
                 pragmas.exports.push_back(*included);
+            }
+            if(keeping) {
+                pragmas.keeps.push_back(*included);
             }
             in_include = false;
         }
@@ -56,9 +60,13 @@ IncludePragmas include_pragmas(llvm::StringRef text, const clang::LangOptions& d
             exporting = true;
         } else if(pragma == "end_exports") {
             exporting = false;
-        } else if(pragma == "export" && included &&
+        } else if(pragma == "begin_keep") {
+            keeping = true;
+        } else if(pragma == "end_keep") {
+            keeping = false;
+        } else if((pragma == "export" || pragma == "keep") && included &&
                   !text.slice(included_end, token.range.begin).contains('\n')) {
-            pragmas.exports.push_back(*included);
+            (pragma == "export" ? pragmas.exports : pragmas.keeps).push_back(*included);
         }
     }
     return pragmas;

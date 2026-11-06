@@ -93,7 +93,7 @@ ZEST_CASE(RelocatedShownOnce) {
             .own = {moved("first error", DiagnosticLevel::Error),
                     moved("second error", DiagnosticLevel::Error),
                     moved("a warning", DiagnosticLevel::Warning)},
-            .skipped = {error_at(20, "from the full compile")},
+            .background = {error_at(20, "from the full compile")},
     },
         {});
     ZASSERT(diagnostics.size() == 3u);
@@ -127,7 +127,7 @@ ZEST_CASE(SkippedConfirmed) {
     ZASSERT(raised.size() == 1u);
 
     feature::CompileDiagnostics compiled{.own = raised, .unconfirmed = unconfirmed};
-    auto shown = feature::confirmed_skipped(
+    auto shown = feature::confirmed_background(
         {
             error_at(3, "unused function 'f'", clang::diag::warn_unused_function),
             error_at(5, "unused function 'g'", clang::diag::warn_unused_function),
