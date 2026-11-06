@@ -294,11 +294,11 @@ Value empty_value() {
 /// One project the server serves: the project on disk, which builds over
 /// the process's worker pool, the open documents the master
 /// routed to it, and everything the project derives for them. Its work is
-/// split in files: lifetime and adoption (served_project.cpp), compiling the
-/// open documents (compile.cpp), what answers a request on them now and
-/// asking the workers (answer.cpp), handling changes of its inputs
-/// (changes.cpp) and the open documents' commands (command.cpp). Shared: a
-/// request in flight keeps a removed project alive until it completes.
+/// split in files: lifetime, adoption and the open documents' commands
+/// (served_project.cpp), compiling the open documents (compile.cpp), what
+/// answers a request on them now and asking the workers (answer.cpp), and
+/// handling changes of its inputs (changes.cpp). Shared: a request in
+/// flight keeps a removed project alive until it completes.
 class ServedProject final : public std::enable_shared_from_this<ServedProject> {
 public:
     /// `root` is the project's directory; empty for the rootless project a
@@ -489,7 +489,7 @@ public:
     /// the real reply, and the interrupt makes it arrive early).
     async::task<> stop_compiles();
 
-    // command.cpp
+    // served_project.cpp: the open documents' commands
 
     /// What the open document's command is resolved for: its active
     /// context choice, or `candidate` instead, in the editor.
