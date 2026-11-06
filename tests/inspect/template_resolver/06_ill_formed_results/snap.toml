@@ -38,3 +38,6 @@ declarations = ["using ⟦type⟧ = T();"]
 [answers.dependent_template_head.template_resolver]
 type = "T::template tmpl<int>"
 declarations = ["using ⟦type⟧ = TT<int>;"]
+
+[answers.self_naming_alias.template_resolver]
+type = "typename X<T, int>::template alias<char>::type"

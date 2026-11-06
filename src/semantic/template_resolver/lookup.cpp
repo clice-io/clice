@@ -97,10 +97,20 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::QualType typ
     if(auto CTD = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(TD)) {
         return lookup(CTD, name, TST->template_arguments());
     } else if(auto TATD = llvm::dyn_cast_or_null<clang::TypeAliasTemplateDecl>(TD)) {
+        /// An alias may name itself again (`using alias = typename
+        /// X<T>::template alias<U>`): each expansion nests, against the
+        /// limit rewrites nest against.
+        if(depth > depth_limit) {
+            inconclusive = true;
+            return lookup_result();
+        }
         if(deduce_template_arguments(TATD, TST->template_arguments()) != Deduction::Failed) {
             auto type = substitute(TATD->getTemplatedDecl()->getUnderlyingType());
             stack.pop();
-            return lookup(type, name);
+            depth += 1;
+            auto members = lookup(type, name);
+            depth -= 1;
+            return members;
         }
     }
 

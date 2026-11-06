@@ -155,3 +155,19 @@ struct test {
 };
 
 }  // namespace dependent_template_head
+
+namespace self_naming_alias {
+
+template <typename A, typename B>
+struct X {
+    template <typename U>
+    using alias = typename X<B, A>::template alias<U>;
+};
+
+template <typename T>
+struct test {
+    // Each expansion of `alias` names the other order's, without end: no answer.
+    using §(self_naming_alias)input = typename X<T, int>::template alias<char>::type;
+};
+
+}  // namespace self_naming_alias
