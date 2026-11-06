@@ -28,7 +28,7 @@ llvm::SmallVector<Spelling> database_places(CanonicalRef project_root);
 
 /// The `compile_commands.json` files to load when no rule declares one:
 /// those of database_places that exist. Empty when none exists yet — the
-/// server keeps watching the places (ServedProject::discover_databases).
+/// project keeps watching the places (Project::discover_databases).
 llvm::SmallVector<Spelling> discovered_databases(CanonicalRef project_root);
 
 /// The `compile_commands.json` files discovery passes over, deeper than

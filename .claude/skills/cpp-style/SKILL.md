@@ -130,7 +130,7 @@ defending against ghosts.
 - Cancellation flows down the ownership tree through `task_group::cancel()`;
   tokens and sources exist only to cross an ownership boundary — the serve
   mode shutdown source in `MasterServer`, the batch commands' in
-  `Lifetime` (`driver/driver.cppm`). Graceful shutdown is not
+  `Lifetime` (`driver/run.cppm`). Graceful shutdown is not
   cancellation — kotatsu has no shield, a cancel cascades all the way down — so
   a shutdown is a cancellable serving phase bounded by `with_token`, then a
   non-cancellable drain that joins each task in order.
