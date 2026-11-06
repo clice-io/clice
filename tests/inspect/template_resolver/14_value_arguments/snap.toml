@@ -72,6 +72,12 @@ declarations = ["using ⟦type⟧ = F; @-5"]
 [answers.builtin_same_reference.template_resolver]
 type = "typename conditional<__is_same(K, K &), int, char>::type"
 
+[answers.builtin_same_extent.template_resolver]
+type = "typename conditional<__is_same(int[N], int[3]), int, char>::type"
+
+[answers.builtin_same_template.template_resolver]
+type = "typename conditional<__is_same(TT<int>, box<int>), int, char>::type"
+
 [answers.unused_member_value.template_resolver]
 type = "char"
 declarations = ["using ⟦type⟧ = F; @-5"]
@@ -82,3 +88,6 @@ declarations = ["using ⟦type⟧ = T; @-12"]
 
 [answers.member_flag.template_resolver]
 type = "member_flag::tree<traits<K, V>>::mutable_iterator *"
+
+[answers.explicit_variable_specialization.template_resolver]
+type = "int"

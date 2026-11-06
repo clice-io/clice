@@ -296,7 +296,23 @@ bool types_may_match(clang::ASTContext& context, clang::QualType lhs, clang::Qua
     if(llvm::isa<clang::TemplateTypeParmType>(lhs) || llvm::isa<clang::TemplateTypeParmType>(rhs)) {
         return true;
     }
+    /// A template-id whose template waits for instantiation (`TT<int>`,
+    /// `T::template rebind<U>`) may become anything.
+    auto open_template = [](clang::QualType type) {
+        auto* TST = type->getAs<clang::TemplateSpecializationType>();
+        return TST && TST->getTemplateName().isDependent();
+    };
+    if(open_template(lhs) || open_template(rhs)) {
+        return true;
+    }
     if(lhs->getTypeClass() != rhs->getTypeClass()) {
+        /// A bound waiting for instantiation may become any other.
+        if((llvm::isa<clang::DependentSizedArrayType>(lhs) && rhs->isConstantArrayType()) ||
+           (lhs->isConstantArrayType() && llvm::isa<clang::DependentSizedArrayType>(rhs))) {
+            return types_may_match(context,
+                                   context.getAsArrayType(lhs)->getElementType(),
+                                   context.getAsArrayType(rhs)->getElementType());
+        }
         /// A template-id and the record of a specialization of it compare
         /// by their arguments.
         clang::TemplateName lhs_name, rhs_name;
@@ -322,14 +338,13 @@ bool types_may_match(clang::ASTContext& context, clang::QualType lhs, clang::Qua
                    types::may_match(context, lhs_arguments, rhs_arguments);
         }
         /// A dependent form not compared structurally may become anything.
-        return llvm::isa<clang::DependentNameType,
-                         clang::DecltypeType,
-                         clang::PackExpansionType,
-                         clang::UnaryTransformType>(lhs) ||
-               llvm::isa<clang::DependentNameType,
-                         clang::DecltypeType,
-                         clang::PackExpansionType,
-                         clang::UnaryTransformType>(rhs);
+        auto opaque = llvm::IsaPred<clang::DependentNameType,
+                                    clang::DecltypeType,
+                                    clang::PackExpansionType,
+                                    clang::PackIndexingType,
+                                    clang::UnaryTransformType,
+                                    clang::UnresolvedUsingType>;
+        return opaque(lhs.getTypePtr()) || opaque(rhs.getTypePtr());
     }
     switch(lhs->getTypeClass()) {
         case clang::Type::Pointer:

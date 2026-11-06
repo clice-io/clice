@@ -733,3 +733,35 @@ void run(Box<T>& box, typename Source<T>::type value) {
 }
 
 }  // namespace explicit_object_binding
+
+namespace constraint_per_call {
+
+struct Good {};
+
+struct Bad {};
+
+template <typename U>
+struct Wrap {
+    using type = U;
+};
+
+template <typename U>
+Good choose(U)
+    requires __is_same(typename Wrap<U>::type, int);
+
+Bad choose(...);
+
+template <typename T>
+struct Source {
+    using integer = int;
+    using floating = float;
+};
+
+template <typename T>
+void run(typename Source<T>::integer whole, typename Source<T>::floating fraction) {
+    // Each call reads the constraint with its own `U`.
+    auto §(constraint_first_call)first = constraint_per_call::choose(whole);
+    auto §(constraint_second_call)second = constraint_per_call::choose(fraction);
+}
+
+}  // namespace constraint_per_call

@@ -373,6 +373,22 @@ struct test_reference {
     using §(builtin_same_reference)input = typename conditional<__is_same(K, K&), int, char>::type;
 };
 
+template <int N>
+struct test_extent {
+    // `N = 3` makes the two one type.
+    using §(builtin_same_extent)input = typename conditional<__is_same(int[N], int[3]), int, char>::type;
+};
+
+template <typename T>
+struct box {};
+
+template <template <typename> class TT>
+struct test_template {
+    // `TT = box` makes the two one type.
+    using §(builtin_same_template)input =
+        typename conditional<__is_same(TT<int>, box<int>), int, char>::type;
+};
+
 }  // namespace builtin_same
 
 namespace unused_member_value {
@@ -461,3 +477,35 @@ struct test {
 };
 
 }  // namespace member_flag
+
+namespace explicit_variable_specialization {
+
+template <bool B, typename T, typename F>
+struct conditional {
+    using type = T;
+};
+
+template <typename T, typename F>
+struct conditional<false, T, F> {
+    using type = F;
+};
+
+template <typename T>
+constexpr bool enabled = false;
+
+template <>
+constexpr bool enabled<int> = true;
+
+template <typename T>
+struct Source {
+    using type = int;
+};
+
+template <typename T>
+struct test {
+    // `enabled<int>` is its explicit specialization's.
+    using §(explicit_variable_specialization)input =
+        typename conditional<enabled<typename Source<T>::type>, int, char>::type;
+};
+
+}  // namespace explicit_variable_specialization

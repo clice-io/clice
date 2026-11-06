@@ -108,3 +108,9 @@ wrong = "Box&& binds no lvalue object: chosen is a Good"
 
 [answers.explicit_object_binding.template_resolver]
 type = "Bad"
+
+[answers.constraint_first_call.template_resolver]
+type = "Good"
+
+[answers.constraint_second_call.template_resolver]
+type = "Bad"

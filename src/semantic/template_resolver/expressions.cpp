@@ -60,8 +60,9 @@ std::optional<llvm::APSInt> PseudoInstantiator::evaluate(const clang::Expr* expr
 std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr) {
     /// A trait asks of the type its operand names: `typename
     /// allocator<T>::_From_primary` is an `allocator<T>`.
-    if(auto trait =
-           type_trait(context, expr, [&](clang::QualType operand) { return resolve(operand); })) {
+    if(auto trait = type_trait(context, expr, [&](clang::QualType operand) {
+           return resolve(substitute(operand));
+       })) {
         return llvm::APSInt(llvm::APInt(1, *trait ? 1 : 0), /*isUnsigned=*/true);
     }
     if(auto NTTP = referenced_nttp(expr)) {
@@ -87,7 +88,7 @@ std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr
     clang::QualType scope;
     if(DSDRE && DSDRE->getQualifier().getKind() == clang::NestedNameSpecifier::Kind::Type &&
        pack_narrowing == 0) {
-        scope = resolve_object(clang::QualType(DSDRE->getQualifier().getAsType(), 0));
+        scope = resolve_object(substitute(clang::QualType(DSDRE->getQualifier().getAsType(), 0)));
         key.emplace(scope.getCanonicalType().getAsOpaquePtr(),
                     DSDRE->getDeclName().getAsOpaquePtr());
         if(auto known = member_values.find(*key); known != member_values.end()) {
@@ -161,8 +162,10 @@ std::optional<llvm::APSInt>
     for(auto& argument: written) {
         spelled.push_back(argument.getArgument());
     }
+    llvm::SmallVector<clang::TemplateArgument, 4> substituted;
+    rewrite_arguments(spelled, substituted, Policy::Substitute);
     llvm::SmallVector<clang::TemplateArgument, 4> rewritten;
-    rewrite_arguments(spelled, rewritten, Policy::Resolve);
+    rewrite_arguments(substituted, rewritten, Policy::Resolve);
     /// A member typedef expands by substitution alone (`key_type` to
     /// `typename _Traits::key_type`); the patterns match what it names.
     for(auto& argument: rewritten) {
@@ -173,6 +176,17 @@ std::optional<llvm::APSInt>
     llvm::SmallVector<clang::TemplateArgument, 4> arguments;
     if(!fill_defaults(VTD, rewritten, arguments)) {
         return std::nullopt;
+    }
+    if(ranges::none_of(arguments, &clang::TemplateArgument::isDependent)) {
+        auto canonical = ranges::to<llvm::SmallVector<clang::TemplateArgument, 4>>(
+            views::transform(arguments, [&](const clang::TemplateArgument& argument) {
+                return context.getCanonicalTemplateArgument(argument);
+            }));
+        void* position = nullptr;
+        if(auto* specialization = VTD->findSpecialization(canonical, position);
+           specialization && specialization->isExplicitSpecialization()) {
+            return initial_value(specialization);
+        }
     }
 
     auto frames = stack.size();
