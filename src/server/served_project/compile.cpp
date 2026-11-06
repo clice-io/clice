@@ -391,6 +391,11 @@ void ServedProject::escalate(Fid path_id) {
         return;
     }
     document.serving = ServingMode::Escalated;
+    // Its text as saved, the document shows what a background run of it
+    // brings from now on.
+    if(matching_shard(*document.session)) {
+        decide_serving(document);
+    }
 }
 
 void ServedProject::request_compile(std::shared_ptr<Session> session) {

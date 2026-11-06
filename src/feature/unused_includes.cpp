@@ -49,22 +49,24 @@ public:
         // choice, not the file's.
         for(auto& [providers, uses]: own_needs) {
             Need need{
-                .providers = {providers.begin(), providers.end()},
-                .before = uses.first
+                .providers = {providers.begin(), providers.end()}
             };
-            // A first use no `#include` before it serves is of a declaration
-            // ahead of the definition: the first use needs the declaration,
-            // the last may need the definition.
-            if(ranges::none_of(views::iota(std::size_t{0}, directives.size()), [&](std::size_t i) {
-                   return directives[i].range.begin < need.before && gives(brought(i), need);
-               })) {
-                need.before = uses.last;
-                if(!uses.declarers.empty()) {
-                    ranges::sort(uses.declarers);
-                    uses.declarers.erase(ranges::unique(uses.declarers).begin(),
-                                         uses.declarers.end());
-                    needs.push_back({.providers = uses.declarers, .before = uses.first});
+            // The uses no `#include` before them serves are of a declaration
+            // ahead of the definition: the first use after an `#include`
+            // bringing it needs it, those before need the declaration.
+            auto first = uses.at.begin();
+            auto served = first;
+            for(std::uint32_t i = 0; i < directives.size(); i += 1) {
+                if(gives(brought(i), need)) {
+                    served = uses.at.upper_bound(i);
+                    break;
                 }
+            }
+            need.before = served == uses.at.end() ? first->second : served->second;
+            if(served != first && served != uses.at.end() && !uses.declarers.empty()) {
+                ranges::sort(uses.declarers);
+                uses.declarers.erase(ranges::unique(uses.declarers).begin(), uses.declarers.end());
+                needs.push_back({.providers = uses.declarers, .before = first->second});
             }
             needs.push_back(std::move(need));
         }
@@ -77,14 +79,16 @@ private:
         /// From the `#` to the end of its line.
         LocalSourceRange range;
 
-        /// The header name as written, its delimiters included.
+        /// The header name as written, its delimiters included, or the
+        /// macro naming it.
         llvm::StringRef name;
 
         std::uint32_t header = 0;
 
-        /// An `#include` (not an `#include_next` or `#import`) of a
+        /// An `#include` (not an `#include_next` or `#import`) naming a
         /// guarded header the include tree holds, which no `IWYU pragma:
-        /// keep` keeps.
+        /// keep` keeps and which leaves the `#pragma pack` state as it
+        /// found it.
         bool reportable = false;
     };
 
@@ -94,13 +98,15 @@ private:
         llvm::SmallVector<std::uint32_t, 2> providers;
 
         std::uint32_t before = 0;
+
+        /// Whether an `#include` of one of `providers` stays for it alone.
+        bool direct = true;
     };
 
     /// Where the file's own code uses what a set of headers gives.
     struct Uses {
-        std::uint32_t first = 0;
-
-        std::uint32_t last = 0;
+        /// The first use in each gap between the includes that has one.
+        std::map<std::uint32_t, std::uint32_t> at;
 
         /// The headers declaring a definition used, any of which serves a
         /// use needing only the declaration.
@@ -160,18 +166,36 @@ private:
                 continue;
             }
             auto words = lexical.words(*directive);
-            if(words.size() < 2 || !words[1].is_header_name()) {
+            if(words.size() < 2) {
+                continue;
+            }
+            auto header = node(unit.file_path(*file));
+            if(!words[1].is_header_name()) {
+                // Named through a macro, the header is never reported, but
+                // what it needs is.
+                directives.push_back({
+                    .range = directive->range,
+                    .name = words[1].text(text),
+                    .header = header,
+                });
                 continue;
             }
             // A spliced directive's header name starts at its splice.
             auto name = words[1].text(text);
             name = name.drop_front(name.find_first_of("<\""));
-            auto header = node(unit.file_path(*file));
             if(name.front() == '<') {
                 angled.try_emplace(name, header);
             }
             auto line = static_cast<std::uint32_t>(
                 positions.position(directive->range.begin, PositionEncoding::UTF8)->line + 1);
+            // A header leaving `#pragma pack` changed packs what follows it,
+            // which clang warns of at the `#include`.
+            auto packs = ranges::any_of(unit.diagnostics(), [&](const Diagnostic& diagnostic) {
+                return diagnostic.id.value ==
+                           clang::diag::warn_pragma_pack_modified_after_include &&
+                       diagnostic.fid == focus.file() &&
+                       directive->range.contains(diagnostic.range.begin);
+            });
             directives.push_back({
                 .range = directive->range,
                 .name = name,
@@ -179,7 +203,7 @@ private:
                 .reportable = words[0].text(text) == "include" &&
                               search.isFileMultipleIncludeGuarded(*file) &&
                               !ranges::contains(pragmas.keeps, name.drop_front().drop_back()) &&
-                              ranges::contains(top_level, std::pair(line, header)),
+                              ranges::contains(top_level, std::pair(line, header)) && !packs,
             });
         }
         for(auto [line, header]: top_level) {
@@ -260,20 +284,28 @@ private:
         }
         ranges::sort(providers);
         providers.erase(ranges::unique(providers).begin(), providers.end());
-        auto [it, inserted] =
-            own_needs.try_emplace(std::vector<std::uint32_t>(providers.begin(), providers.end()),
-                                  Uses{.first = before, .last = before});
-        auto& uses = it->second;
-        uses.first = std::min(uses.first, before);
-        uses.last = std::max(uses.last, before);
+        auto& uses = own_needs[std::vector<std::uint32_t>(providers.begin(), providers.end())];
+        auto [it, inserted] = uses.at.try_emplace(gap(before), before);
+        it->second = std::min(it->second, before);
         uses.declarers.append(declarers.begin(), declarers.end());
+    }
+
+    /// How many of the file's `#include`s come before `offset`: the uses in
+    /// one gap between them need the same.
+    std::uint32_t gap(std::uint32_t offset) const {
+        return static_cast<std::uint32_t>(ranges::partition_point(directives,
+                                                                  [&](const Directive& directive) {
+                                                                      return directive.range.begin <
+                                                                             offset;
+                                                                  }) -
+                                          directives.begin());
     }
 
     /// What the headers declare at namespace scope beyond the names the
     /// file uses: the using-directives bringing a namespace's names into
     /// sight of another, which a name of the namespace they nominate needs
-    /// too, and the definitions the file has to emit, without which it
-    /// compiles to another object (the tests a `.inc` pastes in gone).
+    /// too, as do those bringing that other namespace's in turn; and the definitions the file has
+    /// to emit, without which it compiles to another object (the tests a `.inc` pastes in gone).
     void add_file_scope() {
         auto end = static_cast<std::uint32_t>(focus.content().size());
         auto& ast = unit.context();
@@ -286,7 +318,7 @@ private:
                 } else if(auto* directive = llvm::dyn_cast<clang::UsingDirectiveDecl>(decl)) {
                     if(auto header = header_of(directive->getLocation())) {
                         nominated[directive->getNominatedNamespace()->getCanonicalDecl()].push_back(
-                            *header);
+                            {*header, directive->getDeclContext()->getEnclosingNamespaceContext()});
                     }
                 } else if(ast.DeclMustBeEmitted(decl)) {
                     if(auto header = header_of(decl->getLocation())) {
@@ -484,18 +516,26 @@ private:
     /// the using-directive it is seen through. A name of the standard
     /// library is given by its headers too.
     void need(const clang::NamedDecl* decl, std::uint32_t before) {
-        // Any header reopens a namespace: what is named in it is needed.
-        if(llvm::isa<clang::NamespaceDecl>(decl)) {
+        if(auto& gaps = needed[decl]; ranges::contains(gaps, gap(before))) {
             return;
+        } else {
+            gaps.push_back(gap(before));
         }
-        auto [it, inserted] = needed.try_emplace(decl, before, before);
-        if(!inserted) {
-            auto& [first, last] = it->second;
-            if(first <= before && before <= last) {
-                return;
+        // Any header reopening a namespace gives it: one an include kept
+        // anyway brings serves.
+        if(auto* space = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
+            Need need{.before = before, .direct = false};
+            for(auto* redecl: space->redecls()) {
+                auto header = header_of(redecl->getLocation());
+                if(!header) {
+                    return;
+                }
+                need.providers.push_back(*header);
             }
-            first = std::min(first, before);
-            last = std::max(last, before);
+            ranges::sort(need.providers);
+            need.providers.erase(ranges::unique(need.providers).begin(), need.providers.end());
+            needs.push_back(std::move(need));
+            return;
         }
 
         if(auto* pattern = decls::instantiated_from(decl); pattern && pattern != decl) {
@@ -509,12 +549,23 @@ private:
                 need(tag, before);
             }
         }
+        llvm::SmallVector<const clang::NamespaceDecl*> spaces;
         for(auto* scope = decl->getDeclContext(); scope; scope = scope->getParent()) {
-            auto* space = llvm::dyn_cast<clang::NamespaceDecl>(scope);
-            if(auto it = space ? nominated.find(space->getCanonicalDecl()) : nominated.end();
-               it != nominated.end()) {
-                for(auto header: it->second) {
-                    add_need({header}, before);
+            if(auto* space = llvm::dyn_cast<clang::NamespaceDecl>(scope)) {
+                spaces.push_back(space->getCanonicalDecl());
+            }
+        }
+        llvm::SmallPtrSet<const clang::NamespaceDecl*, 4> seen;
+        while(!spaces.empty()) {
+            auto* space = spaces.pop_back_val();
+            auto it = nominated.find(space);
+            if(!seen.insert(space).second || it == nominated.end()) {
+                continue;
+            }
+            for(auto [header, scope]: it->second) {
+                add_need({header}, before);
+                if(auto* outer = llvm::dyn_cast<clang::NamespaceDecl>(scope)) {
+                    spaces.push_back(outer->getCanonicalDecl());
                 }
             }
         }
@@ -687,7 +738,7 @@ private:
         for(std::uint32_t i = 0; i < directives.size(); i += 1) {
             auto& directive = directives[i];
             if(!directive.reportable || ranges::any_of(needs, [&](const Need& need) {
-                   return directive.range.begin < need.before &&
+                   return need.direct && directive.range.begin < need.before &&
                           ranges::contains(need.providers, directive.header);
                })) {
                 take(i);
@@ -715,8 +766,9 @@ private:
                 continue;
             }
             auto& files = brought(i);
-            bool brings =
-                ranges::any_of(needs, [&](const Need& need) { return gives(files, need); });
+            bool brings = ranges::any_of(needs, [&](const Need& need) {
+                return need.direct && gives(files, need);
+            });
             unused.push_back({
                 .range = directive.range,
                 .level = DiagnosticLevel::Warning,
@@ -758,8 +810,8 @@ private:
     /// including them and their file.
     std::vector<std::pair<std::uint32_t, std::uint32_t>> top_level;
 
-    /// The headers the file gets without an `#include` naming them: the
-    /// command's `-include`s, those an `#include` names through a macro.
+    /// The headers the file gets without an `#include`: the command's
+    /// `-include`s.
     llvm::SmallVector<std::uint32_t> given;
 
     /// The file of each section of the TU index.
@@ -777,12 +829,15 @@ private:
     /// standard library's headers among them.
     llvm::StringMap<std::uint32_t> angled;
 
-    /// The headers whose using-directives nominate a namespace.
-    llvm::DenseMap<const clang::NamespaceDecl*, llvm::SmallVector<std::uint32_t, 1>> nominated;
+    /// The headers whose using-directives nominate a namespace, with the
+    /// namespace each directive is in.
+    llvm::DenseMap<const clang::NamespaceDecl*,
+                   llvm::SmallVector<std::pair<std::uint32_t, const clang::DeclContext*>, 1>>
+        nominated;
 
-    /// Each declaration needed, with the first and the last offset it is
-    /// needed at.
-    llvm::DenseMap<const clang::NamedDecl*, std::pair<std::uint32_t, std::uint32_t>> needed;
+    /// Each declaration needed, with the gaps between the includes it is
+    /// needed in (gap).
+    llvm::DenseMap<const clang::NamedDecl*, llvm::SmallVector<std::uint32_t, 2>> needed;
 
     /// The needs the file's own code makes, by their providers.
     std::map<std::vector<std::uint32_t>, Uses> own_needs;

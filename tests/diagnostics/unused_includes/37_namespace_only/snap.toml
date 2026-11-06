@@ -1,0 +1,19 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = '⟦#include "unused.h"⟧',
+        severity = "warning",
+        message = 'Nothing this file uses comes from "unused.h" or the headers it includes',
+        source = "clice",
+        code = "unused-include",
+        tags = ["Unnecessary"],
+    },
+    {
+        at = "⟦namespace t = tools;⟧",
+        severity = "warning",
+        message = "namespace alias decl 't' is unused",
+        source = "clang-tidy",
+        code = "misc-unused-alias-decls",
+        tags = ["Unnecessary"],
+    },
+]

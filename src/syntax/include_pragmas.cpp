@@ -58,17 +58,21 @@ IncludePragmas include_pragmas(llvm::StringRef text, const clang::LangOptions& d
                     pragmas.include_instead = rest.trim().str();
                 }
             }
-        } else if(pragma == "begin_exports") {
+            continue;
+        }
+        // What follows the pragma's word explains it.
+        auto word = pragma.take_until([](char c) { return llvm::isSpace(c); });
+        if(word == "begin_exports") {
             exporting = true;
-        } else if(pragma == "end_exports") {
+        } else if(word == "end_exports") {
             exporting = false;
-        } else if(pragma == "begin_keep") {
+        } else if(word == "begin_keep") {
             keeping = true;
-        } else if(pragma == "end_keep") {
+        } else if(word == "end_keep") {
             keeping = false;
-        } else if((pragma == "export" || pragma == "keep") && included &&
+        } else if((word == "export" || word == "keep") && included &&
                   !text.slice(included_end, token.range.begin).contains('\n')) {
-            (pragma == "export" ? pragmas.exports : pragmas.keeps).push_back(*included);
+            (word == "export" ? pragmas.exports : pragmas.keeps).push_back(*included);
         }
     }
     return pragmas;

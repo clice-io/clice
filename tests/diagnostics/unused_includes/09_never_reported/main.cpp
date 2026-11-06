@@ -4,6 +4,7 @@
 // IWYU pragma: end_keep
 #include \
 "spliced.h" // IWYU pragma: keep
+#include "reason.h" // IWYU pragma: keep (registers itself)
 #include "table.def"
 #include "unused.h"
 
