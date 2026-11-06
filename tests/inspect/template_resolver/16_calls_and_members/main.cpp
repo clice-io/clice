@@ -851,9 +851,11 @@ template <typename T>
 void run(typename Source<T>::plain value, typename Source<T>::integer number) {
     // `Plain` has no `missing`: `choose(...)` is called.
     auto §(failed_type_default)chosen = failed_default::choose(value);
-    auto §(undecided_value_default)picked = failed_default::pick(number);
-    // The parameter the call leaves out cannot form for a `Plain`.
+    // `enable_if<false, int>` has no `type`.
+    auto §(failed_value_default)picked = failed_default::pick(number);
+    // The parameter the call leaves out cannot form for a `Plain`, nor for an `int`.
     auto §(failed_omitted_parameter)placed = failed_default::place(value);
+    auto §(failed_builtin_scope)put = failed_default::place(number);
 }
 
 }  // namespace failed_default

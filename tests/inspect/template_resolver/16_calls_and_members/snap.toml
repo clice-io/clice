@@ -121,9 +121,11 @@ type = "Good"
 [answers.failed_type_default.template_resolver]
 type = "Good"
 
-[answers.undecided_value_default]
-wrong = "enable_if<false, int> has no type, which drops the template: picked is a Good"
-template_resolver = {}
+[answers.failed_value_default.template_resolver]
+type = "Good"
 
 [answers.failed_omitted_parameter.template_resolver]
+type = "Good"
+
+[answers.failed_builtin_scope.template_resolver]
 type = "Good"

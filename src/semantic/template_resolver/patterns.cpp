@@ -370,8 +370,15 @@ bool PseudoInstantiator::scope_lacks(clang::NestedNameSpecifier scope,
                     /// bare parameter may apply once it instantiates. An
                     /// empty result is then conclusive only if no
                     /// specialization of the template declares the member
-                    /// at all.
-                    if(lacks && TST->isDependentType() && any_specialization_declares(CTD, name)) {
+                    /// at all. A value the bindings fold (`enable_if<false,
+                    /// int>` from `__is_same(U, float)`) has decided.
+                    auto open = [&](const clang::TemplateArgument& argument) {
+                        return argument.isDependent() &&
+                               !(argument.getKind() == clang::TemplateArgument::Expression &&
+                                 evaluate(argument.getAsExpr()));
+                    };
+                    if(lacks && ranges::any_of(TST->template_arguments(), open) &&
+                       any_specialization_declares(CTD, name)) {
                         lacks = false;
                     }
 
@@ -388,6 +395,9 @@ bool PseudoInstantiator::scope_lacks(clang::NestedNameSpecifier scope,
                 } else {
                     lacks = conclusive(lookup_in_bases(RD, name)) && !has_dependent_base(RD);
                 }
+            } else if(!type->isDependentType()) {
+                /// Only a class has members.
+                lacks = true;
             }
         }
     }
