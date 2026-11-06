@@ -39,6 +39,13 @@ struct CompilationEntry {
     llvm::StringRef spelling;
 };
 
+/// The option whose value sets apart nearly every command `entries` compile
+/// under, by its name (`-frandom-seed`): one naming a file of each unit,
+/// which no two entries then share a compiler query or an index over.
+/// Empty when most entries share their commands, or their user content
+/// (-I, -D) sets them apart.
+std::string per_file_option(const CommandTable& commands, llvm::ArrayRef<CompilationEntry> entries);
+
 /// Per-file delta of the build's commands — a compilation database
 /// reload's, and the provisional members' and rule sources' that follow
 /// it. Path ids are the shared file table's fids (stable across reloads).
@@ -197,9 +204,8 @@ public:
                                                 llvm::StringRef command);
 
 private:
-    /// Rebuild entry_list from every source's entries, sorted by (file,
-    /// source, ordinal).
-    void rebuild_entry_list();
+    /// Sort entry_list by (file, source, ordinal) and index its writers.
+    void sort_entries();
 
     std::optional<CompilationEntry> append_test_command(Fid file,
                                                         std::optional<CommandID> normalized);
@@ -211,11 +217,9 @@ private:
 
     CommandTable& command_table;
 
-    /// Registered sources: canonical file path and the entries its last
-    /// successful load produced (in file order).
+    /// Registered sources, by SourceID; their entries are entry_list's.
     struct Source {
         std::string path;
-        std::vector<CompilationEntry> entries;
         bool loaded = false;
         bool present = false;
         std::vector<LoadInput> inputs;

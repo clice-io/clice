@@ -183,8 +183,10 @@ bool is_discarded_option(unsigned id) {
     /// per-file value here must not fracture query and identity keys.
     /// Deliberately also drops clang's -Wignored-optimization-argument
     /// compat warnings for them — under -Werror those abort the analysis.
+    /// The dependency files a build asks for (-MD, -MF, -MJ, ...) form a
+    /// group of their own.
     if(auto opt = clang_options::table().option(id);
-       opt && opt->has_flag(clang_options::detail::Ignored)) {
+       opt && (opt->has_flag(clang_options::detail::Ignored) || opt->matches(OPT_M_Group))) {
         return true;
     }
 
@@ -203,6 +205,34 @@ bool is_discarded_option(unsigned id) {
         case OPT__SLASH_Fo:
         case OPT__SLASH_Fd:
 
+        /// What else a build writes beside the object, often one file per
+        /// unit: listings, executables, preprocessed output, timings,
+        /// intermediate files, serialized diagnostics, crash reports.
+        case OPT__SLASH_FA:
+        case OPT__SLASH_Fa:
+        case OPT__SLASH_Fe:
+        case OPT__SLASH_Fi:
+        case OPT__SLASH_Fm:
+        case OPT__SLASH_FR:
+        case OPT__SLASH_Fr:
+        case OPT__SLASH_doc:
+        case OPT__SLASH_sourceDependencies:
+        case OPT__SLASH_sourceDependenciesDirectives:
+        case OPT_ftime_trace:
+        case OPT_ftime_trace_EQ:
+        case OPT_ftime_trace_granularity_EQ:
+        case OPT_ftime_trace_verbose:
+        case OPT_save_temps:
+        case OPT_save_temps_EQ:
+        case OPT_dumpdir:
+        case OPT__serialize_diags:
+        case OPT_fcrash_diagnostics_dir:
+
+        /// The assembler's options: a listing file per unit
+        /// (`-Wa,-adhlns=main.lst`), never the C or C++ that is parsed.
+        case OPT_Wa_COMMA:
+        case OPT_Xassembler:
+
         /// PCH building.
         case OPT_emit_pch:
         case OPT_include_pch:
@@ -212,15 +242,6 @@ bool is_discarded_option(unsigned id) {
 
         /// Dependency scan.
         case OPT_E:
-        case OPT_M:
-        case OPT_MM:
-        case OPT_MD:
-        case OPT_MMD:
-        case OPT_MF:
-        case OPT_MT:
-        case OPT_MQ:
-        case OPT_MG:
-        case OPT_MP:
         case OPT_show_inst:
         case OPT_show_encoding:
         case OPT_show_includes:
@@ -235,6 +256,7 @@ bool is_discarded_option(unsigned id) {
         /// clice builds its modules from the files on disk.
         case OPT_fmodule_file:
         case OPT_fmodule_output:
+        case OPT_fmodule_output_EQ:
         case OPT_fmodules_embed_all_files:
         case OPT_fprebuilt_module_path: return true;
 
@@ -336,30 +358,34 @@ static bool dependency_options(llvm::ArrayRef<const char*> args) {
     return true;
 }
 
-ArgClass classify_option(unsigned id, llvm::ArrayRef<const char*> values) {
+std::optional<ArgClass> classify_option(unsigned id, llvm::ArrayRef<const char*> values) {
     /// -fmodule-file has two shapes: `name=path` names a prebuilt module
     /// (clice builds its own PCMs — irrelevant), a bare path is a header
     /// unit that stays part of the frontend semantics.
     if(id == clang_options::OPT_fmodule_file) {
         bool named = values.size() == 1 && llvm::StringRef(values[0]).contains('=');
-        return named ? ArgClass::Discarded : ArgClass::Semantic;
+        return named ? std::nullopt : std::optional(ArgClass::Semantic);
     }
     /// Kbuild hands the preprocessor `-Wp,-MMD,<depfile>` in every command:
     /// it goes as `-MMD -MF <depfile>` does, or each command would key a
     /// query of its own.
     if(id == clang_options::OPT_Wp_COMMA && dependency_options(values)) {
-        return ArgClass::Discarded;
+        return std::nullopt;
     }
     /// g++ takes an LTO job count (-flto=8), which clang rejects.
     if(id == clang_options::OPT_flto_EQ && values.size() == 1 &&
        !ranges::contains(std::array{"full", "thin", "none"}, llvm::StringRef(values[0]))) {
-        return ArgClass::Discarded;
+        return std::nullopt;
     }
-    if(is_discarded_option(id)) {
-        return ArgClass::Discarded;
+    switch(id) {
+        case OPT_include_pch:
+        case OPT_emit_pch:
+        case OPT_o:
+        case OPT_fmodule_output:
+        case OPT_fmodule_output_EQ: return ArgClass::Precompiled;
     }
-    if(is_codegen_option(id)) {
-        return ArgClass::Codegen;
+    if(is_discarded_option(id) || is_codegen_option(id)) {
+        return std::nullopt;
     }
     if(is_user_content_option(id)) {
         return ArgClass::UserContent;

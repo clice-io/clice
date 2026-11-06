@@ -28,13 +28,17 @@ The core task of command processing is to convert the raw driver commands in the
 
 ### Argument Classification
 
-When loading the CDB, each compilation option is classified into one of seven categories:
+When loading the CDB, each compilation option is either left out of the command or kept in one of six categories. Left out are the options only the build reads, which would otherwise set apart commands that compile alike:
 
-- **Discarded**: Options related to build artifacts that the language server does not need. These include output file (`-o`), compile mode (`-c`), dependency scanning (`-M` family), PCH building (`-emit-pch`), options the driver itself would ignore for this input, and options only GCC reads: a warning clang does not know in a GCC command (`-Wlogical-op`) and an LTO job count (`-flto=8`).
+- **Build artifacts**: the output file (`-o`), compile mode (`-c`), dependency files (the `-M` family, with `-MJ`), timings (`-ftime-trace`), intermediate files (`-save-temps`), serialized diagnostics, the assembler's options (`-Wa,`), cl's listings and outputs (`/Fa`, `/Fe`, `/FR`, `/sourceDependencies`), options the driver itself would ignore for this input, and options only GCC reads: a warning clang does not know in a GCC command (`-Wlogical-op`) and an LTO job count (`-flto=8`).
 
-- **Codegen**: Options that only affect the code generation backend and do not affect semantic analysis. These include frame pointer (`-fomit-frame-pointer`), unwind tables, function and data sections (`-ffunction-sections`), debug info (`-g` family), etc. They do not change the AST, diagnostic output or toolchain querying results.
+- **Code generation**: options that only affect the backend — frame pointer (`-fomit-frame-pointer`), unwind tables, function and data sections (`-ffunction-sections`), debug info (the `-g` family), etc. They do not change the AST, diagnostic output or toolchain querying results.
 
   > Note: `-O`, `-fPIC`, `-fstack-protector`, `-fsanitize=` and `-flto` are not in this category despite appearing code-generation-related. `-O` defines the `__OPTIMIZE__` macro, `-fPIC` and `-fstack-protector` define `__PIC__` and `__SSP__`, and `-fsanitize=address` affects `__has_feature(address_sanitizer)`: they alter preprocessor state and are therefore semantic options. `-flto` is one because the driver accepts `-fsanitize=cfi` and `-fwhole-program-vtables` only with it.
+
+The command keeps the rest:
+
+- **Precompiled**: the precompiled files of the build, which clice builds itself from the files on disk: the precompiled header a command reads (`-include-pch`), whether it writes one (`-emit-pch`, and its `-o` alone among outputs, which finds the header's writer), and whether it names a module output (`-fmodule-output`, without the path, since that decides whether a precompile writes a full or a reduced BMI). They count in the command's identity but are never passed on.
 
 - **Diagnostics**: Warning-control options (`-Wall`, `-Wno-*`, `-Werror`). They change which diagnostics are emitted but neither the AST nor toolchain querying results.
 
@@ -46,6 +50,8 @@ When loading the CDB, each compilation option is classified into one of seven ca
 
 - **Unknown**: Options the parser does not recognize (for example, flags from a compiler newer than clice's embedded LLVM). They participate in command identity, but unknown tokens coming from the CDB are not rendered into the compile commands clice executes; unknown tokens the user wrote in configuration rules are kept.
 
+When nearly every entry of a database still ends up with a command of its own, set apart by the value of one option outside the user content — an output of each unit that clice does not know to leave out — the load names that option in the log.
+
 Classification is based on Clang's own option table (`OptTable`), using option IDs rather than string matching.
 
 ### Structured Commands
@@ -55,7 +61,7 @@ After classification, each command is parsed **once** into a structured command 
 Two derived views matter:
 
 - **Rendering**: the same structured command can be rendered on demand as a driver command line (for querying or for handing agents a runnable command) or combined with query results into frontend arguments. A driver command line gives each option as the command writes it: GCC knows an option only by its own name, which may not be clang's (`-msmall-data-limit=8` is clang's `-G 8`, which RISC-V GCC rejects).
-- **Command hash**: the frontend-relevant view of the command, together with the input's slot position and working directory, is hashed into its **command hash** — the stable identity used for CDB diffing, the command each unit's index records, and context choices.
+- **Command hash**: every argument the command keeps, together with the input's slot position and working directory, is hashed into its **command hash** — the stable identity used for CDB diffing, the command each unit's index records, and context choices.
 
 The classification also buys toolchain querying cache efficiency. Querying requires actually invoking the compiler driver (`g++ -E -dM -v`), which takes from a few milliseconds to a hundred or more. The querying result depends only on the driver and query-relevant options -- user-content options (`-I`, `-D`) do not affect the system paths or target triple output by the driver. Therefore, regardless of what different `-I` paths files may have, files sharing the query-relevant view share one querying result. In real projects, tens of thousands of files typically collapse to a few dozen distinct query keys.
 

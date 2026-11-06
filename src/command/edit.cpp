@@ -180,7 +180,11 @@ CommandID
                           std::vector<LocalArg>& out) {
         std::vector<std::string> flags(edit_flags.begin(), edit_flags.end());
         for(auto& parsed: clang_options::table().parse(flags, remove_parse_options)) {
-            auto& local = out.emplace_back(commands.local_arg(parsed, flags));
+            auto added = commands.local_arg(parsed, flags);
+            if(!added) {
+                continue;
+            }
+            auto& local = out.emplace_back(std::move(*added));
             if(local.opt_id == clang_options::OPT_UNKNOWN) {
                 local.cls = ArgClass::Semantic;
             }

@@ -254,7 +254,7 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
                 included_pch = false;
                 args.push_back({
                     .opt_id = clang_options::OPT_include_pch,
-                    .cls = ArgClass::Discarded,
+                    .cls = ArgClass::Precompiled,
                     .values =
                         {anchored(commands, clang_options::OPT_include_pch, value, anchor, mounts)
                              .data()},
@@ -266,26 +266,28 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
                 continue;
             }
             if(value == "-emit-pch") {
-                args.push_back({.opt_id = clang_options::OPT_emit_pch, .cls = ArgClass::Discarded});
+                args.push_back(
+                    {.opt_id = clang_options::OPT_emit_pch, .cls = ArgClass::Precompiled});
                 continue;
             }
             /// Bazel's module rules (xclang's) embed a module's sources in
             /// it: the flag goes as its driver spelling does
             /// (is_discarded_option).
             if(value == "-fmodules-embed-all-files") {
-                args.push_back({.opt_id = clang_options::OPT_fmodules_embed_all_files,
-                                .cls = ArgClass::Discarded});
                 continue;
             }
         }
 
         auto local = commands.local_arg(parsed, parse_args);
+        if(!local) {
+            continue;
+        }
 
         /// g++ knows warnings clang does not (-Wlogical-op, -Wuseless-cast),
         /// each of which clang would report as unknown on every file.
         if(command.family == CompilerFamily::GCC && id == clang_options::OPT_W_Joined &&
-           !clang_warning(local.values[0])) {
-            local.cls = ArgClass::Discarded;
+           !clang_warning(local->values[0])) {
+            continue;
         }
 
         /// Path values absolutize where the compile runs, so the command
@@ -293,11 +295,11 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
         /// runs elsewhere.
         // The working directory itself is relative to the entry's.
         bool working = id == clang_options::OPT_working_directory;
-        for(auto& value: local.values) {
+        for(auto& value: local->values) {
             value = anchored(commands, id, value, working ? directory : anchor, mounts).data();
         }
 
-        args.push_back(std::move(local));
+        args.push_back(std::move(*local));
     }
 
     if(!slot_placed) {

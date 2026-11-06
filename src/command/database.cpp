@@ -1,5 +1,6 @@
 module clice;
 
+import :command.argument;
 import :command.database;
 import :command.file_kind;
 import :command.normalize;
@@ -62,6 +63,45 @@ CDBDiff diff_snapshots(const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 
 
 }  // namespace
 
+std::string per_file_option(const CommandTable& commands,
+                            llvm::ArrayRef<CompilationEntry> entries) {
+    llvm::DenseSet<std::uint32_t> distinct;
+    for(auto& entry: entries) {
+        distinct.insert(static_cast<std::uint32_t>(entry.command));
+    }
+    // A handful of entries tells nothing, and commands most entries share
+    // are no problem.
+    if(entries.size() < 64 || distinct.size() * 10 < entries.size() * 9) {
+        return {};
+    }
+    llvm::StringMap<llvm::DenseSet<std::uint64_t>> values;
+    for(auto id: distinct) {
+        for(auto& arg: commands.get(CommandID(id)).args) {
+            if(arg.cls == ArgClass::UserContent || arg.cls == ArgClass::Input) {
+                continue;
+            }
+            if(arg.opt_id == clang_options::OPT_UNKNOWN) {
+                auto [name, value] = llvm::StringRef(arg.spelling).split('=');
+                values[name].insert(llvm::xxh3_64bits(value));
+                continue;
+            }
+            std::string joined;
+            for(llvm::StringRef value: arg.values) {
+                joined += value;
+                joined += '\0';
+            }
+            auto name = clang_options::table().option(arg.opt_id)->prefixed_name();
+            values[name].insert(llvm::xxh3_64bits(joined));
+        }
+    }
+    for(auto& entry: values) {
+        if(entry.getValue().size() * 10 >= distinct.size() * 9) {
+            return entry.getKey().str();
+        }
+    }
+    return {};
+}
+
 std::optional<std::string> repaired_database_text(llvm::StringRef bytes) {
     if(llvm::json::isUTF8(bytes)) {
         return std::nullopt;
@@ -72,11 +112,7 @@ std::optional<std::string> repaired_database_text(llvm::StringRef bytes) {
 CompilationDatabase::CompilationDatabase(FileTable& files, CommandTable& commands) :
     file_table(files), command_table(commands) {}
 
-void CompilationDatabase::rebuild_entry_list() {
-    entry_list.clear();
-    for(auto& source: source_files) {
-        entry_list.insert(entry_list.end(), source.entries.begin(), source.entries.end());
-    }
+void CompilationDatabase::sort_entries() {
     ranges::sort(entry_list, [](const CompilationEntry& a, const CompilationEntry& b) {
         return std::tie(a.file, a.source, a.ordinal) < std::tie(b.file, b.source, b.ordinal);
     });
@@ -134,10 +170,9 @@ llvm::StringRef CompilationDatabase::source_path(SourceID id) const {
 
 CDBDiff CompilationDatabase::unload_source(SourceID id) {
     auto before = command_hash_snapshot();
-    auto& source = source_files[static_cast<std::size_t>(id)];
-    source.entries.clear();
-    source.loaded = false;
-    rebuild_entry_list();
+    source_files[static_cast<std::size_t>(id)].loaded = false;
+    std::erase_if(entry_list, [&](const CompilationEntry& entry) { return entry.source == id; });
+    sort_entries();
     return diff_snapshots(before, command_hash_snapshot());
 }
 
@@ -360,15 +395,25 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                                .spelling = spelling});
     }
 
+    if(auto option = per_file_option(command_table, new_entries); !option.empty()) {
+        LOG_WARN(
+            "Compilation database {}: nearly every entry has a command of its own, set apart by "
+            "the value of {}, so no two share a compiler query or an index. If {} names a file "
+            "the build writes, clice should leave it out of the command: report it.",
+            path,
+            option,
+            option);
+    }
     auto count = new_entries.size();
-    source.entries = std::move(new_entries);
+    std::erase_if(entry_list, [&](const CompilationEntry& entry) { return entry.source == id; });
+    entry_list.insert(entry_list.end(), new_entries.begin(), new_entries.end());
     source.loaded = true;
     source.present = true;
     auto responses = ranges::subrange(source.inputs.begin() + 1, source.inputs.end());
     ranges::sort(responses, {}, &LoadInput::file);
     auto duplicates = ranges::unique(responses, {}, &LoadInput::file);
     source.inputs.erase(duplicates.begin(), duplicates.end());
-    rebuild_entry_list();
+    sort_entries();
     return count;
 }
 
@@ -449,13 +494,15 @@ std::optional<CompilationEntry>
         anonymous = source_files.end() - 1;
     }
     auto id = SourceID(anonymous - source_files.begin());
-    auto& source = *anonymous;
-    CompilationEntry entry{.file = file,
-                           .command = *normalized,
-                           .source = id,
-                           .ordinal = static_cast<std::uint32_t>(source.entries.size())};
-    source.entries.push_back(entry);
-    rebuild_entry_list();
+    CompilationEntry entry{
+        .file = file,
+        .command = *normalized,
+        .source = id,
+        .ordinal =
+            static_cast<std::uint32_t>(ranges::count(entry_list, id, &CompilationEntry::source)),
+    };
+    entry_list.push_back(entry);
+    sort_entries();
     return entry;
 }
 

@@ -108,22 +108,47 @@ ZEST_CASE(InternedCommand) {
     ZEXPECT(std::string_view(rendered.back()) == file_table.resolve(ref.file).str());
 };
 
-ZEST_CASE(CodegenKeptInFull) {
-    /// Codegen-only options, which the compile render leaves out, survive
-    /// in the full render.
+ZEST_CASE(LeftOutOptionsShare) {
+    /// What only the build reads — codegen options, outputs, dependency
+    /// files, timings, listings — leaves the command: entries differing in
+    /// it share one.
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
-    database.add_command(
-        "/fake",
-        "main.cpp",
-        "clang++ -std=c++20 -fPIC -fno-omit-frame-pointer -fstack-protector-strong "
-        "-fdata-sections -ffunction-sections -fcolor-diagnostics -g main.cpp"sv);
+    database.add_command("/fake", "a.cpp", "clang++ -std=c++20 -fPIC -c a.cpp"sv);
+    database.add_command("/fake",
+                         "b.cpp",
+                         "clang++ -std=c++20 -fPIC -g -fno-omit-frame-pointer -ffunction-sections "
+                         "-c -o b.o -MD -MF b.d -MJ b.o.json -ftime-trace=b.trace.json "
+                         "-save-temps=obj --serialize-diagnostics b.dia -Wa,-adhlns=b.lst "
+                         "-frandom-seed=b.o b.cpp"sv);
+    database.add_command("/fake", "c.cpp", "cl /std:c++20 /c /Foc.obj c.cpp"sv);
+    database.add_command("/fake",
+                         "d.cpp",
+                         "cl /std:c++20 /c /Fod.obj /Fdd.pdb /Fad.asm /FRd.sbr /Fed.exe "
+                         "/sourceDependencies d.json /showIncludes /showFilenames d.cpp"sv);
+    auto command = [&](llvm::StringRef file) {
+        return database.candidate_entries(fake(file)).front().command;
+    };
+    ZEXPECT(command("a.cpp") == command("b.cpp"));
+    ZEXPECT(print_argv(commands.render_full(command("b.cpp"))) == "clang++ -std=c++20 -fPIC");
+    ZEXPECT(command("c.cpp") == command("d.cpp"));
+};
 
-    auto full = print_argv(
-        commands.render_full(database.candidate_entries(fake("main.cpp")).front().command));
-    ZEXPECT(llvm::StringRef(full).contains("-fno-omit-frame-pointer"));
-    ZEXPECT(llvm::StringRef(full).contains("-fdata-sections"));
+ZEST_CASE(LaunchersStripped) {
+    /// Every launcher leaves the command, chained ones too, and ccache's
+    /// guard of the token after it.
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    database.add_command("/fake", "a.cpp", "clang++ -std=c++20 a.cpp"sv);
+    database.add_command("/fake", "b.cpp", "sccache clang++ -std=c++20 b.cpp"sv);
+    database.add_command("/fake", "c.cpp", "distcc icecc clang++ -std=c++20 c.cpp"sv);
+    database.add_command("/fake", "d.cpp", "ccache clang++ --ccache-skip -std=c++20 d.cpp"sv);
+    auto a = database.candidate_entries(fake("a.cpp")).front().command;
+    for(auto file: {"b.cpp", "c.cpp", "d.cpp"}) {
+        ZEXPECT(database.candidate_entries(fake(file)).front().command == a);
+    }
 };
 
 ZEST_CASE(ModuleEmbeddingDiscarded) {
