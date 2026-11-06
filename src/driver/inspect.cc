@@ -30,6 +30,7 @@ import :semantic.symbol;
 import :semantic.template_resolver;
 import :settings.settings;
 import :support.bytes;
+import :syntax.source_text;
 import :syntax.token;
 import :vfs.file_system;
 import :vfs.file_table;
@@ -307,16 +308,37 @@ std::optional<codec::raw_value> run_template_resolver(const FeatureParams& param
         return codec::raw_value{};
     }
     auto& resolver = unit.get<types::TemplateResolver>();
+    // Another file's positions are read off the file, as the server reads
+    // those of a note.
+    llvm::StringMap<std::optional<SourceText>> texts;
     auto place = [&](const clang::Decl* decl) -> std::optional<RawLocation> {
         auto [file, range] = unit.produced_range(clang::SourceRange(decl->getLocation()));
         if(file.isInvalid() || unit.is_builtin_file(file)) {
             return std::nullopt;
         }
-        auto position = unit.positions(file).range(range, PositionEncoding::UTF16);
+        if(unit.focus_file().contains(file)) {
+            auto position = unit.focus_file().positions().range(range, PositionEncoding::UTF16);
+            if(!position) {
+                return std::nullopt;
+            }
+            return RawLocation{.path = unit.file_path(file).str(), .range = *position};
+        }
+        auto begin = unit.source_of({file, range.begin});
+        auto end = unit.source_of({file, range.end});
+        assert(begin && end && "a declaration spelled in text a header context added");
+        auto [it, inserted] = texts.try_emplace(begin->path);
+        if(inserted) {
+            if(auto text = vfs::read_text(begin->path)) {
+                it->second.emplace(std::move(*text));
+            }
+        }
+        auto position = it->second ? it->second->positions().range({begin->offset, end->offset},
+                                                                   PositionEncoding::UTF16)
+                                   : std::nullopt;
         if(!position) {
             return std::nullopt;
         }
-        return RawLocation{.path = unit.file_path(file).str(), .range = *position};
+        return RawLocation{.path = begin->path.str(), .range = *position};
     };
     RawResolution out;
     auto find = [&](auto&& decls) {

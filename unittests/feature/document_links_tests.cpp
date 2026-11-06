@@ -22,12 +22,9 @@ void run(llvm::StringRef source, llvm::StringRef standard = "-std=c++17") {
     links = feature::document_links(*unit);
 }
 
-void EXPECT_LINK(std::size_t index,
-                 llvm::StringRef name,
-                 llvm::StringRef path,
-                 llvm::StringRef file = "main.cpp") {
+void EXPECT_LINK(std::size_t index, llvm::StringRef name, llvm::StringRef path) {
     auto& link = links[index];
-    auto expected = range(name, file);
+    auto expected = range(name);
 
     ZASSERT(link.range.begin == expected.begin);
     ZASSERT(link.range.end == expected.end);
@@ -74,7 +71,7 @@ ZEST_CASE(Include) {
     EXPECT_LINK(5, "5", TestVFS::path("guard_macro.h"));
 }
 
-ZEST_CASE(ModuleImport) {
+ZEST_CASE(ModuleImportsUnlinked) {
     add_files("main.cppm", R"cpp(
 #[core.cppm]
 export module app.core;
@@ -84,15 +81,13 @@ export module app:part;
 
 #[main.cppm]
 export module app;
-import §(0)⟦app.core§⟧;
-import :§(1)⟦part§⟧;
+import app.core;
+import :part;
 )cpp");
     ZASSERT(compile_with_modules());
     links = feature::document_links(*unit);
 
-    ZASSERT(links.size() == 2U);
-    EXPECT_LINK(0, "0", TestVFS::path("core.cppm"), "main.cppm");
-    EXPECT_LINK(1, "1", TestVFS::path("part.cppm"), "main.cppm");
+    ZEXPECT(links.empty());
 }
 
 ZEST_CASE(HasInclude) {

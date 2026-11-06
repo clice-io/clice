@@ -274,6 +274,22 @@ int main() { return 0; }
     ZASSERT(!built->setup_fail());
 }
 
+/// The fragments a header context cuts from host.cpp, `struct S {`,
+/// `#include "body.h"`, `int later;`, `};` a line each, around the include.
+static SynthesizedFiles host_fragments() {
+    auto host = TestVFS::path("host.cpp");
+    return {
+        {.path = TestVFS::path(".clice-open.h"),
+         .content = "struct S {\n",
+         .origin = {.source = host, .runs = {{.length = 11}}},
+         .entry = SynthesizedFile::Entry::Forced  },
+        {.path = TestVFS::path(".clice-suffix.h"),
+         .content = "int later;\n};\n",
+         .origin = {.source = host, .runs = {{.source_offset = 29, .length = 14}}},
+         .entry = SynthesizedFile::Entry::Appended},
+    };
+}
+
 ZEST_CASE(SuffixFollowsText) {
     // Clang's buffer of the focus file goes on with the include of a header
     // context's suffix: the class the text sits in closes, and its member
@@ -283,14 +299,7 @@ ZEST_CASE(SuffixFollowsText) {
     add_focus("body.h", text);
     prepare();
     params.input.add_focus(TestVFS::path("body.h"), text);
-    params.input.add_synthesized({
-        {.path = TestVFS::path(".clice-open.h"),
-         .content = "struct S {\n",
-         .entry = SynthesizedFile::Entry::Forced  },
-        {.path = TestVFS::path(".clice-suffix.h"),
-         .content = "int later;\n};\n",
-         .entry = SynthesizedFile::Entry::Appended},
-    });
+    params.input.add_synthesized(host_fragments());
     ZASSERT(try_compile());
     ZEXPECT(unit->diagnostics().empty());
     auto file = unit->focus_file();
@@ -309,14 +318,7 @@ ZEST_CASE(CompletionOffsetsInText) {
     add_focus("body.h", text);
     prepare();
     params.input.add_focus(TestVFS::path("body.h"), text);
-    params.input.add_synthesized({
-        {.path = TestVFS::path(".clice-open.h"),
-         .content = "struct S {\n",
-         .entry = SynthesizedFile::Entry::Forced  },
-        {.path = TestVFS::path(".clice-suffix.h"),
-         .content = "int later;\n};\n",
-         .entry = SynthesizedFile::Entry::Appended},
-    });
+    params.input.add_synthesized(host_fragments());
     auto point = static_cast<std::uint32_t>(text.find("lat") + 3);
     params.kind = CompilationKind::Completion;
     params.completion = {
@@ -360,11 +362,7 @@ ZEST_CASE(SuffixNeedsFocus) {
     llvm::StringRef text = "int a;\n";
     add_focus("body.h", text);
     prepare();
-    params.input.add_synthesized({
-        {.path = TestVFS::path(".clice-suffix.h"),
-         .content = "int later;\n",
-         .entry = SynthesizedFile::Entry::Appended},
-    });
+    params.input.add_synthesized({host_fragments().back()});
     ZASSERT(try_compile());
     auto file = unit->focus_file();
     ZEXPECT(file.content() == text);

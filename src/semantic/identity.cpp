@@ -296,10 +296,9 @@ std::uint64_t EntityTable::entity(const clang::MacroInfo* macro) {
     hasher.add(Tag::Macro);
     hasher.add(unit.token_spelling(definition));
     if(definition.isValid()) {
-        auto [fid, offset] = unit.written_at(definition);
-        if(!unit.is_builtin_file(fid)) {
-            add_file(hasher, fid);
-            hasher.add(static_cast<std::uint64_t>(unit.source_offset(fid, offset)));
+        auto position = unit.written_at(definition);
+        if(!unit.is_builtin_file(position.file)) {
+            add_place(hasher, position);
         }
     }
     return hasher.finish();
@@ -1018,9 +1017,13 @@ void EntityTable::add_location(Hasher& hasher, clang::SourceLocation location) {
     if(location.isInvalid()) {
         return;
     }
-    auto [fid, offset] = unit.produced_at(location);
-    add_file(hasher, fid);
-    hasher.add(static_cast<std::uint64_t>(unit.source_offset(fid, offset)));
+    auto position = unit.produced_at(location);
+    if(unit.is_builtin_file(position.file)) {
+        hasher.add(llvm::StringRef());
+        hasher.add(static_cast<std::uint64_t>(position.offset));
+    } else {
+        add_place(hasher, position);
+    }
     if(location.isMacroID()) {
         hasher.add(macro_history(location));
     }
@@ -1065,11 +1068,9 @@ std::uint64_t EntityTable::macro_history(clang::SourceLocation location) {
         if(spelling.isMacroID()) {
             hasher.add(histories.lookup(spelling));
         } else {
-            auto [spelling_fid, spelling_offset] = unit.written_at(spelling);
+            auto position = unit.written_at(spelling);
             hasher.add(static_cast<std::uint64_t>(
-                unit.is_builtin_file(spelling_fid)
-                    ? 0
-                    : unit.source_offset(spelling_fid, spelling_offset)));
+                unit.is_builtin_file(position.file) ? 0 : source_of(position).offset));
         }
         if(parent.isMacroID()) {
             hasher.add(histories.lookup(parent));
@@ -1086,16 +1087,25 @@ void EntityTable::add_path(Hasher& hasher, clang::SourceLocation location) {
         return;
     }
     auto fid = unit.produced_at(location).file;
-    add_file(hasher, fid);
-}
-
-void EntityTable::add_file(Hasher& hasher, clang::FileID fid) {
     if(unit.is_builtin_file(fid)) {
         hasher.add(llvm::StringRef());
         return;
     }
     llvm::SmallString<256> storage;
-    hasher.add(path::portable(unit.source_path(fid), unit.project_root(), storage));
+    hasher.add(path::portable(unit.file_path(fid), unit.project_root(), storage));
+}
+
+void EntityTable::add_place(Hasher& hasher, FileOffset position) {
+    auto source = source_of(position);
+    llvm::SmallString<256> storage;
+    hasher.add(path::portable(source.path, unit.project_root(), storage));
+    hasher.add(static_cast<std::uint64_t>(source.offset));
+}
+
+SourceOffset EntityTable::source_of(FileOffset position) {
+    auto source = unit.source_of(position);
+    assert(source && "an entity spelled in text a header context added");
+    return *source;
 }
 
 void EntityTable::add_declaration_name(Hasher& hasher, clang::DeclarationName name) {

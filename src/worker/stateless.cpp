@@ -410,7 +410,7 @@ static void collect_tidy_diagnostics(CompilationUnit& unit,
 
 /// The errors a unit compiled with, each at the start of the range clang
 /// marks. One no file on disk holds (the command line's, the built-in
-/// buffer's, a host fragment's) has no place.
+/// buffer's) has no place.
 static std::vector<worker::LocatedMessage> located_errors(CompilationUnit& unit) {
     auto& sm = unit.context().getSourceManager();
     std::vector<worker::LocatedMessage> errors;
@@ -419,7 +419,7 @@ static std::vector<worker::LocatedMessage> located_errors(CompilationUnit& unit)
             continue;
         }
         auto& error = errors.emplace_back(worker::LocatedMessage{.message = diag.message});
-        if(diag.fid.isValid() && !unit.is_builtin_file(diag.fid) && !unit.synthesized(diag.fid)) {
+        if(diag.fid.isValid() && !unit.is_builtin_file(diag.fid)) {
             error.file = unit.file_path(diag.fid).str();
             error.line = sm.getLineNumber(diag.fid, diag.range.begin);
             error.column = sm.getColumnNumber(diag.fid, diag.range.begin);
