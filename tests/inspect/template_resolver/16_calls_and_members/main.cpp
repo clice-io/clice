@@ -836,6 +836,11 @@ Bad pick(U);
 
 Good pick(...);
 
+template <typename U>
+Bad place(U, typename U::missing* = nullptr);
+
+Good place(...);
+
 template <typename T>
 struct Source {
     using plain = Plain;
@@ -847,6 +852,8 @@ void run(typename Source<T>::plain value, typename Source<T>::integer number) {
     // `Plain` has no `missing`: `choose(...)` is called.
     auto §(failed_type_default)chosen = failed_default::choose(value);
     auto §(undecided_value_default)picked = failed_default::pick(number);
+    // The parameter the call leaves out cannot form for a `Plain`.
+    auto §(failed_omitted_parameter)placed = failed_default::place(value);
 }
 
 }  // namespace failed_default

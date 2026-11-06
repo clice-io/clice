@@ -413,6 +413,11 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
                 return std::nullopt;
             }
             stack.push(FTD, FTD->getTemplateParameters(), deduced);
+            /// `void_t<...>` holds its probe as written, `enable_if_t<...>`
+            /// in what it aliases.
+            auto cannot_form = [&](clang::QualType type) {
+                return member_absent(type, 0) || member_absent(type.getCanonicalType(), 0);
+            };
             /// A default deduction leaves decides whether the template is a
             /// candidate (`class = typename U::type`, `enable_if_t<B, int> =
             /// 0`): one that cannot form drops it, one not known to form
@@ -432,15 +437,25 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
                 if(type.isNull()) {
                     continue;
                 }
-                /// `void_t<...>` holds its probe as written, `enable_if_t<...>`
-                /// in what it aliases.
                 type = substitute(type);
-                if(member_absent(type, 0) || member_absent(type.getCanonicalType(), 0)) {
+                if(cannot_form(type)) {
                     unviable.insert(decl);
                     return std::nullopt;
                 }
                 if(resolve(type)->isDependentType()) {
                     waits = true;
+                    return std::nullopt;
+                }
+            }
+            /// So does the type of a parameter the call leaves out
+            /// (`typename U::type* = nullptr`), when it cannot form.
+            auto skipped = std::min<std::size_t>(FD->getNumParams(),
+                                                 passed(FD, 0, member_call) + arguments.size());
+            for(auto* parameter: FD->parameters().drop_front(skipped)) {
+                if(!parameter->isParameterPack() &&
+                   mentions_parameters(parameter->getType(), FTD->getTemplateParameters()) &&
+                   cannot_form(substitute(parameter->getType()))) {
+                    unviable.insert(decl);
                     return std::nullopt;
                 }
             }
