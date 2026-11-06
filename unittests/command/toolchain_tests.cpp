@@ -66,6 +66,18 @@ ZEST_CASE(KeyIgnoresPreprocessorDepfile) {
     ZEXPECT(f.key(base) != f.key(fortified));
 }
 
+ZEST_CASE(KeyIgnoresModuleOutput) {
+    /// Bazel and CMake name each module unit's BMI: keying on it would spawn
+    /// one query per module unit.
+    auto a = f.add("/fake",
+                   "/tmp/a.cppm",
+                   {"clang++", "-std=c++23", "-fmodule-output=out/a.pcm", "/tmp/a.cppm"});
+    auto b = f.add("/fake",
+                   "/tmp/b.cppm",
+                   {"clang++", "-std=c++23", "-fmodule-output=out/b.pcm", "/tmp/b.cppm"});
+    ZEXPECT(f.key(a) == f.key(b));
+}
+
 ZEST_CASE(KeyIgnoresCodegen) {
     /// Debug info, section layout and colored diagnostics never change how
     /// a driver sets up the parse; stack protection does, through its macros.

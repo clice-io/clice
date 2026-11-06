@@ -235,6 +235,7 @@ bool is_discarded_option(unsigned id) {
         /// clice builds its modules from the files on disk.
         case OPT_fmodule_file:
         case OPT_fmodule_output:
+        case OPT_fmodule_output_EQ:
         case OPT_fmodules_embed_all_files:
         case OPT_fprebuilt_module_path: return true;
 

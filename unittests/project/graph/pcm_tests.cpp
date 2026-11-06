@@ -155,7 +155,8 @@ ResolveFn make_resolver(CompilationDatabase& cdb, Toolchain& toolchain, Dependen
                        cdb.commands().input_kind(entry.command, file_path),
                        CommandSource::Database};
 
-        auto scan_result = scan_precise(toolchain.render(ref, cdb.spelling(ref.file)).argv,
+        auto scan_result = scan_precise(*graph.directives,
+                                        toolchain.render(ref, cdb.spelling(ref.file)).argv,
                                         cdb.commands().get(entry.command).directory);
 
         llvm::SmallVector<std::uint32_t> deps;

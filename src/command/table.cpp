@@ -161,10 +161,15 @@ void CommandTable::render_identity(CommandID id, std::string& out) {
             case ArgClass::Input: append("\x01input"); break;
             case ArgClass::Codegen: break;
             // The precompiled header a command reads decides what it
-            // compiles, though no render passes it on.
+            // compiles, though no render passes it on; whether it names a
+            // module output, wherever that goes, decides the BMI a
+            // precompile writes (Toolchain::synthesize).
             case ArgClass::Discarded:
                 if(arg.opt_id == clang_options::OPT_include_pch) {
                     render_portable(arg);
+                } else if(arg.opt_id == clang_options::OPT_fmodule_output ||
+                          arg.opt_id == clang_options::OPT_fmodule_output_EQ) {
+                    append("-fmodule-output");
                 }
                 break;
         }
