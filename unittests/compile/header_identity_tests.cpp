@@ -86,6 +86,31 @@ ZEST_CASE(CommandLineMacros) {
     ZEXPECT(identity(*this, "main.cpp", "names.h", "-std=c++20", {"-DNS=v2"}) != first);
 };
 
+ZEST_CASE(PackedRecords) {
+    add_file("box.h", "#pragma once\nstruct Box { char c; int i; };\n");
+    add_file("plain.cpp", "#include \"box.h\"\n");
+    add_file("packed.cpp", "#pragma pack(push, 1)\n#include \"box.h\"\n#pragma pack(pop)\n");
+    ZEXPECT(identity(*this, "packed.cpp", "box.h") != identity(*this, "plain.cpp", "box.h"));
+};
+
+ZEST_CASE(MacroParameterOrder) {
+    add_file("call.h", "#pragma once\ninline int call() { return CALL(foo, bar); }\n");
+    add_file("macro.h", "#define CALL(a, b) a()\n");
+    add_file("main.cpp", "int foo();\nint bar();\n#include \"macro.h\"\n#include \"call.h\"\n");
+    auto first = identity(*this, "main.cpp", "call.h");
+    add_file("macro.h", "#define CALL(b, a) a()\n");
+    ZEXPECT(identity(*this, "main.cpp", "call.h") != first);
+};
+
+ZEST_CASE(StringizedSpaces) {
+    add_file(
+        "text.h",
+        "#pragma once\n#define STR2(x) #x\n#define STR(x) STR2(x)\nconstexpr const char* text = STR(ARG);\n");
+    add_file("main.cpp", "#include \"text.h\"\n");
+    ZEXPECT(identity(*this, "main.cpp", "text.h", "-std=c++20", {"-DARG=a+b"}) !=
+            identity(*this, "main.cpp", "text.h", "-std=c++20", {"-DARG=a + b"}));
+};
+
 ZEST_CASE(UnitSpecificCounter) {
     add_file("unique.h", "#pragma once\nconstexpr int unique = __COUNTER__;\n");
     add_file("main.cpp", "#include \"unique.h\"\n");

@@ -218,6 +218,34 @@ ZEST_CASE(MacroEditedInPlace) {
     ZEXPECT(after.section_identity(*again).identity != known.identity);
 };
 
+ZEST_CASE(BodyClosedByInclude) {
+    // call()'s body ends in body.inc, which each unit's command fills in.
+    TempDir tmp;
+    tmp.touch(
+        "outer.h",
+        "#pragma once\nint first();\nint second();\ninline int call() {\n#include \"body.inc\"\n");
+    tmp.touch("body.inc", "return TARGET();\n}\n");
+    tmp.touch("main.cpp", "#include \"outer.h\"\n");
+    auto a_data = index_file(tmp, tmp.path("main.cpp"), {"-DTARGET=first"}).data;
+    auto a = index::TUIndex::from_bytes(a_data);
+    auto header = section_of(a, "outer.h");
+    ZASSERT(header);
+    auto known = a.section_identity(*header);
+
+    auto walked_data = index_file(tmp, tmp.path("main.cpp"), {"-DTARGET=second"}).data;
+    auto unwalked_data =
+        index_file(tmp, tmp.path("main.cpp"), {"-DTARGET=second"}, {known.variant}, {}, {known})
+            .data;
+    auto walked = index::TUIndex::from_bytes(walked_data);
+    auto unwalked = index::TUIndex::from_bytes(unwalked_data);
+    auto in_walked = section_of(walked, "body.inc");
+    auto in_unwalked = section_of(unwalked, "body.inc");
+    ZASSERT(in_walked);
+    ZASSERT(in_unwalked);
+    ZEXPECT(unwalked.section_blob(*section_of(unwalked, "outer.h")).empty());
+    ZEXPECT(unwalked.section_hash(*in_unwalked) == walked.section_hash(*in_walked));
+};
+
 ZEST_CASE(NamesOfTheIncluder) {
     // body.inc calls the `helper` each unit defines before including it:
     // b's variant of body.inc is b's own.

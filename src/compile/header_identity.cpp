@@ -65,7 +65,8 @@ private:
             return;
         }
         auto fid = sm.getFileID(location);
-        identities[fid] = mix(mix(base, static_cast<std::uint64_t>(kind)), content_key(fid));
+        identities[fid] = mix(mix(mix(base, static_cast<std::uint64_t>(kind)), content_key(fid)),
+                              unit.record_packing());
         // The parser reads a token ahead: an include right after a
         // namespace's `}` is entered before the parser leaves the namespace.
         // The context is taken once the file's first token is consumed, as
@@ -246,9 +247,14 @@ std::uint64_t CompilationUnit::macro_state(const clang::MacroInfo* macro,
     // which its buffer, in the PCH too, still has.
     auto& pp = instance->getPreprocessor();
     llvm::SmallString<32> buffer;
-    state = mix(macro->isFunctionLike() ? 7 : 11, macro->getNumParams());
+    state = macro->isFunctionLike() ? 7 : 11;
+    for(const auto* param: macro->params()) {
+        state = mix(state, llvm::xxh3_64bits(param->getName()));
+    }
     for(const auto& token: macro->tokens()) {
-        state = mix(state, static_cast<std::uint64_t>(token.getKind()));
+        // Stringizing reads the spaces between the tokens.
+        state =
+            mix(state, static_cast<std::uint64_t>(token.getKind()) * 2 + token.hasLeadingSpace());
         if(auto* identifier = token.getIdentifierInfo()) {
             state = mix(state, llvm::xxh3_64bits(identifier->getName()));
         } else if(token.isLiteral()) {

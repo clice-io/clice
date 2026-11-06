@@ -552,14 +552,13 @@ private:
         if(it == options.partial->includes.end()) {
             return false;
         }
+        // One that ends in another file (a function whose body an include
+        // closes) spans its includes from where it begins.
         auto range = X->getSourceRange();
         auto [begin_fid, begin] = SM.getDecomposedExpansionLoc(range.getBegin());
         auto [end_fid, end] = SM.getDecomposedExpansionLoc(range.getEnd());
-        if(begin_fid != it->first || end_fid != it->first) {
-            return false;
-        }
-        auto include = ranges::lower_bound(it->second, begin);
-        return include != it->second.end() && *include <= end;
+        auto include = ranges::lower_bound(it->second, begin_fid == it->first ? begin : 0);
+        return include != it->second.end() && (end_fid != it->first || *include <= end);
     }
 
     template <typename Func>
