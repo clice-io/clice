@@ -96,3 +96,9 @@ template_resolver = {}
 
 [answers.inline_child_overload.template_resolver]
 type = "Good"
+
+[answers.object_binding_tie]
+wrong = "the template binds the object without adding const, which beats the const member: chosen is a Good"
+
+[answers.object_binding_tie.template_resolver]
+type = "Bad"

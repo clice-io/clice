@@ -687,3 +687,24 @@ void run(typename Source<T>::type value) {
 }
 
 }  // namespace inline_child_overload
+
+namespace object_binding_tie {
+
+struct Good {};
+
+struct Bad {};
+
+template <typename T>
+struct Box {
+    Bad pick(int) const;
+
+    template <typename U>
+    Good pick(U);
+};
+
+template <typename T>
+void run(Box<T>& box) {
+    auto §(object_binding_tie)chosen = box.pick(0);
+}
+
+}  // namespace object_binding_tie
