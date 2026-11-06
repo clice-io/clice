@@ -449,7 +449,9 @@ struct PackConstruction : clang::RecursiveASTVisitor<PackConstruction> {
     }
 
     bool VisitCXXNewExpr(clang::CXXNewExpr* expr) {
-        return !found(expr->getAllocatedType(), arguments(expr->getInitializer()));
+        // The arguments of `new T[n]{args...}` initialize the elements.
+        return expr->isArray() ||
+               !found(expr->getAllocatedType(), arguments(expr->getInitializer()));
     }
 
     bool VisitVarDecl(clang::VarDecl* var) {
