@@ -129,3 +129,9 @@ type = "Good"
 
 [answers.failed_builtin_scope.template_resolver]
 type = "Good"
+
+[answers.failed_return_type.template_resolver]
+type = "Good"
+
+[answers.failed_alias_return_type.template_resolver]
+type = "Good"

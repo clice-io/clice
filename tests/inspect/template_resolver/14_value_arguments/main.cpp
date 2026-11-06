@@ -386,6 +386,18 @@ struct test_typeof {
         typename conditional<__is_same(__typeof__(T{}), int), int, char>::type;
 };
 
+template <typename U>
+struct identity {
+    using type = U;
+};
+
+template <typename T>
+struct test_category {
+    // `T = int&` makes `T&&` an lvalue reference.
+    using §(rvalue_reference_collapse)input =
+        typename conditional<__is_rvalue_reference(typename identity<T&&>::type), int, char>::type;
+};
+
 template <int N>
 struct test_extent {
     // `N = 3` makes the two one type.

@@ -78,6 +78,9 @@ type = "typename conditional<__is_same(T &&, int &), int, char>::type"
 [answers.builtin_same_typeof.template_resolver]
 type = "typename conditional<__is_same(typeof (T{}), int), int, char>::type"
 
+[answers.rvalue_reference_collapse.template_resolver]
+type = "typename conditional<__is_rvalue_reference(typename identity<T &&>::type), int, char>::type"
+
 [answers.builtin_same_extent.template_resolver]
 type = "typename conditional<__is_same(int[N], int[3]), int, char>::type"
 

@@ -447,14 +447,20 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
                     return std::nullopt;
                 }
             }
-            /// So does the type of a parameter the call leaves out
-            /// (`typename U::type* = nullptr`), when it cannot form.
+            /// So do the return type and the type of a parameter the call
+            /// leaves out (`enable_if_t<B, R>`, `typename U::type* =
+            /// nullptr`), when one cannot form.
+            llvm::SmallVector<clang::QualType, 4> formed = {FD->getReturnType()};
             auto skipped = std::min<std::size_t>(FD->getNumParams(),
                                                  passed(FD, 0, member_call) + arguments.size());
             for(auto* parameter: FD->parameters().drop_front(skipped)) {
-                if(!parameter->isParameterPack() &&
-                   mentions_parameters(parameter->getType(), FTD->getTemplateParameters()) &&
-                   cannot_form(substitute(parameter->getType()))) {
+                if(!parameter->isParameterPack()) {
+                    formed.push_back(parameter->getType());
+                }
+            }
+            for(auto type: formed) {
+                if(mentions_parameters(type, FTD->getTemplateParameters()) &&
+                   cannot_form(substitute(type))) {
                     unviable.insert(decl);
                     return std::nullopt;
                 }

@@ -841,6 +841,19 @@ Bad place(U, typename U::missing* = nullptr);
 
 Good place(...);
 
+template <typename U>
+enable_if_t<__is_same(U, float), Bad> take(U);
+
+Good take(...);
+
+template <typename...>
+using BadIf = Bad;
+
+template <typename U>
+BadIf<typename U::missing> hold(U);
+
+Good hold(...);
+
 template <typename T>
 struct Source {
     using plain = Plain;
@@ -856,6 +869,9 @@ void run(typename Source<T>::plain value, typename Source<T>::integer number) {
     // The parameter the call leaves out cannot form for a `Plain`, nor for an `int`.
     auto §(failed_omitted_parameter)placed = failed_default::place(value);
     auto §(failed_builtin_scope)put = failed_default::place(number);
+    // The return types cannot form for an `int`.
+    auto §(failed_return_type)taken = failed_default::take(number);
+    auto §(failed_alias_return_type)held = failed_default::hold(number);
 }
 
 }  // namespace failed_default

@@ -208,6 +208,9 @@ enum class Category : std::uint8_t {
     MemberPointer,
     LValueReference,
     RValueReference,
+    /// A reference of a kind instantiation decides: `T&&` is an lvalue
+    /// reference with `T = int&`.
+    Reference,
     Array,
     Function,
 };
@@ -233,7 +236,10 @@ Category category_of(clang::QualType type) {
         case clang::Type::Pointer: return Category::Pointer;
         case clang::Type::MemberPointer: return Category::MemberPointer;
         case clang::Type::LValueReference: return Category::LValueReference;
-        case clang::Type::RValueReference: return Category::RValueReference;
+        case clang::Type::RValueReference:
+            return category_of(canonical->getPointeeType()) == Category::Unknown
+                       ? Category::Reference
+                       : Category::RValueReference;
         case clang::Type::ConstantArray:
         case clang::Type::IncompleteArray:
         case clang::Type::DependentSizedArray: return Category::Array;
@@ -268,7 +274,12 @@ std::optional<bool> category_trait(llvm::StringRef name, Category category) {
     bool arithmetic = category == Category::Integral || category == Category::Floating;
     bool fundamental =
         arithmetic || category == Category::Void || category == Category::NullPointer;
-    bool reference = category == Category::LValueReference || category == Category::RValueReference;
+    bool reference = category == Category::LValueReference ||
+                     category == Category::RValueReference || category == Category::Reference;
+    auto kind = [&](Category reference_kind) {
+        return category == Category::Reference ? std::nullopt
+                                               : std::optional(category == reference_kind);
+    };
     return llvm::StringSwitch<std::optional<bool>>(name)
         .Case("is_void", category == Category::Void)
         .Case("is_null_pointer", category == Category::NullPointer)
@@ -280,8 +291,8 @@ std::optional<bool> category_trait(llvm::StringRef name, Category category) {
         .Case("is_class", category == Category::Class)
         .Case("is_function", category == Category::Function)
         .Case("is_pointer", category == Category::Pointer)
-        .Case("is_lvalue_reference", category == Category::LValueReference)
-        .Case("is_rvalue_reference", category == Category::RValueReference)
+        .Case("is_lvalue_reference", kind(Category::LValueReference))
+        .Case("is_rvalue_reference", kind(Category::RValueReference))
         .Case("is_member_pointer", category == Category::MemberPointer)
         .Case("is_reference", reference)
         .Case("is_arithmetic", arithmetic)
