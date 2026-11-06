@@ -160,35 +160,27 @@ namespace {
 
 class DirectivesGetter : public clang::DependencyDirectivesGetter {
 public:
-    DirectivesGetter(clang::FileManager& file_mgr, DirectiveCache& cache) :
-        file_mgr(&file_mgr), cache(&cache) {}
+    DirectivesGetter(clang::CompilerInstance* instance, DirectiveCache& cache) :
+        instance(instance), cache(&cache) {}
 
-    std::unique_ptr<clang::DependencyDirectivesGetter>
-        cloneFor(clang::FileManager& new_file_mgr) override {
-        return std::make_unique<DirectivesGetter>(new_file_mgr, *cache);
+    /// A module the scan compiles has a source manager of its own, whose
+    /// buffers this one cannot see: it lexes them as text.
+    std::unique_ptr<clang::DependencyDirectivesGetter> cloneFor(clang::FileManager&) override {
+        return std::make_unique<DirectivesGetter>(nullptr, *cache);
     }
 
     std::optional<llvm::ArrayRef<clang::dependency_directives_scan::Directive>>
         operator()(clang::FileEntryRef file) override {
-        if(file == scanned) {
+        if(!instance || file == scanned) {
             return std::nullopt;
         }
-
-        // The file entry keeps its modification time in seconds.
-        auto status = file_mgr->getVirtualFileSystem().status(file.getName());
-        if(!status) {
+        auto buffer = instance->getSourceManager().getMemoryBufferForFileOrNone(file);
+        if(!buffer) {
             return std::nullopt;
         }
-        auto entry = cache->find(*status);
+        auto entry = cache->directives(file.getName(), buffer->getBuffer());
         if(!entry) {
-            auto buffer = file_mgr->getBufferForFile(file);
-            if(!buffer) {
-                return std::nullopt;
-            }
-            entry = cache->add(*status, (*buffer)->getBuffer());
-            if(!entry) {
-                return std::nullopt;
-            }
+            return std::nullopt;
         }
         held.push_back(entry);
         return llvm::ArrayRef(entry->directives);
@@ -202,7 +194,7 @@ public:
     clang::OptionalFileEntryRef scanned;
 
 private:
-    clang::FileManager* file_mgr;
+    clang::CompilerInstance* instance;
 
     DirectiveCache* cache;
 
@@ -292,7 +284,7 @@ void scan_with_preprocessor(
     instance->getDiagnostics().setSuppressAllDiagnostics(true);
     instance->createFileManager();
 
-    auto getter = std::make_unique<DirectivesGetter>(instance->getFileManager(), cache);
+    auto getter = std::make_unique<DirectivesGetter>(instance.get(), cache);
     auto& directives = *getter;
     instance->setDependencyDirectivesGetter(std::move(getter));
 
@@ -320,30 +312,22 @@ void scan_with_preprocessor(
 
 }  // namespace
 
-std::shared_ptr<const DirectiveCache::Entry> DirectiveCache::find(const llvm::vfs::Status& status) {
-    std::lock_guard lock(mutex);
-    auto it = entries.find(status.getUniqueID());
-    if(it == entries.end() || it->second->size != status.getSize() ||
-       it->second->modified != status.getLastModificationTime()) {
-        return nullptr;
+std::shared_ptr<const DirectiveCache::Entry> DirectiveCache::directives(llvm::StringRef path,
+                                                                        llvm::StringRef text) {
+    auto hash = llvm::xxh3_64bits(text);
+    {
+        std::lock_guard lock(mutex);
+        if(auto it = entries.find(path); it != entries.end() && it->second->hash == hash) {
+            return it->second;
+        }
     }
-    return it->second;
-}
-
-std::shared_ptr<const DirectiveCache::Entry> DirectiveCache::add(const llvm::vfs::Status& status,
-                                                                 llvm::StringRef text) {
     auto entry = std::make_shared<Entry>();
-    entry->size = status.getSize();
-    entry->modified = status.getLastModificationTime();
+    entry->hash = hash;
     if(clang::scanSourceForDependencyDirectives(text, entry->tokens, entry->directives)) {
         return nullptr;
     }
-    auto modified_ns =
-        chrono::duration_cast<chrono::nanoseconds>(entry->modified.time_since_epoch()).count();
-    if(entry->modified != llvm::sys::TimePoint<>() && vfs::stable_mtime(modified_ns)) {
-        std::lock_guard lock(mutex);
-        entries[status.getUniqueID()] = entry;
-    }
+    std::lock_guard lock(mutex);
+    entries[path] = entry;
     return entry;
 }
 

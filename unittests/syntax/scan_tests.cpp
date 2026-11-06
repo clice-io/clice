@@ -206,30 +206,8 @@ ZEST_CASE(PreciseWithContent) {
 
 ZEST_CASE(SharedDirectivesFollowChanges) {
     // A header rewritten between two scans sharing the cache, to the same
-    // size, is read again by its new modification time.
-    TempDir tmp;
-    tmp.touch("main.cpp", R"(#include "header.h")");
-    tmp.touch("header.h", "import aa;");
-    // Out of the mtime guard window, or the first scan keeps nothing.
-    auto modified = file_mtime_ns(tmp.path("header.h")) - 10'000'000'000;
-    ZASSERT(set_file_mtime(tmp.path("header.h"), modified));
-    auto main_path = tmp.path("main.cpp");
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto first = scan_precise(cache, args, tmp.root);
-    ZASSERT(first.modules.size() == 1u);
-    ZEXPECT(first.modules[0] == "aa");
-
-    tmp.touch("header.h", "import bb;");
-    ZASSERT(set_file_mtime(tmp.path("header.h"), modified + 1'000'000));
-    auto second = scan_precise(cache, args, tmp.root);
-    ZASSERT(second.modules.size() == 1u);
-    ZEXPECT(second.modules[0] == "bb");
-}
-
-ZEST_CASE(RecentHeaderNotShared) {
-    // A filesystem with a coarse time granularity gives a rewrite within
-    // its tick the modification time of the text before: a header written
-    // that recently is minimized for its scan alone.
+    // size and under the same modification time — a coarse-granularity
+    // filesystem's tick, a sync that keeps times — is minimized again.
     TempDir tmp;
     tmp.touch("main.cpp", R"(#include "header.h")");
     tmp.touch("header.h", "import aa;");

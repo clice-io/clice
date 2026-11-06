@@ -148,37 +148,31 @@ struct QuickScanCache {
 };
 
 /// The dependency directives of the headers the preprocessor scans read
-/// (scan_precise, scan_module_decl), shared by all of them: a header is
-/// read and minimized once while its size and modification time stay,
-/// where each scan would do it again. Scans run on the thread pool at once,
-/// so it locks, and a scan keeps the entries it was handed until it ends:
-/// a header changed meanwhile replaces its entry. A file the disk does not
-/// hold (an in-memory one, modified at the epoch), or one modified too
-/// recently for its time to tell a later write apart (vfs::mtime_guard_ns),
-/// is minimized for its scan alone.
+/// (scan_precise, scan_module_decl), shared by all of them: a header's text
+/// is minimized once while it stays the same, where each scan would do it
+/// again. An entry is the directives of the very bytes a scan's lexer reads,
+/// matched by their hash: a header rewritten under the same size and time,
+/// or between clang's read and the lookup, is minimized again. One entry per
+/// path, of the text minimized last. Scans run on the thread pool at once,
+/// so it locks, and a scan keeps the entries it was handed until it ends.
 class DirectiveCache {
 public:
     struct Entry {
-        std::uint64_t size = 0;
-
-        llvm::sys::TimePoint<> modified;
+        std::uint64_t hash = 0;
 
         llvm::SmallVector<clang::dependency_directives_scan::Token> tokens;
 
         llvm::SmallVector<clang::dependency_directives_scan::Directive> directives;
     };
 
-    /// The entry of the file `status` describes, if it is current.
-    std::shared_ptr<const Entry> find(const llvm::vfs::Status& status);
-
-    /// The directives of `text`, the contents of the file `status`
-    /// describes, kept for the next scans; null when it does not minimize.
-    std::shared_ptr<const Entry> add(const llvm::vfs::Status& status, llvm::StringRef text);
+    /// The directives of `text`, the contents of the file at `path`; null
+    /// when it does not minimize.
+    std::shared_ptr<const Entry> directives(llvm::StringRef path, llvm::StringRef text);
 
 private:
     std::mutex mutex;
 
-    llvm::DenseMap<llvm::sys::fs::UniqueID, std::shared_ptr<const Entry>> entries;
+    llvm::StringMap<std::shared_ptr<const Entry>> entries;
 };
 
 /// Precise preprocessing-based scan: runs the real preprocessor, so
