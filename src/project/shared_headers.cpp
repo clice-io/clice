@@ -337,12 +337,20 @@ void Project::release_shared_headers() {
                     if(!manifest) {
                         continue;
                     }
+                    auto& locals = manifest->shared_locals;
                     for(auto& local: own->shared_locals) {
-                        if(!ranges::contains(manifest->shared_locals, local)) {
-                            manifest->shared_locals.push_back(local);
+                        auto it =
+                            ranges::lower_bound(locals, local.symbol, {}, &index::SharedLocal::symbol);
+                        if(it == locals.end() || it->symbol != local.symbol) {
+                            locals.insert(it, local);
+                            continue;
+                        }
+                        for(auto file: local.files) {
+                            if(!ranges::contains(it->files, file)) {
+                                it->files.push_back(file);
+                            }
                         }
                     }
-                    ranges::stable_sort(manifest->shared_locals, {}, &index::SharedLocal::symbol);
                     for(auto file: index.apply_manifest(unit, std::move(*manifest))) {
                         report.add_index_changed(file);
                     }

@@ -475,36 +475,45 @@ ZEST_CASE(UnguardedRoot) {
 };
 
 ZEST_CASE(LocalsOutliveIt) {
-    // helper has internal linkage, and only the headers the PCH holds name
-    // it: the unit's manifest links them once the shared header's index is
-    // dropped.
+    // helper has internal linkage; call.h, which the PCH holds, names it
+    // as the unit does: the unit's manifest links all three files once the
+    // shared header's index is dropped.
     TempDir tmp;
     tmp.touch("shared.hxx", "#pragma once\n#include \"call.h\"\n");
     tmp.touch("helper.h", "#pragma once\nstatic int helper() { return 1; }\n");
-    tmp.touch("call.h",
-              "#pragma once\n#include \"helper.h\"\ninline int call() { return helper(); }\n");
-    tmp.touch("main.cpp", "#include \"call.h\"\nint use() { return call(); }\n");
+    tmp.touch("call.h", "#pragma once\n#include \"helper.h\"\ninline int call() { return helper(); }\n");
+    tmp.touch("main.cpp", "#include \"call.h\"\nint use() { return call() + helper(); }\n");
     auto pch = tmp.path("shared.pch");
     std::string own;
     auto shared = build_shared(tmp, pch, &own);
     ZASSERT(shared);
     auto over = index_over(tmp, pch, &*shared);
 
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        f.list_units(tmp, {{"main.cpp", {"-std=c++20"}}});
+        ZASSERT(f.merge(own));
+        ZASSERT(f.merge(over));
+        auto header = f.project.file_table.intern(Spelling::absolute(tmp.path("shared.hxx")));
+        auto unit = f.project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+        auto& headers = f.project.shared_headers;
+        headers.headers.push_back({.file = header, .request = {}});
+        headers.files.insert(header);
+        headers.units[unit] = 0;
+        f.project.release_shared_headers();
+        f.save();
+    }
+
     IndexerFixture f;
     open_store(tmp, f.project);
-    ZASSERT(f.merge(own));
-    ZASSERT(f.merge(over));
-    auto header = f.project.file_table.intern(Spelling::absolute(tmp.path("shared.hxx")));
+    f.list_units(tmp, {{"main.cpp", {"-std=c++20"}}});
+    f.load();
     auto unit = f.project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
-    auto& headers = f.project.shared_headers;
-    headers.headers.push_back({.file = header, .request = {}});
-    headers.files.insert(header);
-    headers.units[unit] = 0;
-    f.project.release_shared_headers();
-    f.save();
     auto manifest = f.project.index.manifest(unit);
     ZASSERT(manifest);
-    ZEXPECT(!manifest->shared_locals.empty());
+    ZASSERT(manifest->shared_locals.size() == 1U);
+    ZEXPECT(manifest->shared_locals.front().files.size() == 3U);
 };
 
 ZEST_CASE(GuessesUnderForcedInclude) {
