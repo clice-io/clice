@@ -30,7 +30,7 @@ clice 实现了整个命令处理流程的自动化：从 CDB 读取命令后，
 
 加载 CDB 时，每个编译选项要么被排除在命令之外，要么保留在命令中、归入六类之一。被排除的是只有构建才读取的选项，否则它们会让编译方式相同的命令变得彼此不同：
 
-- **构建产物**：输出文件（`-o`）、编译模式（`-c`）、依赖文件（`-M` 系列，以及 `-MJ`）、耗时记录（`-ftime-trace`）、中间文件（`-save-temps`）、序列化诊断、汇编器选项（`-Wa,`）、cl 的列表文件与输出（`/Fa`、`/Fe`、`/FR`、`/sourceDependencies`）、驱动程序本身针对该输入会忽略的选项，还有只有 GCC 才读取的选项：GCC 命令里 clang 不认识的警告（`-Wlogical-op`）和 LTO 并行任务数（`-flto=8`）。
+- **构建产物**：输出文件（`-o`）、编译模式（`-c`）、依赖文件（`-M` 系列，以及 `-MJ`）、耗时记录（`-ftime-trace`）、中间文件（`-save-temps`）、序列化诊断、优化记录、汇编器选项（`-Wa,`）、cl 的列表文件与输出（`/Fa`、`/Fe`、`/FR`、`/sourceDependencies`）、GCC 的模块映射与依赖扫描输出（`-fmodule-mapper=`、`-fdeps-file=`）、nvcc 自己写法的输出文件与依赖文件、驱动程序本身针对该输入会忽略的选项，还有只有 GCC 才读取的选项：GCC 命令里 clang 不认识的警告（`-Wlogical-op`）和 LTO 并行任务数（`-flto=8`）。
 
 - **代码生成**：只影响后端的选项——帧指针（`-fomit-frame-pointer`）、unwind 表（unwind tables）、函数与数据分段（`-ffunction-sections`）、调试信息（`-g` 系列）等。它们不会改变 AST、诊断输出或工具链查询结果。
 

@@ -30,7 +30,7 @@ The core task of command processing is to convert the raw driver commands in the
 
 When loading the CDB, each compilation option is either left out of the command or kept in one of six categories. Left out are the options only the build reads, which would otherwise set apart commands that compile alike:
 
-- **Build artifacts**: the output file (`-o`), compile mode (`-c`), dependency files (the `-M` family, with `-MJ`), timings (`-ftime-trace`), intermediate files (`-save-temps`), serialized diagnostics, the assembler's options (`-Wa,`), cl's listings and outputs (`/Fa`, `/Fe`, `/FR`, `/sourceDependencies`), options the driver itself would ignore for this input, and options only GCC reads: a warning clang does not know in a GCC command (`-Wlogical-op`) and an LTO job count (`-flto=8`).
+- **Build artifacts**: the output file (`-o`), compile mode (`-c`), dependency files (the `-M` family, with `-MJ`), timings (`-ftime-trace`), intermediate files (`-save-temps`), serialized diagnostics, optimization records, the assembler's options (`-Wa,`), cl's listings and outputs (`/Fa`, `/Fe`, `/FR`, `/sourceDependencies`), GCC's module mapper and dependency scan output (`-fmodule-mapper=`, `-fdeps-file=`) and nvcc's own spellings of the output and dependency file, options the driver itself would ignore for this input, and options only GCC reads: a warning clang does not know in a GCC command (`-Wlogical-op`) and an LTO job count (`-flto=8`).
 
 - **Code generation**: options that only affect the backend — frame pointer (`-fomit-frame-pointer`), unwind tables, function and data sections (`-ffunction-sections`), debug info (the `-g` family), etc. They do not change the AST, diagnostic output or toolchain querying results.
 

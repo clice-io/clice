@@ -106,6 +106,12 @@ ZEST_CASE(SharedKeys) {
     ZEXPECT(same("g++ -MD -MF {0}.d -frandom-seed={0}.o -c {0}.cpp -o {0}.o"));
     ZEXPECT(same("gcc -Wp,-MMD,.{0}.o.d -c -o {0}.o {0}.cpp"));
     ZEXPECT(same("cl /std:c++20 /Fo{0}.obj /c {0}.cpp"));
+    ZEXPECT(
+        same("g++ -std=c++20 -fmodules-ts -fmodule-mapper={0}.modmap -fdeps-format=p1689r5 "
+             "-fdeps-file={0}.ddi -fdeps-target={0}.o -c {0}.cpp -o {0}.o"));
+    ZEXPECT(
+        same("clang++ -foptimization-record-file={0}.yaml -gen-cdb-fragment-path cdb "
+             "-c {0}.cpp -o {0}.o"));
 
     ZEXPECT((key("a.cpp", "cl -MT /c a.cpp") != key("b.cpp", "cl -MTd /c b.cpp")));
     ZEXPECT((key("a.cpp", "gcc -Wp,-MMD,a.d,-DA -c a.cpp") !=

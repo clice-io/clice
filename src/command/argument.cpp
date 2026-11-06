@@ -227,6 +227,9 @@ bool is_discarded_option(unsigned id) {
         case OPT_dumpdir:
         case OPT__serialize_diags:
         case OPT_fcrash_diagnostics_dir:
+        case OPT_fsave_optimization_record:
+        case OPT_foptimization_record_file_EQ:
+        case OPT_gen_cdb_fragment_path:
 
         /// The assembler's options: a listing file per unit
         /// (`-Wa,-adhlns=main.lst`), never the C or C++ that is parsed.
@@ -267,6 +270,19 @@ bool is_discarded_option(unsigned id) {
 
         default: return false;
     }
+}
+
+bool is_discarded_unknown(llvm::StringRef token) {
+    auto joined = std::array{"-fmodule-mapper=",
+                             "-fdeps-format=",
+                             "-fdeps-file=",
+                             "-fdeps-target=",
+                             "-fdiagnostics-add-output=",
+                             "-fdiagnostics-set-output=",
+                             "-fprofile-note="};
+    return ranges::any_of(joined,
+                          [&](llvm::StringRef prefix) { return token.starts_with(prefix); }) ||
+           token == "-aux-info" || token == "-index-unit-output-path";
 }
 
 bool is_user_content_option(unsigned id) {

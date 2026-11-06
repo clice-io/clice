@@ -100,6 +100,9 @@ std::optional<LocalArg>
     if(!parsed || parsed->id == clang_options::OPT_UNKNOWN ||
        parsed->id == clang_options::OPT_INPUT) {
         auto index = parsed ? parsed->index : parsed.error().begin;
+        if(is_discarded_unknown(tokens[index])) {
+            return std::nullopt;
+        }
         return LocalArg{.opt_id = clang_options::OPT_UNKNOWN,
                         .cls = ArgClass::Unknown,
                         .spelling = strings.save(tokens[index]).data()};

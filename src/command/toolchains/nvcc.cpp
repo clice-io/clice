@@ -393,6 +393,22 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
             continue;
         }
 
+        /// What the build writes, in nvcc's own spellings clang's table does
+        /// not know: its output, its dependency file and their names.
+        if(value_of(i,
+                    {"--output-file",
+                     "--dependency-output",
+                     "--dependency-target-name",
+                     "--output-directory",
+                     "-odir"},
+                    value)) {
+            continue;
+        }
+        if(arg == "--generate-dependencies-with-compile" ||
+           arg == "--generate-nonsystem-dependencies-with-compile" || arg == "--compile") {
+            continue;
+        }
+
         /// Pass-through wrappers for other tools: dropped together with the
         /// value, which could otherwise be mistaken for a host flag
         /// (`-Xptxas -O3` sets the ptxas level, not the host one).

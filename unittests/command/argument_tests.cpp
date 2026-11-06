@@ -57,9 +57,18 @@ ZEST_CASE(ClassifyOptions) {
                   OPT__SLASH_showIncludes,
                   OPT__SLASH_showFilenames,
                   OPT_g_Flag,
-                  OPT_frandom_seed_EQ}) {
+                  OPT_frandom_seed_EQ,
+                  OPT_fsave_optimization_record,
+                  OPT_foptimization_record_file_EQ,
+                  OPT_gen_cdb_fragment_path}) {
         ZEXPECT(!classify_option(id, {}).has_value());
     }
+    /// Those clang does not know too: GCC's module mapper and scan output,
+    /// Apple's index unit output.
+    ZEXPECT(is_discarded_unknown("-fmodule-mapper=a.cppm.o.modmap"));
+    ZEXPECT(is_discarded_unknown("-fdeps-file=a.ddi"));
+    ZEXPECT(is_discarded_unknown("-index-unit-output-path"));
+    ZEXPECT(!is_discarded_unknown("-fmodules-ts"));
     /// The precompiled files clice builds itself stay, for the identity.
     for(auto id: {OPT_include_pch, OPT_emit_pch, OPT_o, OPT_fmodule_output}) {
         ZEXPECT((classify_option(id, {}) == ArgClass::Precompiled));

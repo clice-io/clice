@@ -341,7 +341,22 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
     }
     // Only spellings no other option shares are masked: in a cl command
     // `-MT` is the runtime library, not a dependency target.
-    std::array separate = {"-o", "-MF", "-MT", "-MQ", "-MJ", "--serialize-diagnostics"};
+    std::array separate = {"-o",
+                           "-MF",
+                           "-MT",
+                           "-MQ",
+                           "-MJ",
+                           "--serialize-diagnostics",
+                           "-gen-cdb-fragment-path",
+                           "-aux-info",
+                           "-index-unit-output-path"};
+    std::array joined = {"-frandom-seed=",
+                         "-foptimization-record-file=",
+                         "-fmodule-mapper=",
+                         "-fdeps-file=",
+                         "-fdeps-target=",
+                         "-fdiagnostics-add-output=",
+                         "-fprofile-note="};
     std::string text(directory.str());
     // Paths read through a mount table normalize otherwise.
     text += mounts ? '\1' : '\2';
@@ -364,8 +379,11 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
         } else if(ranges::contains(separate, token)) {
             value_next = true;
             text += token;
-        } else if(token.starts_with("-frandom-seed=")) {
-            text += "-frandom-seed=";
+        } else if(auto prefix = ranges::find_if(
+                      joined,
+                      [&](llvm::StringRef prefix) { return token.starts_with(prefix); });
+                  prefix != joined.end()) {
+            text += *prefix;
         } else if((token.starts_with("-Wp,-MD,") || token.starts_with("-Wp,-MMD,")) &&
                   token.count(',') == 2) {
             text += token.take_front(token.rfind(',') + 1);

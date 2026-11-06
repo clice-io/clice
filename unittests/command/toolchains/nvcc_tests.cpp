@@ -229,6 +229,22 @@ ZEST_CASE(PairedValueDrops) {
     ZEXPECT(args == expected);
 }
 
+ZEST_CASE(OutputsDropped) {
+    // What the build writes goes in nvcc's long spellings too, which clang's
+    // table does not know.
+    auto args = translate({"nvcc",
+                           "--output-file",
+                           "a.o",
+                           "--dependency-output=a.d",
+                           "--generate-dependencies-with-compile",
+                           "--dependency-target-name",
+                           "a.o",
+                           "--compile",
+                           "-lineinfo"});
+    std::vector<std::string> expected = {"nvcc", "-lineinfo"};
+    ZEXPECT(args == expected);
+}
+
 ZEST_CASE(LongFormAliases) {
     auto args = translate({"nvcc",
                            "--include-path=/opt/inc",
