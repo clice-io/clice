@@ -40,6 +40,7 @@ public:
         for(auto header: given) {
             context |= closure(header);
         }
+        add_undefinitions();
 
         add_file_scope();
         add_references();
@@ -63,7 +64,7 @@ public:
                 }
             }
             need.before = served == uses.at.end() ? first->second : served->second;
-            if(served != first && served != uses.at.end() && !uses.declarers.empty()) {
+            if(served != first && !uses.declarers.empty()) {
                 ranges::sort(uses.declarers);
                 uses.declarers.erase(ranges::unique(uses.declarers).begin(), uses.declarers.end());
                 needs.push_back({.providers = uses.declarers, .before = first->second});
@@ -87,8 +88,8 @@ private:
 
         /// An `#include` (not an `#include_next` or `#import`) naming a
         /// guarded header the include tree holds, which no `IWYU pragma:
-        /// keep` keeps and which leaves the `#pragma pack` state as it
-        /// found it.
+        /// keep` keeps, which leaves the `#pragma pack` state as it found
+        /// it and undefines no macro from outside (add_undefinitions).
         bool reportable = false;
     };
 
@@ -215,6 +216,27 @@ private:
         }
     }
 
+    /// The `#include`s bringing a header that undefines a macro from outside
+    /// what they bring are never reported: without one, what follows sees
+    /// the macro again.
+    void add_undefinitions() {
+        for(auto& [fid, directive]: unit.directives()) {
+            for(auto& macro: directive.macros) {
+                auto file = macro.kind == MacroRef::Undef ? header_of(macro.loc) : std::nullopt;
+                if(!file) {
+                    continue;
+                }
+                auto definition = header_of(macro.macro->getDefinitionLoc());
+                for(auto& include: directives) {
+                    auto& files = closure(include.header);
+                    if(files.test(*file) && !(definition && files.test(*definition))) {
+                        include.reportable = false;
+                    }
+                }
+            }
+        }
+    }
+
     /// The headers `file` brings, itself included, the edges of the
     /// headers it skips too.
     const llvm::BitVector& closure(std::uint32_t file) {
@@ -301,19 +323,23 @@ private:
                                           directives.begin());
     }
 
-    /// What the headers declare at namespace scope beyond the names the
-    /// file uses: the using-directives bringing a namespace's names into
-    /// sight of another, which a name of the namespace they nominate needs
-    /// too, as do those bringing that other namespace's in turn; and the definitions the file has
-    /// to emit, without which it compiles to another object (the tests a `.inc` pastes in gone).
+    /// What the headers declare at namespace scope and in classes beyond
+    /// the names the file uses: the using-directives bringing a namespace's
+    /// names into sight of another, which a name of the namespace they
+    /// nominate needs too, as do those bringing that other namespace's in
+    /// turn; and the definitions the file has to emit, a static member's
+    /// initializer among them, without which it compiles to another object
+    /// (the tests a `.inc` pastes in gone).
     void add_file_scope() {
         auto end = static_cast<std::uint32_t>(focus.content().size());
         auto& ast = unit.context();
         llvm::SmallVector<const clang::DeclContext*> scopes = {unit.tu()};
         while(!scopes.empty()) {
             for(auto* decl: scopes.pop_back_val()->noload_decls()) {
+                auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
                 if(llvm::isa<clang::NamespaceDecl, clang::LinkageSpecDecl, clang::ExportDecl>(
-                       decl)) {
+                       decl) ||
+                   (record && !record->isDependentContext())) {
                     scopes.push_back(llvm::cast<clang::DeclContext>(decl));
                 } else if(auto* directive = llvm::dyn_cast<clang::UsingDirectiveDecl>(decl)) {
                     if(auto header = header_of(directive->getLocation())) {
@@ -432,6 +458,27 @@ private:
             }
         }
         return {};
+    }
+
+    static clang::TemplateSpecializationKind specialization_kind(const clang::Decl* decl) {
+        if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+            return function->getTemplateSpecializationKind();
+        }
+        if(auto* variable = llvm::dyn_cast<clang::VarDecl>(decl)) {
+            return variable->getTemplateSpecializationKind();
+        }
+        if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+            return record->getTemplateSpecializationKind();
+        }
+        return clang::TSK_Undeclared;
+    }
+
+    /// Where the explicit instantiation of `decl` is.
+    static clang::SourceLocation explicit_instantiation(const clang::Decl* decl) {
+        if(auto* specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
+            return specialization->getTemplateKeywordLoc();
+        }
+        return point_of_instantiation(decl);
     }
 
     /// The classes `arguments` name, which an instantiated body may need
@@ -567,6 +614,12 @@ private:
                 if(auto* outer = llvm::dyn_cast<clang::NamespaceDecl>(scope)) {
                     spaces.push_back(outer->getCanonicalDecl());
                 }
+            }
+        }
+        // An `extern template` keeps the file from instantiating it.
+        if(specialization_kind(decl) == clang::TSK_ExplicitInstantiationDeclaration) {
+            if(auto header = header_of(explicit_instantiation(decl))) {
+                add_need({*header}, before);
             }
         }
         if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
