@@ -35,7 +35,11 @@ struct SharedHeaderHeaderOf {
 
     std::uint64_t context = 0;
 
+    std::uint64_t linkage = 0;
+
     std::uint64_t packing = 0;
+
+    std::uint8_t takes_linkage = 0;
 
     Seq<SharedHeaderRecord::Read> reads;
 
@@ -133,7 +137,9 @@ std::vector<std::byte> encode_shared_header(const SharedHeaderIndex& index) {
     for(auto& header: record.headers) {
         blob.headers.push_back({.file = header.file,
                                 .context = header.context,
+                                .linkage = header.linkage,
                                 .packing = header.packing,
+                                .takes_linkage = header.takes_linkage,
                                 .reads = header.reads,
                                 .writes = header.writes,
                                 .includes = header.includes});
@@ -181,7 +187,9 @@ std::optional<SharedHeaderIndex> decode_shared_header(llvm::StringRef bytes) {
         auto& into = record.headers.emplace_back();
         into.file = header.file;
         into.context = header.context;
+        into.linkage = header.linkage;
         into.packing = header.packing;
+        into.takes_linkage = header.takes_linkage != 0;
         into.reads = copy<SharedHeaderRecord::Read>(header.reads);
         into.writes = copy<MacroState>(header.writes);
         into.includes = copy<SharedHeaderRecord::Include>(header.includes);

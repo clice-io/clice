@@ -58,10 +58,12 @@ struct SharedHeaderRecord {
         /// How many of the header's reads came before it.
         std::uint32_t reads = 0;
 
-        /// The declaration context and the `#pragma pack` at the include, as
-        /// a held header's (Header::context, Header::packing): a unit whose
-        /// first include of the header is this one parses it there.
+        /// The declaration context, the language linkage and the `#pragma
+        /// pack` at the include, as a held header's (Header::context): a unit
+        /// whose first include of the header is this one parses it there.
         std::uint64_t context = 0;
+
+        std::uint64_t linkage = 0;
 
         std::uint64_t packing = 0;
 
@@ -73,8 +75,8 @@ struct SharedHeaderRecord {
     struct Read {
         MacroState macro;
 
-        /// A system header's text read a name reserved to the
-        /// implementation (ISO C 7.1.3): the standard library's own
+        /// A header of the standard library read it
+        /// (CompilationUnit::in_standard_library): the library's own
         /// business, whose headers may be included in any order.
         bool library = false;
 
@@ -85,14 +87,20 @@ struct SharedHeaderRecord {
         /// Into `files`.
         std::uint32_t file = 0;
 
-        /// The declaration context the build entered it in, as the parser
-        /// reads the second token after the entry
-        /// (CompilationUnit::declaration_context).
+        /// The declaration context and the language linkage the build
+        /// entered it in, as the parser reads the second token after the
+        /// entry (CompilationUnit::declaration_context, declaration_linkage),
+        /// and the `#pragma pack` it entered it under (record_packing).
         std::uint64_t context = 0;
 
-        /// The `#pragma pack` the build entered it under
-        /// (CompilationUnit::record_packing).
+        std::uint64_t linkage = 0;
+
         std::uint64_t packing = 0;
+
+        /// Some function or variable it declares takes its language linkage
+        /// from where it is included, rather than from an `extern "C"`
+        /// block of its own.
+        bool takes_linkage = false;
 
         /// What its run read, in order, with the state it read.
         std::vector<Read> reads;
@@ -123,7 +131,7 @@ struct SharedHeaderRecord {
 
         std::uint64_t initial = 0;
 
-        /// A file outside the system headers wrote it.
+        /// A file outside the standard library wrote it.
         bool project = false;
 
         friend bool operator==(const Written&, const Written&) = default;

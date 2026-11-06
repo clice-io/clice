@@ -180,8 +180,8 @@ ZEST_CASE(NeverIncluded) {
 };
 
 ZEST_CASE(SystemOrder) {
-    // Two system headers read and write a macro only they touch, the unit
-    // including them the other way round: accepted.
+    // Two headers of the standard library read and write a macro only
+    // they touch, the unit including them the other way round: accepted.
     add_file("shared.hxx", "#pragma once\n#include <reader.h>\n#include <writer.h>\n");
     add_file("sys/reader.h", R"cpp(#pragma once
 #ifndef __size_defined
@@ -196,7 +196,7 @@ typedef unsigned long size_type;
 #endif
 )cpp");
     add_focus("main.cpp", "#include <writer.h>\n#include <reader.h>\n");
-    auto compiled = compile_over(*this, {"-isystem", TestVFS::path("sys")});
+    auto compiled = compile_over(*this, {"-internal-isystem", TestVFS::path("sys")});
     ZEXPECT(compiled.unit->shared_rejection().empty());
 };
 
@@ -231,7 +231,7 @@ ZEST_CASE(ProjectHeaderSystemRead) {
     add_file("sys/base.h", "#pragma once\n#include <mark.h>\n");
     add_file("config.h", "#pragma once\n#include <mark.h>\nint config();\n");
     add_focus("main.cpp", "#include \"config.h\"\n#include <base.h>\n");
-    auto compiled = compile_over(*this, {"-isystem", TestVFS::path("sys")});
+    auto compiled = compile_over(*this, {"-internal-isystem", TestVFS::path("sys")});
     ZEXPECT(compiled.unit->shared_rejection().empty());
 };
 
@@ -463,6 +463,33 @@ int disabled();
               "#define FEATURE 1\n#include \"feature.h\"\nint use() { return enabled(); }\n");
     auto compiled = compile_over(*this);
     ZEXPECT(compiled.unit->shared_rejection().contains("FEATURE"));
+};
+
+ZEST_CASE(IncludedInExternCXX) {
+    // `extern "C++"` at the top level is where the PCH declares it too.
+    add_file("shared.hxx", "#pragma once\n#include \"api.h\"\n");
+    add_file("api.h", "#pragma once\nint api(int);\n");
+    add_focus("main.cpp",
+              "extern \"C++\" {\n#include \"api.h\"\n}\nint use() { return api(1); }\n");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().empty());
+};
+
+ZEST_CASE(OwnExternC) {
+    // capi.h gives its functions C linkage itself: an outer `extern "C"`
+    // changes nothing.
+    add_file("shared.hxx", "#pragma once\n#include \"capi.h\"\n");
+    add_file("capi.h", R"cpp(#pragma once
+struct handle;
+extern "C" {
+int capi(struct handle*);
+}
+)cpp");
+    add_focus("main.cpp",
+              "extern \"C\" {\n#include \"capi.h\"\n}\nint use() { return capi(nullptr); }\n");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().empty());
+    ZEXPECT(from_pch(*compiled.unit, "capi"));
 };
 
 };  // ZEST_SUITE(SharedHeader)

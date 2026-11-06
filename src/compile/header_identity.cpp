@@ -42,7 +42,7 @@ public:
         if(auto it = pending.find(fid); it != pending.end()) {
             it->second += 1;
             if(it->second == 2) {
-                add(fid, unit.declaration_context());
+                add(fid, mix(unit.declaration_context(), unit.declaration_linkage()));
                 pending.erase(it);
             }
         }
@@ -56,7 +56,7 @@ private:
         if(reason == ExitFile) {
             // A file of fewer than two tokens: its context as it leaves.
             if(auto it = pending.find(previous); it != pending.end()) {
-                add(previous, unit.declaration_context());
+                add(previous, mix(unit.declaration_context(), unit.declaration_linkage()));
                 pending.erase(it);
             }
             return;
@@ -273,14 +273,26 @@ std::uint64_t CompilationUnit::declaration_context() {
     auto& sema = instance->getSema();
     std::uint64_t context = 0;
     for(auto* dc = sema.CurContext; dc; dc = dc->getParent()) {
+        if(llvm::isa<clang::LinkageSpecDecl>(dc)) {
+            continue;
+        }
         context = mix(context, static_cast<std::uint64_t>(dc->getDeclKind()));
         if(auto* named = llvm::dyn_cast<clang::NamedDecl>(dc)) {
             context = mix(context, llvm::xxh3_64bits(named->getNameAsString()));
-        } else if(auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(dc)) {
-            context = mix(context, static_cast<std::uint64_t>(linkage->getLanguage()));
         }
     }
     return mix(context, sema.PragmaAttributeStack.size());
+}
+
+std::uint64_t CompilationUnit::declaration_linkage() {
+    for(auto* dc = instance->getSema().CurContext; dc; dc = dc->getParent()) {
+        if(auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(dc)) {
+            return static_cast<std::uint64_t>(linkage->getLanguage());
+        }
+    }
+    return instance->getLangOpts().CPlusPlus
+               ? static_cast<std::uint64_t>(clang::LinkageSpecLanguageIDs::CXX)
+               : 0;
 }
 
 std::uint64_t CompilationUnit::record_packing() {

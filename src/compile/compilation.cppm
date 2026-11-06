@@ -422,6 +422,11 @@ public:
     /// Check if a file is a builtin file.
     bool is_builtin_file(clang::FileID fid);
 
+    /// Whether the file lies in the compiler's own include directories,
+    /// the standard library's (`-internal-isystem`), rather than in one the
+    /// command adds: the deepest search directory holding it decides.
+    bool in_standard_library(clang::FileEntryRef file);
+
     /// Whether the request synthesized the file (a header context's
     /// fragment, see CompilationInput::add_synthesized): no file on disk
     /// carries its bytes, so nothing may depend on it.
@@ -640,9 +645,14 @@ private:
     std::uint64_t macro_state(const clang::MacroInfo* macro, const clang::IdentifierInfo& name);
 
     /// A hash of the declaration context the parser is in: its chain of
-    /// named scopes and language linkages, and the attributes `#pragma clang
-    /// attribute` gives the declarations there.
+    /// named scopes, and the attributes `#pragma clang attribute` gives the
+    /// declarations there.
     std::uint64_t declaration_context();
+
+    /// The language linkage the parser gives the functions and variables
+    /// it reads: the innermost `extern "C"` or `extern "C++"` block's, C++
+    /// outside any; 0 in C.
+    std::uint64_t declaration_linkage();
 
     /// A hash of the alignment `#pragma pack` gives the records the parser
     /// reads next: clang applies it before it reads on, unlike the
@@ -781,6 +791,12 @@ private:
 
     /// Memo of macro_state.
     llvm::DenseMap<const clang::MacroInfo*, std::uint64_t> macro_states;
+
+    /// The command's search directories, whether each is the compiler's own
+    /// (in_standard_library), and the answer per file.
+    std::vector<std::pair<std::string, bool>> search_directories;
+
+    llvm::DenseMap<const clang::FileEntry*, bool> standard_library_files;
 
     /// Cache for file path. It is used to avoid multiple file path lookup.
     llvm::DenseMap<clang::FileEntryRef, llvm::StringRef> path_cache;

@@ -264,6 +264,36 @@ auto CompilationUnit::comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo:
     return file_text(fid).comments();
 }
 
+bool CompilationUnit::in_standard_library(clang::FileEntryRef file) {
+    auto [it, fresh] = standard_library_files.try_emplace(&file.getFileEntry(), false);
+    if(!fresh) {
+        return it->second;
+    }
+    if(search_directories.empty()) {
+        auto& arguments = params.input.arguments;
+        for(std::size_t i = 0; i + 1 < arguments.size(); i += 1) {
+            llvm::StringRef option = arguments[i];
+            bool own = option == "-internal-isystem" || option == "-internal-externc-isystem";
+            if(own || option == "-isystem" || option == "-idirafter" || option == "-iquote" ||
+               option == "-I") {
+                auto directory =
+                    Spelling::absolute(path::join(params.input.directory, arguments[i + 1]));
+                search_directories.emplace_back(CanonicalPath(directory).str(), own);
+                i += 1;
+            }
+        }
+    }
+    auto path = file_path(file);
+    std::size_t deepest = 0;
+    for(auto& [directory, own]: search_directories) {
+        if(directory.size() >= deepest && path::is_within(path, directory)) {
+            deepest = directory.size();
+            it->second = own;
+        }
+    }
+    return it->second;
+}
+
 bool CompilationUnit::is_builtin_file(clang::FileID fid) {
     // No FileEntryRef => built-in/command line/scratch.
     if(!SM().getFileEntryRefForID(fid)) {

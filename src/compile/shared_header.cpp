@@ -16,9 +16,12 @@ std::uint64_t name_hash(llvm::StringRef name) {
     return llvm::xxh3_64bits(name);
 }
 
-/// Whether `name` is reserved to the implementation (ISO C 7.1.3).
-bool reserved(llvm::StringRef name) {
-    return name.size() > 1 && name[0] == '_' && (name[1] == '_' || llvm::isUpper(name[1]));
+/// Whether `location` lies in a header of the standard library
+/// (CompilationUnit::in_standard_library).
+bool standard_library(CompilationUnit& unit, clang::SourceLocation location) {
+    auto& sm = unit.context().getSourceManager();
+    auto entry = sm.getFileEntryRefForID(sm.getFileID(sm.getExpansionLoc(location)));
+    return entry && unit.in_standard_library(*entry);
 }
 
 /// Whether a builtin macro gives what the unit counted, or how deep it
@@ -145,15 +148,23 @@ public:
             }
         }
         auto& search = pp.getHeaderSearchInfo();
+        auto taking = taking_linkage();
         std::vector<std::uint32_t> kept(headers.size(), none);
         for(auto [index, header]: views::enumerate(headers)) {
             auto& info = search.getFileInfo(header.entry);
             auto* guard = info.getControllingMacro(nullptr);
             if(header.forced || info.isPragmaOnce || (guard && pp.getMacroInfo(guard))) {
                 kept[index] = static_cast<std::uint32_t>(record.headers.size());
-                header.record.context = contexts[header.site];
+                std::tie(header.record.context, header.record.linkage) = contexts[header.site];
+                // Its run takes in the files it enters without a guard.
+                header.record.takes_linkage =
+                    taking.contains(&header.entry.getFileEntry()) ||
+                    ranges::any_of(header.record.includes, [&](auto& include) {
+                        return include.held == none &&
+                               taking.contains(&file_entries[include.file].getFileEntry());
+                    });
                 for(auto& include: header.record.includes) {
-                    include.context = contexts[include.context];
+                    std::tie(include.context, include.linkage) = contexts[include.context];
                 }
                 record.headers.push_back(std::move(header.record));
                 if(header.forced) {
@@ -321,11 +332,46 @@ private:
         }
     }
 
+    /// The files declaring a function or a variable outside any `extern`
+    /// block of their own: its language linkage is their includer's.
+    llvm::DenseSet<const clang::FileEntry*> taking_linkage() {
+        llvm::DenseSet<const clang::FileEntry*> files;
+        auto visit = [&](auto& self, const clang::DeclContext* context) -> void {
+            for(auto* decl: context->decls()) {
+                if(llvm::isa<clang::NamespaceDecl, clang::LinkageSpecDecl, clang::ExportDecl>(
+                       decl)) {
+                    self(self, llvm::cast<clang::DeclContext>(decl));
+                    continue;
+                }
+                if(!llvm::isa<clang::FunctionDecl, clang::VarDecl>(decl)) {
+                    continue;
+                }
+                auto file = sm.getFileID(sm.getExpansionLoc(decl->getLocation()));
+                auto entry = sm.getFileEntryRefForID(file);
+                if(!entry) {
+                    continue;
+                }
+                bool own = false;
+                for(auto* dc = decl->getLexicalDeclContext(); dc; dc = dc->getLexicalParent()) {
+                    if(auto* block = llvm::dyn_cast<clang::LinkageSpecDecl>(dc)) {
+                        own = sm.getFileID(sm.getExpansionLoc(block->getLocation())) == file;
+                        break;
+                    }
+                }
+                if(!own) {
+                    files.insert(&entry->getFileEntry());
+                }
+            }
+        };
+        visit(visit, unit.tu());
+        return files;
+    }
+
     /// A place whose declaration context is taken once the parser reads
     /// two tokens on, into `contexts`.
     std::uint32_t site() {
         auto site = static_cast<std::uint32_t>(contexts.size());
-        contexts.push_back(0);
+        contexts.emplace_back(0, 0);
         pending.emplace_back(site, 0);
         return site;
     }
@@ -338,7 +384,7 @@ private:
             if(entry.second < 2) {
                 return false;
             }
-            contexts[entry.first] = unit.declaration_context();
+            contexts[entry.first] = {unit.declaration_context(), unit.declaration_linkage()};
             return true;
         });
     }
@@ -466,7 +512,7 @@ private:
         auto name = name_hash(spelling);
         initial.try_emplace(name, state);
         auto& frame = stack.back();
-        bool library = frame.system && reserved(spelling);
+        bool library = frame.system && unit.in_standard_library(*frame.entry);
         if(!frame.written.contains(name) &&
            frame.read_names.insert({name, std::uint8_t(library)}).second) {
             frame.reads.push_back({
@@ -486,7 +532,7 @@ private:
         auto name = name_hash(info->getName());
         initial.try_emplace(name, unit.macro_state(previous, *info));
         auto [it, _] = written.try_emplace(name, Write{.spelling = info->getName()});
-        if(!sm.isInSystemHeader(sm.getExpansionLoc(token.getLocation()))) {
+        if(!standard_library(unit, token.getLocation())) {
             it->second.project = true;
         }
         auto& frame = stack.back();
@@ -542,15 +588,16 @@ private:
     struct Write {
         llvm::StringRef spelling;
 
-        /// A file outside the system headers wrote it.
+        /// A file outside the standard library wrote it.
         bool project = false;
     };
 
     /// The macros written.
     llvm::DenseMap<std::uint64_t, Write> written;
 
-    /// The declaration context of each entry and include (site).
-    std::vector<std::uint64_t> contexts;
+    /// The declaration context and the language linkage of each entry and
+    /// include (site).
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> contexts;
 
     /// The sites whose context is not taken yet, with how many tokens the
     /// parser read since.
@@ -564,9 +611,10 @@ private:
 /// the macros of the unit without the PCH are simulated: the ones the
 /// command gave, then the writes of the unit's own text and of each held
 /// header it includes, in order. A difference is waved through only inside
-/// the system library: a system header reading a name reserved to the
-/// implementation that only system headers write (ISO C 7.1.2 lets
-/// standard headers be included in any order).
+/// the standard library: one of its headers reading a macro only its
+/// headers write (ISO C 7.1.2 lets standard headers be included in any
+/// order). A library the command adds (`-isystem`) is checked as the
+/// project's own code is.
 /// Grafts what each held header included on the unit's include tree.
 class CompilationUnit::SharedHeaderChecker : public clang::PPCallbacks {
 public:
@@ -670,7 +718,8 @@ private:
                 return false;
             }
             auto& header = record.headers[site.first];
-            if(unit.declaration_context() != header.context) {
+            if(unit.declaration_context() != header.context ||
+               (header.takes_linkage && unit.declaration_linkage() != header.linkage)) {
                 reject(std::format("{} is included where its PCH does not declare it",
                                    record.files[header.file].path));
             }
@@ -719,7 +768,8 @@ private:
                     {.parent = above, .line = include.line, .file = include.file, .skipped = true});
             } else {
                 auto& nested = record.headers[include.held];
-                if(include.context != nested.context || include.packing != nested.packing) {
+                if(include.context != nested.context || include.packing != nested.packing ||
+                   (nested.takes_linkage && include.linkage != nested.linkage)) {
                     reject(std::format("{} is included where its PCH does not declare it",
                                        record.files[nested.file].path));
                 }
@@ -807,7 +857,7 @@ private:
         auto name = name_hash(info->getName());
         names.try_emplace(name, info->getName());
         states[name] = unit.macro_state(now, *info);
-        if(!sm.isInSystemHeader(sm.getExpansionLoc(token.getLocation()))) {
+        if(!standard_library(unit, token.getLocation())) {
             own_project.insert(name);
         }
     }
@@ -828,8 +878,7 @@ private:
             return;
         }
         location = sm.getExpansionLoc(location);
-        if(sm.isInSystemHeader(location) && reserved(spelling) && !it->project &&
-           !own_project.contains(name)) {
+        if(standard_library(unit, location) && !it->project && !own_project.contains(name)) {
             return;
         }
         reject(std::format("{} would read {} otherwise", sm.getFilename(location), spelling));

@@ -1888,8 +1888,7 @@ public:
                 auto grafted = unit.grafted_includes();
                 for(auto& include: grafted) {
                     // The command's -include, which no file includes.
-                    if(include.parent == SharedHeaderRecord::none &&
-                       !has_file(include.includer)) {
+                    if(include.parent == SharedHeaderRecord::none && !has_file(include.includer)) {
                         continue;
                     }
                     auto includer =
@@ -2458,8 +2457,7 @@ public:
                 std::optional<std::uint32_t> known;
                 if(unwalked.files.contains(fid) && tree.node_of(fid) != no_node) {
                     known = tree.path_id(fid);
-                } else if(!shared_known.empty() && SM.isLoadedFileID(fid) &&
-                          has_file(fid)) {
+                } else if(!shared_known.empty() && SM.isLoadedFileID(fid) && has_file(fid)) {
                     if(auto it = path_ids_of.find(unit.file_path(fid));
                        it != path_ids_of.end() && shared_known.contains(it->second)) {
                         known = it->second;
