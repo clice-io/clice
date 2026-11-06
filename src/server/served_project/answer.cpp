@@ -1,11 +1,12 @@
 module clice;
 
-import :index.peer_queries;
+import :index.query;
 import :server.master;
 import :server.served_project;
 import :support.logging;
 import :syntax.scan;
 import :vfs.file_system;
+import :vfs.path;
 import :support.timer;
 import :worker.protocol;
 
@@ -49,7 +50,7 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
             // crash stops the compile — the worker cannot be asked, the
             // index is still true), else the disk shard admitted by
             // freshness clause 4.
-            auto admitted = project.index_query.serving(session.path_id);
+            auto admitted = query().serving(session.path_id);
             // The disk shard merges every context the file compiles in, or
             // holds its first command's: a context the user chose waits for
             // its own compile.
@@ -120,18 +121,46 @@ std::optional<index::IndexQuery::Cursor>
     if(!path_id.valid()) {
         return std::nullopt;
     }
-    return project.index_query.symbol_at(path_id, position, server.position_encoding);
+    return query().symbol_at(path_id, position, server.position_encoding);
 }
 
-index::PeerQueries ServedProject::peer_queries() {
-    return {
-        .own = project.index_query,
-        .peers = [this] { return server.peer_queries(*this); },
-        .open_in = [this](Fid file) -> const index::IndexQuery* {
-            auto* document = server.find_document(file);
-            return document && document->owner ? &document->owner->project.index_query : nullptr;
-        },
-    };
+std::vector<index::OpenBuffer> ServedProject::open_buffers() const {
+    std::vector<index::OpenBuffer> open;
+    for(auto& [path_id, document]: documents) {
+        auto& session = *document.session;
+        auto& compiled = document.latest;
+        open.push_back({
+            .file = path_id,
+            .text = session.text(),
+            .hash = session.hash,
+            .positions = session.positions(),
+            .index = compiled ? compiled->index : nullptr,
+            .current = current(path_id),
+            .preamble = compiled ? compiled->preamble_index : nullptr,
+        });
+    }
+    return open;
+}
+
+index::IndexQuery ServedProject::query_all() const {
+    std::vector<index::IndexQuery> others;
+    for(auto& other: server.projects) {
+        if(other.get() != this) {
+            others.push_back(other->query());
+        }
+    }
+    return query().asking(std::move(others));
+}
+
+index::IndexQuery ServedProject::editing_query() const {
+    std::vector<index::OpenBuffer> open;
+    for(auto& other: server.projects) {
+        if(other.get() == this || (!project.root.empty() && !other->project.root.empty() &&
+                                   path::is_within(other->project.root, project.root))) {
+            open.append_range(other->open_buffers());
+        }
+    }
+    return project.index_query.reading(std::move(open));
 }
 
 SourceText& ServedProject::text_of(Session& session) {
@@ -143,12 +172,11 @@ SearchConfig ServedProject::search_of(Fid path_id) {
     // Editor use: the search follows the command (context choice, chosen
     // database entry) the open buffer compiles under.
     return project.toolchain.search_config(
-        project.select_command(path_id, {.choice = active_choice(path_id), .open = true}).ref);
+        project.select_command(path_id, command_request(path_id)).ref);
 }
 
 ScanResult ServedProject::declared_module(Fid path_id, llvm::StringRef text) {
-    auto rendered = project.render(
-        project.select_command(path_id, {.choice = active_choice(path_id), .open = true}).ref);
+    auto rendered = project.render(project.select_command(path_id, command_request(path_id)).ref);
     std::vector<const char*> argv;
     argv.reserve(rendered.arguments.size());
     for(auto& argument: rendered.arguments) {
@@ -161,7 +189,7 @@ ScanResult ServedProject::declared_module(Fid path_id, llvm::StringRef text) {
 }
 
 std::vector<index::DocumentLink> ServedProject::preamble_links(const Session& session) const {
-    auto state = project.index_query.preamble_index(session.path_id);
+    auto state = query().preamble_index(session.path_id);
     return state ? state->links() : std::vector<index::DocumentLink>{};
 }
 

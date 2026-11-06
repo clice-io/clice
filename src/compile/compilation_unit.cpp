@@ -4,6 +4,7 @@ import :compile.compilation;
 import :compile.tokens;
 import :syntax.lexical_scan;
 import :syntax.preamble;
+import :syntax.scan;
 import :syntax.source_text;
 import :vfs.file_system;
 import :vfs.path;
@@ -178,6 +179,13 @@ auto CompilationUnit::focus_file() -> FocusFile {
 }
 
 auto CompilationUnit::file_path(clang::FileEntryRef entry) -> llvm::StringRef {
+    if(auto* found = origin(entry)) {
+        return found->source;
+    }
+    return entry_path(entry);
+}
+
+auto CompilationUnit::entry_path(clang::FileEntryRef entry) -> llvm::StringRef {
     if(auto it = path_cache.find(entry); it != path_cache.end()) {
         return it->second;
     }
@@ -189,18 +197,7 @@ auto CompilationUnit::file_path(clang::FileEntryRef entry) -> llvm::StringRef {
     /// path — the dependency set must cover every spelling the compile
     /// read. A file only memory holds (a header context's fragment) is
     /// named like a missing one, through its directory.
-    llvm::SmallString<128> spelled(entry.getName());
-    auto& files = SM().getFileManager();
-    files.makeAbsolutePath(spelled);
-    // An -ivfsoverlay can name a file by a path only the overlay knows;
-    // the file read is the one it redirects to.
-    if(auto& vfs = files.getVirtualFileSystem(); llvm::isa<llvm::vfs::RedirectingFileSystem>(vfs)) {
-        llvm::SmallString<128> redirected;
-        if(!vfs.getRealPath(spelled, redirected)) {
-            spelled = redirected;
-        }
-    }
-    auto path = CanonicalPath(Spelling::absolute(spelled)).str();
+    auto path = input_path(SM().getFileManager(), entry);
     auto [it, inserted] = path_cache.try_emplace(entry, llvm::StringSaver(path_storage).save(path));
     assert(inserted && "File path already exists");
     return it->second;
@@ -209,6 +206,9 @@ auto CompilationUnit::file_path(clang::FileEntryRef entry) -> llvm::StringRef {
 auto CompilationUnit::file_path(clang::FileID fid) -> llvm::StringRef {
     assert(fid.isValid() && "file_path: invalid fid");
 
+    if(auto* found = origin(fid)) {
+        return found->source;
+    }
     auto entry = SM().getFileEntryRefForID(fid);
     assert(entry && "file_path: fid has no backing file entry, check is_builtin_file first");
     if(!entry) {
@@ -217,7 +217,7 @@ auto CompilationUnit::file_path(clang::FileID fid) -> llvm::StringRef {
         return {};
     }
 
-    return file_path(*entry);
+    return entry_path(*entry);
 }
 
 auto CompilationUnit::project_root() -> llvm::StringRef {
@@ -248,10 +248,6 @@ auto CompilationUnit::loaded_file_content(clang::FileID fid) -> std::optional<ll
     return SM().getBufferDataOrNone(fid);
 }
 
-auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
-    return file_text(fid).positions();
-}
-
 auto CompilationUnit::lexical(clang::FileID fid) -> const LexicalInfo& {
     return file_text(fid).lexical();
 }
@@ -280,16 +276,25 @@ auto CompilationUnit::include_location(clang::FileID fid) -> clang::SourceLocati
     return SM().getIncludeLoc(fid);
 }
 
+const SynthesizedOrigin* CompilationUnit::origin(clang::FileEntryRef entry) {
+    if(!borrows_context()) {
+        return nullptr;
+    }
+    auto it = params.input.synthesized.find(entry_path(entry));
+    return it != params.input.synthesized.end() ? &it->second : nullptr;
+}
+
 const SynthesizedOrigin* CompilationUnit::origin(clang::FileID fid) {
     if(!borrows_context()) {
         return nullptr;
     }
-    auto entry = SM().getFileEntryRefForID(fid);
-    if(!entry) {
-        return nullptr;
+    auto [it, inserted] = origins.try_emplace(fid);
+    if(inserted) {
+        if(auto entry = SM().getFileEntryRefForID(fid)) {
+            it->second = origin(*entry);
+        }
     }
-    auto it = params.input.synthesized.find(file_path(*entry));
-    return it != params.input.synthesized.end() ? &it->second : nullptr;
+    return it->second;
 }
 
 bool CompilationUnit::synthesized(clang::FileID fid) {
@@ -300,23 +305,22 @@ bool CompilationUnit::borrows_context() {
     return !params.input.synthesized.empty();
 }
 
-auto CompilationUnit::source_path(clang::FileID fid) -> llvm::StringRef {
-    if(auto* found = origin(fid)) {
-        return found->source;
-    }
-    return file_path(fid);
-}
-
-std::uint32_t CompilationUnit::source_offset(clang::FileID fid, std::uint32_t offset) {
+auto CompilationUnit::source_of(FileOffset position) -> std::optional<SourceOffset> {
+    auto [fid, offset] = position;
     auto* found = origin(fid);
     if(!found) {
-        return offset;
+        return SourceOffset{.path = file_path(fid), .offset = offset};
     }
     auto run = ranges::upper_bound(found->runs, offset, {}, &SourceRun::offset);
-    assert(run != found->runs.begin() && offset - std::prev(run)->offset < std::prev(run)->length &&
-           "a position the context did not copy from its file");
+    if(run == found->runs.begin()) {
+        return std::nullopt;
+    }
     run = std::prev(run);
-    return run->source_offset + (offset - run->offset);
+    if(offset - run->offset > run->length) {
+        return std::nullopt;
+    }
+    return SourceOffset{.path = found->source,
+                        .offset = run->source_offset + (offset - run->offset)};
 }
 
 bool CompilationUnit::host_source(clang::FileID fid) {
@@ -326,7 +330,7 @@ bool CompilationUnit::host_source(clang::FileID fid) {
     if(!synthesized(fid)) {
         return false;
     }
-    return source_path(fid) == params.input.host;
+    return file_path(fid) == params.input.host;
 }
 
 bool CompilationUnit::from_context(clang::FileID fid) {
@@ -370,8 +374,9 @@ bool CompilationUnit::in_preamble(clang::FileID fid) {
             }
             result = decompose(include).offset < *preamble_end;
         } else if(is_builtin_file(includer)) {
+            auto path = entry_path(*SM().getFileEntryRefForID(fid));
             result = ranges::none_of(params.input.forced_includes, [&](const std::string& forced) {
-                return CanonicalPath(Spelling::absolute(forced)).str() == file_path(fid);
+                return CanonicalPath(Spelling::absolute(forced)).str() == path;
             });
         } else {
             result = in_preamble(includer);
@@ -421,7 +426,7 @@ auto FocusFile::content() -> llvm::StringRef {
 }
 
 auto FocusFile::positions() -> PositionMap {
-    return unit.positions(file());
+    return text().positions();
 }
 
 auto FocusFile::tokens() -> const TokenMap& {
@@ -609,20 +614,7 @@ std::vector<ReportedInput> CompilationUnit::deps() {
 }
 
 std::vector<std::string> CompilationUnit::absent() {
-    std::vector<std::string> result;
-    for(auto& entry: absent_paths) {
-        // The candidates over-approximate where a lookup looked (an
-        // `#include_next` does not start at the first directory, a lookup
-        // also fails on a directory of that name): only a place holding
-        // nothing is absent.
-        // FIXME: a header generated here while the compile ran, after its lookup
-        // failed, is filtered out too, and its creation is never seen.
-        if(!fs::exists(entry.getKey())) {
-            result.emplace_back(entry.getKey());
-        }
-    }
-    ranges::sort(result);
-    return result;
+    return absent_places(absent_paths);
 }
 
 clang::TranslationUnitDecl* CompilationUnit::tu() {

@@ -296,16 +296,23 @@ private:
                   LocalSourceRange range,
                   llvm::StringRef message) {
         /// A note can point into a synthetic buffer, e.g. a macro defined
-        /// on the command line, or into a header context's synthesized
-        /// fragment; there is no file to link to.
-        if(fid.isInvalid() || unit.is_builtin_file(fid) || unit.synthesized(fid) ||
-           !range.valid()) {
+        /// on the command line, or into what a header context adds to its
+        /// host's text; there is no file to link to.
+        if(fid.isInvalid() || unit.is_builtin_file(fid) || !range.valid()) {
             return;
         }
-        bool own = unit.focus_file().contains(fid);
+        if(unit.focus_file().contains(fid)) {
+            diagnostic.notes.push_back({.range = in_text(range), .message = message.str()});
+            return;
+        }
+        auto begin = unit.source_of({fid, range.begin});
+        auto end = unit.source_of({fid, range.end});
+        if(!begin || !end) {
+            return;
+        }
         diagnostic.notes.push_back({
-            .path = own ? std::string() : unit.file_path(fid).str(),
-            .range = own ? in_text(range) : range,
+            .path = begin->path.str(),
+            .range = {begin->offset, end->offset},
             .message = message.str(),
         });
     }

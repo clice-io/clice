@@ -48,19 +48,25 @@ struct PCHEntry : Precompiled<FailureRecord> {
     /// Path of the paired pch.idx index.
     std::string index_path;
 
-    /// Lazily opened blob; shared so a consumer holding it across an await
-    /// survives concurrent entry replacement or eviction.
-    std::shared_ptr<index::TUIndex> index;
+    /// The opened blob while someone holds it — a document's compile, the
+    /// parse its build was for — so it stays mapped only while used; a
+    /// holder keeps it across an await, whatever becomes of the entry.
+    std::weak_ptr<index::TUIndex> index;
+
+    /// The blob the build opened and verified on the thread pool, until the
+    /// parse waiting for it takes it (BuiltPCH::index); none when no parse
+    /// waited any more.
+    std::shared_ptr<index::TUIndex> built_index;
 
     /// The parses that died reading the key's pairs or found them unreadable
     /// (Project::pch_consume_failed); none since one read them.
     std::optional<FailureRecord> consumes;
 
-    /// Open the blob on first use (memory-mapped, no deserialization).
-    /// Returns nullptr when the blob is missing or unreadable — consumers
-    /// degrade (no overlay, no preamble links) and the next PCH attempt
-    /// treats the incomplete pair as a cache miss.
-    const std::shared_ptr<index::TUIndex>& load_index();
+    /// The blob while held, else opened again (memory-mapped, no
+    /// deserialization). Returns nullptr when the blob is missing or
+    /// unreadable — consumers degrade (no overlay, no preamble links) and the
+    /// next PCH attempt treats the incomplete pair as a cache miss.
+    std::shared_ptr<index::TUIndex> load_index();
 };
 
 /// One acquisition of a preamble's PCH (a PCH and its pch.idx index,
@@ -76,7 +82,7 @@ struct PCHEntry : Precompiled<FailureRecord> {
 /// of the keys' builds and consumption (PCHEntry). The adoption
 /// side stays with the server: which document points at the key and the
 /// documents' failure records — every consumer reads a failed acquisition's
-/// crash from build_crash and books it for itself.
+/// crash from pch_build_crash and books it for itself.
 struct PCHRequest {
     std::string pch_key;
 
@@ -142,6 +148,11 @@ struct BuiltPCH {
 
     /// The path and bound of `loaded`, as a worker's compile takes them.
     std::pair<std::string, std::uint32_t> pch;
+
+    /// The preamble's index its build opened and verified, for the parse
+    /// this build ran for; null for a PCH built before, which the parse
+    /// opens again (Project::preamble_index).
+    std::shared_ptr<index::TUIndex> index;
 };
 
 /// When reading a key's pairs stops it from building: two failures in a

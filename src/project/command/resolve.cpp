@@ -234,16 +234,7 @@ Rendered Project::render(const CommandRef& ref, const RenderOptions& options) {
 
 Resolution Project::resolve_command(Fid path_id, const CommandRequest& request) {
     Resolution resolution;
-    llvm::SmallVector<UnitCommand, 2> taken;
-    while(true) {
-        static_cast<SelectedCommand&>(resolution) = select_command(path_id, request);
-        if(!request.preprocess || !resolution.missing_tree ||
-           ranges::contains(taken, resolution.missing_tree->key)) {
-            break;
-        }
-        taken.push_back(resolution.missing_tree->key);
-        take_tree(*resolution.missing_tree);
-    }
+    static_cast<SelectedCommand&>(resolution) = select_command(path_id, request);
 
     // The header's context: the includer's state up to where the host's
     // compile enters it, synthesized when the header needs it, else the
@@ -289,6 +280,21 @@ Resolution Project::resolve_command(Fid path_id, const CommandRequest& request) 
     return resolution;
 }
 
+async::task<Resolution> Project::resolve_with_trees(Fid file,
+                                                    llvm::function_ref<CommandRequest()> request,
+                                                    llvm::function_ref<bool()> current) {
+    auto resolution = resolve_command(file, request());
+    llvm::SmallVector<UnitCommand, 2> taken;
+    while(resolution.missing_tree && !ranges::contains(taken, resolution.missing_tree->key)) {
+        taken.push_back(resolution.missing_tree->key);
+        if(!co_await take_tree(*resolution.missing_tree) || (current && !current())) {
+            break;
+        }
+        resolution = resolve_command(file, request());
+    }
+    co_return resolution;
+}
+
 const clang::LangOptions& Project::dialect(Fid file, const ContextChoice* choice) {
     auto ref = select_command(file, {.choice = choice}).ref;
     auto language = language_of(ref);
@@ -305,13 +311,7 @@ const clang::LangOptions& Project::dialect(Fid file, const ContextChoice* choice
 
 std::uint64_t Project::command_identity(Fid unit) {
     auto candidates = this->candidates(unit);
-    if(candidates.empty()) {
-        return 0;
-    }
-    auto& candidate = candidates.front();
-    std::uint64_t parts[] = {commands.command_hash(candidate.base),
-                             rules.identity(rule_edits(unit, candidate))};
-    return llvm::xxh3_64bits(llvm::StringRef(reinterpret_cast<const char*>(parts), sizeof(parts)));
+    return candidates.empty() ? 0 : tree_request(unit, candidates.front()).key.second;
 }
 
 std::optional<CommandRef> Project::pch_writer(Fid file,

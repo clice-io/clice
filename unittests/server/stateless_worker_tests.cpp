@@ -172,7 +172,7 @@ ZEST_CASE(BuildPCHRequest) {
         params.content = "#pragma once\nint pch_global = 42;\n";
         params.output_path = tmp.path("test_pch.pch");
         // The pair is mandatory: a PCH is only served with its blob.
-        params.index_output_path = tmp.path("test_pch.pch.idx");
+        params.indexing.output_path = tmp.path("test_pch.pch.idx");
 
         auto result = co_await w.peer->send_request(params);
         ZEXPECT(result);

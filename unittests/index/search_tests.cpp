@@ -10,49 +10,15 @@ import :semantic.symbol;
 import :support.bytes;
 import :unittests.utils.index_query_tester;
 import :vfs.ids;
+import :vfs.path;
 
 namespace clice::testing {
 namespace {
 
-/// Open buffers reduced to their session tables, counting the tables the
-/// queries visit.
-struct CountingSessions : index::LiveSources {
-    std::vector<index::TUIndex> tables;
-    mutable std::size_t visits = 0;
-
-    bool is_open(Fid) const override {
-        return false;
-    }
-
-    std::optional<index::IndexSource> buffer_index(Fid) const override {
-        return std::nullopt;
-    }
-
-    void for_each_session(llvm::function_ref<bool(const index::IndexSource&)>) const override {}
-
-    void for_each_session_index(
-        llvm::function_ref<bool(const index::TUIndex&)> visit) const override {
-        for(auto& table: tables) {
-            visits += 1;
-            if(!visit(table)) {
-                return;
-            }
-        }
-    }
-
-    void for_each_preamble(llvm::function_ref<bool(const index::IndexSource&)>) const override {}
-
-    void for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)>) const override {}
-
-    std::shared_ptr<index::TUIndex> preamble_index(Fid) const override {
-        return nullptr;
-    }
-};
-
 ZEST_SUITE(IndexSearch, IndexQueryTester) {
 
 std::vector<index::IndexQuery::Located> locate(llvm::StringRef text) {
-    return index::locate(query, *index::SymbolQuery::parse(text));
+    return index::locate(query(), *index::SymbolQuery::parse(text));
 }
 
 ZEST_CASE(SearchSymbols) {
@@ -108,11 +74,11 @@ ZEST_CASE(UnnamedScopes) {
         });
         return found;
     };
-    ZASSERT(query.qualified_name(at("size")) == "outer::kSize");
-    ZASSERT(query.qualified_name(at("member")) == "outer::Holder::member");
+    ZASSERT(query().qualified_name(at("size")) == "outer::kSize");
+    ZASSERT(query().qualified_name(at("member")) == "outer::Holder::member");
     // An unnamed class with a declarator or a typedef name is no anonymous
     // scope: lookup never names its members through `outer`.
-    ZASSERT(query.qualified_name(at("field")) == "outer::(anonymous struct)::field");
+    ZASSERT(query().qualified_name(at("field")) == "outer::(anonymous struct)::field");
     ZASSERT(search("outer::kSize").size() == std::size_t(1));
     ZASSERT(search("Holder::member").size() == std::size_t(1));
 }
@@ -136,12 +102,12 @@ ZEST_CASE(QualifiedNames) {
         return false;
     });
     ZASSERT(method != 0);
-    ZASSERT(query.qualified_name(method) == "outer::inner::Widget::paint");
+    ZASSERT(query().qualified_name(method) == "outer::inner::Widget::paint");
 
-    auto info = query.symbol_info(method);
+    auto info = query().symbol_info(method);
     ZASSERT(info);
     ZASSERT(info->name == "paint");
-    ZASSERT(query.qualified_name(info->parent) == "outer::inner::Widget");
+    ZASSERT(query().qualified_name(info->parent) == "outer::inner::Widget");
 
     // Locating by a qualified name matches the parent chain, a bare one
     // the symbol's own name; both find the specialization by its
@@ -149,7 +115,8 @@ ZEST_CASE(QualifiedNames) {
     auto by_qualified = locate("inner::Widget<int>");
     ZASSERT(by_qualified.size() == std::size_t(1));
     ZASSERT(by_qualified.front().symbol.args == "<int>");
-    ZASSERT(query.qualified_name(by_qualified.front().symbol.hash) == "outer::inner::Widget<int>");
+    ZASSERT(query().qualified_name(by_qualified.front().symbol.hash) ==
+            "outer::inner::Widget<int>");
     auto by_bare = locate("Widget<int>");
     ZASSERT(by_bare.size() == std::size_t(1));
     ZASSERT(by_bare.front().symbol.hash == by_qualified.front().symbol.hash);
@@ -160,18 +127,18 @@ ZEST_CASE(QualifiedNames) {
     auto searched = search("Widget<int>");
     ZASSERT(searched.size() == std::size_t(1));
     ZASSERT(searched.front().symbol.hash == by_qualified.front().symbol.hash);
-    ZASSERT(query.container_name(searched.front().symbol.hash) == "outer::inner");
+    ZASSERT(query().container_name(searched.front().symbol.hash) == "outer::inner");
     auto versioned = search("versioned");
     ZASSERT(versioned.size() == std::size_t(1));
-    ZASSERT(query.container_name(versioned.front().symbol.hash) == "outer");
-    ZASSERT(query.qualified_name(versioned.front().symbol.hash) == "outer::versioned");
+    ZASSERT(query().container_name(versioned.front().symbol.hash) == "outer");
+    ZASSERT(query().qualified_name(versioned.front().symbol.hash) == "outer::versioned");
     index::SymbolHash hidden = 0;
     project.index.shard(focus_id)->occurrences_at(point("hidden"), [&](const index::Occurrence& o) {
         hidden = o.target;
         return false;
     });
     ZASSERT(hidden != 0);
-    ZASSERT(query.qualified_name(hidden, focus_id) == "outer::hidden");
+    ZASSERT(query().qualified_name(hidden, focus_id) == "outer::hidden");
 
     // A scoped query keeps the results whose container lists the scope's
     // components in order; a leading `::` pins the container exactly.
@@ -206,13 +173,13 @@ ZEST_CASE(LocalsAndCursors) {
     // serving source, which no symbol record names.
     index::SymbolQuery at;
     at.position = {.path = project.file_table.resolve(focus_id).str(), .line = 3, .column = 21};
-    auto located = index::locate(query, at);
+    auto located = index::locate(query(), at);
     ZASSERT(located.size() == std::size_t(1));
     ZASSERT(located.front().symbol.name == "helper");
     ZASSERT(located.front().site.path.ends_with("main.cpp"));
     // The line alone lists it too.
     at.position->column.reset();
-    auto on_line = index::locate(query, at);
+    auto on_line = index::locate(query(), at);
     ZASSERT(on_line.size() == std::size_t(1));
     ZASSERT(on_line.front().symbol.name == "helper");
 }
@@ -290,7 +257,7 @@ ZEST_CASE(OverloadsPastLimit) {
     )");
     index_workspace();
 
-    auto found = index::completables(query, "t", 1);
+    auto found = index::completables(query(), "t", 1);
     std::vector<std::string> names;
     for(auto& name: found.names) {
         names.push_back(name.symbol.name);
@@ -300,8 +267,9 @@ ZEST_CASE(OverloadsPastLimit) {
 }
 
 /// Open `buffers` documents, each declaring its own functions in one
-/// shared namespace.
-void open_buffers(CountingSessions& sessions, int buffers) {
+/// shared namespace, as the open buffers their compiles serve.
+std::vector<index::OpenBuffer> open_buffers(int buffers) {
+    std::vector<index::OpenBuffer> open;
     for(int buffer = 0; buffer < buffers; buffer += 1) {
         clear();
         std::string text = "namespace app { namespace shared {\n";
@@ -311,23 +279,29 @@ void open_buffers(CountingSessions& sessions, int buffers) {
         text += "} }\n";
         add_focus(std::format("main{}.cpp", buffer), text);
         ZASSERT(compile());
-        sessions.tables.push_back(index::TUIndex::from_buffer(
+        auto table = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
             llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit)))));
+        open.push_back({
+            .file = project.file_table.intern(Spelling::absolute(table->path(table->focus_file()))),
+            .text = {},
+            .positions = table->shard_of(table->focus_file()).positions(),
+            .index = table,
+            .current = true,
+        });
     }
+    return open;
 }
 
-ZEST_CASE(ScopedSearchScalesLinearly) {
-    auto visits_with = [&](int buffers) {
-        CountingSessions sessions;
-        open_buffers(sessions, buffers);
-        index::IndexQuery session_query{project.index, project.file_table, nullptr, &sessions};
-        index::search(session_query, *index::SymbolQuery::parse("app::fn0_1"), 10);
-        return sessions.visits;
-    };
-    // Four times the open buffers: a scan of each buffer's table grows
-    // four times, a lookup through every table per candidate sixteen.
-    auto few = visits_with(2);
-    ZASSERT(visits_with(8) <= few * 4);
+ZEST_CASE(ScopedSearchReadsOpenBuffers) {
+    auto open = open_buffers(8);
+    auto query = project.index_query.reading(std::move(open));
+    for(auto name: {"fn0_1", "fn7_1"}) {
+        auto found = index::search(query,
+                                   *index::SymbolQuery::parse(std::format("app::shared::{}", name)),
+                                   10);
+        ZASSERT(!found.empty());
+        ZEXPECT(found.front().symbol.name == name);
+    }
 }
 
 };  // ZEST_SUITE(IndexSearch)

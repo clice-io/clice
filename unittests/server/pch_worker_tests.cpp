@@ -53,7 +53,7 @@ ZEST_CASE(BuildPCHThenCompile) {
         params.content = main_text;
         params.preamble_bound = preamble_bound(main_text);
         params.output_path = tmp.path("preamble.pch");
-        params.index_output_path = tmp.path("preamble.pch.idx");
+        params.indexing.output_path = tmp.path("preamble.pch.idx");
 
         auto result = co_await sl.peer->send_request(params);
         ZASSERT(result);
@@ -140,7 +140,7 @@ ZEST_CASE(UserFatalErrorSparesPCH) {
         params.content = main_text;
         params.preamble_bound = bound;
         params.output_path = tmp.path("preamble.pch");
-        params.index_output_path = tmp.path("preamble.pch.idx");
+        params.indexing.output_path = tmp.path("preamble.pch.idx");
 
         auto result = co_await sl.peer->send_request(params);
         ZASSERT(result);
@@ -209,7 +209,7 @@ ZEST_CASE(BlobWriteFailure) {
         params.output_path = tmp.path("preamble.pch");
         // Unwritable blob path: the whole build must fail (the PCH is only
         // served together with its blob), classified as an internal error.
-        params.index_output_path = tmp.path("no_such_dir/preamble.pch.idx");
+        params.indexing.output_path = tmp.path("no_such_dir/preamble.pch.idx");
 
         auto result = co_await sl.peer->send_request(params);
         ZASSERT(result);

@@ -2,6 +2,7 @@ module clice;
 
 import :compile.tidy;
 import :driver.driver;
+import :driver.run;
 import :project.graph.unit;
 import :project.project;
 import :support.logging;
@@ -295,7 +296,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
 
     Lifetime lifetime(run);
     LintPass pass;
-    co_await async::with_token(run_lint_pass(run, with_index, tus, pass), lifetime.token());
+    co_await async::with_token(run_lint_pass(run, with_index, tus, pass), lifetime.stop.token());
     // What arrived is the report, whole or cut short by an interruption.
     for(auto& finding: pass.findings) {
         show_path(project.file_table, finding.file);
@@ -315,7 +316,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         // stays missing while the run exits clean.
         background.start();
         background.schedule(/*immediate=*/true);
-        co_await async::with_token(background.wait_idle(), lifetime.token());
+        co_await async::with_token(background.wait_idle(), lifetime.stop.token());
     }
     if(co_await lifetime.finish()) {
         result.interrupted = true;

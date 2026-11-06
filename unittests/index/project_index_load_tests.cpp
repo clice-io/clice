@@ -5,7 +5,7 @@ import :index.format;
 import :index.project_index;
 import :index.project_records;
 import :index.symbol_query;
-import :project.indexer;
+import :project.background;
 import :project.graph.pcm;
 import :project.project;
 import :support.bytes;

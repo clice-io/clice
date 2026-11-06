@@ -14,21 +14,22 @@ import :index.query;
 import :index.shard;
 import :index.tu_index;
 import :index.writer_lock;
+import :project.background;
 import :project.command;
 import :project.discovery;
 import :project.graph.pch;
 import :project.graph.pcm;
 import :project.graph.task_graph;
 import :project.graph.unit;
-import :project.indexer;
-import :project.listings;
 import :project.members;
 import :project.memo;
+import :project.saved;
 import :semantic.symbol;
 import :settings.rules;
 import :settings.settings;
 import :support.failure_record;
 import :support.prelude;
+import :support.signal;
 import :syntax.dependency_graph;
 import :vfs.cache_store;
 import :vfs.file_table;
@@ -56,53 +57,42 @@ struct ContextChoices {
     bool dirty = false;
 };
 
-/// The server's side of a served project: what the project asks of the
-/// documents open in it, and tells it of the index they read. A run of the
-/// command line has none (Project::serving).
-struct ServingSide {
-    /// How many documents are open: the loaded-index budget follows it.
-    virtual std::size_t open_documents() const = 0;
+/// Who compiles a unit (Project::compiled_by).
+enum class CompiledBy : std::uint8_t {
+    /// An open document's own compile: its index stands for the unit's
+    /// until the document closes (BackgroundIndex::leave_to_document).
+    Document,
+    /// A build: its PCM's, or that of the precompiled header it writes.
+    Build,
+    /// Its own compile (compile_unit).
+    Itself,
+};
 
-    /// Whether an open document's own compile serves the file: a pending
-    /// reindex other than a change of its own content then is cleared
-    /// without a background compile, which would compile the file a second
-    /// time. The serving side books the file again when the document
-    /// closes.
-    virtual bool compiled_by_session(Fid file) const = 0;
+/// An open document, as a change of the project's inputs needs it: the
+/// project does not know the documents its owner has open, which the owner
+/// hands it.
+struct OpenFile {
+    Fid file;
 
-    /// Under `skip_header_bodies`, every index run also brings back the
-    /// diagnostics an editor can get wrong on its file
-    /// (UnitRequest::skipped_diagnostics), handed here with the hash of the
-    /// text they describe — unless a reindex booked during the run says
-    /// they describe inputs that changed.
-    virtual void report_skipped_diagnostics(Fid file,
-                                            std::uint64_t text_hash,
-                                            std::vector<feature::FileDiagnostic> diagnostics) = 0;
+    /// The files its last compile read.
+    llvm::SmallVector<Fid> read;
+};
 
-    /// Whether the serving side lacks those diagnostics for the file: its
-    /// run goes ahead even when its index is current.
-    virtual bool lacks_skipped_diagnostics(Fid file) const = 0;
+/// What a change of the project's inputs means for the open documents
+/// (files_changed, update_members).
+struct Affected {
+    /// The open files whose compile the change made stale through what they
+    /// read. One whose own command changed is in `commands`: whether its
+    /// document compiles under it is the owner's to tell.
+    llvm::SmallVector<Fid> stale;
 
-    /// An index attempt of the file finished with no retry pending, before
-    /// its waiters wake (contract 15): the serving side decides whether the
-    /// finished state can ever serve an open session and escalates it
-    /// otherwise, so the waking waiters re-derive their route against the
-    /// escalated state. Also told of an index_first the background index
-    /// refuses — a file a rule keeps out of the index — since no attempt
-    /// will ever finish for it.
-    virtual void attempt_finished(Fid file) = 0;
+    /// The open files it queued to reindex, their skipped-body diagnostics
+    /// forgotten.
+    llvm::SmallVector<Fid> reindexed;
 
-    /// Shards that may be index-served changed (merged, re-masked, dropped
-    /// or shed): the serving side refreshes the clients that read them.
-    virtual void index_changed(llvm::ArrayRef<Fid> files) = 0;
-
-    /// What the database carries beside the index changed — a precompiled
-    /// record, the context choices: the serving side saves it soon, where a
-    /// command-line run saves on its own cadence.
-    virtual void schedule_metadata_flush() = 0;
-
-protected:
-    ~ServingSide() = default;
+    /// The files whose commands appeared, changed or left — the provisional
+    /// members' among them.
+    CDBDiff commands;
 };
 
 /// A project: its build — the rules, the compilation databases and the
@@ -114,14 +104,14 @@ protected:
 /// tracks the disk, shared by every file.
 ///
 /// Its owner — the server, or a command-line run — opens it once (open),
-/// tells it what changed on disk (rescan_disk_file, forget_file) and in the
-/// databases (update_members), starts its background index when the run
-/// indexes, and shuts it down (shutdown). A project builds through `loop`
+/// tells it what changed on disk (files_changed) and in the databases
+/// (update_members), starts its background index when the run indexes, and
+/// shuts it down (shutdown). A project builds through `loop`
 /// and `pool`, which an owner that builds (the server, `clice index`,
 /// `clice lint`) hands it at construction and keeps alive past it; the
 /// read-only entry points construct it without them and never reach the
 /// build functions (graph/pch.cpp, graph/pcm.cpp, graph/unit.cpp,
-/// indexer/background.cpp). The task graph's attempts and the background
+/// background/background.cpp). The task graph's attempts and the background
 /// index's tasks use the members before them: an owner awaits shutdown()
 /// before the project dies.
 struct Project {
@@ -135,10 +125,6 @@ struct Project {
     async::event_loop* loop;
 
     WorkerPool* pool;
-
-    /// The server serving the project's documents; null for a command-line
-    /// run.
-    ServingSide* serving = nullptr;
 
     /// The project's root: the `${workspace}` value, the anchor of rules and
     /// databases no configuration file supplied, the enumeration root of
@@ -198,6 +184,10 @@ struct Project {
     /// destruction runs shards → database → store.
     std::unique_ptr<index::BlobDatabase> database;
 
+    /// What the project watches on disk besides the files it reads; nothing
+    /// until its owner watches the databases (watch_databases).
+    DiskWatch disk_watch;
+
     /// The real paths the build's databases resolved to at load
     /// (resolved_databases): a look finding others tells the build moved to
     /// another index.
@@ -220,12 +210,12 @@ struct Project {
     /// options.
     index::FreshnessGate freshness{file_table};
 
-    /// The reads over the index, gated by `freshness`; a server attaches the
-    /// live sources of the documents it serves.
-    index::IndexQuery index_query{index, file_table, &freshness, nullptr};
+    /// The reads over the index, gated by `freshness`; a server reads the
+    /// documents it serves through it (IndexQuery::reading).
+    index::IndexQuery index_query{index, file_table, &freshness};
 
-    /// What the index database records of the build's listings.
-    SavedListings listings;
+    /// What the index database records of the build's members.
+    SavedMembers saved_members;
 
     /// The editor's context choices, as the index database carries them.
     ContextChoices choices;
@@ -240,12 +230,7 @@ struct Project {
     /// replace the file: the file shrinks no more until the next session.
     bool shrink_failed = false;
 
-    /// Moves whenever the disk state the dependency graph scans changes: a
-    /// file rescanned or gone, the graph rebuilt. A preprocessor run's
-    /// answer (an import scan) holds while it stays.
-    std::uint64_t disk_epoch = 1;
-
-    /// The generation of context-affecting project state: the disk state,
+    /// The generation of context-affecting project state: the include graph,
     /// the include trees — a tree moves its host's contexts — and the
     /// self-containment results — a header found self-contained lists the
     /// hosts giving the same command once. clice/queryContext tags its
@@ -253,11 +238,12 @@ struct Project {
     /// an older epoch, so a client can never apply a context picked from a
     /// stale listing without noticing.
     std::uint64_t context_epoch() const {
-        return disk_epoch + hosting.trees.generation() + hosting.self_containment.generation();
+        return dep_graph.generation() + hosting.trees.generation() +
+               hosting.self_containment.generation();
     }
 
     /// Generation of the build's commands: bumped when a database reloads
-    /// or a member appears, not on saves like disk_epoch.
+    /// or a member appears, not on saves like the dependency graph's.
     std::uint64_t commands_epoch = 1;
 
     /// What the project knows of the headers borrowing a unit's command.
@@ -271,20 +257,23 @@ struct Project {
 
     void mark_precompiled_dirty() {
         precompiled_dirty = true;
-        if(serving) {
-            serving->schedule_metadata_flush();
-        }
+        on_metadata_changed.emit();
     }
+
+    /// Emitted when what the database carries beside the index changed — a
+    /// precompiled record, the context choices: an owner saving on its own
+    /// cadence saves it soon.
+    Signal<> on_metadata_changed;
+
+    /// Emitted when shards a read may serve changed — merged, re-masked,
+    /// dropped or shed.
+    Signal<llvm::ArrayRef<Fid>> on_index_changed;
 
     /// The PCHs the cache holds, keyed by content key (preamble text +
     /// canonical flags), so files with identical preambles share one PCH:
     /// a mirror of the cache store's state, which names their paths, with
     /// what failed of building and reading them.
     llvm::StringMap<PCHEntry> pchs;
-
-    /// Keys of the entries whose pch.idx index is currently loaded, most
-    /// recently used first (see enforce_loaded_budget).
-    llvm::SmallVector<std::string, 8> loaded_pch_indexes;
 
     /// The PCMs of the module units, by PCM node (module_node).
     llvm::DenseMap<NodeId, PCMEntry> pcms;
@@ -297,10 +286,23 @@ struct Project {
     /// hash with the directory's.
     llvm::DenseMap<std::uint64_t, ModuleCompatibility> compatibilities;
 
-    ImportScans import_scans;
+    /// The import scans of units' disk text and of open buffers
+    /// (scan_imports), each while the files it read hold.
+    Memo<Fid, ImportScan> disk_scans;
+
+    Memo<Fid, ImportScan> buffer_scans;
+
+    /// The preprocessor runs the import scans took.
+    std::uint64_t import_scan_runs = 0;
 
     /// What each unit's compiles in this session showed.
     llvm::DenseMap<Fid, UnitHistory> unit_history;
+
+    /// The include-tree runs on the worker pool, by tree: a second asker
+    /// waits for the first (take_tree).
+    llvm::DenseMap<UnitCommand, std::shared_ptr<async::event>> tree_runs;
+
+    async::task_group<> tree_tasks;
 
     /// The task graph the PCH, PCM and unit nodes build on, the server's
     /// AST nodes beside them. Its attempts use everything above.
@@ -481,6 +483,12 @@ struct Project {
     /// (ServedProject::poll_sources).
     llvm::SmallVector<Fid> refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked);
 
+    /// Whether some unit of the build the index is to hold has no record in
+    /// it yet (see feature::RenameScope::units_pending).
+    bool units_pending();
+
+    // changes.cpp
+
     /// The files whose compiles read `file`: the units including it, also
     /// through a file their commands force in, by the dependency graph; the
     /// units whose indexed compiles read it, looked for it in vain, or
@@ -488,23 +496,21 @@ struct Project {
     /// was built from it, or whose build failed on it.
     llvm::SmallVector<Fid> readers(Fid file) const;
 
-    /// Whether some unit of the build the index is to hold has no record in
-    /// it yet (see feature::RenameScope::units_pending).
-    bool units_pending();
+    /// Whether anything of the project derives from the file: one of the
+    /// owner's `open` files, a command, an include edge, index entries, a
+    /// build or an open file's compile that read it or looked for it. The
+    /// disk changes of files it does not know are not its to follow.
+    /// FIXME: a rule with a default command and no patterns gives every file a
+    /// command, so such a project takes every other project's changes too.
+    bool knows(Fid file, llvm::ArrayRef<OpenFile> open);
 
-    /// Rescan a file whose disk content changed (rescan_dependency_graph),
-    /// so host lookups and context queries see includes the change added
-    /// or removed, and its module declaration. The module-graph cascade is
-    /// the served project's change handling (invalidate_module).
-    void rescan_disk_file(Fid path_id);
-
-    /// A file vanished from disk: it stops providing its module name (a
-    /// replacement provider would otherwise sit behind it and never be
-    /// selected) and its import syntax (the last import-bearing file must
-    /// release the project-wide scan gate), and its outgoing edges go, so
-    /// it stops being a host candidate. Incoming edges stay — includers'
-    /// text still names it, and their own rescans own those edges.
-    void forget_file(Fid path_id);
+    /// Files it knows changed on disk: their include edges and module
+    /// declarations are scanned again, the PCMs built from them and the
+    /// units reading them go stale, the closed units reindex, and a file
+    /// seen missing is forgotten. `open` are the owner's open documents: one
+    /// whose last compile read a changed file goes stale even where the scan
+    /// cannot tell (a macro include).
+    Affected files_changed(llvm::ArrayRef<Fid> files, llvm::ArrayRef<OpenFile> open);
 
     /// What rebuilding the dependency graph changed.
     struct Rebuilt {
@@ -531,28 +537,16 @@ struct Project {
     /// unit includes one, and the graph takes them in.
     Rebuilt rebuild_dependency_graph();
 
-    /// What a change of the build's commands changed (update_members).
-    struct MembersChanged {
-        /// The files whose commands appeared, changed or left — the
-        /// provisional members' among them.
-        CDBDiff commands;
-
-        /// How the dependency graph followed.
-        Rebuilt graph;
-
-        bool empty() const {
-            return commands.empty();
-        }
-    };
-
     /// Follow a change of the build's commands: `commands`, what a database
     /// reload or a walk of the default sources changed; none when only the
     /// provisional members may have (a file just recorded). The provisional
     /// members follow, the dependency graph is rebuilt, and the index follows
     /// each file whose command changed: a unit the build stopped compiling
     /// leaves it, one whose command changed keeps serving until its reindex
-    /// merges. The only writer of commands_epoch.
-    MembersChanged update_members(CDBDiff commands);
+    /// merges. The PCMs whose providers or commands changed go stale with
+    /// their importers. `open` as files_changed's. The only writer of
+    /// commands_epoch.
+    Affected update_members(CDBDiff commands, llvm::ArrayRef<OpenFile> open = {});
 
     // discovery.cpp
 
@@ -576,6 +570,45 @@ struct Project {
 
     /// What a refactoring may edit of the project (EditableFiles).
     EditableFiles editable_files() const;
+
+    /// Whether the build's databases resolve elsewhere than at the load
+    /// (resolved_databases): another build, whose commands a reload would
+    /// record as the ones this index was built with.
+    bool databases_moved() const;
+
+    /// Watch the databases registered so far, from their last loads, and
+    /// the HEAD and index of the git checkout the project lies in.
+    void watch_databases();
+
+    /// Look at the databases (`force` skips the content gate and the
+    /// two-tick debounce, the half-written-file guard): register the ones
+    /// found since (discover_databases, `open` the owner's open files) and
+    /// reload the watched ones that changed. Returns what the reloads changed,
+    /// for update_members. A discovered database vanishing or returning
+    /// flips its presence, and the files whose default entry moves with it
+    /// change command (see source_order); its entries keep serving
+    /// meanwhile.
+    CDBDiff look_at_databases(bool force, llvm::ArrayRef<Fid> open);
+
+    /// When no rule declares a source, register and watch the databases at
+    /// the places a file may compile from that startup discovery did not
+    /// look at: the root and its direct subdirectories (listed again when
+    /// the root directory moves), and every directory from each of `files`
+    /// still without a command, inside the root, up to the root — which is
+    /// how a database generated after startup is picked up. The places stay
+    /// watched; the next look loads what they hold. Loading now looks above
+    /// `files` alone, a registered database whose load failed so far (absent
+    /// at startup, unreadable at an earlier open) tried again — with polling
+    /// off nothing else would. Returns what the loads changed, for
+    /// update_members.
+    CDBDiff discover_databases(llvm::ArrayRef<Fid> files, DiscoverOptions options);
+
+    /// The directories below the root whose configuration file decides what
+    /// the project loads (nested_project): each direct subdirectory, and
+    /// each one on the way down to a database it loads or waits for, a
+    /// provisional member or one of the owner's `open` files, the ones the
+    /// rule left out among them.
+    std::vector<CanonicalPath> configuration_dirs(llvm::ArrayRef<Fid> open) const;
 
     // command/resolve.cpp
 
@@ -609,10 +642,21 @@ struct Project {
     /// command hash).
     Resolution resolve_command(Fid file, const CommandRequest& request = {});
 
+    /// resolve_command until the host search it runs misses no include
+    /// tree, each tree it misses taken first, once (take_tree): a header
+    /// compiles under the host every process finds for it. `request` gives
+    /// the request anew for every resolution — a wait can change the user's
+    /// choice it names. Stops with the tree missing when a run takes none,
+    /// or once `current` no longer holds.
+    async::task<Resolution> resolve_with_trees(Fid file,
+                                               llvm::function_ref<CommandRequest()> request,
+                                               llvm::function_ref<bool()> current = {});
+
     /// The identity of the command the build compiles `unit` under, as its
-    /// index records it: the default selection (candidates' first) with
-    /// the rule edits apply_rules makes of it; 0 when the build compiles
-    /// it under none. A run's extras are not part of it.
+    /// index records it: the default selection (candidates' first) as the
+    /// rules edit it (apply_rules), its hash the key of the unit's include
+    /// tree (tree_request); 0 when the build compiles it under none. A run's
+    /// extras are not part of it.
     std::uint64_t command_identity(Fid unit);
 
     /// The command of the entry writing the precompiled header that the
@@ -668,13 +712,12 @@ struct Project {
 
     /// Every place the compile of the unit `unit` names, under the command it
     /// names, enters `header`, in the order it does, by the unit's include
-    /// tree: its index manifest's for the command the index runs under, its
-    /// first, while the index was built under it (command_identity), else the
-    /// one a preprocess run took. Empty when the compile never enters the header.
-    /// Nullopt when no tree can tell: the manifest cannot — the unit or a file on its way changed
-    /// since, a file appeared where the compile looked and found none, or a forced file a
-    /// precompiled header held hides the way in — and no run took one since the inputs it read last
-    /// changed.
+    /// tree: its index manifest's when the index was built under that command
+    /// (command_identity), else the one a preprocess run took. Empty when the compile never enters
+    /// the header. Nullopt when no tree can tell: the manifest cannot — the unit or a file on its
+    /// way changed since, a file appeared where the compile looked and found none, or a forced file
+    /// a precompiled header held hides the way in — and no run took one since the inputs it read
+    /// last changed.
     std::optional<llvm::SmallVector<Host>> include_chains(const UnitCommand& unit, Fid header);
 
     /// The unit's own command `candidate`, rules applied, and its key.
@@ -695,10 +738,15 @@ struct Project {
     /// preprocess it as the unit stands now.
     void commit_failed_tree(const TreeRequest& request);
 
-    /// Take the tree `request` names with a preprocess run in this process, as
-    /// a worker takes it for the server: the command line's way, which runs no
-    /// workers.
-    void take_tree(const TreeRequest& request);
+    /// Take the tree `request` names with a preprocess run in this process,
+    /// as a worker takes it: the way of a run without workers.
+    void take_tree_in_process(const TreeRequest& request);
+
+    /// Take the tree `request` names with a preprocess run, or wait for the
+    /// run taking it: on the worker pool when the project builds, in this
+    /// process otherwise. False when the run took none: the pool stopped, the
+    /// run was cancelled, or the worker failed for a cause not the unit's.
+    async::task<bool> take_tree(TreeRequest request);
 
     // command/self_contained.cpp
 
@@ -836,13 +884,13 @@ struct Project {
     /// that spawned it (contract 12), and every consumer that finds it books it
     /// against its own document instead of burning a worker of its own. One
     /// document's records cannot contain it alone: the PCH is shared.
-    const FailureRecord* build_crash(llvm::StringRef pch_key);
+    const FailureRecord* pch_build_crash(llvm::StringRef pch_key);
 
     /// Forget the key's failed build, a crash or errors in the user's code, so
     /// the next request builds it again: a consumer whose own record lets it
     /// retry, or that was saved, retries it, and one moving to another key
     /// releases it. Returns whether it had failed.
-    bool forget_build_failure(llvm::StringRef pch_key);
+    bool forget_pch_failure(llvm::StringRef pch_key);
 
     /// Discard a pair the frontend could not consume: remove both blobs from
     /// the store and drop the idle cache entry, so the next acquisition misses
@@ -870,22 +918,13 @@ struct Project {
     /// is discarded from the store as well — otherwise every later session
     /// re-adopts the corrupt pair from the precompiled records and silently
     /// degrades again. With the pair gone the next acquisition is a miss and
-    /// rebuilds both halves. Loads count against the loaded-index budget (see
-    /// enforce_loaded_budget).
+    /// rebuilds both halves. It stays loaded while someone holds it.
     std::shared_ptr<index::TUIndex> preamble_index(llvm::StringRef pch_key);
 
     /// Forget the entries whose pairs the store's LRU evicted from disk (inside
     /// a commit, maybe on a worker thread), or the content-keyed map grows
     /// for the server's lifetime even for keys never requested again.
     void forget_evicted_pchs();
-
-    /// Unload pch.idx indexes beyond the budget (one per open document, plus
-    /// 2), least recently used first. Without this every preamble key ever
-    /// touched keeps its blob mapped for the server's lifetime — tens of MB per
-    /// key on real projects, released by neither didClose nor store eviction.
-    /// Unloading only drops the entry's reference: consumers holding the
-    /// shared_ptr finish safely, and the next use reopens the blob from disk.
-    void enforce_loaded_budget();
 
     // graph/pcm.cpp
 
@@ -950,19 +989,10 @@ struct Project {
     /// those under the other entries importers were given (module_build).
     llvm::SmallVector<NodeId> module_nodes(Fid unit) const;
 
-    /// Mark a module unit's PCMs and their transitive importers dirty, overtaking
-    /// in-flight attempts: their next attempts check their builds again, and a
-    /// build whose key and inputs still hold is kept — the single write point
-    /// for PCM content invalidation. A product-only loss (cache eviction) is
-    /// the node's check instead (module_work), which re-dirties the module alone:
-    /// what its importers read is unchanged. Returns the dirtied nodes' files,
-    /// of every kind.
-    llvm::SmallVector<Fid> invalidate_module(Fid path_id);
-
     /// The crash of the module's last build, while what it is known to have
     /// read holds: every importer that finds it books it against its own
     /// document instead of burning a worker of its own.
-    const FailureRecord* build_crash(NodeId module);
+    const FailureRecord* module_build_crash(NodeId module);
 
     /// Why the last builds of `imports` failed, for those that failed on the
     /// user's code; none for any other failure (a crash, an outage).
@@ -973,12 +1003,7 @@ struct Project {
     /// retry, or that was saved, retries it. A failed build is otherwise kept
     /// until its key or one of its inputs changes. Returns whether it had
     /// failed.
-    bool forget_build_failure(NodeId module);
-
-    /// A module name gained a provider it lacked: invalidate the dependents of
-    /// its unresolved import (their keys name the import as unresolved, so
-    /// their next attempts rebuild) and return them for serving-side treatment.
-    llvm::SmallVector<NodeId> provider_appeared(llvm::StringRef name);
+    bool forget_module_failure(NodeId module);
 
     /// The direct module dependencies of the unit under the arguments
     /// `resolution` renders, the ones its compile runs: a context choice or a
@@ -994,9 +1019,9 @@ struct Project {
     /// that can import nothing pays none: its own text has no module syntax,
     /// neither it nor the host whose command it borrows reaches an import
     /// candidate, and a buffer's directives are the ones the dependency scan
-    /// saw. A scan is reused while its arguments and the project's disk state
-    /// (disk_epoch) stay the same, a buffer's while its directive stream
-    /// does too.
+    /// saw. A scan is reused while its arguments stay the same and the files
+    /// it read and looked for in vain hold, a buffer's while its directive
+    /// stream stays the same too.
     async::task<Imports> scan_imports(Fid path_id,
                                       const Resolution& resolution,
                                       std::optional<llvm::StringRef> content);
@@ -1033,6 +1058,14 @@ struct Project {
     /// (compile_unit), but for the products only a compile brings.
     bool compiled_by_build(Fid unit);
 
+    /// Who compiles `unit`: an open document it was left to, else a build
+    /// (compiled_by_build), else its own run.
+    CompiledBy compiled_by(Fid unit);
+
+    /// Whether the unit's index holds: built under its command of now, from
+    /// inputs that hold (ProjectIndex::needs_reindex).
+    bool index_holds(Fid unit);
+
     /// Ask a compile of `unit` — its run's, or a build that is the unit's
     /// compile (its PCM, the precompiled header it writes) — for the unit's
     /// TU index as the project index takes it: without what the index
@@ -1040,9 +1073,7 @@ struct Project {
     /// last result named one the index had lost, and with the standard
     /// library's own instantiations as the settings say. Returns how the
     /// index comes back.
-    IndexTransfer request_index(Fid unit, worker::CompileUnitParams& params);
-    IndexTransfer request_index(Fid unit, worker::BuildPCMParams& params);
-    IndexTransfer request_index(Fid unit, worker::BuildPCHParams& params);
+    IndexTransfer request_index(Fid unit, worker::IndexRequest& request);
 
     /// Merge the TU index of a compile of `unit` (request_index) and take
     /// its report: read over `imports` — what the PCMs and the precompiled
@@ -1057,16 +1088,6 @@ struct Project {
                                                        std::uint64_t peak);
 
     // graph/precompiled.cpp
-
-    /// The precompiled records as the index database carries them (blob kind
-    /// PrecompiledRecords): the PCH and PCM validity metadata and the
-    /// self-containment checks, serialized from live state; empty on
-    /// serialization failure.
-    std::string serialize_precompiled_records();
-
-    /// Restore the precompiled records a database held: the PCH and PCM entries
-    /// whose blobs the cache store still has, and the self-containment checks.
-    void load_precompiled_records(llvm::StringRef bytes);
 
     /// What a PCH or PCM build read: what the worker reports, and `before`,
     /// what the modules it imports and the PCH it is built over were built from
@@ -1110,11 +1131,11 @@ struct Project {
                          const Inputs& before,
                          llvm::function_ref<void(FailureRecord, Inputs)> fail);
 
-    // listings.cpp
+    // saved.cpp
 
-    /// The build's listings now, as the index database records them
-    /// (SavedListings).
-    SavedListings::Blob listed();
+    /// The build's members now, as the index database records them
+    /// (SavedMembers).
+    SavedMembers::Blob recorded_members();
 
     /// Bring the loaded index in line with the live build: a unit a rule
     /// keeps out of the index leaves it, but for one a build compiles
@@ -1127,8 +1148,6 @@ struct Project {
     /// serving until the reindex merges.
     void reconcile_index(index::IndexReport& report);
 
-    // save.cpp
-
     /// Save the index and take the report, again while a save owes a retry (a
     /// grown map can still be too small); an idle save then shrinks the
     /// database file when that is worth it (shrink_database). Reindexes the
@@ -1138,8 +1157,8 @@ struct Project {
     /// Take an index report — of the load, a save or a unit's merge: book its
     /// reindexes, before the attempt that merged finishes and its waiters
     /// wake, so a waker never observes an index as current that the report
-    /// just declared stale; and tell the serving side of its serving-index
-    /// changes.
+    /// just declared stale; and tell of its serving-index changes
+    /// (on_index_changed).
     void take_report(const index::IndexReport& report);
 
     /// Persist the index and the cache store's manifest as they stand, a
@@ -1149,8 +1168,8 @@ struct Project {
     async::task<> checkpoint();
 
     /// The shutdown once its owner's compiles are quiesced (contract 11):
-    /// stop the background index, wind down the graph's attempts, save a last
-    /// time and close the cache store.
+    /// stop the include-tree runs and the background index, wind down the
+    /// graph's attempts, save a last time and close the cache store.
     async::task<> shutdown();
 
     /// Open what the project's database holds: the index (ProjectIndex::open),
@@ -1165,7 +1184,7 @@ struct Project {
     bool load_saved(bool reconcile, index::IndexReport& report);
 
     /// Persist what the project's database carries: the index's dirty state
-    /// (ProjectIndex::begin_save), then the listings, the precompiled
+    /// (ProjectIndex::begin_save), then the members, the precompiled
     /// records and the context choices, in one write offloaded to the kotatsu
     /// thread pool. What the write fails to commit stays dirty for the next
     /// save; a database the write finds corrupt is replaced by a fresh one,
@@ -1194,10 +1213,20 @@ struct Project {
 
     /// Confirmed corruption heals through rebuildability: condemn the corrupt
     /// database (deleted on close) and continue on a freshly opened empty
-    /// one, the index and the persisted listings starting over with
+    /// one, the index and the persisted members starting over with
     /// it, so the session's rebuild persists instead of waiting for the next
     /// start. A failed reopen leaves persistence disabled for the session.
     void reopen_fresh_database();
+
+    /// The precompiled records as the index database carries them (blob kind
+    /// PrecompiledRecords): the PCH and PCM validity metadata and the
+    /// self-containment checks, serialized from live state; empty on
+    /// serialization failure.
+    std::string serialize_precompiled_records();
+
+    /// Restore the precompiled records a database held: the PCH and PCM entries
+    /// whose blobs the cache store still has, and the self-containment checks.
+    void load_precompiled_records(llvm::StringRef bytes);
 };
 
 /// Whether a database file's free pages are worth a compact copy: a quarter

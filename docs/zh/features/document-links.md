@@ -2,6 +2,8 @@
 
 从源代码指令到解析所得目标文件的可点击链接。
 
+`import` 中的模块名不是链接：在它上面执行“跳转到定义”，会打开声明该模块的接口单元，参见[模块导航](./navigation.md#module-navigation)。
+
 <!-- The cards in the sections below are generated from the documented cases
      in tests/document_links/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
@@ -91,26 +93,6 @@ tests/document_links/embed_directives/01_embed
 
 ```case
 tests/document_links/embed_directives/02_has_embed
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## 模块声明
-
-`import` 中的模块名链接到声明该模块的文件。
-
-<!-- BEGIN GENERATED ITEMS: document_links/module_declarations -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**模块目标**
-
-每个导入的模块名都链接到声明该模块的文件
-
-```case
-tests/document_links/module_declarations/01_module_imports
 ```
 
 <!-- END CAPABILITY -->

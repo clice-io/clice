@@ -88,8 +88,11 @@ struct BuiltImports {
     llvm::SmallVector<NodeId> failed;
 };
 
-/// A unit's last precise import scan and what it ran against.
+/// A unit's last precise import scan (Project::scan_imports) and what it
+/// ran against beside the files it read: a failed module's every importer
+/// waits on it again, and each wait would preprocess it again.
 struct ImportScan {
+    /// The directives hash of a buffer's text.
     std::uint64_t directives = 0;
 
     /// The preamble bound of the scanned text: the import offsets are
@@ -99,8 +102,6 @@ struct ImportScan {
 
     std::uint64_t arguments = 0;
 
-    std::uint64_t epoch = 0;
-
     std::vector<std::string> imports;
 
     std::vector<std::uint32_t> offsets;
@@ -108,25 +109,12 @@ struct ImportScan {
     bool module_unit = false;
 };
 
-/// The import scans of open buffers, and of units' disk text (see
-/// Project::scan_imports): kept while the arguments and the project's disk
-/// state (Project::disk_epoch) stay the same — and for a buffer, its directives.
-/// A failed module's every importer waits on it again, and each wait would
-/// preprocess it again.
-struct ImportScans {
-    llvm::DenseMap<Fid, ImportScan> buffers;
-
-    llvm::DenseMap<Fid, ImportScan> disk;
-
-    /// The preprocessor runs the scans took.
-    std::uint64_t runs = 0;
-};
-
 /// The graph identity of an import that resolves to nothing: a node that
 /// never runs an attempt and exists only to be edged at. When the name's
-/// first provider appears, provider_appeared() invalidates it and the ordinary
-/// cascade reaches every consumer whose scan declared the edge — no side
-/// bookkeeping of who failed against the name. The high bit keeps the key
+/// first provider appears, the change's cascade invalidates it
+/// (Project::files_changed, update_members) and reaches every consumer whose
+/// scan declared the edge — no side bookkeeping of who failed against the
+/// name. The high bit keeps the key
 /// space disjoint from path_ids.
 inline NodeId unresolved_import(llvm::StringRef name) {
     return {NodeKind::PCM, (1ull << 63) | (llvm::xxh3_64bits(name) >> 1)};
@@ -173,6 +161,17 @@ struct ModuleContexts {
     /// own (Project::module_nodes).
     llvm::SmallVector<std::uint32_t, 1> picked;
 };
+
+/// The PCM nodes a node of the graph waits on: its imports that resolve.
+inline llvm::SmallVector<NodeId> imported_modules(const TaskGraph& graph, NodeId importer) {
+    llvm::SmallVector<NodeId> modules;
+    for(auto dep: graph.dependencies(importer)) {
+        if(dep.kind == NodeKind::PCM && !is_unresolved_import(dep)) {
+            modules.push_back(dep);
+        }
+    }
+    return modules;
+}
 
 /// How many times a compile waits on its imports for all of them to be
 /// present at once: a rebuild can itself evict another module under budget

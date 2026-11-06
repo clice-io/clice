@@ -3,15 +3,14 @@ module clice:server.served_project;
 import :command.database;
 import :command.search_config;
 import :feature.diagnostics;
-import :index.peer_queries;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
+import :project.background;
 import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
 import :project.graph.task_graph;
-import :project.indexer;
 import :project.project;
 import :server.session;
 import :settings.settings;
@@ -188,6 +187,11 @@ struct DocumentCompile {
         return pch_failed ? base_pch_key : pch_key;
     }
 
+    /// The pch.idx index of the preamble's PCH the parse loaded, while it
+    /// is the preamble's (Project::preamble_index): held here, it stays
+    /// loaded while a compile of a document reads it.
+    std::shared_ptr<index::TUIndex> preamble_index;
+
     /// The generation of the document's graph node the compile ran at
     /// (TaskGraph::generation): the compile describes the buffer and what it
     /// read while that is still the node's. None before a compile finished,
@@ -290,36 +294,26 @@ Value empty_value() {
 /// One project the server serves: the project on disk, which builds over
 /// the process's worker pool, the open documents the master
 /// routed to it, and everything the project derives for them. Its work is
-/// split in files: lifetime and adoption (served_project.cpp), compiling the
-/// open documents (compile.cpp), what answers a request on them now and
-/// asking the workers (answer.cpp), handling changes of its inputs
-/// (changes.cpp), the open documents' commands (command.cpp) and the index's
-/// live sources over them (live_sources.cpp). Shared: a request in flight
-/// keeps a removed project alive until it completes.
-class ServedProject final :
-    public index::LiveSources,
-    public ServingSide,
-    public std::enable_shared_from_this<ServedProject> {
+/// split in files: lifetime, adoption and the open documents' commands
+/// (served_project.cpp), compiling the open documents (compile.cpp), what
+/// answers a request on them now and asking the workers (answer.cpp), and
+/// handling changes of its inputs (changes.cpp). Shared: a request in
+/// flight keeps a removed project alive until it completes.
+class ServedProject final : public std::enable_shared_from_this<ServedProject> {
 public:
     /// `root` is the project's directory; empty for the rootless project a
-    /// server without folders runs, which loads nothing.
+    /// server without folders runs, which loads nothing. What the project
+    /// tells of its index reaches the documents: an index attempt ending
+    /// (the index_first in decide_serving promised the index would serve the
+    /// cold document, and one that finishes without a servable shard ends
+    /// that promise — it escalates like the disabled-indexing branch, or the
+    /// document answers empty until its first edit; its run's skipped-body
+    /// diagnostics show), shards changing (documents without a current file
+    /// index serve these very shards, freshness clause 4: the client asks
+    /// again for what it pulled from them), and the records beside the index
+    /// changing (schedule_metadata_flush).
     ServedProject(MasterServer& server, CanonicalPath root);
     ~ServedProject();
-
-    std::size_t open_documents() const override {
-        return documents.size();
-    }
-
-    /// The index_first in decide_serving promised the index would serve the
-    /// cold document; an attempt that finishes without a servable shard ends
-    /// that promise — it escalates like the disabled-indexing branch, or the
-    /// document answers empty until its first edit.
-    void attempt_finished(Fid path_id) override;
-
-    /// Documents without a current file index serve these very shards
-    /// (freshness clause 4): the client asks again for what it pulled from
-    /// them.
-    void index_changed(llvm::ArrayRef<Fid> path_ids) override;
 
     // served_project.cpp
 
@@ -488,12 +482,6 @@ public:
     /// buffer, then the crash notes; nothing once the document closed.
     std::vector<feature::FileDiagnostic> finished_diagnostics(const Session& session) const;
 
-    /// Whether the file's escalated document holds text no background run
-    /// has reported on, as after a restart, when the index is current and
-    /// runs nothing. Only a file of its own database entry is reported on
-    /// (UnitRequest::skipped_diagnostics).
-    bool lacks_skipped_diagnostics(Fid path_id) const override;
-
     /// Interrupt every in-flight parse and wait for the detached compile
     /// joins. The attempts themselves finish in TaskGraph::shutdown — the
     /// interruption is what keeps that finish prompt (an attempt's stateful
@@ -501,21 +489,11 @@ public:
     /// the real reply, and the interrupt makes it arrive early).
     async::task<> stop_compiles();
 
-    // command.cpp
+    // served_project.cpp: the open documents' commands
 
-    /// The open document's command under its active context choice, or
-    /// under `candidate` instead. Takes no include tree: the host search runs
-    /// on the trees there are.
-    Resolution resolve_command(Fid path_id, const ContextChoice* candidate = nullptr);
-
-    /// resolve_command again until the host search it runs misses no
-    /// include tree, taking each tree it misses first from a worker, each
-    /// once: a header compiles under the host every process finds for it.
-    /// Stops with the tree missing when a run does not answer, or once
-    /// `current` no longer holds.
-    async::task<Resolution> document_command(Fid path_id,
-                                             const ContextChoice* candidate = nullptr,
-                                             llvm::function_ref<bool()> current = {});
+    /// What the open document's command is resolved for: its active
+    /// context choice, or `candidate` instead, in the editor.
+    CommandRequest command_request(Fid path_id, const ContextChoice* candidate = nullptr) const;
 
     /// The file's context choice while it is this project's and holds.
     const ContextChoice* active_choice(Fid path_id) const;
@@ -531,11 +509,9 @@ public:
 
     // changes.cpp
 
-    /// Files the project knows changed on disk (MasterServer::
-    /// apply_disk_changes): rescan their include edges and module
-    /// declarations, recompile the open documents reading them, queue the
-    /// closed units reading them, invalidate the PCMs built from them. A
-    /// file seen missing is removed.
+    /// Files changed on disk (MasterServer::apply_disk_changes): the project
+    /// follows those it knows (Project::knows, files_changed), and the open
+    /// documents reading them recompile.
     void disk_changed(llvm::ArrayRef<Fid> files);
 
     /// Reload what the looks found changed of the project's databases
@@ -552,51 +528,21 @@ public:
     /// loop.
     async::task<bool> poll_sources();
 
-    /// Whether the build's databases resolve elsewhere than at the load
-    /// (resolved_databases): another build, whose commands a reload would
-    /// record as the ones this index was built with.
-    bool databases_moved() const;
-
     /// Before a file's first compile: register, load and watch the
     /// databases in the directories from the file's up to the root, which
     /// startup discovery (the root and its direct subdirectories) did not
     /// look at — a file of a deeper project compiles from its own database —
-    /// and follow the loads. Nothing when a rule declares sources, the file
-    /// has a command already, or it lies outside the root.
+    /// and follow the loads (Project::discover_databases).
     void discover_around(Fid path_id);
 
     /// The directories below the root whose configuration file decides what
-    /// the project loads (nested_project): each direct subdirectory, and
-    /// each one on the way down to a database it loads or waits for, a
-    /// provisional member or an open document, the ones the rule left out
-    /// among them.
+    /// the project loads, the open documents' among them
+    /// (Project::configuration_dirs).
     std::vector<CanonicalPath> configuration_dirs() const;
 
-    /// Every unit whose compile or build depends on the file — the single
-    /// answer to "who read this": the root TUs the lexical scan sees
-    /// including it, the TUs whose index records reading, looking for or
-    /// importing a module built from it, the open documents whose inputs
-    /// (each_input) name it, the module units whose last PCM build read it,
-    /// failed builds included — the scan cannot resolve a macro include,
-    /// never follows an import, and never sees a file before it exists.
-    llvm::SmallVector<Fid> readers(Fid path_id) const;
-
-    /// Whether anything here derives from the file: an open document, a
-    /// command, an include edge, index entries, a compile that read it or
-    /// looked for it. The disk changes of files it does not know are not
-    /// this project's to cascade.
-    /// FIXME: a rule with a default command and no patterns gives every file a
-    /// command, so such a project takes every other project's changes too.
-    bool knows(Fid path_id);
-
-    /// The files every open document's compile depends on (closure).
-    void append_open_inputs(llvm::SmallVectorImpl<Fid>& files) const;
-
-    /// Whether an open document's own compile serves the file's index
-    /// (ServingSide::compiled_by_session): an escalated document's does,
-    /// unless it skips the bodies of the headers — then only a background
-    /// run shows what the skipped bodies hold (report_skipped_diagnostics).
-    bool compiled_by_session(Fid path_id) const override;
+    /// The open documents and the files their compiles read, as the
+    /// project's change handling needs them.
+    llvm::SmallVector<OpenFile> open_files() const;
 
     /// The project's context choices hold again or no longer do after the
     /// build or the include graph changed: an open document whose choice
@@ -651,9 +597,27 @@ public:
     std::optional<index::IndexQuery::Cursor> cursor_at(Fid path_id,
                                                        const protocol::Position& position) const;
 
-    /// The project's query and its peers', for one synchronous read: the
-    /// peers are those the master serves when it is taken.
-    index::PeerQueries peer_queries();
+    /// The open documents, as the reads of the index take them.
+    std::vector<index::OpenBuffer> open_buffers() const;
+
+    /// The project's index over its open documents, for one synchronous
+    /// read.
+    index::IndexQuery query() const {
+        return project.index_query.reading(open_buffers());
+    }
+
+    /// query(), also asking the other projects the master serves when it is
+    /// taken, each over its own open documents (index::IndexQuery::asking):
+    /// what navigation, references, the hierarchies, hover, workspace
+    /// symbols and an inlay hint's targets read.
+    index::IndexQuery query_all() const;
+
+    /// What a rename or a code action reads: query() over the open documents
+    /// of the projects nested in the root too, which are its files as well.
+    /// Another project's open files read as closed ones, from the shards
+    /// this project holds, and no other project is asked: the edits of a
+    /// rename stay in the files it may edit.
+    index::IndexQuery editing_query() const;
 
     /// The document's text, read in the dialect the server lexes it in.
     SourceText& text_of(Session& session);
@@ -741,24 +705,6 @@ public:
              R result,
              bool snapshot = false);
 
-    // live_sources.cpp: the open documents' own file indexes (current per
-    // their latest compiles), the PCH overlays their preambles were
-    // compiled into, and the preamble regions those overlays indexed.
-
-    bool is_open(Fid file) const override;
-    std::optional<index::IndexSource> buffer_index(Fid file) const override;
-    void for_each_session(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
-    void for_each_session_index(
-        llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
-    void
-        for_each_preamble(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
-    void for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
-    std::shared_ptr<index::TUIndex> preamble_index(Fid file) const override;
-
-    /// The project's shard of the file while the document's buffer holds
-    /// the very bytes it indexed.
-    const index::Shard* matching_shard(const Session& session) const;
-
     /// Set while compiles may run and requests resolve commands. A project
     /// made while its root's previous one still shuts down
     /// (MasterServer::serve_folders) holds documents before it loads, which
@@ -800,7 +746,15 @@ private:
     /// Schedule a save carrying dirty precompiled records or context choices; no-op
     /// when one is already scheduled or the server is shutting down (the
     /// final shutdown save covers it).
-    void schedule_metadata_flush() override;
+    void schedule_metadata_flush();
+
+    /// Book a background run for the document's skipped-body diagnostics when
+    /// it shows them and lacks those of its text, as after a restart, when
+    /// the index is current and runs nothing, or after a change of its
+    /// inputs dropped them: first in the queue, or (`first` off) in its
+    /// turn. Only a file of its own database entry is reported on
+    /// (UnitRequest::skipped_diagnostics).
+    void book_skipped_diagnostics(const ServedDocument& document, bool first);
     async::task<> metadata_flush_task();
 
     /// The periodic Project::checkpoint().
@@ -857,15 +811,12 @@ private:
     /// (readers holding the old shared_ptr are unaffected).
     void update_latest(Fid path_id, llvm::function_ref<void(DocumentCompile&)> edit);
 
-    /// A background index run of the file reported `diagnostics` for the
-    /// text hashing to `text_hash`: what the editor's compile, which skips
-    /// the function bodies of the headers the file includes at its top, can
-    /// get wrong (feature::skipped_diagnostics). They show on the document
-    /// while it holds that text, open now or later
-    /// (shown_skipped_diagnostics).
-    void report_skipped_diagnostics(Fid path_id,
-                                    std::uint64_t text_hash,
-                                    std::vector<feature::FileDiagnostic> diagnostics) override;
+    /// The file's last background run brought new skipped-body diagnostics:
+    /// what the editor's compile, which skips the function bodies of the
+    /// headers the file includes at its top, can get wrong
+    /// (feature::skipped_diagnostics). They show on the document while it
+    /// holds the text they describe — a compile owed shows them as it commits.
+    void show_skipped_diagnostics(Fid path_id);
 
     /// What of the file's last background run shows beside `output`, a
     /// compile of the document's text: what the compile does not report
@@ -902,17 +853,6 @@ private:
                                          async::cancellation_token token,
                                          bool& refused);
 
-    // command.cpp
-
-    /// Take the tree `request` names, or wait for the run taking it. False
-    /// when the run took none: the pool stopped, the run was cancelled, or
-    /// the worker failed for a cause not the unit's.
-    async::task<bool> take_include_tree(TreeRequest request);
-
-    /// The run taking the tree, which belongs to no asker: one cancelled
-    /// leaves it to the others waiting on `done`, set when it ends.
-    async::task<> run_include_tree(TreeRequest request, std::shared_ptr<async::event> done);
-
     // changes.cpp
 
     /// The build's commands changed (`delta`, what databases' reloads report,
@@ -921,112 +861,14 @@ private:
     /// recompiles, and routing follows.
     void commands_changed(CDBDiff delta);
 
-    /// The end of every batch of changes: the context choices are checked
-    /// again, the background index runs what the batch queued, and a client
-    /// holding answers of open documents that went stale is asked to pull
-    /// again (`refresh`).
-    void finish_changes(bool refresh);
-
-    /// Rescan the file's disk state (include edges, module maps). A module
-    /// name the rescan gave its first provider cascades to the consumers
-    /// holding unresolved-import edges against it; a name the file stopped
-    /// providing cascades through the provider's real node instead.
-    void rescan_disk_state(Fid path_id, bool& refresh);
-
-    /// The cascade for "this file's on-disk content is new": rescan the
-    /// file's disk state, then split every affected file into open
-    /// (recompile) and closed (reindex).
-    void cascade_disk_content_change(Fid path_id, bool& refresh);
-
-    /// Cascade a module unit's compile-graph invalidation (its PCM and the
-    /// units importing it), splitting dirtied units open/closed.
-    void cascade_compile_graph(Fid path_id, bool& refresh);
-
-    /// Treat every reader of a file that changed or vanished: open ones
-    /// recompile, closed ones reindex, module units check their PCM again
-    /// (which voids a build in flight).
-    void mark_readers(llvm::ArrayRef<Fid> readers, bool& refresh);
-
-    /// A module name just gained its first provider: cascade through its
-    /// unresolved-import node and route the dirtied consumers to recompiles and
-    /// ContentChanged reindexes.
-    void provider_appeared(llvm::StringRef module_name, bool& refresh);
-
-    /// The providers of `module_name` but `except` changed: the importers
-    /// of every other one choose among them again.
-    void cascade_providers(llvm::StringRef module_name, Fid except, bool& refresh);
-
-    /// A dependency of the file changed: it recompiles when it is open, and
-    /// reindexes unless its document's compile serves it.
-    void mark_dependent(Fid path_id, bool& refresh);
-
-    /// What a file's inputs changing does to its open document, if any
-    /// (inputs_changed); `refresh` is set when the document is compiled,
-    /// whose client is then asked to pull again.
-    void mark_stale(Fid path_id, bool& refresh);
-
-    /// Queue the file's background index again: `content` when its own
-    /// content changed, else only a dependency's.
-    void reindex(Fid path_id, bool content);
-
-    /// What the disk holds for each of a database's inputs, in
-    /// CompilationDatabase::inputs order: the content hash, nullopt when
-    /// there are no bytes to read.
-    using Hashes = llvm::SmallVector<std::optional<std::uint64_t>>;
-
-    /// One registered database's watch state.
-    struct WatchedDatabase {
-        SourceID id;
-
-        /// What was last adopted: the reads of the database's last load, or
-        /// a deletion acted on.
-        Hashes applied;
-
-        /// Half-write guard: what the previous tick saw while it differed
-        /// from `applied`; a tick seeing it again reloads.
-        std::optional<Hashes> pending;
-
-        /// The database's inputs, in CompilationDatabase::inputs order. The
-        /// database is watched by the path the source names: a symlinked
-        /// one may be pointed elsewhere since its load.
-        llvm::SmallVector<std::shared_ptr<const vfs::Flag>, 0> inputs;
-    };
-
-    /// The hashes of the database's last load.
-    Hashes loaded_hashes(SourceID id) const;
-
-    /// Watch the response files the database's last load read, besides the
-    /// database.
-    void watch_inputs(WatchedDatabase& database);
-
-    /// Register `id` for watching, from its last load.
-    void watch_database(SourceID id);
-
-    /// When no rule declares a source, register and watch the databases
-    /// found at the watched places: the root and its direct subdirectories
-    /// (listed again when the root directory moves), and every directory
-    /// from an open document still without a command up to the root —
-    /// which is how a database generated after startup is picked up.
-    void discover_databases();
-
-    /// Watch the HEAD and index of the git checkout the project lies in.
-    void watch_checkout();
-
-    /// One database's tick, its reload's delta merged into `delta`. Once
-    /// its inputs have held the same other content for two consecutive
-    /// ticks (or `force`), it reloads. A discovered database vanishing or
-    /// returning flips its presence, and the files whose default entry
-    /// moves with it change command (see Project::source_order); its entries
-    /// keep serving meanwhile.
-    void tick_database(WatchedDatabase& database, bool force, CDBDiff& delta);
-
-    /// The files the database and another one both list: the ones whose
-    /// default entry may move with the database's presence.
-    llvm::SmallVector<Fid> shared_files(SourceID id) const;
-
-    /// The source of each file's default entry, as the build ranks them
-    /// now; none for a file the build no longer compiles.
-    llvm::SmallVector<std::optional<SourceID>> default_sources(llvm::ArrayRef<Fid> files) const;
+    /// What a change of the project's inputs did to the open documents: the
+    /// stale ones compile again, the reindexed ones book their skipped-body
+    /// diagnostics, and when commands changed, so do the ones whose command
+    /// moved. Then the context choices are checked again, the background
+    /// index runs what the change queued, a client holding answers of
+    /// documents that went stale is asked to pull again, and when commands
+    /// changed, routing and the watched settings follow.
+    void follow(const Affected& affected);
 
 private:
     /// The open documents routed here.
@@ -1051,6 +893,12 @@ private:
     /// The background index's progress, relayed to the master.
     Signal<>::Connection progress_conn;
 
+    Signal<Fid>::Connection attempt_conn;
+
+    Signal<llvm::ArrayRef<Fid>>::Connection index_conn;
+
+    Signal<>::Connection metadata_conn;
+
     /// Detached ensure_compiled joins from request_compile; the attempts
     /// live in the graph's task group.
     async::task_group<> started_compiles;
@@ -1059,49 +907,9 @@ private:
     /// and stop_compiles() fire to interrupt the worker's parse.
     llvm::DenseMap<Fid, std::unique_ptr<async::cancellation_source>> compile_interrupts;
 
-    /// A background run's diagnostics of a file (see
-    /// report_skipped_diagnostics).
-    struct SkippedDiagnostics {
-        std::uint64_t text_hash = 0;
-
-        std::vector<feature::FileDiagnostic> diagnostics;
-    };
-
-    /// The last background run's diagnostics of every file, open or not.
-    llvm::DenseMap<Fid, SkippedDiagnostics> skipped;
-
-    /// The include-tree runs in flight, by tree: a second asker waits for
-    /// the first.
-    llvm::DenseMap<UnitCommand, std::shared_ptr<async::event>> tree_runs;
-
-    async::task_group<> tree_tasks;
-
     /// Whether start() began watching the databases: never for the rootless
     /// project, nor before it starts.
     bool watching = false;
-
-    llvm::SmallVector<WatchedDatabase> watched_databases;
-
-    /// The root directory, whose stamp moves when an entry appears or goes.
-    std::shared_ptr<const vfs::Flag> root_flag;
-
-    /// The root's stamp at the listing `listed` came from; nullopt while no
-    /// listing can be trusted to hold.
-    std::optional<vfs::Stamp> listed_at;
-
-    /// The places database_places names under the root.
-    llvm::SmallVector<Spelling> listed;
-
-    /// The watched places with no database registered there yet.
-    llvm::StringMap<std::shared_ptr<const vfs::Flag>> places;
-
-    /// The places a registered database is known to stand at.
-    llvm::StringSet<> registered;
-
-    /// The checkout's HEAD and index: every git operation that changes the
-    /// worktree rewrites the index, and then every file under the project
-    /// root is due for a look.
-    llvm::SmallVector<std::shared_ptr<const vfs::Flag>> checkout;
 
     /// The project's background tasks (checkpoints, flushes, polls, the
     /// control listener); cancelled and joined in shutdown().
@@ -1307,7 +1115,8 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     if(!loaded.is_set()) {
         co_await loaded.wait();
     }
-    auto resolution = co_await document_command(path_id);
+    auto resolution =
+        co_await project.resolve_with_trees(path_id, [&] { return command_request(path_id); });
     params.directory = resolution.directory;
     params.arguments = resolution.arguments;
     params.settings = project.settings;

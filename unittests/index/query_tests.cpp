@@ -32,7 +32,7 @@ ZEST_CASE(DefinitionAcrossFiles) {
     });
     ZASSERT(symbol != 0);
 
-    auto site = query.first_site(symbol, Fid{}, RelationKind::Definition);
+    auto site = query().first_site(symbol, Fid{}, RelationKind::Definition);
     ZASSERT(site);
     ZASSERT(site->path.ends_with("header.h"));
 }
@@ -54,7 +54,7 @@ ZEST_CASE(ReferencesAcrossFiles) {
     });
     ZASSERT(symbol != 0);
 
-    auto references = query.sites(symbol, Fid{}, RelationKind::Reference);
+    auto references = query().sites(symbol, Fid{}, RelationKind::Reference);
     ZASSERT(!references.empty());
 }
 
@@ -73,7 +73,7 @@ ZEST_CASE(LocalSymbolName) {
     ZASSERT(symbol != 0);
 
     // TU-local names have no symbol record: the anchor's shard names them.
-    auto info = query.symbol_info(symbol, focus_id);
+    auto info = query().symbol_info(symbol, focus_id);
     ZASSERT(info);
     ZASSERT(info->name == "hidden");
 }
@@ -94,9 +94,9 @@ ZEST_CASE(ShardServesOpenSession) {
         fx.open(project.file_table.resolve(focus_id), unit->focus_file().content().str(), 1);
     ZASSERT(!fx.served->index_current(session->path_id));
 
-    auto cursor = query.symbol_at(focus_id, point("use"));
+    auto cursor = query().symbol_at(focus_id, point("use"));
     ZASSERT(cursor);
-    auto sites = feature::definition(query, *cursor);
+    auto sites = feature::definition(query(), *cursor);
     ZASSERT(!sites.empty());
     ZASSERT(sites.front().path.ends_with("header.h"));
 }
@@ -113,8 +113,8 @@ ZEST_CASE(DivergedBufferWithdrawsShard) {
 
     // The buffer no longer matches the shard's content: the shard withdraws
     // and the un-compiled session resolves nothing.
-    ZASSERT(!query.serving(focus_id).has_value());
-    ZASSERT(!query.symbol_at(focus_id, point("use")).has_value());
+    ZASSERT(!query().serving(focus_id).has_value());
+    ZASSERT(!query().symbol_at(focus_id, point("use")).has_value());
 }
 
 ZEST_CASE(HeaderEdgesFromHost) {
@@ -136,14 +136,14 @@ ZEST_CASE(HeaderEdgesFromHost) {
     auto session = fx.open(project.file_table.resolve(header_id),
                            sources.all_files.lookup("header.h").content,
                            1);
-    auto edges = query.project().include_edges(session->path_id);
+    auto edges = query().project().resolved_includes(session->path_id);
     ZASSERT(edges.size() == std::size_t(1));
     ZASSERT(llvm::StringRef(edges[0].target).ends_with("inner.h"));
 
     // The TU's own manifest still answers for the TU itself.
     auto focus_session =
         fx.open(project.file_table.resolve(focus_id), unit->focus_file().content().str(), 1);
-    auto focus_edges = query.project().include_edges(focus_session->path_id);
+    auto focus_edges = query().project().resolved_includes(focus_session->path_id);
     ZASSERT(focus_edges.size() == std::size_t(1));
     ZASSERT(llvm::StringRef(focus_edges[0].target).ends_with("header.h"));
 }
@@ -160,13 +160,13 @@ ZEST_CASE(StaleContributionSuppressed) {
         symbol = o.target;
         return false;
     });
-    ZASSERT(!query.sites(symbol, Fid{}, RelationKind::Reference).empty());
+    ZASSERT(!query().sites(symbol, Fid{}, RelationKind::Reference).empty());
 
     // Entries of text the disk no longer holds point nowhere: the file's
     // contribution disappears from cross-file results until its index
     // describes the disk again.
     project.file_table.disk.observe(focus_id, DiskObservation{.hash = 1});
-    ZASSERT(query.sites(symbol, Fid{}, RelationKind::Reference).empty());
+    ZASSERT(query().sites(symbol, Fid{}, RelationKind::Reference).empty());
 }
 
 ZEST_CASE(UndefinedBesideStaleUse) {

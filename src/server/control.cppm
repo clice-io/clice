@@ -27,7 +27,7 @@ struct IndexParams {
 
 struct IndexResult {
     /// Units whose index is not current after the pass: the attempt
-    /// failed for good, or the serving side kept them out.
+    /// failed for good, or an open document's compile serves it.
     std::vector<std::string> failed;
 };
 

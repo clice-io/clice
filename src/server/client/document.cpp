@@ -62,7 +62,7 @@ static std::optional<feature::HoverInfo> index_hover_card(ServedProject& project
     if(!cursor) {
         return std::nullopt;
     }
-    return feature::hover_info(project.peer_queries(),
+    return feature::hover_info(project.query_all(),
                                *cursor,
                                project.project.settings.documentation);
 }
@@ -71,7 +71,6 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
                                             async::cancellation_token token,
                                             TokensRequest request) {
     auto& [path, path_id, session, served, version, ticket] = document;
-    auto& query = served->project.index_query;
     std::optional<index::IndexSource> source;
     std::optional<std::vector<feature::SemanticToken>> tokens;
     switch(co_await served->pick_route(ticket, {.full_lex = true}, &source)) {
@@ -79,7 +78,7 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
         case Route::Index: {
             index_served.insert(path_id);
             tokens = feature::semantic_tokens(served->text_of(*session),
-                                              query,
+                                              served->query(),
                                               *source,
                                               served->project.settings.semantic_tokens);
             break;
@@ -109,7 +108,7 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
     if(!tokens) {
         co_return codec::raw_value{"null"};
     }
-    if(auto preamble = query.preamble_index(path_id)) {
+    if(auto preamble = served->query().preamble_index(path_id)) {
         feature::merge_preamble_macros(*preamble, *tokens);
     }
     // Encoded against the document's text right away.
@@ -146,7 +145,6 @@ void LSPClient::register_document_requests() {
                                               ResolvedDoc document) -> RawResult {
         auto& [path, path_id, session, served, version, ticket] = document;
         auto& project = *served;
-        auto& query = project.project.index_query;
         auto encoding = server.position_encoding;
         auto& position = params.position;
 
@@ -180,8 +178,10 @@ void LSPClient::register_document_requests() {
             case Route::Outdated: co_await async::fail(content_modified());
             case Route::Index: {
                 if(on_directive) {
-                    if(auto shown = directive_card(
-                           feature::document_links(project.text_of(*session), query, path_id))) {
+                    if(auto shown =
+                           directive_card(feature::document_links(project.text_of(*session),
+                                                                  project.query(),
+                                                                  path_id))) {
                         index_served.insert(path_id);
                         co_return std::move(*shown);
                     }
@@ -210,9 +210,10 @@ void LSPClient::register_document_requests() {
         // worker cannot see across files: this side answers it, from the
         // index.
         if(auto cursor = project.cursor_at(path_id, position)) {
+            auto query = project.query_all();
             auto info = query.symbol_info(cursor->symbols.front(), cursor->site.file);
             if(info && info->kind == SymbolKind::Module) {
-                co_return card(feature::module_hover(project.peer_queries(), *cursor, *info));
+                co_return card(feature::module_hover(query, *cursor, *info));
             }
         }
 
@@ -307,7 +308,7 @@ void LSPClient::register_document_requests() {
             co_return to_raw(feature::to_protocol(hints,
                                                   session->positions(),
                                                   encoding,
-                                                  served->peer_queries(),
+                                                  served->query_all(),
                                                   path_id));
         });
 
@@ -326,7 +327,7 @@ void LSPClient::register_document_requests() {
                 case Route::Outdated: co_await async::fail(content_modified());
                 case Route::Index: {
                     auto folds = feature::folding_ranges(served->text_of(*session),
-                                                         served->project.index_query,
+                                                         served->query(),
                                                          *source);
                     index_served.insert(path_id);
                     co_return convert(folds);
@@ -430,7 +431,7 @@ void LSPClient::register_document_requests() {
             case Route::Outdated: co_await async::fail(content_modified());
             case Route::Index: {
                 auto symbols = feature::document_symbols(served->text_of(*session),
-                                                         served->project.index_query,
+                                                         served->query(),
                                                          *source,
                                                          served->project.settings.document_symbols);
                 index_served.insert(path_id);
@@ -468,7 +469,7 @@ void LSPClient::register_document_requests() {
                     // index has no preamble split); guard-skipped lines and
                     // __has_include/#embed have no edge and produce no link.
                     auto links = feature::document_links(served->text_of(*session),
-                                                         served->project.index_query,
+                                                         served->query(),
                                                          path_id);
                     index_served.insert(path_id);
                     co_return to_raw(

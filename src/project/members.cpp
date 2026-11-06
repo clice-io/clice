@@ -314,102 +314,6 @@ bool Project::declared(Fid file) {
     return rule && default_unit(*this, path, *rule);
 }
 
-void Project::rescan_disk_file(Fid path_id) {
-    rescan_dependency_graph(cdb, toolchain, dep_graph, path_id);
-    disk_epoch += 1;
-}
-
-void Project::forget_file(Fid path_id) {
-    dep_graph.update_module_decl(path_id, {});
-    dep_graph.forget_scan(path_id);
-    dep_graph.clear_includes(path_id);
-    disk_epoch += 1;
-}
-
-Project::Rebuilt Project::rebuild_dependency_graph() {
-    llvm::StringMap<llvm::SmallVector<Fid, 2>> providers;
-    for(auto& entry: dep_graph.modules()) {
-        if(!entry.getValue().empty()) {
-            providers[entry.getKey()] = entry.getValue();
-        }
-    }
-
-    // TODO: every CDB change rescans the whole graph synchronously on the
-    // event loop, twice when provisional members change; make it
-    // incremental or move it off the dispatch path.
-    auto scan = [&] {
-        dep_graph.reset();
-        auto report = scan_dependency_graph(cdb, toolchain, dep_graph, scan_commands(members()));
-        dep_graph.build_reverse_map();
-        return report;
-    };
-    auto report = scan();
-    Rebuilt changes{.provisional = refresh_provisional()};
-    if(!changes.provisional.empty()) {
-        report = scan();
-    }
-    changes.scan = std::move(report);
-    disk_epoch += 1;
-
-    for(auto& entry: dep_graph.modules()) {
-        if(entry.getValue().empty()) {
-            continue;
-        }
-        auto it = providers.find(entry.getKey());
-        if(it == providers.end()) {
-            changes.appeared.push_back(entry.getKey().str());
-            continue;
-        }
-        auto now = ranges::to<llvm::SmallVector<Fid>>(entry.getValue());
-        ranges::sort(it->second);
-        ranges::sort(now);
-        if(it->second != now) {
-            changes.replaced.append(it->second.begin(), it->second.end());
-        }
-    }
-    return changes;
-}
-
-Project::MembersChanged Project::update_members(CDBDiff commands) {
-    MembersChanged changed;
-    if(commands.empty()) {
-        // With nothing reloaded the graph is the build's: only a file just
-        // recorded may join, against it.
-        commands = refresh_provisional();
-        if(commands.empty()) {
-            return changed;
-        }
-    }
-    // Every borrowed or synthesized command may resolve differently now —
-    // which no delta can tell.
-    commands_epoch += 1;
-    changed.graph = rebuild_dependency_graph();
-    commands.append(changed.graph.provisional);
-
-    // The compile command is an input that content-based staleness cannot
-    // see. A unit the build stopped compiling — its database still loads but
-    // no longer lists it, and no rule's default command covers it — leaves
-    // the index and nothing is owed, unlike a file that vanished from disk,
-    // whose shard stays behind (queries withhold it). A unit whose command
-    // changed keeps its index serving until the reindex merges; its manifest
-    // names the old command, so no freshness check skips the reindex, in
-    // this session or after a restart. ContentChanged: a new command can
-    // rewrite the index (macros, includes) as thoroughly as an edit.
-    for(auto file: llvm::concat<const Fid>(commands.added, commands.changed, commands.removed)) {
-        if(candidates(file).empty()) {
-            index::IndexReport report;
-            index.drop(file, report);
-            take_report(report);
-            background_index.forget(file);
-        } else {
-            index.mark_outdated(file);
-            background_index.enqueue(file, ReindexReason::ContentChanged);
-        }
-    }
-    changed.commands = std::move(commands);
-    return changed;
-}
-
 CDBDiff Project::refresh_provisional() {
     CDBDiff diff;
     for(auto file: provisional_files(*this)) {
@@ -444,26 +348,6 @@ CDBDiff Project::refresh_provisional() {
         hosting.borrowable = {};
     }
     return diff;
-}
-
-llvm::SmallVector<Fid> Project::readers(Fid file) const {
-    auto found = dep_graph.find_readers(file);
-    llvm::SmallVector<Fid> result(found.begin(), found.end());
-    auto add = [&](Fid reader) {
-        if(reader != file && !ranges::contains(result, reader)) {
-            result.push_back(reader);
-        }
-    };
-    index.for_each_contribution(file, [&](Fid unit, std::uint64_t) { add(unit); });
-    index.for_each_absent_lookup(file, add);
-    index.for_each_importer(file, add);
-    for(auto& [module, entry]: pcms) {
-        if(ranges::contains(entry.inputs, file, &Input::file) ||
-           (entry.failure && ranges::contains(entry.failure->inputs, file, &Input::file))) {
-            add(module.file());
-        }
-    }
-    return result;
 }
 
 bool Project::units_pending() {

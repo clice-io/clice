@@ -20,13 +20,17 @@ namespace clice::testing {
 struct IndexQueryTester : Tester {
     ServedProjectFixture fx;
     Project& project = fx.served->project;
-    index::IndexQuery& query = project.index_query;
+
+    /// The project's index over the documents open now.
+    index::IndexQuery query() const {
+        return fx.served->query();
+    }
 
     Fid focus_id;
     Fid header_id;
 
     std::vector<index::IndexQuery::Located> search(llvm::StringRef text, std::size_t limit = 10) {
-        return index::search(query, *index::SymbolQuery::parse(text), limit);
+        return index::search(query(), *index::SymbolQuery::parse(text), limit);
     }
 
     /// Compile the added sources as the background index does and merge the

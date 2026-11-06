@@ -16,17 +16,17 @@ namespace clice::feature {
 /// reply edge converts them with the session's line map.
 auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink>;
 
-/// Document links from manifest include edges: each edge's argument span is
-/// located with find_directive_argument on its directive line. Lines the
-/// manifest has no edge for (guard-skipped includes, __has_include, #embed)
+/// Document links from the includes manifests resolved: each one's argument
+/// span is located with find_directive_argument on its directive line. Lines
+/// no manifest resolved (guard-skipped includes, __has_include, #embed)
 /// produce no link.
-auto document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge> edges)
+auto document_links(SourceText& source, llvm::ArrayRef<index::ResolvedInclude> includes)
     -> std::vector<index::DocumentLink>;
 
-/// The links of `file` from its manifest's include edges, read in
+/// The links of `file` from the includes manifests resolved, read in
 /// `source`; none unless `source` is the text the file's shard indexed.
 /// Unlike the entries the other results computed from the index serve,
-/// the edges are disk truth: a buffer edited since (its compile stopped by
+/// the includes are disk truth: a buffer edited since (its compile stopped by
 /// a crash, its own index current) must not get them — an edited
 /// directive would get the old target, confidently wrong.
 auto document_links(SourceText& source, const index::IndexQuery& query, Fid file)

@@ -68,7 +68,8 @@ ZEST_CASE(EditorSharesContext) {
     project.dep_graph.build_reverse_map();
 
     // Its self-containment check found it needs the includer's context.
-    auto first = project.resolve_command(header, {.preprocess = true});
+    project.take_tree_in_process(project.tree_request(host, project.candidates(host).front()));
+    auto first = project.resolve_command(header);
     ZASSERT(first.self_containment);
     auto version = current_input(project.file_table, header)->version;
     project.hosting.self_containment.commit(
@@ -82,7 +83,7 @@ ZEST_CASE(EditorSharesContext) {
     ZASSERT(background.synthesized != nullptr);
     ZASSERT(ranges::contains(background.arguments, background.synthesized->prefix));
 
-    auto resolution = served.resolve_command(header);
+    auto resolution = project.resolve_command(header, served.command_request(header));
     ZASSERT(resolution.ref.source == CommandSource::Host);
     ZASSERT(resolution.synthesized == background.synthesized);
     ZASSERT(!project.choices.dirty);
@@ -102,7 +103,7 @@ ZEST_CASE(MovedCommandRecompiles) {
     auto main = fx.open(tmp.path("main.cpp"), "")->path_id;
     // The documents compiled under what the editor resolves for them.
     auto compiled = [&](Fid file) {
-        auto resolution = served.resolve_command(file);
+        auto resolution = project.resolve_command(file, served.command_request(file));
         fx.entry(file).latest =
             std::make_shared<DocumentCompile>(DocumentCompile{.command = resolution.ref.command});
         return resolution.ref.source;
@@ -119,7 +120,8 @@ ZEST_CASE(MovedCommandRecompiles) {
     fx.commands_changed({.added = {lonely}});
     ZASSERT(fx.generation(lonely) != 0);
     ZASSERT(fx.generation(main) == 0);
-    ZASSERT(served.resolve_command(lonely).ref.source == CommandSource::Database);
+    ZASSERT(project.resolve_command(lonely, served.command_request(lonely)).ref.source ==
+            CommandSource::Database);
 }
 
 ZEST_CASE(MovedHostRecompiles) {
@@ -169,7 +171,7 @@ ZEST_CASE(StaleHostChoiceKeepsUnit) {
     project.dep_graph.set_includes(ranked, 0, {{part}});
     project.dep_graph.build_reverse_map();
     for(auto host: {chosen, ranked}) {
-        project.take_tree(project.tree_request(host, project.candidates(host).front()));
+        project.take_tree_in_process(project.tree_request(host, project.candidates(host).front()));
     }
 
     ContextChoice choice{.host = chosen};
@@ -201,7 +203,8 @@ ZEST_CASE(ChoiceSteersEditorOnly) {
     choose(file, ContextChoice{Fid{}, std::nullopt, project.commands.command_hash_hex(chosen)});
 
     // An editor resolution honors the chosen CDB entry...
-    ZASSERT(ranges::contains(served.resolve_command(file).arguments, define_of(chosen)));
+    ZASSERT(ranges::contains(project.resolve_command(file, served.command_request(file)).arguments,
+                             define_of(chosen)));
 
     // ...but background indexing must never see user choices.
     ZASSERT(ranges::contains(project.resolve_command(file).arguments,
@@ -233,13 +236,13 @@ ZEST_CASE(ChoiceBaseSurvivesRules) {
     project.settings.rules.push_back(Rule{.append = {"-DRULED"}});
     project.settings.finalize(project.root);
     project.rules = Rules(project.settings, project.root, "");
-    auto resolution = served.resolve_command(file);
+    auto resolution = project.resolve_command(file, served.command_request(file));
     ZASSERT(ranges::contains(resolution.arguments, "RULED"));
     ZASSERT(ranges::contains(resolution.arguments, define_of(chosen)));
 
     // ...while one naming no command falls back to the default.
     choose(file, ContextChoice{Fid{}, std::nullopt, "0123456789abcdef"});
-    ZASSERT(ranges::contains(served.resolve_command(file).arguments,
+    ZASSERT(ranges::contains(project.resolve_command(file, served.command_request(file)).arguments,
                              define_of(candidates.front().command)));
 }
 
@@ -328,7 +331,7 @@ ZEST_CASE(GoneOccurrenceGoesInactive) {
     // the choice holds until one does.
     ZASSERT(!server.recheck_choice(header));
     ZASSERT(server.choice(header)->active);
-    project.take_tree(project.tree_request(host, project.candidates(host).front()));
+    project.take_tree_in_process(project.tree_request(host, project.candidates(host).front()));
     ZASSERT(!project.choice_holds(header, server.choice(header)->choice));
     ZASSERT(server.recheck_choice(header));
     ZASSERT(!server.choice(header)->active);

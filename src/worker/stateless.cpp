@@ -89,10 +89,10 @@ static std::optional<std::string> write_preamble_index(llvm::StringRef blob,
 
 /// The TU index a unit's compile, or a build that is one, sends as the
 /// master asked.
-static index::TUIndexOptions index_options(const auto& params) {
-    return {.known_variants = params.known_variants,
-            .known_instantiations = params.known_instantiations,
-            .standard_library_instantiations = params.standard_library_instantiations};
+static index::TUIndexOptions index_options(const worker::IndexRequest& request) {
+    return {.known_variants = request.known_variants,
+            .known_instantiations = request.known_instantiations,
+            .standard_library_instantiations = request.standard_library_instantiations};
 }
 
 /// Where a PCH or PCM build writes: the master's tmp path when it provided
@@ -220,8 +220,8 @@ static worker::PrecompiledBuildResult
         blob = serialize_preamble_index(*unit, params.preamble_bound);
     } else if(success && params.index) {
         // The PCH stands without the index, whose unit then compiles itself.
-        if(auto error = send_index(index::build_tu_index(*unit, index_options(params)),
-                                   params.index_output_path,
+        if(auto error = send_index(index::build_tu_index(*unit, index_options(params.indexing)),
+                                   params.indexing.output_path,
                                    result)) {
             LOG_WARN("BuildPCH: the index of {} is lost: {}", params.file, *error);
         }
@@ -240,7 +240,7 @@ static worker::PrecompiledBuildResult
     // blob write failure fails the whole build.
     ScopedTimer state_write_timer;
     if(success && !params.whole_file) {
-        if(auto error = write_preamble_index(as_chars(blob), params.index_output_path)) {
+        if(auto error = write_preamble_index(as_chars(blob), params.indexing.output_path)) {
             success = false;
             internal_error = true;
             errors = {std::move(*error)};
@@ -311,10 +311,10 @@ static worker::PrecompiledBuildResult
     std::size_t index_bytes = 0;
     ScopedTimer index_timer;
     if(success && params.index) {
-        auto blob = index::build_tu_index(*unit, index_options(params));
+        auto blob = index::build_tu_index(*unit, index_options(params.indexing));
         index_bytes = blob.size();
         // The PCM stands without the index, whose unit then compiles itself.
-        if(auto error = send_index(std::move(blob), params.index_output_path, result)) {
+        if(auto error = send_index(std::move(blob), params.indexing.output_path, result)) {
             LOG_WARN("BuildPCM: the index of module {} is lost: {}", params.module_name, *error);
         }
     }
@@ -410,7 +410,7 @@ static void collect_tidy_diagnostics(CompilationUnit& unit,
 
 /// The errors a unit compiled with, each at the start of the range clang
 /// marks. One no file on disk holds (the command line's, the built-in
-/// buffer's, a host fragment's) has no place.
+/// buffer's) has no place.
 static std::vector<worker::LocatedMessage> located_errors(CompilationUnit& unit) {
     auto& sm = unit.context().getSourceManager();
     std::vector<worker::LocatedMessage> errors;
@@ -419,7 +419,7 @@ static std::vector<worker::LocatedMessage> located_errors(CompilationUnit& unit)
             continue;
         }
         auto& error = errors.emplace_back(worker::LocatedMessage{.message = diag.message});
-        if(diag.fid.isValid() && !unit.is_builtin_file(diag.fid) && !unit.synthesized(diag.fid)) {
+        if(diag.fid.isValid() && !unit.is_builtin_file(diag.fid)) {
             error.file = unit.file_path(diag.fid).str();
             error.line = sm.getLineNumber(diag.fid, diag.range.begin);
             error.column = sm.getColumnNumber(diag.fid, diag.range.begin);
@@ -516,9 +516,9 @@ static worker::CompileUnitResult
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;
     if(params.index) {
-        auto blob = index::build_tu_index(*unit, index_options(params));
+        auto blob = index::build_tu_index(*unit, index_options(params.indexing));
         index_bytes = blob.size();
-        if(auto error = send_index(std::move(blob), params.index_output_path, result)) {
+        if(auto error = send_index(std::move(blob), params.indexing.output_path, result)) {
             return {false, std::move(*error)};
         }
     }
