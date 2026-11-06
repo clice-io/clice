@@ -1001,11 +1001,9 @@ regions dimmed out of the box; other editors style the modifier directly
 - [x] Preserve syntax highlighting within inactive regions ([clangd#1664](https://github.com/clangd/clangd/issues/1664))
 - [x] Keep inactive regions distinct from comments ([clangd#1545](https://github.com/clangd/clangd/issues/1545))
 
-### Untaken Branches
+A branch the preprocessor skips is dimmed, whichever directive opens it. In a header, the dimmed branches are those its [host](./header-contexts.md) skips. Code another context of the file compiles keeps its semantic kinds while dimmed. The dimming follows an edit to a condition as you type.
 
-A branch the preprocessor skips is dimmed, whichever directive opens it.
-
-<!-- BEGIN GENERATED ITEMS: inactive_regions/branches -->
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/inactive -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1014,18 +1012,10 @@ A branch the preprocessor skips is dimmed, whichever directive opens it.
 Lines of a branch the preprocessor skips are dimmed, an `#else` after a taken branch included
 
 ```case
-tests/inactive_regions/branches/02_else_branch
+tests/semantic_tokens/inactive/02_else_branch
 ```
 
 <!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-### Header Contexts
-
-In a header, the dimmed branches are those its [host](./header-contexts.md) skips.
-
-<!-- BEGIN GENERATED ITEMS: inactive_regions/contexts -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1034,18 +1024,10 @@ In a header, the dimmed branches are those its [host](./header-contexts.md) skip
 A header shows the branches its chosen host takes, and switching hosts updates the dimming at once
 
 ```case
-tests/inactive_regions/contexts/01_host_switch
+tests/semantic_tokens/inactive/04_host_switch
 ```
 
 <!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-### Edits
-
-The dimming follows an edit to a condition as you type.
-
-<!-- BEGIN GENERATED ITEMS: inactive_regions/updates -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -1054,7 +1036,7 @@ The dimming follows an edit to a condition as you type.
 Editing the macro a condition tests moves the dimming to the branch now skipped, before the file is saved
 
 ```case
-tests/inactive_regions/updates/01_edited_condition
+tests/semantic_tokens/inactive/08_edited_condition
 ```
 
 <!-- END CAPABILITY -->

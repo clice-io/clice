@@ -41,7 +41,7 @@ tests/<topic>/<subtopic>/NN_name/
   `document_highlights`, `document_symbols`, `workspace_symbols`,
   `document_links`, `folding_ranges`, `selection_ranges`, `semantic_tokens`,
   `inlay_hints`, `code_actions`, `counterparts`, `rename`,
-  `diagnostics`, `inactive_regions`.
+  `diagnostics`.
 - **Engine**, how the server behaves over time: `compile` (pch, preamble,
   cache, staleness, flags, languages), `contexts` (header contexts, switching,
   self containment, fragments), `project` (discovery, rules, configurations,
