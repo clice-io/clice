@@ -373,6 +373,12 @@ struct test_reference {
     using §(builtin_same_reference)input = typename conditional<__is_same(K, K&), int, char>::type;
 };
 
+template <typename T>
+struct test_collapse {
+    // `T = int&` makes `T&&` an `int&`.
+    using §(builtin_same_collapse)input = typename conditional<__is_same(T&&, int&), int, char>::type;
+};
+
 template <int N>
 struct test_extent {
     // `N = 3` makes the two one type.

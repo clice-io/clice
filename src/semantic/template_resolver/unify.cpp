@@ -306,6 +306,14 @@ bool types_may_match(clang::ASTContext& context, clang::QualType lhs, clang::Qua
         return true;
     }
     if(lhs->getTypeClass() != rhs->getTypeClass()) {
+        /// An rvalue reference to what may turn out an lvalue reference
+        /// collapses to one (`T&&` with `T = int&`).
+        if(lhs->isReferenceType() && rhs->isReferenceType()) {
+            auto* rvalue =
+                llvm::isa<clang::RValueReferenceType>(lhs) ? lhs.getTypePtr() : rhs.getTypePtr();
+            return rvalue->getPointeeType()->isDependentType() &&
+                   types_may_match(context, lhs->getPointeeType(), rhs->getPointeeType());
+        }
         /// A bound waiting for instantiation may become any other.
         if((llvm::isa<clang::DependentSizedArrayType>(lhs) && rhs->isConstantArrayType()) ||
            (lhs->isConstantArrayType() && llvm::isa<clang::DependentSizedArrayType>(rhs))) {

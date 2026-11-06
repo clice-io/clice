@@ -72,6 +72,9 @@ declarations = ["using ⟦type⟧ = F; @-5"]
 [answers.builtin_same_reference.template_resolver]
 type = "typename conditional<__is_same(K, K &), int, char>::type"
 
+[answers.builtin_same_collapse.template_resolver]
+type = "typename conditional<__is_same(T &&, int &), int, char>::type"
+
 [answers.builtin_same_extent.template_resolver]
 type = "typename conditional<__is_same(int[N], int[3]), int, char>::type"
 
