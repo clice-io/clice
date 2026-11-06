@@ -50,19 +50,35 @@ index::IndexSource buffer_source(const ServedProject& served,
     return source;
 }
 
-/// How many entries a shard holds: a merge only adds to the entries of
-/// the shards it takes, so equal counts are equal entries.
-std::size_t entry_count(const index::Shard& shard) {
+/// A shard's entries counted and hashed, whichever variants hold them: a
+/// merge only adds to the entries of the shards it takes, so equal counts
+/// are equal entries.
+struct Entries {
     std::size_t count = 0;
-    shard.for_each_occurrence([&](const index::Occurrence&) {
-        count += 1;
+    std::uint64_t hash = 0;
+};
+
+Entries entries_of(const index::Shard& shard) {
+    Entries entries;
+    shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
+        entries.count += 1;
+        entries.hash = llvm::hash_combine(entries.hash,
+                                          occurrence.range.begin,
+                                          occurrence.range.end,
+                                          occurrence.target);
         return true;
     });
-    shard.for_each_relation([&](index::SymbolHash, const index::Relation&) {
-        count += 1;
+    shard.for_each_relation([&](index::SymbolHash symbol, const index::Relation& relation) {
+        entries.count += 1;
+        entries.hash = llvm::hash_combine(entries.hash,
+                                          symbol,
+                                          static_cast<std::uint32_t>(relation.kind),
+                                          relation.range.begin,
+                                          relation.range.end,
+                                          relation.target);
         return true;
     });
-    return count;
+    return entries;
 }
 
 /// The open document's own file index when it describes the buffer: the
@@ -99,15 +115,15 @@ const index::Shard* buffer_shard(const ServedProject& served, const ServedDocume
             keep,
             llvm::ArrayRef(&shard, 1),
             [&](std::uint32_t offset) { return feature::inactive_at(skipped, offset); });
-        auto hash = llvm::xxh3_64bits(as_chars(bytes));
         auto merged =
             index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
+        auto entries = entries_of(merged);
         document.merged = ServedDocument::MergedIndex{
             .compile = compiled,
             .shard = std::move(merged),
         };
-        if(entry_count(document.merged->shard) != entry_count(shard)) {
-            document.merged->additions = hash;
+        if(entries.count != entries_of(shard).count) {
+            document.merged->additions = entries.hash;
         }
     }
     return &document.merged->shard;
@@ -150,13 +166,15 @@ std::optional<index::IndexSource> ServedProject::buffer_index(Fid file) const {
     return buffer_source(*this, index::IndexSource::Kind::Shard, *document, *shard);
 }
 
-llvm::ArrayRef<std::uint32_t> ServedProject::skipped_code(Fid file) const {
+ServedProject::SkippedCode ServedProject::skipped_code(Fid file) const {
     auto* document = find_document(file);
-    if(!document || !buffer_shard(*this, *document) || !document->merged ||
-       document->merged->additions == 0) {
+    if(!document || !buffer_shard(*this, *document) || !document->merged) {
         return {};
     }
-    return document->latest->inactive_regions;
+    return {
+        .regions = document->latest->inactive_regions,
+        .indexed = document->merged->additions != 0,
+    };
 }
 
 bool ServedProject::merge_again(Fid file) const {

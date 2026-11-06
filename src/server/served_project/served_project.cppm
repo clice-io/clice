@@ -237,8 +237,8 @@ struct ServedDocument {
         index::Shard shard;
 
         /// Zero when the shard adds nothing to the compile's index, else a
-        /// hash of the merged index: two tell whether the additions
-        /// changed.
+        /// hash of the merged index's entries: two tell whether the
+        /// additions changed.
         std::uint64_t additions = 0;
     };
 
@@ -781,11 +781,19 @@ public:
     /// the very bytes it indexed.
     const index::Shard* matching_shard(const Session& session) const;
 
-    /// The code the open document's latest compile skipped (flat begin/end
-    /// offset pairs), when the index serving the document holds entries
-    /// there: the code of the file's other contexts, which the answers
-    /// the AST gives are completed with. Empty otherwise.
-    llvm::ArrayRef<std::uint32_t> skipped_code(Fid file) const;
+    /// The code the open document's latest compile skipped while its
+    /// buffer is the text the file's shard indexed: the code of the file's
+    /// other contexts, which the answers the AST gives are completed with.
+    struct SkippedCode {
+        /// Flat begin/end offset pairs; empty while the buffer is not the
+        /// shard's text.
+        llvm::ArrayRef<std::uint32_t> regions;
+
+        /// The index serving the document holds entries there.
+        bool indexed = false;
+    };
+
+    SkippedCode skipped_code(Fid file) const;
 
     /// Merges the open document's compile with its file's shard again, the
     /// shard having changed: whether what the merge adds changed with it.

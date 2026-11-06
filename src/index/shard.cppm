@@ -178,7 +178,8 @@ std::vector<std::byte>
 /// retired by the caller, not compacted to nothing. Every fresh shard
 /// must be a loaded single-variant blob of the same content generation as
 /// the other inputs. `within`, when given, keeps of `old`'s entries those
-/// it accepts the offset of.
+/// it accepts the offset of, and the relations between two symbols one of
+/// which the occurrences kept name.
 std::vector<std::byte> merge_shards(const Shard& old,
                                     llvm::ArrayRef<VariantHash> keep,
                                     llvm::ArrayRef<Shard> fresh,

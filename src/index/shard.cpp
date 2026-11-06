@@ -1684,6 +1684,8 @@ std::vector<std::byte> write_merged(const Root* old_root,
     canonicalize(fresh_occurrences, occurrence_key);
 
     std::vector<OccurrenceEntry<MaskT>> old_occurrences;
+    // With `within`, the symbols the old occurrences it keeps name.
+    llvm::DenseSet<SymbolHash> named;
     if(old_root) {
         auto table = OccurrenceTable::of(*old_root);
         auto encoding = encoding_of(*old_root);
@@ -1693,6 +1695,9 @@ std::vector<std::byte> write_merged(const Root* old_root,
         if(within) {
             std::erase_if(old_occurrences,
                           [&](const auto& entry) { return !within(entry.occurrence.range.begin); });
+            for(const auto& entry: old_occurrences) {
+                named.insert(entry.occurrence.target);
+            }
         }
     }
     merge_sorted(std::move(old_occurrences),
@@ -1747,8 +1752,14 @@ std::vector<std::byte> write_merged(const Root* old_root,
                 return remap_mask<MaskT>(old_encoding, old_table->masks, entry, id_map);
             });
         if(within) {
-            std::erase_if(entries,
-                          [&](const auto& entry) { return !within(entry.relation.range.begin); });
+            std::erase_if(entries, [&](const auto& entry) {
+                // A relation between two symbols has no place of its own:
+                // it goes with the symbols the kept occurrences name.
+                if(!entry.relation.range.valid()) {
+                    return !named.contains(group.hash) && !named.contains(entry.relation.target);
+                }
+                return !within(entry.relation.range.begin);
+            });
         }
         return entries;
     };

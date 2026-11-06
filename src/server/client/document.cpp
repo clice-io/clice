@@ -84,10 +84,10 @@ static std::optional<OtherContexts> other_contexts(const ServedProject& served,
         return std::nullopt;
     }
     auto skipped = served.skipped_code(session.path_id);
-    if(skipped.empty()) {
+    if(!skipped.indexed) {
         return std::nullopt;
     }
-    return OtherContexts{skipped, *served.buffer_index(session.path_id)};
+    return OtherContexts{skipped.regions, *served.buffer_index(session.path_id)};
 }
 
 LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
@@ -286,7 +286,8 @@ void LSPClient::register_document_requests() {
         }
         // Code the compile's context skipped: another context of the file
         // compiles it, and the index has its card.
-        if(offset && feature::inactive_at(project.skipped_code(path_id), *offset)) {
+        if(auto skipped = project.skipped_code(path_id);
+           offset && skipped.indexed && feature::inactive_at(skipped.regions, *offset)) {
             if(auto info = index_hover_card(project, *session, position)) {
                 co_return card(*info);
             }
@@ -533,12 +534,14 @@ void LSPClient::register_document_requests() {
                 case Route::Ast: break;
             }
             auto links = co_await served->directive_links(ticket, ctx.cancellation).or_fail();
-            if(auto skipped = served->skipped_code(path_id); !skipped.empty()) {
+            // An include leaves no index entry: the skipped code's includes
+            // link even when the index holds no entries there.
+            if(auto skipped = served->skipped_code(path_id); !skipped.regions.empty()) {
                 feature::merge_other_contexts(links,
                                               feature::document_links(served->text_of(*session),
                                                                       served->project.index_query,
                                                                       path_id),
-                                              skipped);
+                                              skipped.regions);
             }
             co_return to_raw(feature::to_protocol(links, session->positions(), encoding, files));
         });

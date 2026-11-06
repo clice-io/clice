@@ -1,0 +1,13 @@
+[test."config.h"]
+links = [
+    { at = '#include ⟦"fast.h"⟧', target = "fast.h" },
+    { at = '#include ⟦"slow.h"⟧', target = "slow.h" },
+]
+
+[test."config.h".context]
+automatic = true
+
+[test."config.h".context.context]
+label = "fast_host.cpp"
+description = "${WS}/fast_host.cpp"
+host = "fast_host.cpp"
