@@ -91,3 +91,4 @@ type = "member_flag::tree<traits<K, V>>::mutable_iterator *"
 
 [answers.explicit_variable_specialization.template_resolver]
 type = "int"
+declarations = ["using ⟦type⟧ = T; @-22"]
