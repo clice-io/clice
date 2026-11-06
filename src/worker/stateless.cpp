@@ -516,7 +516,8 @@ static worker::CompileUnitResult
         shared = read_shared_record(params.shared_record);
     }
     bool unheld = shared && shared->record.unheld;
-    if(unheld) {
+    bool macro_stack = shared && shared->record.macro_stack;
+    if(unheld || macro_stack) {
         shared = nullptr;
     }
     CompilationParams cp{
@@ -567,7 +568,9 @@ static worker::CompileUnitResult
     }
     worker::CompileUnitResult result;
     result.success = true;
-    if(auto rejection = unheld       ? "it holds a header it includes unguarded"
+    if(auto rejection = unheld ? "it holds a header it includes unguarded"
+                        : macro_stack
+                            ? "a header it holds leaves #pragma push_macro to its includer"
                         : unreadable ? "its record is unreadable"
                                      : unit->shared_rejection();
        !rejection.empty()) {

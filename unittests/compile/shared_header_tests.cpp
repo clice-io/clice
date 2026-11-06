@@ -492,6 +492,59 @@ int capi(struct handle*);
     ZEXPECT(from_pch(*compiled.unit, "capi"));
 };
 
+ZEST_CASE(PushLeftToIncluder) {
+    // push.h pushes MODE for the unit to pop, which the PCH does not keep.
+    add_file("shared.hxx", "#pragma once\n#include \"push.h\"\n");
+    add_file("push.h", "#pragma once\n#pragma push_macro(\"MODE\")\n");
+    add_focus("main.cpp", R"cpp(#define MODE 1
+#include "push.h"
+#undef MODE
+#pragma pop_macro("MODE")
+#if MODE
+int on();
+#endif
+)cpp");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.record->macro_stack);
+};
+
+ZEST_CASE(PushedInHeldHeader) {
+    // mode.h pushes MODE and pops it back: what it restores is what the
+    // unit defined, not what the PCH saw.
+    add_file("shared.hxx", "#pragma once\n#include \"mode.h\"\n");
+    add_file("mode.h", R"cpp(#pragma once
+#pragma push_macro("MODE")
+#undef MODE
+#define MODE 2
+int mode();
+#pragma pop_macro("MODE")
+#if MODE
+int on();
+#endif
+)cpp");
+    add_focus("main.cpp", "#define MODE 1\n#include \"mode.h\"\nint use() { return mode(); }\n");
+    auto compiled = compile_over(*this);
+    ZEXPECT(!compiled.record->macro_stack);
+    ZEXPECT(compiled.unit->shared_rejection().contains("MODE"));
+};
+
+ZEST_CASE(UnitPushesHeldMacro) {
+    // The unit pushes X before config.h defines it: without the PCH, its
+    // pop takes X away again.
+    add_file("shared.hxx", "#pragma once\n#include \"config.h\"\n");
+    add_file("config.h", "#pragma once\n#define X 1\n");
+    add_focus("main.cpp", R"cpp(#pragma push_macro("X")
+#include "config.h"
+#pragma pop_macro("X")
+#ifdef X
+int x();
+#endif
+int use() { return 0; }
+)cpp");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().contains("X"));
+};
+
 };  // ZEST_SUITE(SharedHeader)
 
 }  // namespace

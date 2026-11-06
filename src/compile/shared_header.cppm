@@ -157,6 +157,11 @@ struct SharedHeaderRecord {
     /// would parse it again, so none loads the PCH.
     bool unheld = false;
 
+    /// A held header left a `#pragma push_macro` for its includer to pop,
+    /// or popped one its includer would have pushed: the PCH keeps no
+    /// pushes, so none loads it.
+    bool macro_stack = false;
+
     friend bool operator==(const SharedHeaderRecord&, const SharedHeaderRecord&) = default;
 };
 

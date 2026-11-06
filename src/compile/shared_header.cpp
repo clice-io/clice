@@ -104,6 +104,39 @@ void body_identifiers(clang::Preprocessor& pp,
     }
 }
 
+/// The macro the `#pragma push_macro` or `pop_macro` the preprocessor is
+/// about to run names, with whether it pushes; nullopt for another pragma.
+/// Read off the text of the `#pragma` line or of the string `_Pragma`
+/// destringized, which the lexer stands at: no callback reports either.
+std::optional<std::pair<llvm::StringRef, bool>> macro_stack_pragma(clang::Preprocessor& pp) {
+    // The current lexer, when the preprocessor reads a file or a string,
+    // is no other kind (Preprocessor::CurPPLexer).
+    auto* lexer = static_cast<clang::Lexer*>(pp.getCurrentLexer());
+    if(!lexer) {
+        return std::nullopt;
+    }
+    auto buffer = lexer->getBuffer();
+    auto text = buffer.substr(lexer->getBufferLocation() - buffer.data());
+    text = text.take_until([](char c) { return c == '\n'; }).ltrim();
+    bool push = text.consume_front("push_macro");
+    if(!push && !text.consume_front("pop_macro")) {
+        return std::nullopt;
+    }
+    text = text.ltrim();
+    if(!text.consume_front("(")) {
+        return std::nullopt;
+    }
+    text = text.ltrim();
+    if(!text.consume_front("\"")) {
+        return std::nullopt;
+    }
+    auto name = text.take_until([](char c) { return c == '"'; });
+    if(name.size() == text.size()) {
+        return std::nullopt;
+    }
+    return std::pair(name, push);
+}
+
 }  // namespace
 
 /// Records, in the build of a shared header's PCH, what each header the
@@ -200,6 +233,9 @@ public:
         }
         ranges::sort(record.initial, {}, &MacroState::name);
         record.absent = unit.absent();
+        record.macro_stack = record.macro_stack || ranges::any_of(pushes, [](auto& entry) {
+                                 return !entry.second.empty();
+                             });
         record.unheld = ranges::any_of(stack.front().includes, [&](auto& include) {
             auto index = include.held;
             if(index == unresolved) {
@@ -426,13 +462,45 @@ private:
         if(auto* before = directive->getPrevious()) {
             previous = before->getDefinition().getMacroInfo();
         }
-        write(name, previous, directive->getMacroInfo());
+        auto& info = *name.getIdentifierInfo();
+        write(info.getName(),
+              name.getLocation(),
+              unit.macro_state(previous, info),
+              unit.macro_state(directive->getMacroInfo(), info));
     }
 
     void MacroUndefined(const clang::Token& name,
                         const clang::MacroDefinition& definition,
                         const clang::MacroDirective*) override {
-        write(name, definition.getMacroInfo(), nullptr);
+        auto& info = *name.getIdentifierInfo();
+        write(info.getName(),
+              name.getLocation(),
+              unit.macro_state(definition.getMacroInfo(), info),
+              0);
+    }
+
+    /// A push reads the macro; its pop writes back the state pushed. The
+    /// PCH keeps no pushes: a header leaving one for its includer to pop,
+    /// or popping one its includer pushed, leaves the PCH to no unit.
+    void PragmaDirective(clang::SourceLocation location, clang::PragmaIntroducerKind) override {
+        auto pragma = macro_stack_pragma(pp);
+        if(!pragma || !tracked()) {
+            return;
+        }
+        auto [spelling, push] = *pragma;
+        auto name = name_hash(spelling);
+        auto& info = *pp.getIdentifierInfo(spelling);
+        auto now = unit.macro_state(pp.getMacroInfo(&info), info);
+        auto& pushed = pushes[name];
+        if(push) {
+            read(spelling, now);
+            pushed.push_back(now);
+        } else if(pushed.empty()) {
+            unit.recorded_shared.macro_stack = true;
+        } else {
+            write(spelling, location, now, pushed.back());
+            pushed.pop_back();
+        }
     }
 
     void MacroExpands(const clang::Token& name,
@@ -530,23 +598,23 @@ private:
         }
     }
 
-    void write(const clang::Token& token,
-               const clang::MacroInfo* previous,
-               const clang::MacroInfo* now) {
+    void write(llvm::StringRef spelling,
+               clang::SourceLocation location,
+               std::uint64_t previous,
+               std::uint64_t now) {
         if(!tracked()) {
             return;
         }
-        auto* info = token.getIdentifierInfo();
-        auto name = name_hash(info->getName());
-        initial.try_emplace(name, unit.macro_state(previous, *info));
-        auto [it, _] = written.try_emplace(name, Write{.spelling = info->getName()});
-        if(!standard_library(unit, token.getLocation())) {
+        auto name = name_hash(spelling);
+        initial.try_emplace(name, previous);
+        auto [it, _] = written.try_emplace(name, Write{.spelling = spelling});
+        if(!standard_library(unit, location)) {
             it->second.project = true;
         }
         auto& frame = stack.back();
         frame.written.insert(name);
         frame.held_wrote.erase(name);
-        frame.writes.push_back({.name = name, .state = unit.macro_state(now, *info)});
+        frame.writes.push_back({.name = name, .state = now});
     }
 
     std::uint32_t file_index(clang::FileEntryRef entry) {
@@ -602,6 +670,9 @@ private:
 
     /// The macros written.
     llvm::DenseMap<std::uint64_t, Write> written;
+
+    /// The states `#pragma push_macro` pushed of each macro, not popped yet.
+    llvm::DenseMap<std::uint64_t, std::vector<std::uint64_t>> pushes;
 
     /// The declaration context and the language linkage of each entry and
     /// include (site).
@@ -860,12 +931,36 @@ private:
         condition_identifiers(pp, range, [&](llvm::StringRef name) { check(name, 0, location); });
     }
 
+    /// The unit's push reads the macro; its pop restores, without the PCH,
+    /// the state pushed without it.
+    void PragmaDirective(clang::SourceLocation location, clang::PragmaIntroducerKind) override {
+        auto pragma = macro_stack_pragma(pp);
+        if(!pragma) {
+            return;
+        }
+        auto [spelling, push] = *pragma;
+        auto name = name_hash(spelling);
+        auto& pushed = pushes[name];
+        if(push) {
+            auto& info = *pp.getIdentifierInfo(spelling);
+            check(spelling, unit.macro_state(pp.getMacroInfo(&info), info), location);
+            pushed.push_back(state(name));
+        } else if(!pushed.empty()) {
+            write(spelling, location, pushed.back());
+            pushed.pop_back();
+        }
+    }
+
     void write(const clang::Token& token, const clang::MacroInfo* now) {
-        auto* info = token.getIdentifierInfo();
-        auto name = name_hash(info->getName());
-        names.try_emplace(name, info->getName());
-        states[name] = unit.macro_state(now, *info);
-        if(!standard_library(unit, token.getLocation())) {
+        auto& info = *token.getIdentifierInfo();
+        write(info.getName(), token.getLocation(), unit.macro_state(now, info));
+    }
+
+    void write(llvm::StringRef spelling, clang::SourceLocation location, std::uint64_t now) {
+        auto name = name_hash(spelling);
+        names.try_emplace(name, spelling);
+        states[name] = now;
+        if(!standard_library(unit, location)) {
             own_project.insert(name);
         }
     }
@@ -948,6 +1043,10 @@ private:
 
     /// The macros the unit's text outside the system headers wrote.
     llvm::DenseSet<std::uint64_t> own_project;
+
+    /// The states the unit's pushes would have pushed without the PCH, not
+    /// popped yet.
+    llvm::DenseMap<std::uint64_t, std::vector<std::uint64_t>> pushes;
 
     std::vector<GraftedInclude> grafted;
 

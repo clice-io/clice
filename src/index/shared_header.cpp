@@ -79,6 +79,8 @@ struct SharedHeaderBlobOf {
     Seq<Seq<char>> absent;
 
     std::uint8_t unheld = 0;
+
+    std::uint8_t macro_stack = 0;
 };
 
 using SharedHeaderBlob = SharedHeaderBlobOf<codec::blob::Owned>;
@@ -157,6 +159,7 @@ std::vector<std::byte> encode_shared_header(const SharedHeaderIndex& index) {
     blob.counter = record.counter;
     blob.absent = record.absent;
     blob.unheld = record.unheld;
+    blob.macro_stack = record.macro_stack;
     return encode(blob);
 }
 
@@ -219,6 +222,7 @@ std::optional<SharedHeaderIndex> decode_shared_header(llvm::StringRef bytes) {
     record.initial = copy<MacroState>(root->initial);
     record.counter = root->counter != 0;
     record.unheld = root->unheld != 0;
+    record.macro_stack = root->macro_stack != 0;
     for(auto& path: root->absent) {
         record.absent.emplace_back(llvm::StringRef(path));
     }
