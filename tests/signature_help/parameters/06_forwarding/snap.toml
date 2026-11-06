@@ -54,6 +54,38 @@ signatures = [
 ]
 active = 0
 
+[answers.local_alias.signature_help]
+signatures = [
+    "renamed(⟦int width⟧, int height) -> Widget *",
+    "renamed(⟦const Widget &⟧) -> Widget *",
+    "renamed(⟦Widget &&⟧) -> Widget *",
+]
+active = 0
+
+[answers.local_class.signature_help]
+signatures = ["derived(⟦Args &&...args⟧) -> Base *"]
+active = 0
+
+[answers.non_type_pack.signature_help]
+signatures = [
+    "tagged(⟦int width⟧, int height) -> Widget *",
+    "tagged(⟦const Widget &⟧) -> Widget *",
+    "tagged(⟦Widget &&⟧) -> Widget *",
+]
+active = 0
+
+[answers.friend_factory.signature_help]
+signatures = ["adopt(⟦int id⟧) -> Handle *", "adopt(⟦const Handle &⟧) -> Handle *", "adopt(⟦Handle &&⟧) -> Handle *"]
+active = 0
+
+[answers.member_factory.signature_help]
+signatures = [
+    "create(⟦int width⟧, int height) -> Widget *",
+    "create(⟦const Widget &⟧) -> Widget *",
+    "create(⟦Widget &&⟧) -> Widget *",
+]
+active = 0
+
 [answers.class_template_member.signature_help]
 signatures = [
     "emplace(⟦int width⟧, int height) -> Widget &",

@@ -57,18 +57,33 @@ bool object_written(clang::Sema& sema, clang::SourceLocation open_paren) {
     return access && access->isOneOf(clang::tok::period, clang::tok::arrow);
 }
 
-/// Whether `open_paren` follows the name of a variable a namespace scope
-/// declares, `Widget make(`, which may as well declare a function.
-bool declares_namespace_variable(clang::Sema& sema, clang::SourceLocation open_paren) {
+/// Whether `open_paren`, whose candidates construct `built`, follows a name
+/// a namespace scope declares (`Widget make(`, `Widget Factory::build(`)
+/// rather than the class itself (`Widget(`): a variable the constructor
+/// builds, as clang takes it, or as well a function.
+bool declares_at_namespace_scope(clang::Sema& sema,
+                                 clang::SourceLocation open_paren,
+                                 const clang::RecordDecl& built) {
     auto name = token_before(sema, open_paren);
-    if(!name || !name->is(clang::tok::raw_identifier) ||
-       !sema.CurContext->getRedeclContext()->isFileContext()) {
-        return false;
+    return name && name->is(clang::tok::raw_identifier) &&
+           name->getRawIdentifier() != built.getName() &&
+           sema.CurContext->getRedeclContext()->isFileContext();
+}
+
+/// The class a call's candidates construct; null when they are no
+/// constructors.
+const clang::RecordDecl*
+    constructed(llvm::ArrayRef<clang::CodeCompleteConsumer::OverloadCandidate> candidates) {
+    if(candidates.empty()) {
+        return nullptr;
     }
-    auto& identifier = sema.getASTContext().Idents.get(name->getRawIdentifier());
-    return ranges::any_of(sema.CurContext->lookup(&identifier), [&](const clang::NamedDecl* decl) {
-        return llvm::isa<clang::VarDecl>(decl) && decl->getLocation() == name->getLocation();
-    });
+    auto& first = candidates.front();
+    if(first.getKind() == clang::CodeCompleteConsumer::OverloadCandidate::CK_Aggregate) {
+        return first.getAggregate();
+    }
+    const auto* constructor =
+        llvm::dyn_cast_or_null<clang::CXXConstructorDecl>(first.getFunction());
+    return constructor ? constructor->getParent() : nullptr;
 }
 
 /// Whether anything but its closing parenthesis follows `open_paren`,
@@ -368,27 +383,40 @@ bool passes_pack(llvm::ArrayRef<const clang::Expr*> args, const clang::ParmVarDe
     return ref && ref->getDecl() == pack;
 }
 
-/// Finds a parameter pack in a type, as in `std::tuple<Args...>` or
-/// `std::array<int, sizeof...(Args)>`.
-struct PackMention : clang::RecursiveASTVisitor<PackMention> {
+/// Finds what a type written in a function template takes from inside it:
+/// a parameter pack (`std::tuple<Args...>`, `std::array<int,
+/// sizeof...(Args)>`), made of the arguments' own types, or a declaration
+/// local to the function, which no substitution outside its instantiation
+/// reaches.
+struct InnerMention : clang::RecursiveASTVisitor<InnerMention> {
     bool found = false;
 
     bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* type) {
-        found = found || type->isParameterPack();
-        return !found;
+        return !note(type->isParameterPack());
     }
 
     bool VisitSizeOfPackExpr(clang::SizeOfPackExpr*) {
-        found = true;
-        return false;
+        return !note(true);
+    }
+
+    bool VisitTagType(clang::TagType* type) {
+        return !note(type->getDecl()->getParentFunctionOrMethod());
+    }
+
+    bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
+        return !note(expr->getDecl()->getParentFunctionOrMethod());
+    }
+
+    bool note(bool mention) {
+        found = found || mention;
+        return found;
     }
 };
 
 /// The type a template's definition builds from its trailing parameter
 /// pack passed on whole: `new T(args...)`, `T(args...)`, `T{args...}`, a
-/// variable `T value(args...)`, or `std::make_unique<T>(args...)`. A type
-/// naming a pack (PackMention) is made of the arguments' own types, no
-/// class a caller picks.
+/// variable `T value(args...)`, or `std::make_unique<T>(args...)`, aliases
+/// resolved; none that takes from inside the function (InnerMention).
 struct PackConstruction : clang::RecursiveASTVisitor<PackConstruction> {
     const clang::ParmVarDecl* pack;
 
@@ -438,10 +466,11 @@ struct PackConstruction : clang::RecursiveASTVisitor<PackConstruction> {
         if(!passes_pack(args, pack)) {
             return false;
         }
-        PackMention mention;
-        mention.TraverseType(type);
+        auto canonical = type.getCanonicalType();
+        InnerMention mention;
+        mention.TraverseType(canonical);
         if(!mention.found) {
-            built = type;
+            built = canonical;
         }
         return !built.isNull();
     }
@@ -545,9 +574,15 @@ public:
                                    clang::SourceLocation open_paren,
                                    bool braced) final {
         if(forwarding) {
+            clang::Sema::ContextRAII inside(
+                sema,
+                const_cast<clang::FunctionDecl*>(forwarding->specialization),
+                /*NewThisContext=*/false);
             for(auto& candidate: ranges::subrange(candidates, candidates + candidate_count)) {
-                auto* constructor = candidate.getFunction();
-                if(forwarding->member || constructor->getAccess() == clang::AS_public) {
+                auto* constructor = llvm::cast<clang::CXXConstructorDecl>(candidate.getFunction());
+                if(sema.IsSimplyAccessible(constructor,
+                                           constructor->getParent(),
+                                           clang::QualType())) {
                     add_forwarded(*shown(constructor), [&](Signature& signature) {
                         arguments(signature, *shown(constructor));
                     });
@@ -561,7 +596,9 @@ public:
         }
         // Clang takes `Widget make(` for a variable its constructor builds:
         // until an argument is written, a function declaration reads alike.
-        if(current_arg == 0 && !braced && declares_namespace_variable(sema, open_paren) &&
+        if(const auto* built = constructed({candidates, candidate_count});
+           built && current_arg == 0 && !braced &&
+           declares_at_namespace_scope(sema, open_paren, *built) &&
            !holds_argument(sema, open_paren)) {
             return;
         }
@@ -912,15 +949,23 @@ private:
         // then holds no type for some argument, or one for an argument not
         // written yet.
         auto template_arguments = candidate.getTemplateSpecializationArgs()->asArray();
-        auto pack = ranges::find_if(template_arguments, [](const auto& argument) {
-            return argument.getKind() == clang::TemplateArgument::Pack;
-        });
-        if(pack->pack_size() != (current_arg > prefix ? current_arg - prefix : 0)) {
+        const auto* expansion =
+            function.parameters().back()->getType()->getAs<clang::PackExpansionType>();
+        const auto* expanded = expansion ? expansion->getPattern()
+                                               .getNonReferenceType()
+                                               ->getAs<clang::TemplateTypeParmType>()
+                                         : nullptr;
+        if(!expanded || expanded->getIndex() >= template_arguments.size()) {
+            return false;
+        }
+        const auto& pack = template_arguments[expanded->getIndex()];
+        if(pack.getKind() != clang::TemplateArgument::Pack ||
+           pack.pack_size() != (current_arg > prefix ? current_arg - prefix : 0)) {
             return false;
         }
         auto& context = sema.getASTContext();
         llvm::SmallVector<clang::Expr*> typed;
-        for(const auto& element: pack->pack_elements()) {
+        for(const auto& element: pack.pack_elements()) {
             auto type = element.getAsType();
             typed.push_back(new (context) clang::OpaqueValueExpr(
                 open_paren,
@@ -928,18 +973,20 @@ private:
                 type->isLValueReferenceType() ? clang::VK_LValue : clang::VK_XValue));
         }
 
-        auto* record = target->getAsCXXRecordDecl();
+        // A standard container's emplace may return what depends on the
+        // arguments, as the enable_if of optional's does, so each constructor
+        // listed shows the declared type; a factory's depends on the class
+        // alone.
         const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(&candidate);
-        // A member's return type may depend on the arguments, as the
-        // enable_if of optional's emplace does, so each constructor listed
-        // shows the declared one; a factory's depends on the class alone.
         forwarding = Forwarding{
             .function = &function,
-            .result = method ? function.getReturnType() : candidate.getReturnType(),
+            .specialization = &candidate,
+            .result = method && method->getParent()->isInStdNamespace() ? function.getReturnType()
+                                                                        : candidate.getReturnType(),
             .argument = current_arg,
-            .member =
-                method && method->getParent()->getCanonicalDecl() == record->getCanonicalDecl(),
         };
+
+        auto* record = target->getAsCXXRecordDecl();
 
         // Parentheses initialize an aggregate too since C++20, which Sema's
         // constructor help leaves to braces.
@@ -980,12 +1027,12 @@ private:
     /// The forwarding call whose constructors Sema is reporting.
     struct Forwarding {
         const clang::FunctionDecl* function;
+        /// The specialization the call reaches, which calls the
+        /// constructors its access allows.
+        const clang::FunctionDecl* specialization;
         clang::QualType result;
         /// The argument the cursor is on in the forwarding call.
         std::uint32_t argument;
-        /// The function is a member of the class it builds, which reaches
-        /// its private constructors too; any other only the public ones.
-        bool member;
     };
 
     std::optional<Forwarding> forwarding;

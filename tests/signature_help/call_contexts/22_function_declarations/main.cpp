@@ -16,6 +16,13 @@ struct Factory {
     Widget build(§(class_scope));
 };
 
+Widget Factory::build(§(out_of_line)) {
+    return Widget(800, 1.5);
+}
+
+template <typename T>
+Widget convert(§(function_template));
+
 void use() {
     Widget local(§(function_body));
 }
