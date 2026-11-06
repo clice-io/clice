@@ -7,7 +7,7 @@ import { test } from "@clice/tools/testing";
 test("index", async (t) => {
     const s = await t.start({ config: { project: { readonly: "auto" } } });
     s.open("main.cppm", { pull: false });
-    await s.sync();
+    await s.indexed();
     await t.show("main.cppm", s.documentLinks("main.cppm"));
     expect((await s.counts()).compile).toBe(0);
 });
