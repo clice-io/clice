@@ -343,6 +343,8 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
     // `-MT` is the runtime library, not a dependency target.
     std::array separate = {"-o", "-MF", "-MT", "-MQ", "-MJ", "--serialize-diagnostics"};
     std::string text(directory.str());
+    // Paths read through a mount table normalize otherwise.
+    text += mounts ? '\1' : '\2';
     std::size_t files = 0;
     bool value_next = false;
     for(llvm::StringRef token: command_line) {

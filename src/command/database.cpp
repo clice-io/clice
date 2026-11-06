@@ -214,9 +214,12 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         return repaired && value.contains("\xEF\xBF\xBD");
     };
     auto& json_buf = repaired ? *repaired : observed->text;
+    // The padding is the text's own spaces: simdjson reads past a string's
+    // end in wide blocks, and a string's spare capacity is no memory to read.
+    auto padded = simdjson::pad(json_buf);
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
-    if(auto error = json_parser.iterate(json_buf).get(doc)) {
+    if(auto error = json_parser.iterate(padded).get(doc)) {
         LOG_ERROR("Failed to parse compilation database from {}: {}",
                   path,
                   simdjson::error_message(error));

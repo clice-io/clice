@@ -415,7 +415,10 @@ std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path,
     // hash and stat.
     ObservedFile result;
     if(before && padding > 0) {
-        result.text.reserve(before->size + padding);
+        // As far as the read takes a size on its word (/proc/kcore reports
+        // 128 TiB); a larger file grows as it is read.
+        result.text.reserve(std::min<std::uint64_t>(before->size, std::uint64_t{1} << 30) +
+                            padding);
     }
     if(auto error = file->read_to_end(result.text)) {
         return std::unexpected(error);
