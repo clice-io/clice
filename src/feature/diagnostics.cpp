@@ -489,36 +489,44 @@ auto confirmed_skipped(llvm::ArrayRef<FileDiagnostic> skipped, const CompileDiag
     return result;
 }
 
+const ModuleFailure* explain_failed_import(std::string& message,
+                                           llvm::ArrayRef<ModuleFailure> failures) {
+    auto failure = ranges::find_if(failures, [&](const ModuleFailure& failure) {
+        return message == std::format("module '{}' not found", failure.chain.front());
+    });
+    if(failure == failures.end()) {
+        return nullptr;
+    }
+    llvm::ArrayRef<std::string> chain = failure->chain;
+    message.clear();
+    for(const auto& module: chain.take_front(failure->cycle.value_or(chain.size()))) {
+        message += std::format("could not build module '{}': ", module);
+    }
+    if(failure->cycle) {
+        auto cycle = chain.drop_front(*failure->cycle);
+        message += std::format("cyclic dependency in module '{}': ", cycle.front());
+        for(const auto& module: cycle) {
+            message += std::format("{} -> ", module);
+        }
+        message += cycle.front();
+    } else {
+        message += failure->error;
+    }
+    return &*failure;
+}
+
 void explain_failed_imports(std::vector<FileDiagnostic>& diagnostics,
                             llvm::ArrayRef<ModuleFailure> failures) {
-    for(const auto& failure: failures) {
-        llvm::ArrayRef<std::string> chain = failure.chain;
-        std::string message;
-        for(const auto& module: chain.take_front(failure.cycle.value_or(chain.size()))) {
-            message += std::format("could not build module '{}': ", module);
+    for(auto& diagnostic: diagnostics) {
+        if(diagnostic.id != clang::diag::err_module_not_found) {
+            continue;
         }
-        if(failure.cycle) {
-            auto cycle = chain.drop_front(*failure.cycle);
-            message += std::format("cyclic dependency in module '{}': ", cycle.front());
-            for(const auto& module: cycle) {
-                message += std::format("{} -> ", module);
-            }
-            message += cycle.front();
-        } else {
-            message += failure.error;
-        }
-        auto not_found = std::format("module '{}' not found", chain.front());
-        for(auto& diagnostic: diagnostics) {
-            if(diagnostic.id == clang::diag::err_module_not_found &&
-               diagnostic.message == not_found) {
-                diagnostic.message = message;
-                // As clang codes it: a cycle only where the imported module
-                // is on it, not built where the message starts with one
-                // that is not.
-                diagnostic.id = failure.cycle == 0 ? clang::diag::err_module_cycle
-                                                   : clang::diag::err_module_not_built;
-                diagnostic.code = failure.cycle == 0 ? "err_module_cycle" : "err_module_not_built";
-            }
+        if(auto* failure = explain_failed_import(diagnostic.message, failures)) {
+            // As clang codes it: a cycle only where the imported module is
+            // on it, not built where the message starts with one that is not.
+            diagnostic.id = failure->cycle == 0 ? clang::diag::err_module_cycle
+                                                : clang::diag::err_module_not_built;
+            diagnostic.code = failure->cycle == 0 ? "err_module_cycle" : "err_module_not_built";
         }
     }
 }

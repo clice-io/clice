@@ -964,9 +964,9 @@ struct Project {
     /// document instead of burning a worker of its own.
     const FailureRecord* build_crash(NodeId module);
 
-    /// Why the module's last build failed, when it failed on the user's code;
-    /// nullopt for any other failure (a crash, an outage).
-    std::optional<feature::ModuleFailure> module_failure(NodeId module) const;
+    /// Why the last builds of `imports` failed, for those that failed on the
+    /// user's code; none for any other failure (a crash, an outage).
+    std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<NodeId> imports) const;
 
     /// Forget the module's failed build, a crash or errors in the user's code,
     /// so the next attempt builds it again: an importer whose own record lets it

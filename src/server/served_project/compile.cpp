@@ -37,18 +37,6 @@ static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TU
     return diagnostics;
 }
 
-/// Why each import that failed to build did not.
-static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<NodeId> imports,
-                                                           const Project& project) {
-    std::vector<feature::ModuleFailure> failures;
-    for(auto module: imports) {
-        if(auto failure = project.module_failure(module)) {
-            failures.push_back(std::move(*failure));
-        }
-    }
-    return failures;
-}
-
 /// The imports of a module several units provide, each resolved to the
 /// nearest of them (scan_imports).
 static std::vector<feature::ModuleChoice> module_choices(const Imports& imports,
@@ -959,7 +947,7 @@ void ServedProject::CompileAttempt::assemble(std::vector<feature::FileDiagnostic
             feature::with_preamble(std::move(diagnostics), preamble_diagnostics(*preamble_index));
     }
     feature::explain_failed_imports(diagnostics,
-                                    module_failures(imports.imports.resolved(), project));
+                                    project.module_failures(imports.imports.resolved()));
     for(auto& choice: module_choices(imports.imports, project)) {
         diagnostics.push_back(feature::ambiguous_module(choice, session->text()));
     }

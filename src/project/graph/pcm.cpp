@@ -686,20 +686,24 @@ NodeId Project::module_build(Fid module, Fid importer, const Resolution& command
     return module_node(module, readable->id);
 }
 
-std::optional<feature::ModuleFailure> Project::module_failure(NodeId module) const {
-    auto chain = failed_chain(*this, module);
-    feature::ModuleFailure failure{.cycle = chain.cycle};
-    if(!chain.cycle) {
-        auto* last = chain.last;
-        if(!last || !last->failure || last->failure->result.record.crashed()) {
-            return std::nullopt;
+std::vector<feature::ModuleFailure> Project::module_failures(llvm::ArrayRef<NodeId> imports) const {
+    std::vector<feature::ModuleFailure> failures;
+    for(auto module: imports) {
+        auto chain = failed_chain(*this, module);
+        feature::ModuleFailure failure{.cycle = chain.cycle};
+        if(!chain.cycle) {
+            auto* last = chain.last;
+            if(!last || !last->failure || last->failure->result.record.crashed()) {
+                continue;
+            }
+            failure.error = last->failure->result.record.cause;
         }
-        failure.error = last->failure->result.record.cause;
+        for(auto unit: chain.modules) {
+            failure.chain.push_back(dep_graph.module_of(unit.file()).str());
+        }
+        failures.push_back(std::move(failure));
     }
-    for(auto unit: chain.modules) {
-        failure.chain.push_back(dep_graph.module_of(unit.file()).str());
-    }
-    return failure;
+    return failures;
 }
 
 bool Project::forget_build_failure(NodeId module) {
