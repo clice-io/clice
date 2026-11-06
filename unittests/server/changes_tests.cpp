@@ -850,7 +850,7 @@ ZEST_CASE(RemovedEdgeDeactivatesChoice) {
         .project = &served,
     };
     auto generation = session->generation;
-    project.take_tree(project.tree_request(host, project.candidates(host).front()));
+    project.take_tree_in_process(project.tree_request(host, project.candidates(host).front()));
 
     fixture.compiled_now(header);
     fixture.served->recheck_choices();
@@ -882,7 +882,7 @@ ZEST_CASE(VanishedOccurrenceDeactivatesChoice) {
         .choice = ContextChoice{host, 1, ""},
         .project = &served,
     };
-    project.take_tree(project.tree_request(host, project.candidates(host).front()));
+    project.take_tree_in_process(project.tree_request(host, project.candidates(host).front()));
 
     fixture.served->recheck_choices();
     auto* choice = fixture.server.choice(header);

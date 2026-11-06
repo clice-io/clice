@@ -503,19 +503,9 @@ public:
 
     // command.cpp
 
-    /// The open document's command under its active context choice, or
-    /// under `candidate` instead. Takes no include tree: the host search runs
-    /// on the trees there are.
-    Resolution resolve_command(Fid path_id, const ContextChoice* candidate = nullptr);
-
-    /// resolve_command again until the host search it runs misses no
-    /// include tree, taking each tree it misses first from a worker, each
-    /// once: a header compiles under the host every process finds for it.
-    /// Stops with the tree missing when a run does not answer, or once
-    /// `current` no longer holds.
-    async::task<Resolution> document_command(Fid path_id,
-                                             const ContextChoice* candidate = nullptr,
-                                             llvm::function_ref<bool()> current = {});
+    /// What the open document's command is resolved for: its active
+    /// context choice, or `candidate` instead, in the editor.
+    CommandRequest command_request(Fid path_id, const ContextChoice* candidate = nullptr) const;
 
     /// The file's context choice while it is this project's and holds.
     const ContextChoice* active_choice(Fid path_id) const;
@@ -902,17 +892,6 @@ private:
                                          async::cancellation_token token,
                                          bool& refused);
 
-    // command.cpp
-
-    /// Take the tree `request` names, or wait for the run taking it. False
-    /// when the run took none: the pool stopped, the run was cancelled, or
-    /// the worker failed for a cause not the unit's.
-    async::task<bool> take_include_tree(TreeRequest request);
-
-    /// The run taking the tree, which belongs to no asker: one cancelled
-    /// leaves it to the others waiting on `done`, set when it ends.
-    async::task<> run_include_tree(TreeRequest request, std::shared_ptr<async::event> done);
-
     // changes.cpp
 
     /// The build's commands changed (`delta`, what databases' reloads report,
@@ -1069,12 +1048,6 @@ private:
 
     /// The last background run's diagnostics of every file, open or not.
     llvm::DenseMap<Fid, SkippedDiagnostics> skipped;
-
-    /// The include-tree runs in flight, by tree: a second asker waits for
-    /// the first.
-    llvm::DenseMap<UnitCommand, std::shared_ptr<async::event>> tree_runs;
-
-    async::task_group<> tree_tasks;
 
     /// Whether start() began watching the databases: never for the rootless
     /// project, nor before it starts.
@@ -1307,7 +1280,8 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     if(!loaded.is_set()) {
         co_await loaded.wait();
     }
-    auto resolution = co_await document_command(path_id);
+    auto resolution =
+        co_await project.resolve_with_trees(path_id, [&] { return command_request(path_id); });
     params.directory = resolution.directory;
     params.arguments = resolution.arguments;
     params.settings = project.settings;

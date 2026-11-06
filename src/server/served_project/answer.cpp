@@ -143,12 +143,11 @@ SearchConfig ServedProject::search_of(Fid path_id) {
     // Editor use: the search follows the command (context choice, chosen
     // database entry) the open buffer compiles under.
     return project.toolchain.search_config(
-        project.select_command(path_id, {.choice = active_choice(path_id), .open = true}).ref);
+        project.select_command(path_id, command_request(path_id)).ref);
 }
 
 ScanResult ServedProject::declared_module(Fid path_id, llvm::StringRef text) {
-    auto rendered = project.render(
-        project.select_command(path_id, {.choice = active_choice(path_id), .open = true}).ref);
+    auto rendered = project.render(project.select_command(path_id, command_request(path_id)).ref);
     std::vector<const char*> argv;
     argv.reserve(rendered.arguments.size());
     for(auto& argument: rendered.arguments) {

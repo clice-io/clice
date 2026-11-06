@@ -293,6 +293,12 @@ struct Project {
     /// What each unit's compiles in this session showed.
     llvm::DenseMap<Fid, UnitHistory> unit_history;
 
+    /// The include-tree runs on the worker pool, by tree: a second asker
+    /// waits for the first (take_tree).
+    llvm::DenseMap<UnitCommand, std::shared_ptr<async::event>> tree_runs;
+
+    async::task_group<> tree_tasks;
+
     /// The task graph the PCH, PCM and unit nodes build on, the server's
     /// AST nodes beside them. Its attempts use everything above.
     TaskGraph graph;
@@ -600,10 +606,21 @@ struct Project {
     /// command hash).
     Resolution resolve_command(Fid file, const CommandRequest& request = {});
 
+    /// resolve_command until the host search it runs misses no include
+    /// tree, each tree it misses taken first, once (take_tree): a header
+    /// compiles under the host every process finds for it. `request` gives
+    /// the request anew for every resolution — a wait can change the user's
+    /// choice it names. Stops with the tree missing when a run takes none,
+    /// or once `current` no longer holds.
+    async::task<Resolution> resolve_with_trees(Fid file,
+                                               llvm::function_ref<CommandRequest()> request,
+                                               llvm::function_ref<bool()> current = {});
+
     /// The identity of the command the build compiles `unit` under, as its
-    /// index records it: the default selection (candidates' first) with
-    /// the rule edits apply_rules makes of it; 0 when the build compiles
-    /// it under none. A run's extras are not part of it.
+    /// index records it: the default selection (candidates' first) as the
+    /// rules edit it (apply_rules), its hash the key of the unit's include
+    /// tree (tree_request); 0 when the build compiles it under none. A run's
+    /// extras are not part of it.
     std::uint64_t command_identity(Fid unit);
 
     /// The command of the entry writing the precompiled header that the
@@ -659,9 +676,8 @@ struct Project {
 
     /// Every place the compile of the unit `unit` names, under the command it
     /// names, enters `header`, in the order it does, by the unit's include
-    /// tree: its index manifest's for the command the index runs under, its
-    /// first, while the index was built under it (command_identity), else the
-    /// one a preprocess run took. Empty when the compile never enters the header.
+    /// tree: its index manifest's when the index was built under that command
+    /// (command_identity), else the one a preprocess run took. Empty when the compile never enters the header.
     /// Nullopt when no tree can tell: the manifest cannot — the unit or a file on its way changed
     /// since, a file appeared where the compile looked and found none, or a forced file a
     /// precompiled header held hides the way in — and no run took one since the inputs it read last
@@ -686,10 +702,15 @@ struct Project {
     /// preprocess it as the unit stands now.
     void commit_failed_tree(const TreeRequest& request);
 
-    /// Take the tree `request` names with a preprocess run in this process, as
-    /// a worker takes it for the server: the command line's way, which runs no
-    /// workers.
-    void take_tree(const TreeRequest& request);
+    /// Take the tree `request` names with a preprocess run in this process,
+    /// as a worker takes it: the way of a run without workers.
+    void take_tree_in_process(const TreeRequest& request);
+
+    /// Take the tree `request` names with a preprocess run, or wait for the
+    /// run taking it: on the worker pool when the project builds, in this
+    /// process otherwise. False when the run took none: the pool stopped, the
+    /// run was cancelled, or the worker failed for a cause not the unit's.
+    async::task<bool> take_tree(TreeRequest request);
 
     // command/self_contained.cpp
 
@@ -1113,8 +1134,8 @@ struct Project {
     async::task<> checkpoint();
 
     /// The shutdown once its owner's compiles are quiesced (contract 11):
-    /// stop the background index, wind down the graph's attempts, save a last
-    /// time and close the cache store.
+    /// stop the include-tree runs and the background index, wind down the
+    /// graph's attempts, save a last time and close the cache store.
     async::task<> shutdown();
 
     /// Open what the project's database holds: the index (ProjectIndex::open),

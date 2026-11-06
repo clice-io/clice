@@ -196,8 +196,7 @@ void ServedProject::retry_after_save(Session& session) {
     // make a header lean on its includer: a save showing what an includer
     // would provide, or saving a buffer whose compile has not finished yet,
     // runs it again. A result that stands holds for the text saved.
-    auto selection =
-        project.select_command(path_id, {.choice = active_choice(path_id), .open = true});
+    auto selection = project.select_command(path_id, command_request(path_id));
     if(selection.self_containment) {
         auto compiled = latest_at(path_id, session.version);
         bool leans =
@@ -684,7 +683,10 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::command(bool f
     if(tidy_dispatch) {
         params.tidy = tidy_config->params;
     }
-    resolution = co_await served.document_command(path_id, nullptr, [&] { return ticket.fresh(); });
+    resolution = co_await project.resolve_with_trees(
+        path_id,
+        [&] { return served.command_request(path_id); },
+        [&] { return ticket.fresh(); });
     if(!ticket.fresh()) {
         co_return Result::Stale;
     }

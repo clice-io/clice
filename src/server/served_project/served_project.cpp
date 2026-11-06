@@ -192,10 +192,9 @@ async::task<> ServedProject::shutdown() {
     }
     bg_tasks.cancel();
     co_await bg_tasks.join();
-    tree_tasks.cancel();
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
-    co_await async::when_all(stop_compiles(), tree_tasks.join());
+    co_await stop_compiles();
     // Requests have unwound and released their interest; the shared tail
     // stops the background index and winds down the graph's attempts before
     // the persistence pass.

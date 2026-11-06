@@ -280,8 +280,7 @@ void ServedProject::commands_changed(CDBDiff commands) {
     // another host now ranks before it, a file borrowing a member's. One
     // whose first compile is still in flight may have resolved before.
     for(auto& [path_id, document]: documents) {
-        auto selected =
-            project.select_command(path_id, {.choice = active_choice(path_id), .open = true});
+        auto selected = project.select_command(path_id, command_request(path_id));
         auto& latest = document.latest;
         if(!latest || latest->command != selected.ref.command || latest->host != selected.host) {
             mark_stale(path_id, refresh);

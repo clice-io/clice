@@ -632,13 +632,9 @@ ZEST_CASE(RuleTurnsQueryOff) {
     CanonicalRef own_file = own;
     CanonicalRef vendor_file = vendor;
     CanonicalRef third_party_file = third_party;
-    auto edit_hash = [&](CanonicalRef file) {
-        return project.rules.identity(project.rule_edits(files.intern(file), {}));
-    };
     ZEXPECT(project.rules.edits({own_file}).query_toolchain);
     ZEXPECT(!project.rules.edits({vendor_file}).query_toolchain);
-    ZEXPECT(edit_hash(own_file) != edit_hash(vendor_file));
-    ZEXPECT(edit_hash(third_party_file) != 0);
+    ZEXPECT(!project.rules.edits({third_party_file}).query_toolchain);
 
     // One command under the same appends: only the query tells them apart.
     auto command = std::format("clang++ {}", vendor.str());
@@ -649,6 +645,8 @@ ZEST_CASE(RuleTurnsQueryOff) {
                                        {.base = entry.command, .source = CommandSource::Database});
     ZEXPECT(!project.commands.get(unqueried.command).query_toolchain);
     ZEXPECT(project.commands.get(queried.command).query_toolchain);
+    ZEXPECT(project.commands.command_hash(unqueried.command) !=
+            project.commands.command_hash(queried.command));
 
     auto borrowed = project.apply_rules(
         files.intern(own_file),

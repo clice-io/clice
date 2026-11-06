@@ -374,6 +374,8 @@ chrono::milliseconds checkpoint_interval() {
 }
 
 async::task<> Project::shutdown() {
+    tree_tasks.cancel();
+    co_await tree_tasks.join();
     co_await background_index.stop();
     co_await graph.shutdown();
     // Editors kill a server that is slow to exit, and building the search

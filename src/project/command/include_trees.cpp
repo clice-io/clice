@@ -6,8 +6,11 @@ import :index.project_index;
 import :index.tu_manifest;
 import :project.command;
 import :project.project;
+import :support.logging;
 import :vfs.file_system;
 import :vfs.path;
+import :worker.pool;
+import :worker.protocol;
 
 namespace clice {
 
@@ -128,6 +131,48 @@ static std::optional<llvm::SmallVector<Host>> tree_chains(Project& project,
     return hosts;
 }
 
+/// The pool's run taking the tree `request` names, which belongs to no
+/// asker: one cancelled leaves it to the others waiting on `done`, set when
+/// it ends.
+static async::task<> run_tree(Project& project,
+                              TreeRequest request,
+                              std::shared_ptr<async::event> done) {
+    auto finish = llvm::make_scope_exit([&] {
+        project.tree_runs.erase(request.key);
+        done->set();
+    });
+
+    worker::IncludeTreeParams params;
+    params.file = project.file_table.resolve(request.key.first).str();
+    params.project_root = project.root.str();
+    auto rendered = project.render(request.command);
+    params.directory = std::move(rendered.directory);
+    params.arguments = std::move(rendered.arguments);
+    params.hidden = std::move(rendered.hidden);
+    auto result = co_await project.pool->send_stateless(params, worker::Priority::High);
+    if(!result.has_value()) {
+        LOG_INFO("No include tree for {}: {}", params.file, result.error().message);
+        // A run that kills its worker would kill one per resolution; any
+        // other failure is not the unit's.
+        if(result.error().code == worker::dispatch_errc::worker_crashed) {
+            project.commit_failed_tree(request);
+        }
+        co_return;
+    }
+    auto& tree = result.value();
+    if(!tree.success) {
+        LOG_INFO("No include tree for {}: {}", params.file, tree.error);
+        project.commit_failed_tree(request);
+        co_return;
+    }
+    project.commit_tree(request,
+                        tree.paths,
+                        tree.content_hashes,
+                        std::move(tree.nodes),
+                        tree.deps,
+                        tree.started_at);
+}
+
 TreeRequest Project::tree_request(Fid unit, const Candidate& candidate) {
     auto command = apply_rules(unit, candidate);
     return {
@@ -139,11 +184,8 @@ TreeRequest Project::tree_request(Fid unit, const Candidate& candidate) {
 std::optional<llvm::SmallVector<Host>> Project::include_chains(const UnitCommand& unit,
                                                                Fid header) {
     auto [host, command] = unit;
-    // The index runs a unit under its first command, and its tree is that
-    // command's while the index records it was built under it.
-    if(auto commands = candidates(host);
-       !commands.empty() && tree_request(host, commands.front()).key.second == command &&
-       index.indexed_command(host) == command_identity(host)) {
+    // The manifest holds the tree of the command the index was built under.
+    if(index.indexed_command(host) == command) {
         if(auto manifest = index.manifest(host)) {
             if(auto found = tree_chains(*this,
                                         host,
@@ -202,7 +244,7 @@ void Project::commit_failed_tree(const TreeRequest& request) {
     hosting.trees.commit(request.key, {}, std::move(inputs));
 }
 
-void Project::take_tree(const TreeRequest& request) {
+void Project::take_tree_in_process(const TreeRequest& request) {
     auto rendered = render(request.command);
     auto unit = clice::compile({
         .kind = CompilationKind::Preprocess,
@@ -222,6 +264,27 @@ void Project::take_tree(const TreeRequest& request) {
                 std::move(tree.nodes),
                 unit->deps(),
                 unit->started_at().count());
+}
+
+async::task<bool> Project::take_tree(TreeRequest request) {
+    if(!pool) {
+        take_tree_in_process(request);
+        co_return true;
+    }
+    auto key = request.key;
+    std::shared_ptr<async::event> done;
+    if(auto it = tree_runs.find(key); it != tree_runs.end()) {
+        done = it->second;
+    } else {
+        done = std::make_shared<async::event>(false);
+        tree_runs.try_emplace(key, done);
+        if(!tree_tasks.spawn(run_tree(*this, std::move(request), done))) {
+            tree_runs.erase(key);
+            co_return false;
+        }
+    }
+    co_await done->wait();
+    co_return hosting.trees.find(key) != nullptr;
 }
 
 }  // namespace clice
