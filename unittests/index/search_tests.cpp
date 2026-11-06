@@ -295,9 +295,13 @@ std::vector<index::OpenBuffer> open_buffers(int buffers) {
 ZEST_CASE(ScopedSearchReadsOpenBuffers) {
     auto open = open_buffers(8);
     auto query = project.index_query.reading(std::move(open));
-    auto found = index::search(query, *index::SymbolQuery::parse("app::shared::fn0_1"), 10);
-    ZASSERT(!found.empty());
-    ZEXPECT(found.front().symbol.name == "fn0_1");
+    for(auto name: {"fn0_1", "fn7_1"}) {
+        auto found = index::search(query,
+                                   *index::SymbolQuery::parse(std::format("app::shared::{}", name)),
+                                   10);
+        ZASSERT(!found.empty());
+        ZEXPECT(found.front().symbol.name == name);
+    }
 }
 
 };  // ZEST_SUITE(IndexSearch)

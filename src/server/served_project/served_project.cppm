@@ -509,9 +509,9 @@ public:
 
     // changes.cpp
 
-    /// Files the project knows changed on disk (MasterServer::
-    /// apply_disk_changes): the project follows (Project::files_changed),
-    /// and the open documents reading them recompile.
+    /// Files changed on disk (MasterServer::apply_disk_changes): the project
+    /// follows those it knows (Project::knows, files_changed), and the open
+    /// documents reading them recompile.
     void disk_changed(llvm::ArrayRef<Fid> files);
 
     /// Reload what the looks found changed of the project's databases
@@ -539,12 +539,6 @@ public:
     /// the project loads, the open documents' among them
     /// (Project::configuration_dirs).
     std::vector<CanonicalPath> configuration_dirs() const;
-
-    /// Whether anything here derives from the file: an open document, what
-    /// the project knows (Project::knows), a compile of an open document
-    /// that read it. The disk changes of files it does not know are not this
-    /// project's to follow.
-    bool knows(Fid path_id);
 
     /// The open documents and the files their compiles read, as the
     /// project's change handling needs them.

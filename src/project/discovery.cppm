@@ -96,6 +96,12 @@ struct WatchedDatabase {
     llvm::SmallVector<std::shared_ptr<const vfs::Flag>, 0> inputs;
 };
 
+/// How a project looks for databases (Project::discover_databases).
+struct DiscoverOptions {
+    /// Look above the files alone and load what is found at once.
+    bool load_now = false;
+};
+
 /// What a project watches on disk besides the files it reads: its
 /// databases, the places one may appear at, and its git checkout
 /// (Project::watch_databases).

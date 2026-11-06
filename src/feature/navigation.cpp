@@ -112,6 +112,99 @@ std::optional<index::Site> first_block(const index::IndexQuery& index,
     return first;
 }
 
+/// definition in one project's index.
+std::vector<index::Site> project_definition(const index::IndexQuery& index,
+                                            const index::IndexQuery::Cursor& cursor) {
+    ScopedTimer timer;
+    auto anchor = cursor.site.file;
+    std::vector<index::Site> result;
+    for(auto symbol: cursor.symbols) {
+        auto info = index.symbol_info(symbol, anchor);
+        auto found = definition_sites(index, symbol, anchor);
+        // Every block of a namespace defines it; definition gives the one.
+        if(info && info->kind == SymbolKind::Namespace) {
+            result.append_range(std::move(found));
+            continue;
+        }
+        // At its own declaration, a virtual function nothing defines, a pure
+        // one, is defined by its overrides; a use of it still reaches the
+        // declaration.
+        auto at_declaration = [&] {
+            return ranges::any_of(
+                index.sites(symbol, anchor, RelationKind::Declaration),
+                [&](const index::Site& site) { return index::covers(site, cursor.site); });
+        };
+        if(found.empty() && info && index::is_function(info->kind) && at_declaration()) {
+            for(auto target:
+                index.transitive_targets(symbol, anchor, RelationKind::Implementation)) {
+                if(auto located = index.resolve(target.symbol, target.anchor)) {
+                    found.push_back(std::move(located->site));
+                }
+            }
+        }
+        if(found.empty() || ranges::any_of(found, [&](const index::Site& site) {
+               return index::covers(site, cursor.site);
+           })) {
+            found.append_range(index.sites(symbol, anchor, RelationKind::Declaration));
+            // A specialization leads on to the template it specializes.
+            for(auto& primary: index.located_targets(symbol, anchor, RelationKind::Primary)) {
+                found.push_back(std::move(primary.site));
+            }
+            index::dedup_sites(found);
+            drop_cursor_site(found, cursor.site);
+        }
+        result.append_range(std::move(found));
+    }
+    index::dedup_sites(result);
+    LOG_PERF("index_query",
+             "kind=definition path={} results={} elapsed_ms={:.2f}",
+             cursor.site.path,
+             result.size(),
+             timer.ms_f());
+    return result;
+}
+
+/// declaration in one project's index.
+std::vector<index::Site> project_declaration(const index::IndexQuery& index,
+                                             const index::IndexQuery::Cursor& cursor) {
+    ScopedTimer timer;
+    std::vector<index::Site> result;
+    for(auto symbol: cursor.symbols) {
+        // Every block of a namespace declares it: the one definition gives,
+        // and the first in the cursor's file.
+        if(auto info = index.symbol_info(symbol, cursor.site.file);
+           info && info->kind == SymbolKind::Namespace) {
+            result.append_range(definition_sites(index, symbol, cursor.site.file));
+            if(auto own = first_block(index, symbol, cursor.site.file)) {
+                result.push_back(std::move(*own));
+            }
+            continue;
+        }
+        for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
+            result.append_range(index.sites(symbol, cursor.site.file, kind));
+        }
+    }
+    index::dedup_sites(result);
+    drop_cursor_site(result, cursor.site);
+    // Only the cursor's own site is left when the symbol has no other.
+    if(ranges::all_of(result,
+                      [&](const index::Site& site) { return index::covers(site, cursor.site); })) {
+        std::vector<index::Site> mismatched;
+        for(auto symbol: cursor.symbols) {
+            mismatched.append_range(mismatched_declarations(index, symbol, cursor.site.file));
+        }
+        if(!mismatched.empty()) {
+            result = std::move(mismatched);
+        }
+    }
+    LOG_PERF("index_query",
+             "kind=declaration path={} results={} elapsed_ms={:.2f}",
+             cursor.site.path,
+             result.size(),
+             timer.ms_f());
+    return result;
+}
+
 }  // namespace
 
 std::vector<Highlight>
@@ -201,99 +294,6 @@ std::vector<index::Site> definition_sites(const index::IndexQuery& index,
         return {std::move(placed->site)};
     }
     return {};
-}
-
-/// definition in one project's index.
-static std::vector<index::Site> project_definition(const index::IndexQuery& index,
-                                                   const index::IndexQuery::Cursor& cursor) {
-    ScopedTimer timer;
-    auto anchor = cursor.site.file;
-    std::vector<index::Site> result;
-    for(auto symbol: cursor.symbols) {
-        auto info = index.symbol_info(symbol, anchor);
-        auto found = definition_sites(index, symbol, anchor);
-        // Every block of a namespace defines it; definition gives the one.
-        if(info && info->kind == SymbolKind::Namespace) {
-            result.append_range(std::move(found));
-            continue;
-        }
-        // At its own declaration, a virtual function nothing defines, a pure
-        // one, is defined by its overrides; a use of it still reaches the
-        // declaration.
-        auto at_declaration = [&] {
-            return ranges::any_of(
-                index.sites(symbol, anchor, RelationKind::Declaration),
-                [&](const index::Site& site) { return index::covers(site, cursor.site); });
-        };
-        if(found.empty() && info && index::is_function(info->kind) && at_declaration()) {
-            for(auto target:
-                index.transitive_targets(symbol, anchor, RelationKind::Implementation)) {
-                if(auto located = index.resolve(target.symbol, target.anchor)) {
-                    found.push_back(std::move(located->site));
-                }
-            }
-        }
-        if(found.empty() || ranges::any_of(found, [&](const index::Site& site) {
-               return index::covers(site, cursor.site);
-           })) {
-            found.append_range(index.sites(symbol, anchor, RelationKind::Declaration));
-            // A specialization leads on to the template it specializes.
-            for(auto& primary: index.located_targets(symbol, anchor, RelationKind::Primary)) {
-                found.push_back(std::move(primary.site));
-            }
-            index::dedup_sites(found);
-            drop_cursor_site(found, cursor.site);
-        }
-        result.append_range(std::move(found));
-    }
-    index::dedup_sites(result);
-    LOG_PERF("index_query",
-             "kind=definition path={} results={} elapsed_ms={:.2f}",
-             cursor.site.path,
-             result.size(),
-             timer.ms_f());
-    return result;
-}
-
-/// declaration in one project's index.
-static std::vector<index::Site> project_declaration(const index::IndexQuery& index,
-                                                    const index::IndexQuery::Cursor& cursor) {
-    ScopedTimer timer;
-    std::vector<index::Site> result;
-    for(auto symbol: cursor.symbols) {
-        // Every block of a namespace declares it: the one definition gives,
-        // and the first in the cursor's file.
-        if(auto info = index.symbol_info(symbol, cursor.site.file);
-           info && info->kind == SymbolKind::Namespace) {
-            result.append_range(definition_sites(index, symbol, cursor.site.file));
-            if(auto own = first_block(index, symbol, cursor.site.file)) {
-                result.push_back(std::move(*own));
-            }
-            continue;
-        }
-        for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
-            result.append_range(index.sites(symbol, cursor.site.file, kind));
-        }
-    }
-    index::dedup_sites(result);
-    drop_cursor_site(result, cursor.site);
-    // Only the cursor's own site is left when the symbol has no other.
-    if(ranges::all_of(result,
-                      [&](const index::Site& site) { return index::covers(site, cursor.site); })) {
-        std::vector<index::Site> mismatched;
-        for(auto symbol: cursor.symbols) {
-            mismatched.append_range(mismatched_declarations(index, symbol, cursor.site.file));
-        }
-        if(!mismatched.empty()) {
-            result = std::move(mismatched);
-        }
-    }
-    LOG_PERF("index_query",
-             "kind=declaration path={} results={} elapsed_ms={:.2f}",
-             cursor.site.path,
-             result.size(),
-             timer.ms_f());
-    return result;
 }
 
 std::vector<index::Site> references(const index::IndexQuery& index,

@@ -31,10 +31,7 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
         if(!document) {
             return;
         }
-        auto& session = *document->session;
-        auto* shard = project.index.shard(path_id);
-        if(document->serving == ServingMode::IndexOnly &&
-           !(shard && shard->matches_content(session.text().size(), session.hash))) {
+        if(document->serving == ServingMode::IndexOnly && !query().serving(path_id)) {
             escalate(path_id);
         }
         show_skipped_diagnostics(path_id);

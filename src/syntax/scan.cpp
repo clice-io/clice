@@ -211,9 +211,9 @@ private:
 
 /// Collects the imports the preprocessor reaches, each with its offset in
 /// the scanned file, and what it read (ScanResult::deps).
-class ScanRecorder : public clang::PPCallbacks {
+class Recorder : public clang::PPCallbacks {
 public:
-    ScanRecorder(ScanResult& result, clang::Preprocessor& pp) :
+    Recorder(ScanResult& result, clang::Preprocessor& pp) :
         result(result), pp(pp), sources(pp.getSourceManager()) {}
 
     void LexedFileChanged(clang::FileID current,
@@ -302,10 +302,8 @@ public:
                 result.deps.push_back({.path = std::move(path)});
             }
         }
-        for(auto& place: absent) {
-            if(!fs::exists(place.getKey())) {
-                result.deps.push_back({.path = place.getKey().str(), .absent = true});
-            }
+        for(auto& place: absent_places(absent)) {
+            result.deps.push_back({.path = std::move(place), .absent = true});
         }
     }
 
@@ -319,11 +317,17 @@ private:
                       [&](std::string place) { absent.insert(place); });
     }
 
+private:
     ScanResult& result;
+
     clang::Preprocessor& pp;
+
     const clang::SourceManager& sources;
+
     llvm::SetVector<clang::FileID> entered;
+
     llvm::SmallVector<clang::FileEntryRef> found;
+
     llvm::StringSet<> absent;
 };
 
@@ -423,7 +427,7 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                            result,
                            [&](clang::CompilerInstance& instance, clang::FrontendAction& action) {
                                auto& pp = instance.getPreprocessor();
-                               auto recorder = std::make_unique<ScanRecorder>(result, pp);
+                               auto recorder = std::make_unique<Recorder>(result, pp);
                                auto& recording = *recorder;
                                pp.addPPCallbacks(std::move(recorder));
                                if(auto error = action.Execute()) {
@@ -477,6 +481,23 @@ void lookup_places(clang::FileManager& files,
             add(directory->getName());
         }
     }
+}
+
+std::vector<std::string> absent_places(const llvm::StringSet<>& looked) {
+    std::vector<std::string> absent;
+    for(auto& entry: looked) {
+        // The candidates over-approximate where a lookup looked (an
+        // `#include_next` does not start at the first directory, a lookup
+        // also fails on a directory of that name): only a place holding
+        // nothing is absent.
+        // FIXME: a header generated here while the compile ran, after its lookup
+        // failed, is filtered out too, and its creation is never seen.
+        if(!fs::exists(entry.getKey())) {
+            absent.emplace_back(entry.getKey());
+        }
+    }
+    ranges::sort(absent);
+    return absent;
 }
 
 ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,

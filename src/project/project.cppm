@@ -63,8 +63,8 @@ enum class CompiledBy : std::uint8_t {
     Document,
     /// A build: its PCM's, or that of the precompiled header it writes.
     Build,
-    /// Its own run.
-    Run,
+    /// Its own compile (compile_unit).
+    Itself,
 };
 
 /// An open document, as a change of the project's inputs needs it: the
@@ -487,12 +487,13 @@ struct Project {
     /// was built from it, or whose build failed on it.
     llvm::SmallVector<Fid> readers(Fid file) const;
 
-    /// Whether anything of the project derives from the file: a command, an
-    /// include edge, index entries, a build that read it or looked for it.
-    /// The disk changes of files it does not know are not its to follow.
+    /// Whether anything of the project derives from the file: one of the
+    /// owner's `open` files, a command, an include edge, index entries, a
+    /// build or an open file's compile that read it or looked for it. The
+    /// disk changes of files it does not know are not its to follow.
     /// FIXME: a rule with a default command and no patterns gives every file a
     /// command, so such a project takes every other project's changes too.
-    bool knows(Fid file);
+    bool knows(Fid file, llvm::ArrayRef<OpenFile> open);
 
     /// Files it knows changed on disk: their include edges and module
     /// declarations are scanned again, the PCMs built from them and the
@@ -586,12 +587,12 @@ struct Project {
     /// the root directory moves), and every directory from each of `files`
     /// still without a command, inside the root, up to the root — which is
     /// how a database generated after startup is picked up. The places stay
-    /// watched; the next look loads what they hold. `now` looks above
-    /// `files` alone and loads at once, a registered database whose load
-    /// failed so far (absent at startup, unreadable at an earlier open)
-    /// tried again — with polling off nothing else would. Returns what the
-    /// loads changed, for update_members.
-    CDBDiff discover_databases(llvm::ArrayRef<Fid> files, bool now);
+    /// watched; the next look loads what they hold. Loading now looks above
+    /// `files` alone, a registered database whose load failed so far (absent
+    /// at startup, unreadable at an earlier open) tried again — with polling
+    /// off nothing else would. Returns what the loads changed, for
+    /// update_members.
+    CDBDiff discover_databases(llvm::ArrayRef<Fid> files, DiscoverOptions options);
 
     /// The directories below the root whose configuration file decides what
     /// the project loads (nested_project): each direct subdirectory, and

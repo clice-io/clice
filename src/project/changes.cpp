@@ -223,7 +223,8 @@ struct Cascade {
         // among its dirtied units: the removal is the final word for the
         // file itself.
         project.background_index.forget(file);
-        llvm::erase(affected.reindexed, file);
+        auto& reindexed = affected.reindexed;
+        reindexed.erase(ranges::remove(reindexed, file).begin(), reindexed.end());
         // It stops providing its module name (a replacement provider would
         // otherwise sit behind it and never be selected) and its import
         // syntax (the last import-bearing file must release the
@@ -259,8 +260,9 @@ llvm::SmallVector<Fid> Project::readers(Fid file) const {
     return result;
 }
 
-bool Project::knows(Fid file) {
-    return !candidates(file).empty() || dep_graph.knows(file) || !readers(file).empty();
+bool Project::knows(Fid file, llvm::ArrayRef<OpenFile> open) {
+    return ranges::contains(open, file, &OpenFile::file) || !candidates(file).empty() ||
+           dep_graph.knows(file) || !Cascade{*this, open}.readers(file).empty();
 }
 
 Affected Project::files_changed(llvm::ArrayRef<Fid> files, llvm::ArrayRef<OpenFile> open) {
@@ -347,6 +349,7 @@ Affected Project::update_members(CDBDiff commands, llvm::ArrayRef<OpenFile> open
     // names the old command, so no freshness check skips the reindex, in
     // this session or after a restart. ContentChanged: a new command can
     // rewrite the index (macros, includes) as thoroughly as an edit.
+    Cascade cascade{*this, open};
     for(auto file: llvm::concat<const Fid>(commands.added, commands.changed, commands.removed)) {
         if(candidates(file).empty()) {
             index::IndexReport report;
@@ -355,7 +358,7 @@ Affected Project::update_members(CDBDiff commands, llvm::ArrayRef<OpenFile> open
             background_index.forget(file);
         } else {
             index.mark_outdated(file);
-            background_index.enqueue(file, ReindexReason::ContentChanged);
+            cascade.reindex(file, true);
         }
     }
 
@@ -366,7 +369,6 @@ Affected Project::update_members(CDBDiff commands, llvm::ArrayRef<OpenFile> open
     // picked, and when those entries are unchanged the delta walk cannot
     // reach them either — cascade from them so their next attempts pick
     // again.
-    Cascade cascade{*this, open};
     for(auto& name: graph.appeared) {
         cascade.provider_appeared(name);
     }

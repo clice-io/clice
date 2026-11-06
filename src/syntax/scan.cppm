@@ -185,6 +185,9 @@ void lookup_places(clang::FileManager& files,
                    bool angled,
                    llvm::function_ref<void(std::string)> visit);
 
+/// The places of `looked` (lookup_places) that hold nothing, sorted.
+std::vector<std::string> absent_places(const llvm::StringSet<>& looked);
+
 /// Lightweight preprocessor-based fallback for resolving module declarations
 /// inside conditional directives (#if/#ifdef). When the quick `scan()` detects
 /// `need_preprocess=true`, this function runs clang's preprocessor to evaluate

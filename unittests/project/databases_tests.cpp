@@ -53,7 +53,7 @@ struct Fixture {
     }
 
     void discover_around(Fid file) {
-        project.update_members(project.discover_databases({file}, true), open_files);
+        project.update_members(project.discover_databases({file}, {.load_now = true}), open_files);
     }
 };
 

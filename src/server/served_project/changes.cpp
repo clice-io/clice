@@ -30,7 +30,15 @@ llvm::SmallVector<OpenFile> ServedProject::open_files() const {
 }
 
 void ServedProject::disk_changed(llvm::ArrayRef<Fid> files) {
-    follow(project.files_changed(files, open_files()));
+    if(broken()) {
+        return;
+    }
+    auto open = open_files();
+    auto known = ranges::to<llvm::SmallVector<Fid>>(
+        views::filter(files, [&](Fid file) { return project.knows(file, open); }));
+    if(!known.empty()) {
+        follow(project.files_changed(known, open));
+    }
 }
 
 void ServedProject::commands_changed(CDBDiff delta) {
@@ -103,22 +111,6 @@ void ServedProject::recheck_choices() {
     }
 }
 
-bool ServedProject::knows(Fid path_id) {
-    if(broken()) {
-        return false;
-    }
-    if(find_document(path_id) || project.knows(path_id)) {
-        return true;
-    }
-    bool read = false;
-    for(auto& [document, served]: documents) {
-        each_input(document, [&](const Inputs& inputs) {
-            read = read || ranges::contains(inputs, path_id, &Input::file);
-        });
-    }
-    return read;
-}
-
 std::size_t ServedProject::reload_databases(bool force) {
     if(!watching) {
         return 0;
@@ -133,8 +125,10 @@ std::size_t ServedProject::reload_databases(bool force) {
         });
         return 0;
     }
-    auto delta =
-        project.look_at_databases(force, llvm::to_vector(llvm::make_first_range(documents)));
+    auto delta = project.look_at_databases(
+        force,
+        ranges::to<llvm::SmallVector<Fid>>(
+            views::transform(documents, [](auto& entry) { return entry.first; })));
     if(delta.empty()) {
         return 0;
     }
@@ -160,13 +154,14 @@ void ServedProject::discover_around(Fid path_id) {
     if(!watching) {
         return;
     }
-    if(auto found = project.discover_databases({path_id}, true); !found.empty()) {
+    if(auto found = project.discover_databases({path_id}, {.load_now = true}); !found.empty()) {
         commands_changed(std::move(found));
     }
 }
 
 std::vector<CanonicalPath> ServedProject::configuration_dirs() const {
-    return project.configuration_dirs(llvm::to_vector(llvm::make_first_range(documents)));
+    return project.configuration_dirs(ranges::to<llvm::SmallVector<Fid>>(
+        views::transform(documents, [](auto& entry) { return entry.first; })));
 }
 
 }  // namespace clice

@@ -255,7 +255,7 @@ ZEST_CASE(DialectFollowsCommand) {
     ZEXPECT((borrowed.LangStd == clang::LangStandard::lang_cxx14));
 }
 
-ZEST_CASE(IdentityFollowsTheEffectiveCommand) {
+ZEST_CASE(IdentityIsEffectiveCommand) {
     /// A unit's index is keyed by the command it compiles under, rules
     /// applied, with the project root written as `${workspace}`: a checkout
     /// moved elsewhere keeps it, a rule whose configuration moves under
@@ -265,7 +265,7 @@ ZEST_CASE(IdentityFollowsTheEffectiveCommand) {
         FileTable files;
         Project project{files};
         project.settings.rules.push_back(Rule{
-            .patterns = {"src/**"},
+            .patterns = {"${workspace}/src/**"},
             .default_command = std::string("clang++"),
             .append = {"-Iinc"},
         });
@@ -283,7 +283,9 @@ ZEST_CASE(IdentityFollowsTheEffectiveCommand) {
     auto at_root = identity(checkout, "");
     ZEXPECT(at_root != 0u);
     ZEXPECT(identity(moved, "") == at_root);
-    ZEXPECT(identity(checkout, ".clice") != at_root);
+    auto under_clice = identity(checkout, ".clice");
+    ZEXPECT(under_clice != 0u);
+    ZEXPECT(under_clice != at_root);
 }
 
 };  // ZEST_SUITE(ResolveCommand)

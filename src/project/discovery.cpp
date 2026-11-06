@@ -137,7 +137,7 @@ void push_moved(llvm::ArrayRef<Fid> files,
 }
 
 /// One database's look, its reload's delta merged into `delta`. Once its
-/// inputs have held the same other content for two consecutive looks (or
+/// inputs have held the same other content for two consecutive ticks (or
 /// `force`), it reloads.
 void look_at_database(Project& project, WatchedDatabase& database, bool force, CDBDiff& delta) {
     auto& cdb = project.cdb;
@@ -504,7 +504,7 @@ void Project::watch_databases() {
 }
 
 CDBDiff Project::look_at_databases(bool force, llvm::ArrayRef<Fid> open) {
-    discover_databases(open, false);
+    discover_databases(open, {});
     CDBDiff delta;
     for(auto& database: disk_watch.databases) {
         look_at_database(*this, database, force, delta);
@@ -512,7 +512,7 @@ CDBDiff Project::look_at_databases(bool force, llvm::ArrayRef<Fid> open) {
     return delta;
 }
 
-CDBDiff Project::discover_databases(llvm::ArrayRef<Fid> files, bool now) {
+CDBDiff Project::discover_databases(llvm::ArrayRef<Fid> files, DiscoverOptions options) {
     CDBDiff found;
     if(rules.declares_sources()) {
         return found;
@@ -531,7 +531,7 @@ CDBDiff Project::discover_databases(llvm::ArrayRef<Fid> files, bool now) {
             }
         }
     };
-    if(!now) {
+    if(!options.load_now) {
         if(!watch.root) {
             watch.root = disk.watch(root.str());
         }
@@ -551,7 +551,7 @@ CDBDiff Project::discover_databases(llvm::ArrayRef<Fid> files, bool now) {
             want(database_places_above(path.parent(), root));
         }
     }
-    if(!now) {
+    if(!options.load_now) {
         llvm::SmallVector<std::string> unwanted;
         for(auto& entry: watch.places) {
             if(!seen.contains(entry.getKey())) {
@@ -572,12 +572,12 @@ CDBDiff Project::discover_databases(llvm::ArrayRef<Fid> files, bool now) {
     };
     for(auto& place: wanted) {
         auto registered = cdb.find_source(place);
-        if(registered && (!now || cdb.loaded(*registered))) {
+        if(registered && (!options.load_now || cdb.loaded(*registered))) {
             continue;
         }
         // A load at once looks at the disk itself: a watched place's flag
         // tells what the last tick saw, and with polling off no tick looks.
-        if(now ? !fs::exists(place) : !watched(place)->stamp) {
+        if(options.load_now ? !fs::exists(place) : !watched(place)->stamp) {
             continue;
         }
         // Another spelling of a tracked database, as build/compile_commands.json
@@ -591,7 +591,7 @@ CDBDiff Project::discover_databases(llvm::ArrayRef<Fid> files, bool now) {
         // Unless loaded now, it is baselined unread: the fresh file is a
         // change against the never-loaded source and goes through the
         // normal debounce-and-reload path.
-        if(now) {
+        if(options.load_now) {
             if(auto diff = cdb.reload_and_diff(id)) {
                 found.append(*diff);
             }

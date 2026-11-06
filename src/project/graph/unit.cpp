@@ -348,7 +348,7 @@ CompiledBy Project::compiled_by(Fid unit) {
     if(background_index.left_to_document(unit)) {
         return CompiledBy::Document;
     }
-    return compiled_by_build(unit) ? CompiledBy::Build : CompiledBy::Run;
+    return compiled_by_build(unit) ? CompiledBy::Build : CompiledBy::Itself;
 }
 
 bool Project::index_command_holds(Fid unit) {

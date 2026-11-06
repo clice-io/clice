@@ -599,20 +599,7 @@ std::vector<ReportedInput> CompilationUnit::deps() {
 }
 
 std::vector<std::string> CompilationUnit::absent() {
-    std::vector<std::string> result;
-    for(auto& entry: absent_paths) {
-        // The candidates over-approximate where a lookup looked (an
-        // `#include_next` does not start at the first directory, a lookup
-        // also fails on a directory of that name): only a place holding
-        // nothing is absent.
-        // FIXME: a header generated here while the compile ran, after its lookup
-        // failed, is filtered out too, and its creation is never seen.
-        if(!fs::exists(entry.getKey())) {
-            result.emplace_back(entry.getKey());
-        }
-    }
-    ranges::sort(result);
-    return result;
+    return absent_places(absent_paths);
 }
 
 clang::TranslationUnitDecl* CompilationUnit::tu() {

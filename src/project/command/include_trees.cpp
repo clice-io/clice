@@ -14,13 +14,15 @@ import :worker.protocol;
 
 namespace clice {
 
+namespace {
+
 /// include_chains() by one include tree, rooted at `root`.
-static std::optional<llvm::SmallVector<Host>> tree_chains(Project& project,
-                                                          Fid host,
-                                                          Fid header,
-                                                          VersionID root,
-                                                          llvm::ArrayRef<index::IncludeNode> nodes,
-                                                          llvm::ArrayRef<VersionID> absent) {
+std::optional<llvm::SmallVector<Host>> tree_chains(Project& project,
+                                                   Fid host,
+                                                   Fid header,
+                                                   VersionID root,
+                                                   llvm::ArrayRef<index::IncludeNode> nodes,
+                                                   llvm::ArrayRef<VersionID> absent) {
     using CheckResult = vfs::DiskState::CheckResult;
     auto& files = project.file_table;
     if(files.check_version(root) != CheckResult::Fresh ||
@@ -134,9 +136,7 @@ static std::optional<llvm::SmallVector<Host>> tree_chains(Project& project,
 /// The pool's run taking the tree `request` names, which belongs to no
 /// asker: one cancelled leaves it to the others waiting on `done`, set when
 /// it ends.
-static async::task<> run_tree(Project& project,
-                              TreeRequest request,
-                              std::shared_ptr<async::event> done) {
+async::task<> run_tree(Project& project, TreeRequest request, std::shared_ptr<async::event> done) {
     auto finish = llvm::make_scope_exit([&] {
         project.tree_runs.erase(request.key);
         done->set();
@@ -172,6 +172,8 @@ static async::task<> run_tree(Project& project,
                         tree.deps,
                         tree.started_at);
 }
+
+}  // namespace
 
 TreeRequest Project::tree_request(Fid unit, const Candidate& candidate) {
     auto command = apply_rules(unit, candidate);
