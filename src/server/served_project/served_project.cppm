@@ -3,7 +3,6 @@ module clice:server.served_project;
 import :command.database;
 import :command.search_config;
 import :feature.diagnostics;
-import :index.peer_queries;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
@@ -298,12 +297,9 @@ Value empty_value() {
 /// split in files: lifetime and adoption (served_project.cpp), compiling the
 /// open documents (compile.cpp), what answers a request on them now and
 /// asking the workers (answer.cpp), handling changes of its inputs
-/// (changes.cpp), the open documents' commands (command.cpp) and the index's
-/// live sources over them (live_sources.cpp). Shared: a request in flight
-/// keeps a removed project alive until it completes.
-class ServedProject final :
-    public index::LiveSources,
-    public std::enable_shared_from_this<ServedProject> {
+/// (changes.cpp) and the open documents' commands (command.cpp). Shared: a
+/// request in flight keeps a removed project alive until it completes.
+class ServedProject final : public std::enable_shared_from_this<ServedProject> {
 public:
     /// `root` is the project's directory; empty for the rootless project a
     /// server without folders runs, which loads nothing. What the project
@@ -607,9 +603,27 @@ public:
     std::optional<index::IndexQuery::Cursor> cursor_at(Fid path_id,
                                                        const protocol::Position& position) const;
 
-    /// The project's query and its peers', for one synchronous read: the
-    /// peers are those the master serves when it is taken.
-    index::PeerQueries peer_queries();
+    /// The open documents, as the reads of the index take them.
+    std::vector<index::OpenBuffer> open_buffers() const;
+
+    /// The project's index over its open documents, for one synchronous
+    /// read.
+    index::IndexQuery query() const {
+        return project.index_query.reading(open_buffers());
+    }
+
+    /// query(), also asking the other projects the master serves when it is
+    /// taken, each over its own open documents (index::IndexQuery::asking):
+    /// what navigation, references, the hierarchies, hover, workspace
+    /// symbols and an inlay hint's targets read.
+    index::IndexQuery query_all() const;
+
+    /// What a rename or a code action reads: query() over the open documents
+    /// of the projects nested in the root too, which are its files as well.
+    /// Another project's open files read as closed ones, from the shards
+    /// this project holds, and no other project is asked: the edits of a
+    /// rename stay in the files it may edit.
+    index::IndexQuery editing_query() const;
 
     /// The document's text, read in the dialect the server lexes it in.
     SourceText& text_of(Session& session);
@@ -696,24 +710,6 @@ public:
              llvm::StringRef label,
              R result,
              bool snapshot = false);
-
-    // live_sources.cpp: the open documents' own file indexes (current per
-    // their latest compiles), the PCH overlays their preambles were
-    // compiled into, and the preamble regions those overlays indexed.
-
-    bool is_open(Fid file) const override;
-    std::optional<index::IndexSource> buffer_index(Fid file) const override;
-    void for_each_session(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
-    void for_each_session_index(
-        llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
-    void
-        for_each_preamble(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
-    void for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
-    std::shared_ptr<index::TUIndex> preamble_index(Fid file) const override;
-
-    /// The project's shard of the file while the document's buffer holds
-    /// the very bytes it indexed.
-    const index::Shard* matching_shard(const Session& session) const;
 
     /// Set while compiles may run and requests resolve commands. A project
     /// made while its root's previous one still shuts down

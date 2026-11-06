@@ -3,7 +3,6 @@ module clice;
 import :feature.documentation;
 import :feature.hover.card;
 import :feature.hover;
-import :index.peer_queries;
 import :index.query;
 import :index.symbol;
 import :index.text;
@@ -111,17 +110,16 @@ auto hover_info(const index::SymbolInfo& info,
     return hover;
 }
 
-auto hover_info(const index::PeerQueries& queries,
+auto hover_info(const index::IndexQuery& query,
                 const index::IndexQuery::Cursor& cursor,
                 const DocumentationOptions& documentation) -> std::optional<HoverInfo> {
-    auto& query = queries.own;
     auto symbol = cursor.symbols.front();
     auto info = query.symbol_info(symbol, cursor.site.file);
     if(!info) {
         return std::nullopt;
     }
     if(info->kind == SymbolKind::Module) {
-        return module_hover(queries, cursor, *info);
+        return module_hover(query, cursor, *info);
     }
     std::string definition;
     auto text = index::declared_text(query, symbol, cursor.site.file, RelationKind::Definition);
@@ -139,20 +137,20 @@ auto hover_info(const index::PeerQueries& queries,
     return hover;
 }
 
-auto module_hover(const index::PeerQueries& queries,
+auto module_hover(const index::IndexQuery& query,
                   const index::IndexQuery::Cursor& cursor,
                   const index::SymbolInfo& module) -> HoverInfo {
     HoverInfo hover;
     hover.name = module.name;
     hover.kind = SymbolKind::Module;
     auto units =
-        queries.gather(module.hash,
+        query.gather(module.hash,
                        cursor.site.file,
                        [&](const index::IndexQuery& from, index::SymbolHash named) {
                            return from.sites(named, cursor.site.file, RelationKind::Definition);
                        });
     if(!units.empty()) {
-        hover.file = queries.own.file_table().display_identity(units.front().path);
+        hover.file = query.file_table().display_identity(units.front().path);
     }
     hover.symbol_range = cursor.site.range;
     return hover;

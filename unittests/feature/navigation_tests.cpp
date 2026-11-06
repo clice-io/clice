@@ -21,9 +21,9 @@ ZEST_CASE(LocalReferencesClosed) {
             std::pair{"use",   2U},
             std::pair{"param", 3U}
     }) {
-        auto cursor = query.symbol_at(focus_id, point(marker));
+        auto cursor = query().symbol_at(focus_id, point(marker));
         ZASSERT(cursor);
-        ZEXPECT(feature::references(query, *cursor, true).size() == expected);
+        ZEXPECT(feature::references(query(), *cursor, true).size() == expected);
     }
 }
 
@@ -37,9 +37,9 @@ ZEST_CASE(HighlightsClosedFile) {
     )");
     index_workspace();
 
-    auto cursor = query.symbol_at(focus_id, point("read"));
+    auto cursor = query().symbol_at(focus_id, point("read"));
     ZASSERT(cursor);
-    auto highlights = feature::document_highlights(query, *cursor);
+    auto highlights = feature::document_highlights(query(), *cursor);
     ZASSERT(highlights.size() == 3U);
     ZEXPECT(highlights[0].site.range == range("decl"));
     ZEXPECT(highlights[0].kind == feature::HighlightKind::Text);
@@ -60,14 +60,14 @@ ZEST_CASE(InternalAcrossFiles) {
     )");
     index_workspace();
 
-    auto from_main = query.symbol_at(focus_id, point("main_use"));
-    auto from_header = query.symbol_at(header_id, point("def", "header.h"));
+    auto from_main = query().symbol_at(focus_id, point("main_use"));
+    auto from_header = query().symbol_at(header_id, point("def", "header.h"));
     ZASSERT(from_main);
     ZASSERT(from_header);
     ZASSERT(from_main->symbols == from_header->symbols);
-    ZEXPECT(feature::references(query, *from_main, true).size() == 3U);
-    ZEXPECT(feature::references(query, *from_header, true).size() == 3U);
-    auto located = query.resolve_at(*from_main);
+    ZEXPECT(feature::references(query(), *from_main, true).size() == 3U);
+    ZEXPECT(feature::references(query(), *from_header, true).size() == 3U);
+    auto located = query().resolve_at(*from_main);
     ZASSERT(located.size() == 1U);
     ZEXPECT(located.front().site.path.ends_with("header.h"));
 }
@@ -86,9 +86,9 @@ ZEST_CASE(InternalTypeTarget) {
     )");
     index_workspace();
 
-    auto cursor = query.symbol_at(focus_id, point("var"));
+    auto cursor = query().symbol_at(focus_id, point("var"));
     ZASSERT(cursor);
-    auto sites = feature::type_definition(query, *cursor, cursor->symbols.front());
+    auto sites = feature::type_definition(query(), *cursor, cursor->symbols.front());
     ZASSERT(sites.size() == 1U);
     ZEXPECT(sites.front().path.ends_with("header.h"));
 }
@@ -112,9 +112,9 @@ ZEST_CASE(InternalAcrossUnits) {
     )");
     index_workspace();
 
-    auto cursor = query.symbol_at(a_id, a_use);
+    auto cursor = query().symbol_at(a_id, a_use);
     ZASSERT(cursor);
-    ZEXPECT(feature::references(query, *cursor, true).size() == 3U);
+    ZEXPECT(feature::references(query(), *cursor, true).size() == 3U);
 }
 
 ZEST_CASE(OverloadSetCursor) {
@@ -125,14 +125,14 @@ ZEST_CASE(OverloadSetCursor) {
     )");
     index_workspace();
 
-    auto cursor = query.symbol_at(focus_id, point("use"));
+    auto cursor = query().symbol_at(focus_id, point("use"));
     ZASSERT(cursor);
     ZASSERT(cursor->symbols.size() == 2U);
-    auto sites = feature::definition(query, *cursor);
+    auto sites = feature::definition(query(), *cursor);
     ZASSERT(sites.size() == 2U);
     ZEXPECT(sites[0].range.begin == point("int"));
     ZEXPECT(sites[1].range.begin == point("double"));
-    ZEXPECT(query.resolve_at(*cursor).size() == 2U);
+    ZEXPECT(query().resolve_at(*cursor).size() == 2U);
 }
 
 };  // ZEST_SUITE(Navigation)

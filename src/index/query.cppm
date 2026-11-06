@@ -53,43 +53,30 @@ struct IndexSource {
     }
 };
 
-/// What a server adds to the persisted index: the open buffers' own indexes,
-/// the preamble regions their PCH overlays indexed, and the overlays'
-/// header entries. Every index source it hands out is read synchronously
-/// within the visit.
-class LiveSources {
-public:
-    virtual ~LiveSources() = default;
+/// An open document, as the reads of the index take it: what its owner
+/// hands them as one request finds it (IndexQuery::reading). Its views
+/// borrow the document's buffer, read synchronously like every answer.
+struct OpenBuffer {
+    Fid file;
 
-    /// Whether the file is an open buffer. An open buffer is served by
-    /// buffer_index() or by nothing at all — never by its shard as a closed file.
-    virtual bool is_open(Fid file) const = 0;
+    /// The buffer's text, its content hash and its positions.
+    llvm::StringRef text;
 
-    /// The index serving an open buffer right now: its own file index
-    /// (freshness clauses 1 and 3), else its shard while the buffer is
-    /// byte-identical to the text the shard indexed (clause 4), both in
-    /// buffer coordinates. Nullopt while the buffer has moved on from both.
-    virtual std::optional<IndexSource> buffer_index(Fid file) const = 0;
+    std::uint64_t hash = 0;
 
-    /// Every open buffer whose file index serves it (clause 3), as its index.
-    virtual void for_each_session(llvm::function_ref<bool(const IndexSource&)> visit) const = 0;
+    PositionMap positions;
 
-    /// The same buffers' TU indexes, which name (find_symbol) every
-    /// symbol of the unsaved text and hold the declarations of what it
-    /// names from imported modules.
-    virtual void for_each_session_index(llvm::function_ref<bool(const TUIndex&)> visit) const = 0;
+    /// The TU index of the document's last compile; null before one
+    /// committed it.
+    std::shared_ptr<TUIndex> index;
 
-    /// Every open buffer's preamble index whose overlay was built from that
-    /// very file and still describes the buffer's start.
-    virtual void for_each_preamble(llvm::function_ref<bool(const IndexSource&)> visit) const = 0;
+    /// Whether that compile is current: no edit and no change of what it
+    /// read since.
+    bool current = false;
 
-    /// Each distinct PCH overlay index once (buffers sharing a preamble
-    /// share one).
-    virtual void for_each_overlay(llvm::function_ref<bool(const TUIndex&)> visit) const = 0;
-
-    /// An open buffer's PCH index while the buffer still starts with
-    /// the exact preamble the index was built from; null otherwise.
-    virtual std::shared_ptr<TUIndex> preamble_index(Fid file) const = 0;
+    /// The index of the PCH the last compile loaded for its preamble,
+    /// shared by the buffers sharing the preamble; null for none.
+    std::shared_ptr<TUIndex> preamble;
 };
 
 struct FreshnessOptions {
@@ -202,9 +189,10 @@ inline bool is_function(SymbolKind kind) {
 }
 
 /// Read-only queries over every index source: disk shards, open sessions'
-/// file indexes, PCH overlays and the buffers' own preamble indexes. Holds no
-/// index data of its own — ProjectIndex owns the disk-derived index, the
-/// live sources the per-buffer indexes.
+/// file indexes, PCH overlays and the buffers' own preamble indexes, and
+/// the other projects' when it asks them (asking). Holds no index data of
+/// its own — ProjectIndex owns the disk-derived index, the open documents
+/// the per-buffer indexes.
 ///
 /// Every answer is a domain value (Site, SymbolInfo); the transports render
 /// them. Every method is synchronous and its results borrow the state they
@@ -253,12 +241,17 @@ inline bool is_function(SymbolKind kind) {
 /// ignore the anchor.
 class IndexQuery {
 public:
-    /// A null gate never withholds; null live sources are the disk-only
-    /// view of headless tools: every file answers as if closed.
-    IndexQuery(const ProjectIndex& index,
-               FileTable& files,
-               const FreshnessGate* gate,
-               const LiveSources* live);
+    /// A null gate never withholds. It reads no open document: every file
+    /// answers as if closed, the disk-only view of headless tools.
+    IndexQuery(const ProjectIndex& index, FileTable& files, const FreshnessGate* gate);
+
+    /// The same queries over the open documents `open` too: an open file
+    /// answers as serving() says, never by its shard as a closed file.
+    IndexQuery reading(std::vector<OpenBuffer> open) const {
+        auto query = *this;
+        query.open = std::move(open);
+        return query;
+    }
 
     /// The same queries over the written code alone, without what
     /// instantiations and macro expansions resolve: a rename edits names
@@ -270,7 +263,11 @@ public:
     }
 
     /// The freshness contract's single arbitration: the index serving
-    /// `file` right now, with the coordinates it is expressed in.
+    /// `file` right now, with the coordinates it is expressed in. An open
+    /// buffer is served by its own file index while that describes it
+    /// (clauses 1 and 3), else by its shard while the buffer is
+    /// byte-identical to the text the shard indexed (clause 4), both in
+    /// buffer coordinates; by nothing while the buffer moved on from both.
     std::optional<IndexSource> serving(Fid file) const;
 
     /// Visit the preamble index paired with an open buffer's source: the
@@ -290,9 +287,14 @@ public:
     /// manifest edges are only meaningful against text the index described.
     const Shard* shard_matching(Fid file, llvm::StringRef text) const;
 
-    /// The live sources' PCH index for an open buffer (see
-    /// LiveSources::preamble_index); null without live sources.
+    /// An open buffer's PCH index while the buffer still starts with the
+    /// exact preamble the index was built from; null otherwise.
     std::shared_ptr<TUIndex> preamble_index(Fid file) const;
+
+    /// The TU indexes of the open buffers their own file index serves
+    /// (clause 3), which name (find_symbol) every symbol of the unsaved text
+    /// and hold the declarations of what it names from imported modules.
+    void for_each_session_index(llvm::function_ref<bool(const TUIndex&)> visit) const;
 
     /// The symbols whose occurrences cover `offset` in the file's serving
     /// source (clauses 1 and 4), and the site of that occurrence. A session
@@ -463,16 +465,80 @@ public:
         return files;
     }
 
-    const LiveSources* live_sources() const {
-        return live;
+    // other_projects.cpp
+
+    /// The same queries, also asking `others`, the other projects' views,
+    /// about a symbol they know as the same entity (asked): an application
+    /// and the library beside it see each other's uses. One level deep:
+    /// theirs ask no others.
+    IndexQuery asking(std::vector<IndexQuery> others) const {
+        auto query = *this;
+        query.other_projects = std::move(others);
+        return query;
     }
 
-    /// Read the open documents through `live` from now on.
-    void attach(const LiveSources& live) {
-        this->live = &live;
+    llvm::ArrayRef<IndexQuery> others() const {
+        return other_projects;
     }
+
+    /// The view, this one or one of the others, reading the open document
+    /// of `file`; null for a file none of them has open.
+    const IndexQuery* owner_of(Fid file) const;
+
+    /// A view asked about a symbol, and the symbol as that view's project
+    /// names it: an id hashing its file (a macro, a file-local name) takes
+    /// the file relative to the compiling project's root, so a project
+    /// compiling the file from outside its root names it by another id.
+    struct Asked {
+        const IndexQuery* query;
+        SymbolHash symbol;
+    };
+
+    /// This view, then the others knowing the entity `symbol` names here:
+    /// declaring it in a file this project declares it in, or in `anchor`,
+    /// the file it was found in — under the same id or, at the same place
+    /// in a file this project declares it in, under another.
+    llvm::SmallVector<Asked> asked(SymbolHash symbol, Fid anchor) const;
+
+    /// Whether `from`'s shard for `file` stands among the answers of `asked`:
+    /// any view's for a closed file; for an open one only the view reading
+    /// its buffer — the others hold its disk shard, which the buffer
+    /// replaced — unless that view is not asked.
+    bool answers_for(const IndexQuery& from, Fid file, llvm::ArrayRef<Asked> asked) const;
+
+    /// `ask`'s sites from every view asked about each of `symbols`
+    /// (asked), each under its own id, in the files each may answer for
+    /// (answers_for), deduplicated.
+    std::vector<Site>
+        gather(llvm::ArrayRef<SymbolHash> symbols,
+               Fid anchor,
+               llvm::function_ref<std::vector<Site>(const IndexQuery&, SymbolHash)> ask) const;
 
 private:
+    /// The open buffer of `file`; null for a closed file.
+    const OpenBuffer* buffer_of(Fid file) const;
+
+    /// The buffer's own file index while it describes the buffer: the
+    /// compile is current, or it compiled these very bytes.
+    const Shard* buffer_shard(const OpenBuffer& buffer) const;
+
+    /// An open buffer's index as a source: `shard` in the buffer's
+    /// coordinates, with the instantiations that serve beside it.
+    IndexSource buffer_source(IndexSource::Kind kind,
+                              const OpenBuffer& buffer,
+                              const Shard& shard) const;
+
+    /// Every open buffer whose file index serves it (clause 3), as its index.
+    void for_each_session(llvm::function_ref<bool(const IndexSource&)> visit) const;
+
+    /// Every open buffer's preamble index whose overlay was built from that
+    /// very file and still describes the buffer's start.
+    void for_each_preamble(llvm::function_ref<bool(const IndexSource&)> visit) const;
+
+    /// Each distinct PCH overlay index once (buffers sharing a preamble
+    /// share one).
+    void for_each_overlay(llvm::function_ref<bool(const TUIndex&)> visit) const;
+
     /// first_site with the declaration's extent.
     std::optional<Placed> first_placed(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
@@ -505,7 +571,9 @@ private:
 
     const FreshnessGate* gate;
 
-    const LiveSources* live;
+    std::vector<OpenBuffer> open;
+
+    std::vector<IndexQuery> other_projects;
 
     /// Whether answers take in what instantiations resolve (written_only).
     bool with_instantiations = true;

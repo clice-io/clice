@@ -183,15 +183,120 @@ bool FreshnessGate::stale(Fid file, std::uint64_t content_hash) const {
     return true;
 }
 
-IndexQuery::IndexQuery(const ProjectIndex& index,
-                       FileTable& files,
-                       const FreshnessGate* gate,
-                       const LiveSources* live) :
-    index(index), files(files), gate(gate), live(live) {}
+IndexQuery::IndexQuery(const ProjectIndex& index, FileTable& files, const FreshnessGate* gate) :
+    index(index), files(files), gate(gate) {}
+
+const OpenBuffer* IndexQuery::buffer_of(Fid file) const {
+    auto it = ranges::find(open, file, &OpenBuffer::file);
+    return it == open.end() ? nullptr : &*it;
+}
+
+const Shard* IndexQuery::buffer_shard(const OpenBuffer& buffer) const {
+    if(!buffer.index || !buffer.index->loaded()) {
+        return nullptr;
+    }
+    // A shard compiled from exactly the buffer's bytes describes it however
+    // its dependencies moved since (the shard's DepsOnly contract).
+    auto& state = *buffer.index;
+    auto& shard = state.shard_of(state.focus_file());
+    if(buffer.current || shard.matches_content(buffer.text.size(), buffer.hash)) {
+        return &shard;
+    }
+    return nullptr;
+}
+
+IndexSource IndexQuery::buffer_source(IndexSource::Kind kind,
+                                      const OpenBuffer& buffer,
+                                      const Shard& shard) const {
+    IndexSource source{
+        .kind = kind,
+        .file = buffer.file,
+        .path = files.display(buffer.file),
+        .shard = &shard,
+        .positions = buffer.positions,
+    };
+    // The buffer's own compile resolved what it instantiates and expands;
+    // what the other units do in the file serves while the buffer is the
+    // text they read.
+    if(kind == IndexSource::Kind::SessionShard) {
+        auto& state = *buffer.index;
+        if(auto section = state.instantiation_section_of(state.focus_file())) {
+            source.instantiations.push_back(&state.instantiation_shard(*section));
+        }
+    }
+    auto* stored = index.instantiation_shard(buffer.file);
+    if(kind != IndexSource::Kind::PreambleShard && stored &&
+       stored->content_hash() == buffer.hash) {
+        source.instantiations.push_back(stored);
+    }
+    return source;
+}
+
+void IndexQuery::for_each_session(llvm::function_ref<bool(const IndexSource&)> visit) const {
+    for(auto& buffer: open) {
+        auto* shard = buffer_shard(buffer);
+        if(shard && !visit(buffer_source(IndexSource::Kind::SessionShard, buffer, *shard))) {
+            return;
+        }
+    }
+}
+
+void IndexQuery::for_each_session_index(llvm::function_ref<bool(const TUIndex&)> visit) const {
+    for(auto& buffer: open) {
+        if(buffer_shard(buffer) && !visit(*buffer.index)) {
+            return;
+        }
+    }
+}
+
+void IndexQuery::for_each_preamble(llvm::function_ref<bool(const IndexSource&)> visit) const {
+    for(auto& buffer: open) {
+        auto& state = buffer.preamble;
+        if(!state) {
+            continue;
+        }
+        // The preamble shard's entries are buffer offsets of the file that
+        // built the blob: serve them only for that very file and only while
+        // the buffer still starts with the exact preamble text the blob was
+        // built from. The prefix comparison validates the described region
+        // directly — body edits never move preamble entries — so no dirty-flag
+        // gating is needed on top.
+        auto last = state->focus_file();
+        if(files.find(Spelling::absolute(state->path(last))) != buffer.file ||
+           !state->matches_preamble(buffer.text)) {
+            continue;
+        }
+        if(!visit(buffer_source(IndexSource::Kind::PreambleShard,
+                                buffer,
+                                state->shard_of(last)))) {
+            return;
+        }
+    }
+}
+
+void IndexQuery::for_each_overlay(llvm::function_ref<bool(const TUIndex&)> visit) const {
+    // Buffers with identical preambles share one blob; visit it once. The
+    // build's precompiled header a preamble's PCH is built over has none:
+    // what it holds is indexed with the unit writing it.
+    llvm::SmallPtrSet<const TUIndex*, 4> seen;
+    for(auto& buffer: open) {
+        auto* state = buffer.preamble.get();
+        if(state && seen.insert(state).second && !visit(*state)) {
+            return;
+        }
+    }
+}
 
 std::optional<IndexSource> IndexQuery::serving(Fid file) const {
-    if(live && live->is_open(file)) {
-        return live->buffer_index(file);
+    if(auto* buffer = buffer_of(file)) {
+        if(auto* shard = buffer_shard(*buffer)) {
+            return buffer_source(IndexSource::Kind::SessionShard, *buffer, *shard);
+        }
+        auto* shard = index.shard(file);
+        if(!shard || !shard->matches_content(buffer->text.size(), buffer->hash)) {
+            return std::nullopt;
+        }
+        return buffer_source(IndexSource::Kind::Shard, *buffer, *shard);
     }
     auto* shard = index.shard(file);
     if(!shard || (gate && gate->stale(file, shard->content_hash()))) {
@@ -214,7 +319,7 @@ bool IndexQuery::with_preamble(const IndexSource& source,
         return false;
     }
     bool found = false;
-    live->for_each_preamble([&](const IndexSource& preamble) {
+    for_each_preamble([&](const IndexSource& preamble) {
         if(preamble.file != source.file) {
             return true;
         }
@@ -240,7 +345,11 @@ const Shard* IndexQuery::shard_matching(Fid file, llvm::StringRef text) const {
 }
 
 std::shared_ptr<TUIndex> IndexQuery::preamble_index(Fid file) const {
-    return live ? live->preamble_index(file) : nullptr;
+    auto* buffer = buffer_of(file);
+    if(!buffer || !buffer->preamble || !buffer->preamble->matches_preamble(buffer->text)) {
+        return nullptr;
+    }
+    return buffer->preamble;
 }
 
 bool IndexQuery::visit_overlay_relations(const TUIndex& state,
@@ -271,7 +380,7 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
             shard = index.shard(file);
         }
         if(!shard || shard->content_hash() != instantiations.content_hash() ||
-           live->is_open(file) || (gate && gate->stale(file, shard->content_hash()))) {
+           buffer_of(file) || (gate && gate->stale(file, shard->content_hash()))) {
             continue;
         }
         IndexSource instantiated{.kind = IndexSource::Kind::Overlay,
@@ -305,7 +414,7 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
             // the file is resolved once one turns up.
             if(!source) {
                 auto file = files.intern(Spelling::absolute(state.path(local_id)));
-                if(live->is_open(file) || (gate && gate->stale(file, shard.content_hash()))) {
+                if(buffer_of(file) || (gate && gate->stale(file, shard.content_hash()))) {
                     return false;
                 }
                 source = IndexSource{.kind = IndexSource::Kind::Overlay,
@@ -335,8 +444,8 @@ void IndexQuery::for_each_disk_file(SymbolHash hash,
     // An open buffer's compile names the files declaring the locals it reads
     // through a precompiled header or a module, whose builds indexed them:
     // no unit of the buffer's lists them in the shared locals yet.
-    if(live && live->is_open(anchor)) {
-        live->for_each_session_index([&](const TUIndex& state) {
+    if(buffer_of(anchor)) {
+        for_each_session_index([&](const TUIndex& state) {
             for(auto path_id: state.paths_naming(hash, false)) {
                 visit(files.intern(Spelling::absolute(state.path(path_id))));
             }
@@ -408,30 +517,30 @@ void IndexQuery::for_each_relation(SymbolHash hash,
         return completed;
     };
     auto sessions = [&] {
-        if(!mask.session || !live) {
+        if(!mask.session) {
             return true;
         }
-        live->for_each_session(emit);
+        for_each_session(emit);
         return !stopped;
     };
     auto preambles = [&] {
-        if(!mask.preamble || !live) {
+        if(!mask.preamble) {
             return true;
         }
-        live->for_each_preamble(emit);
+        for_each_preamble(emit);
         return !stopped;
     };
     auto overlays = [&] {
-        if(!mask.overlay || !live) {
+        if(!mask.overlay) {
             return true;
         }
         auto visit = [&](const TUIndex& state) {
             stopped = !visit_overlay_relations(state, hash, kind, visitor);
             return !stopped;
         };
-        live->for_each_overlay(visit);
+        for_each_overlay(visit);
         if(!stopped) {
-            live->for_each_session_index(visit);
+            for_each_session_index(visit);
         }
         return !stopped;
     };
@@ -452,7 +561,7 @@ const Shard* IndexQuery::declaring_shard(Fid file) const {
     if(auto source = serving(file)) {
         return source->shard;
     }
-    return live && live->is_open(file) ? index.shard(file) : nullptr;
+    return buffer_of(file) ? index.shard(file) : nullptr;
 }
 
 void IndexQuery::for_each_live_file(SymbolHash hash,
@@ -581,16 +690,14 @@ std::optional<SymbolInfo> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) c
     };
 
     // Open sessions first: they hold every symbol of their unsaved buffers.
-    if(live) {
-        live->for_each_session_index([&](const TUIndex& state) {
-            if(auto identity = state.find_symbol(hash)) {
-                adopt(*identity);
-            }
-            return !found;
-        });
-        if(found) {
-            return found;
+    for_each_session_index([&](const TUIndex& state) {
+        if(auto identity = state.find_symbol(hash)) {
+            adopt(*identity);
         }
+        return !found;
+    });
+    if(found) {
+        return found;
     }
 
     if(auto identity = index.find_symbol(hash)) {
@@ -599,16 +706,14 @@ std::optional<SymbolInfo> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) c
 
     // A symbol that exists only under an open buffer's context (or in
     // headers no disk TU has been indexed with) is in no disk table.
-    if(live) {
-        live->for_each_overlay([&](const TUIndex& state) {
-            if(auto identity = state.find_symbol(hash)) {
-                adopt(*identity);
-            }
-            return !found;
-        });
-        if(found) {
-            return found;
+    for_each_overlay([&](const TUIndex& state) {
+        if(auto identity = state.find_symbol(hash)) {
+            adopt(*identity);
         }
+        return !found;
+    });
+    if(found) {
+        return found;
     }
 
     // Each shard stores exactly the local symbols its occurrences

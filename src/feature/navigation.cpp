@@ -2,7 +2,6 @@ module clice;
 
 import :feature.navigation;
 import :feature.protocol;
-import :index.peer_queries;
 import :index.query;
 import :index.search;
 import :index.symbol_query;
@@ -204,8 +203,9 @@ std::vector<index::Site> definition_sites(const index::IndexQuery& index,
     return {};
 }
 
-std::vector<index::Site> definition(const index::IndexQuery& index,
-                                    const index::IndexQuery::Cursor& cursor) {
+/// definition in one project's index.
+static std::vector<index::Site> project_definition(const index::IndexQuery& index,
+                                                   const index::IndexQuery::Cursor& cursor) {
     ScopedTimer timer;
     auto anchor = cursor.site.file;
     std::vector<index::Site> result;
@@ -255,8 +255,9 @@ std::vector<index::Site> definition(const index::IndexQuery& index,
     return result;
 }
 
-std::vector<index::Site> declaration(const index::IndexQuery& index,
-                                     const index::IndexQuery::Cursor& cursor) {
+/// declaration in one project's index.
+static std::vector<index::Site> project_declaration(const index::IndexQuery& index,
+                                                    const index::IndexQuery::Cursor& cursor) {
     ScopedTimer timer;
     std::vector<index::Site> result;
     for(auto symbol: cursor.symbols) {
@@ -523,12 +524,12 @@ std::vector<protocol::DocumentHighlight> to_protocol(llvm::ArrayRef<PlacedHighli
     return result;
 }
 
-std::vector<index::Site> definition(const index::PeerQueries& queries,
+std::vector<index::Site> definition(const index::IndexQuery& query,
                                     const index::IndexQuery::Cursor& cursor) {
     auto file = cursor.site.file;
     std::vector<index::Site> result;
     for(auto symbol: cursor.symbols) {
-        auto defined = queries.gather(symbol,
+        auto defined = query.gather(symbol,
                                       file,
                                       [&](const index::IndexQuery& from, index::SymbolHash named) {
                                           return definition_sites(from, named, file);
@@ -536,11 +537,11 @@ std::vector<index::Site> definition(const index::PeerQueries& queries,
         if(defined.empty() || ranges::any_of(defined, [&](const index::Site& site) {
                return index::covers(site, cursor.site);
            })) {
-            defined = queries.gather(
+            defined = query.gather(
                 symbol,
                 file,
                 [&](const index::IndexQuery& from, index::SymbolHash named) {
-                    return definition(from, {.symbols = {named}, .site = cursor.site});
+                    return project_definition(from, {.symbols = {named}, .site = cursor.site});
                 });
         }
         result.append_range(std::move(defined));
@@ -549,12 +550,12 @@ std::vector<index::Site> definition(const index::PeerQueries& queries,
     return result;
 }
 
-std::vector<index::Site> references(const index::PeerQueries& queries,
+std::vector<index::Site> references(const index::IndexQuery& query,
                                     const index::IndexQuery::Cursor& cursor,
                                     bool include_declaration,
                                     std::uint32_t limit) {
     auto file = cursor.site.file;
-    auto sites = queries.gather(
+    auto sites = query.gather(
         cursor.symbols,
         file,
         [&](const index::IndexQuery& from, index::SymbolHash named) {
@@ -567,41 +568,42 @@ std::vector<index::Site> references(const index::PeerQueries& queries,
     return sites;
 }
 
-std::vector<index::Site> declaration(const index::PeerQueries& queries,
+std::vector<index::Site> declaration(const index::IndexQuery& query,
                                      const index::IndexQuery::Cursor& cursor) {
     auto file = cursor.site.file;
-    return queries.gather(cursor.symbols,
+    return query.gather(cursor.symbols,
                           file,
                           [&](const index::IndexQuery& from, index::SymbolHash named) {
-                              return declaration(from, {.symbols = {named}, .site = cursor.site});
+                              return project_declaration(from,
+                                                         {.symbols = {named}, .site = cursor.site});
                           });
 }
 
-std::vector<index::Site> type_definition(const index::PeerQueries& queries,
+std::vector<index::Site> type_definition(const index::IndexQuery& query,
                                          const index::IndexQuery::Cursor& cursor) {
     auto file = cursor.site.file;
-    return queries.gather(cursor.symbols,
+    return query.gather(cursor.symbols,
                           file,
                           [&](const index::IndexQuery& from, index::SymbolHash named) {
                               return type_definition(from, cursor, named);
                           });
 }
 
-std::vector<index::Site> implementation(const index::PeerQueries& queries,
+std::vector<index::Site> implementation(const index::IndexQuery& query,
                                         const index::IndexQuery::Cursor& cursor) {
     auto file = cursor.site.file;
     std::vector<index::Site> sites;
     for(auto symbol: cursor.symbols) {
-        if(names_weakly(queries.own, cursor, symbol)) {
+        if(names_weakly(query, cursor, symbol)) {
             sites.append_range(
-                queries.gather(symbol,
+                query.gather(symbol,
                                file,
                                [&](const index::IndexQuery& from, index::SymbolHash named) {
                                    return from.sites(named, file, RelationKind::Definition);
                                }));
         }
         sites.append_range(
-            queries.gather(symbol,
+            query.gather(symbol,
                            file,
                            [&](const index::IndexQuery& from, index::SymbolHash named) {
                                std::vector<index::Site> placed;

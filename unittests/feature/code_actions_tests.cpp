@@ -1217,8 +1217,9 @@ struct §(shape)Shape {
 };
 )");
     open();
+    auto opened = query();
 
-    auto kept = resolve("shape", {.query = &query});
+    auto kept = resolve("shape", {.query = &opened});
     auto* action = titled(kept, "Define missing members of 'Shape'");
     ZASSERT(action != nullptr);
     ZASSERT(action->edits.size() == 1U);
@@ -1246,8 +1247,9 @@ struct Shape {
 };
 )");
     open();
+    auto opened = query();
 
-    auto actions = resolve("draw", {.query = &query});
+    auto actions = resolve("draw", {.query = &opened});
     ZEXPECT(titled(actions, "Define 'Shape::draw' out of line") == nullptr);
     ZEXPECT(titled(resolve("draw", {}), "Define 'Shape::draw' out of line") != nullptr);
 }
@@ -1282,11 +1284,12 @@ struct Shape {
 };
 )");
     open();
+    auto opened = query();
 
     bool read = false;
     auto actions = resolve("draw",
                            {
-                               .query = &query,
+                               .query = &opened,
                                .host = host,
                                .host_path = host_path,
                                .host_style_path = host_path,
@@ -1323,11 +1326,12 @@ struct Shape {
 };
 )");
     open();
+    auto opened = query();
 
     SourceText text(std::string("#include \"header.h\"\n"));
     auto actions = resolve("draw",
                            {
-                               .query = &query,
+                               .query = &opened,
                                .host = host,
                                .host_path = host_path,
                                .host_style_path = host_path,
@@ -1376,12 +1380,13 @@ struct Widget {};
     add_focus("main.cpp", R"(§(use)Widget w;
 )");
     open();
+    auto opened = query();
 
     std::vector<std::string> asked;
     auto actions =
         resolve("use",
                 {
-                    .query = &query,
+                    .query = &opened,
                     .include_argument = [&](CanonicalRef header) -> std::optional<std::string> {
                         asked.push_back(header.str());
                         return R"("widget.h")";

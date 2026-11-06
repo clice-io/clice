@@ -3,7 +3,6 @@ module clice;
 import :feature.document_symbols;
 import :feature.hierarchy;
 import :feature.protocol;
-import :index.peer_queries;
 import :index.query;
 import :semantic.symbol;
 
@@ -221,16 +220,31 @@ TypeHierarchy type_hierarchy(const index::IndexQuery& index,
 
 namespace {
 
+/// A symbol's qualified name, from the asking project or else the first
+/// other one that knows it: a neighbour only another project indexes
+/// carries its id.
+std::string known_name(const index::IndexQuery& query, index::SymbolHash symbol, Fid anchor) {
+    if(auto name = query.qualified_name(symbol, anchor); !name.empty()) {
+        return name;
+    }
+    for(auto& other: query.others()) {
+        if(auto name = other.qualified_name(symbol, anchor); !name.empty()) {
+            return name;
+        }
+    }
+    return {};
+}
+
 /// The item of a symbol at its canonical site (see call_hierarchy_items),
 /// its qualified name from any project knowing it.
 template <typename Item>
-Item item_of(const index::PeerQueries& queries,
+Item item_of(const index::IndexQuery& query,
              const index::IndexQuery::Located& located,
              PositionEncoding encoding) {
     auto& symbol = located.symbol;
     Item item;
     item.name = symbol.display_name();
-    if(auto detail = queries.qualified_name(symbol.hash, located.site.file) + symbol.signature;
+    if(auto detail = known_name(query, symbol.hash, located.site.file) + symbol.signature;
        detail != item.name) {
         item.detail = std::move(detail);
     }
@@ -245,7 +259,7 @@ Item item_of(const index::PeerQueries& queries,
 /// Whether two projects' answers name one entity: the same id, or the
 /// same name declared at the same place — an id hashing its file differs
 /// between a project compiling the file from inside its root and one
-/// compiling it from outside (index::PeerQueries::Asked).
+/// compiling it from outside (index::IndexQuery::Asked).
 bool same_entity(const index::IndexQuery::Located& lhs, const index::IndexQuery::Located& rhs) {
     return lhs.symbol.hash == rhs.symbol.hash ||
            (lhs.symbol.name == rhs.symbol.name && lhs.site.file == rhs.site.file &&
@@ -255,17 +269,17 @@ bool same_entity(const index::IndexQuery::Located& lhs, const index::IndexQuery:
 /// Each project's neighbours of `symbol` on one side of its call graph,
 /// its callers or its callees: the sites the project may answer for, one
 /// neighbour per symbol, a neighbour left with no site dropped.
-std::vector<CallEdge> call_edges(const index::PeerQueries& queries,
+std::vector<CallEdge> call_edges(const index::IndexQuery& query,
                                  index::SymbolHash symbol,
                                  Fid file,
                                  bool callers) {
     std::vector<CallEdge> into;
-    auto asked = queries.asked(symbol, file);
+    auto asked = query.asked(symbol, file);
     for(auto& [from, named]: asked) {
         auto graph = call_graph(*from, named, file, {.callers = callers, .callees = !callers});
         for(auto& edge: callers ? graph.callers : graph.callees) {
             std::erase_if(edge.sites, [&](const index::Site& site) {
-                return !queries.answers_for(*from, site.file, asked);
+                return !query.answers_for(*from, site.file, asked);
             });
             if(edge.sites.empty()) {
                 continue;
@@ -285,14 +299,14 @@ std::vector<CallEdge> call_edges(const index::PeerQueries& queries,
 }
 
 template <typename Call>
-std::vector<Call> calls(const index::PeerQueries& queries,
+std::vector<Call> calls(const index::IndexQuery& query,
                         index::SymbolHash symbol,
                         Fid file,
                         bool callers,
                         PositionEncoding encoding) {
     std::vector<Call> results;
-    for(auto& edge: call_edges(queries, symbol, file, callers)) {
-        results.push_back({item_of<protocol::CallHierarchyItem>(queries, edge.symbol, encoding),
+    for(auto& edge: call_edges(query, symbol, file, callers)) {
+        results.push_back({item_of<protocol::CallHierarchyItem>(query, edge.symbol, encoding),
                            to_ranges(edge.sites, encoding)});
     }
     return results;
@@ -300,18 +314,18 @@ std::vector<Call> calls(const index::PeerQueries& queries,
 
 /// The same for the type hierarchy, its supertypes or its subtypes, each
 /// placed at one site.
-std::vector<protocol::TypeHierarchyItem> type_neighbours(const index::PeerQueries& queries,
+std::vector<protocol::TypeHierarchyItem> type_neighbours(const index::IndexQuery& query,
                                                          index::SymbolHash symbol,
                                                          Fid file,
                                                          bool supertypes,
                                                          PositionEncoding encoding) {
     std::vector<index::IndexQuery::Located> types;
-    auto asked = queries.asked(symbol, file);
+    auto asked = query.asked(symbol, file);
     for(auto& [from, named]: asked) {
         auto hierarchy =
             type_hierarchy(*from, named, file, {.supertypes = supertypes, .subtypes = !supertypes});
         for(auto& one: supertypes ? hierarchy.supertypes : hierarchy.subtypes) {
-            if(queries.answers_for(*from, one.site.file, asked) &&
+            if(query.answers_for(*from, one.site.file, asked) &&
                ranges::none_of(types, [&](const index::IndexQuery::Located& other) {
                    return same_entity(other, one);
                })) {
@@ -321,7 +335,7 @@ std::vector<protocol::TypeHierarchyItem> type_neighbours(const index::PeerQuerie
     }
     std::vector<protocol::TypeHierarchyItem> results;
     for(auto& located: types) {
-        results.push_back(item_of<protocol::TypeHierarchyItem>(queries, located, encoding));
+        results.push_back(item_of<protocol::TypeHierarchyItem>(query, located, encoding));
     }
     return results;
 }
@@ -329,11 +343,11 @@ std::vector<protocol::TypeHierarchyItem> type_neighbours(const index::PeerQuerie
 }  // namespace
 
 std::vector<protocol::CallHierarchyItem>
-    call_hierarchy_items(const index::PeerQueries& queries,
+    call_hierarchy_items(const index::IndexQuery& query,
                          const index::IndexQuery::Cursor& cursor,
                          PositionEncoding encoding) {
     std::vector<protocol::CallHierarchyItem> items;
-    for(auto& located: queries.own.resolve_at(cursor)) {
+    for(auto& located: query.resolve_at(cursor)) {
         auto kind = located.symbol.kind;
         bool function = kind == SymbolKind::Function || kind == SymbolKind::Method ||
                         kind == SymbolKind::Operator;
@@ -341,22 +355,22 @@ std::vector<protocol::CallHierarchyItem>
                      (kind == SymbolKind::Variable &&
                       located.symbol.scope != index::SymbolScope::FunctionLocal);
         if(function || value) {
-            items.push_back(item_of<protocol::CallHierarchyItem>(queries, located, encoding));
+            items.push_back(item_of<protocol::CallHierarchyItem>(query, located, encoding));
         }
     }
     return items;
 }
 
 std::vector<protocol::TypeHierarchyItem>
-    type_hierarchy_items(const index::PeerQueries& queries,
+    type_hierarchy_items(const index::IndexQuery& query,
                          const index::IndexQuery::Cursor& cursor,
                          PositionEncoding encoding) {
     std::vector<protocol::TypeHierarchyItem> items;
-    for(auto& located: queries.own.resolve_at(cursor)) {
+    for(auto& located: query.resolve_at(cursor)) {
         auto kind = located.symbol.kind;
         if(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
            kind == SymbolKind::Union) {
-            items.push_back(item_of<protocol::TypeHierarchyItem>(queries, located, encoding));
+            items.push_back(item_of<protocol::TypeHierarchyItem>(query, located, encoding));
         }
     }
     return items;
@@ -375,43 +389,43 @@ std::optional<index::SymbolHash> item_symbol(const index::IndexQuery& query,
     return std::nullopt;
 }
 
-std::vector<protocol::CallHierarchyIncomingCall> incoming_calls(const index::PeerQueries& queries,
+std::vector<protocol::CallHierarchyIncomingCall> incoming_calls(const index::IndexQuery& query,
                                                                 index::SymbolHash symbol,
                                                                 Fid file,
                                                                 PositionEncoding encoding) {
     // TODO: callers are not capped: a function as common as llvm::errs() answers
     // thousands, each with its call ranges and a qualified name; a cap would
     // follow `[references] limit`.
-    return calls<protocol::CallHierarchyIncomingCall>(queries,
+    return calls<protocol::CallHierarchyIncomingCall>(query,
                                                       symbol,
                                                       file,
                                                       /*callers=*/true,
                                                       encoding);
 }
 
-std::vector<protocol::CallHierarchyOutgoingCall> outgoing_calls(const index::PeerQueries& queries,
+std::vector<protocol::CallHierarchyOutgoingCall> outgoing_calls(const index::IndexQuery& query,
                                                                 index::SymbolHash symbol,
                                                                 Fid file,
                                                                 PositionEncoding encoding) {
-    return calls<protocol::CallHierarchyOutgoingCall>(queries,
+    return calls<protocol::CallHierarchyOutgoingCall>(query,
                                                       symbol,
                                                       file,
                                                       /*callers=*/false,
                                                       encoding);
 }
 
-std::vector<protocol::TypeHierarchyItem> supertypes(const index::PeerQueries& queries,
+std::vector<protocol::TypeHierarchyItem> supertypes(const index::IndexQuery& query,
                                                     index::SymbolHash symbol,
                                                     Fid file,
                                                     PositionEncoding encoding) {
-    return type_neighbours(queries, symbol, file, /*supertypes=*/true, encoding);
+    return type_neighbours(query, symbol, file, /*supertypes=*/true, encoding);
 }
 
-std::vector<protocol::TypeHierarchyItem> subtypes(const index::PeerQueries& queries,
+std::vector<protocol::TypeHierarchyItem> subtypes(const index::IndexQuery& query,
                                                   index::SymbolHash symbol,
                                                   Fid file,
                                                   PositionEncoding encoding) {
-    return type_neighbours(queries, symbol, file, /*supertypes=*/false, encoding);
+    return type_neighbours(query, symbol, file, /*supertypes=*/false, encoding);
 }
 
 }  // namespace clice::feature

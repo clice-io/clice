@@ -209,9 +209,9 @@ struct Project {
     /// options.
     index::FreshnessGate freshness{file_table};
 
-    /// The reads over the index, gated by `freshness`; a server attaches the
-    /// live sources of the documents it serves.
-    index::IndexQuery index_query{index, file_table, &freshness, nullptr};
+    /// The reads over the index, gated by `freshness`; a server reads the
+    /// documents it serves through it (IndexQuery::reading).
+    index::IndexQuery index_query{index, file_table, &freshness};
 
     /// What the index database records of the build's members.
     SavedMembers saved_members;

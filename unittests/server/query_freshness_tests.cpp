@@ -21,8 +21,12 @@ ZEST_SUITE(QueryFreshness, Tester) {
 
 ServedProjectFixture fx;
 Project& project = fx.served->project;
-index::IndexQuery& index_query = project.index_query;
-index::IndexQuery disk_query{project.index, project.file_table, &project.freshness, nullptr};
+index::IndexQuery disk_query{project.index, project.file_table, &project.freshness};
+
+/// The project's index over the documents open now.
+index::IndexQuery index_query() const {
+    return fx.served->query();
+}
 
 Fid focus_id;
 Fid header_id;
@@ -92,7 +96,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
     // Baseline: the main TU contributes its reference relation, and the
     // definition resolves into the header shard.
     ZASSERT(ranges::contains(reference_files(hash), "main.cpp"));
-    ZASSERT(index_query.first_site(hash, Fid{}, RelationKind::Definition));
+    ZASSERT(index_query().first_site(hash, Fid{}, RelationKind::Definition));
 
     // Awaiting a reindex for a dependency change only: the disk still
     // holds the text its shard indexed, so the shard keeps serving.
@@ -110,7 +114,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
     // are unaffected.
     project.file_table.disk.observe(focus_id, DiskObservation{.hash = 1});
     ZASSERT(!ranges::contains(reference_files(hash), "main.cpp"));
-    ZASSERT(index_query.first_site(hash, Fid{}, RelationKind::Definition));
+    ZASSERT(index_query().first_site(hash, Fid{}, RelationKind::Definition));
 
     // Cursor-style resolution against the stale index is unresolvable: the
     // line numbers describe text that no longer exists.
@@ -118,7 +122,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
 
     // A changed definition file drops out of definition lookups.
     project.file_table.disk.observe(header_id, DiskObservation{.hash = 1});
-    ZASSERT(!index_query.first_site(hash, Fid{}, RelationKind::Definition).has_value());
+    ZASSERT(!index_query().first_site(hash, Fid{}, RelationKind::Definition).has_value());
 
     // With background indexing disabled nothing would ever catch up:
     // the last-known index keeps serving instead of leaving a permanent hole.

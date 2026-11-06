@@ -23,7 +23,6 @@ namespace clice {
 
 ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
     server(server), project(server.files, std::move(root), &server.loop, &server.pool) {
-    project.index_query.attach(*this);
     auto& background = project.background_index;
     progress_conn =
         background.on_progress_changed.connect([this] { this->server.index_progress_changed(*this); });
@@ -32,7 +31,10 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
         if(!document) {
             return;
         }
-        if(document->serving == ServingMode::IndexOnly && !matching_shard(*document->session)) {
+        auto& session = *document->session;
+        auto* shard = project.index.shard(path_id);
+        if(document->serving == ServingMode::IndexOnly &&
+           !(shard && shard->matches_content(session.text().size(), session.hash))) {
             escalate(path_id);
         }
         show_skipped_diagnostics(path_id);

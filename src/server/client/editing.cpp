@@ -163,7 +163,6 @@ void LSPClient::register_editing() {
             trigger = *params.context->trigger_character;
         }
         auto& settings = project.project.settings;
-        auto& query = project.project.index_query;
         auto& files = project.project.file_table;
         auto encoding = server.position_encoding;
         auto resolved = std::string(files.resolve(path_id));
@@ -213,7 +212,7 @@ void LSPClient::register_editing() {
             co_return to_raw(*list);
         }
         auto& compile = std::get<feature::CompileCompletion>(start);
-        feature::offer_names(query, project.project.dep_graph, compile);
+        feature::offer_names(project.query(), project.project.dep_graph, compile);
         auto result = co_await project
                           .stateless_request(ticket,
                                              feature::RequestKind::Completion,
@@ -236,7 +235,7 @@ void LSPClient::register_editing() {
         co_return to_raw(feature::finish_completion(std::move(list),
                                                     *result.include,
                                                     compile.candidates,
-                                                    query,
+                                                    project.query(),
                                                     project.project.dep_graph,
                                                     path_id,
                                                     project.search_of(path_id),
@@ -362,8 +361,7 @@ void LSPClient::register_editing() {
             std::optional<SourceText> host_disk;
             std::optional<SearchConfig> search;
             std::optional<IncludeArguments> arguments;
-            OpenDocuments open_documents(project);
-            auto query = open_documents.query();
+            auto query = project.editing_query();
             vfs::Scope scope(files.dirs);
             auto resolved = feature::resolve_actions(
                 std::move(actions),
@@ -440,7 +438,7 @@ void LSPClient::register_editing() {
                 params.position,
                 "null",
                 [&](const index::IndexQuery::Cursor& cursor) -> NavigationReply {
-                    auto renamed = feature::rename_at(project.project.index_query, cursor);
+                    auto renamed = feature::rename_at(project.query(), cursor);
                     if(!renamed) {
                         return std::unexpected(request_failed(std::move(renamed.error())));
                     }
@@ -472,8 +470,7 @@ void LSPClient::register_editing() {
                     co_return co_await stop_reply(std::move(*stop));
                 }
             }
-            OpenDocuments open_documents(*served);
-            auto query = open_documents.query();
+            auto query = served->editing_query();
             auto cursor = served->cursor_at(path_id, position);
             if(!cursor) {
                 co_return codec::raw_value{"null"};

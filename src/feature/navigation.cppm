@@ -6,7 +6,6 @@ module;
 module clice:feature.navigation;
 
 import :index.instantiation_shard;
-import :index.peer_queries;
 import :index.query;
 import :index.shard;
 import :index.site;
@@ -52,25 +51,6 @@ std::vector<Highlight>
 std::vector<index::Site> definition_sites(const index::IndexQuery& index,
                                           index::SymbolHash hash,
                                           Fid anchor);
-
-/// Go-to-definition from a cursor: the definition sites (at its own
-/// declaration, a virtual function nothing defines is defined by its
-/// overrides), or —
-/// standing on the definition itself, or when nothing defines the
-/// symbol — the declarations (and sibling definitions) and, at a
-/// specialization, the template it specializes, so definition and
-/// declaration sites alternate; a namespace's blocks never do. The
-/// cursor's own site drops out unless it is the only site the symbol
-/// has.
-std::vector<index::Site> definition(const index::IndexQuery& index,
-                                    const index::IndexQuery::Cursor& cursor);
-
-/// The mirror half of definition's alternation: declarations plus the
-/// definition, minus the site the cursor stands on. At a function
-/// defined with no declaration of its own, the declarations an edit to
-/// one side may have parted from it (mismatched_declarations).
-std::vector<index::Site> declaration(const index::IndexQuery& index,
-                                     const index::IndexQuery::Cursor& cursor);
 
 /// The references of the symbol under the cursor, weak ones included (a
 /// template's call through an overload set or a dependent name, which
@@ -124,28 +104,38 @@ std::vector<index::IndexQuery::Located> implementation(const index::IndexQuery& 
                                                        index::SymbolHash hash,
                                                        Fid anchor);
 
-/// The same answers asked of every project knowing each symbol under the
-/// cursor (index::PeerQueries).
+/// The answers below are asked of every project knowing each symbol under
+/// the cursor (index::IndexQuery::gather).
 
-/// Go-to-definition: each symbol answers for itself. A definition another
-/// project compiles (a library's source beside the application including
-/// its header) outranks the declarations this project alone can offer;
-/// standing on a definition, or with none anywhere, the declarations
-/// answer too (definition's alternation).
-std::vector<index::Site> definition(const index::PeerQueries& queries,
+/// Go-to-definition from a cursor: the definition sites (at its own
+/// declaration, a virtual function nothing defines is defined by its
+/// overrides), or —
+/// standing on the definition itself, or when nothing defines the
+/// symbol — the declarations (and sibling definitions) and, at a
+/// specialization, the template it specializes, so definition and
+/// declaration sites alternate; a namespace's blocks never do. The
+/// cursor's own site drops out unless it is the only site the symbol
+/// has. Each symbol answers for itself: a definition another project
+/// compiles (a library's source beside the application including its
+/// header) outranks the declarations this project alone can offer.
+std::vector<index::Site> definition(const index::IndexQuery& query,
                                     const index::IndexQuery::Cursor& cursor);
 
 /// At most `limit` references (0 for no limit), those in the cursor's file
 /// first when they are cut.
-std::vector<index::Site> references(const index::PeerQueries& queries,
+std::vector<index::Site> references(const index::IndexQuery& query,
                                     const index::IndexQuery::Cursor& cursor,
                                     bool include_declaration,
                                     std::uint32_t limit);
 
-std::vector<index::Site> declaration(const index::PeerQueries& queries,
+/// The mirror half of definition's alternation: declarations plus the
+/// definition, minus the site the cursor stands on. At a function
+/// defined with no declaration of its own, the declarations an edit to
+/// one side may have parted from it (mismatched_declarations).
+std::vector<index::Site> declaration(const index::IndexQuery& query,
                                      const index::IndexQuery::Cursor& cursor);
 
-std::vector<index::Site> type_definition(const index::PeerQueries& queries,
+std::vector<index::Site> type_definition(const index::IndexQuery& query,
                                          const index::IndexQuery::Cursor& cursor);
 
 /// What implements the symbols, and what a name may mean
@@ -154,7 +144,7 @@ std::vector<index::Site> type_definition(const index::PeerQueries& queries,
 /// targets — as an override implements a virtual function. The cursor's
 /// own site drops out: standing on a function nothing overrides, there is
 /// nowhere to go.
-std::vector<index::Site> implementation(const index::PeerQueries& queries,
+std::vector<index::Site> implementation(const index::IndexQuery& query,
                                         const index::IndexQuery::Cursor& cursor);
 
 }  // namespace clice::feature
