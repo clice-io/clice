@@ -81,6 +81,43 @@ ZEST_CASE(WrapperStripped) {
     }
 };
 
+ZEST_CASE(SharedKeys) {
+    /// Entries a build compiles alike share a key, as their commands are
+    /// one; commands that differ, even where a spelling looks alike, do not.
+    FileTable file_table;
+    CommandTable commands;
+    Normalizer normalizer{.commands = commands, .files = file_table};
+    auto directory = Spelling::absolute("/ws");
+    auto key = [&](llvm::StringRef file, llvm::StringRef line) {
+        return normalizer.shared_key(directory, file, split_command(line));
+    };
+    auto command = [&](llvm::StringRef file, llvm::StringRef line) {
+        return normalizer.normalize(directory, file_table.intern(Spelling(file, directory)), line);
+    };
+    auto same = [&](std::string_view line) {
+        std::string a_name = "a";
+        std::string b_name = "b";
+        auto a = std::vformat(line, std::make_format_args(a_name));
+        auto b = std::vformat(line, std::make_format_args(b_name));
+        auto a_key = key("a.cpp", a);
+        return a_key && a_key == key("b.cpp", b) && command("a.cpp", a) == command("b.cpp", b);
+    };
+    ZEXPECT(same("clang++ -std=c++20 -o {0}.o -c {0}.cpp"));
+    ZEXPECT(same("g++ -MD -MF {0}.d -frandom-seed={0}.o -c {0}.cpp -o {0}.o"));
+    ZEXPECT(same("gcc -Wp,-MMD,.{0}.o.d -c -o {0}.o {0}.cpp"));
+    ZEXPECT(same("cl /std:c++20 /Fo{0}.obj /c {0}.cpp"));
+
+    ZEXPECT((key("a.cpp", "cl -MT /c a.cpp") != key("b.cpp", "cl -MTd /c b.cpp")));
+    ZEXPECT((key("a.cpp", "gcc -Wp,-MMD,a.d,-DA -c a.cpp") !=
+             key("b.cpp", "gcc -Wp,-MMD,b.d,-DA -c b.cpp")));
+    ZEXPECT((key("a.cpp", "clang++ -std=c++17 a.cpp") != key("b.cpp", "clang++ -std=c++20 b.cpp")));
+
+    /// Commands reading files of their own, or naming theirs twice, have none.
+    ZEXPECT(!key("a.cpp", "clang++ @a.rsp a.cpp").has_value());
+    ZEXPECT(!key("a.cu", "nvcc -c a.cu").has_value());
+    ZEXPECT(!key("a.cpp", "clang++ -include a.cpp a.cpp").has_value());
+};
+
 ZEST_CASE(InternedCommand) {
     /// A hand-written command normalizes like an entry: one CommandID per
     /// (directory, spelling), the string and argv forms meeting on it, the

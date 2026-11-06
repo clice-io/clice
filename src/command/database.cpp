@@ -16,6 +16,11 @@ namespace clice {
 
 namespace {
 
+/// How far past a document's end simdjson reads (SIMDJSON_PADDING, a
+/// constant the module does not carry): with that much room past the text,
+/// the parse reads the database where it was read into, else in a copy.
+constexpr std::size_t json_padding = 64;
+
 /// The registered path of a source: the database file (a path without the
 /// .json extension names a directory, existing or not, holding
 /// compile_commands.json) in the identity of the directory holding it —
@@ -188,7 +193,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     auto& source = source_files[static_cast<std::size_t>(id)];
     llvm::StringRef path = source.path;
 
-    auto observed = vfs::read_observed(source.path);
+    auto observed = vfs::read_observed(source.path, json_padding);
     if(!observed) {
         // A database not built yet is no failure: the callers wait for it.
         if(observed.error() != std::errc::no_such_file_or_directory) {
@@ -208,8 +213,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     auto damaged = [&](llvm::StringRef value) {
         return repaired && value.contains("\xEF\xBF\xBD");
     };
-    simdjson::padded_string json_buf(repaired ? llvm::StringRef(*repaired)
-                                              : llvm::StringRef(observed->text));
+    auto& json_buf = repaired ? *repaired : observed->text;
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
     if(auto error = json_parser.iterate(json_buf).get(doc)) {
@@ -252,6 +256,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     std::optional<fs::cygwin::MountTable> table;
 
     llvm::StringMap<Spelling> working_dirs;
+    llvm::DenseMap<SharedKey, CommandID> shared;
     std::uint32_t index = 0;
     for(auto element: arr) {
         auto skip = llvm::make_scope_exit([&] { index += 1; });
@@ -381,8 +386,20 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                                        ? command_table.intern(file)
                                        : llvm::StringRef();
 
-        auto normalized = command ? normalizer.normalize(working, path_id, *command)
-                                  : normalizer.normalize(working, path_id, args);
+        if(command) {
+            args = normalizer.split(*command);
+        }
+        auto key = normalizer.shared_key(working, file_ref, args);
+        std::optional<CommandID> normalized;
+        if(auto known = key ? shared.find(*key) : shared.end(); known != shared.end()) {
+            normalized = known->second;
+        } else {
+            normalized = normalizer.normalize(working, path_id, args);
+            // The command of a precompiled header's writer keeps its output.
+            if(key && normalized && !command_table.pch_output(*normalized)) {
+                shared.try_emplace(*key, *normalized);
+            }
+        }
 
         if(!normalized || is_other_language_path(file_ref) ||
            (!c_family && !command_table.forces_c_family(*normalized))) {

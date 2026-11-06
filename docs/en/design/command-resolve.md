@@ -67,7 +67,7 @@ The classification also buys toolchain querying cache efficiency. Querying requi
 
 ### Compilation Database
 
-`CompilationDatabase` holds the entries of every loaded **source** — a `compile_commands.json` registered by the configuration or discovered under the workspace. Each source loads, reloads and unloads independently; its entries are parsed into the `CommandTable` and kept in file order, because generators emit a file's several entries in a fixed configuration order. The database stores facts only: it does not decide which of a file's entries wins.
+`CompilationDatabase` holds the entries of every loaded **source** — a `compile_commands.json` registered by the configuration or discovered under the workspace. Each source loads, reloads and unloads independently; its entries are parsed into the `CommandTable` and kept in file order, because generators emit a file's several entries in a fixed configuration order. Entries whose commands differ only in their own file and in what every command leaves out — the object file, the dependency file, `-frandom-seed` — are parsed once: a database of one target's ten thousand units costs one parse, not ten thousand. The database stores facts only: it does not decide which of a file's entries wins.
 
 Commands written by hand — a rule's `default_command`, the builtin fallback — go through the same normalization as an entry (`Normalizer`), with the input slot synthesized at the end, so a declared command is queried, edited and rendered exactly like a database entry.
 

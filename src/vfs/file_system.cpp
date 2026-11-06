@@ -401,7 +401,8 @@ std::expected<std::string, std::error_code> read_text(llvm::StringRef path) {
     return text;
 }
 
-std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path) {
+std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path,
+                                                           std::size_t padding) {
     auto file = fs::File::open(path);
     if(!file) {
         return std::unexpected(file.error());
@@ -413,6 +414,9 @@ std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path)
     // buffer would keep tracking the file after the post-fstat, unpairing
     // hash and stat.
     ObservedFile result;
+    if(before && padding > 0) {
+        result.text.reserve(before->size + padding);
+    }
     if(auto error = file->read_to_end(result.text)) {
         return std::unexpected(error);
     }
