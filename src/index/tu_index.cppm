@@ -88,6 +88,11 @@ public:
     /// none (FileSection::shared).
     std::uint64_t section_shared(std::uint32_t i) const;
 
+    /// The names below external scope section `i`'s blob shares with other
+    /// files of the TU, each with a path declaring it, ascending
+    /// (FileSection::local_symbols).
+    std::vector<std::pair<SymbolHash, std::uint32_t>> section_locals(std::uint32_t i) const;
+
     /// One section's shard blob bytes, borrowing the TU index; empty for
     /// a variant the receiver already stores (TUIndexOptions::known_variants).
     llvm::StringRef section_blob(std::uint32_t i) const;

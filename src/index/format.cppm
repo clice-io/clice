@@ -112,8 +112,9 @@ namespace clice::index {
 /// macros of the compiler and the command line; v55: a preamble's TU index
 /// carries no names, which completion reads from the files a compile loads;
 /// v56: the search index splits a name into words where digits follow a
-/// letter; v57: units find the variants of headers by identity, and a unit
-/// loading a shared header's PCH uses what that header's index stores.
+/// letter; v57: units find the variants of headers by identity, with the
+/// names below external scope each variant shares, and a unit loading a
+/// shared header's PCH uses what that header's index stores.
 constexpr inline std::uint32_t index_format_version = 57;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
@@ -499,6 +500,14 @@ struct FileSectionOf {
     /// of a file the unit entered too, without a guard: the unit's entries
     /// of the file are both variants. 0 for none.
     std::uint64_t shared = 0;
+
+    /// For a blob of a file other than the focus file, the names below
+    /// external scope it shares with other files of the TU
+    /// (TUManifest::shared_locals), each with another file declaring it,
+    /// one pair per such file, ascending: what the variant links in a unit
+    /// holding it unwalked.
+    Seq<std::uint64_t> local_symbols;
+    Seq<std::uint32_t> local_homes;
 };
 
 using FileSection = FileSectionOf<codec::blob::Owned>;
@@ -665,6 +674,13 @@ struct FileBlobOf {
     Seq<std::uint64_t> identity_owns;
     Seq<std::uint8_t> identity_reaches;
     Seq<std::uint64_t> identity_variants;
+
+    /// The names below external scope the stored variants share with other
+    /// files, each with a file declaring it (FileSection::local_symbols,
+    /// its homes as path ids), ascending by variant, then name, then home.
+    Seq<std::uint64_t> local_variants;
+    Seq<std::uint64_t> local_symbols;
+    Seq<std::uint32_t> local_homes;
 
     /// For a unit, its manifest's built_at; 0 when the file is no unit.
     std::uint64_t run = 0;

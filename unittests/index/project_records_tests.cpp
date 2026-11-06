@@ -125,6 +125,8 @@ ZEST_CASE(FileRoundTrip) {
     };
     file.identities.push_back({.identity = 5, .own = 6, .reach = 1, .variant = 222});
     file.identities.push_back({.identity = 7, .own = 7, .reach = 0, .variant = 111});
+    file.locals.push_back({.variant = 111, .symbol = 9, .home = 3});
+    file.locals.push_back({.variant = 222, .symbol = 8, .home = 2});
     auto buffer = aligned(index::encode_record(file));
     auto read = index::decode_file(buffer->getBuffer());
     ZASSERT(read);
@@ -140,6 +142,17 @@ ZEST_CASE(FileRoundTrip) {
     auto disordered = aligned(index::encode_record(file));
     ZEXPECT(!index::decode_file(disordered->getBuffer()));
     file.identities = identities;
+
+    // So is a local of a variant the file does not store, or one out of
+    // order.
+    auto locals = file.locals;
+    file.locals.back().variant = 333;
+    auto unstored_local = aligned(index::encode_record(file));
+    ZEXPECT(!index::decode_file(unstored_local->getBuffer()));
+    file.locals = {locals.back(), locals.front()};
+    auto disordered_locals = aligned(index::encode_record(file));
+    ZEXPECT(!index::decode_file(disordered_locals->getBuffer()));
+    file.locals = locals;
 
     // A shard generation without the variants it stores, or the other way
     // round, is no file record; nor are consumed hashes out of order.

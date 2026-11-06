@@ -56,6 +56,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // FileVersions these will reference are interned only at commit.
     llvm::SmallVector<std::pair<std::uint32_t, std::uint64_t>> section_contributions;
     llvm::SmallVector<Fid> rebuilt_ids;
+    llvm::SmallVector<std::uint32_t> fresh_sections;
     // TU-local path id -> content hash of the bytes each section's index
     // was built from (0 = no section). A section's shard already records
     // that hash, so the FileVersion baseline below adopts it: pairing the
@@ -165,6 +166,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         }
         replacements.emplace_back(global_id, std::move(replacement));
         section_contributions.emplace_back(local_id, blob_hash);
+        fresh_sections.push_back(section);
     }
 
     // Instantiations: a skipped key stands for the resolution its file stores
@@ -279,6 +281,41 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
             tu_path);
         return std::unexpected(MergeError::Invalid);
     }
+    // A variant the unit holds as stored, unwalked, shares what the walk
+    // storing it found (FileRecord::locals): the unit's own walk does not
+    // tell.
+    llvm::DenseMap<Fid, std::uint32_t> local_of;
+    for(auto [local_id, file]: views::enumerate(file_ids_map)) {
+        local_of.try_emplace(file, static_cast<std::uint32_t>(local_id));
+    }
+    llvm::DenseMap<SymbolHash, llvm::SmallVector<std::uint32_t, 4>> stored_locals;
+    for(auto [local_id, variant]: section_contributions) {
+        auto* record = file_record(file_ids_map[local_id]);
+        for(auto& local: record ? record->locals_of(variant) : llvm::ArrayRef<VariantLocal>()) {
+            auto home = local_of.find(fid_of(local.home));
+            if(home != local_of.end() && held.test(home->second)) {
+                auto& files = stored_locals[local.symbol];
+                files.push_back(local_id);
+                files.push_back(home->second);
+            }
+        }
+    }
+    for(auto& [symbol, files]: stored_locals) {
+        auto it = ranges::lower_bound(*shared_locals, symbol, {}, &TUSharedLocal::symbol);
+        if(it == shared_locals->end() || it->symbol != symbol) {
+            it = shared_locals->insert(it, {.symbol = symbol});
+            for(auto path_id: view.paths_naming(symbol, false)) {
+                if(held.test(path_id)) {
+                    it->paths.push_back(path_id);
+                }
+            }
+        }
+        it->paths.append(files.begin(), files.end());
+        ranges::sort(it->paths);
+        it->paths.erase(ranges::unique(it->paths).begin(), it->paths.end());
+    }
+    std::erase_if(*shared_locals,
+                  [](const TUSharedLocal& local) { return local.paths.size() < 2; });
 
     // The first commit.
     llvm::SmallVector<SymbolHash> added;
@@ -371,6 +408,17 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         retired_shards.erase(global_id);
         report.add_index_changed(global_id);
         search_file_changed(global_id);
+    }
+    for(auto section: fresh_sections) {
+        auto global_id = file_ids_map[view.section_path(section)];
+        auto variant = view.section_hash(section);
+        for(auto [symbol, home]: view.section_locals(section)) {
+            VariantLocal local{.variant = variant,
+                               .symbol = symbol,
+                               .home = path_id(file_ids_map[home])};
+            auto& locals = change_file(global_id).locals;
+            locals.insert(ranges::upper_bound(locals, local), local);
+        }
     }
     // The identity each variant was found at, for the next unit to find it
     // by without walking its file; the latest unit's answer stands.

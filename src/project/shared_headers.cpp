@@ -325,39 +325,8 @@ std::optional<PCHRequest> Project::shared_header_request(Fid unit) const {
 
 void Project::release_shared_headers() {
     index::IndexReport report;
-    for(auto [number, header]: views::enumerate(shared_headers.headers)) {
+    for(auto& header: shared_headers.headers) {
         if(index.indexed(header.file)) {
-            // The symbols below external scope that the header's index
-            // finds in several of its files: a unit loading it names them
-            // there without walking them, and keeps the link once the
-            // header's index is gone.
-            if(auto own = index.manifest(header.file); own && !own->shared_locals.empty()) {
-                for(auto [unit, loaded]: shared_headers.units) {
-                    auto manifest = loaded == number ? index.manifest(unit) : std::nullopt;
-                    if(!manifest) {
-                        continue;
-                    }
-                    auto& locals = manifest->shared_locals;
-                    for(auto& local: own->shared_locals) {
-                        auto it = ranges::lower_bound(locals,
-                                                      local.symbol,
-                                                      {},
-                                                      &index::SharedLocal::symbol);
-                        if(it == locals.end() || it->symbol != local.symbol) {
-                            locals.insert(it, local);
-                            continue;
-                        }
-                        for(auto file: local.files) {
-                            if(!ranges::contains(it->files, file)) {
-                                it->files.push_back(file);
-                            }
-                        }
-                    }
-                    for(auto file: index.apply_manifest(unit, std::move(*manifest))) {
-                        report.add_index_changed(file);
-                    }
-                }
-            }
             index.drop(header.file, report);
         }
         discard_pch(header.request.pch_key);

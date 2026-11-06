@@ -193,6 +193,11 @@ std::vector<std::byte> encode_record(const FileRecord& file) {
         blob.identity_reaches.push_back(known.reach);
         blob.identity_variants.push_back(known.variant);
     }
+    for(auto& local: file.locals) {
+        blob.local_variants.push_back(local.variant);
+        blob.local_symbols.push_back(local.symbol);
+        blob.local_homes.push_back(local.home);
+    }
     blob.run = file.run;
     blob.command = file.command;
     return encode(blob);
@@ -205,7 +210,12 @@ std::optional<FileRecord> decode_file(llvm::StringRef data) {
        root->identity_owns.size() != root->identities.size() ||
        root->identity_reaches.size() != root->identities.size() ||
        root->identity_variants.size() != root->identities.size() ||
-       !ranges::all_of(root->identity_variants, [&](std::uint64_t variant) {
+       !ranges::all_of(
+           root->identity_variants,
+           [&](std::uint64_t variant) { return ranges::contains(root->stored, variant); }) ||
+       root->local_symbols.size() != root->local_variants.size() ||
+       root->local_homes.size() != root->local_variants.size() ||
+       !ranges::all_of(root->local_variants, [&](std::uint64_t variant) {
            return ranges::contains(root->stored, variant);
        })) {
         return std::nullopt;
@@ -224,6 +234,15 @@ std::optional<FileRecord> decode_file(llvm::StringRef data) {
                                      .own = root->identity_owns[i],
                                      .reach = root->identity_reaches[i],
                                      .variant = root->identity_variants[i]});
+    }
+    for(std::size_t i = 0; i < root->local_variants.size(); i += 1) {
+        VariantLocal local{.variant = root->local_variants[i],
+                           .symbol = root->local_symbols[i],
+                           .home = root->local_homes[i]};
+        if(!record.locals.empty() && local <= record.locals.back()) {
+            return std::nullopt;
+        }
+        record.locals.push_back(local);
     }
     return record;
 }

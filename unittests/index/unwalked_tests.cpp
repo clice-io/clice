@@ -2,6 +2,7 @@ module clice;
 
 import :index.symbol;
 import :index.tu_index;
+import :index.tu_manifest;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -291,6 +292,44 @@ void helper(int);
     auto known = view.section_identity(*impl);
     ZEXPECT(known.reach == 1U);
     ZEXPECT(known.identity != known.own);
+};
+
+ZEST_CASE(LocalsOfUnwalkedHeaders) {
+    // helper has internal linkage and call.h names it: a unit leaving both
+    // headers unwalked, its own reindex or another unit, links them as the
+    // walk that stored them did.
+    TempDir tmp;
+    tmp.touch("helper.h", "#pragma once\nstatic int helper() { return 1; }\n");
+    tmp.touch("call.h",
+              "#pragma once\n#include \"helper.h\"\ninline int call() { return helper(); }\n");
+    tmp.touch("a.cpp", "#include \"call.h\"\nint a() { return call(); }\n");
+    tmp.touch("b.cpp", "#include \"call.h\"\nint b() { return call(); }\n");
+    IndexerFixture f;
+    auto& index = f.project.index;
+    auto unit = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+    auto links = [&](llvm::StringRef name) {
+        auto manifest = index.manifest(unit(name));
+        return manifest ? manifest->shared_locals : std::vector<index::SharedLocal>();
+    };
+    ZASSERT(f.merge(index_file(tmp, tmp.path("a.cpp")).data));
+    auto walked = links("a.cpp");
+    ZASSERT(walked.size() == 1U);
+    ZEXPECT(walked.front().files.size() == 2U);
+
+    auto known = index.known_variants(unit("a.cpp"), {});
+    for(auto name: {"a.cpp", "b.cpp"}) {
+        auto data = index_file(tmp, tmp.path(name), {}, known.hashes, {}, known.identities).data;
+        auto view = index::TUIndex::from_bytes(data);
+        for(auto header: {"helper.h", "call.h"}) {
+            auto section = section_of(view, header);
+            ZASSERT(section);
+            ZEXPECT(view.section_blob(*section).empty());
+        }
+        ZASSERT(f.merge(data));
+        ZEXPECT(links(name) == walked);
+    }
 };
 
 };  // ZEST_SUITE(UnwalkedHeaders)

@@ -47,6 +47,20 @@ struct Header {
     std::vector<std::uint32_t> owed_units;
 };
 
+/// A name below external scope a stored variant shares with another file,
+/// one declaring it (FileSection::local_symbols): any unit holding the
+/// variant names it in both.
+struct VariantLocal {
+    VariantHash variant = 0;
+
+    SymbolHash symbol = 0;
+
+    /// A path id.
+    std::uint32_t home = 0;
+
+    friend auto operator<=>(const VariantLocal&, const VariantLocal&) = default;
+};
+
 /// FileBlob decoded.
 struct FileRecord {
     std::uint32_t path = 0;
@@ -63,16 +77,29 @@ struct FileRecord {
     /// identity: every one names a variant of `stored`.
     std::vector<KnownIdentity> identities;
 
+    /// Ascending; every one names a variant of `stored`.
+    std::vector<VariantLocal> locals;
+
     std::uint64_t run = 0;
 
     std::uint64_t command = 0;
 
-    /// Replace the stored variants, with the identities of the ones left.
+    /// Replace the stored variants, with the identities and the locals of
+    /// the ones left.
     void store(std::vector<VariantHash> variants) {
         stored = std::move(variants);
         std::erase_if(identities, [&](const KnownIdentity& known) {
             return !ranges::contains(stored, known.variant);
         });
+        std::erase_if(locals, [&](const VariantLocal& local) {
+            return !ranges::contains(stored, local.variant);
+        });
+    }
+
+    /// The locals of one stored variant.
+    llvm::ArrayRef<VariantLocal> locals_of(VariantHash variant) const {
+        auto found = ranges::equal_range(locals, variant, {}, &VariantLocal::variant);
+        return llvm::ArrayRef(locals).slice(found.begin() - locals.begin(), found.size());
     }
 
     friend bool operator==(const FileRecord&, const FileRecord&) = default;

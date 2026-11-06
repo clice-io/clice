@@ -126,6 +126,12 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
             return {};
         }
         previous_path_id = path_id;
+        auto& symbols = sections[i].local_symbols;
+        auto& homes = sections[i].local_homes;
+        if(homes.size() != symbols.size() || ranges::any_of(homes, past_paths)) {
+            LOG_DEBUG("Rejecting TU index: malformed section locals");
+            return {};
+        }
     }
     // The merge maps skipped keys through their file's stored keys by
     // binary search.
@@ -215,6 +221,15 @@ KnownIdentity TUIndex::section_identity(std::uint32_t i) const {
 
 std::uint64_t TUIndex::section_shared(std::uint32_t i) const {
     return view_of(data).sections[i].shared;
+}
+
+std::vector<std::pair<SymbolHash, std::uint32_t>> TUIndex::section_locals(std::uint32_t i) const {
+    auto& section = view_of(data).sections[i];
+    std::vector<std::pair<SymbolHash, std::uint32_t>> locals;
+    for(std::size_t j = 0; j < section.local_symbols.size(); j += 1) {
+        locals.emplace_back(section.local_symbols[j], section.local_homes[j]);
+    }
+    return locals;
 }
 
 llvm::StringRef TUIndex::section_blob(std::uint32_t i) const {

@@ -2296,6 +2296,7 @@ public:
         for(auto [hash, fid]: declaring_files) {
             if(tree.node_of(fid) != no_node) {
                 symbols.find(hash)->second.reference_files.add(tree.path_id(fid));
+                declared_at[hash].push_back(tree.path_id(fid));
             }
         }
 
@@ -2466,6 +2467,9 @@ public:
                 if(known) {
                     symbol.reference_files.add(*known);
                     adopt(symbol, *known, defines(redecl));
+                    if(symbol.scope != SymbolScope::External) {
+                        declared_at[hash].push_back(*known);
+                    }
                 } else if(redecl->isFromASTFile() && symbol.scope != SymbolScope::External &&
                           defines(redecl)) {
                     symbol.flags |= SymbolFlags::HasDefinition;
@@ -2477,6 +2481,11 @@ public:
                 auto& symbol = symbols[symbol_id];
                 symbol.reference_files.add(path_id);
                 for(auto& relation: relations) {
+                    bool declares = relation.kind == RelationKind::Definition ||
+                                    relation.kind == RelationKind::Declaration;
+                    if(declares && symbol.scope != SymbolScope::External) {
+                        declared_at[symbol_id].push_back(path_id);
+                    }
                     if(relation.kind == RelationKind::Definition) {
                         adopt(symbol, path_id, true);
                     } else if(relation.kind == RelationKind::Declaration) {
@@ -2523,6 +2532,25 @@ public:
         }
         ranges::sort(path_ids);
         path_ids.erase(ranges::unique(path_ids).begin(), path_ids.end());
+        // A unit holding a variant unwalked learns from no walk of its own
+        // what the variant names: it carries each name below external scope
+        // it shares with other files, with each other file declaring it.
+        llvm::DenseMap<std::uint32_t, std::vector<std::pair<SymbolHash, std::uint32_t>>> locals_of;
+        for(auto& [hash, homes]: declared_at) {
+            auto& symbol = symbols.find(hash)->second;
+            if(symbol.reference_files.cardinality() < 2) {
+                continue;
+            }
+            ranges::sort(homes);
+            homes.erase(ranges::unique(homes).begin(), homes.end());
+            for(auto path_id: symbol.reference_files) {
+                for(auto home: homes) {
+                    if(home != path_id) {
+                        locals_of[path_id].emplace_back(hash, home);
+                    }
+                }
+            }
+        }
         std::vector<FileSection> sections;
         llvm::BitVector known_paths(tree.paths.size());
         for(auto path_id: path_ids) {
@@ -2552,6 +2580,14 @@ public:
                     known_paths.set(path_id);
                 } else {
                     section->blob = std::move(bytes);
+                    if(auto it = locals_of.find(path_id);
+                       it != locals_of.end() && fid != unit.focus_file().file()) {
+                        ranges::sort(it->second);
+                        for(auto [symbol, home]: it->second) {
+                            section->local_symbols.push_back(symbol);
+                            section->local_homes.push_back(home);
+                        }
+                    }
                 }
             }
             if(shared != shared_known.end()) {
@@ -2803,6 +2839,9 @@ private:
     /// in a file the unit sends the known variant of, or reads from a
     /// precompiled header, stand for relations this walk does not make.
     llvm::DenseMap<SymbolHash, const clang::NamedDecl*> symbol_decls;
+
+    /// The path ids of the files declaring each symbol below external scope.
+    llvm::DenseMap<SymbolHash, llvm::SmallVector<std::uint32_t, 1>> declared_at;
 
     /// Per file, its written relations as records would say them
     /// (written_in).
