@@ -122,6 +122,17 @@ struct ListConfigurationsParams {
     std::optional<std::string> uri;
 };
 
+/// The build the links in the active configuration's database paths
+/// resolve to (rules with `resolve_symlinks`).
+struct LinkedBuild {
+    /// The configuration naming these databases directly, whose index the
+    /// build shares; empty when none does.
+    std::string configuration;
+
+    /// The URIs of the databases the links resolve to, in priority order.
+    std::vector<std::string> databases;
+};
+
 struct ListConfigurationsResult {
     /// The distinct `configuration` tags of the rules, in declaration
     /// order; empty when the rules declare none.
@@ -129,6 +140,10 @@ struct ListConfigurationsResult {
 
     /// The configuration this server process runs.
     std::string active;
+
+    /// The build this server process runs, when the active configuration
+    /// follows links.
+    std::optional<LinkedBuild> build;
 
     /// The persisted selection, applied at the next server start; empty
     /// when none was made.
