@@ -174,22 +174,23 @@ bool refused(Project& project, NodeId module, llvm::StringRef pcm_key, llvm::Str
     return false;
 }
 
-/// The variant of a module unit's entry with the command `hash` names
-/// (ModuleVariants): nonzero, and clear of the bit unresolved_import sets.
-std::uint32_t variant_id(std::uint64_t hash) {
+/// The id of the context (ModuleContexts) of a module unit's entry whose
+/// command `hash` names: nonzero, and clear of the bit unresolved_import
+/// sets.
+std::uint32_t context_id(std::uint64_t hash) {
     return static_cast<std::uint32_t>(hash >> 33) | 1;
 }
 
 /// The command a PCM node builds its unit under: the unit's own, or the
-/// entry its variant names; none when no entry does any more.
+/// entry its context names; none when no entry does any more.
 std::optional<Resolution> build_command(Project& project, NodeId module) {
     auto unit = module.file();
-    auto variant = module_variant(module);
-    if(variant == 0) {
+    auto context = module_context(module);
+    if(context == 0) {
         return project.resolve_command(unit);
     }
     for(auto& candidate: project.candidates(unit)) {
-        if(variant_id(project.commands.command_hash(candidate.base)) == variant) {
+        if(context_id(project.commands.command_hash(candidate.base)) == context) {
             ContextChoice choice{.base = project.commands.command_hash_hex(candidate.base)};
             return project.resolve_command(unit, {.choice = &choice});
         }
@@ -225,8 +226,8 @@ ModuleCompatibility compatibility(Project& project, const Rendered& command) {
     return it->second;
 }
 
-/// ModuleVariants::listed of a module unit, from its entries.
-llvm::SmallVector<ModuleVariants::Variant, 2> list_variants(Project& project, Fid unit) {
+/// ModuleContexts::listed of a module unit, from its entries.
+llvm::SmallVector<ModuleContexts::Context, 2> list_module_contexts(Project& project, Fid unit) {
     llvm::SmallVector<std::uint64_t, 2> commands;
     for(auto& candidate: project.candidates(unit)) {
         auto hash = project.commands.command_hash(candidate.base);
@@ -234,13 +235,13 @@ llvm::SmallVector<ModuleVariants::Variant, 2> list_variants(Project& project, Fi
             commands.push_back(hash);
         }
     }
-    llvm::SmallVector<ModuleVariants::Variant, 2> listed(1);
+    llvm::SmallVector<ModuleContexts::Context, 2> listed(1);
     if(commands.size() < 2) {
         return listed;
     }
     listed.front().compatibility = compatibility(project, project.resolve_command(unit));
     for(auto hash: llvm::drop_begin(commands)) {
-        auto id = variant_id(hash);
+        auto id = context_id(hash);
         auto command = build_command(project, module_node(unit, id));
         listed.push_back({.id = id, .compatibility = compatibility(project, *command)});
     }
@@ -252,7 +253,7 @@ llvm::SmallVector<ModuleVariants::Variant, 2> list_variants(Project& project, Fi
 /// new one.
 async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node) {
     auto path_id = node.file();
-    bool own_command = module_variant(node) == 0;
+    bool own_command = module_context(node) == 0;
 
     // Inputs that moved may import otherwise: a scan taken before is no
     // answer for them, even while no event has reached the disk state yet.
@@ -631,23 +632,23 @@ Work Project::module_work(NodeId module) {
 }
 
 NodeId Project::module_build(Fid module, const Rendered& importer) {
-    auto& variants = module_variants[module];
-    if(variants.epoch != commands_epoch) {
-        variants.listed = list_variants(*this, module);
-        variants.epoch = commands_epoch;
+    auto& contexts = module_contexts[module];
+    if(contexts.epoch != commands_epoch) {
+        contexts.listed = list_module_contexts(*this, module);
+        contexts.epoch = commands_epoch;
     }
-    if(variants.listed.size() < 2) {
+    if(contexts.listed.size() < 2) {
         return module_node(module);
     }
     auto wanted = compatibility(*this, importer);
-    auto readable = ranges::find_if(variants.listed, [&](const ModuleVariants::Variant& variant) {
-        return wanted.reads(variant.compatibility);
+    auto readable = ranges::find_if(contexts.listed, [&](const ModuleContexts::Context& context) {
+        return wanted.reads(context.compatibility);
     });
-    if(readable == variants.listed.begin() || readable == variants.listed.end()) {
+    if(readable == contexts.listed.begin() || readable == contexts.listed.end()) {
         return module_node(module);
     }
-    if(!ranges::contains(variants.picked, readable->id)) {
-        variants.picked.push_back(readable->id);
+    if(!ranges::contains(contexts.picked, readable->id)) {
+        contexts.picked.push_back(readable->id);
     }
     return module_node(module, readable->id);
 }
@@ -802,9 +803,9 @@ std::unordered_map<std::string, std::string>
 
 llvm::SmallVector<NodeId> Project::module_nodes(Fid unit) const {
     llvm::SmallVector<NodeId> nodes{module_node(unit)};
-    if(auto it = module_variants.find(unit); it != module_variants.end()) {
-        for(auto variant: it->second.picked) {
-            nodes.push_back(module_node(unit, variant));
+    if(auto it = module_contexts.find(unit); it != module_contexts.end()) {
+        for(auto context: it->second.picked) {
+            nodes.push_back(module_node(unit, context));
         }
     }
     return nodes;

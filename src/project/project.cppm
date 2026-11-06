@@ -289,9 +289,9 @@ struct Project {
     /// The PCMs of the module units, by PCM node (module_node).
     llvm::DenseMap<NodeId, PCMEntry> pcms;
 
-    /// The commands each module unit's PCM builds under, as importers pick
+    /// The contexts each module unit's PCM builds in, as importers pick
     /// them (module_build).
-    llvm::DenseMap<Fid, ModuleVariants> module_variants;
+    llvm::DenseMap<Fid, ModuleContexts> module_contexts;
 
     /// module_compatibility of the arguments a command renders, by their
     /// hash with the directory's.

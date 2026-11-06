@@ -69,9 +69,9 @@ struct SavedPCM {
 
     std::uint32_t source_file;
 
-    /// The entry the PCM was built under (module_node); absent for the
+    /// The context the PCM was built in (module_node); absent for the
     /// unit's own command.
-    std::optional<std::uint32_t> variant;
+    std::optional<std::uint32_t> context;
 
     std::string module_name;
 
@@ -287,8 +287,8 @@ std::string Project::serialize_precompiled_records() {
         entry.key = st.key;
         entry.blob = st.blob;
         entry.source_file = intern(module.file());
-        if(auto variant = module_variant(module)) {
-            entry.variant = variant;
+        if(auto context = module_context(module)) {
+            entry.context = context;
         }
         entry.module_name = dep_graph.module_of(module.file()).str();
         dump_deps(st.inputs, entry.deps);
@@ -396,7 +396,7 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
         auto source = file_of(entry.source_file);
         if(!source)
             continue;
-        auto& st = pcms[module_node(*source, entry.variant.value_or(0))];
+        auto& st = pcms[module_node(*source, entry.context.value_or(0))];
         st.path = *pcm_path;
         st.key = entry.key;
         st.blob = std::move(*entry.blob);

@@ -136,36 +136,36 @@ inline bool is_unresolved_import(NodeId id) {
 }
 
 /// The graph node of a module unit's PCM: its build under its own command,
-/// or, for a nonzero `variant` (ModuleVariants), under another of its
-/// entries.
-inline NodeId module_node(Fid module, std::uint32_t variant = 0) {
-    assert(variant >> 31 == 0);
-    return {NodeKind::PCM, module.raw | (std::uint64_t(variant) << 32)};
+/// or, for a nonzero `context` (ModuleContexts), under another of its
+/// database entries — the contexts the unit compiles in.
+inline NodeId module_node(Fid module, std::uint32_t context = 0) {
+    assert(context >> 31 == 0);
+    return {NodeKind::PCM, module.raw | (std::uint64_t(context) << 32)};
 }
 
-/// The command a PCM node builds its unit under (module_node).
-inline std::uint32_t module_variant(NodeId node) {
+/// The context a PCM node builds its unit in (module_node).
+inline std::uint32_t module_context(NodeId node) {
     return static_cast<std::uint32_t>(node.key >> 32);
 }
 
-/// The commands a module unit's PCM builds under: the first under its own
-/// command, then one under each other entry whose command differs, by
-/// variant id — the entry's command hash, so that a variant keeps naming
-/// the same command across database reloads. Each with what decides which
-/// importers can read that build (module_compatibility).
-struct ModuleVariants {
-    struct Variant {
+/// The contexts a module unit's PCM builds in: the first under its own
+/// command, then one under each other entry whose command differs, by an id
+/// from the entry's command hash, so that a context keeps naming the same
+/// command across database reloads. Each with what decides which importers
+/// can read that build (module_compatibility).
+struct ModuleContexts {
+    struct Context {
         std::uint32_t id = 0;
 
         ModuleCompatibility compatibility;
     };
 
-    llvm::SmallVector<Variant, 2> listed;
+    llvm::SmallVector<Context, 2> listed;
 
     /// Project::commands_epoch when `listed` was taken.
     std::uint64_t epoch = 0;
 
-    /// The variants importers were given: the unit's PCM nodes besides its
+    /// The contexts importers were given: the unit's PCM nodes besides its
     /// own (Project::module_nodes).
     llvm::SmallVector<std::uint32_t, 1> picked;
 };

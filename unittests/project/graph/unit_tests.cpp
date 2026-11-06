@@ -274,7 +274,7 @@ ZEST_CASE(EntryBuildLeavesIndex) {
     ZEXPECT(result == UnitResult::Status::Completed);
     ZASSERT(f.project.pcms.size() == 1u);
     auto& [module, build] = *f.project.pcms.begin();
-    ZEXPECT(module_variant(module) != 0u);
+    ZEXPECT(module_context(module) != 0u);
     ZEXPECT(!build.path.empty());
     ZEXPECT(f.project.index.shard(id("m.cppm")) == nullptr);
     ZEXPECT(f.project.index.shard(id("newer.cpp")) != nullptr);
