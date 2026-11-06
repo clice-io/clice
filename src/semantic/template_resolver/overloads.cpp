@@ -413,6 +413,37 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
                 return std::nullopt;
             }
             stack.push(FTD, FTD->getTemplateParameters(), deduced);
+            /// A default deduction leaves decides whether the template is a
+            /// candidate (`class = typename U::type`, `enable_if_t<B, int> =
+            /// 0`): one that cannot form drops it, one not known to form
+            /// leaves the set as it is.
+            for(auto [index, param]: views::enumerate(*FTD->getTemplateParameters())) {
+                if(static_cast<std::size_t>(index) < deduced.size() && !deduced[index].isNull()) {
+                    continue;
+                }
+                clang::QualType type;
+                if(auto* TTPD = llvm::dyn_cast<clang::TemplateTypeParmDecl>(param);
+                   TTPD && TTPD->hasDefaultArgument()) {
+                    type = TTPD->getDefaultArgument().getArgument().getAsType();
+                } else if(auto* NTTPD = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(param);
+                          NTTPD && NTTPD->hasDefaultArgument()) {
+                    type = NTTPD->getType();
+                }
+                if(type.isNull()) {
+                    continue;
+                }
+                /// `void_t<...>` holds its probe as written, `enable_if_t<...>`
+                /// in what it aliases.
+                type = substitute(type);
+                if(member_absent(type, 0) || member_absent(type.getCanonicalType(), 0)) {
+                    unviable.insert(decl);
+                    return std::nullopt;
+                }
+                if(resolve(type)->isDependentType()) {
+                    waits = true;
+                    return std::nullopt;
+                }
+            }
             FTD->getAssociatedConstraints(constraints);
         } else {
             FD->getAssociatedConstraints(constraints);

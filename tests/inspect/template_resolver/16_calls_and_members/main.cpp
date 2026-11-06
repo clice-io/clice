@@ -806,3 +806,47 @@ void run(typename Source<T>::inner inner, lib::Outer& outer) {
 }
 
 }  // namespace enclosing_class_bases
+
+namespace failed_default {
+
+struct Good {};
+
+struct Bad {};
+
+template <bool B, typename R = void>
+struct enable_if {};
+
+template <typename R>
+struct enable_if<true, R> {
+    using type = R;
+};
+
+template <bool B, typename R = void>
+using enable_if_t = typename enable_if<B, R>::type;
+
+struct Plain {};
+
+template <typename U, typename = typename U::missing>
+Bad choose(U);
+
+Good choose(...);
+
+template <typename U, enable_if_t<__is_same(U, float), int> = 0>
+Bad pick(U);
+
+Good pick(...);
+
+template <typename T>
+struct Source {
+    using plain = Plain;
+    using integer = int;
+};
+
+template <typename T>
+void run(typename Source<T>::plain value, typename Source<T>::integer number) {
+    // `Plain` has no `missing`: `choose(...)` is called.
+    auto §(failed_type_default)chosen = failed_default::choose(value);
+    auto §(undecided_value_default)picked = failed_default::pick(number);
+}
+
+}  // namespace failed_default
