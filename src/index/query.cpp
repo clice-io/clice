@@ -232,15 +232,6 @@ IndexSource IndexQuery::buffer_source(IndexSource::Kind kind,
     return source;
 }
 
-void IndexQuery::for_each_session(llvm::function_ref<bool(const IndexSource&)> visit) const {
-    for(auto& buffer: open) {
-        auto* shard = buffer_shard(buffer);
-        if(shard && !visit(buffer_source(IndexSource::Kind::SessionShard, buffer, *shard))) {
-            return;
-        }
-    }
-}
-
 void IndexQuery::for_each_session_index(llvm::function_ref<bool(const TUIndex&)> visit) const {
     for(auto& buffer: open) {
         if(buffer_shard(buffer) && !visit(*buffer.index)) {
@@ -518,8 +509,13 @@ void IndexQuery::for_each_relation(SymbolHash hash,
         if(!mask.session) {
             return true;
         }
-        for_each_session(emit);
-        return !stopped;
+        for(auto& buffer: open) {
+            auto* shard = buffer_shard(buffer);
+            if(shard && !emit(buffer_source(IndexSource::Kind::SessionShard, buffer, *shard))) {
+                return false;
+            }
+        }
+        return true;
     };
     auto preambles = [&] {
         if(!mask.preamble) {

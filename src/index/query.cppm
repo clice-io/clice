@@ -528,9 +528,6 @@ private:
                               const OpenBuffer& buffer,
                               const Shard& shard) const;
 
-    /// Every open buffer whose file index serves it (clause 3), as its index.
-    void for_each_session(llvm::function_ref<bool(const IndexSource&)> visit) const;
-
     /// Every open buffer's preamble index whose overlay was built from that
     /// very file and still describes the buffer's start.
     void for_each_preamble(llvm::function_ref<bool(const IndexSource&)> visit) const;

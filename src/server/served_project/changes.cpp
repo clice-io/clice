@@ -9,13 +9,6 @@ import :vfs.file_table;
 
 namespace clice {
 
-void ServedProject::mark_stale(Fid path_id, bool& refresh) {
-    if(auto* document = find_document(path_id)) {
-        inputs_changed(*document->session);
-        refresh = refresh || document->serving == ServingMode::Escalated;
-    }
-}
-
 llvm::SmallVector<OpenFile> ServedProject::open_files() const {
     llvm::SmallVector<OpenFile> open;
     for(auto& [path_id, document]: documents) {
@@ -47,30 +40,43 @@ void ServedProject::commands_changed(CDBDiff delta) {
 
 void ServedProject::follow(const Affected& affected) {
     bool refresh = false;
+    auto mark_stale = [&](ServedDocument& document) {
+        inputs_changed(*document.session);
+        refresh = refresh || document.serving == ServingMode::Escalated;
+    };
     for(auto path_id: affected.stale) {
-        mark_stale(path_id, refresh);
+        mark_stale(*find_document(path_id));
     }
     for(auto path_id: affected.reindexed) {
         book_skipped_diagnostics(*find_document(path_id), false);
     }
-    auto& commands = affected.commands;
-    if(commands.empty()) {
-        finish_changes(refresh);
-        return;
-    }
-
     // An open document whose command moved recompiles: one whose entry
     // appeared, changed or left, a header whose host's command did or that
     // another host now ranks before it, a file borrowing a member's. One
     // whose first compile is still in flight may have resolved before.
-    for(auto& [path_id, document]: documents) {
-        auto selected = project.select_command(path_id, command_request(path_id));
-        auto& latest = document.latest;
-        if(!latest || latest->command != selected.ref.command || latest->host != selected.host) {
-            mark_stale(path_id, refresh);
+    auto& commands = affected.commands;
+    if(!commands.empty()) {
+        for(auto& [path_id, document]: documents) {
+            auto selected = project.select_command(path_id, command_request(path_id));
+            auto& latest = document.latest;
+            if(!latest || latest->command != selected.ref.command ||
+               latest->host != selected.host) {
+                mark_stale(document);
+            }
         }
     }
-    finish_changes(refresh);
+
+    // A change can remove the include edge or the entry a user's context
+    // choice depends on, or bring it back.
+    recheck_choices();
+    project.background_index.schedule();
+    if(refresh && server.client) {
+        server.client->refresh_diagnostics();
+        server.client->refresh();
+    }
+    if(commands.empty()) {
+        return;
+    }
 
     // The database gained or lost entries: an open document may belong to
     // another project now.
@@ -80,17 +86,6 @@ void ServedProject::follow(const Affected& affected) {
     // A database found or a member recorded: the directories on the way to
     // it decide what loads too.
     server.watch_settings();
-}
-
-void ServedProject::finish_changes(bool refresh) {
-    // A change can remove the include edge or the entry a user's context
-    // choice depends on, or bring it back.
-    recheck_choices();
-    project.background_index.schedule();
-    if(refresh && server.client) {
-        server.client->refresh_diagnostics();
-        server.client->refresh();
-    }
 }
 
 void ServedProject::recheck_choices() {

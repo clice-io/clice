@@ -864,19 +864,11 @@ private:
     /// What a change of the project's inputs did to the open documents: the
     /// stale ones compile again, the reindexed ones book their skipped-body
     /// diagnostics, and when commands changed, so do the ones whose command
-    /// moved, and routing and the watched settings follow.
+    /// moved. Then the context choices are checked again, the background
+    /// index runs what the change queued, a client holding answers of
+    /// documents that went stale is asked to pull again, and when commands
+    /// changed, routing and the watched settings follow.
     void follow(const Affected& affected);
-
-    /// The end of every batch of changes: the context choices are checked
-    /// again, the background index runs what the batch queued, and a client
-    /// holding answers of open documents that went stale is asked to pull
-    /// again (`refresh`).
-    void finish_changes(bool refresh);
-
-    /// What a file's inputs changing does to its open document, if any
-    /// (inputs_changed); `refresh` is set when the document is compiled,
-    /// whose client is then asked to pull again.
-    void mark_stale(Fid path_id, bool& refresh);
 
 private:
     /// The open documents routed here.

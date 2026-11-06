@@ -308,7 +308,7 @@ void Project::reconcile_index(index::IndexReport& report) {
         }
         // A unit deleted meanwhile keeps its shard behind (queries withhold
         // it) with nothing left to reindex.
-        if(!index_command_holds(unit) && fs::exists(path)) {
+        if(index.indexed_command(unit) != command_identity(unit) && fs::exists(path)) {
             LOG_INFO("Compile command changed since the last session; reindexing {}", path);
             index.mark_outdated(unit);
             report.add_reindex(unit);

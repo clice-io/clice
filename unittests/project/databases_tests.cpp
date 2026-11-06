@@ -16,41 +16,20 @@ import :syntax.dependency_graph;
 import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.indexer_fixture;
+import :unittests.utils.project_fixture;
 import :unittests.utils.temp_dir;
 import :vfs.disk_state;
 import :vfs.file_table;
 import :vfs.ids;
 import :vfs.path;
-import :worker.pool;
 
 namespace clice::testing {
 namespace {
 
 /// A project at `root`, its databases loaded by the test and then watched
 /// (watch_databases).
-struct Fixture {
-    async::event_loop loop;
-    FileTable files;
-    WorkerPool pool{loop};
-    Project project;
-    llvm::SmallVector<OpenFile> open_files;
-
-    explicit Fixture(llvm::StringRef root) :
-        project(files, CanonicalPath(Spelling::absolute(root)), &loop, &pool) {
-        project.rules = Rules(project.settings, project.root, "");
-    }
-
-    Fid intern(llvm::StringRef path) {
-        return files.intern(Spelling::absolute(path));
-    }
-
-    Fid open_document(llvm::StringRef path) {
-        auto file = intern(path);
-        open_files.push_back({.file = file});
-        project.graph.add(ast_node(file));
-        files.disk.current(file);
-        return file;
-    }
+struct Fixture : ProjectFixture {
+    using ProjectFixture::ProjectFixture;
 
     void discover_around(Fid file) {
         project.update_members(project.discover_databases({file}, {.load_now = true}), open_files);

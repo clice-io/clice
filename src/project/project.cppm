@@ -1038,10 +1038,6 @@ struct Project {
     /// (compiled_by_build), else its own run.
     CompiledBy compiled_by(Fid unit);
 
-    /// Whether the unit's index was built under the command the build
-    /// compiles it under now (command_identity).
-    bool index_command_holds(Fid unit);
-
     /// Whether the unit's index holds: built under its command of now, from
     /// inputs that hold (ProjectIndex::needs_reindex).
     bool index_holds(Fid unit);

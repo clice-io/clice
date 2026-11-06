@@ -351,12 +351,8 @@ CompiledBy Project::compiled_by(Fid unit) {
     return compiled_by_build(unit) ? CompiledBy::Build : CompiledBy::Itself;
 }
 
-bool Project::index_command_holds(Fid unit) {
-    return index.indexed_command(unit) == command_identity(unit);
-}
-
 bool Project::index_holds(Fid unit) {
-    return index_command_holds(unit) && !index.needs_reindex(unit);
+    return index.indexed_command(unit) == command_identity(unit) && !index.needs_reindex(unit);
 }
 
 std::expected<llvm::StringRef, std::string> IndexTransfer::receive(std::span<const std::byte> data,

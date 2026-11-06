@@ -15,11 +15,11 @@ import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
+import :unittests.utils.project_fixture;
 import :unittests.utils.temp_dir;
 import :vfs.file_table;
 import :vfs.ids;
 import :vfs.path;
-import :worker.pool;
 
 namespace clice::testing {
 namespace {
@@ -38,31 +38,9 @@ index::Shard shard_of(llvm::StringRef content) {
 /// compiles parse the bodies of their headers and serve their index, so
 /// that a dependency change splits open files from closed ones
 /// (SkippedBodiesReindexOpen covers the default).
-struct Harness {
-    async::event_loop loop;
-    FileTable files;
-    WorkerPool pool{loop};
-    Project project{files, CanonicalPath(Spelling::absolute("/proj")), &loop, &pool};
-    llvm::SmallVector<OpenFile> open_files;
-
+struct Harness : ProjectFixture {
     Harness() {
-        project.rules = Rules(project.settings, project.root, "");
         project.settings.project.skip_header_bodies = false;
-    }
-
-    Fid intern(llvm::StringRef path) {
-        return files.intern(Spelling::absolute(path));
-    }
-
-    Fid open_document(llvm::StringRef path, llvm::SmallVector<Fid> read = {}) {
-        auto file = intern(path);
-        open_files.push_back({.file = file, .read = std::move(read)});
-        project.graph.add(ast_node(file));
-        if(!project.settings.project.skip_header_bodies) {
-            project.background_index.leave_to_document(file);
-        }
-        files.disk.current(file);
-        return file;
     }
 
     /// The files the background index owes a reindex for `reason`, sorted.
