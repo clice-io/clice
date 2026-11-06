@@ -1,0 +1,43 @@
+[answers.pointer_cv_ordering.template_resolver]
+type = "type_list<X, X, X>"
+record = "struct ⟦type_list⟧ {}; @-19"
+declarations = ["using ⟦type⟧ = type_list<T, T, T>; @-5"]
+
+[answers.pointer_double_ordering.template_resolver]
+type = "type_list<X, X, X>"
+record = "struct ⟦type_list⟧ {}; @-19"
+declarations = ["using ⟦type⟧ = type_list<T, T, T>; @-5"]
+
+[answers.ref_partial_ordering.template_resolver]
+type = "type_list<X, X>"
+record = "struct ⟦type_list⟧ {}; @-19"
+declarations = ["using ⟦type⟧ = type_list<T, T>; @-10"]
+
+[answers.ambiguous_partials.template_resolver]
+type = "typename trait<X *, Y *>::type"
+
+[answers.constrained_partial.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]
+
+[answers.constrained_true_partial.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int; @-5"]
+
+[answers.constrained_value_partial.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = typename P<N>::type;"]
+
+[answers.constrained_unknown_degrades.template_resolver]
+type = "typename P<X *>::type"
+
+[answers.constrained_beats_unconstrained.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int; @-6"]
+
+[answers.constraint_disjunction.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = typename P<T*, N>::type;"]
+
+[answers.atomic_constraint_unverified.template_resolver]
+type = "typename P<X *, int>::type"

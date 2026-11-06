@@ -2,7 +2,8 @@ module;
 
 /// Sema-free structural unification of template argument lists, replacing
 /// `Sema::DeduceTemplateArguments` and `Sema::getMoreSpecializedPartialSpecialization`
-/// for pseudo-instantiation.
+/// for pseudo-instantiation, and the folding of the constant expressions it
+/// checks a match with.
 ///
 /// Differences from clang's deduction, by design:
 ///   - Works on sugared types: a parameter binds the argument *as written*
@@ -14,7 +15,7 @@ module;
 ///     adjustments, array bound promotion). Failure means "this pattern
 ///     doesn't match", which degrades to an unresolved name.
 
-module clice:semantic.unifier;
+module clice:semantic.template_resolver.deduction;
 
 import :support.prelude;
 
@@ -31,10 +32,33 @@ enum class Deduction : std::uint8_t {
     Unverified,
 };
 
+/// How deduce_arguments treats what the match leaves open.
+///
+/// The arguments' own template parameters may stand for anything, and a
+/// match that holds only for some of what they stand for is undecided
+/// (Deduction::Unverified): two arguments for one parameter that may turn
+/// out the same type (`is_same<T, T>` against `<K, V>`), and a `bool` the
+/// pattern fixes against a value not known (`conditional<false, ...>`), half
+/// of what it may hold. A shape the pattern gives a type (`vector<bool>`
+/// against `vector<T>`), and one value of a wider type (`array<T, 0>`
+/// against `array<T, N>`), are special cases instead: they do not match,
+/// and the primary template stands for the rest.
+struct DeductionOptions {
+    /// Value arguments that may hold any value — defaults that do not fold:
+    /// a value pattern meeting one is undecided whatever its type.
+    llvm::ArrayRef<const clang::Expr*> open;
+
+    /// Leave a parameter the match binds nothing to null rather than fail
+    /// the deduction: a function template's defaults fill it after the
+    /// deduction from the call.
+    bool partial = false;
+};
+
 /// Deduce the arguments of `params` at its own depth by matching `patterns`
 /// against `arguments`. An unbound pack deduces as empty; any other unbound
-/// parameter fails the deduction. Default arguments are not consulted here —
-/// the caller fills them (with its own instantiation stack) before deducing.
+/// parameter fails the deduction, unless `options.partial`. Default
+/// arguments are not consulted here — the caller fills them (with its own
+/// instantiation stack) before or after deducing.
 ///
 /// After deduction, the non-deduced expression arguments and the list's
 /// associated constraints are checked with the bindings substituted: one
@@ -49,7 +73,23 @@ Deduction deduce_arguments(clang::ASTContext& context,
                            llvm::ArrayRef<clang::TemplateArgument> patterns,
                            llvm::ArrayRef<clang::TemplateArgument> arguments,
                            llvm::SmallVectorImpl<clang::TemplateArgument>& deduced,
-                           llvm::ArrayRef<const clang::Expr*> open = {});
+                           const DeductionOptions& options = {});
+
+/// Whether `arguments` may name the explicit specialization whose arguments
+/// are `specialized` without certainly naming it: they match them but for
+/// what the match leaves undecided (see DeductionOptions), `__conditional<B>`
+/// with `B` not known and `__conditional<false>`.
+bool may_name(clang::ASTContext& context,
+              llvm::ArrayRef<clang::TemplateArgument> specialized,
+              llvm::ArrayRef<clang::TemplateArgument> arguments,
+              const DeductionOptions& options = {});
+
+/// Whether `lhs` and `rhs` are one type, by their shapes: none while the
+/// template parameters in them leave it open. A type never holds itself, so
+/// a parameter is never what a pointer, a function or a class template's
+/// specialization built on it is (`K` and `pair<const K, V>`); a dependent
+/// name may be anything, the parameter included.
+std::optional<bool> same_type(clang::ASTContext& context, clang::QualType lhs, clang::QualType rhs);
 
 /// The result of select_partial: a winner, or why there is none. Real
 /// instantiation diagnoses an ambiguity (no partial dominates every other
@@ -110,15 +150,40 @@ std::optional<llvm::APSInt>
                       llvm::function_ref<std::optional<llvm::APSInt>(const clang::Expr*)> value_of);
 
 /// What a standard type-category trait `expr` spells — `std::is_object_v<T>`,
-/// `std::is_object<T>::value` or `__is_object(T)` — says of its operand,
-/// `bound` giving the operand under the caller's bindings; none when it is
-/// no such trait, or the operand's shape leaves it open (a template
-/// parameter may become any type).
-std::optional<bool> type_trait(const clang::Expr* expr,
+/// `std::is_object<T>::value` or `__is_object(T)` — says of its operand, or
+/// `__is_same(T, U)` of its two, `bound` giving an operand under the
+/// caller's bindings; none when it is no such trait, or the operands'
+/// shapes leave it open (a template parameter may become any type).
+std::optional<bool> type_trait(clang::ASTContext& context,
+                               const clang::Expr* expr,
                                llvm::function_ref<clang::QualType(clang::QualType)> bound);
 
 /// If `expr` is a (possibly parenthesized/casted) reference to a non-type
 /// template parameter, return its declaration.
 const clang::NonTypeTemplateParmDecl* referenced_nttp(const clang::Expr* expr);
+
+/// Whether some arguments for the template parameters `lhs` and `rhs` name
+/// may make the two lists the same: the gate of a deeper look, not a match
+/// — a parameter matches anything, a value or a form not compared
+/// structurally may hold anything, and a parameter named twice is not held
+/// to one argument.
+bool may_match(clang::ASTContext& context,
+               llvm::ArrayRef<clang::TemplateArgument> lhs,
+               llvm::ArrayRef<clang::TemplateArgument> rhs);
+
+/// A parameter pack an expansion pattern names.
+struct PackParameter {
+    /// Null for a canonical type parameter, which carries only its depth
+    /// and index.
+    const clang::NamedDecl* decl;
+
+    unsigned depth;
+
+    unsigned index;
+};
+
+/// The parameter packs `pattern` names — type, value and template packs —
+/// each once.
+llvm::SmallVector<PackParameter, 2> packs_in(const clang::TemplateArgument& pattern);
 
 }  // namespace clice::types

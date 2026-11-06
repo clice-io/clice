@@ -115,6 +115,25 @@ export function renderHover(hover: Hover | null, scope: RenderScope): Table {
         : { [hover.kind]: text, range: place(hover.range, scope) };
 }
 
+/// What the template resolver answers at a place: the type there resolved,
+/// the class it names, the declarations the name there finds (a call's
+/// callee: what the call may call).
+export interface Resolution {
+    type?: string | undefined;
+    record?: Location | undefined;
+    declarations: Location[];
+}
+
+export function renderResolution(resolution: Resolution, scope: RenderScope): Table {
+    return {
+        ...(resolution.type === undefined ? {} : { type: resolution.type }),
+        ...(resolution.record === undefined ? {} : { record: place(resolution.record, scope) }),
+        ...(resolution.declarations.length === 0
+            ? {}
+            : { declarations: renderLocations(resolution.declarations, scope) }),
+    };
+}
+
 export interface Diagnostic {
     location: Location;
     severity: "error" | "warning" | "information" | "hint";

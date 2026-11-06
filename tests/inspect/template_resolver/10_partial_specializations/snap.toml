@@ -1,0 +1,46 @@
+[answers.partial_specialization.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-15"
+declarations = ["using ⟦type⟧ = type_list<U2>;"]
+
+[answers.conditional_type.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T; @-10"]
+
+[answers.dependent_return_type.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T; @-10"]
+
+[answers.rvalue_ref_removal.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T; @-5"]
+
+[answers.add_pointer.template_resolver]
+type = "X *"
+declarations = ["using ⟦type⟧ = T*; @-5"]
+
+[answers.enable_if_like.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T; @-5"]
+
+[answers.void_specialization.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T; @-10"]
+
+[answers.partial_second_arg.template_resolver]
+type = "type_list<X, Y>"
+record = "struct ⟦type_list⟧ {}; @-14"
+declarations = ["using ⟦type⟧ = type_list<A, B>;"]
+
+[answers.template_id_partial.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-17"
+declarations = ["using ⟦type⟧ = type_list<T>;"]
+
+[answers.recursive_pointer_peel.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = typename strip<T>::type;"]
+
+[answers.conditional_false_type.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = F; @-5"]

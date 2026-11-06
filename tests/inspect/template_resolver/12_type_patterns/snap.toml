@@ -1,0 +1,47 @@
+[answers.dependent_array_bound.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T; @-5"]
+
+[answers.unbound_array_pattern.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = T; @-5"]
+
+[answers.const_method_pattern.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]
+
+[answers.noexcept_function_pattern.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]
+
+[answers.function_type_pattern.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = R; @-5"]
+
+[answers.member_pointer_pattern.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = R; @-5"]
+
+[answers.bool_array_bound.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]
+
+[answers.unbounded_argument.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]
+
+[answers.auto_array_bound.template_resolver]
+type = "X"
+declarations = ["using ⟦type⟧ = U; @-5"]
+
+[answers.noexcept_deduce.template_resolver]
+type = "flag<P>"
+record = "struct ⟦flag⟧ {};"
+declarations = ["using ⟦type⟧ = flag<B>;"]
+
+[answers.repeated_parameter_undecided.template_resolver]
+type = "typename same<K, V>::type"
+
+[answers.repeated_parameter_enclosing.template_resolver]
+type = "char"
+declarations = ["using ⟦type⟧ = char; @-14"]

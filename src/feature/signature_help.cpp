@@ -6,7 +6,7 @@ import :feature.documentation;
 import :feature.signature_help;
 import :semantic.decls;
 import :semantic.display;
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :semantic.types;
 import :support.markup;
 import :syntax.completion;

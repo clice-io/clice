@@ -1,0 +1,38 @@
+[answers.nttp_array_size.template_resolver]
+type = "X[3]"
+declarations = ["using ⟦type⟧ = T[N]; @-5"]
+
+[answers.multi_dim_array.template_resolver]
+type = "X[4][3]"
+declarations = ["using ⟦type⟧ = T[N][3];"]
+
+[answers.array_of_pointer.template_resolver]
+type = "X *[2]"
+declarations = ["using ⟦type⟧ = T*[N];"]
+
+[answers.function_param_pack.template_resolver]
+type = "void (X, int)"
+declarations = ["using ⟦type⟧ = void(Ts...);"]
+
+[answers.underlying_type_transform.template_resolver]
+type = "short"
+declarations = ["using ⟦type⟧ = __underlying_type(typename wrap<T>::held);"]
+
+[answers.decayed_parameter.template_resolver]
+type = "void (X *)"
+declarations = ["using ⟦type⟧ = void(T[]);"]
+
+[answers.noexcept_substitute.template_resolver]
+type = "void () noexcept(P)"
+declarations = ["using ⟦type⟧ = void() noexcept(B);"]
+
+[answers.array_size_forward.template_resolver]
+type = "X[M]"
+declarations = ["using ⟦type⟧ = T[N]; @-5"]
+
+[answers.param_decay_adjust.template_resolver]
+type = "void (int *)"
+declarations = ["using ⟦type⟧ = void(T);"]
+
+[answers.abominable_add_pointer.template_resolver]
+type = "int () const"

@@ -1,0 +1,37 @@
+[answers.non_type.completion]
+items = [
+    { label = "three", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.template_template.completion]
+items = [
+    { label = "boxed", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.explicit_specialization.completion]
+items = [
+    { label = "int_wrapped", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.partial_specialization.completion]
+items = [
+    { label = "pointed", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.qualified_scope.completion]
+items = [
+    { label = "int_wrapped", kind = "Field", detail = "int" },
+    { label = "Wrap", kind = "Class" },
+    { label = "operator=(…) +1 overload", kind = "Method" },
+    { label = "~Wrap()", kind = "Method", detail = "void" },
+]
+
+[answers.literal_value.completion]
+items = [
+    { label = "x", kind = "Field", detail = "float" },
+    { label = "template", kind = "Keyword" },
+]

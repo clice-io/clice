@@ -1,0 +1,39 @@
+[answers.non_type.hover]
+markdown = '''
+**method** `copy` · struct `Array<U, M>`
+
+```cpp
+Array<U, M> copy()
+```
+'''
+range = "a.⟦copy⟧();"
+
+[answers.type.hover]
+markdown = '''
+**method** `first` · struct `Array<U, M>`
+
+```cpp
+U first()
+```
+'''
+range = "a.⟦first⟧();"
+
+[answers.pack.hover]
+markdown = '''
+**method** `again` · struct `Pack<Cs...>`
+
+```cpp
+Pack<Cs...> again()
+```
+'''
+range = "p.⟦again⟧();"
+
+[answers.qualified.hover]
+markdown = '''
+**method** `f` · struct `X<U>`
+
+```cpp
+static int f(U value)
+```
+'''
+range = "X<U>::⟦f⟧;"

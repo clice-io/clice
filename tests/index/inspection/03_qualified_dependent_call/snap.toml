@@ -1,0 +1,28 @@
+[test."$ clice index -j 1"]
+stdout = '''
+Indexed 2 translation units in #s: 5 file shards (# KB), 8 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice index file util.h"]
+stdout = '''
+file ${WS}/util.h
+  blob=# B  content size=134  content hash=#12b0948f26b979ee
+  variants=1
+    #0a25980645716398  contributed by 2 units
+      ${WS}/a.cpp
+      ${WS}/b.cpp
+  symbols=7  local symbols=4  occurrences=11  relations=15
+    Callee=1
+    Caller=1
+    Definition=5
+    Reference=5
+    TypeDefinition=2
+    WeakReference=1
+    local #25890a58b8b270f0  kind=Parameter  name=p
+    local #7d6e12ee51f5e416  kind=Type  name=C
+    local #9857f55a4223240a  kind=Type  name=P
+    local #dc1b1b9e04b9eef6  kind=Parameter  name=c
+'''
+exit = 0

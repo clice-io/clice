@@ -1,0 +1,45 @@
+[answers.structured_pack_deduce.template_resolver]
+type = "type_list<X, Y>"
+record = "struct ⟦type_list⟧ {}; @-15"
+declarations = ["using ⟦type⟧ = type_list<Us...>;"]
+
+[answers.pack_zip_deduce.template_resolver]
+type = "type_list<X, Y, int, float>"
+record = "struct ⟦type_list⟧ {}; @-15"
+declarations = ["using ⟦type⟧ = type_list<As..., Bs...>;"]
+
+[answers.repeated_pack_element.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]
+
+[answers.pack_prefix_arity.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]
+
+[answers.mixed_pack_candidate.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]
+
+[answers.empty_pack_conflict.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]
+
+[answers.non_trailing_suffix.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int; @-6"]
+
+[answers.argument_pack_mismatch.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]
+
+[answers.template_arity_mismatch.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]
+
+[answers.repeated_value_pack.template_resolver]
+type = "int"
+declarations = ["using ⟦type⟧ = int; @-5"]
+
+[answers.non_trailing_pack.template_resolver]
+type = "void"
+declarations = ["using ⟦type⟧ = void; @-11"]

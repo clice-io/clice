@@ -1,0 +1,18 @@
+[answers.ambiguous]
+hover = {}
+
+[answers.partial.hover]
+markdown = '''
+**type** `other` · struct `X<T *>`
+
+```cpp
+using other = T
+```
+'''
+range = "typename X<T*>::⟦other⟧ kept;"
+
+[answers.partial_missing]
+hover = {}
+
+[answers.declared_only]
+hover = {}

@@ -8,7 +8,7 @@ module;
 module clice;
 
 import :semantic.decls;
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :semantic.types;
 
 namespace clice::types {
@@ -692,6 +692,18 @@ auto never_initializes(clang::ASTContext& context,
                 clang::Expr::NPCK_NotNull,
         .literal = llvm::isa<clang::StringLiteral>(argument.IgnoreParenImpCasts()),
     };
+    return never_standard(context, from, parameter) && !may_convert(context, from, parameter);
+}
+
+auto never_initializes(clang::ASTContext& context,
+                       clang::QualType type,
+                       bool lvalue,
+                       clang::QualType parameter) -> bool {
+    if(type->isDependentType() || parameter->isDependentType() || type->isPlaceholderType() ||
+       type->isUndeducedType()) {
+        return false;
+    }
+    Value from{.type = type, .lvalue = lvalue};
     return never_standard(context, from, parameter) && !may_convert(context, from, parameter);
 }
 

@@ -10,7 +10,7 @@ import :feature.documentation;
 import :index.search;
 import :semantic.display;
 import :semantic.identity;
-import :semantic.resolver;
+import :semantic.template_resolver;
 import :support.fuzzy_matcher;
 import :support.markup;
 import :syntax.completion;
@@ -1068,12 +1068,20 @@ public:
                 }
                 object = resolver.member_object(base, arrow);
                 tag = object.isNull() ? nullptr : resolver.resolve_tag(object);
-                if(auto* templated = around_template(sema.CurContext); !tag && templated) {
+                /// A class another specialization may replace once the
+                /// template is instantiated is the instantiation's to tell.
+                if(auto* templated = around_template(sema.CurContext);
+                   templated && (!tag || resolver.specializable(object))) {
                     auto* name = llvm::dyn_cast<clang::DeclRefExpr>(base->IgnoreParenImpCasts());
                     auto* var = name ? llvm::dyn_cast<clang::VarDecl>(name->getDecl()) : nullptr;
-                    return complete_instantiated(templated,
-                                                 var && var->isCXXForRangeDecl(),
-                                                 context.getPreferredType());
+                    if(complete_instantiated(templated,
+                                             var && var->isCXXForRangeDecl(),
+                                             context.getPreferredType())) {
+                        return true;
+                    }
+                    if(!tag) {
+                        return false;
+                    }
                 }
                 /// The members of a dependent specialization read its
                 /// template's parameters as its arguments.
@@ -1124,9 +1132,19 @@ public:
             }
             auto scope_type = clang::QualType(NNS.getAsType(), 0);
             auto* tag = resolver.resolve_tag(scope_type);
-            if(auto* templated = around_template(sema.CurContext); !tag && templated) {
-                return complete_instantiated(templated, false, context.getPreferredType());
+            if(auto* templated = around_template(sema.CurContext);
+               templated && (!tag || resolver.specializable(scope_type))) {
+                if(complete_instantiated(templated, false, context.getPreferredType())) {
+                    return true;
+                }
+                if(!tag) {
+                    return false;
+                }
             }
+            /// The members of a dependent specialization read its
+            /// template's parameters as its arguments.
+            display_options.specialization =
+                resolver.resolve(scope_type)->getAs<clang::TemplateSpecializationType>();
             auto* entered = llvm::dyn_cast_or_null<clang::TagDecl>(
                 sema.computeDeclContext(**spec, /*EnteringContext=*/true));
             if(!tag || same(tag, entered)) {

@@ -1,0 +1,51 @@
+[answers.pointer_type.template_resolver]
+type = "X *"
+declarations = ["using ⟦type⟧ = T*;"]
+
+[answers.reference_type.template_resolver]
+type = "X &"
+declarations = ["using ⟦type⟧ = T&; @-5"]
+
+[answers.const_qualified.template_resolver]
+type = "const X"
+declarations = ["using ⟦type⟧ = const T; @-5"]
+
+[answers.dependent_sized_array.template_resolver]
+type = "X *"
+declarations = ["using ⟦pointer⟧ = type*;"]
+
+[answers.const_pointer_member.template_resolver]
+type = "const X *"
+declarations = ["using ⟦type⟧ = const T*;"]
+
+[answers.pointer_const_member.template_resolver]
+type = "X *const"
+declarations = ["using ⟦type⟧ = T* const;"]
+
+[answers.const_ref_typedef.template_resolver]
+type = "const X &"
+declarations = ["using ⟦type⟧ = c&;"]
+
+[answers.pointer_chain_ref.template_resolver]
+type = "X **&"
+declarations = ["using ⟦type⟧ = pp&;"]
+
+[answers.reference_collapse.template_resolver]
+type = "X &"
+declarations = ["using ⟦type⟧ = T&; @-5"]
+
+[answers.member_pointer_rewrite.template_resolver]
+type = "X member_pointer_rewrite::A<X>::*"
+declarations = ["using ⟦type⟧ = T A::*;"]
+
+[answers.atomic_rewrite.template_resolver]
+type = "_Atomic(X)"
+declarations = ["using ⟦type⟧ = _Atomic(T);"]
+
+[answers.attributed_rewrite.template_resolver]
+type = "__attribute__((address_space(1))) X *"
+declarations = ["using ⟦type⟧ = T __attribute__((address_space(1)))*;"]
+
+[answers.const_reference_drop.template_resolver]
+type = "X &"
+declarations = ["using ⟦type⟧ = const T; @-6"]

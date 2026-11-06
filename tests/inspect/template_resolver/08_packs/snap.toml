@@ -1,0 +1,69 @@
+[answers.multi_element_pack.template_resolver]
+type = "type_list<int, X, Y>"
+record = "struct ⟦type_list⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = type_list<int, Us...>;"]
+
+[answers.pack_expansion.template_resolver]
+type = "type_list<Ts...>"
+record = "struct ⟦type_list⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = type_list<Us...>; @-5"]
+
+[answers.multiple_packs.template_resolver]
+type = "type_list<X, Ys...>"
+record = "struct ⟦type_list⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = type_list<T, Us...>;"]
+
+[answers.pack_leading_fixed.template_resolver]
+type = "type_list<Z, W, X, Y>"
+record = "struct ⟦type_list⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = type_list<Rest..., A, B>;"]
+
+[answers.empty_pack_deduced.template_resolver]
+type = "type_list<X>"
+record = "struct ⟦type_list⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = type_list<A, Rest...>;"]
+
+[answers.pack_through_two_layers.template_resolver]
+type = "type_list<Ts...>"
+record = "struct ⟦type_list⟧ {}; @-14"
+declarations = ["using ⟦type⟧ = typename Inner<Vs...>::type;"]
+
+[answers.mixed_pack_elements.template_resolver]
+type = "type_list<int, X, float>"
+record = "struct ⟦type_list⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = type_list<Us...>; @-5"]
+
+[answers.pack_element_cache.template_resolver]
+type = "type_list<X, int>"
+record = "struct ⟦type_list⟧ {}; @-10"
+declarations = ["using ⟦type⟧ = type_list<typename box<Ts>::type...>;"]
+
+[answers.value_pack_splice.template_resolver]
+type = "values<1, X>"
+record = "struct ⟦values⟧ {};"
+declarations = ["using ⟦type⟧ = values<Ns...>;"]
+
+[answers.template_pack_expansion.template_resolver]
+type = "type_list<TX<int>, box<int>>"
+record = "struct ⟦type_list⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = type_list<Fs<int>...>;"]
+
+[answers.pack_pattern_expansion.template_resolver]
+type = "type_list<box<X>, box<int>>"
+record = "struct ⟦type_list⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = type_list<box<Us>...>;"]
+
+[answers.alias_pack_expanded.template_resolver]
+type = "type_list<X, int>"
+record = "struct ⟦type_list⟧ {}; @-12"
+declarations = ["using ⟦type⟧ = listify<Us...>;"]
+
+[answers.template_expansion_splice.template_resolver]
+type = "tlist<TX, box>"
+record = "struct ⟦tlist⟧ {};"
+declarations = ["using ⟦type⟧ = tlist<Fs...>;"]
+
+[answers.value_pack_expansion.template_resolver]
+type = "type_list<value<X>, value<2>>"
+record = "struct ⟦type_list⟧ {}; @-9"
+declarations = ["using ⟦type⟧ = type_list<value<Ns>...>;"]

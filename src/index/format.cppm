@@ -112,8 +112,10 @@ namespace clice::index {
 /// macros of the compiler and the command line; v55: a preamble's TU index
 /// carries no names, which completion reads from the files a compile loads;
 /// v56: the search index splits a name into words where digits follow a
-/// letter.
-constexpr inline std::uint32_t index_format_version = 56;
+/// letter; v57: the template resolver answers dependent names, calls and
+/// patterns as instantiation would, and a header records of a dependent
+/// call's overload set the candidates it sees on its own.
+constexpr inline std::uint32_t index_format_version = 57;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it, so one past it stops the
