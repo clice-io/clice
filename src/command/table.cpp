@@ -41,13 +41,17 @@ llvm::StringRef language_state_at_slot(llvm::ArrayRef<Arg> args) {
 
 /// Whether the command writes a precompiled header: it compiles its input
 /// as a header (`-x c++-header`) — as CMake builds a target's precompiled
-/// headers from `cmake_pch.hxx.cxx` — or emits a PCH.
+/// headers from `cmake_pch.hxx.cxx` — or emits a PCH, and does not only
+/// check its syntax (Bazel's header parsing).
 bool writes_pch(llvm::ArrayRef<Arg> args) {
     namespace types = clang::driver::types;
+    auto has = [&](unsigned id) {
+        return ranges::any_of(args, [&](const Arg& arg) { return arg.opt_id == id; });
+    };
     auto type = types::lookupTypeForTypeSpecifier(language_state_at_slot(args).str().c_str());
-    return (type != types::TY_INVALID && types::onlyPrecompileType(type)) ||
-           ranges::any_of(args,
-                          [](const Arg& arg) { return arg.opt_id == clang_options::OPT_emit_pch; });
+    return ((type != types::TY_INVALID && types::onlyPrecompileType(type)) ||
+            has(clang_options::OPT_emit_pch)) &&
+           !has(clang_options::OPT_fsyntax_only);
 }
 
 /// Whether the driver compiles C inputs as C++, as `g++` and `clang++` do

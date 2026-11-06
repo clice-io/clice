@@ -319,11 +319,12 @@ echo '{2}' >&2
 }
 
 ZEST_CASE(ClangJobCleaned, skip = Windows) {
-    /// What only the query asked for goes, and so does what the linked cc1
-    /// cannot take: a newer clang's flag with its value, a codegen flag's
-    /// newer value, a CPU name the target does not know.
+    /// What only the query asked for goes — zig's dependency output among
+    /// it —, and so does what the linked cc1 cannot take: a newer clang's
+    /// flag with its value, a codegen flag's newer value, a CPU name the
+    /// target does not know.
     auto driver = fake_clang(
-        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-E" "-dM" "-v" "-main-file-name" "query.cpp" "-clice-future-flag" "val" "-mframe-pointer=non-leaf-no-reserve" "-target-cpu" "clice-future-cpu" "-fmodules-reduced-bmi" "-fmodule-output=/tmp/query.pcm" "-o" "-" "-x" "c++" "/tmp/query.cpp")");
+        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-E" "-dM" "-v" "-main-file-name" "query.cpp" "-clice-future-flag" "val" "-mframe-pointer=non-leaf-no-reserve" "-target-cpu" "clice-future-cpu" "-fmodules-reduced-bmi" "-fmodule-output=/tmp/query.pcm" "-dependency-file" "/tmp/zig/query.d" "-MT" "query.o" "-sys-header-deps" "-MV" "-o" "-" "-x" "c++" "/tmp/query.cpp")");
     auto argv = f.resolve(add("dir/a.cpp", {driver.c_str()}));
 
     ZEXPECT(contains(argv, "-fmodules-reduced-bmi"));
@@ -341,6 +342,10 @@ ZEST_CASE(ClangJobCleaned, skip = Windows) {
         ZEXPECT(!arg.starts_with("-mframe-pointer"));
         ZEXPECT(!arg.starts_with("-fmodule-output"));
         ZEXPECT(!arg.ends_with("query.cpp"));
+        ZEXPECT(arg != "-dependency-file");
+        ZEXPECT(arg != "-MT");
+        ZEXPECT(arg != "-sys-header-deps");
+        ZEXPECT(arg != "-MV");
     }
     /// The command names no standard: the one the driver compiles in.
     ZEXPECT(contains(argv, "-std=gnu++14"));

@@ -196,6 +196,9 @@ ZEST_CASE(PCHWriterKeepsOutput) {
                          "clang++ -Xclang -emit-pch -o first.pch -o b.pch -c b.cpp"sv);
     database.add_command("/fake", "c.cpp", "clang++ -o c.o -c c.cpp"sv);
     database.add_command("/fake", "d.cpp", "clang++ -o d.o -c d.cpp"sv);
+    database.add_command("/fake",
+                         "e.h",
+                         "clang++ -x c++-header -fsyntax-only -o e.h.processed e.h"sv);
     auto command = [&](llvm::StringRef file) {
         return database.candidate_entries(fake(file)).front().command;
     };
@@ -206,6 +209,7 @@ ZEST_CASE(PCHWriterKeepsOutput) {
     ZEXPECT(writes("a.cxx", "a.pch"));
     ZEXPECT(writes("b.cpp", "b.pch"));
     ZEXPECT(!commands.pch_output(command("c.cpp")).has_value());
+    ZEXPECT(!commands.pch_output(command("e.h")).has_value());
     ZEXPECT(command("c.cpp") == command("d.cpp"));
 };
 

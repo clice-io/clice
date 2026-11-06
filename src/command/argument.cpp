@@ -240,7 +240,12 @@ bool is_discarded_option(unsigned id) {
         case OPT__SLASH_Yu:
         case OPT__SLASH_Fp:
 
-        /// Dependency scan.
+        /// Dependency scan, and the frontend's dependency output a driver
+        /// passes on (zig asks for its cache's: `-dependency-file` needs the
+        /// -MT that goes with the group).
+        case OPT_dependency_file:
+        case OPT_dependency_dot:
+        case OPT_sys_header_deps:
         case OPT_E:
         case OPT_show_inst:
         case OPT_show_encoding:
