@@ -406,18 +406,23 @@ int use() { return Alpha_value() + Beta; }
 };
 
 ZEST_CASE(GuessesIntoHeldHeaders) {
-    // impl.h's template finds `helper` through user.h, which includes the
+    // impl.h's template finds `Traits` through user.h, which includes the
     // header the PCH holds that declares it.
     TempDir tmp;
     tmp.touch("shared.hxx", "#pragma once\n#include \"decl.h\"\n");
     tmp.touch("decl.h", "#pragma once\n#include \"helpers.h\"\n");
-    tmp.touch("helpers.h", "#pragma once\nvoid helper(int);\n");
+    tmp.touch("helpers.h", R"cpp(#pragma once
+template <typename T>
+struct Traits {
+    using type = T;
+};
+)cpp");
     tmp.touch("impl.h", R"cpp(#pragma once
 template <typename T>
-void call(T value) { helper(value); }
+typename Traits<T>::type convert(T value) { return value; }
 )cpp");
     tmp.touch("user.h", "#pragma once\n#include \"decl.h\"\n#include \"impl.h\"\n");
-    tmp.touch("main.cpp", "#include \"user.h\"\nvoid use() { call(1); }\n");
+    tmp.touch("main.cpp", "#include \"user.h\"\nint use() { return convert(1); }\n");
     auto pch = tmp.path("shared.pch");
     auto shared = build_shared(tmp, pch);
     ZASSERT(shared);
@@ -429,7 +434,7 @@ void call(T value) { helper(value); }
     auto in_over = section_of(over, "impl.h");
     ZASSERT(in_walked);
     ZASSERT(in_over);
-    ZEXPECT(guessed(walked, *in_walked) == std::vector<std::string>{"helper(int)"});
+    ZEXPECT(guessed(walked, *in_walked) == std::vector<std::string>{"type"});
     ZEXPECT(guessed(over, *in_over) == guessed(walked, *in_walked));
     ZEXPECT(over.section_identity(*in_over) == walked.section_identity(*in_walked));
 };

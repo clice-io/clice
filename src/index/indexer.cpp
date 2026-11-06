@@ -1917,7 +1917,11 @@ public:
         if(!declared) {
             return true;
         }
+        auto* module = decl->getOwningModule();
         auto sees = [&](clang::FileID from) {
+            if(module && module->isNamedModule()) {
+                return reach(from).modules.contains(module->getTopLevelModuleName());
+            }
             const auto& closure = closure_of(from);
             return ranges::any_of(*declared, [&](std::uint32_t slot) {
                 return slot < closure.size() && closure.test(slot);
@@ -2166,9 +2170,14 @@ public:
         if(!has_file(fid)) {
             return 0;
         }
+        // What a module the closure imports declares changes with no text
+        // of the closure: such a file is the unit's alone.
         auto with_closure = [&](clang::FileID file) -> std::uint64_t {
             auto own = own_identity(file);
-            return own == 0 ? 0 : combine(own, closure_text(file));
+            if(own == 0 || !reach(file).modules.empty()) {
+                return 0;
+            }
+            return combine(own, closure_text(file));
         };
         auto identity = with_closure(fid);
         auto& SM = unit.context().getSourceManager();

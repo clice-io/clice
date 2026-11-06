@@ -270,9 +270,9 @@ ZEST_CASE(NamesOfTheIncluder) {
 };
 
 ZEST_CASE(GuessesStayInClosure) {
-    // impl.h names no header: what declares `helper` for its template comes
-    // from the file including it. other.h, included before by the unit
-    // alone, declares an overload impl.h never sees elsewhere.
+    // impl.h names no header: `helper`, declared by the file including it
+    // and by other.h before that, is no candidate it sees on its own, and
+    // its identity takes in no includer.
     TempDir tmp;
     tmp.touch("impl.h", R"cpp(#pragma once
 template <typename T>
@@ -288,10 +288,9 @@ void helper(int);
     auto view = index::TUIndex::from_bytes(data);
     auto impl = section_of(view, "impl.h");
     ZASSERT(impl);
-    ZEXPECT(guessed(view, *impl) == std::vector<std::string>{"helper(int)"});
+    ZEXPECT(guessed(view, *impl).empty());
     auto known = view.section_identity(*impl);
-    ZEXPECT(known.reach == 1U);
-    ZEXPECT(known.identity != known.own);
+    ZEXPECT(known.reach == 0U);
 };
 
 ZEST_CASE(LocalsOfUnwalkedHeaders) {
