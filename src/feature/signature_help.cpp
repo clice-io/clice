@@ -57,40 +57,50 @@ bool object_written(clang::Sema& sema, clang::SourceLocation open_paren) {
     return access && access->isOneOf(clang::tok::period, clang::tok::arrow);
 }
 
-/// Whether `open_paren`, whose candidates construct `built`, follows a name
-/// a namespace scope declares (`Widget make(`, `Widget Factory::build(`)
-/// rather than the class itself (`Widget(`): a variable the constructor
-/// builds, as clang takes it, or as well a function.
-bool declares_at_namespace_scope(clang::Sema& sema,
-                                 clang::SourceLocation open_paren,
-                                 const clang::RecordDecl& built) {
+/// Whether `open_paren` follows a name a namespace scope declares, `Widget
+/// make(` or `Widget Factory::build(`: a type ends right before the name
+/// and its qualifiers, where an expression naming a class has an operator
+/// (`= Widget(`, `= std::string(`, `new Widget(`).
+bool declares_at_namespace_scope(clang::Sema& sema, clang::SourceLocation open_paren) {
     auto name = token_before(sema, open_paren);
-    return name && name->is(clang::tok::raw_identifier) &&
-           name->getRawIdentifier() != built.getName() &&
-           sema.CurContext->getRedeclContext()->isFileContext();
+    if(!name || !name->is(clang::tok::raw_identifier) ||
+       !sema.CurContext->getRedeclContext()->isFileContext()) {
+        return false;
+    }
+    auto before = token_before(sema, name->getLocation());
+    while(before && before->is(clang::tok::coloncolon)) {
+        auto qualifier = token_before(sema, before->getLocation());
+        if(!qualifier || !qualifier->is(clang::tok::raw_identifier)) {
+            before = qualifier;
+            break;
+        }
+        before = token_before(sema, qualifier->getLocation());
+    }
+    if(before && before->is(clang::tok::raw_identifier)) {
+        return before->getRawIdentifier() != "new";
+    }
+    return before && before->isOneOf(clang::tok::greater,
+                                     clang::tok::star,
+                                     clang::tok::amp,
+                                     clang::tok::ampamp);
 }
 
-/// The class a call's candidates construct; null when they are no
-/// constructors.
-const clang::RecordDecl*
-    constructed(llvm::ArrayRef<clang::CodeCompleteConsumer::OverloadCandidate> candidates) {
-    if(candidates.empty()) {
-        return nullptr;
-    }
-    auto& first = candidates.front();
-    if(first.getKind() == clang::CodeCompleteConsumer::OverloadCandidate::CK_Aggregate) {
-        return first.getAggregate();
-    }
-    const auto* constructor =
-        llvm::dyn_cast_or_null<clang::CXXConstructorDecl>(first.getFunction());
-    return constructor ? constructor->getParent() : nullptr;
+/// Whether a call's candidates construct a class.
+bool constructs(llvm::ArrayRef<clang::CodeCompleteConsumer::OverloadCandidate> candidates) {
+    return !candidates.empty() &&
+           (candidates.front().getKind() ==
+                clang::CodeCompleteConsumer::OverloadCandidate::CK_Aggregate ||
+            llvm::isa_and_present<clang::CXXConstructorDecl>(candidates.front().getFunction()));
 }
 
 /// Whether anything but its closing parenthesis follows `open_paren`,
 /// before or after the completion point.
 bool holds_argument(clang::Sema& sema, clang::SourceLocation open_paren) {
-    auto token =
-        clang::Lexer::findNextToken(open_paren, sema.getSourceManager(), sema.getLangOpts());
+    auto& sources = sema.getSourceManager();
+    if(sources.isMacroArgExpansion(open_paren)) {
+        open_paren = sources.getSpellingLoc(open_paren);
+    }
+    auto token = clang::Lexer::findNextToken(open_paren, sources, sema.getLangOpts());
     return token && !token->isOneOf(clang::tok::r_paren, clang::tok::eof);
 }
 
@@ -371,6 +381,13 @@ bool passes_pack(llvm::ArrayRef<const clang::Expr*> args, const clang::ParmVarDe
     }
     const auto* arg = expansion->getPattern()->IgnoreParenImpCasts();
     if(const auto* cast = llvm::dyn_cast<clang::ExplicitCastExpr>(arg)) {
+        // `static_cast<Args&&>(args)` forwards; a cast to another type
+        // passes on no argument as written.
+        const auto* expanded = pack->getType()->getAs<clang::PackExpansionType>();
+        if(!expanded || cast->getTypeAsWritten().getNonReferenceType().getCanonicalType() !=
+                            expanded->getPattern().getNonReferenceType().getCanonicalType()) {
+            return false;
+        }
         arg = cast->getSubExpr()->IgnoreParenImpCasts();
     } else if(const auto* call = llvm::dyn_cast<clang::CallExpr>(arg);
               call && call->getNumArgs() == 1) {
@@ -596,10 +613,8 @@ public:
         }
         // Clang takes `Widget make(` for a variable its constructor builds:
         // until an argument is written, a function declaration reads alike.
-        if(const auto* built = constructed({candidates, candidate_count});
-           built && current_arg == 0 && !braced &&
-           declares_at_namespace_scope(sema, open_paren, *built) &&
-           !holds_argument(sema, open_paren)) {
+        if(current_arg == 0 && !braced && constructs({candidates, candidate_count}) &&
+           declares_at_namespace_scope(sema, open_paren) && !holds_argument(sema, open_paren)) {
             return;
         }
 

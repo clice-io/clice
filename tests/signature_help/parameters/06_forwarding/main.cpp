@@ -78,6 +78,11 @@ T* adopt(Args&&... args) {
     return new T(std::forward<Args>(args)...);
 }
 
+template <typename T, typename... Args>
+T* narrowed(Args&&... args) {
+    return new T(static_cast<int>(args)...);
+}
+
 struct Pool {
     template <typename T, typename... Args>
     T* create(Args&&... args) {
@@ -118,6 +123,7 @@ Widget built = build<Widget>(§(braced_variable)800, 600);
 Widget* aliased = renamed<Widget>(§(local_alias)800, 600);
 Widget* local = derived<Widget>(§(local_class)800, 600);
 Widget* marked = tagged<1, 2>(§(non_type_pack)800, 600);
+Widget* narrow = narrowed<Widget>(§(converting_cast)800, 600);
 Handle* handle = adopt<Handle>(§(friend_factory)7);
 
 void fill(Slot<Widget>& slot, Pool& pool) {

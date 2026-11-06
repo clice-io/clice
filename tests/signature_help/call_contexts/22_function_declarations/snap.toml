@@ -13,6 +13,26 @@ active = 0
 signatures = ["Widget(⟦int width⟧, double scale)", "Widget(⟦const Widget &⟧)", "Widget(⟦Widget &&⟧)"]
 active = 0
 
+[answers.class_expression.signature_help]
+signatures = ["Gauge()", "Gauge(⟦int level⟧)", "Gauge(⟦const Gauge &⟧)", "Gauge(⟦Gauge &&⟧)"]
+active = 0
+
+[answers.alias_expression.signature_help]
+signatures = ["Gauge()", "Gauge(⟦int level⟧)", "Gauge(⟦const Gauge &⟧)", "Gauge(⟦Gauge &&⟧)"]
+active = 0
+
+[answers.qualified_alias.signature_help]
+signatures = ["Gauge()", "Gauge(⟦int level⟧)", "Gauge(⟦const Gauge &⟧)", "Gauge(⟦Gauge &&⟧)"]
+active = 0
+
+[answers.new_expression.signature_help]
+signatures = ["Gauge()", "Gauge(⟦int level⟧)", "Gauge(⟦const Gauge &⟧)", "Gauge(⟦Gauge &&⟧)"]
+active = 0
+
+[answers.macro_argument.signature_help]
+signatures = ["Widget(⟦int width⟧, double scale)", "Widget(⟦const Widget &⟧)", "Widget(⟦Widget &&⟧)"]
+active = 0
+
 [answers.class_scope.signature_help]
 signatures = []
 

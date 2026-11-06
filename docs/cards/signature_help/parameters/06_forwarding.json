@@ -13,96 +13,102 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "#include <memory>\n\nstruct Widget {\n    Widget(int width, int height);\n};\n\nclass Socket {\npublic:\n    template <typename... Args>\n    static Socket* open(Args&&... args) {\n        return new Socket(std::forward<Args>(args)...);\n    }\n\nprivate:\n    Socket(int port);\n};\n\ntemplate <typename T, typename... Args>\nT* make(Args&&... args) {\n    return new T(static_cast<Args&&>(args)...);\n}\n\ntemplate <typename T, typename... Args>\nstd::unique_ptr<T> wrap(Args&&... args) {\n    return std::make_unique<T>(std::forward<Args>(args)...);\n}\n\ntemplate <typename T, typename... Args>\nT construct(Args&&... args) {\n    return T(std::forward<Args>(args)...);\n}\n\ntemplate <typename T, typename... Args>\nT create(Args&&... args) {\n    return T{std::forward<Args>(args)...};\n}\n\ntemplate <typename T, typename... Args>\nT keep(Args&&... args) {\n    T value(std::forward<Args>(args)...);\n    return value;\n}\n\ntemplate <typename T, typename... Args>\nT build(Args&&... args) {\n    T value{std::forward<Args>(args)...};\n    return value;\n}\n\ntemplate <typename T, typename... Args>\nT* renamed(Args&&... args) {\n    using Built = T;\n    return new Built(std::forward<Args>(args)...);\n}\n\ntemplate <typename Base, typename... Args>\nBase* derived(Args&&... args) {\n    struct Local : Base {\n        using Base::Base;\n    };\n    return new Local(std::forward<Args>(args)...);\n}\n\ntemplate <int... Tags, typename... Args>\nWidget* tagged(Args&&... args) {\n    return new Widget(std::forward<Args>(args)...);\n}\n\nclass Handle {\n    Handle(int id);\n\n    template <typename T, typename... Args>\n    friend T* adopt(Args&&... args);\n};\n\ntemplate <typename T, typename... Args>\nT* adopt(Args&&... args) {\n    return new T(std::forward<Args>(args)...);\n}\n\nstruct Pool {\n    template <typename T, typename... Args>\n    T* create(Args&&... args) {\n        return new T(std::forward<Args>(args)...);\n    }\n};\n\ntemplate <typename T>\nclass Slot {\npublic:\n    template <typename... Args>\n    T& emplace(Args&&... args) {\n        return *new (storage) T(std::forward<Args>(args)...);\n    }\n\nprivate:\n    alignas(T) unsigned char storage[sizeof(T)];\n};\n\ntemplate <typename... Ts>\nstruct Saved {\n    Saved(Ts... values);\n};\n\ntemplate <typename... Args>\nvoid record(Args&&... args) {\n    Saved<Args...> saved(std::forward<Args>(args)...);\n}\n\nWidget* widget = make<Widget>(800, 600);\nWidget* second = make<Widget>(800, 600);\nSocket* socket = Socket::open(80);\nstd::unique_ptr<Widget> owned = wrap<Widget>(800, 600);\nWidget constructed = construct<Widget>(800, 600);\nWidget created = create<Widget>(800, 600);\nWidget kept = keep<Widget>(800, 600);\nWidget built = build<Widget>(800, 600);\nWidget* aliased = renamed<Widget>(800, 600);\nWidget* local = derived<Widget>(800, 600);\nWidget* marked = tagged<1, 2>(800, 600);\nHandle* handle = adopt<Handle>(7);\n\nvoid fill(Slot<Widget>& slot, Pool& pool) {\n    pool.create<Widget>(800, 600);\n    slot.emplace(800, 600);\n    record(800, 600);\n}\n",
+      "text": "#include <memory>\n\nstruct Widget {\n    Widget(int width, int height);\n};\n\nclass Socket {\npublic:\n    template <typename... Args>\n    static Socket* open(Args&&... args) {\n        return new Socket(std::forward<Args>(args)...);\n    }\n\nprivate:\n    Socket(int port);\n};\n\ntemplate <typename T, typename... Args>\nT* make(Args&&... args) {\n    return new T(static_cast<Args&&>(args)...);\n}\n\ntemplate <typename T, typename... Args>\nstd::unique_ptr<T> wrap(Args&&... args) {\n    return std::make_unique<T>(std::forward<Args>(args)...);\n}\n\ntemplate <typename T, typename... Args>\nT construct(Args&&... args) {\n    return T(std::forward<Args>(args)...);\n}\n\ntemplate <typename T, typename... Args>\nT create(Args&&... args) {\n    return T{std::forward<Args>(args)...};\n}\n\ntemplate <typename T, typename... Args>\nT keep(Args&&... args) {\n    T value(std::forward<Args>(args)...);\n    return value;\n}\n\ntemplate <typename T, typename... Args>\nT build(Args&&... args) {\n    T value{std::forward<Args>(args)...};\n    return value;\n}\n\ntemplate <typename T, typename... Args>\nT* renamed(Args&&... args) {\n    using Built = T;\n    return new Built(std::forward<Args>(args)...);\n}\n\ntemplate <typename Base, typename... Args>\nBase* derived(Args&&... args) {\n    struct Local : Base {\n        using Base::Base;\n    };\n    return new Local(std::forward<Args>(args)...);\n}\n\ntemplate <int... Tags, typename... Args>\nWidget* tagged(Args&&... args) {\n    return new Widget(std::forward<Args>(args)...);\n}\n\nclass Handle {\n    Handle(int id);\n\n    template <typename T, typename... Args>\n    friend T* adopt(Args&&... args);\n};\n\ntemplate <typename T, typename... Args>\nT* adopt(Args&&... args) {\n    return new T(std::forward<Args>(args)...);\n}\n\ntemplate <typename T, typename... Args>\nT* narrowed(Args&&... args) {\n    return new T(static_cast<int>(args)...);\n}\n\nstruct Pool {\n    template <typename T, typename... Args>\n    T* create(Args&&... args) {\n        return new T(std::forward<Args>(args)...);\n    }\n};\n\ntemplate <typename T>\nclass Slot {\npublic:\n    template <typename... Args>\n    T& emplace(Args&&... args) {\n        return *new (storage) T(std::forward<Args>(args)...);\n    }\n\nprivate:\n    alignas(T) unsigned char storage[sizeof(T)];\n};\n\ntemplate <typename... Ts>\nstruct Saved {\n    Saved(Ts... values);\n};\n\ntemplate <typename... Args>\nvoid record(Args&&... args) {\n    Saved<Args...> saved(std::forward<Args>(args)...);\n}\n\nWidget* widget = make<Widget>(800, 600);\nWidget* second = make<Widget>(800, 600);\nSocket* socket = Socket::open(80);\nstd::unique_ptr<Widget> owned = wrap<Widget>(800, 600);\nWidget constructed = construct<Widget>(800, 600);\nWidget created = create<Widget>(800, 600);\nWidget kept = keep<Widget>(800, 600);\nWidget built = build<Widget>(800, 600);\nWidget* aliased = renamed<Widget>(800, 600);\nWidget* local = derived<Widget>(800, 600);\nWidget* marked = tagged<1, 2>(800, 600);\nWidget* narrow = narrowed<Widget>(800, 600);\nHandle* handle = adopt<Handle>(7);\n\nvoid fill(Slot<Widget>& slot, Pool& pool) {\n    pool.create<Widget>(800, 600);\n    slot.emplace(800, 600);\n    record(800, 600);\n}\n",
       "markers": [
         {
           "name": "forwarded",
-          "begin": 2323,
-          "end": 2323,
+          "begin": 2441,
+          "end": 2441,
           "range": false
         },
         {
           "name": "second_argument",
-          "begin": 2369,
-          "end": 2369,
+          "begin": 2487,
+          "end": 2487,
           "range": false
         },
         {
           "name": "private_constructor",
-          "begin": 2405,
-          "end": 2405,
+          "begin": 2523,
+          "end": 2523,
           "range": false
         },
         {
           "name": "through_make_unique",
-          "begin": 2455,
-          "end": 2455,
+          "begin": 2573,
+          "end": 2573,
           "range": false
         },
         {
           "name": "parenthesized_expression",
-          "begin": 2505,
-          "end": 2505,
+          "begin": 2623,
+          "end": 2623,
           "range": false
         },
         {
           "name": "braced_expression",
-          "begin": 2548,
-          "end": 2548,
+          "begin": 2666,
+          "end": 2666,
           "range": false
         },
         {
           "name": "parenthesized_variable",
-          "begin": 2586,
-          "end": 2586,
+          "begin": 2704,
+          "end": 2704,
           "range": false
         },
         {
           "name": "braced_variable",
-          "begin": 2626,
-          "end": 2626,
+          "begin": 2744,
+          "end": 2744,
           "range": false
         },
         {
           "name": "local_alias",
-          "begin": 2671,
-          "end": 2671,
+          "begin": 2789,
+          "end": 2789,
           "range": false
         },
         {
           "name": "local_class",
-          "begin": 2714,
-          "end": 2714,
+          "begin": 2832,
+          "end": 2832,
           "range": false
         },
         {
           "name": "non_type_pack",
-          "begin": 2755,
-          "end": 2755,
+          "begin": 2873,
+          "end": 2873,
+          "range": false
+        },
+        {
+          "name": "converting_cast",
+          "begin": 2918,
+          "end": 2918,
           "range": false
         },
         {
           "name": "friend_factory",
-          "begin": 2797,
-          "end": 2797,
+          "begin": 2960,
+          "end": 2960,
           "range": false
         },
         {
           "name": "member_factory",
-          "begin": 2870,
-          "end": 2870,
+          "begin": 3033,
+          "end": 3033,
           "range": false
         },
         {
           "name": "class_template_member",
-          "begin": 2898,
-          "end": 2898,
+          "begin": 3061,
+          "end": 3061,
           "range": false
         },
         {
           "name": "own_types",
-          "begin": 2920,
-          "end": 2920,
+          "begin": 3083,
+          "end": 3083,
           "range": false
         }
       ]
@@ -262,6 +268,18 @@
                 "tagged(⟦int width⟧, int height) -> Widget *",
                 "tagged(⟦const Widget &⟧) -> Widget *",
                 "tagged(⟦Widget &&⟧) -> Widget *"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "converting_cast",
+          "marker": "converting_cast",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "narrowed(⟦Args &&...args⟧) -> T *"
               ],
               "active": 0
             }

@@ -74,6 +74,10 @@ signatures = [
 ]
 active = 0
 
+[answers.converting_cast.signature_help]
+signatures = ["narrowed(⟦Args &&...args⟧) -> T *"]
+active = 0
+
 [answers.friend_factory.signature_help]
 signatures = ["adopt(⟦int id⟧) -> Handle *", "adopt(⟦const Handle &⟧) -> Handle *", "adopt(⟦Handle &&⟧) -> Handle *"]
 active = 0
