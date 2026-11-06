@@ -36,7 +36,7 @@ The common root cause of these problems is the lack of a compilation scheduling 
 
 The task graph itself is deliberately thin: it knows about nodes, edges, interest, attempts, and invalidation — and nothing about what a node builds. What a node _means_ is defined by its **kind**:
 
-- **PCM nodes**: one per module, edges are `import` relationships. This is where all module-specific policy lives.
+- **PCM nodes**: one per module and command it is built under, edges are `import` relationships. This is where all module-specific policy lives.
 - **PCH nodes**: one per preamble content key — files whose preambles are identical share one node and one build.
 - **AST nodes**: one per open document, producing the published feature results. The node's generation is the document's freshness: its compile describes the buffer while the generation is the one the compile ran at.
 - **Unit nodes**: one per translation unit compiled on a stateless worker for its index or its lint, shared by background indexing and batch lint.
@@ -95,6 +95,8 @@ Each node uses a dirty flag to indicate that a rebuild is needed. The generation
 A node's edges are the ones its sources declare and the ones its last successful attempt waited on. A module's import scan declares its imports as its edges before it builds, and they stay its edges through a failed build — otherwise fixing or providing an import could never reach the module that failed on it; a plain source declares its imports on its own AST node. Every node a successful attempt waited on (its imports, the PCH it read) becomes an edge too, and an attempt's waits count for invalidation from the moment it starts waiting. Reverse edges are the basis for cascading notifications on file changes — starting from the modified module, following reverse edges finds all affected nodes.
 
 The module name to file mapping is maintained by DependencyGraph (see [Dependency Scanning](dependency-scanning.md)) — the startup fast scan discovers all module declarations and builds a module name → file path registry. A PCM node's builds use this registry to resolve `import` statements to concrete file paths. When several units declare one module name, an import resolves to the nearest of them — the fewest directories up from the importing file — and the importer shows a warning naming the others.
+
+A build system may compile one module unit several ways: CMake lists a module once for each set of its importers' language flags, and a project with several build directories lists it once per configuration. Clang reads a PCM only into a compile whose language options and target match those the PCM was built with — the standard, `-pthread`, `-fno-rtti` and the like, never the macros. So an import reads the module's build under its own command when the importer's compile matches it, else its build under the first other database entry that does, which is a node of its own; when no entry matches, the import reads the build under the module's own command, and the compile reports clang's reason for refusing it rather than reading a build no entry describes. A module unit is indexed by its build under its own command alone.
 
 ## Implementation
 

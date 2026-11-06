@@ -46,4 +46,34 @@ std::unique_ptr<clang::CompilerInvocation>
     return invocation;
 }
 
+std::uint64_t module_compatibility(const clang::CompilerInvocation& invocation) {
+    using Kind = clang::LangOptions::CompatibilityKind;
+    auto& language = invocation.getLangOpts();
+    llvm::SmallVector<std::uint64_t, 256> values;
+#define LANGOPT(Name, Bits, Default, Compatibility, Description)                                   \
+    if constexpr(Kind::Compatibility == Kind::NotCompatible) {                                     \
+        values.push_back(language.Name);                                                           \
+    }
+#define ENUM_LANGOPT(Name, Type, Bits, Default, Compatibility, Description)                        \
+    if constexpr(Kind::Compatibility == Kind::NotCompatible) {                                     \
+        values.push_back(static_cast<std::uint64_t>(language.get##Name()));                        \
+    }
+#include "clang/Basic/LangOptions.def"
+
+    std::string buffer(reinterpret_cast<const char*>(values.data()),
+                       values.size() * sizeof(std::uint64_t));
+    auto& target = invocation.getTargetOpts();
+    llvm::SmallVector<llvm::StringRef> features(target.FeaturesAsWritten.begin(),
+                                                target.FeaturesAsWritten.end());
+    ranges::sort(features);
+    auto append = [&](llvm::StringRef part) {
+        buffer += part;
+        buffer += '\0';
+    };
+    append(target.Triple);
+    append(target.ABI);
+    ranges::for_each(features, append);
+    return llvm::xxh3_64bits(buffer);
+}
+
 }  // namespace clice

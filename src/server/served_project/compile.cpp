@@ -38,7 +38,7 @@ static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TU
 }
 
 /// Why each import that failed to build did not.
-static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<Fid> imports,
+static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<NodeId> imports,
                                                            const Project& project) {
     std::vector<feature::ModuleFailure> failures;
     for(auto module: imports) {
@@ -216,23 +216,22 @@ void ServedProject::retry_after_save(Session& session) {
     // so a save retries its failed preamble too. Either refusal leaves the
     // compile standing, so only a fresh attempt asks for the PCH or PCM again.
     bool retry = session.crash_record(feature::RequestKind::PCM) != nullptr;
-    llvm::SmallVector<Fid> modules{session.path_id};
-    llvm::DenseSet<Fid> seen{session.path_id};
+    llvm::SmallVector<NodeId> modules{module_node(session.path_id)};
+    llvm::DenseSet<NodeId> seen{modules.front()};
     auto add_imports = [&](NodeId importer) {
         for(auto dep: project.graph.dependencies(importer)) {
             if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {
                 continue;
             }
-            auto module = dep.file();
-            if(seen.insert(module).second) {
-                modules.push_back(module);
+            if(seen.insert(dep).second) {
+                modules.push_back(dep);
             }
         }
     };
     add_imports(ast_node(session.path_id));
     for(std::size_t i = 0; i < modules.size(); i += 1) {
         retry |= project.forget_build_failure(modules[i]);
-        add_imports(module_node(modules[i]));
+        add_imports(modules[i]);
     }
     // A PCH that kept its preamble's errors misses the same lookups as a
     // failed build: a save rebuilds it.
@@ -314,7 +313,7 @@ void ServedProject::each_input(Fid path_id, llvm::function_ref<void(const Inputs
         if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {
             continue;
         }
-        if(auto* inputs = project.module_inputs(dep.file())) {
+        if(auto* inputs = project.module_inputs(dep)) {
             visit(*inputs);
         }
     }

@@ -3,6 +3,7 @@ module clice;
 import :feature.diagnostics;
 import :index.format;
 import :project.command;
+import :project.graph.pcm;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :project.graph.unit;
@@ -67,6 +68,10 @@ struct SavedPCM {
     std::optional<std::string> blob;
 
     std::uint32_t source_file;
+
+    /// The entry the PCM was built under (module_node); absent for the
+    /// unit's own command.
+    std::optional<std::uint32_t> variant;
 
     std::string module_name;
 
@@ -275,14 +280,17 @@ std::string Project::serialize_precompiled_records() {
         data.pch.push_back(std::move(entry));
     }
 
-    for(auto& [path_id, st]: pcms) {
+    for(auto& [module, st]: pcms) {
         if(st.path.empty())
             continue;
         SavedPCM entry;
         entry.key = st.key;
         entry.blob = st.blob;
-        entry.source_file = intern(path_id);
-        entry.module_name = dep_graph.module_of(path_id).str();
+        entry.source_file = intern(module.file());
+        if(auto variant = module_variant(module)) {
+            entry.variant = variant;
+        }
+        entry.module_name = dep_graph.module_of(module.file()).str();
         dump_deps(st.inputs, entry.deps);
         data.pcm.push_back(std::move(entry));
     }
@@ -388,7 +396,7 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
         auto source = file_of(entry.source_file);
         if(!source)
             continue;
-        auto& st = pcms[*source];
+        auto& st = pcms[module_node(*source, entry.variant.value_or(0))];
         st.path = *pcm_path;
         st.key = entry.key;
         st.blob = std::move(*entry.blob);

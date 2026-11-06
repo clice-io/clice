@@ -98,7 +98,7 @@ async::task<UnitResult>
        project.compiled_by_build(path_id)) {
         Result built;
         if(!project.dep_graph.module_of(path_id).empty()) {
-            built = co_await project.wait_modules(&attempt, {path_id});
+            built = co_await project.wait_modules(&attempt, {module_node(path_id)});
         } else {
             auto pch = project.declared_pch_request(resolved.ref);
             auto id = pch_node(pch.pch_key);

@@ -1,10 +1,12 @@
 module clice;
 
+import :command.invocation;
 import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
+import :project.graph.unit;
 import :project.project;
 import :support.logging;
 import :syntax.header_context;
@@ -70,7 +72,7 @@ bool lost_import(const worker::BuildPCMParams& params) {
 /// turn: to the module whose own build failed, or around a cycle of imports
 /// failing each other.
 struct FailedChain {
-    llvm::SmallVector<Fid, 4> modules;
+    llvm::SmallVector<NodeId, 4> modules;
 
     /// The entry of the chain's last module: its own build's failure, or
     /// none when it did not fail; null for a module never built.
@@ -80,7 +82,7 @@ struct FailedChain {
     std::optional<std::size_t> cycle;
 };
 
-FailedChain failed_chain(const Project& project, Fid module) {
+FailedChain failed_chain(const Project& project, NodeId module) {
     FailedChain chain;
     for(auto current = module;;) {
         if(auto seen = ranges::find(chain.modules, current); seen != chain.modules.end()) {
@@ -90,10 +92,10 @@ FailedChain failed_chain(const Project& project, Fid module) {
         chain.modules.push_back(current);
         auto it = project.pcms.find(current);
         chain.last = it != project.pcms.end() ? &it->second : nullptr;
-        if(!chain.last || !chain.last->failure || !chain.last->failure->result.import.valid()) {
+        if(!chain.last || !chain.last->failure || !chain.last->failure->result.import) {
             return chain;
         }
-        current = chain.last->failure->result.import;
+        current = *chain.last->failure->result.import;
     }
 }
 
@@ -101,15 +103,15 @@ FailedChain failed_chain(const Project& project, Fid module) {
 /// they and, below each that built, the modules it imports in turn — clang
 /// loads every module below an import, and a built module's imports are
 /// built too.
-llvm::SetVector<Fid> module_closure(const Project& project, llvm::ArrayRef<Fid> modules) {
-    llvm::SetVector<Fid> read(modules.begin(), modules.end());
+llvm::SetVector<NodeId> module_closure(const Project& project, llvm::ArrayRef<NodeId> modules) {
+    llvm::SetVector<NodeId> read(modules.begin(), modules.end());
     for(std::size_t i = 0; i < read.size(); i += 1) {
         if(!project.built_pcm(read[i])) {
             continue;
         }
-        for(auto dep: project.graph.dependencies(module_node(read[i]))) {
+        for(auto dep: project.graph.dependencies(read[i])) {
             if(dep.kind == NodeKind::PCM && !is_unresolved_import(dep)) {
-                read.insert(dep.file());
+                read.insert(dep);
             }
         }
     }
@@ -123,7 +125,7 @@ llvm::SetVector<Fid> module_closure(const Project& project, llvm::ArrayRef<Fid> 
 /// compiling while the next one runs, or after it fails, must not read the
 /// previous interface from it. Its PCM stays in the store until the next
 /// one replaces it — a compile may still be reading it.
-llvm::StringRef revalidate(Project& project, Fid module, llvm::StringRef pcm_key) {
+llvm::StringRef revalidate(Project& project, NodeId module, llvm::StringRef pcm_key) {
     auto it = project.pcms.find(module);
     if(it == project.pcms.end()) {
         return "no_entry";
@@ -154,7 +156,7 @@ llvm::StringRef revalidate(Project& project, Fid module, llvm::StringRef pcm_key
 /// lifts the moment the poison is edited, and only then — a rebuild of the
 /// PCH renames the key on the same bytes. A failure under another key that
 /// crashed nothing no longer holds, and is forgotten.
-bool refused(Project& project, Fid module, llvm::StringRef pcm_key, llvm::StringRef name) {
+bool refused(Project& project, NodeId module, llvm::StringRef pcm_key, llvm::StringRef name) {
     auto& entry = project.pcms[module];
     auto* failed = entry.standing_failure(project.file_table);
     if(!failed) {
@@ -172,13 +174,90 @@ bool refused(Project& project, Fid module, llvm::StringRef pcm_key, llvm::String
     return false;
 }
 
+/// The variant of a module unit's entry with the command `hash` names
+/// (ModuleVariants): nonzero, and clear of the bit unresolved_import sets.
+std::uint32_t variant_id(std::uint64_t hash) {
+    return static_cast<std::uint32_t>(hash >> 33) | 1;
+}
+
+/// The command a PCM node builds its unit under: the unit's own, or the
+/// entry its variant names; none when no entry does any more.
+std::optional<Resolution> build_command(Project& project, NodeId module) {
+    auto unit = module.file();
+    auto variant = module_variant(module);
+    if(variant == 0) {
+        return project.resolve_command(unit);
+    }
+    for(auto& candidate: project.candidates(unit)) {
+        if(variant_id(project.commands.command_hash(candidate.base)) == variant) {
+            ContextChoice choice{.base = project.commands.command_hash_hex(candidate.base)};
+            return project.resolve_command(unit, {.choice = &choice});
+        }
+    }
+    return std::nullopt;
+}
+
+/// module_compatibility of the arguments `command` renders.
+std::uint64_t compatibility(Project& project, const Rendered& command) {
+    llvm::SmallString<1024> joined(command.directory);
+    for(auto& arg: command.arguments) {
+        joined.push_back('\0');
+        joined.append(arg);
+    }
+    auto [it, inserted] = project.compatibilities.try_emplace(llvm::xxh3_64bits(joined), 0);
+    if(!inserted) {
+        return it->second;
+    }
+    std::vector<const char*> argv;
+    argv.reserve(command.arguments.size());
+    for(auto& arg: command.arguments) {
+        argv.push_back(arg.c_str());
+    }
+    auto vfs = llvm::makeIntrusiveRefCnt<vfs::View>(command.hidden);
+    clang::DiagnosticOptions options;
+    auto diagnostics = clang::CompilerInstance::createDiagnostics(*vfs,
+                                                                  options,
+                                                                  new clang::IgnoringDiagConsumer(),
+                                                                  true);
+    if(auto invocation = create_compiler_invocation(argv, command.directory, vfs, diagnostics)) {
+        it->second = module_compatibility(*invocation);
+    }
+    return it->second;
+}
+
+/// ModuleVariants::listed of a module unit, from its entries.
+llvm::SmallVector<ModuleVariants::Variant, 2> list_variants(Project& project, Fid unit) {
+    llvm::SmallVector<std::uint64_t, 2> commands;
+    for(auto& candidate: project.candidates(unit)) {
+        auto hash = project.commands.command_hash(candidate.base);
+        if(!ranges::contains(commands, hash)) {
+            commands.push_back(hash);
+        }
+    }
+    llvm::SmallVector<ModuleVariants::Variant, 2> listed(1);
+    if(commands.size() < 2) {
+        return listed;
+    }
+    listed.front().compatibility = compatibility(project, project.resolve_command(unit));
+    for(auto hash: llvm::drop_begin(commands)) {
+        auto id = variant_id(hash);
+        auto command = build_command(project, module_node(unit, id));
+        listed.push_back({.id = id, .compatibility = compatibility(project, *command)});
+    }
+    return listed;
+}
+
 /// One attempt of a module's PCM: declare the module's imports as its
 /// edges, wait on them, keep the last build while it holds, else dispatch a
 /// new one.
-async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id) {
+async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node) {
+    auto path_id = node.file();
+    // Only the build under the unit's own command is the unit's compile.
+    bool own_command = module_variant(node) == 0;
+
     // Inputs that moved may import otherwise: a scan taken before is no
     // answer for them, even while no event has reached the disk state yet.
-    if(auto* inputs = project.module_inputs(path_id);
+    if(auto* inputs = project.module_inputs(node);
        inputs && !inputs_hold(project.file_table, *inputs)) {
         project.import_scans.disk.erase(path_id);
     }
@@ -188,17 +267,22 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // reachable from its imports — fixing or providing one re-dirties it.
     // The scan runs under the command the build compiles with, resolved on
     // every attempt: a CDB or import change is always seen by the next one.
-    // That is the unit's own command: the build is the unit's compile, and
+    // Under the unit's own command the build is the unit's compile, and
     // sends its index, recorded under the command as it is now — one
     // changing during the build leaves the unit owed.
+    auto resolution = build_command(project, node);
+    if(!resolution) {
+        LOG_INFO("PCM build for {} skipped: the entry it was picked for is gone",
+                 project.file_table.resolve(path_id));
+        co_return Result::Failed;
+    }
     worker::BuildPCMParams bp;
-    auto resolution = project.resolve_command(path_id);
     auto command = project.command_identity(path_id);
-    bp.directory = resolution.directory;
+    bp.directory = resolution->directory;
     bp.project_root = project.root.str();
-    bp.arguments = resolution.arguments;
-    bp.hidden = resolution.hidden;
-    auto imports = co_await project.scan_imports(path_id, resolution, std::nullopt);
+    bp.arguments = resolution->arguments;
+    bp.hidden = resolution->hidden;
+    auto imports = co_await project.scan_imports(path_id, *resolution, std::nullopt);
     project.graph.set_edges(attempt.node(), imports.declared);
 
     // A unit of a target with precompiled headers builds over clice's own
@@ -209,7 +293,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // not build leaves the header to the unit's own parse, as for any
     // other unit.
     std::optional<std::string> pch_key;
-    if(auto unit = project.pch_writer(path_id, resolution)) {
+    if(auto unit = project.pch_writer(path_id, *resolution)) {
         auto request = project.declared_pch_request(*unit);
         auto key = request.pch_key;
         switch(co_await attempt.depend(pch_node(key), project.pch_work(std::move(request)))) {
@@ -222,16 +306,16 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     // The last attempt's failed import stands while this one waits: an
     // importer explains its diagnostics from it meanwhile.
     auto resolved = imports.resolved();
-    Fid failed_import;
-    switch(co_await project.wait_modules(&attempt, resolved, [&](Fid module) {
-        if(!failed_import.valid()) {
+    std::optional<NodeId> failed_import;
+    switch(co_await project.wait_modules(&attempt, resolved, [&](NodeId module) {
+        if(!failed_import) {
             failed_import = module;
         }
     })) {
         case Result::Success: break;
         case Result::Stale: co_return Result::Stale;
         case Result::Failed: {
-            if(!failed_import.valid()) {
+            if(!failed_import) {
                 // A build now would fail on the missing PCM and stand refused
                 // on inputs that never failed it; failing unrecorded, the next
                 // wait tries again.
@@ -239,7 +323,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
                          project.file_table.resolve(path_id));
                 co_return Result::Failed;
             }
-            auto& entry = project.pcms[path_id];
+            auto& entry = project.pcms[node];
             entry.retire(project.store ? &*project.store : nullptr, "pcm");
             entry.key.clear();
             entry.pch.clear();
@@ -265,7 +349,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
         auto cause = cache_dir.empty()
                          ? std::string("no cache directory to store its module file in")
                          : std::format("the cache directory {} cannot be used", cache_dir);
-        project.pcms[path_id].failure = {{.record = {.cause = std::move(cause)}}, {}};
+        project.pcms[node].failure = {{.record = {.cause = std::move(cause)}}, {}};
         co_return Result::Failed;
     }
 
@@ -289,7 +373,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
         if(is_unresolved_import(dep)) {
             import_keys += std::format("?{:x}", dep.key);
         } else {
-            import_keys += project.built_pcm(dep.file())->key;
+            import_keys += project.built_pcm(dep)->key;
         }
         import_keys.push_back('\0');
     }
@@ -306,11 +390,11 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
                                           import_keys,
                                           pch_blob}));
 
-    auto pcm_miss = revalidate(project, path_id, pcm_key);
+    auto pcm_miss = revalidate(project, node, pcm_key);
     if(pcm_miss.empty()) {
         LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
         // A record read back from the database names no PCH.
-        project.pcms.find(path_id)->second.pch = std::move(bp.pch);
+        project.pcms.find(node)->second.pch = std::move(bp.pch);
         co_return Result::Success;
     }
     LOG_PERF("cache",
@@ -319,7 +403,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
              pcm_key,
              module_name);
 
-    if(refused(project, path_id, pcm_key, module_name)) {
+    if(refused(project, node, pcm_key, module_name)) {
         co_return Result::Failed;
     }
 
@@ -328,7 +412,11 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     auto pending = project.store->begin_store("pcm", blob);
     bp.output_path = pending.tmp_path;
     bp.pcms = project.imported_pcms(resolved);
-    auto transfer = project.request_index(path_id, bp);
+    IndexTransfer transfer;
+    if(own_command) {
+        bp.index = true;
+        transfer = project.request_index(path_id, bp);
+    }
 
     // The modules it imports are inputs as much as its own text — the PCM
     // embeds what it read of them — and theirs already carry their own
@@ -359,23 +447,25 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
             }
             // An attempt overtaken in flight records its inputs all the same:
             // they no longer match, and its successor rebuilds.
-            project.pcms[path_id].failure = {
+            project.pcms[node].failure = {
                 {.key = std::move(key), .record = std::move(record)},
                 std::move(inputs)
             };
         });
     if(!built) {
         if(built.error() == Result::Failed) {
-            project.pcms[path_id].retire(&*project.store, "pcm");
+            project.pcms[node].retire(&*project.store, "pcm");
         }
         co_return built.error();
     }
-    project.merge_build_index(path_id, transfer, *built, before, command);
+    if(own_command) {
+        project.merge_build_index(path_id, transfer, *built, before, command);
+    }
 
     // Commit on the thread pool: it fsyncs the freshly written PCM.
     auto committed =
         co_await async::queue([&] { return project.store->commit(std::move(pending)); });
-    auto& entry = project.pcms[path_id];
+    auto& entry = project.pcms[node];
     if(!committed.has_value()) {
         entry.retire(&*project.store, "pcm");
         LOG_WARN("Failed to commit PCM for module {}", module_name);
@@ -397,12 +487,12 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
 
 }  // namespace
 
-const PCMEntry* Project::built_pcm(Fid module) const {
+const PCMEntry* Project::built_pcm(NodeId module) const {
     auto it = pcms.find(module);
     return it != pcms.end() && !it->second.path.empty() ? &it->second : nullptr;
 }
 
-bool Project::imports_present(llvm::ArrayRef<Fid> modules) {
+bool Project::imports_present(llvm::ArrayRef<NodeId> modules) {
     bool present = true;
     for(auto module: module_closure(*this, modules)) {
         auto it = pcms.find(module);
@@ -413,11 +503,11 @@ bool Project::imports_present(llvm::ArrayRef<Fid> modules) {
     return present;
 }
 
-llvm::SmallVector<Fid> Imports::resolved() const {
-    llvm::SmallVector<Fid> modules;
+llvm::SmallVector<NodeId> Imports::resolved() const {
+    llvm::SmallVector<NodeId> modules;
     for(auto dep: declared) {
         if(!is_unresolved_import(dep)) {
-            modules.push_back(dep.file());
+            modules.push_back(dep);
         }
     }
     return modules;
@@ -522,8 +612,9 @@ async::task<Imports> Project::scan_imports(Fid path_id,
     for(auto& name: scan.imports) {
         auto providers = dep_graph.lookup_module(name);
         imports.declared.push_back(
-            providers.empty() ? unresolved_import(name)
-                              : module_node(nearest_provider(file_table, providers, path_id)));
+            providers.empty()
+                ? unresolved_import(name)
+                : module_build(nearest_provider(file_table, providers, path_id), resolution));
     }
     co_return imports;
 }
@@ -532,7 +623,7 @@ llvm::SmallVector<NodeId> Project::provider_appeared(llvm::StringRef name) {
     return graph.invalidate(unresolved_import(name));
 }
 
-Work Project::module_work(Fid module) {
+Work Project::module_work(NodeId module) {
     return {
         .run = [this, module](Attempt& attempt) { return build_module(*this, attempt, module); },
         .check = [this,
@@ -540,7 +631,28 @@ Work Project::module_work(Fid module) {
     };
 }
 
-std::optional<feature::ModuleFailure> Project::module_failure(Fid module) const {
+NodeId Project::module_build(Fid module, const Rendered& importer) {
+    auto& variants = module_variants[module];
+    if(variants.epoch != commands_epoch) {
+        variants.listed = list_variants(*this, module);
+        variants.epoch = commands_epoch;
+    }
+    if(variants.listed.size() < 2) {
+        return module_node(module);
+    }
+    auto readable = ranges::find(variants.listed,
+                                 compatibility(*this, importer),
+                                 &ModuleVariants::Variant::compatibility);
+    if(readable == variants.listed.begin() || readable == variants.listed.end()) {
+        return module_node(module);
+    }
+    if(!ranges::contains(variants.picked, readable->id)) {
+        variants.picked.push_back(readable->id);
+    }
+    return module_node(module, readable->id);
+}
+
+std::optional<feature::ModuleFailure> Project::module_failure(NodeId module) const {
     auto chain = failed_chain(*this, module);
     feature::ModuleFailure failure{.cycle = chain.cycle};
     if(!chain.cycle) {
@@ -551,17 +663,17 @@ std::optional<feature::ModuleFailure> Project::module_failure(Fid module) const 
         failure.error = last->failure->result.record.cause;
     }
     for(auto unit: chain.modules) {
-        failure.chain.push_back(dep_graph.module_of(unit).str());
+        failure.chain.push_back(dep_graph.module_of(unit.file()).str());
     }
     return failure;
 }
 
-bool Project::forget_build_failure(Fid module) {
+bool Project::forget_build_failure(NodeId module) {
     auto it = pcms.find(module);
     return it != pcms.end() && std::exchange(it->second.failure, std::nullopt).has_value();
 }
 
-const FailureRecord* Project::build_crash(Fid module) {
+const FailureRecord* Project::build_crash(NodeId module) {
     // FIXME: what a crash is known to read leaves out the headers the module
     // includes: a fix there waits for an importer's edit or save, and its
     // importers fail to index until then.
@@ -587,7 +699,7 @@ async::task<std::optional<BuiltImports>> Project::build_imports(Fid file,
     graph.set_edges(ast_node(file), built.imports.declared);
     // Still an edge when refused: the declaration above keeps it, so a later
     // build of the module, by a parse that may retry it, re-dirties this one.
-    llvm::SmallVector<Fid> waited;
+    llvm::SmallVector<NodeId> waited;
     for(auto module: built.imports.resolved()) {
         if(auto* crash = build_crash(module)) {
             if(!options.retry_crashed) {
@@ -598,9 +710,9 @@ async::task<std::optional<BuiltImports>> Project::build_imports(Fid file,
         }
         waited.push_back(module);
     }
-    auto waits = co_await wait_modules(options.attempt, waited, [&](Fid module) {
+    auto waits = co_await wait_modules(options.attempt, waited, [&](NodeId module) {
         LOG_INFO("Import {} of {} failed to build; the parse reports it",
-                 file_table.resolve(module),
+                 file_table.resolve(module.file()),
                  file_table.resolve(file));
         built.failed.push_back(module);
     });
@@ -611,14 +723,13 @@ async::task<std::optional<BuiltImports>> Project::build_imports(Fid file,
 }
 
 async::task<Result> Project::wait_modules(Attempt* attempt,
-                                          llvm::ArrayRef<Fid> modules,
-                                          llvm::function_ref<void(Fid)> failed) {
+                                          llvm::ArrayRef<NodeId> modules,
+                                          llvm::function_ref<void(NodeId)> failed) {
     for(int pass = 0; pass < import_passes; pass += 1) {
         std::vector<Result> results;
         if(attempt) {
             for(auto module: modules) {
-                results.push_back(
-                    co_await attempt->depend(module_node(module), module_work(module)));
+                results.push_back(co_await attempt->depend(module, module_work(module)));
                 if(results.back() == Result::Stale) {
                     co_return Result::Stale;
                 }
@@ -626,7 +737,7 @@ async::task<Result> Project::wait_modules(Attempt* attempt,
         } else {
             std::vector<async::task<Result>> waits;
             for(auto module: modules) {
-                waits.push_back(graph.join(module_node(module),
+                waits.push_back(graph.join(module,
                                            module_work(module),
                                            {.foreground = true, .retry = [] { return true; }}));
             }
@@ -656,7 +767,7 @@ async::task<Result> Project::wait_modules(Attempt* attempt,
     co_return Result::Failed;
 }
 
-const Inputs* Project::module_inputs(Fid module) const {
+const Inputs* Project::module_inputs(NodeId module) const {
     auto chain = failed_chain(*this, module);
     if(chain.cycle || !chain.last) {
         return nullptr;
@@ -664,7 +775,7 @@ const Inputs* Project::module_inputs(Fid module) const {
     return chain.last->failure ? &chain.last->failure->inputs : &chain.last->inputs;
 }
 
-Inputs Project::module_inputs(llvm::ArrayRef<Fid> modules) const {
+Inputs Project::module_inputs(llvm::ArrayRef<NodeId> modules) const {
     llvm::SmallVector<const Inputs*> parts;
     for(auto module: modules) {
         if(auto* inputs = module_inputs(module)) {
@@ -677,11 +788,11 @@ Inputs Project::module_inputs(llvm::ArrayRef<Fid> modules) const {
 }
 
 std::unordered_map<std::string, std::string>
-    Project::imported_pcms(llvm::ArrayRef<Fid> modules) const {
+    Project::imported_pcms(llvm::ArrayRef<NodeId> modules) const {
     std::unordered_map<std::string, std::string> paths;
     for(auto module: module_closure(*this, modules)) {
         auto* entry = built_pcm(module);
-        auto name = dep_graph.module_of(module);
+        auto name = dep_graph.module_of(module.file());
         if(entry && !name.empty()) {
             paths[name.str()] = entry->path;
         }
@@ -691,8 +802,16 @@ std::unordered_map<std::string, std::string>
 
 llvm::SmallVector<Fid> Project::invalidate_module(Fid path_id) {
     llvm::SmallVector<Fid> dirtied;
-    for(auto id: graph.invalidate(module_node(path_id))) {
-        dirtied.push_back(id.file());
+    auto invalidate = [&](NodeId module) {
+        for(auto id: graph.invalidate(module)) {
+            dirtied.push_back(id.file());
+        }
+    };
+    invalidate(module_node(path_id));
+    if(auto it = module_variants.find(path_id); it != module_variants.end()) {
+        for(auto variant: it->second.picked) {
+            invalidate(module_node(path_id, variant));
+        }
     }
     return dirtied;
 }

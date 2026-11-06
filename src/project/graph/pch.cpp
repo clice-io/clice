@@ -419,7 +419,7 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     // absent and hides what the fragment made visible. Such a preamble
     // goes without one.
     std::string pcm_keys;
-    llvm::SmallVector<Fid> modules;
+    llvm::SmallVector<NodeId> modules;
     bool imported = false;
     assert(ranges::size(imports.declared) == ranges::size(imports.offsets));
     for(auto [dep, offset]: views::zip(imports.declared, imports.offsets)) {
@@ -428,10 +428,9 @@ PreamblePCH Project::preamble_pch(Fid path_id,
         }
         imported = true;
         if(!is_unresolved_import(dep)) {
-            auto module = dep.file();
-            if(auto* pcm = built_pcm(module)) {
+            if(auto* pcm = built_pcm(dep)) {
                 pcm_keys += pcm->key;
-                modules.push_back(module);
+                modules.push_back(dep);
             }
         }
         pcm_keys.push_back('\0');

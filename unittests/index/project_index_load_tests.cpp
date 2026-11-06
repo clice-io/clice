@@ -6,6 +6,7 @@ import :index.project_index;
 import :index.project_records;
 import :index.symbol_query;
 import :project.indexer;
+import :project.graph.pcm;
 import :project.project;
 import :support.bytes;
 import :unittests.utils.forwarding_database;
@@ -604,8 +605,8 @@ ZEST_CASE(OtherFormatKeepsMetadata) {
         pch.blob = "k";
         pch.path = "k.pch";
         pch.inputs.push_back(dep);
-        auto& pcm =
-            f.project.pcms[f.project.file_table.intern(Spelling::absolute(tmp.path("mod.cppm")))];
+        auto& pcm = f.project.pcms[module_node(
+            f.project.file_table.intern(Spelling::absolute(tmp.path("mod.cppm"))))];
         pcm.path = "m.pcm";
         pcm.key = "m";
         pcm.blob = "m";

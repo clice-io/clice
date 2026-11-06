@@ -21,13 +21,14 @@ struct ModuleBuildFailed {
     /// when an import failed it.
     FailureRecord record;
 
-    /// The import whose build failed, or that closed a cycle back to the
-    /// unit; invalid when the unit's own build failed.
-    Fid import;
+    /// The PCM of the import whose build failed, or that closed a cycle back
+    /// to the unit; none when the unit's own build failed.
+    std::optional<NodeId> import;
 };
 
-/// The PCM of a C++20 module unit, shared across all files that import the
-/// module: its last build, and the failure of the last one that failed.
+/// The PCM of a C++20 module unit under one of its commands, shared across
+/// all files that import the module and read that build: its last build,
+/// and the failure of the last one that failed.
 struct PCMEntry : Precompiled<ModuleBuildFailed> {
     /// The build's identity: "{module}-{hash}" over the unit's path and
     /// canonical flags, the build configuration, and the key of every module
@@ -42,9 +43,10 @@ struct PCMEntry : Precompiled<ModuleBuildFailed> {
 
 /// A scan's module dependencies: every edge a unit declares, a
 /// node per module unit it imports and one unresolved import per name no
-/// unit provides. A module unit's PCM is one node per unit in the task
-/// graph, edged to the modules it imports; one attempt is one PCM build (or
-/// the revalidation of the last one). The project owns the PCM policy:
+/// unit provides. A module unit's PCM is one node per unit and command it
+/// builds under in the task graph (module_node), edged to the PCMs it
+/// imports; one attempt is one PCM build (or the revalidation of the last
+/// one). The project owns the PCM policy:
 /// cache key computation and hit checks, store commits, the modules' build
 /// failures (PCMEntry::failure), and the cooperative response to advisory
 /// cancellation (an overtaken attempt tells its worker to stop and still
@@ -61,8 +63,8 @@ struct Imports {
     /// The unit declares a module.
     bool module_unit = false;
 
-    /// The module units of `declared`: what a consumer waits on.
-    llvm::SmallVector<Fid> resolved() const;
+    /// The PCMs of `declared`: what a consumer waits on.
+    llvm::SmallVector<NodeId> resolved() const;
 
     /// A parse of the unit meets a module declaration, which no declaration
     /// may precede, or a PCM, which names the precompiled header it was
@@ -81,7 +83,7 @@ struct BuiltImports {
     llvm::SmallVector<FailureRecord> refused;
 
     /// The imports that did not build.
-    llvm::SmallVector<Fid> failed;
+    llvm::SmallVector<NodeId> failed;
 };
 
 /// A unit's last precise import scan and what it ran against.
@@ -132,10 +134,40 @@ inline bool is_unresolved_import(NodeId id) {
     return id.kind == NodeKind::PCM && (id.key >> 63) != 0;
 }
 
-/// The graph node of a module unit's PCM.
-inline NodeId module_node(Fid module) {
-    return {NodeKind::PCM, module.raw};
+/// The graph node of a module unit's PCM: its build under its own command,
+/// or, for a nonzero `variant` (ModuleVariants), under another of its
+/// entries.
+inline NodeId module_node(Fid module, std::uint32_t variant = 0) {
+    assert(variant >> 31 == 0);
+    return {NodeKind::PCM, module.raw | (std::uint64_t(variant) << 32)};
 }
+
+/// The command a PCM node builds its unit under (module_node).
+inline std::uint32_t module_variant(NodeId node) {
+    return static_cast<std::uint32_t>(node.key >> 32);
+}
+
+/// The commands a module unit's PCM builds under: the first under its own
+/// command, then one under each other entry whose command differs, by
+/// variant id — the entry's command hash, so that a variant keeps naming
+/// the same command across database reloads. Each with what decides which
+/// importers can read that build (module_compatibility).
+struct ModuleVariants {
+    struct Variant {
+        std::uint32_t id = 0;
+
+        std::uint64_t compatibility = 0;
+    };
+
+    llvm::SmallVector<Variant, 2> listed;
+
+    /// Project::commands_epoch when `listed` was taken.
+    std::uint64_t epoch = 0;
+
+    /// The variants importers were given, whose nodes a change of the unit
+    /// invalidates with its own.
+    llvm::SmallVector<std::uint32_t, 1> picked;
+};
 
 /// How many times a compile waits on its imports for all of them to be
 /// present at once: a rebuild can itself evict another module under budget

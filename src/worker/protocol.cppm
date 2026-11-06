@@ -274,9 +274,7 @@ struct BuildPCHParams {
     bool standard_library_instantiations = false;
 };
 
-/// Build the PCM of a unit providing a module: the unit's compile, under
-/// its own command, which sends the unit's TU index as the unit's compile
-/// would (CompileUnitParams::index).
+/// Build the PCM of a unit providing a module, under one of its commands.
 struct BuildPCMParams {
     std::string file;
     std::string directory;
@@ -297,6 +295,11 @@ struct BuildPCMParams {
 
     /// Tmp path allocated by the master's store (see BuildPCHParams).
     std::string output_path;
+
+    /// The build under the unit's own command is the unit's compile: it
+    /// sends the unit's TU index, as the unit's compile would
+    /// (CompileUnitParams::index).
+    bool index = false;
 
     /// See CompileUnitParams::index_output_path.
     std::string index_output_path;

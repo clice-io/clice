@@ -460,7 +460,7 @@ llvm::SmallVector<Fid> Project::readers(Fid file) const {
     for(auto& [module, entry]: pcms) {
         if(ranges::contains(entry.inputs, file, &Input::file) ||
            (entry.failure && ranges::contains(entry.failure->inputs, file, &Input::file))) {
-            add(module);
+            add(module.file());
         }
     }
     return result;

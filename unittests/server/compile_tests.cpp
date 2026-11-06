@@ -524,7 +524,7 @@ ZEST_CASE(BufferImportBuildsPCM) {
     ZEXPECT(served.current(session->path_id));
     auto mod_ids = project.dep_graph.lookup_module("m");
     ZASSERT(!mod_ids.empty());
-    auto build = project.pcms.find(mod_ids[0]);
+    auto build = project.pcms.find(module_node(mod_ids[0]));
     ZASSERT(build != project.pcms.end());
     ZEXPECT(!build->second.path.empty());
 }
@@ -562,7 +562,7 @@ ZEST_CASE(RefusedModuleForgotten) {
     auto crashed = fixture.intern(tmp.path("crashed.cppm"));
     auto read = current_input(project.file_table, crashed);
     ZASSERT(read.has_value());
-    project.pcms[crashed].failure = {
+    project.pcms[module_node(crashed)].failure = {
         {.key = "an-earlier-key", .record = failed_build("sl:0:0", "killed by signal 11")},
         {*read}
     };
@@ -593,7 +593,7 @@ ZEST_CASE(RefusedModuleForgotten) {
         async::task_group<> group;
         group.spawn(compile());
         co_await held.wait();
-        ZEXPECT(project.forget_build_failure(crashed));
+        ZEXPECT(project.forget_build_failure(module_node(crashed)));
         probe.release(hold);
         co_await group.join();
 
@@ -664,7 +664,7 @@ ZEST_CASE(DiamondDepsDeduplicated) {
 
     auto top = project.dep_graph.lookup_module("top");
     ZASSERT(!top.empty());
-    auto entry = project.pcms.find(top[0]);
+    auto entry = project.pcms.find(module_node(top[0]));
     ZASSERT(entry != project.pcms.end());
     auto base = fixture.intern(tmp.path("base.cppm"));
     auto& inputs = entry->second.inputs;

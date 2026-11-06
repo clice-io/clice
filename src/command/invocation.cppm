@@ -22,4 +22,12 @@ std::unique_ptr<clang::CompilerInvocation>
                                llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs,
                                llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine> diagnostics);
 
+/// What a compile under `invocation` and the build of a named module's PCM
+/// must agree on for the compile to read it, hashed: the language options
+/// and the target clang requires to match when it loads a module file
+/// (ASTReader's checkLanguageOptions and checkTargetOptions), not the
+/// macros. Equal hashes read each other's modules; different ones may
+/// still, through target features clang lets an importer add.
+std::uint64_t module_compatibility(const clang::CompilerInvocation& invocation);
+
 }  // namespace clice

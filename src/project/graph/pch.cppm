@@ -87,7 +87,7 @@ struct PCHRequest {
 
     /// The built modules the preamble imports, whose inputs the PCH depends
     /// on.
-    llvm::SmallVector<Fid> modules;
+    llvm::SmallVector<NodeId> modules;
 
     /// The key of the precompiled header the build declares for the command
     /// (declared_pch_request), built already: the preamble's PCH is built
