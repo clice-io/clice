@@ -26,6 +26,22 @@ std::unique_ptr<T> wrap(Args&&... args) {
 }
 
 template <typename T, typename... Args>
+T construct(Args&&... args) {
+    return T(std::forward<Args>(args)...);
+}
+
+template <typename T, typename... Args>
+T create(Args&&... args) {
+    return T{std::forward<Args>(args)...};
+}
+
+template <typename T, typename... Args>
+T keep(Args&&... args) {
+    T value(std::forward<Args>(args)...);
+    return value;
+}
+
+template <typename T, typename... Args>
 T build(Args&&... args) {
     T value{std::forward<Args>(args)...};
     return value;
@@ -57,6 +73,9 @@ Widget* widget = make<Widget>(§(forwarded)800, 600);
 Widget* second = make<Widget>(800, §(second_argument)600);
 Socket* socket = Socket::open(§(private_constructor)80);
 std::unique_ptr<Widget> owned = wrap<Widget>(§(through_make_unique)800, 600);
+Widget constructed = construct<Widget>(§(parenthesized_expression)800, 600);
+Widget created = create<Widget>(§(braced_expression)800, 600);
+Widget kept = keep<Widget>(§(parenthesized_variable)800, 600);
 Widget built = build<Widget>(§(braced_variable)800, 600);
 
 void fill(Slot<Widget>& slot) {

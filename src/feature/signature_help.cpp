@@ -71,14 +71,12 @@ bool declares_namespace_variable(clang::Sema& sema, clang::SourceLocation open_p
     });
 }
 
-/// Whether the argument list `open_paren` opens holds anything on its line,
+/// Whether anything but its closing parenthesis follows `open_paren`,
 /// before or after the completion point.
 bool holds_argument(clang::Sema& sema, clang::SourceLocation open_paren) {
-    auto& sources = sema.getSourceManager();
-    auto token = clang::Lexer::findNextToken(open_paren, sources, sema.getLangOpts());
-    return token && !token->is(clang::tok::r_paren) &&
-           sources.getSpellingLineNumber(token->getLocation()) ==
-               sources.getSpellingLineNumber(open_paren);
+    auto token =
+        clang::Lexer::findNextToken(open_paren, sema.getSourceManager(), sema.getLangOpts());
+    return token && !token->isOneOf(clang::tok::r_paren, clang::tok::eof);
 }
 
 /// Whether the argument list `open` opens is still open at the completion
@@ -393,10 +391,16 @@ struct PackMention : clang::RecursiveASTVisitor<PackMention> {
 /// class a caller picks.
 struct PackConstruction : clang::RecursiveASTVisitor<PackConstruction> {
     const clang::ParmVarDecl* pack;
+
     clang::QualType built;
 
     bool VisitCXXUnresolvedConstructExpr(clang::CXXUnresolvedConstructExpr* expr) {
-        return !found(expr->getTypeAsWritten(), {expr->arg_begin(), expr->arg_end()});
+        llvm::ArrayRef<const clang::Expr*> args(expr->arg_begin(), expr->arg_end());
+        // `T{args...}` passes its braces as its one argument.
+        if(expr->isListInitialization() && args.size() == 1) {
+            args = arguments(args.front());
+        }
+        return !found(expr->getTypeAsWritten(), args);
     }
 
     bool VisitCXXNewExpr(clang::CXXNewExpr* expr) {
@@ -451,8 +455,7 @@ clang::QualType built_from_pack(clang::Sema& sema,
                                 clang::SourceLocation at) {
     const auto* pattern = decls::function_pattern(specialization);
     const clang::FunctionDecl* definition = nullptr;
-    if(!pattern || !pattern->hasBody(definition) || definition->param_empty() ||
-       !definition->parameters().back()->isParameterPack()) {
+    if(!pattern || !pattern->hasBody(definition)) {
         return {};
     }
     PackConstruction finder{.pack = definition->parameters().back()};

@@ -9,6 +9,10 @@ active = 0
 signatures = ["Widget(int width, ⟦double scale⟧)"]
 active = 0
 
+[answers.next_line.signature_help]
+signatures = ["Widget(⟦int width⟧, double scale)", "Widget(⟦const Widget &⟧)", "Widget(⟦Widget &&⟧)"]
+active = 0
+
 [answers.class_scope.signature_help]
 signatures = []
 

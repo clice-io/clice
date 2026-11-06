@@ -22,6 +22,30 @@ signatures = [
 ]
 active = 0
 
+[answers.parenthesized_expression.signature_help]
+signatures = [
+    "construct(⟦int width⟧, int height) -> Widget",
+    "construct(⟦const Widget &⟧) -> Widget",
+    "construct(⟦Widget &&⟧) -> Widget",
+]
+active = 0
+
+[answers.braced_expression.signature_help]
+signatures = [
+    "create(⟦int width⟧, int height) -> Widget",
+    "create(⟦const Widget &⟧) -> Widget",
+    "create(⟦Widget &&⟧) -> Widget",
+]
+active = 0
+
+[answers.parenthesized_variable.signature_help]
+signatures = [
+    "keep(⟦int width⟧, int height) -> Widget",
+    "keep(⟦const Widget &⟧) -> Widget",
+    "keep(⟦Widget &&⟧) -> Widget",
+]
+active = 0
+
 [answers.braced_variable.signature_help]
 signatures = [
     "build(⟦int width⟧, int height) -> Widget",
