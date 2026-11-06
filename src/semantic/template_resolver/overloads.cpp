@@ -63,6 +63,31 @@ bool may_take(const clang::FunctionDecl* FD,
     return true;
 }
 
+/// Whether a call naming no template arguments leaves a parameter of
+/// `FTD` unbound: none of its function parameters deduces it, and it has
+/// no default.
+bool leaves_undeduced(clang::ASTContext& context, const clang::FunctionTemplateDecl* FTD) {
+    llvm::SmallBitVector deduced;
+    clang::Sema::MarkDeducedTemplateParameters(context, FTD, deduced);
+    for(auto [index, param]: views::enumerate(*FTD->getTemplateParameters())) {
+        if(deduced[index] || param->isTemplateParameterPack()) {
+            continue;
+        }
+        if(auto* type = llvm::dyn_cast<clang::TemplateTypeParmDecl>(param)) {
+            if(!type->hasDefaultArgument()) {
+                return true;
+            }
+        } else if(auto* value = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(param)) {
+            if(!value->hasDefaultArgument()) {
+                return true;
+            }
+        } else if(!llvm::cast<clang::TemplateTemplateParmDecl>(param)->hasDefaultArgument()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// Whether an argument expands a pack (`f(xs...)`), which may instantiate
 /// to any number of arguments: fixed-arity filtering would remove viable
 /// overloads.
@@ -88,6 +113,10 @@ struct Associated {
     llvm::SmallSetVector<const clang::DeclContext*, 4> namespaces;
 
     llvm::SmallPtrSet<const clang::CXXRecordDecl*, 4> classes;
+
+    /// Specializations clang has not instantiated, which hold neither the
+    /// friends nor the bases their pattern declares.
+    llvm::SmallVector<const clang::ClassTemplateSpecializationDecl*, 2> uninstantiated;
 
     /// The innermost namespace enclosing `decl`, and each enclosing it
     /// through inline ones: lookup there finds what the inline ones hold.
@@ -119,6 +148,9 @@ struct Associated {
         }
         if(const auto* specialization =
                llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record)) {
+            if(!record->hasDefinition() && !specialization->isExplicitSpecialization()) {
+                uninstantiated.push_back(specialization);
+            }
             for(const auto& argument: specialization->getTemplateArgs().asArray()) {
                 add(argument);
             }
@@ -177,6 +209,26 @@ struct Associated {
     }
 };
 
+/// Whether instantiating `specialization` may befriend a function named
+/// `name` or give it bases: any pattern it may instantiate from does.
+bool instantiation_adds(const clang::ClassTemplateSpecializationDecl* specialization,
+                        clang::DeclarationName name) {
+    auto* CTD = specialization->getSpecializedTemplate();
+    llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*, 4> partials;
+    CTD->getPartialSpecializations(partials);
+    llvm::SmallVector<const clang::CXXRecordDecl*, 4> patterns(partials.begin(), partials.end());
+    patterns.push_back(CTD->getTemplatedDecl());
+    return ranges::any_of(patterns, [&](const clang::CXXRecordDecl* pattern) {
+        const auto* definition = pattern->getDefinition();
+        return definition &&
+               (definition->getNumBases() != 0 ||
+                ranges::any_of(definition->friends(), [&](const clang::FriendDecl* befriending) {
+                    const auto* befriended = befriending->getFriendDecl();
+                    return befriended && befriended->getDeclName() == name;
+                }));
+    });
+}
+
 }  // namespace
 
 std::optional<llvm::SmallVector<const clang::NamedDecl*, 4>>
@@ -187,6 +239,11 @@ std::optional<llvm::SmallVector<const clang::NamedDecl*, 4>>
             return std::nullopt;
         }
         associated.add(argument.type);
+    }
+    if(ranges::any_of(associated.uninstantiated, [&](const auto* specialization) {
+           return instantiation_adds(specialization, name);
+       })) {
+        return std::nullopt;
     }
 
     /// A friend declared only in a class is visible to the lookup through
@@ -261,41 +318,66 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
     if(candidates.size() < 2) {
         return;
     }
-    /// How the argument converts to the parameter at the rank of an exact
-    /// match: 0 as is or decayed, 1 adding qualifiers a reference or a
-    /// pointer binds — a worse sequence of the same rank; none when it needs
-    /// more.
-    auto rank = [&](clang::QualType parameter, clang::QualType type) -> std::optional<unsigned> {
+    /// How an argument converts to its parameter at the rank of an exact
+    /// match ([over.ics.rank]).
+    struct Conversion {
+        /// Binds a reference rather than initializing a value.
+        bool binds = false;
+
+        /// Adds qualifiers to what the reference binds or the pointer points
+        /// to.
+        bool qualifies = false;
+    };
+    /// None when the argument needs more than an exact match.
+    auto rank = [&](clang::QualType parameter, clang::QualType type) -> std::optional<Conversion> {
         auto target = parameter.getNonReferenceType();
-        auto added = [](clang::QualType to, clang::QualType from) -> std::optional<unsigned> {
-            auto extra = from.getCVRQualifiers() & ~to.getCVRQualifiers();
-            if(extra != 0) {
+        auto qualified =
+            [](clang::QualType to, clang::QualType from, bool binds) -> std::optional<Conversion> {
+            if((from.getCVRQualifiers() & ~to.getCVRQualifiers()) != 0) {
                 return std::nullopt;
             }
-            return to.getCVRQualifiers() != from.getCVRQualifiers() ? 1 : 0;
+            return Conversion{.binds = binds,
+                              .qualifies = to.getCVRQualifiers() != from.getCVRQualifiers()};
         };
         if(parameter->isReferenceType()) {
-            return context.hasSameUnqualifiedType(target, type) ? added(target, type)
+            return context.hasSameUnqualifiedType(target, type) ? qualified(target, type, true)
                                                                 : std::nullopt;
         }
         if(context.hasSameUnqualifiedType(target, type)) {
-            return 0;
+            return Conversion{};
         }
         auto decayed = context.getAdjustedParameterType(type);
         if(target->isPointerType() && decayed->isPointerType() &&
            context.hasSameUnqualifiedType(target->getPointeeType(), decayed->getPointeeType())) {
-            return added(target->getPointeeType(), decayed->getPointeeType());
+            return qualified(target->getPointeeType(), decayed->getPointeeType(), false);
         }
-        return context.hasSameUnqualifiedType(target, decayed) ? std::optional(0u) : std::nullopt;
+        return context.hasSameUnqualifiedType(target, decayed) ? std::optional(Conversion{})
+                                                               : std::nullopt;
     };
-    /// The rank of each argument `decl` takes at the rank of an exact match;
+    /// Below zero when the first converts the argument better: a pointer's
+    /// qualification conversion loses to none, and of two references the
+    /// one adding qualifiers loses. The rest are indistinguishable.
+    auto compare = [](const Conversion& lhs, const Conversion& rhs) {
+        auto converts = [](const Conversion& conversion) {
+            return !conversion.binds && conversion.qualifies;
+        };
+        if(converts(lhs) != converts(rhs)) {
+            return converts(lhs) ? 1 : -1;
+        }
+        if(lhs.binds && rhs.binds && lhs.qualifies != rhs.qualifies) {
+            return lhs.qualifies ? 1 : -1;
+        }
+        return 0;
+    };
+    /// How `decl` converts each argument at the rank of an exact match;
     /// empty when one needs more, nullopt when that waits for
     /// instantiation. A function template's parameters are read with what
     /// deduction gives them; an argument the C-style ellipsis takes is the
     /// worst match there is.
-    using Ranks = llvm::SmallVector<unsigned, 4>;
+    using Ranks = llvm::SmallVector<Conversion, 4>;
     /// Those an argument cannot initialize their parameter with once
-    /// deduction made it concrete: `const U&&` takes no lvalue.
+    /// deduction made it concrete (`const U&&` takes no lvalue), whose
+    /// constraints fail, or a parameter of which nothing deduces.
     llvm::SmallPtrSet<const clang::NamedDecl*, 4> unviable;
     auto exact = [&](const clang::NamedDecl* decl) -> std::optional<Ranks> {
         auto* FD = as_function(decl);
@@ -307,25 +389,31 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
         FD = FD->getCanonicalDecl();
         auto frames = stack.size();
         auto read = llvm::make_scope_exit([&] { stack.truncate(frames); });
+        llvm::SmallVector<clang::AssociatedConstraint, 2> constraints;
         if(auto* FTD = FD->getDescribedFunctionTemplate()) {
+            if(leaves_undeduced(context, FTD)) {
+                unviable.insert(decl);
+                return Ranks{};
+            }
             auto deduced = deduce_call(FTD, FD, arguments);
             if(deduced.empty()) {
                 return Ranks{};
             }
             stack.push(FTD, FTD->getTemplateParameters(), deduced);
-            /// Its constraints decide whether it is a candidate at all: one
-            /// that fails drops it, one not decided leaves the set as it is.
-            llvm::SmallVector<clang::AssociatedConstraint, 2> constraints;
             FTD->getAssociatedConstraints(constraints);
-            for(auto& constraint: constraints) {
-                auto satisfied = evaluate(constraint.ConstraintExpr);
-                if(!satisfied) {
-                    return std::nullopt;
-                }
-                if(satisfied->isZero()) {
-                    unviable.insert(decl);
-                    return Ranks{};
-                }
+        } else {
+            FD->getAssociatedConstraints(constraints);
+        }
+        /// Its constraints decide whether it is a candidate at all: one
+        /// that fails drops it, one not decided leaves the set as it is.
+        for(auto& constraint: constraints) {
+            auto satisfied = evaluate(constraint.ConstraintExpr);
+            if(!satisfied) {
+                return std::nullopt;
+            }
+            if(satisfied->isZero()) {
+                unviable.insert(decl);
+                return Ranks{};
             }
         }
         Ranks ranks;
@@ -336,6 +424,25 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
             }
             auto* parameter = parameters[index];
             if(parameter->isParameterPack()) {
+                /// One last takes every argument left, each initializing
+                /// what substitution makes of its element.
+                auto elements = parameter == parameters.back()
+                                    ? expand_pack_pattern(parameter->getType()
+                                                              ->castAs<clang::PackExpansionType>()
+                                                              ->getPattern(),
+                                                          Policy::Substitute)
+                                    : std::nullopt;
+                auto rest = arguments.drop_front(index);
+                if(!elements || elements->size() != rest.size()) {
+                    break;
+                }
+                for(auto [element, taking]: views::zip(*elements, rest)) {
+                    auto taken = rank(element.getAsType(), taking.type);
+                    if(!taken) {
+                        return Ranks{};
+                    }
+                    ranks.push_back(*taken);
+                }
                 break;
             }
             auto type = substitute(parameter->getType());
@@ -356,10 +463,8 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
             }
             ranks.push_back(*taken);
         }
-        if(ranks.size() < arguments.size() && !ranks.empty()) {
-            ranks.resize(arguments.size(), 0);
-        }
-        return ranks.empty() && !arguments.empty() ? Ranks(arguments.size(), 0) : ranks;
+        ranks.resize(arguments.size());
+        return ranks;
     };
     struct Exact {
         const clang::NamedDecl* decl;
@@ -370,7 +475,7 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
     for(auto* candidate: candidates) {
         auto taken = exact(candidate);
         waits |= !taken;
-        if(taken && taken->size() == arguments.size() && !(taken->empty() && !arguments.empty())) {
+        if(taken && taken->size() == arguments.size()) {
             exacts.push_back({candidate, std::move(*taken)});
         }
     }
@@ -379,26 +484,30 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
     if(waits) {
         return;
     }
-    /// One no worse for any argument and better for some is better.
-    auto better = [](const Ranks& lhs, const Ranks& rhs) {
-        return ranges::equal(lhs, rhs, std::less_equal<>()) && lhs != rhs;
+    auto specialized = [](const clang::NamedDecl* decl) {
+        return as_function(decl)->getDescribedFunctionTemplate() != nullptr;
     };
-    llvm::erase_if(exacts, [&](const Exact& candidate) {
-        return ranges::any_of(exacts, [&](const Exact& other) {
-            return better(other.ranks, candidate.ranks);
-        });
-    });
-    /// Of exact matches no better than one another, the one that is no
-    /// template specialization wins.
-    if(exacts.size() > 1 && ranges::all_of(exacts, [&](const Exact& candidate) {
-           return candidate.ranks == exacts.front().ranks;
-       })) {
-        llvm::erase_if(exacts, [](const Exact& candidate) {
-            return as_function(candidate.decl)->getDescribedFunctionTemplate() != nullptr;
-        });
+    /// One no worse for any argument is better when it is better for some,
+    /// or when it is no template specialization and the other is.
+    auto better = [&](const Exact& lhs, const Exact& rhs) {
+        bool some = false;
+        for(auto [left, right]: views::zip(lhs.ranks, rhs.ranks)) {
+            auto order = compare(left, right);
+            if(order > 0) {
+                return false;
+            }
+            some |= order < 0;
+        }
+        return some || (!specialized(lhs.decl) && specialized(rhs.decl));
+    };
+    llvm::SmallVector<const clang::NamedDecl*, 4> best;
+    for(auto& candidate: exacts) {
+        if(ranges::none_of(exacts, [&](const Exact& other) { return better(other, candidate); })) {
+            best.push_back(candidate.decl);
+        }
     }
-    if(exacts.size() == 1) {
-        candidates.assign({exacts.front().decl});
+    if(best.size() == 1) {
+        candidates.assign({best.front()});
     }
 }
 

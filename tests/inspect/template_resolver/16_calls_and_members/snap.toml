@@ -65,3 +65,18 @@ type = "Good *"
 
 [answers.failed_constraint.template_resolver]
 type = "Good *"
+
+[answers.value_against_reference.template_resolver]
+type = "Good"
+
+[answers.forwarding_pack.template_resolver]
+type = "Good"
+
+[answers.undeduced_parameter.template_resolver]
+type = "Good"
+
+[answers.uninstantiated_friend]
+template_resolver = {}
+
+[answers.constrained_member.template_resolver]
+type = "Good"

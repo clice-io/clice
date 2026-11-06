@@ -451,3 +451,133 @@ struct test {
 };
 
 }  // namespace failed_constraint
+
+namespace value_against_reference {
+
+struct Good {};
+
+struct Bad {};
+
+template <typename U>
+Bad choose(U value);
+
+Good choose(const int& value);
+
+template <typename T>
+struct Source {
+    using type = int;
+};
+
+template <typename T>
+void run(typename Source<T>::type& value) {
+    // Taking a value and binding `const int&` rank alike: the function that is no template wins.
+    auto §(value_against_reference)chosen = value_against_reference::choose(value);
+}
+
+}  // namespace value_against_reference
+
+namespace forwarding_pack {
+
+struct Good {};
+
+struct Bad {};
+
+template <typename... Us>
+Good choose(Us&&... values);
+
+Bad choose(const int& value);
+
+template <typename T>
+struct Source {
+    using type = int;
+};
+
+template <typename T>
+void run(typename Source<T>::type& value) {
+    // `Us&&` binds `int&`, which beats binding `const int&`: the template wins.
+    auto §(forwarding_pack)chosen = forwarding_pack::choose(value);
+}
+
+}  // namespace forwarding_pack
+
+namespace undeduced_parameter {
+
+struct Good {};
+
+struct Bad {};
+
+template <typename U, typename V>
+Bad choose(U);
+
+Good choose(long);
+
+template <typename T>
+struct Source {
+    using type = int;
+};
+
+template <typename T>
+void run(typename Source<T>::type value) {
+    // Nothing deduces `V`: `choose(long)` is called.
+    auto §(undeduced_parameter)chosen = undeduced_parameter::choose(value);
+}
+
+}  // namespace undeduced_parameter
+
+namespace uninstantiated_friend {
+
+struct Good {};
+
+struct Bad {};
+
+namespace lib {
+
+template <typename T>
+struct Box {
+    friend Good choose(Box);
+};
+
+}  // namespace lib
+
+Bad choose(...);
+
+template <typename T>
+struct Source {
+    using type = lib::Box<int>;
+};
+
+template <typename T>
+void run(typename Source<T>::type value) {
+    // Instantiating `Box<int>` declares the friend lookup finds: until then the call is not known.
+    auto §(uninstantiated_friend)chosen = choose(value);
+}
+
+}  // namespace uninstantiated_friend
+
+namespace constrained_member {
+
+struct Good {};
+
+struct Bad {};
+
+template <typename T>
+struct Box {
+    Bad pick(int)
+        requires false;
+
+    template <typename U>
+    Good pick(U);
+};
+
+template <typename T>
+struct Source {
+    using type = int;
+};
+
+template <typename T>
+void run(Box<T>& box, typename Source<T>::type value) {
+    // The constraint rules the member that is no template out.
+    auto §(constrained_member)chosen = box.pick(value);
+}
+
+}  // namespace constrained_member
