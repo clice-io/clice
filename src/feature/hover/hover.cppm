@@ -2,7 +2,6 @@ module clice:feature.hover;
 
 import :compile.compilation;
 import :feature.documentation;
-import :index.peer_queries;
 import :index.query;
 import :index.symbol;
 import :semantic.display;
@@ -185,14 +184,14 @@ auto hover_info(const index::SymbolInfo& info,
 /// from the symbol tables, the definition text sliced from stored content,
 /// the documentation read from the indexed text (the overload above). A
 /// module's is module_hover.
-auto hover_info(const index::PeerQueries& queries,
+auto hover_info(const index::IndexQuery& query,
                 const index::IndexQuery::Cursor& cursor,
                 const DocumentationOptions& documentation) -> std::optional<HoverInfo>;
 
 /// A module name's card: the module and the unit defining it, named the
 /// way the user knows the file. Only the index knows the defining unit,
 /// across files.
-auto module_hover(const index::PeerQueries& queries,
+auto module_hover(const index::IndexQuery& query,
                   const index::IndexQuery::Cursor& cursor,
                   const index::SymbolInfo& module) -> HoverInfo;
 

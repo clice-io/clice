@@ -6,6 +6,7 @@ import :command.file_kind;
 import :command.table;
 import :command.toolchain;
 import :driver.driver;
+import :driver.run;
 import :project.project;
 import :support.json;
 import :support.shell;

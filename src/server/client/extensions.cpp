@@ -238,8 +238,9 @@ void LSPClient::register_extensions() {
                 co_return to_raw(result);
             }
             auto& project = resolved.project->project;
+            auto query = resolved.project->query();
             feature::query::Context context{
-                .query = resolved.project->project.index_query,
+                .query = query,
                 .root = project.root,
                 .documentation = project.settings.documentation,
             };

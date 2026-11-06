@@ -280,11 +280,11 @@ ZEST_CASE(ReopenServesPersistedBlobs) {
     {
         auto db = index::open_database(store, {});
         ZASSERT(db != nullptr);
-        ZASSERT(db->write({blob(index::BlobKind::Listings, "cdb", "snapshot")}, {}));
+        ZASSERT(db->write({blob(index::BlobKind::Members, "cdb", "snapshot")}, {}));
     }
     auto db = index::open_database(store, {});
     ZASSERT(db != nullptr);
-    ZASSERT(db->read(index::BlobKind::Listings, "cdb").buffer->getBuffer() == "snapshot");
+    ZASSERT(db->read(index::BlobKind::Members, "cdb").buffer->getBuffer() == "snapshot");
 }
 
 ZEST_CASE(CorruptDatabaseRebuilds) {
@@ -300,8 +300,8 @@ ZEST_CASE(CorruptDatabaseRebuilds) {
     }
     auto db = index::open_database(store, {});
     ZASSERT(db != nullptr);
-    ZASSERT(!db->contains(index::BlobKind::Listings, "cdb"));
-    ZASSERT(db->write({blob(index::BlobKind::Listings, "cdb", "fresh")}, {}));
+    ZASSERT(!db->contains(index::BlobKind::Members, "cdb"));
+    ZASSERT(db->write({blob(index::BlobKind::Members, "cdb", "fresh")}, {}));
 }
 
 /// A database of `count` large blobs written over several commits, so
@@ -369,10 +369,10 @@ ZEST_CASE(TruncatedDatabaseRebuilds) {
     auto db = index::open_database(store, {});
     ZASSERT(db != nullptr);
     ZASSERT(!db->contains(index::BlobKind::Shard, "7"));
-    ZASSERT(db->write({blob(index::BlobKind::Listings, "cdb", "fresh")}, {}));
+    ZASSERT(db->write({blob(index::BlobKind::Members, "cdb", "fresh")}, {}));
     ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
-    ZASSERT(db->read(index::BlobKind::Listings, "cdb").buffer->getBuffer() == "fresh");
+    ZASSERT(db->read(index::BlobKind::Members, "cdb").buffer->getBuffer() == "fresh");
 }
 
 /// A database of `count` small records of three kinds, committed at once:
@@ -499,7 +499,7 @@ ZEST_CASE(WritesCoverFreedTail) {
         advance_snapshot();
         ZASSERT(db->write(
             {
-                blob(index::BlobKind::Listings, "cdb", "small"),
+                blob(index::BlobKind::Members, "cdb", "small"),
                 blob(index::BlobKind::Shard, "h", std::string(1 << 16, 'h'))
         },
             {{index::BlobKind::Shard, "h"}}));
@@ -520,7 +520,7 @@ ZEST_CASE(WritesCoverFreedTail) {
     auto store = open_store(tmp, "lmdb", /*read_only=*/true);
     auto db = index::open_database(store, {});
     ZASSERT(db != nullptr);
-    ZASSERT(db->contains(index::BlobKind::Listings, "cdb"));
+    ZASSERT(db->contains(index::BlobKind::Members, "cdb"));
 }
 
 ZEST_CASE(DefaultOpenFileBounded) {
@@ -528,7 +528,7 @@ ZEST_CASE(DefaultOpenFileBounded) {
     auto store = open_store(tmp, "lmdb");
     auto db = index::open_database(store, {});
     ZASSERT(db != nullptr);
-    ZASSERT(db->write({blob(index::BlobKind::Listings, "cdb", "x")}, {}));
+    ZASSERT(db->write({blob(index::BlobKind::Members, "cdb", "x")}, {}));
 
     // On Windows the mapping extends index.mdb to the whole mapsize, so
     // this pins the small default (a 64 GiB logical file is the bug the
@@ -600,13 +600,13 @@ ZEST_CASE(CondemnedDatabaseDeletesOnClose) {
     {
         auto db = index::open_database(store, {});
         ZASSERT(db != nullptr);
-        ZASSERT(db->write({blob(index::BlobKind::Listings, "cdb", "bytes")}, {}));
+        ZASSERT(db->write({blob(index::BlobKind::Members, "cdb", "bytes")}, {}));
         db->condemn();
     }
     ZASSERT(!fs::exists(path::join(index::database_directory(store, {}), "index.mdb")));
     auto db = index::open_database(store, {});
     ZASSERT(db != nullptr);
-    ZASSERT(!db->contains(index::BlobKind::Listings, "cdb"));
+    ZASSERT(!db->contains(index::BlobKind::Members, "cdb"));
 }
 
 ZEST_CASE(DatabasePerConfiguration) {

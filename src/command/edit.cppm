@@ -48,9 +48,8 @@ struct CommandEdits {
     }
 
     /// The identity of the edits: their content and the directory each
-    /// edit's relative paths are anchored at, `root` taken as `${workspace}`
-    /// — so a moved checkout keeps the identity a record persists.
-    std::string key(llvm::StringRef root = {}) const;
+    /// edit's relative paths are anchored at.
+    std::string key() const;
 };
 
 /// Apply edits to a base command, producing a (deduped) result command.

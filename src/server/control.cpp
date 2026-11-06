@@ -66,7 +66,7 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
             srv.reload_databases(/*force=*/true);
             // Indexing would fill the old build's index while a --fresh answer
             // then opens the new one's.
-            if(srv.databases_moved()) {
+            if(srv.project.databases_moved()) {
                 co_await async::fail(ipc::Error{
                     "the compilation databases of the running clice server now resolve to another "
                     "build, which it opens once it restarts"});

@@ -7,6 +7,7 @@ module;
 module clice:feature.query;
 
 import :feature.documentation;
+import :feature.hierarchy;
 import :feature.rename;
 import :index.query;
 import :index.symbol;
@@ -294,10 +295,9 @@ Result<ReferencesResult> references(Context& ctx,
                                     index::SymbolQuery locator,
                                     bool include_declaration);
 
-/// `direction` one of callers, callees, both.
 Result<CallGraphResult> call_graph(Context& ctx,
                                    index::SymbolQuery locator,
-                                   llvm::StringRef direction);
+                                   CallGraphOptions options);
 
 /// Plan the renames together against `files` on disk (see
 /// plan_renames), each of its files read once: what would change, what the
@@ -324,9 +324,8 @@ Result<std::vector<index::IndexQuery::Located>> named_symbols(Context& ctx,
 /// depth; a function nothing overrides, its definitions.
 Result<ImplementationResult> implementation(Context& ctx, index::SymbolQuery locator);
 
-/// `direction` one of supertypes, subtypes, both.
 Result<TypeHierarchyResult> type_hierarchy(Context& ctx,
                                            index::SymbolQuery locator,
-                                           llvm::StringRef direction);
+                                           TypeHierarchyOptions options);
 
 }  // namespace clice::feature::query

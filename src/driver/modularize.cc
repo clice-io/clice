@@ -4,6 +4,7 @@ import :analysis.module_graph;
 import :analysis.rewriting;
 import :analysis.wrapping;
 import :driver.driver;
+import :driver.run;
 import :vfs.file_system;
 import :vfs.path;
 

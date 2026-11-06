@@ -5,6 +5,7 @@ import :compile.diagnostic;
 import :compile.tidy;
 import :feature.diagnostics;
 import :index.tu_index;
+import :project.background;
 import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
@@ -196,8 +197,7 @@ void ServedProject::retry_after_save(Session& session) {
     // make a header lean on its includer: a save showing what an includer
     // would provide, or saving a buffer whose compile has not finished yet,
     // runs it again. A result that stands holds for the text saved.
-    auto selection =
-        project.select_command(path_id, {.choice = active_choice(path_id), .open = true});
+    auto selection = project.select_command(path_id, command_request(path_id));
     if(selection.self_containment) {
         auto compiled = latest_at(path_id, session.version);
         bool leans =
@@ -219,11 +219,7 @@ void ServedProject::retry_after_save(Session& session) {
     llvm::SmallVector<Fid> modules{session.path_id};
     llvm::DenseSet<Fid> seen{session.path_id};
     auto add_imports = [&](NodeId importer) {
-        for(auto dep: project.graph.dependencies(importer)) {
-            if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {
-                continue;
-            }
-            auto module = dep.file();
+        for(auto module: imported_modules(project.graph, importer)) {
             if(seen.insert(module).second) {
                 modules.push_back(module);
             }
@@ -231,15 +227,15 @@ void ServedProject::retry_after_save(Session& session) {
     };
     add_imports(ast_node(session.path_id));
     for(std::size_t i = 0; i < modules.size(); i += 1) {
-        retry |= project.forget_build_failure(modules[i]);
+        retry |= project.forget_module_failure(modules[i]);
         add_imports(module_node(modules[i]));
     }
     // A PCH that kept its preamble's errors misses the same lookups as a
     // failed build: a save rebuilds it.
     if(auto compiled = latest(path_id); compiled && compiled->pch_key) {
         if(compiled->pch_failed) {
-            retry |= project.forget_build_failure(*compiled->pch_key);
-        } else if(auto preamble = project.preamble_index(*compiled->pch_key);
+            retry |= project.forget_pch_failure(*compiled->pch_key);
+        } else if(auto& preamble = compiled->preamble_index;
                   preamble && ranges::any_of(preamble_diagnostics(*preamble),
                                              [](const feature::FileDiagnostic& diagnostic) {
                                                  return diagnostic.level >= DiagnosticLevel::Error;
@@ -256,28 +252,34 @@ void ServedProject::retry_after_save(Session& session) {
 std::vector<feature::FileDiagnostic>
     ServedProject::shown_skipped_diagnostics(const Session& session,
                                              const CompileOutput& output) const {
-    auto it = skipped.find(session.path_id);
-    if(it == skipped.end() || it->second.text_hash != session.hash ||
+    auto* skipped = project.background_index.skipped_diagnostics(session.path_id);
+    if(!skipped || skipped->text_hash != session.hash ||
        output.diagnostics.source != CommandSource::Database || active_choice(session.path_id)) {
         return {};
     }
-    return feature::confirmed_skipped(it->second.diagnostics, output.diagnostics);
+    return feature::confirmed_skipped(skipped->diagnostics, output.diagnostics);
 }
 
-bool ServedProject::lacks_skipped_diagnostics(Fid path_id) const {
-    auto* document = find_document(path_id);
-    if(!document || document->serving != ServingMode::Escalated ||
+void ServedProject::book_skipped_diagnostics(const ServedDocument& document, bool first) {
+    auto& session = *document.session;
+    auto path_id = session.path_id;
+    if(!project.settings.project.skip_header_bodies || document.serving != ServingMode::Escalated ||
        project.entries(path_id).empty()) {
-        return false;
+        return;
     }
-    auto it = skipped.find(path_id);
-    return it == skipped.end() || it->second.text_hash != document->session->hash;
+    auto& background = project.background_index;
+    if(auto* skipped = background.skipped_diagnostics(path_id);
+       skipped && skipped->text_hash == session.hash) {
+        return;
+    }
+    if(first) {
+        background.index_first(path_id, /*diagnostics=*/true);
+    } else {
+        background.enqueue(path_id, ReindexReason::DepsOnly, /*diagnostics=*/true);
+    }
 }
 
-void ServedProject::report_skipped_diagnostics(Fid path_id,
-                                               std::uint64_t text_hash,
-                                               std::vector<feature::FileDiagnostic> diagnostics) {
-    skipped[path_id] = {.text_hash = text_hash, .diagnostics = std::move(diagnostics)};
+void ServedProject::show_skipped_diagnostics(Fid path_id) {
     // A compile owed shows them as it commits (CompileAttempt::commit).
     if(!current(path_id)) {
         return;
@@ -310,11 +312,8 @@ void ServedProject::each_input(Fid path_id, llvm::function_ref<void(const Inputs
             visit(pch->inputs);
         }
     }
-    for(auto dep: project.graph.dependencies(ast_node(path_id))) {
-        if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {
-            continue;
-        }
-        if(auto* inputs = project.module_inputs(dep.file())) {
+    for(auto module: imported_modules(project.graph, ast_node(path_id))) {
+        if(auto* inputs = project.module_inputs(module)) {
             visit(*inputs);
         }
     }
@@ -355,6 +354,7 @@ void ServedProject::choice_changed(Session& session) {
             compiled.pch_key.reset();
             compiled.pch_failed = false;
             compiled.base_pch_key.reset();
+            compiled.preamble_index.reset();
             compiled.index.reset();
         });
     }
@@ -377,6 +377,11 @@ void ServedProject::escalate(Fid path_id) {
         return;
     }
     document.serving = ServingMode::Escalated;
+    // Its compile serves the file's index, unless it skips the bodies of
+    // the headers: then only a background run shows what they hold.
+    if(!project.settings.project.skip_header_bodies) {
+        project.background_index.leave_to_document(path_id);
+    }
 }
 
 void ServedProject::request_compile(std::shared_ptr<Session> session) {
@@ -673,8 +678,8 @@ async::task<Result> ServedProject::CompileAttempt::run() {
 
 async::task<std::optional<Result>> ServedProject::CompileAttempt::command(bool first) {
     params = {};
-    params.known_instantiations = known_instantiations;
-    params.standard_library_instantiations =
+    params.indexing.known_instantiations = known_instantiations;
+    params.indexing.standard_library_instantiations =
         project.settings.project.standard_library_instantiations;
     params.skip_bodies = project.settings.project.skip_header_bodies;
     params.path = file_path;
@@ -684,7 +689,10 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::command(bool f
     if(tidy_dispatch) {
         params.tidy = tidy_config->params;
     }
-    resolution = co_await served.document_command(path_id, nullptr, [&] { return ticket.fresh(); });
+    resolution = co_await project.resolve_with_trees(
+        path_id,
+        [&] { return served.command_request(path_id); },
+        [&] { return ticket.fresh(); });
     if(!ticket.fresh()) {
         co_return Result::Stale;
     }
@@ -724,7 +732,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::modules() {
         crashed = true;
     }
     for(auto module: imports.failed) {
-        if(auto* crash = project.build_crash(module)) {
+        if(auto* crash = project.module_build_crash(module)) {
             served.record_crash(session, kind, crash->death, crash->cause);
             crashed = true;
         }
@@ -756,7 +764,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::pch() {
     built = std::move(*waited);
     if(built.preamble) {
         auto* crash = built.refused                    ? &*built.refused
-                      : built.result == Result::Failed ? project.build_crash(*built.preamble)
+                      : built.result == Result::Failed ? project.pch_build_crash(*built.preamble)
                                                        : nullptr;
         if(crash) {
             served.record_crash(session, PCH, crash->death, crash->cause);
@@ -831,7 +839,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
     });
     if(project.store) {
         transfer = project.store->begin_transfer();
-        params.index_output_path = transfer->tmp_path;
+        params.indexing.output_path = transfer->tmp_path;
     }
     auto& pool = served.server.pool;
     auto result = co_await deliver(
@@ -990,6 +998,7 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     next->pch_key = pch_failed ? built.preamble : built.loaded;
     next->pch_failed = pch_failed;
     next->base_pch_key = built.base;
+    next->preamble_index = preamble_index;
     next->host = resolution.host;
     next->command = resolution.ref.command;
     // The AST and the file index commit together — that pairing is what lets
@@ -1049,8 +1058,8 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     // FIXME: released even while another open document still fails on that
     // preamble: its next compile runs the failing build once more.
     if(entry.latest && entry.latest->pch_failed && entry.latest->pch_key != next->pch_key &&
-       !project.build_crash(*entry.latest->pch_key)) {
-        project.forget_build_failure(*entry.latest->pch_key);
+       !project.pch_build_crash(*entry.latest->pch_key)) {
+        project.forget_pch_failure(*entry.latest->pch_key);
     }
     entry.latest = std::move(next);
     if(tidy_config) {
@@ -1114,7 +1123,7 @@ void ServedProject::adopt_pch(const Ticket& ticket,
         return;
     }
     if(built.preamble && built.result != Result::Success) {
-        if(auto* crash = project.build_crash(*built.preamble)) {
+        if(auto* crash = project.pch_build_crash(*built.preamble)) {
             record_crash(session, kind, crash->death, crash->cause);
         }
         return;
@@ -1125,10 +1134,12 @@ void ServedProject::adopt_pch(const Ticket& ticket,
        built.partial) {
         return;
     }
+    auto preamble = built.preamble ? project.preamble_index(*built.preamble) : nullptr;
     update_latest(path_id, [&](DocumentCompile& compiled) {
         compiled.pch_key = built.preamble ? built.preamble : built.base;
         compiled.pch_failed = false;
         compiled.base_pch_key = built.base;
+        compiled.preamble_index = std::move(preamble);
     });
     session->succeeded(kind, ticket.generation);
 }

@@ -64,13 +64,13 @@ auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink> {
     return links;
 }
 
-auto document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge> edges)
+auto document_links(SourceText& source, llvm::ArrayRef<index::ResolvedInclude> includes)
     -> std::vector<index::DocumentLink> {
     auto positions = source.positions();
 
     std::vector<index::DocumentLink> links;
-    for(const auto& edge: edges) {
-        auto line = edge.line == 0 ? std::nullopt : positions.line_bounds(edge.line - 1);
+    for(const auto& include: includes) {
+        auto line = include.line == 0 ? std::nullopt : positions.line_bounds(include.line - 1);
         if(!line) {
             continue;
         }
@@ -78,7 +78,7 @@ auto document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge> edges
         if(!range) {
             continue;
         }
-        links.push_back({.range = *range, .target = edge.target});
+        links.push_back({.range = *range, .target = include.target});
     }
 
     ranges::sort(links, [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
@@ -98,7 +98,7 @@ auto document_links(SourceText& source, const index::IndexQuery& query, Fid file
     if(!query.shard_matching(file, source.text())) {
         return {};
     }
-    return document_links(source, query.project().include_edges(file));
+    return document_links(source, query.project().resolved_includes(file));
 }
 
 auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,

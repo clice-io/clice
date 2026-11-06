@@ -6,9 +6,9 @@ import :vfs.file_table;
 
 namespace clice::index {
 
-/// An include edge of a document, from a TU manifest: the 1-based
-/// directive line and the resolved target's absolute path.
-struct IncludeEdge {
+/// An `#include` of a document as a unit resolved it, from a TU manifest:
+/// the 1-based directive line and the target's absolute path.
+struct ResolvedInclude {
     std::uint32_t line = 0;
     std::string target;
 };

@@ -39,15 +39,7 @@ async::task<> MasterServer::poll_task() {
 std::size_t MasterServer::apply_disk_changes() {
     auto changed = files.disk.take_changes();
     for(auto& project: projects) {
-        llvm::SmallVector<Fid> known;
-        for(auto path_id: changed) {
-            if(project->knows(path_id)) {
-                known.push_back(path_id);
-            }
-        }
-        if(!known.empty()) {
-            project->disk_changed(known);
-        }
+        project->disk_changed(changed);
     }
     return changed.size();
 }

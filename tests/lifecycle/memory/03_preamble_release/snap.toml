@@ -2,7 +2,7 @@
 pchLoadedIndexes = 3
 
 [test.closed]
-pchLoadedIndexes = 2
+pchLoadedIndexes = 0
 
 [test.hover.hover]
 markdown = '''
@@ -16,4 +16,4 @@ int distinct_0 = 0
 range = "int use_0() { return ⟦distinct_0⟧; }"
 
 [test.reopened]
-pchLoadedIndexes = 3
+pchLoadedIndexes = 1

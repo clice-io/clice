@@ -1,10 +1,10 @@
 module clice;
 
-import :project.indexer;
+import :project.background;
 
 namespace clice {
 
-void ReindexQueue::record(Fid id, ReindexReason reason) {
+void ReindexQueue::record(Fid id, ReindexReason reason, bool diagnostics) {
     // A fresh place means any prior place was already consumed (or none
     // existed); a queued-and-unconsumed place makes this call a duplicate.
     bool fresh_place = queued_files.insert(id).second;
@@ -30,6 +30,7 @@ void ReindexQueue::record(Fid id, ReindexReason reason) {
         }
         it->second.seq = seq;
     }
+    it->second.diagnostics = it->second.diagnostics || diagnostics;
     if(fresh_place) {
         order.push_back(id);
     }

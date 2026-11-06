@@ -133,10 +133,6 @@ Edits Rules::edits(llvm::ArrayRef<CanonicalRef> paths) const {
     return result;
 }
 
-std::uint64_t Rules::identity(const Edits& edits) const {
-    return edits.empty() ? 0 : llvm::xxh3_64bits(edits.options().key(root));
-}
-
 const CompiledRule* Rules::default_rule(CanonicalRef path) const {
     for(auto* rule: active) {
         if(rule->has_default_command() && rule->matches(path)) {
