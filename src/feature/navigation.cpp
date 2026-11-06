@@ -529,11 +529,10 @@ std::vector<index::Site> definition(const index::IndexQuery& query,
     auto file = cursor.site.file;
     std::vector<index::Site> result;
     for(auto symbol: cursor.symbols) {
-        auto defined = query.gather(symbol,
-                                      file,
-                                      [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                          return definition_sites(from, named, file);
-                                      });
+        auto defined =
+            query.gather(symbol, file, [&](const index::IndexQuery& from, index::SymbolHash named) {
+                return definition_sites(from, named, file);
+            });
         if(defined.empty() || ranges::any_of(defined, [&](const index::Site& site) {
                return index::covers(site, cursor.site);
            })) {
@@ -572,21 +571,21 @@ std::vector<index::Site> declaration(const index::IndexQuery& query,
                                      const index::IndexQuery::Cursor& cursor) {
     auto file = cursor.site.file;
     return query.gather(cursor.symbols,
-                          file,
-                          [&](const index::IndexQuery& from, index::SymbolHash named) {
-                              return project_declaration(from,
-                                                         {.symbols = {named}, .site = cursor.site});
-                          });
+                        file,
+                        [&](const index::IndexQuery& from, index::SymbolHash named) {
+                            return project_declaration(from,
+                                                       {.symbols = {named}, .site = cursor.site});
+                        });
 }
 
 std::vector<index::Site> type_definition(const index::IndexQuery& query,
                                          const index::IndexQuery::Cursor& cursor) {
     auto file = cursor.site.file;
     return query.gather(cursor.symbols,
-                          file,
-                          [&](const index::IndexQuery& from, index::SymbolHash named) {
-                              return type_definition(from, cursor, named);
-                          });
+                        file,
+                        [&](const index::IndexQuery& from, index::SymbolHash named) {
+                            return type_definition(from, cursor, named);
+                        });
 }
 
 std::vector<index::Site> implementation(const index::IndexQuery& query,
@@ -597,21 +596,19 @@ std::vector<index::Site> implementation(const index::IndexQuery& query,
         if(names_weakly(query, cursor, symbol)) {
             sites.append_range(
                 query.gather(symbol,
-                               file,
-                               [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                   return from.sites(named, file, RelationKind::Definition);
-                               }));
+                             file,
+                             [&](const index::IndexQuery& from, index::SymbolHash named) {
+                                 return from.sites(named, file, RelationKind::Definition);
+                             }));
         }
         sites.append_range(
-            query.gather(symbol,
-                           file,
-                           [&](const index::IndexQuery& from, index::SymbolHash named) {
-                               std::vector<index::Site> placed;
-                               for(auto& located: implementation(from, named, file)) {
-                                   placed.push_back(std::move(located.site));
-                               }
-                               return placed;
-                           }));
+            query.gather(symbol, file, [&](const index::IndexQuery& from, index::SymbolHash named) {
+                std::vector<index::Site> placed;
+                for(auto& located: implementation(from, named, file)) {
+                    placed.push_back(std::move(located.site));
+                }
+                return placed;
+            }));
     }
     index::dedup_sites(sites);
     std::erase_if(sites, [&](const index::Site& site) { return index::covers(site, cursor.site); });

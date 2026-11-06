@@ -41,10 +41,8 @@ struct IndexerFixture {
     /// The files of every index change the project told of, in order.
     llvm::SmallVector<Fid> changed;
 
-    Signal<llvm::ArrayRef<Fid>>::Connection changed_conn =
-        project.on_index_changed.connect([this](llvm::ArrayRef<Fid> files) {
-            changed.append(files.begin(), files.end());
-        });
+    Signal<llvm::ArrayRef<Fid>>::Connection changed_conn = project.on_index_changed.connect(
+        [this](llvm::ArrayRef<Fid> files) { changed.append(files.begin(), files.end()); });
 
     IndexerFixture() {
         project.rules = Rules(project.settings, project.root, "");

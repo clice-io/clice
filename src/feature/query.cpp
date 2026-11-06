@@ -578,10 +578,7 @@ Result<CallGraphResult> call_graph(Context& ctx,
         return std::unexpected(resolved.error());
     }
     auto graph =
-        feature::call_graph(ctx.query,
-                            resolved->symbol.hash,
-                            resolved->site.file,
-                            options);
+        feature::call_graph(ctx.query, resolved->symbol.hash, resolved->site.file, options);
     return CallGraphResult{
         .root = graph_entry<GraphEntry>(*resolved),
         .callers = graph_entries(graph.callers),
@@ -643,11 +640,8 @@ Result<TypeHierarchyResult> type_hierarchy(Context& ctx,
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    auto hierarchy = feature::type_hierarchy(
-        ctx.query,
-        resolved->symbol.hash,
-        resolved->site.file,
-        options);
+    auto hierarchy =
+        feature::type_hierarchy(ctx.query, resolved->symbol.hash, resolved->site.file, options);
     return TypeHierarchyResult{
         .root = graph_entry<GraphEntry>(*resolved),
         .supertypes = graph_entries(hierarchy.supertypes),

@@ -85,7 +85,7 @@ ProjectFilesResult project_files(Project& project, FileFilter filter) {
         }
         seen.insert(member);
         auto module_name = project.dep_graph.module_of(member);
-        auto [kind, name] = !module_name.empty() ? std::pair(FileFilter::Module, "module")
+        auto [kind, name] = !module_name.empty()        ? std::pair(FileFilter::Module, "module")
                             : is_header_path(file_path) ? std::pair(FileFilter::Header, "header")
                                                         : std::pair(FileFilter::Source, "source");
         if(filter != FileFilter::All && filter != kind) {
@@ -489,11 +489,10 @@ int run(Implementation& question) {
 int run(TypeHierarchy& question) {
     return ask_symbol(question, [&](feature::query::Context& ctx, index::SymbolQuery locator) {
         auto direction = question.direction;
-        return feature::query::type_hierarchy(
-            ctx,
-            std::move(locator),
-            {.supertypes = direction != TypeDirection::Subtypes,
-             .subtypes = direction != TypeDirection::Supertypes});
+        return feature::query::type_hierarchy(ctx,
+                                              std::move(locator),
+                                              {.supertypes = direction != TypeDirection::Subtypes,
+                                               .subtypes = direction != TypeDirection::Supertypes});
     });
 }
 

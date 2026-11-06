@@ -24,8 +24,8 @@ namespace clice {
 ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
     server(server), project(server.files, std::move(root), &server.loop, &server.pool) {
     auto& background = project.background_index;
-    progress_conn =
-        background.on_progress_changed.connect([this] { this->server.index_progress_changed(*this); });
+    progress_conn = background.on_progress_changed.connect(
+        [this] { this->server.index_progress_changed(*this); });
     attempt_conn = background.on_attempt_finished.connect([this](Fid path_id) {
         auto* document = find_document(path_id);
         if(!document) {
@@ -42,8 +42,7 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
     index_conn = project.on_index_changed.connect([this](llvm::ArrayRef<Fid> path_ids) {
         auto* client = this->server.client;
         if(client && ranges::any_of(path_ids, [&](Fid id) {
-               return find_document(id) && !index_current(id) &&
-                      client->index_served.contains(id);
+               return find_document(id) && !index_current(id) && client->index_served.contains(id);
            })) {
             client->refresh();
         }

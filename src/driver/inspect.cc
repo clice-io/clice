@@ -687,8 +687,8 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
     CompilationInput input{.project_root = project.root.str()};
     auto path_id = project.file_table.intern(Spelling::absolute(file.path));
     auto resolve = [&] {
-        auto [resolved] = async::run(project.resolve_with_trees(
-            path_id, [&] { return CommandRequest{.choice = choice}; }));
+        auto [resolved] = async::run(
+            project.resolve_with_trees(path_id, [&] { return CommandRequest{.choice = choice}; }));
         auto& resolution = *resolved;
         input.directory = resolution.directory;
         input.arguments = resolution.arguments;

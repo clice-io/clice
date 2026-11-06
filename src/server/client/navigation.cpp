@@ -181,9 +181,9 @@ void LSPClient::register_navigation() {
                 params.position,
                 "[]",
                 [&](const Cursor& cursor) -> NavigationReply {
-                    return to_raw(feature::to_protocol(
-                        feature::document_highlights(project.query(), cursor),
-                        server.position_encoding));
+                    return to_raw(
+                        feature::to_protocol(feature::document_highlights(project.query(), cursor),
+                                             server.position_encoding));
                 });
         },
         {.closed = true});
@@ -191,17 +191,16 @@ void LSPClient::register_navigation() {
     on_document<protocol::DeclarationParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
             auto& project = *document.project;
-            co_return co_await navigate(
-                project,
-                document.ticket,
-                document.path_id,
-                params.position,
-                "[]",
-                [&](const Cursor& cursor) -> NavigationReply {
-                    return to_raw(
-                        feature::to_locations(feature::declaration(project.query_all(), cursor),
-                                              server.position_encoding));
-                });
+            co_return co_await navigate(project,
+                                        document.ticket,
+                                        document.path_id,
+                                        params.position,
+                                        "[]",
+                                        [&](const Cursor& cursor) -> NavigationReply {
+                                            return to_raw(feature::to_locations(
+                                                feature::declaration(project.query_all(), cursor),
+                                                server.position_encoding));
+                                        });
         },
         {.closed = true});
 
@@ -215,9 +214,9 @@ void LSPClient::register_navigation() {
                 params.position,
                 "[]",
                 [&](const Cursor& cursor) -> NavigationReply {
-                    return to_raw(feature::to_locations(
-                        feature::type_definition(project.query_all(), cursor),
-                        server.position_encoding));
+                    return to_raw(
+                        feature::to_locations(feature::type_definition(project.query_all(), cursor),
+                                              server.position_encoding));
                 });
         },
         {.closed = true});
@@ -232,9 +231,9 @@ void LSPClient::register_navigation() {
                 params.position,
                 "[]",
                 [&](const Cursor& cursor) -> NavigationReply {
-                    return to_raw(feature::to_locations(
-                        feature::implementation(project.query_all(), cursor),
-                        server.position_encoding));
+                    return to_raw(
+                        feature::to_locations(feature::implementation(project.query_all(), cursor),
+                                              server.position_encoding));
                 });
         },
         {.closed = true});

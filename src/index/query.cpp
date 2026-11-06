@@ -266,9 +266,7 @@ void IndexQuery::for_each_preamble(llvm::function_ref<bool(const IndexSource&)> 
            !state->matches_preamble(buffer.text)) {
             continue;
         }
-        if(!visit(buffer_source(IndexSource::Kind::PreambleShard,
-                                buffer,
-                                state->shard_of(last)))) {
+        if(!visit(buffer_source(IndexSource::Kind::PreambleShard, buffer, state->shard_of(last)))) {
             return;
         }
     }
@@ -379,8 +377,8 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
         if(!shard->loaded()) {
             shard = index.shard(file);
         }
-        if(!shard || shard->content_hash() != instantiations.content_hash() ||
-           buffer_of(file) || (gate && gate->stale(file, shard->content_hash()))) {
+        if(!shard || shard->content_hash() != instantiations.content_hash() || buffer_of(file) ||
+           (gate && gate->stale(file, shard->content_hash()))) {
             continue;
         }
         IndexSource instantiated{.kind = IndexSource::Kind::Overlay,

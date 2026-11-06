@@ -154,8 +154,9 @@ async::task<ext::SwitchContextResult>
         // The listing counts the places the host's compile enters the file
         // by its include tree.
         ContextChoice wanted{.host = context_path_id};
-        co_await project.project.resolve_with_trees(
-            path_id, [&] { return project.command_request(path_id, &wanted); });
+        co_await project.project.resolve_with_trees(path_id, [&] {
+            return project.command_request(path_id, &wanted);
+        });
         co_return ranges::any_of(project.project.list_contexts(path_id),
                                  [&](const ListedContext& item) {
                                      return item.file == context_path_id &&
@@ -233,8 +234,9 @@ async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id
     auto& command = result.command.emplace();
     // As the document's compile does, with the tree of the host it waits
     // for: the compile in flight takes the same one.
-    auto resolution = co_await project.resolve_with_trees(
-        path_id, [&] { return owner->command_request(path_id); });
+    auto resolution = co_await project.resolve_with_trees(path_id, [&] {
+        return owner->command_request(path_id);
+    });
     command.directory = resolution.directory;
     // The command line as its database or rule writes it, the rules
     // applied, rather than the frontend's the compile gets: the one a user

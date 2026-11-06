@@ -160,8 +160,8 @@ struct QuickScanCache {
 /// ModuleImportScan.ImportMacroExpandedName in scan_tests) — and it resolves a
 /// partition import (`import :part;`) against the enclosing module's
 /// name. Fills the module name, the imports with their offsets, and what
-/// the scan read (ScanResult::deps). An engaged `content` remaps the scanned file to it — even when empty:
-/// an emptied buffer must scan as empty, not fall back to the disk.
+/// the scan read (ScanResult::deps). An engaged `content` remaps the scanned file to it — even when
+/// empty: an emptied buffer must scan as empty, not fall back to the disk.
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
                         std::optional<llvm::StringRef> content = std::nullopt,

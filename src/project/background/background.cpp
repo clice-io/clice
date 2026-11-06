@@ -40,8 +40,7 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
     bool diagnostics = reindexes.wants_diagnostics(path_id);
     auto compiled_by = project.compiled_by(path_id);
     if(content_changed ||
-       (compiled_by != CompiledBy::Document &&
-        (diagnostics || !project.index_holds(path_id)))) {
+       (compiled_by != CompiledBy::Document && (diagnostics || !project.index_holds(path_id)))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
         // A build compiling the unit indexes it but brings no such
         // diagnostics: only a booking asking for them compiles it for them.

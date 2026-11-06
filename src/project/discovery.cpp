@@ -484,7 +484,6 @@ bool EditableFiles::editable(llvm::StringRef path) const {
     return project_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
 }
 
-
 bool Project::databases_moved() const {
     return rules.resolved_databases() != resolved_databases;
 }

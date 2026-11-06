@@ -269,10 +269,8 @@ bool same_entity(const index::IndexQuery::Located& lhs, const index::IndexQuery:
 /// Each project's neighbours of `symbol` on one side of its call graph,
 /// its callers or its callees: the sites the project may answer for, one
 /// neighbour per symbol, a neighbour left with no site dropped.
-std::vector<CallEdge> call_edges(const index::IndexQuery& query,
-                                 index::SymbolHash symbol,
-                                 Fid file,
-                                 bool callers) {
+std::vector<CallEdge>
+    call_edges(const index::IndexQuery& query, index::SymbolHash symbol, Fid file, bool callers) {
     std::vector<CallEdge> into;
     auto asked = query.asked(symbol, file);
     for(auto& [from, named]: asked) {

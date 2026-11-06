@@ -263,8 +263,8 @@ std::vector<feature::FileDiagnostic>
 void ServedProject::book_skipped_diagnostics(const ServedDocument& document, bool first) {
     auto& session = *document.session;
     auto path_id = session.path_id;
-    if(!project.settings.project.skip_header_bodies ||
-       document.serving != ServingMode::Escalated || project.entries(path_id).empty()) {
+    if(!project.settings.project.skip_header_bodies || document.serving != ServingMode::Escalated ||
+       project.entries(path_id).empty()) {
         return;
     }
     auto& background = project.background_index;

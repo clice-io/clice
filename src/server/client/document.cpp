@@ -178,10 +178,10 @@ void LSPClient::register_document_requests() {
             case Route::Outdated: co_await async::fail(content_modified());
             case Route::Index: {
                 if(on_directive) {
-                    if(auto shown = directive_card(
-                           feature::document_links(project.text_of(*session),
-                                                   project.query(),
-                                                   path_id))) {
+                    if(auto shown =
+                           directive_card(feature::document_links(project.text_of(*session),
+                                                                  project.query(),
+                                                                  path_id))) {
                         index_served.insert(path_id);
                         co_return std::move(*shown);
                     }

@@ -145,10 +145,10 @@ auto module_hover(const index::IndexQuery& query,
     hover.kind = SymbolKind::Module;
     auto units =
         query.gather(module.hash,
-                       cursor.site.file,
-                       [&](const index::IndexQuery& from, index::SymbolHash named) {
-                           return from.sites(named, cursor.site.file, RelationKind::Definition);
-                       });
+                     cursor.site.file,
+                     [&](const index::IndexQuery& from, index::SymbolHash named) {
+                         return from.sites(named, cursor.site.file, RelationKind::Definition);
+                     });
     if(!units.empty()) {
         hover.file = query.file_table().display_identity(units.front().path);
     }

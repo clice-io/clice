@@ -703,11 +703,11 @@ struct Project {
     /// Every place the compile of the unit `unit` names, under the command it
     /// names, enters `header`, in the order it does, by the unit's include
     /// tree: its index manifest's when the index was built under that command
-    /// (command_identity), else the one a preprocess run took. Empty when the compile never enters the header.
-    /// Nullopt when no tree can tell: the manifest cannot — the unit or a file on its way changed
-    /// since, a file appeared where the compile looked and found none, or a forced file a
-    /// precompiled header held hides the way in — and no run took one since the inputs it read last
-    /// changed.
+    /// (command_identity), else the one a preprocess run took. Empty when the compile never enters
+    /// the header. Nullopt when no tree can tell: the manifest cannot — the unit or a file on its
+    /// way changed since, a file appeared where the compile looked and found none, or a forced file
+    /// a precompiled header held hides the way in — and no run took one since the inputs it read
+    /// last changed.
     std::optional<llvm::SmallVector<Host>> include_chains(const UnitCommand& unit, Fid header);
 
     /// The unit's own command `candidate`, rules applied, and its key.

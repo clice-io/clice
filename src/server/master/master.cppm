@@ -181,7 +181,6 @@ public:
     /// .clice/config.toml.
     void look_at_settings();
 
-
     // documents.cpp
 
     /// A document naming a file already open under another name: the first

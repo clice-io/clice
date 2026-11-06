@@ -292,8 +292,8 @@ public:
                 continue;
             }
             auto buffer = sources.getBufferDataOrNone(fid);
-            result.deps.push_back({.path = std::move(path),
-                                   .hash = buffer ? llvm::xxh3_64bits(*buffer) : 0});
+            result.deps.push_back(
+                {.path = std::move(path), .hash = buffer ? llvm::xxh3_64bits(*buffer) : 0});
         }
         // A file a check found was looked at, not read: it counts by what
         // the disk holds as the scan started.
@@ -416,22 +416,21 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         std::optional<llvm::StringRef> content,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     ScanResult result;
-    scan_with_preprocessor(
-        arguments,
-        directory,
-        content,
-        std::move(vfs),
-        result,
-        [&](clang::CompilerInstance& instance, clang::FrontendAction& action) {
-            auto& pp = instance.getPreprocessor();
-            auto recorder = std::make_unique<ScanRecorder>(result, pp);
-            auto& recording = *recorder;
-            pp.addPPCallbacks(std::move(recorder));
-            if(auto error = action.Execute()) {
-                llvm::consumeError(std::move(error));
-            }
-            recording.finish();
-        });
+    scan_with_preprocessor(arguments,
+                           directory,
+                           content,
+                           std::move(vfs),
+                           result,
+                           [&](clang::CompilerInstance& instance, clang::FrontendAction& action) {
+                               auto& pp = instance.getPreprocessor();
+                               auto recorder = std::make_unique<ScanRecorder>(result, pp);
+                               auto& recording = *recorder;
+                               pp.addPPCallbacks(std::move(recorder));
+                               if(auto error = action.Execute()) {
+                                   llvm::consumeError(std::move(error));
+                               }
+                               recording.finish();
+                           });
     return result;
 }
 

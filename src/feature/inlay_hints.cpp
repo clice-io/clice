@@ -1945,17 +1945,17 @@ auto to_protocol(llvm::ArrayRef<InlayHint> hints,
         if(!inserted) {
             return it->second;
         }
-        auto sites = query.gather(part.symbol,
-                                    anchor,
-                                    [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                        for(auto kind:
-                                            {RelationKind::Declaration, RelationKind::Definition}) {
-                                            if(auto site = from.first_site(named, anchor, kind)) {
-                                                return std::vector{std::move(*site)};
-                                            }
-                                        }
-                                        return std::vector<index::Site>{};
-                                    });
+        auto sites =
+            query.gather(part.symbol,
+                         anchor,
+                         [&](const index::IndexQuery& from, index::SymbolHash named) {
+                             for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
+                                 if(auto site = from.first_site(named, anchor, kind)) {
+                                     return std::vector{std::move(*site)};
+                                 }
+                             }
+                             return std::vector<index::Site>{};
+                         });
         if(!sites.empty()) {
             it->second = to_location(sites.front(), encoding);
         }

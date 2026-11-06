@@ -120,7 +120,8 @@ ZEST_CASE(MovedCommandRecompiles) {
     fx.commands_changed({.added = {lonely}});
     ZASSERT(fx.generation(lonely) != 0);
     ZASSERT(fx.generation(main) == 0);
-    ZASSERT(project.resolve_command(lonely, served.command_request(lonely)).ref.source == CommandSource::Database);
+    ZASSERT(project.resolve_command(lonely, served.command_request(lonely)).ref.source ==
+            CommandSource::Database);
 }
 
 ZEST_CASE(MovedHostRecompiles) {
@@ -202,7 +203,8 @@ ZEST_CASE(ChoiceSteersEditorOnly) {
     choose(file, ContextChoice{Fid{}, std::nullopt, project.commands.command_hash_hex(chosen)});
 
     // An editor resolution honors the chosen CDB entry...
-    ZASSERT(ranges::contains(project.resolve_command(file, served.command_request(file)).arguments, define_of(chosen)));
+    ZASSERT(ranges::contains(project.resolve_command(file, served.command_request(file)).arguments,
+                             define_of(chosen)));
 
     // ...but background indexing must never see user choices.
     ZASSERT(ranges::contains(project.resolve_command(file).arguments,
