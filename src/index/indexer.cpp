@@ -1211,9 +1211,12 @@ public:
             return;
         }
         for(auto& occurrence: resolve_occurrences(semantics, i, &resolver)) {
-            if(occurrence.kind.is_one_of(RelationKind::WeakReference) &&
-               !guess_allowed(occurrence.location, occurrence.decl)) {
-                continue;
+            if(occurrence.kind.is_one_of(RelationKind::WeakReference)) {
+                if(!guess_allowed(occurrence.location, occurrence.decl)) {
+                    continue;
+                }
+            } else if(!instantiation_entries && !unit.header_identities().empty()) {
+                note_reach(occurrence.location, occurrence.decl);
             }
             auto name = add_name(occurrence);
             if(instantiation_entries) {
@@ -1780,45 +1783,87 @@ public:
     /// (that file's identity then joins the header's, identity_of). The
     /// focus file guesses from the whole unit.
     bool guess_allowed(clang::SourceLocation at, const clang::NamedDecl* decl) {
+        return reached(at, decl, true);
+    }
+
+    /// What a header's text names it may rely on the files it is included
+    /// from to declare, the focus file too: its identity then takes in
+    /// those files (identity_of), whose declarations its records depend on.
+    void note_reach(clang::SourceLocation at, const clang::NamedDecl* decl) {
+        reached(at, decl, false);
+    }
+
+    /// Whether `decl` is declared in the closure of the file `at` lies in,
+    /// or in that of a file it is included from, the focus file only for
+    /// what is no guess; the depth of that file is the file's reach.
+    bool reached(clang::SourceLocation at, const clang::NamedDecl* decl, bool guess) {
         auto& SM = unit.context().getSourceManager();
         auto fid = SM.getFileID(SM.getExpansionLoc(at));
         if(fid.isInvalid() || fid == unit.focus_file().file() || unit.is_builtin_file(fid)) {
             return true;
         }
-        llvm::SmallVector<std::uint32_t, 4> declared;
-        for(const auto* redecl: decl->redecls()) {
-            auto location = redecl->getLocation();
-            if(location.isInvalid()) {
-                return true;
-            }
-            auto file = SM.getFileID(SM.getExpansionLoc(location));
-            if(unit.is_builtin_file(file)) {
-                return true;
-            }
-            declared.push_back(closure_slot(file));
+        auto* declared = declared_in(decl);
+        if(!declared) {
+            return true;
         }
         auto sees = [&](clang::FileID from) {
             const auto& closure = closure_of(from);
-            return ranges::any_of(declared, [&](std::uint32_t slot) {
+            return ranges::any_of(*declared, [&](std::uint32_t slot) {
                 return slot < closure.size() && closure.test(slot);
             });
         };
         if(sees(fid)) {
             return true;
         }
+        std::uint32_t bound = guess ? max_reach : std::numeric_limits<std::uint8_t>::max();
         auto from = fid;
-        for(std::uint8_t depth = 1; depth <= max_reach; depth += 1) {
+        for(std::uint32_t depth = 1; depth <= bound; depth += 1) {
             from = SM.getFileID(SM.getIncludeLoc(from));
-            if(from.isInvalid() || unit.is_builtin_file(from) || from == unit.focus_file().file()) {
+            if(from.isInvalid() || unit.is_builtin_file(from)) {
+                return false;
+            }
+            bool focus = from == unit.focus_file().file();
+            if(focus && guess) {
                 return false;
             }
             if(sees(from)) {
                 auto& reach = reaches[fid];
-                reach = std::max(reach, depth);
+                reach = std::max(reach, static_cast<std::uint8_t>(depth));
                 return true;
+            }
+            if(focus) {
+                return false;
             }
         }
         return false;
+    }
+
+    /// The closure slots of the files declaring `decl`; null for one some
+    /// declaration of which every file sees, built in.
+    const llvm::SmallVector<std::uint32_t, 2>* declared_in(const clang::NamedDecl* decl) {
+        auto [it, fresh] = declarations.try_emplace(decl->getCanonicalDecl());
+        if(fresh) {
+            auto& SM = unit.context().getSourceManager();
+            llvm::SmallVector<std::uint32_t, 2> slots;
+            bool built_in = false;
+            for(const auto* redecl: decl->redecls()) {
+                auto location = redecl->getLocation();
+                if(location.isInvalid()) {
+                    built_in = true;
+                    break;
+                }
+                auto file = SM.getFileID(SM.getExpansionLoc(location));
+                if(unit.is_builtin_file(file)) {
+                    built_in = true;
+                    break;
+                }
+                slots.push_back(closure_slot(file));
+            }
+            if(!built_in) {
+                it->second = std::move(slots);
+            }
+        }
+        return it->second ? &*it->second : nullptr;
     }
 
     /// The files `fid`'s file includes, itself among them, transitively, as
@@ -1927,11 +1972,15 @@ public:
     }
 
     std::uint32_t closure_slot(clang::FileID fid) {
+        if(auto it = fid_slots.find(fid); it != fid_slots.end()) {
+            return it->second;
+        }
         auto slot = closure_slot(unit.file_path(fid));
         if(slot_texts[slot] == 0) {
             slot_texts[slot] = combine(llvm::xxh3_64bits(closure_paths[slot]),
                                        llvm::xxh3_64bits(unit.file_content(fid)));
         }
+        fid_slots.try_emplace(fid, slot);
         return slot;
     }
 
@@ -2727,6 +2776,14 @@ private:
     llvm::StringMap<llvm::SmallVector<llvm::StringRef, 2>> grafted_by_path;
 
     llvm::StringMap<std::uint64_t> grafted_texts;
+
+    /// Memo of closure_slot, by entry.
+    llvm::DenseMap<clang::FileID, std::uint32_t> fid_slots;
+
+    /// Memo of declared_in, by canonical declaration; none for a built-in
+    /// one.
+    llvm::DenseMap<const clang::Decl*, std::optional<llvm::SmallVector<std::uint32_t, 2>>>
+        declarations;
 
     /// The files a known variant stands for (choose_known), and per path the
     /// variant with the identity it was found at.

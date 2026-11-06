@@ -75,6 +75,32 @@ void condition_identifiers(clang::Preprocessor& pp,
     }
 }
 
+/// The identifiers no macro names that a macro expanded in a condition
+/// puts there from its body, read as 0 like those of the condition's text.
+/// Its parameters bring the condition's text; `defined`'s operand is
+/// reported on its own.
+void body_identifiers(clang::Preprocessor& pp,
+                      const clang::MacroInfo& macro,
+                      llvm::function_ref<void(llvm::StringRef)> read) {
+    bool operand = false;
+    for(const auto& token: macro.tokens()) {
+        auto* info = token.getIdentifierInfo();
+        if(!info) {
+            continue;
+        }
+        auto name = info->getName();
+        if(name == "defined") {
+            operand = true;
+            continue;
+        }
+        if(std::exchange(operand, false) || name.starts_with("__has_") || name == "true" ||
+           name == "false" || pp.getMacroInfo(info) || ranges::contains(macro.params(), info)) {
+            continue;
+        }
+        read(name);
+    }
+}
+
 }  // namespace
 
 /// Records, in the build of a shared header's PCH, what each header the
@@ -376,6 +402,9 @@ private:
             return;
         }
         read(name, definition);
+        if(auto* macro = definition.getMacroInfo(); macro && pp.isParsingIfOrElifDirective()) {
+            body_identifiers(pp, *macro, [&](llvm::StringRef body) { read(body, 0); });
+        }
     }
 
     void Defined(const clang::Token& name,
@@ -725,6 +754,11 @@ private:
             return;
         }
         check(name, definition);
+        if(auto* macro = definition.getMacroInfo(); macro && pp.isParsingIfOrElifDirective()) {
+            body_identifiers(pp, *macro, [&](llvm::StringRef body) {
+                check(body, 0, name.getLocation());
+            });
+        }
     }
 
     void Defined(const clang::Token& name,

@@ -218,6 +218,28 @@ ZEST_CASE(MacroEditedInPlace) {
     ZEXPECT(after.section_identity(*again).identity != known.identity);
 };
 
+ZEST_CASE(NamesOfTheIncluder) {
+    // body.inc calls the `helper` each unit defines before including it:
+    // b's variant of body.inc is b's own.
+    TempDir tmp;
+    tmp.touch("body.inc", "static int run() { return helper(); }\n");
+    tmp.touch("a.cpp", "static int helper() { return 1; }\n#include \"body.inc\"\n");
+    tmp.touch("b.cpp", "static int helper() { return 2; }\n#include \"body.inc\"\n");
+    auto a_data = index_file(tmp, tmp.path("a.cpp")).data;
+    auto a = index::TUIndex::from_bytes(a_data);
+    auto body = section_of(a, "body.inc");
+    ZASSERT(body);
+    auto known = a.section_identity(*body);
+    ZEXPECT(known.reach == 1U);
+
+    auto b_data = index_file(tmp, tmp.path("b.cpp"), {}, {known.variant}, {}, {known}).data;
+    auto b = index::TUIndex::from_bytes(b_data);
+    auto own = section_of(b, "body.inc");
+    ZASSERT(own);
+    ZEXPECT(b.section_identity(*own).identity != known.identity);
+    ZEXPECT(!b.section_blob(*own).empty());
+};
+
 ZEST_CASE(GuessesStayInClosure) {
     // impl.h names no header: what declares `helper` for its template comes
     // from the file including it. other.h, included before by the unit

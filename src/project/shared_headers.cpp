@@ -197,24 +197,24 @@ void Project::plan_shared_headers(llvm::ArrayRef<Fid> units) {
             auto file = path::join(directory, name);
 
             // How the shared header includes a root: by the name the
-            // command's search directories find it under, as the members
-            // reach it, so that a system header is one there too and its
-            // `#include_next` goes on where theirs does; by its path when no
-            // search directory holds it, unless an `#include_next` of its
-            // would start over there. None for a header a unit including it
-            // enters again.
+            // command's search directories find it under, so that a system
+            // header is one there too; by its path when no search directory
+            // holds it. None for a header a unit including it enters again,
+            // and for one with an `#include_next`, which goes on from the
+            // directory the lookup found it in, which only the units' own
+            // lookups tell.
             IncludeArguments spellings(search, Spelling::absolute(file), scope);
             auto argument = [&](Fid root) -> std::optional<std::string> {
                 auto path = file_table.resolve(root);
                 auto content = vfs::read_text(path);
-                if(!content || !guarded(*content, dialect)) {
+                if(!content || !guarded(*content, dialect) ||
+                   llvm::StringRef(*content).contains("include_next")) {
                     return std::nullopt;
                 }
                 if(auto spelled = spellings.found_as(path)) {
                     return spelled;
                 }
-                if(llvm::StringRef(*content).contains("include_next") ||
-                   ranges::any_of(search.dirs, [&](const SearchDir& dir) {
+                if(ranges::any_of(search.dirs, [&](const SearchDir& dir) {
                        return path::is_within(path, CanonicalPath(Spelling::absolute(dir.path)));
                    })) {
                     return std::nullopt;

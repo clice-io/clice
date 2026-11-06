@@ -447,6 +447,24 @@ int disabled();
     ZEXPECT(compiled.unit->shared_rejection().contains("MODE"));
 };
 
+ZEST_CASE(ConditionThroughMacro) {
+    // FEATURE is no macro where feature.h's condition reads it through
+    // ENABLED; the unit defines it.
+    add_file("shared.hxx", "#pragma once\n#include \"feature.h\"\n");
+    add_file("feature.h", R"cpp(#pragma once
+#define ENABLED FEATURE
+#if ENABLED
+int enabled();
+#else
+int disabled();
+#endif
+)cpp");
+    add_focus("main.cpp",
+              "#define FEATURE 1\n#include \"feature.h\"\nint use() { return enabled(); }\n");
+    auto compiled = compile_over(*this);
+    ZEXPECT(compiled.unit->shared_rejection().contains("FEATURE"));
+};
+
 };  // ZEST_SUITE(SharedHeader)
 
 }  // namespace
