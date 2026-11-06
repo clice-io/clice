@@ -82,6 +82,8 @@ public:
 private:
     void watch() {
         while(!stopping) {
+            // Hang detection: a query that never returns signals nothing;
+            // only polling the clock tells it from a slow one.
             this_thread::sleep_for(chrono::milliseconds(100));
             std::lock_guard lock(mutex);
             if(busy && chrono::steady_clock::now() - started > limit) {
