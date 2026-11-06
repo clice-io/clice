@@ -563,7 +563,9 @@ int main() {{ gen(); return 0; }}
                           synthesized));
     prepare();
     params.input.add_synthesized({
-        {synthesized, "inline void gen() {}\n"}
+        {.path = synthesized,
+         .content = "inline void gen() {}\n",
+         .origin = {.source = TestVFS::path("host.cpp"), .runs = {{.length = 21}}}},
     });
     ZASSERT(try_compile());
 
