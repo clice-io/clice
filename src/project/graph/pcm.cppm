@@ -1,5 +1,6 @@
 module clice:project.graph.pcm;
 
+import :command.database;
 import :command.invocation;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
@@ -156,6 +157,9 @@ inline std::uint32_t module_context(NodeId node) {
 struct ModuleContexts {
     struct Context {
         std::uint32_t id = 0;
+
+        /// The databases listing the unit under this command.
+        llvm::SmallVector<SourceID, 1> databases;
 
         ModuleCompatibility compatibility;
     };

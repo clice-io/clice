@@ -1,5 +1,6 @@
 module clice;
 
+import :command.database;
 import :command.invocation;
 import :project.command;
 import :project.graph.pch;
@@ -228,24 +229,41 @@ ModuleCompatibility compatibility(Project& project, const Rendered& command) {
 
 /// ModuleContexts::listed of a module unit, from its entries.
 llvm::SmallVector<ModuleContexts::Context, 2> list_module_contexts(Project& project, Fid unit) {
-    llvm::SmallVector<std::uint64_t, 2> commands;
-    for(auto& candidate: project.candidates(unit)) {
-        auto hash = project.commands.command_hash(candidate.base);
-        if(!ranges::contains(commands, hash)) {
-            commands.push_back(hash);
+    llvm::SmallVector<ModuleContexts::Context, 2> listed;
+    llvm::SmallVector<std::uint64_t, 2> hashes;
+    for(auto& entry: project.entries(unit)) {
+        auto hash = project.commands.command_hash(entry.command);
+        if(auto known = ranges::find(hashes, hash); known != hashes.end()) {
+            auto& databases = listed[known - hashes.begin()].databases;
+            if(!ranges::contains(databases, entry.source)) {
+                databases.push_back(entry.source);
+            }
+            continue;
         }
+        hashes.push_back(hash);
+        listed.push_back(
+            {.id = listed.empty() ? 0 : context_id(hash), .databases = {entry.source}});
     }
-    llvm::SmallVector<ModuleContexts::Context, 2> listed(1);
-    if(commands.size() < 2) {
-        return listed;
+    if(listed.size() < 2) {
+        return llvm::SmallVector<ModuleContexts::Context, 2>(1);
     }
-    listed.front().compatibility = compatibility(project, project.resolve_command(unit));
-    for(auto hash: llvm::drop_begin(commands)) {
-        auto id = context_id(hash);
-        auto command = build_command(project, module_node(unit, id));
-        listed.push_back({.id = id, .compatibility = compatibility(project, *command)});
+    for(auto& context: listed) {
+        auto command = build_command(project, module_node(unit, context.id));
+        context.compatibility = compatibility(project, *command);
     }
     return listed;
+}
+
+/// The database `command`, what `file` compiles under, is an entry of; none
+/// for a command no database lists.
+std::optional<SourceID> database_of(Project& project, Fid file, const Candidate& command) {
+    auto owner = command.from().valid() ? command.from() : file;
+    for(auto& entry: project.entries(owner)) {
+        if(entry.command == command.base) {
+            return entry.source;
+        }
+    }
+    return std::nullopt;
 }
 
 /// One attempt of a module's PCM: declare the module's imports as its
@@ -612,9 +630,10 @@ async::task<Imports> Project::scan_imports(Fid path_id,
     for(auto& name: scan.imports) {
         auto providers = dep_graph.lookup_module(name);
         imports.declared.push_back(
-            providers.empty()
-                ? unresolved_import(name)
-                : module_build(nearest_provider(file_table, providers, path_id), resolution));
+            providers.empty() ? unresolved_import(name)
+                              : module_build(nearest_provider(file_table, providers, path_id),
+                                             path_id,
+                                             resolution));
     }
     co_return imports;
 }
@@ -631,7 +650,7 @@ Work Project::module_work(NodeId module) {
     };
 }
 
-NodeId Project::module_build(Fid module, const Rendered& importer) {
+NodeId Project::module_build(Fid module, Fid importer, const Resolution& command) {
     auto& contexts = module_contexts[module];
     if(contexts.epoch != commands_epoch) {
         contexts.listed = list_module_contexts(*this, module);
@@ -640,11 +659,22 @@ NodeId Project::module_build(Fid module, const Rendered& importer) {
     if(contexts.listed.size() < 2) {
         return module_node(module);
     }
-    auto wanted = compatibility(*this, importer);
-    auto readable = ranges::find_if(contexts.listed, [&](const ModuleContexts::Context& context) {
-        return wanted.reads(context.compatibility);
-    });
-    if(readable == contexts.listed.begin() || readable == contexts.listed.end()) {
+    auto wanted = compatibility(*this, command);
+    auto database = database_of(*this, importer, command.candidate);
+    const ModuleContexts::Context* readable = nullptr;
+    for(auto& context: contexts.listed) {
+        if(!wanted.reads(context.compatibility)) {
+            continue;
+        }
+        if(database && ranges::contains(context.databases, *database)) {
+            readable = &context;
+            break;
+        }
+        if(!readable) {
+            readable = &context;
+        }
+    }
+    if(!readable || readable->id == 0) {
         return module_node(module);
     }
     if(!ranges::contains(contexts.picked, readable->id)) {

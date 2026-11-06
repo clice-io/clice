@@ -902,15 +902,16 @@ struct Project {
     /// keep their builds: its content did not change.
     Work module_work(NodeId module);
 
-    /// The PCM an import of `module` reads in a compile under `importer`: the
-    /// build under the module's own command when the compile can read it
-    /// (ModuleCompatibility::reads), else under the first other entry of the
-    /// module it can, else its own anyway, whose reading then fails with clang's
-    /// reason — the build no entry describes is never made up. A build
-    /// system lists a module once per configuration it builds it in: CMake
-    /// once per set of its importers' language flags, a project once per
-    /// build directory.
-    NodeId module_build(Fid module, const Rendered& importer);
+    /// The PCM an import of `module` reads in a compile of `importer` under
+    /// `command`: the build under the first entry of the module the compile
+    /// can read (ModuleCompatibility::reads), the module's own command first
+    /// and the entries of the database the compile's command comes from
+    /// before the others, as the real build gives it; else the build under
+    /// its own command anyway, whose reading then fails with clang's reason —
+    /// the build no entry describes is never made up. A build system lists a
+    /// module once per configuration it builds it in: CMake once per set of
+    /// its importers' language flags, a project once per build directory.
+    NodeId module_build(Fid module, Fid importer, const Resolution& command);
 
     /// Whether `modules` and every module below them have their PCMs on disk,
     /// and the PCHs those were built over. A wait on one can outlast another:
