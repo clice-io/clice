@@ -345,14 +345,25 @@ bool types_may_match(clang::ASTContext& context, clang::QualType lhs, clang::Qua
             return context.hasSameTemplateName(lhs_name, rhs_name) &&
                    types::may_match(context, lhs_arguments, rhs_arguments);
         }
-        /// A dependent form not compared structurally may become anything.
-        auto opaque = llvm::IsaPred<clang::DependentNameType,
-                                    clang::DecltypeType,
-                                    clang::PackExpansionType,
-                                    clang::PackIndexingType,
-                                    clang::UnaryTransformType,
-                                    clang::UnresolvedUsingType>;
-        return opaque(lhs.getTypePtr()) || opaque(rhs.getTypePtr());
+        /// A dependent form whose shape instantiation does not fix
+        /// (`typename T::type`, `decltype(e)`, `__typeof__(e)`) may become
+        /// anything.
+        auto shaped = llvm::IsaPred<clang::PointerType,
+                                    clang::ReferenceType,
+                                    clang::MemberPointerType,
+                                    clang::ArrayType,
+                                    clang::FunctionType,
+                                    clang::TemplateSpecializationType,
+                                    clang::TagType,
+                                    clang::InjectedClassNameType,
+                                    clang::ComplexType,
+                                    clang::VectorType,
+                                    clang::AtomicType,
+                                    clang::BitIntType>;
+        auto opaque = [&](clang::QualType type) {
+            return type->isDependentType() && !shaped(type.getTypePtr());
+        };
+        return opaque(lhs) || opaque(rhs);
     }
     switch(lhs->getTypeClass()) {
         case clang::Type::Pointer:
