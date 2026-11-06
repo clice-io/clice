@@ -144,17 +144,25 @@ local function switch_configuration(client, bufnr)
     if #list.configurations == 0 then
       return vim.notify('clice: the rules declare no build configurations')
     end
+    local build = list.build ~= vim.NIL and list.build or nil
     vim.ui.select(list.configurations, {
       prompt = 'Build configuration',
       format_item = function(name)
         local notes = {}
         if name == list.active then
           table.insert(notes, 'active')
+          if build then
+            local directory = vim.fs.dirname(vim.uri_to_fname(build.databases[1]))
+            table.insert(notes, 'links to ' .. vim.fn.fnamemodify(directory, ':~:.'))
+          end
         elseif name == list.selected then
           table.insert(notes, 'selected for the next start')
         end
         if name == list.defaultConfiguration then
           table.insert(notes, 'default')
+        end
+        if build and name == build.configuration then
+          table.insert(notes, ('the links of %s resolve here'):format(list.active))
         end
         return #notes == 0 and name or ('%s (%s)'):format(name, table.concat(notes, ', '))
       end,

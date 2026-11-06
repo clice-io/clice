@@ -527,6 +527,14 @@ export class Serve extends Client {
         return shown(reply, "configurations", (result) => ({
             menu: result.configurations,
             active: result.active,
+            ...(result.build === null
+                ? {}
+                : {
+                      build: {
+                          configuration: result.build.configuration,
+                          databases: result.build.databases.map((uri) => this.relative(uri)),
+                      },
+                  }),
             selected: result.selected,
             default: result.defaultConfiguration,
         }));
