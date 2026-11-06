@@ -1,5 +1,6 @@
 module clice;
 
+import :feature.inactive_regions;
 import :index.instantiation_shard;
 import :index.project_index;
 import :index.shard;
@@ -66,9 +67,10 @@ std::size_t entry_count(const index::Shard& shard) {
 
 /// The open document's own file index when it describes the buffer: the
 /// compile is current, or it compiled these very bytes. While the buffer
-/// is also the text the file's shard indexed, the two merged: the compile
-/// indexed the one context it ran in, the shard every context the file
-/// compiles in.
+/// is also the text the file's shard indexed, it is merged with the
+/// shard's entries in the code the compile skipped: the compile indexed
+/// the one context it ran in, the shard every context the file compiles
+/// in.
 const index::Shard* buffer_shard(const ServedProject& served, const ServedDocument& document) {
     auto& compiled = document.latest;
     if(!compiled || !compiled->index || !compiled->index->loaded()) {
@@ -84,21 +86,29 @@ const index::Shard* buffer_shard(const ServedProject& served, const ServedDocume
         return nullptr;
     }
     auto* stored = served.matching_shard(session);
-    if(!stored || stored->content_hash() != shard.content_hash()) {
+    auto& skipped = compiled->inactive_regions;
+    if(skipped.empty() || !stored || stored->content_hash() != shard.content_hash()) {
+        document.merged.reset();
         return &shard;
     }
     if(!document.merged || document.merged->compile != compiled) {
         auto keep = served.project.index.live_variants(session.path_id);
         keep.erase(ranges::remove(keep, shard.variants().front()).begin(), keep.end());
-        auto bytes = index::merge_shards(*stored, keep, llvm::ArrayRef(&shard, 1));
+        auto bytes = index::merge_shards(
+            *stored,
+            keep,
+            llvm::ArrayRef(&shard, 1),
+            [&](std::uint32_t offset) { return feature::inactive_at(skipped, offset); });
+        auto hash = llvm::xxh3_64bits(as_chars(bytes));
         auto merged =
             index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
-        bool adds = entry_count(merged) != entry_count(shard);
         document.merged = ServedDocument::MergedIndex{
             .compile = compiled,
             .shard = std::move(merged),
-            .adds = adds,
         };
+        if(entry_count(document.merged->shard) != entry_count(shard)) {
+            document.merged->additions = hash;
+        }
     }
     return &document.merged->shard;
 }
@@ -140,24 +150,24 @@ std::optional<index::IndexSource> ServedProject::buffer_index(Fid file) const {
     return buffer_source(*this, index::IndexSource::Kind::Shard, *document, *shard);
 }
 
-bool ServedProject::other_contexts(Fid file) const {
+llvm::ArrayRef<std::uint32_t> ServedProject::skipped_code(Fid file) const {
     auto* document = find_document(file);
-    return document && buffer_shard(*this, *document) && document->merged &&
-           document->merged->compile == document->latest && document->merged->adds;
+    if(!document || !buffer_shard(*this, *document) || !document->merged ||
+       document->merged->additions == 0) {
+        return {};
+    }
+    return document->latest->inactive_regions;
 }
 
-bool ServedProject::compiled_at(Fid file, std::uint32_t offset) const {
+bool ServedProject::merge_again(Fid file) const {
     auto* document = find_document(file);
-    if(!document || !document->latest || !document->latest->index) {
+    if(!document) {
         return false;
     }
-    auto& state = *document->latest->index;
-    bool named = false;
-    state.shard_of(state.focus_file()).occurrences_at(offset, [&](const index::Occurrence&) {
-        named = true;
-        return false;
-    });
-    return named;
+    auto before = document->merged ? document->merged->additions : 0;
+    document->merged.reset();
+    buffer_shard(*this, *document);
+    return before != (document->merged ? document->merged->additions : 0);
 }
 
 void ServedProject::for_each_session(

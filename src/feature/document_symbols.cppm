@@ -134,10 +134,12 @@ auto document_symbols(SourceText& source,
                       const index::IndexSource& index,
                       const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
 
-/// Adds to the outline the AST gives the entries only `index`, the outline
-/// of the index serving the file, holds: the declarations of the file's
-/// other contexts, where the index nests them.
+/// Adds to the outline the AST gives the entries of `index`, the outline
+/// of the index serving the file, in the code the AST's context skipped
+/// (`skipped`, flat as InactiveScan's): another context the file compiles
+/// in declares them.
 void merge_other_contexts(std::vector<DocumentSymbol>& outline,
-                          llvm::ArrayRef<DocumentSymbol> index);
+                          llvm::ArrayRef<DocumentSymbol> index,
+                          llvm::ArrayRef<std::uint32_t> skipped);
 
 }  // namespace clice::feature

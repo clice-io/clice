@@ -293,6 +293,7 @@ RequestResult<worker::CompileParams>
                 doc->pch_bound = params.pch.second;
                 doc->open_conditionals = params.open_conditionals;
                 doc->preamble_inactive_regions = params.preamble_inactive_regions;
+                result.inactive_regions = doc->inactive_regions();
             } else {
                 result.status = unit->setup_fail() ? worker::CompileStatus::SetupFail
                                                    : worker::CompileStatus::Cancelled;

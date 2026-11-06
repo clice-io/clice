@@ -5,12 +5,12 @@ import :feature.document_links;
 import :feature.document_symbols;
 import :feature.folding_ranges;
 import :feature.hover;
+import :feature.inactive_regions;
 import :feature.inlay_hints;
 import :feature.protocol;
 import :feature.selection_ranges;
 import :feature.semantic_tokens;
 import :semantic.symbol;
-import :semantic.token_class;
 import :server.client;
 import :server.master;
 import :server.served_project;
@@ -68,15 +68,26 @@ static std::optional<feature::HoverInfo> index_hover_card(ServedProject& project
                                project.project.settings.documentation);
 }
 
-/// The index serving a document the AST answers for, when it holds the
-/// file's other contexts — what the AST's context leaves out, the answers
-/// are completed with —, and the buffer is not too large to lex again.
-static std::optional<index::IndexSource> other_contexts(const ServedProject& served,
-                                                        const Session& session) {
-    if(session.text().size() > full_lex_cap || !served.other_contexts(session.path_id)) {
+/// What completes the answers the AST gives for a document: the code its
+/// context skipped that the file's other contexts compile, and the index
+/// serving the document, which holds their entries there; none when no
+/// other context compiles any of it or the buffer is too large to lex
+/// again.
+struct OtherContexts {
+    llvm::ArrayRef<std::uint32_t> skipped;
+    index::IndexSource index;
+};
+
+static std::optional<OtherContexts> other_contexts(const ServedProject& served,
+                                                   const Session& session) {
+    if(session.text().size() > full_lex_cap) {
         return std::nullopt;
     }
-    return served.project.index_query.serving(session.path_id);
+    auto skipped = served.skipped_code(session.path_id);
+    if(skipped.empty()) {
+        return std::nullopt;
+    }
+    return OtherContexts{skipped, *served.buffer_index(session.path_id)};
 }
 
 LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
@@ -115,18 +126,14 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
                                        },
                                        std::move(token))
                          .or_fail();
-            auto inactive = [](const feature::SemanticToken& token) {
-                return (token.modifiers & mask(SemanticTokenModifier::Inactive)) != 0;
-            };
-            if(tokens && ranges::any_of(*tokens, inactive)) {
-                if(auto merged = other_contexts(*served, *session)) {
-                    feature::merge_other_contexts(
-                        *tokens,
-                        feature::semantic_tokens(served->text_of(*session),
-                                                 query,
-                                                 *merged,
-                                                 served->project.settings.semantic_tokens));
-                }
+            auto other = other_contexts(*served, *session);
+            if(tokens && other) {
+                feature::merge_other_contexts(
+                    *tokens,
+                    feature::semantic_tokens(served->text_of(*session),
+                                             query,
+                                             other->index,
+                                             served->project.settings.semantic_tokens));
             }
             break;
         }
@@ -277,10 +284,9 @@ void LSPClient::register_document_requests() {
                 }
             }
         }
-        // Code the compile's context left out, it never saw: another
-        // context of the file reads it, and the index merging them all has
-        // its card.
-        if(offset && project.other_contexts(path_id) && !project.compiled_at(path_id, *offset)) {
+        // Code the compile's context skipped: another context of the file
+        // compiles it, and the index has its card.
+        if(offset && feature::inactive_at(project.skipped_code(path_id), *offset)) {
             if(auto info = index_hover_card(project, *session, position)) {
                 co_return card(*info);
             }
@@ -384,11 +390,12 @@ void LSPClient::register_document_requests() {
             if(!folds) {
                 co_return codec::raw_value{"null"};
             }
-            if(auto merged = other_contexts(*served, *session)) {
+            if(auto other = other_contexts(*served, *session)) {
                 feature::merge_other_contexts(*folds,
                                               feature::folding_ranges(served->text_of(*session),
                                                                       served->project.index_query,
-                                                                      *merged));
+                                                                      other->index),
+                                              other->skipped);
             }
             co_return convert(*folds);
         });
@@ -490,13 +497,14 @@ void LSPClient::register_document_requests() {
         if(!symbols) {
             co_return codec::raw_value{"null"};
         }
-        if(auto merged = other_contexts(*served, *session)) {
+        if(auto other = other_contexts(*served, *session)) {
             feature::merge_other_contexts(
                 *symbols,
                 feature::document_symbols(served->text_of(*session),
                                           served->project.index_query,
-                                          *merged,
-                                          served->project.settings.document_symbols));
+                                          other->index,
+                                          served->project.settings.document_symbols),
+                other->skipped);
         }
         co_return convert(*symbols);
     });
@@ -525,11 +533,12 @@ void LSPClient::register_document_requests() {
                 case Route::Ast: break;
             }
             auto links = co_await served->directive_links(ticket, ctx.cancellation).or_fail();
-            if(served->other_contexts(path_id)) {
+            if(auto skipped = served->skipped_code(path_id); !skipped.empty()) {
                 feature::merge_other_contexts(links,
                                               feature::document_links(served->text_of(*session),
                                                                       served->project.index_query,
-                                                                      path_id));
+                                                                      path_id),
+                                              skipped);
             }
             co_return to_raw(feature::to_protocol(links, session->positions(), encoding, files));
         });

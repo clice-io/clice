@@ -156,4 +156,8 @@ InactiveScan inactive_regions(CompilationUnit& unit,
     return result;
 }
 
+bool inactive_at(llvm::ArrayRef<std::uint32_t> regions, std::uint32_t offset) {
+    return (ranges::upper_bound(regions, offset) - regions.begin()) % 2 == 1;
+}
+
 }  // namespace clice::feature

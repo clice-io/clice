@@ -208,6 +208,10 @@ struct CompileResult {
 
     /// See CompileUnitResult::index_in_file.
     bool index_in_file = false;
+
+    /// The focus file's code the preprocessor skipped (flat begin/end
+    /// offset pairs, see feature::InactiveScan).
+    std::vector<std::uint32_t> inactive_regions;
 };
 
 /// Build the PCH of a preamble and its paired pch.idx index, or that of a

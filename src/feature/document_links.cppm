@@ -32,11 +32,13 @@ auto document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge> edges
 auto document_links(SourceText& source, const index::IndexQuery& query, Fid file)
     -> std::vector<index::DocumentLink>;
 
-/// Adds to the links the AST gives those only `index`, the links of the
-/// index serving the file, holds: the includes of the file's other
+/// Adds to the links the AST gives those `index`, the links of the index
+/// serving the file, holds in the code the AST's context skipped
+/// (`skipped`, flat as InactiveScan's): the includes of the file's other
 /// contexts.
 void merge_other_contexts(std::vector<index::DocumentLink>& links,
-                          llvm::ArrayRef<index::DocumentLink> index);
+                          llvm::ArrayRef<index::DocumentLink> index,
+                          llvm::ArrayRef<std::uint32_t> skipped);
 
 /// The links in LSP form, each target named the way the user knows the
 /// file; a link outside `map`'s text is left out.

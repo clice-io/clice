@@ -1664,7 +1664,8 @@ std::vector<std::byte> write_merged(const Root* old_root,
                                     llvm::ArrayRef<Shard> fresh,
                                     std::uint32_t fresh_base,
                                     std::vector<VariantHash> variants,
-                                    const ContentInfo& content) {
+                                    const ContentInfo& content,
+                                    llvm::function_ref<bool(std::uint32_t)> within) {
     MergedEntries<MaskT> merged;
 
     // Occurrences: concatenate every fresh blob's entries (each marked with
@@ -1689,6 +1690,10 @@ std::vector<std::byte> write_merged(const Root* old_root,
         old_occurrences = decode_occurrences<MaskT>(table, [&](std::uint32_t entry) {
             return remap_mask<MaskT>(encoding, table.masks, entry, id_map);
         });
+        if(within) {
+            std::erase_if(old_occurrences,
+                          [&](const auto& entry) { return !within(entry.occurrence.range.begin); });
+        }
     }
     merge_sorted(std::move(old_occurrences),
                  std::move(fresh_occurrences),
@@ -1733,7 +1738,7 @@ std::vector<std::byte> write_merged(const Root* old_root,
     // The merge below decodes every old group once, in order.
     RelationTable::Cursor old_cursor;
     auto decode_old = [&](const StoredGroup& group) {
-        return decode_relation_group<MaskT>(
+        auto entries = decode_relation_group<MaskT>(
             *old_table,
             group.begin_entry,
             group.end_entry,
@@ -1741,6 +1746,11 @@ std::vector<std::byte> write_merged(const Root* old_root,
             [&](std::uint32_t entry) {
                 return remap_mask<MaskT>(old_encoding, old_table->masks, entry, id_map);
             });
+        if(within) {
+            std::erase_if(entries,
+                          [&](const auto& entry) { return !within(entry.relation.range.begin); });
+        }
+        return entries;
     };
 
     auto lhs = old_groups.begin();
@@ -1823,7 +1833,8 @@ std::vector<std::byte>
 
 std::vector<std::byte> merge_shards(const Shard& old,
                                     llvm::ArrayRef<VariantHash> keep,
-                                    llvm::ArrayRef<Shard> fresh) {
+                                    llvm::ArrayRef<Shard> fresh,
+                                    llvm::function_ref<bool(std::uint32_t)> within) {
     auto old_variants = old.variants();
 
     // old-id -> new-id; -1 drops the variant.
@@ -1868,9 +1879,16 @@ std::vector<std::byte> merge_shards(const Shard& old,
                                            fresh,
                                            fresh_base,
                                            std::move(variants),
-                                           content);
+                                           content,
+                                           within);
     }
-    return write_merged<Bitmap>(old_root, id_map, fresh, fresh_base, std::move(variants), content);
+    return write_merged<Bitmap>(old_root,
+                                id_map,
+                                fresh,
+                                fresh_base,
+                                std::move(variants),
+                                content,
+                                within);
 }
 
 }  // namespace clice::index

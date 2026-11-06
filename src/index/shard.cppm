@@ -177,9 +177,11 @@ std::vector<std::byte>
 /// holds at least one variant, and a file whose last variant died is
 /// retired by the caller, not compacted to nothing. Every fresh shard
 /// must be a loaded single-variant blob of the same content generation as
-/// the other inputs.
+/// the other inputs. `within`, when given, keeps of `old`'s entries those
+/// it accepts the offset of.
 std::vector<std::byte> merge_shards(const Shard& old,
                                     llvm::ArrayRef<VariantHash> keep,
-                                    llvm::ArrayRef<Shard> fresh);
+                                    llvm::ArrayRef<Shard> fresh,
+                                    llvm::function_ref<bool(std::uint32_t)> within = nullptr);
 
 }  // namespace clice::index

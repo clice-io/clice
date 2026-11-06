@@ -1,0 +1,21 @@
+["a host indexed later".before]
+hover = {}
+
+["a host indexed later".indexed.hover]
+plaintext = '''
+function slow_path
+
+inline int slow_path()
+'''
+range = "inline int ⟦slow_path⟧() {"
+
+["an edit until saved".edited]
+hover = {}
+
+["an edit until saved".saved.hover]
+plaintext = '''
+function slow_path
+
+inline int slow_path()
+'''
+range = "inline int ⟦slow_path⟧() {"

@@ -199,6 +199,10 @@ struct DocumentCompile {
     /// disk-derived data from background indexing.
     std::shared_ptr<index::TUIndex> index;
 
+    /// The focus file's code the compile's preprocessor skipped (flat
+    /// begin/end offset pairs): what the file's other contexts may compile.
+    std::vector<std::uint32_t> inactive_regions;
+
     /// Publishable products of the latest compilation (see CompileOutput).
     std::optional<CompileOutput> output;
 
@@ -223,17 +227,19 @@ struct ServedDocument {
     /// See ServingMode for the write discipline.
     ServingMode serving = ServingMode::Escalated;
 
-    /// The latest compile's file index merged with the file's shard, which
-    /// merges every context the file compiles in: made on first read while
-    /// the buffer holds the very bytes both indexed, dropped when the shard
-    /// changes (ServedProject::index_changed).
+    /// The latest compile's file index merged with the file's shard's
+    /// entries in the code the compile skipped, which the file's other
+    /// contexts compile: made on first read while the buffer holds the
+    /// very bytes both indexed, dropped when it no longer does, made again
+    /// when the shard changes (ServedProject::index_changed).
     struct MergedIndex {
         std::shared_ptr<const DocumentCompile> compile;
         index::Shard shard;
 
-        /// The shard holds entries the compile's index does not: the
-        /// file's other contexts.
-        bool adds = false;
+        /// Zero when the shard adds nothing to the compile's index, else a
+        /// hash of the merged index: two tell whether the additions
+        /// changed.
+        std::uint64_t additions = 0;
     };
 
     mutable std::optional<MergedIndex> merged;
@@ -332,8 +338,9 @@ public:
     void attempt_finished(Fid path_id) override;
 
     /// Documents without a current file index serve these very shards
-    /// (freshness clause 4): the client asks again for what it pulled from
-    /// them.
+    /// (freshness clause 4), and documents holding other contexts complete
+    /// the AST's answers from them: the client asks again for what it
+    /// pulled from them.
     void index_changed(llvm::ArrayRef<Fid> path_ids) override;
 
     // served_project.cpp
@@ -774,14 +781,15 @@ public:
     /// the very bytes it indexed.
     const index::Shard* matching_shard(const Session& session) const;
 
-    /// Whether the index serving the open document holds what its latest
-    /// compile did not see: the file's other contexts, which the answers
-    /// the AST gives are completed with.
-    bool other_contexts(Fid file) const;
+    /// The code the open document's latest compile skipped (flat begin/end
+    /// offset pairs), when the index serving the document holds entries
+    /// there: the code of the file's other contexts, which the answers
+    /// the AST gives are completed with. Empty otherwise.
+    llvm::ArrayRef<std::uint32_t> skipped_code(Fid file) const;
 
-    /// Whether the open document's latest compile names something at
-    /// `offset`: code its context compiled, which the AST answers for.
-    bool compiled_at(Fid file, std::uint32_t offset) const;
+    /// Merges the open document's compile with its file's shard again, the
+    /// shard having changed: whether what the merge adds changed with it.
+    bool merge_again(Fid file) const;
 
     /// Set while compiles may run and requests resolve commands. A project
     /// made while its root's previous one still shuts down

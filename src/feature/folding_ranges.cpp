@@ -2,6 +2,7 @@ module clice;
 
 import :compile.compilation;
 import :feature.folding_ranges;
+import :feature.inactive_regions;
 import :feature.index_entries;
 import :index.query;
 import :semantic.decls;
@@ -1071,13 +1072,18 @@ auto folding_ranges(SourceText& source,
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); });
 }
 
-void merge_other_contexts(std::vector<FoldingRange>& folds, llvm::ArrayRef<FoldingRange> index) {
+void merge_other_contexts(std::vector<FoldingRange>& folds,
+                          llvm::ArrayRef<FoldingRange> index,
+                          llvm::ArrayRef<std::uint32_t> skipped) {
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, std::size_t> known;
     for(auto [position, fold]: views::enumerate(folds)) {
         known.try_emplace({fold.range.begin, fold.range.end}, position);
     }
     auto count = folds.size();
     for(const auto& fold: index) {
+        if(!inactive_at(skipped, fold.range.begin)) {
+            continue;
+        }
         auto it = known.find({fold.range.begin, fold.range.end});
         if(it == known.end()) {
             folds.push_back(fold);

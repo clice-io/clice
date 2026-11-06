@@ -31,4 +31,7 @@ InactiveScan inactive_regions(CompilationUnit& unit,
                               std::uint32_t resume_offset = 0,
                               std::uint32_t end_offset = UINT32_MAX);
 
+/// Whether `offset` lies in one of `regions`, flat as InactiveScan's.
+bool inactive_at(llvm::ArrayRef<std::uint32_t> regions, std::uint32_t offset);
+
 }  // namespace clice::feature

@@ -327,6 +327,44 @@ ZEST_CASE(CompactionDropsVariant) {
     ZASSERT(hash_at(compacted, 11) == 0u);
 }
 
+ZEST_CASE(MergeWithinOffsets) {
+    // The entries of the old shard outside what `within` accepts drop, its
+    // relations as its occurrences; the fresh shard's all stay.
+    index::FileIndex old_index;
+    old_index.occurrences = {
+        {{0, 3},   111},
+        {{10, 13}, 222},
+    };
+    old_index.relations[222] = {
+        {.kind = RelationKind::Definition, .range = {10, 13}, .target = 0},
+    };
+    old_index.relations[111] = {
+        {.kind = RelationKind::Definition, .range = {0, 3}, .target = 0},
+    };
+    auto fresh_index = simple_index({
+        {{20, 23}, 333}
+    });
+    auto content = "aaa bbb ccc ddd eee fff";
+    auto old = make_shard(write_fresh(old_index, content));
+    std::vector<index::Shard> fresh;
+    fresh.push_back(make_shard(write_fresh(fresh_index, content)));
+
+    auto merged =
+        make_shard(index::merge_shards(old, old.variants(), fresh, [](std::uint32_t offset) {
+            return offset >= 10 && offset < 20;
+        }));
+    ZEXPECT(hash_at(merged, 1) == 0u);
+    ZEXPECT(hash_at(merged, 11) == 222u);
+    ZEXPECT(hash_at(merged, 21) == 333u);
+    std::size_t definitions = 0;
+    merged.for_each_relation([&](index::SymbolHash symbol, const index::Relation&) {
+        ZEXPECT(symbol == 222u);
+        definitions += 1;
+        return true;
+    });
+    ZEXPECT(definitions == std::size_t(1));
+}
+
 ZEST_CASE(KWayMerge) {
     // Several fresh variants are merged in one write; shared occurrences collapse
     // with OR-ed masks and each unique occurrence stays filterable to its owner.

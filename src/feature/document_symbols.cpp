@@ -421,10 +421,10 @@ bool holds(llvm::ArrayRef<Node> nodes, std::uint32_t outer_index, const Node& in
     if(inner.group == outer_index) {
         return true;
     }
-    // Declarations of one scope are siblings wherever they are written: a
-    // file the index read in several contexts (a table a file includes
-    // itself to expand twice) writes one inside the other.
-    if(outer.entry.entity != 0 && inner.entry.entity != 0 &&
+    // A variable holds no declaration of its own scope, wherever that is
+    // written: a file the index read in several contexts (a table a file
+    // includes itself to expand twice) writes one inside the other.
+    if(outer.entry.kind == SymbolKind::Variable && inner.entry.entity != 0 &&
        outer.entry.parent == inner.entry.parent) {
         return false;
     }
@@ -964,17 +964,13 @@ auto document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions& optio
 auto document_symbols(CompilationUnit& unit,
                       llvm::ArrayRef<std::uint32_t> inactive_regions,
                       const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
-    auto inactive = [&](std::uint32_t offset) {
-        auto bounds = ranges::upper_bound(inactive_regions, offset) - inactive_regions.begin();
-        return bounds % 2 == 1;
-    };
     auto& semantics = unit.get<Semantics>();
     auto& source = unit.focus_file().text();
     const auto& lexical = source.lexical();
     std::vector<LexicalInfo::Directive> macros;
     std::vector<LexicalInfo::Directive> marks;
     for(const auto& directive: lexical.directives) {
-        if(inactive(directive.range.begin)) {
+        if(inactive_at(inactive_regions, directive.range.begin)) {
             continue;
         }
         if(directive.kind == LexicalInfo::Directive::Kind::Define) {
@@ -1140,10 +1136,11 @@ auto document_symbols(SourceText& source,
 }
 
 void merge_other_contexts(std::vector<DocumentSymbol>& outline,
-                          llvm::ArrayRef<DocumentSymbol> index) {
-    auto merge = [](this auto& self,
-                    std::vector<DocumentSymbol>& into,
-                    llvm::ArrayRef<DocumentSymbol> from) -> void {
+                          llvm::ArrayRef<DocumentSymbol> index,
+                          llvm::ArrayRef<std::uint32_t> skipped) {
+    auto merge = [&](this auto& self,
+                     std::vector<DocumentSymbol>& into,
+                     llvm::ArrayRef<DocumentSymbol> from) -> void {
         using Key = std::tuple<std::uint32_t, std::uint32_t, std::string_view>;
         auto key = [](const DocumentSymbol& symbol) {
             return Key(symbol.selection_range.begin, symbol.selection_range.end, symbol.name);
@@ -1156,7 +1153,10 @@ void merge_other_contexts(std::vector<DocumentSymbol>& outline,
         for(const auto& symbol: from) {
             if(auto it = known.find(key(symbol)); it != known.end()) {
                 self(into[it->second].children, symbol.children);
-            } else {
+            } else if(symbol.kind != SymbolKind::Directive &&
+                      inactive_at(skipped, symbol.selection_range.begin)) {
+                // The index lists a mark wherever the text writes it, code
+                // no context compiles included.
                 added.push_back(symbol);
             }
         }

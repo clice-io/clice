@@ -9,17 +9,19 @@ tokens = [
     { at = "⟦return⟧ LIMIT;", type = "keyword", modifiers = ["controlFlow"] },
     { at = "return ⟦LIMIT⟧;", type = "macro" },
     { at = "⟦#else⟧", type = "directive" },
+    { at = '⟦#include⟧ "scale.h"', type = "directive", modifiers = ["inactive"] },
+    { at = '#include ⟦"scale.h"⟧', type = "header", modifiers = ["inactive"] },
     { at = "⟦inline⟧ int slow_path() {", type = "keyword", modifiers = ["inactive"] },
     { at = "inline ⟦int⟧ slow_path() {", type = "primitive", modifiers = ["inactive"] },
     { at = "inline int ⟦slow_path⟧() {", type = "function", modifiers = ["definition", "global", "inactive"] },
     { at = "inline int slow_path⟦()⟧ {", type = "plain", modifiers = ["inactive"] },
     { at = "inline int slow_path() ⟦{⟧", type = "plain", modifiers = ["inactive"] },
-    { at = "⟦return⟧ LIMIT * 2;", type = "keyword", modifiers = ["controlFlow", "inactive"] },
-    { at = "return ⟦LIMIT⟧ * 2;", type = "macro", modifiers = ["inactive"] },
-    { at = "return LIMIT ⟦*⟧ 2;", type = "operator", modifiers = ["inactive"] },
-    { at = "return LIMIT * ⟦2⟧;", type = "number", modifiers = ["inactive"] },
-    { at = "return LIMIT * 2⟦;⟧", type = "plain", modifiers = ["inactive"] },
-    { at = "⟦}⟧ @10", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦return⟧ LIMIT * SCALE;", type = "keyword", modifiers = ["controlFlow", "inactive"] },
+    { at = "return ⟦LIMIT⟧ * SCALE;", type = "macro", modifiers = ["inactive"] },
+    { at = "return LIMIT ⟦*⟧ SCALE;", type = "operator", modifiers = ["inactive"] },
+    { at = "return LIMIT * ⟦SCALE⟧;", type = "macro", modifiers = ["inactive"] },
+    { at = "return LIMIT * SCALE⟦;⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦}⟧ @12", type = "plain", modifiers = ["inactive"] },
     { at = "⟦#endif⟧", type = "directive" },
 ]
 outline = [
@@ -29,8 +31,11 @@ outline = [
 folds = [
     { kind = "conditionDirective", at = "#ifdef FAST⟦ … ⟧ (5 lines)" },
     { kind = "functionBody", at = "inline int fast_path() ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
-    { kind = "conditionDirective", at = "#else⟦ … ⟧ (5 lines)" },
+    { kind = "conditionDirective", at = "#else⟦ … ⟧ (7 lines)" },
     { kind = "functionBody", at = "inline int slow_path() ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+]
+links = [
+    { at = '#include ⟦"scale.h"⟧', target = "scale.h" },
 ]
 
 [test."shared.h".context]
