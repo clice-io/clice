@@ -256,7 +256,7 @@ The `[diagnostics]` section controls the diagnostics clice publishes for open fi
 | ------------ | ------ | ------- |
 | `clang_tidy` | `bool` | `true`  |
 
-Run clang-tidy on open files and offer its fixes, with the checks the nearest `.clang-tidy` configures (a small default set without one). Checks too slow for an editor are left out unless `clang_tidy_slow_checks`, those unreliable on code being edited always are; files `clice lint` does not check get none. `NOLINT` comments also silence compiler warnings only while this runs.
+Run clang-tidy on open files and offer its fixes, with the checks the nearest `.clang-tidy` configures (a small default set without one). Checks too slow for an editor are left out unless `clang_tidy_slow_checks` is `true`, those unreliable on code being edited always are; files `clice lint` does not check get none. `NOLINT` comments also silence compiler warnings only while this runs.
 
 </div>
 

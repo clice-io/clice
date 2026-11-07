@@ -256,7 +256,7 @@ clice 会在后台查看磁盘上的文件，以发现编辑器之外发生的�
 | ------------ | ------ | ------ |
 | `clang_tidy` | `bool` | `true` |
 
-对已打开的文件运行 clang-tidy 并提供它的修复，使用最近的 `.clang-tidy` 配置的检查（没有该文件时使用一小组默认检查）。对编辑器来说过慢的检查，除非设置了 `clang_tidy_slow_checks`，否则不会运行，在编辑中的代码上不可靠的检查则始终不运行；`clice lint` 不检查的文件不运行 clang-tidy。只有在 clang-tidy 运行时，`NOLINT` 注释才会同时屏蔽编译器警告。
+对已打开的文件运行 clang-tidy 并提供它的修复，使用最近的 `.clang-tidy` 配置的检查（没有该文件时使用一小组默认检查）。对编辑器来说过慢的检查，除非将 `clang_tidy_slow_checks` 设为 `true`，否则不会运行，在编辑中的代码上不可靠的检查则始终不运行；`clice lint` 不检查的文件不运行 clang-tidy。只有在 clang-tidy 运行时，`NOLINT` 注释才会同时屏蔽编译器警告。
 
 </div>
 
