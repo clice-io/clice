@@ -227,6 +227,20 @@ tests/diagnostics/clang_tidy/02_default_checks
 
 <!-- BEGIN CAPABILITY: supported -->
 
+**Checks left out**
+
+A check too slow for an editor is named, not dropped silently
+
+Open files run neither the checks too slow for an editor nor those unreliable on code being edited. clice names the slow ones the `.clang-tidy` enables once, with how to run them; `clice lint` runs both.
+
+```case
+tests/diagnostics/clang_tidy/03_editor_exclusions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
 **Silencing with NOLINT**
 
 `NOLINT` comments silence findings on their line, and compiler warnings too
@@ -267,9 +281,23 @@ tests/diagnostics/clang_tidy/09_turned_off
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Running the slow checks**
+
+`clang_tidy_slow_checks = true` also runs the checks too slow for an editor
+
+Checks too slow for an editor, such as `misc-const-correctness`, run on open files only when asked for: every compile of the file waits for them.
+
+```case
+tests/diagnostics/clang_tidy/20_slow_checks
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
-- [x] Checks too slow for an editor, and those unreliable on code being edited, left out in the editor; `clice lint` runs them
+- [x] Checks too slow for an editor run on open files only when `clang_tidy_slow_checks` asks for them, and clice names the ones it leaves out; those unreliable on code being edited are always left out; `clice lint` runs them all
 - [x] `performance-use-std-move` left out of both the editor and `clice lint`: in the LLVM clice is built on, it crashes on classes read from a PCH or a module
 - [x] `.clang-tidy` edits apply to open files at their next compile
 - [x] A crash of a clang-tidy check pauses clang-tidy on that file, not its other features

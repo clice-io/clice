@@ -25,6 +25,11 @@ struct TidyResolution {
 /// the consumer's default set applies.
 TidyResolution resolve_tidy_params(llvm::StringRef file);
 
+/// The checks `params` enables that the editor shape runs only under
+/// TidyParams::slow_checks: those not known to be fast enough to run on
+/// every edit, the slow and the never measured.
+std::vector<std::string> slow_checks(const TidyParams& params);
+
 /// The plan's compilation-affecting extra args, split for clang-tidy's
 /// own insertion points on the driver command: extra_args_before prepend
 /// right after the binary name, extra_args append at the end. Applied
@@ -89,11 +94,12 @@ public:
 /// clang-tidy's consumer collecting the findings, which applies the
 /// suppression comments, the header filters and the Checks a compiler
 /// warning needs to be a finding. Otherwise the editor shape, clangd's:
-/// checks classified fast only, minus those unusable on code mid-edit,
-/// over the focus file's top-level declarations, suppression comments read
-/// there only. `preamble_inactive` holds the inactive regions of the
-/// consumed PCH's preamble share (flat begin/end offset pairs), whose
-/// `#include`s the preamble replay skips.
+/// checks classified fast only unless TidyParams::slow_checks, minus those
+/// unusable on code mid-edit, over the focus file's top-level
+/// declarations, suppression comments read there only.
+/// `preamble_inactive` holds the inactive regions of the consumed PCH's
+/// preamble share (flat begin/end offset pairs), whose `#include`s the
+/// preamble replay skips.
 std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
                                             const TidyParams& params,
                                             bool batch,
