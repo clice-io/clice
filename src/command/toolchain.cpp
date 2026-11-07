@@ -220,6 +220,34 @@ bool in_query_view(const Arg& arg, CompilerFamily family) {
     std::unreachable();
 }
 
+/// Drops the SYCL integration header and footer an Intel host job forces
+/// in: its device job writes them to a temporary directory, gone once the
+/// query ends. They are the forced includes the job keeps out of its
+/// dependencies (`-dependency-filter <file>`). oneAPI includes them with
+/// `-include-internal-header` and `-include-internal-footer`, before
+/// 2025.1 with `-include` and `-include-footer`; clang's own options read
+/// all but `-include` as an `-include` of a file named by the flag's rest.
+void drop_sycl_integration_files(std::vector<std::string>& tokens) {
+    llvm::SmallVector<std::string> generated;
+    for(std::size_t i = 0; i + 1 < tokens.size(); i += 1) {
+        if(tokens[i] == "-dependency-filter") {
+            generated.push_back(tokens[i + 1]);
+        }
+    }
+    constexpr std::array<llvm::StringRef, 4> includes = {"-include",
+                                                         "-include-footer",
+                                                         "-include-internal-header",
+                                                         "-include-internal-footer"};
+    for(std::size_t i = 0; i + 1 < tokens.size();) {
+        if(ranges::contains(includes, llvm::StringRef(tokens[i])) &&
+           ranges::contains(generated, tokens[i + 1])) {
+            tokens.erase(tokens.begin() + i, tokens.begin() + i + 2);
+        } else {
+            i += 1;
+        }
+    }
+}
+
 /// Where among a job's arguments the values of the command's -Xclang
 /// options start: the driver passes them on verbatim, in one run. The end
 /// of `tokens` when the command has none.
@@ -347,6 +375,7 @@ Toolchain::QueryArgv Toolchain::query_argv(const Command& command) {
 
 Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) {
     std::vector<std::string> tokens(job.args.begin() + 2, job.args.end());
+    drop_sycl_integration_files(tokens);
     auto forwarded_from = forwarded_start(tokens, command);
     // An external clang may be newer than the linked one: a flag our cc1
     // does not know parses as unknown, and its values as inputs; both go.

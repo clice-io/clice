@@ -1,0 +1,23 @@
+["intel drivers"."$ clice command convert -- missing-icpx -fsycl -O2 -DNDEBUG -c main.cpp"]
+stdout = "missing-icpx -fno-delayed-template-parsing -resource-dir ${RESOURCE} -fsycl -O2 -D NDEBUG ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-icpx
+error: The command stays a driver command: Cannot find driver: missing-icpx
+'''
+exit = 1
+
+["intel drivers"."$ clice command convert -- missing-icx-cl /nologo /TP /DWIN32 /EHsc /Od -MDd -fsycl /c main.cpp"]
+stdout = "missing-icx-cl --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /nologo /TP -D WIN32 /EHsc /Od /MDd -fsycl ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-icx-cl
+error: The command stays a driver command: Cannot find driver: missing-icx-cl
+'''
+exit = 1
+
+["intel drivers"."$ clice command convert -- missing-dpcpp-cl /DWIN32 /EHsc -fsycl /c main.cpp"]
+stdout = "missing-dpcpp-cl --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D WIN32 /EHsc -fsycl ${WS}/main.cpp"
+stderr = '''
+error: Toolchain query failed: Cannot find driver: missing-dpcpp-cl
+error: The command stays a driver command: Cannot find driver: missing-dpcpp-cl
+'''
+exit = 1

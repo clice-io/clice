@@ -26,6 +26,16 @@ struct DriverErrors : clang::DiagnosticConsumer {
     }
 };
 
+/// Whether a cc1 job compiles SYCL code for a device. A SYCL compilation
+/// runs one for each device target before the host's, and clice reads the
+/// host's: the SYCL headers' device code calls SPIR-V builtins only Intel's
+/// clang declares. CUDA's device jobs are not SYCL's: a CUDA command keeps
+/// its first job.
+template <typename Args>
+bool is_sycl_device_job(const Args& args) {
+    return ranges::any_of(args, [](llvm::StringRef arg) { return arg == "-fsycl-is-device"; });
+}
+
 }  // namespace
 
 std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
@@ -75,16 +85,16 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
         return std::unexpected(failure("Failed to build compilation"));
     }
 
-    // We expect to get back exactly one command job, if we didn't something
-    // failed. Offload compilation is an exception as it creates multiple jobs. If
-    // that's the case, we proceed with the first job. If caller needs a
-    // particular job, it should be controlled via options (e.g.
-    // --cuda-{host|device}-only for CUDA) passed to the driver.
-    const clang::driver::JobList& jobs = compilation->getJobs();
-    auto cmd = ranges::find_if(jobs, [](const clang::driver::Command& cmd) {
-        return cmd.getCreator().getName() == llvm::StringRef("clang");
+    auto clang_jobs = views::filter(compilation->getJobs(), [](const clang::driver::Command& job) {
+        return job.getCreator().getName() == llvm::StringRef("clang");
     });
-    if(cmd == jobs.end()) {
+    auto cmd = ranges::find_if(clang_jobs, [](const clang::driver::Command& job) {
+        return !is_sycl_device_job(job.getArguments());
+    });
+    if(cmd == clang_jobs.end()) {
+        cmd = clang_jobs.begin();
+    }
+    if(cmd == clang_jobs.end()) {
         return std::unexpected(failure("No clang job found"));
     }
 
@@ -227,6 +237,7 @@ std::string standard_from_macros(llvm::StringRef cplusplus,
 std::vector<std::string> parse_clang_job(llvm::StringRef output) {
     llvm::SmallVector<llvm::StringRef> lines;
     output.split(lines, '\n', -1, false);
+    std::vector<std::string> job;
     for(llvm::StringRef line: lines) {
         line = line.trim();
         if(!line.starts_with('"')) {
@@ -244,9 +255,14 @@ std::vector<std::string> parse_clang_job(llvm::StringRef output) {
             continue;
         }
         args.erase(args.begin() + 1, args.begin() + cc1);
-        return args;
+        if(!is_sycl_device_job(args)) {
+            return args;
+        }
+        if(job.empty()) {
+            job = std::move(args);
+        }
     }
-    return {};
+    return job;
 }
 
 }  // namespace clice

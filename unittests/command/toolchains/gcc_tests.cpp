@@ -166,6 +166,34 @@ End of search list.)";
     ZEXPECT(output.standard == "gnu++14");
 }
 
+ZEST_CASE(IntelSYCLHostJob, skip = Windows) {
+    // icpx's host job, printed after its device job, without the
+    // integration header and footer the device job wrote to the query's
+    // temporary directory.
+    auto driver = fake_gcc(
+        "icpx",
+        R"("/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" query.cpp
+"/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fsycl-is-host" "-include-internal-header" "/tmp/icpx/header.h" "-dependency-filter" "/tmp/icpx/header.h" "-include-internal-footer" "/tmp/icpx/footer.h" "-dependency-filter" "/tmp/icpx/footer.h" query.cpp)");
+    auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-fsycl", "-c"}));
+    ZEXPECT(adjacent(argv, "-triple", "x86_64-unknown-linux-gnu"));
+    ZEXPECT(!contains(argv, "-fsycl-is-device"));
+    ZEXPECT(!contains(argv, "-include"));
+}
+
+ZEST_CASE(OldIntelSYCLHostJob, skip = Windows) {
+    // Before oneAPI 2025.1 the host job includes them with -include and
+    // -include-footer; the command's own forced include stays.
+    auto driver = fake_gcc(
+        "icpx",
+        R"("/opt/intel/oneapi/compiler/2025.0/bin/compiler/clang" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" query.cpp
+"/opt/intel/oneapi/compiler/2025.0/bin/compiler/clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-include" "/tmp/icpx/header.h" "-dependency-filter" "/tmp/icpx/header.h" "-include-footer" "/tmp/icpx/footer.h" "-dependency-filter" "/tmp/icpx/footer.h" "-fsycl-is-host" query.cpp)");
+    auto own = tmp.path("own.h");
+    auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-fsycl", "-include", own.c_str(), "-c"}));
+    ZEXPECT(!contains(argv, "/tmp/icpx/header.h"));
+    ZEXPECT(!contains(argv, "-footer"));
+    ZEXPECT(adjacent(argv, "-include", own));
+}
+
 ZEST_CASE(StandardFromMacros) {
     auto standard = [](llvm::StringRef macros) {
         return parse_gcc_style_output(macros, "").standard;
