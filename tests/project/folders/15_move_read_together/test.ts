@@ -40,8 +40,8 @@ test("a pull follows the document", async (t) => {
 });
 
 // The folder removed and added again in the same read: the project taking
-// the root over starts once the removed one is gone, which the pull, routed
-// to the removed one, must not keep alive.
+// the root over starts once the removed one is gone, which the pull, taken
+// in the removed one, must not keep alive.
 test("a pull follows into the project taking the root over", async (t) => {
     const s = await t.start({ folders: ["outer/inner", "outer"] });
     expect(await s.errors("outer/inner/main.cpp")).toEqual([]);
@@ -72,7 +72,7 @@ test("a pull follows into the project taking the root over", async (t) => {
 });
 
 // Completion takes its ticket as its work starts, by then in a project the
-// request was not routed to: it answers ContentModified.
+// request was not taken in: it answers ContentModified.
 test("a completion is outdated", async (t) => {
     const s = await t.start({ folders: ["outer/inner", "outer"] });
     expect(await s.errors("outer/inner/main.cpp")).toEqual([]);

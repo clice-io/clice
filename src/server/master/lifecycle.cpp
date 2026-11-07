@@ -12,6 +12,7 @@ import :support.anomaly;
 import :support.environment;
 import :support.logging;
 import :support.process;
+import :vfs.disk_state;
 import :vfs.file_system;
 import :vfs.path;
 import :worker.probe;

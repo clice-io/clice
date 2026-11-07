@@ -18,10 +18,10 @@ void SourceText::set_dialect(const clang::LangOptions& dialect) {
 }
 
 auto SourceText::hash() -> std::uint64_t {
-    if(!digest) {
-        digest = llvm::xxh3_64bits(content);
+    if(!text_hash) {
+        text_hash = llvm::xxh3_64bits(content);
     }
-    return *digest;
+    return *text_hash;
 }
 
 auto SourceText::positions() -> PositionMap {

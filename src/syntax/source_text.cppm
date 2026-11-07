@@ -74,7 +74,7 @@ private:
 
     const clang::IdentifierTable* table = nullptr;
 
-    std::optional<std::uint64_t> digest;
+    std::optional<std::uint64_t> text_hash;
 
     struct LineTables {
         std::vector<std::uint32_t> starts;
