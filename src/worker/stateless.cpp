@@ -639,7 +639,7 @@ static auto run_lowered(Work& work) {
     // As much stack as libuv gives its pool threads; a deep parse needs it.
     llvm::thread thread(std::optional<unsigned>(8u << 20), [&] {
         // Not idle: under a machine kept busy by the user's own build it
-        // starves a TU past the build deadline, which then blames the file
+        // starves a TU past the build deadline, which then charges the file
         // for a hang.
         sys::set_thread_priority(sys::Priority::BelowNormal);
         result.emplace(work());

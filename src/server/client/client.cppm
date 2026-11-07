@@ -467,7 +467,7 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
     on_request<Params>([this,
                         answer = std::move(answer),
                         options](RequestContext& ctx, const Params& params) -> RawResult {
-        server.pool.foreground_pulse();
+        server.pool.user_activity();
         auto document = [&] {
             if constexpr(requires { params.item; }) {
                 return resolve_uri(params.item.uri);

@@ -54,7 +54,7 @@ struct WorkerPoolFixture {
         pool.stateless_workers.push_back(WorkerPool::WorkerProcess{});
         auto& w = pool.stateless_workers.back();
         w.name = "SL-" + std::to_string(idx);
-        w.state = alive ? SlotState::Alive : SlotState::Dead;
+        w.state = alive ? SlotState::Alive : SlotState::GivenUp;
         if(alive) {
             pool.scheduler.worker_ready(idx, WorkerPool::now());
         }
@@ -67,7 +67,7 @@ struct WorkerPoolFixture {
         pool.stateful_workers.push_back(WorkerPool::WorkerProcess{});
         auto& w = pool.stateful_workers.back();
         w.name = "SF-" + std::to_string(idx);
-        w.state = alive ? SlotState::Alive : SlotState::Dead;
+        w.state = alive ? SlotState::Alive : SlotState::GivenUp;
         for(std::size_t i = 0; i < documents; i += 1) {
             pool.residency.assign(next_document, idx, "");
             next_document += 1;
@@ -177,14 +177,14 @@ struct WorkerPoolFixture {
         pool.mark_worker_dead(idx, stateful, false);
     }
 
-    void set_retiring(std::size_t idx) {
-        pool.stateless_workers[idx].retiring = true;
+    void set_scaling_down(std::size_t idx) {
+        pool.stateless_workers[idx].scaling_down = true;
     }
 
     /// The dying worker named the request it ran, as its crash report
     /// would.
-    void set_culprit(std::size_t idx, bool stateful, std::string tag) {
-        pool.slot(idx, stateful).death->culprits.push_back(std::move(tag));
+    void set_named(std::size_t idx, bool stateful, std::string tag) {
+        pool.slot(idx, stateful).death->named.push_back(std::move(tag));
     }
 
     /// The worker's last stderr, as its drain would have kept it.
@@ -210,7 +210,7 @@ struct WorkerPoolFixture {
 
     struct Delivery {
         int sends = 0;
-        int blames = 0;
+        int charges = 0;
         bool answered = false;
     };
 
@@ -240,7 +240,7 @@ struct WorkerPoolFixture {
                     }
                     co_return std::nullopt;
                 },
-                [&](const ipc::Error&) { delivery.blames += 1; });
+                [&](const ipc::Error&) { delivery.charges += 1; });
             delivery.answered = result.has_value();
         });
         return delivery;
@@ -254,13 +254,13 @@ struct WorkerPoolFixture {
         pool.options.max_stateless = n;
     }
 
-    bool slot_retired(std::size_t idx) const {
-        return pool.stateless_workers[idx].state == WorkerPool::SlotState::Retired;
+    bool slot_scaled_down(std::size_t idx) const {
+        return pool.stateless_workers[idx].state == WorkerPool::SlotState::ScaledDown;
     }
 
-    bool slot_dead(std::size_t idx, bool stateful = false) const {
+    bool slot_given_up(std::size_t idx, bool stateful = false) const {
         auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
-        return workers[idx].state == WorkerPool::SlotState::Dead;
+        return workers[idx].state == WorkerPool::SlotState::GivenUp;
     }
 
     std::size_t stateless_count() const {
@@ -372,8 +372,8 @@ struct WorkerPoolFixture {
                         : pool.stateless_workers[idx].generation;
     }
 
-    bool preempted(std::size_t idx) const {
-        return pool.stateless_workers[idx].preempted;
+    bool killed_on_purpose(std::size_t idx) const {
+        return pool.stateless_workers[idx].killed_on_purpose;
     }
 
     unsigned crash_streak(std::size_t idx, bool stateful = false) const {
@@ -426,8 +426,8 @@ struct WorkerPoolFixture {
         pool.fail_pending_requests();
     }
 
-    void retire(std::size_t idx) {
-        pool.retire_worker(idx);
+    void scale_down(std::size_t idx) {
+        pool.scale_down_worker(idx);
     }
 
     /// End the link to the worker as its own exit would, from this side.
@@ -684,7 +684,7 @@ ZEST_CASE(PulseNarrowsBackground) {
     f.add_stateless();
     f.add_stateless();
     ZEXPECT(f.pool.background_limit() == 64u);
-    f.pool.foreground_pulse();
+    f.pool.user_activity();
     ZEXPECT(f.pool.background_limit() == 1u);
 }
 
@@ -698,11 +698,11 @@ ZEST_CASE(MemoryKillRecordsDeath) {
     f.kill(0, false, scheduler::KillReason::Memory, {request->id});
 
     ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
-    ZEXPECT(f.preempted(0));
+    ZEXPECT(f.killed_on_purpose(0));
     ZEXPECT(death->out_of_memory);
     ZEXPECT(death->memory == 3ull << 30);
     ZEXPECT(death->alone);
-    ZEXPECT(death->culprits.empty());
+    ZEXPECT(death->named.empty());
     // The scheduler forgot the request with its worker.
     ZEXPECT(f.running_on(0) == 0u);
     // A kill on purpose is not a crash: no report, no crash accounting.
@@ -762,10 +762,10 @@ ZEST_CASE(GraceKillIsLost) {
     auto request = f.submit(worker::Priority::Low);
     auto death = f.death(0, false);
     f.kill(0, false, scheduler::KillReason::CancelGrace, {request->id});
-    ZEXPECT(f.preempted(0));
+    ZEXPECT(f.killed_on_purpose(0));
     ZEXPECT(death->ignored_cancel);
     ZEXPECT(!death->out_of_memory);
-    ZEXPECT(death->culprits.empty());
+    ZEXPECT(death->named.empty());
     // A run that never stopped spends its sender's retries.
     ZEXPECT(WorkerPoolFixture::death_error(*death, "clice/worker/compileUnit /a.cpp").code ==
             worker::dispatch_errc::worker_lost);
@@ -783,7 +783,7 @@ ZEST_CASE(DeadlineKillNames) {
     // One kill names every overdue request of the worker.
     f.kill(0, true, scheduler::KillReason::Deadline, {query, other});
     ZEXPECT(f.state(0, true) == WorkerPoolFixture::SlotState::Dying);
-    ZEXPECT(death->culprits.size() == 2u);
+    ZEXPECT(death->named.size() == 2u);
     ZEXPECT(WorkerPoolFixture::death_error(*death, "clice/worker/hover /b.cpp").code ==
             worker::dispatch_errc::worker_crashed);
     ZEXPECT(WorkerPoolFixture::death_error(*death, "clice/worker/documentLink /c.cpp").code ==
@@ -795,19 +795,19 @@ ZEST_CASE(DeadlineKillNames) {
     auto run = f.submit(worker::Priority::Low);
     auto index = f.inflight(run->id, "clice/worker/compileUnit /c.cpp", true);
     f.kill(0, false, scheduler::KillReason::Deadline, {run->id});
-    ZEXPECT(f.death(0, false)->culprits[0] == "clice/worker/compileUnit /c.cpp");
+    ZEXPECT(f.death(0, false)->named[0] == "clice/worker/compileUnit /c.cpp");
     ZEXPECT(f.death(0, false)->cause == "killed after over 10 seconds of CPU time");
-    ZEXPECT(!f.preempted(0));
+    ZEXPECT(!f.killed_on_purpose(0));
 
     auto stuck = f.submit(worker::Priority::Low);
     ZASSERT(stuck->slot == 1u);
     auto stalled = f.inflight(stuck->id, "clice/worker/compileUnit /d.cpp", true);
     f.kill(1, false, scheduler::KillReason::Stalled, {stuck->id});
-    ZEXPECT(f.death(1, false)->culprits[0] == "clice/worker/compileUnit /d.cpp");
+    ZEXPECT(f.death(1, false)->named[0] == "clice/worker/compileUnit /d.cpp");
     ZEXPECT(f.death(1, false)->cause == "killed after 300 seconds without using the CPU");
 }
 
-ZEST_CASE(AllocationFailureIsBlameless) {
+ZEST_CASE(AllocationFailureChargesNothing) {
     WorkerPoolFixture f;
     f.add_stateless();
     auto request = f.submit(worker::Priority::Low);
@@ -822,7 +822,7 @@ ZEST_CASE(AllocationFailureIsBlameless) {
     auto death = f.death(0, false);
     ZEXPECT(death->out_of_memory);
     ZEXPECT(death->alone);
-    ZEXPECT(death->culprits.empty());
+    ZEXPECT(death->named.empty());
     ZEXPECT(death->cause == "ran out of memory");
     ZEXPECT(f.crash_streak(0) == 1u);
     ZEXPECT(trapped.empty());
@@ -993,7 +993,7 @@ ZEST_CASE(CrashBudgetExhausted) {
     ZEXPECT(!should_restart);
     ZASSERT(f.crash_reports.size() == 1u);
     ZEXPECT(!f.crash_reports[0].will_restart);
-    ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dead);
+    ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::GivenUp);
 }
 
 ZEST_CASE(HealthyUptimeResetsStreak) {
@@ -1051,7 +1051,7 @@ ZEST_CASE(TwiceNamelessGivesBack) {
         {worker_died, "killed by signal 9 (SIGKILL)", worker::death_identity(0, 0, false)},
         {worker_died, "killed by signal 9 (SIGKILL)", worker::death_identity(0, 1, false)},
     });
-    ZEXPECT(delivery.blames == 1);
+    ZEXPECT(delivery.charges == 1);
     ZEXPECT(f.crash_streak(0) == 0u);
 }
 
@@ -1059,7 +1059,7 @@ ZEST_CASE(NamedCrashKeepsBudget) {
     WorkerPoolFixture f;
     f.add_stateful(true);
     f.set_crash_streak(0, true, 2);
-    f.set_culprit(0, true, "clice/worker/compile /a.cpp");
+    f.set_named(0, true, "clice/worker/compile /a.cpp");
 
     // A death that names its request is that request's content's doing:
     // the streak stays where it was and the slot respawns.
@@ -1090,7 +1090,7 @@ ZEST_CASE(BusyKillSpendsBudget) {
     WorkerPoolFixture f;
     f.add_stateful(true);
 
-    // Killed while compiling several documents, none of which is blamed:
+    // Killed while compiling several documents, none of which is charged:
     // the budget alone slows a load that keeps getting killed.
     f.stateful_request(0, true);
     f.stateful_request(0, true);
@@ -1107,7 +1107,7 @@ ZEST_CASE(BusyKillSpendsBudget) {
 ZEST_CASE(DeathNamesItsRequest) {
     WorkerDeath death;
     death.cause = "killed by signal 11 (SIGSEGV)";
-    death.culprits = {"clice/worker/compile /a.cpp"};
+    death.named = {"clice/worker/compile /a.cpp"};
 
     using namespace worker::dispatch_errc;
     auto own = WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp");
@@ -1117,7 +1117,7 @@ ZEST_CASE(DeathNamesItsRequest) {
     ZEXPECT(WorkerPoolFixture::death_error(death, "clice/worker/compile /b.cpp").code ==
             worker_lost);
 
-    death.culprits.clear();
+    death.named.clear();
     ZEXPECT(WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp").code ==
             worker_died);
 
@@ -1176,11 +1176,11 @@ ZEST_CASE(DeathFreesDocuments) {
     ZEXPECT(f.worker_of(1) == 1u);
 }
 
-ZEST_CASE(DeliverBlamesOwnCrash) {
+ZEST_CASE(DeliverChargesOwnCrash) {
     WorkerPoolFixture f;
     auto delivery = f.deliver_through({worker::dispatch_errc::worker_crashed});
     ZEXPECT(delivery.sends == 1);
-    ZEXPECT(delivery.blames == 1);
+    ZEXPECT(delivery.charges == 1);
     ZEXPECT(!delivery.answered);
 }
 
@@ -1192,10 +1192,10 @@ ZEST_CASE(DeliverResendsVictimsOnce) {
         WorkerPoolFixture f;
         auto delivery = f.deliver_through({code});
         ZEXPECT(delivery.sends == 2);
-        ZEXPECT(delivery.blames == 0);
+        ZEXPECT(delivery.charges == 0);
         ZEXPECT(delivery.answered);
     }
-    // Only once, and a second death blames the request only when neither
+    // Only once, and a second death charges the request only when neither
     // named one.
     for(auto codes: {
             std::vector{worker_lost, worker_lost},
@@ -1205,14 +1205,14 @@ ZEST_CASE(DeliverResendsVictimsOnce) {
         WorkerPoolFixture f;
         auto delivery = f.deliver_through(codes);
         ZEXPECT(delivery.sends == 2);
-        ZEXPECT(delivery.blames == 0);
+        ZEXPECT(delivery.charges == 0);
         ZEXPECT(!delivery.answered);
     }
     WorkerPoolFixture f;
     f.add_stateful(true);
     auto delivery = f.deliver_through({worker_died, worker_died});
     ZEXPECT(delivery.sends == 2);
-    ZEXPECT(delivery.blames == 1);
+    ZEXPECT(delivery.charges == 1);
     ZEXPECT(!delivery.answered);
 }
 
@@ -1231,7 +1231,7 @@ ZEST_CASE(DeliverWaitsForCapacity) {
     f.add_stateful(true);
     auto delivery = f.deliver_through({worker_unavailable, worker_unavailable});
     ZEXPECT(delivery.sends == 3);
-    ZEXPECT(delivery.blames == 0);
+    ZEXPECT(delivery.charges == 0);
     ZEXPECT(delivery.answered);
 }
 
@@ -1372,7 +1372,7 @@ ZEST_CASE(CrashBudgetBoundary) {
 
     // One past the budget: give up.
     ZEXPECT(!f.simulate_crash(0, false));
-    ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dead);
+    ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::GivenUp);
 }
 
 ZEST_CASE(StatefulDyingUnavailable) {
@@ -1447,12 +1447,12 @@ ZEST_CASE(StopReapsWorkers) {
 }
 #endif
 
-ZEST_CASE(StoppedPoolBlamesNothing) {
+ZEST_CASE(StoppedPoolChargesNothing) {
     // A stopped pool's stateful workers are still Alive with their links
     // closed: a request routed to one would die nameless on every attempt
-    // and be blamed for killing its worker.
+    // and be charged with killing its worker.
     WorkerPoolFixture f;
-    int blames = 0;
+    int charges = 0;
     std::optional<protocol::integer> code;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(0, 2));
@@ -1461,11 +1461,11 @@ ZEST_CASE(StoppedPoolBlamesNothing) {
             f.pool,
             true,
             [&] { return f.pool.send_stateful(7, worker::DocumentLinkParams{"/x.cpp"}); },
-            [&](const ipc::Error&) { blames += 1; });
+            [&](const ipc::Error&) { charges += 1; });
         ZASSERT(!result.has_value());
         code = result.error().code;
     });
-    ZEXPECT(blames == 0);
+    ZEXPECT(charges == 0);
     ZEXPECT(code == worker::dispatch_errc::worker_unavailable);
 }
 
@@ -1569,7 +1569,7 @@ ZEST_CASE(DeadSlotRevives) {
 
         // The very first crash exceeds the zero budget: the slot dies...
         co_await f.kill_running_worker(tmp.path("slow.cpp"));
-        ZEXPECT(f.slot_dead(0));
+        ZEXPECT(f.slot_given_up(0));
 
         // ...and is revived with a fresh budget after the cooldown: the
         // pool never stays at zero workers forever.
@@ -1597,7 +1597,7 @@ ZEST_CASE(RevivalGivesNothingBack) {
         f.set_max_crash_streak(0);
 
         co_await f.kill_running_worker(tmp.path("slow.cpp"));
-        ZEXPECT(f.slot_dead(0));
+        ZEXPECT(f.slot_given_up(0));
         co_await f.serves(0);
 
         f.pool.exempt_death(ipc::Error{worker::dispatch_errc::worker_died,
@@ -1697,17 +1697,17 @@ ZEST_CASE(BusyRanksAboveMaster) {
 }
 #endif
 
-ZEST_CASE(RetiringHoldsScaleUp) {
+ZEST_CASE(ScalingDownHoldsScaleUp) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
         f.set_max_stateless(2);
-        f.set_retiring(0);
+        f.set_scaling_down(0);
 
-        // The retiring worker still holds its process until the monitor
+        // The scaling_down worker still holds its process until the monitor
         // reaps it: a replacement now would run three processes against a
-        // ceiling of two, worsening the pressure that retired it.
+        // ceiling of two, worsening the pressure that scaled it down.
         ZEXPECT(!f.scale_up());
         ZEXPECT(f.stateless_count() == 2u);
 
@@ -1748,7 +1748,7 @@ ZEST_CASE(ScaleUpRevivesDead) {
         f.set_max_crash_streak(0);
 
         co_await f.kill_running_worker(tmp.path("slow.cpp"));
-        ZASSERT(f.slot_dead(0));
+        ZASSERT(f.slot_given_up(0));
 
         // Scale-up pressure revives the dead slot instead of appending a
         // third worker next to it.
@@ -1763,17 +1763,17 @@ ZEST_CASE(ScaleUpRevivesDead) {
     ZEXPECT(done);
 }
 
-ZEST_CASE(ScaleUpReusesRetired) {
+ZEST_CASE(ScaleUpReusesScaledDown) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
-        f.retire(1);
+        f.scale_down(1);
         co_await f.exited(1);
-        ZASSERT(f.slot_retired(1));
+        ZASSERT(f.slot_scaled_down(1));
 
-        // The retired slot is refilled instead of a third appended: a
-        // retire/scale-up cycle must not grow the slot table.
+        // The scaled-down slot is refilled instead of a third appended: a
+        // scale-down/scale-up cycle must not grow the slot table.
         ZASSERT(f.scale_up());
         ZEXPECT(f.stateless_count() == 2u);
         co_await f.serves(1);
@@ -1910,7 +1910,7 @@ ZEST_CASE(MemoryKillBeatsCancel) {
     ZEXPECT(done);
 }
 
-ZEST_CASE(CancelledCrashRetiresSlot) {
+ZEST_CASE(CancelledCrashEndsSlot) {
     TempDir tmp;
     tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
     auto src = tmp.path("slow.cpp");
@@ -1933,9 +1933,9 @@ ZEST_CASE(CancelledCrashRetiresSlot) {
 
         // A cooperative cancel whose victim then dies on its own inside the
         // grace window: the request still classifies as cancelled, but the
-        // slot must be retired with it — released as Alive it would take
-        // the next dispatch before the monitor observes the exit. The
-        // generation bump is the retirement evidence that survives an
+        // slot must be declared dead with it — released as Alive it would
+        // take the next dispatch before the monitor observes the exit. The
+        // generation bump is the evidence of the death that survives an
         // instant respawn.
         auto gen = f.generation(0);
         f.cancel(f.only_request());

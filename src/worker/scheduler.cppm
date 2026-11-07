@@ -134,8 +134,8 @@ struct Kill {
 /// worker_ready.
 struct Spawn {};
 
-/// Retire the slot's idle stateless process.
-struct Retire {
+/// Scale the slot's idle stateless process down.
+struct ScaleDown {
     std::size_t slot = 0;
 };
 
@@ -145,7 +145,7 @@ using SchedulerAction = std::variant<scheduler::Dispatch,
                                      scheduler::Cancel,
                                      scheduler::Kill,
                                      scheduler::Spawn,
-                                     scheduler::Retire>;
+                                     scheduler::ScaleDown>;
 
 /// Every decision of the worker pool, as a function of what it was told:
 /// which queued stateless request runs where, which running one yields to
@@ -208,7 +208,7 @@ public:
     /// A stateless slot entered service: spawned, respawned or revived.
     void worker_ready(std::size_t slot, SchedulerTime now);
 
-    /// A slot's process left service: it died, was killed or retired. The
+    /// A slot's process left service: it died, was killed or scaled down. The
     /// requests on it are gone; the pool fails their senders.
     void worker_gone(std::size_t slot, bool stateful, SchedulerTime now);
 
@@ -278,9 +278,9 @@ public:
     /// stuck inside one declaration: its process is killed.
     constexpr static chrono::seconds cancel_grace{10};
 
-    /// No stateless request for this long retires one idle process, down
-    /// to min_workers.
-    constexpr static chrono::seconds idle_retire{30};
+    /// No stateless request for this long scales one idle process down, to
+    /// no fewer than min_workers.
+    constexpr static chrono::seconds idle_scale_down{30};
 
     /// A foreground request waiting this long with no idle worker grows the
     /// pool; a shorter wait is the cooperative cancel freeing a worker.
@@ -371,8 +371,8 @@ private:
     struct Slot {
         std::size_t slot = 0;
 
-        /// Retire was asked: it takes no work until it is gone.
-        bool retiring = false;
+        /// A scale-down was asked: it takes no work until it is gone.
+        bool scaling_down = false;
 
         /// The request it runs.
         std::optional<RequestId> request;
@@ -418,9 +418,9 @@ private:
     /// are asked, counting those asked already.
     void cancel_newest_low(std::size_t count, SchedulerTime now);
 
-    /// Retire the idle stateless processes above min_workers: their memory
+    /// Scale down the idle stateless processes above min_workers: their memory
     /// is the cheapest to free. Returns whether any was.
-    bool retire_idle();
+    bool scale_down_idle();
 
     /// Kill the requests' worker; they all run on one.
     void kill(llvm::ArrayRef<const Request*> killed, scheduler::KillReason reason);
@@ -461,7 +461,7 @@ private:
     std::optional<std::size_t> memory_kill;
 
     /// The head of the background queue memory holds back, and since when.
-    std::optional<std::pair<RequestId, SchedulerTime>> held;
+    std::optional<std::pair<RequestId, SchedulerTime>> memory_wait;
 
     /// When the wait for memory was last logged.
     std::optional<SchedulerTime> memory_logged;

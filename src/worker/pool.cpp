@@ -79,19 +79,19 @@ std::size_t WorkerPool::schedulable_stateless() const {
         return 0;
     }
     return ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
-        return w.state == SlotState::Alive && !w.retiring;
+        return w.state == SlotState::Alive && !w.scaling_down;
     });
 }
 
 std::size_t WorkerPool::stateless_capacity() const {
     return ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
-        return w.state != SlotState::Dead && w.state != SlotState::Retired && !w.retiring;
+        return w.state != SlotState::GivenUp && w.state != SlotState::ScaledDown && !w.scaling_down;
     });
 }
 
-std::size_t WorkerPool::stateless_footprint() const {
+std::size_t WorkerPool::stateless_processes() const {
     return ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
-        return w.state != SlotState::Dead && w.state != SlotState::Retired;
+        return w.state != SlotState::GivenUp && w.state != SlotState::ScaledDown;
     });
 }
 
@@ -172,7 +172,7 @@ async::task<> WorkerPool::run_peer(std::shared_ptr<ipc::BincodePeer> peer,
     // dispatched to it in the while before its exit is observed.
     auto& w = slot(index, stateful);
     if(!stop_scope.cancelled() && w.generation == generation && w.state == SlotState::Alive &&
-       !w.retiring) {
+       !w.scaling_down) {
         mark_worker_dead(index, stateful, true);
     }
 }
@@ -217,8 +217,8 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     w.peer = std::move(spawned->peer);
     w.stderr_tail = std::move(spawned->stderr_tail);
     w.state = SlotState::Alive;
-    w.retiring = false;
-    w.preempted = false;
+    w.scaling_down = false;
+    w.killed_on_purpose = false;
     w.memory = 0;
     w.swapped = 0;
     w.spawn_time = chrono::steady_clock::now();
@@ -443,13 +443,13 @@ async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         scheduler.worker_exited(index);
     }
 
-    // Intentional retirement (scale-down): the slot becomes permanently
+    // A scale-down: the slot becomes permanently
     // vacant without crash processing.
-    if(!stateful && workers[index].retiring) {
+    if(!stateful && workers[index].scaling_down) {
         auto& w = workers[index];
-        LOG_INFO("Worker {} retired gracefully", w.name);
-        w.state = SlotState::Retired;
-        w.retiring = false;
+        LOG_INFO("Worker {} scaled down", w.name);
+        w.state = SlotState::ScaledDown;
+        w.scaling_down = false;
         w.generation += 1;
         if(w.peer) {
             w.peer->close();
@@ -470,11 +470,11 @@ async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         exit_signal = 9;
     }
 
-    bool preempted = workers[index].preempted;
+    bool killed_on_purpose = workers[index].killed_on_purpose;
     mark_worker_dead(index, stateful, false);
-    workers[index].preempted = false;
+    workers[index].killed_on_purpose = false;
 
-    if(preempted) {
+    if(killed_on_purpose) {
         // The pool killed this worker on purpose; the work it lost was
         // signalled to its sender. Bring the capacity back immediately,
         // without touching the crash budget.
@@ -494,7 +494,7 @@ async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
             co_await tail->drained.wait();
         };
         // Hang detection: a short bound runs out on a stalled master (a
-        // loaded machine), and the crash then blames no request.
+        // loaded machine), and the crash then names no request.
         co_await async::with_timeout(drained(std::move(tail)), chrono::minutes(1), loop);
         if(stop_scope.cancelled())
             co_return;
@@ -614,11 +614,11 @@ bool WorkerPool::process_crash(std::size_t index,
     }
 
     // An allocation failure's abort names the request it ran, whose content
-    // is not to blame.
+    // is not charged with it.
     if(death.out_of_memory) {
         death.cause = "ran out of memory";
-    } else if(death.culprits.empty() && w.stderr_tail && !w.stderr_tail->crashed_in.empty()) {
-        death.culprits.push_back(w.stderr_tail->crashed_in);
+    } else if(death.named.empty() && w.stderr_tail && !w.stderr_tail->crashed_in.empty()) {
+        death.named.push_back(w.stderr_tail->crashed_in);
     }
     if(death.cause.empty()) {
         death.cause = describe_exit(exit_code, exit_signal);
@@ -626,15 +626,15 @@ bool WorkerPool::process_crash(std::size_t index,
 
     reset_streak_if_healthy(w);
     // A death that names its request is that request's content's doing:
-    // the caller blames the content, and the slot respawns with its streak
+    // the caller charges the content, and the slot respawns with its streak
     // untouched, like a kill on purpose; so does running out of memory. A
     // terminated session says nothing about the slot, nor does a kill of
     // an idle worker (the OOM killer, a user). A worker killed while
-    // running requests or holding documents counts: none of them is blamed
+    // running requests or holding documents counts: none of them is charged
     // when several were in flight, or when none was, and only the budget
     // slows a load that keeps getting killed.
     bool idle_kill = exit_signal == sigkill && death.in_flight == 0 && death.documents == 0;
-    if(death.culprits.empty() && !death.out_of_memory && !terminated && !idle_kill) {
+    if(death.named.empty() && !death.out_of_memory && !terminated && !idle_kill) {
         w.crash_streak += 1;
         w.counted_deaths.push_back(w.generation - 1);
     }
@@ -671,8 +671,8 @@ ipc::Error WorkerPool::death_error(const WorkerDeath& death,
             codec::dyn::Value{{"memory", death.memory}, {"alone", death.alone}},
         };
     }
-    auto named = !death.culprits.empty();
-    auto code = named && ranges::contains(death.culprits, tag)            ? errc::worker_crashed
+    auto named = !death.named.empty();
+    auto code = named && ranges::contains(death.named, tag)               ? errc::worker_crashed
                 : !named && death.in_flight <= 1 && !death.ignored_cancel ? errc::worker_died
                                                                           : errc::worker_lost;
     return ipc::Error{code, death.cause, std::move(identity)};
@@ -682,7 +682,7 @@ async::task<bool> WorkerPool::await_capacity(bool stateful) {
     while(!stop_scope.cancelled()) {
         auto& workers = stateful ? stateful_workers : stateless_workers;
         auto serving = ranges::any_of(workers, [](const WorkerProcess& w) {
-            return w.state == SlotState::Alive && !w.retiring;
+            return w.state == SlotState::Alive && !w.scaling_down;
         });
         if(serving) {
             co_return true;
@@ -690,7 +690,7 @@ async::task<bool> WorkerPool::await_capacity(bool stateful) {
         auto revives = revives_slots();
         auto returning = ranges::any_of(workers, [&](const WorkerProcess& w) {
             return w.state == SlotState::Dying || w.state == SlotState::Respawning ||
-                   (revives && w.state == SlotState::Dead);
+                   (revives && w.state == SlotState::GivenUp);
         });
         if(!returning) {
             co_return false;
@@ -742,7 +742,7 @@ async::task<> WorkerPool::respawn_after(std::size_t index,
 
 void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
     auto& w = stateful ? stateful_workers[index] : stateless_workers[index];
-    w.state = SlotState::Dead;
+    w.state = SlotState::GivenUp;
     // If this was the last slot with a future, wake all waiters so they
     // can return an error instead of hanging.
     capacity_returned.set();
@@ -764,7 +764,7 @@ async::task<> WorkerPool::revive_slot(std::size_t index, bool stateful) {
         co_return;
     }
     auto& w = stateful ? stateful_workers[index] : stateless_workers[index];
-    if(w.state != SlotState::Dead) {
+    if(w.state != SlotState::GivenUp) {
         co_return;
     }
     // A fresh budget, not a pardon: if the workload that killed the slot is
@@ -790,7 +790,7 @@ std::uint64_t WorkerPool::PendingStateless::finish() {
     return peak;
 }
 
-void WorkerPool::foreground_pulse() {
+void WorkerPool::user_activity() {
     scheduler.user_activity(now());
     execute();
 }
@@ -843,8 +843,8 @@ void WorkerPool::execute() {
                 kill_worker(*kill);
             } else if(std::holds_alternative<scheduler::Spawn>(action)) {
                 scale_up_worker();
-            } else if(auto* retire = std::get_if<scheduler::Retire>(&action)) {
-                retire_worker(retire->slot);
+            } else if(auto* scale_down = std::get_if<scheduler::ScaleDown>(&action)) {
+                scale_down_worker(scale_down->slot);
             }
         }
     }
@@ -859,12 +859,12 @@ void WorkerPool::kill_worker(const scheduler::Kill& kill) {
     using scheduler::KillReason;
     if(kill.reason == KillReason::Memory) {
         LOG_WARN("Worker {} killed to free memory at {} MiB", w.name, w.memory >> 20);
-        w.preempted = true;
+        w.killed_on_purpose = true;
         w.death->out_of_memory = true;
         w.death->cause = "killed to free memory";
     } else if(kill.reason == KillReason::CancelGrace) {
         LOG_WARN("Worker {} ignored a cooperative cancel; killing it", w.name);
-        w.preempted = true;
+        w.killed_on_purpose = true;
         w.death->ignored_cancel = true;
         w.death->cause = std::format(
             "killed after ignoring a cancel for {} seconds",
@@ -889,10 +889,10 @@ void WorkerPool::kill_worker(const scheduler::Kill& kill) {
         for(auto id: kill.requests) {
             auto& tag = flights.at(id)->tag;
             LOG_WARN("Worker {} ran {}: {}", w.name, tag, w.death->cause);
-            w.death->culprits.push_back(tag);
+            w.death->named.push_back(tag);
         }
     }
-    if(w.preempted) {
+    if(w.killed_on_purpose) {
         // The respawn skips crash accounting: credit a healthy run here the
         // same way a crash would, or the slot carries a stale streak past
         // the healthy interval that already cleared it.
@@ -901,15 +901,15 @@ void WorkerPool::kill_worker(const scheduler::Kill& kill) {
     mark_worker_dead(kill.slot, kill.stateful, true);
 }
 
-void WorkerPool::retire_worker(std::size_t index) {
+void WorkerPool::scale_down_worker(std::size_t index) {
     auto& w = stateless_workers[index];
     if(w.state != SlotState::Alive) {
         return;
     }
-    w.retiring = true;
+    w.scaling_down = true;
     w.peer->close_output();
     w.proc.kill(SIGTERM);
-    LOG_INFO("Retiring worker {}", w.name);
+    LOG_INFO("Scaling down worker {}", w.name);
 }
 
 async::task<> WorkerPool::monitor_loop() {
@@ -925,7 +925,7 @@ async::task<> WorkerPool::monitor_loop() {
 
 void WorkerPool::sample() {
     SchedulerSample sample;
-    sample.stateless_processes = stateless_footprint();
+    sample.stateless_processes = stateless_processes();
     std::vector<sys::ProcessStats> usage;
     std::uint64_t swapped = 0;
     for(bool stateful: {false, true}) {
@@ -999,11 +999,11 @@ void WorkerPool::set_oom_score(const WorkerProcess& w, bool holds) {
 }
 
 bool WorkerPool::scale_up_worker() {
-    // The ceiling bounds live processes, not schedulable slots: a retiring
+    // The ceiling bounds live processes, not schedulable slots: a scaling_down
     // worker still holds its process until the monitor reaps it, and a
     // replacement spawned beside it would push the pool past max_stateless
     // during exactly the memory pressure that triggered the retirement.
-    if(stop_scope.cancelled() || stateless_footprint() >= options.max_stateless)
+    if(stop_scope.cancelled() || stateless_processes() >= options.max_stateless)
         return false;
 
     // A vacant slot — Dead and waiting out its revival cooldown, or Retired
@@ -1014,7 +1014,7 @@ bool WorkerPool::scale_up_worker() {
     // and grow the pool past what was asked for. The pending revive_slot
     // task no-ops once the state is no longer Dead.
     auto vacant = ranges::find_if(stateless_workers, [](const WorkerProcess& w) {
-        return w.state == SlotState::Dead || w.state == SlotState::Retired;
+        return w.state == SlotState::GivenUp || w.state == SlotState::ScaledDown;
     });
     if(vacant != stateless_workers.end()) {
         auto index = static_cast<std::size_t>(vacant - stateless_workers.begin());

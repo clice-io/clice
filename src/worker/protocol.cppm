@@ -27,7 +27,7 @@ namespace clice::worker {
 ///
 /// A death fails every request in flight on the worker; the pool tells them
 /// apart by the request the dying worker named (see crash_tag), so only the
-/// request that crashed it is blamed.
+/// request that crashed it is charged with it.
 namespace dispatch_errc {
 
 /// The request was deliberately cancelled: by its caller, or by the pool
@@ -43,18 +43,18 @@ constexpr inline protocol::integer worker_unavailable = -33000;
 constexpr inline protocol::integer worker_crashed = -33001;
 
 /// The worker died of another request's crash, or died naming no request
-/// while several were in flight: this one is blameless and safe to resend.
+/// while several were in flight: this one is not charged and safe to resend.
 /// So is a query whose document's AST died with its worker before the query
 /// was sent.
 constexpr inline protocol::integer worker_lost = -33003;
 
 /// The worker died naming no request while this one ran alone on it —
 /// killed from outside (the OOM killer, a user), or crashed where it could
-/// not report. Resend once; a request that dies this way twice is blamed.
+/// not report. Resend once; a request that dies this way twice is charged.
 constexpr inline protocol::integer worker_died = -33004;
 
 /// The worker's memory ran out: the pool killed it to free memory, or an
-/// allocation failed in it. The request is blameless; Error::data holds
+/// allocation failed in it. The request is not charged; Error::data holds
 /// "memory", the bytes the worker had reached, and "alone", whether no
 /// other request ran beside it — then it does not fit this machine.
 constexpr inline protocol::integer out_of_memory = -33006;

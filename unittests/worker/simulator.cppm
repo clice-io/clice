@@ -306,8 +306,8 @@ inline SimResult simulate(const SimSpec& spec) {
                         vacant = procs.end() - 1;
                     }
                     vacant->ready_at = t + start_delay;
-                } else if(auto* retire = std::get_if<scheduler::Retire>(&action)) {
-                    auto& proc = procs[retire->slot];
+                } else if(auto* scale_down = std::get_if<scheduler::ScaleDown>(&action)) {
+                    auto& proc = procs[scale_down->slot];
                     proc.exit_at = t + 0.1;
                     proc.respawn = false;
                 }

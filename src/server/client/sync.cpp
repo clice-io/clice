@@ -12,7 +12,7 @@ void LSPClient::register_document_sync() {
         auto& srv = this->server;
         if(srv.shutting_down())
             return;
-        srv.pool.foreground_pulse();
+        srv.pool.user_activity();
 
         auto spelled = uri_to_path(params.text_document.uri);
         if(!spelled) {
@@ -45,7 +45,7 @@ void LSPClient::register_document_sync() {
         auto& srv = this->server;
         if(srv.shutting_down())
             return;
-        srv.pool.foreground_pulse();
+        srv.pool.user_activity();
 
         auto spelled = uri_to_path(params.text_document.uri);
         if(!spelled || is_other_language_path(*spelled)) {
@@ -82,7 +82,7 @@ void LSPClient::register_document_sync() {
         // ready reads the saved disk content anyway.
         if(srv.lifecycle != ServerLifecycle::Ready)
             return;
-        srv.pool.foreground_pulse();
+        srv.pool.user_activity();
 
         auto path = uri_to_path(params.text_document.uri);
         if(!path) {

@@ -47,17 +47,17 @@ struct WorkerDeath {
     /// its last words, or of the ones that outlived the pool's deadline;
     /// empty when nothing names one — an outside kill, a crash outside any
     /// request.
-    llvm::SmallVector<std::string, 1> culprits;
+    llvm::SmallVector<std::string, 1> named;
 
     /// How it died, worded for the user ("signal 11 (SIGSEGV)").
     std::string cause;
 
     /// The worker's memory ran out: the pool killed it to free memory, or
-    /// an allocation failed in it. Its requests are not to blame.
+    /// an allocation failed in it. None of its requests is charged with it.
     bool out_of_memory = false;
 
     /// The pool killed the worker because its request ignored a cancel past
-    /// the grace period. The request is not to blame, but the run counts as
+    /// the grace period. The request is not charged with it, but the run counts as
     /// lost: a free requeue would repeat it for as long as the user keeps
     /// preempting it.
     bool ignored_cancel = false;
@@ -142,7 +142,7 @@ struct WorkerPoolOptions {
     chrono::milliseconds revive_after{30'000};
 
     /// A request running past its deadline is taken for a hung worker: the
-    /// worker is killed and every request of it past its deadline blamed,
+    /// worker is killed and every request of it past its deadline charged,
     /// like a crash. A build may take long on a big translation unit (see
     /// worker::is_build); a query never should. A stateless request is
     /// timed by its worker's CPU time, a stateful one by the time since its
@@ -160,7 +160,7 @@ struct WorkerPoolOptions {
     std::optional<std::size_t> max_resident;
 
     /// Dynamic scaling bounds for stateless workers.
-    /// min_stateless: floor — never retire below this count.
+    /// min_stateless: floor — never scale down below this count.
     /// max_stateless: ceiling — never spawn above this count (0 = auto = the
     /// physical cores, see default_max_stateless_worker_count).
     std::uint32_t min_stateless = 1;
@@ -223,13 +223,13 @@ private:
 ///     slots do. Retry policy is semantic and lives with the caller —
 ///     deliver() is the shared form of it.
 ///   - The dispatch_errc taxonomy is the contract language. worker_crashed:
-///     this request killed its worker — the caller blames its content
+///     this request killed its worker — the caller charges its content
 ///     (Error::data carries the dead incarnation's identity so one death is
-///     never blamed twice, the message how it died). worker_lost: another
+///     never charged twice, the message how it died). worker_lost: another
 ///     request's crash took it along, or the death named none among several
-///     requests in flight — blameless. worker_died: the death named no
+///     requests in flight — not its doing. worker_died: the death named no
 ///     request and this one ran alone. out_of_memory: the worker's memory
-///     ran out — blameless, Error::data says how much it reached and
+///     ran out — not its doing, Error::data says how much it reached and
 ///     whether it ran the only request running.
 ///     worker_unavailable: never dispatched, a capacity window —
 ///     await_capacity() tells when it closes. cancelled: deliberate
@@ -301,8 +301,8 @@ public:
     /// revive_after.
     async::task<bool> await_capacity(bool stateful);
 
-    /// True when a Dead slot is not final: the running pool revives dead
-    /// slots after a cooldown, so "no capacity" is a window, not a decision.
+    /// True when a given-up slot is not final: the running pool revives
+    /// given-up slots after a cooldown, so "no capacity" is a window, not a decision.
     /// Callers (the indexer's requeue) may retry work that failed with
     /// worker_unavailable instead of dropping it. Unit fixtures drive slot
     /// state without an event loop and never start the pool, so revival
@@ -311,7 +311,7 @@ public:
         return started && options.revive_after.count() > 0;
     }
 
-    /// Alive stateless slots that also accept new work: a retiring slot
+    /// Alive stateless slots that also accept new work: a slot scaling down
     /// stays alive to finish its request but is skipped by dispatch.
     std::size_t schedulable_stateless() const;
 
@@ -327,7 +327,7 @@ public:
     /// Foreground evidence from outside the pool: didOpen/didChange/didSave
     /// and friends. Requests need no call of their own — every stateful
     /// dispatch and every High stateless dispatch counts.
-    void foreground_pulse();
+    void user_activity();
 
     /// The death `error` reports, which named no request, was its request's
     /// doing after all (see deliver): like a death that names its request,
@@ -358,9 +358,9 @@ private:
         /// A respawn is scheduled, possibly sleeping out a backoff delay.
         Respawning,
         /// Intentionally scaled down; vacant until scale-up refills it.
-        Retired,
+        ScaledDown,
         /// Crash budget exhausted; vacant until revival or scale-up.
-        Dead,
+        GivenUp,
     };
 
     struct WorkerProcess {
@@ -389,12 +389,12 @@ private:
 
         /// True when this worker is being intentionally shut down (scale-down),
         /// as opposed to an unexpected crash.
-        bool retiring = false;
+        bool scaling_down = false;
 
         /// True when the pool killed this worker on purpose — for memory, or
         /// past an ignored cancel: respawn immediately, without crash
         /// accounting.
-        bool preempted = false;
+        bool killed_on_purpose = false;
 
         /// Consecutive fast deaths that count against the slot's budget
         /// (see process_crash); resets after healthy uptime.
@@ -506,8 +506,8 @@ private:
     void kill_worker(const scheduler::Kill& kill);
 
     /// Close the idle stateless worker's pipe and terminate it; its exit
-    /// retires the slot.
-    void retire_worker(std::size_t index);
+    /// scales the slot down.
+    void scale_down_worker(std::size_t index);
 
     /// The document's assignment, or a new one to the live worker holding
     /// the fewest documents. None when no stateful worker is alive. An
@@ -520,13 +520,13 @@ private:
 
     void send_evict(Residency::Eviction eviction);
 
-    /// Stateless slots that are not permanently vacant (Dead/Retired):
+    /// Stateless slots that are not permanently vacant (given up, scaled down):
     /// alive ones plus those dying or awaiting respawn.
     std::size_t stateless_capacity() const;
 
     /// Stateless slots still holding a process: stateless_capacity() plus
-    /// retiring workers, which keep theirs until the monitor reaps them.
-    std::size_t stateless_footprint() const;
+    /// workers scaling down, which keep theirs until the monitor reaps them.
+    std::size_t stateless_processes() const;
 
     /// True while at least one stateless slot can still (eventually) serve.
     bool has_future_capacity() const {
@@ -803,7 +803,7 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
 
     // Once the pool stops its workers are still Alive, but their links are
     // closed: a request failing on one would read as a nameless death and
-    // be blamed.
+    // be charged with it.
     constexpr bool compile = std::same_as<Params, worker::CompileParams>;
     std::optional<Residency::Assignment> assignment;
     if(!stop_scope.cancelled()) {
@@ -954,7 +954,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // recording a failure — unless the worker's memory ran out before it
         // stopped, or it never stopped, which its sender learns of.
         // FIXME: a request whose own crash meets a cancel reads as cancelled too:
-        // its death record is not done yet, so it is requeued unblamed and crashes
+        // its death record is not done yet, so it is requeued uncharged and crashes
         // its worker once more.
         if(request.preempt.cancelled() && !death->out_of_memory && !death->ignored_cancel) {
             co_await async::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
@@ -981,7 +981,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
 /// took the attempt along (worker_lost), the death named no request
 /// (worker_died) or the worker's memory ran out (out_of_memory), and waits
 /// out capacity windows (worker_unavailable). One resend suffices: the
-/// culprit of the first death is stopped from running again by then. A
+/// request the first death named is stopped from running again by then. A
 /// request that dies naming no request twice, alone on its worker both
 /// times, is taken for the killer — an OOM kill, a stack overflow the
 /// crash report cannot run on.

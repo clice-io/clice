@@ -319,7 +319,7 @@ bool WorkerScheduler::memory_admits(const Request& request, const Slot& slot) co
 
 WorkerScheduler::Slot* WorkerScheduler::idle_slot() {
     for(auto& [_, slot]: slots) {
-        if(!slot.retiring && !slot.request) {
+        if(!slot.scaling_down && !slot.request) {
             return &slot;
         }
     }
@@ -413,13 +413,13 @@ void WorkerScheduler::dispatch(SchedulerTime now) {
         }
         auto& head = requests.at(low_queue.front());
         if(memory_admits(head, *slot)) {
-            held.reset();
+            memory_wait.reset();
             start(head, *slot, now);
             low_queue.pop_front();
             continue;
         }
-        if(!held || held->first != head.id) {
-            held = {head.id, now};
+        if(!memory_wait || memory_wait->first != head.id) {
+            memory_wait = {head.id, now};
         }
         if(!memory_logged || now - *memory_logged >= memory_log_interval) {
             memory_logged = now;
@@ -436,7 +436,7 @@ void WorkerScheduler::dispatch(SchedulerTime now) {
         // While the head waits for memory, a later request that fits takes
         // the room; past long_wait the queue drains for the head instead,
         // or it would never get its room.
-        if(now - held->second >= long_wait) {
+        if(now - memory_wait->second >= long_wait) {
             break;
         }
         auto behind = low_queue | views::drop(1) | views::take(backfill_depth);
@@ -452,22 +452,22 @@ void WorkerScheduler::dispatch(SchedulerTime now) {
     }
 }
 
-bool WorkerScheduler::retire_idle() {
+bool WorkerScheduler::scale_down_idle() {
     auto serving =
-        ranges::count_if(slots, [](const auto& entry) { return !entry.second.retiring; });
-    bool retired = false;
+        ranges::count_if(slots, [](const auto& entry) { return !entry.second.scaling_down; });
+    bool scaled_down = false;
     for(auto& [index, slot]: slots | views::reverse) {
         if(static_cast<std::size_t>(serving) <= options.min_workers) {
             break;
         }
-        if(!slot.retiring && !slot.request) {
-            slot.retiring = true;
+        if(!slot.scaling_down && !slot.request) {
+            slot.scaling_down = true;
             serving -= 1;
-            retired = true;
-            actions.push_back(scheduler::Retire{.slot = index});
+            scaled_down = true;
+            actions.push_back(scheduler::ScaleDown{.slot = index});
         }
     }
-    return retired;
+    return scaled_down;
 }
 
 void WorkerScheduler::check_memory(SchedulerTime now) {
@@ -488,7 +488,7 @@ void WorkerScheduler::check_memory(SchedulerTime now) {
     }
     // The idle processes' memory is the cheapest to free, and a lone
     // request gets it before it is found too big.
-    if(retire_idle() && low == 1) {
+    if(scale_down_idle() && low == 1) {
         return;
     }
     const Request* newest = nullptr;
@@ -582,19 +582,19 @@ void WorkerScheduler::scale(SchedulerTime now) {
         return;
     }
 
-    if(busy() || now - last_busy < idle_retire) {
+    if(busy() || now - last_busy < idle_scale_down) {
         return;
     }
     auto serving =
-        ranges::count_if(slots, [](const auto& entry) { return !entry.second.retiring; });
+        ranges::count_if(slots, [](const auto& entry) { return !entry.second.scaling_down; });
     if(static_cast<std::size_t>(serving) <= options.min_workers) {
         return;
     }
     auto newest = ranges::find_if(slots | views::reverse,
-                                  [](const auto& entry) { return !entry.second.retiring; });
-    newest->second.retiring = true;
+                                  [](const auto& entry) { return !entry.second.scaling_down; });
+    newest->second.scaling_down = true;
     last_busy = now;
-    actions.push_back(scheduler::Retire{.slot = newest->first});
+    actions.push_back(scheduler::ScaleDown{.slot = newest->first});
 }
 
 }  // namespace clice

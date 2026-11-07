@@ -228,7 +228,7 @@ ZEST_CASE(LoneUnitGetsIdleMemory) {
                 {
                     {.slot = 0, .memory = 6 * GiB}
     });
-    ZEXPECT(core.all<scheduler::Retire>().size() == 1u);
+    ZEXPECT(core.all<scheduler::ScaleDown>().size() == 1u);
     ZEXPECT(core.all<scheduler::Kill>().empty());
     core.sample(100 * MiB,
                 {
@@ -421,11 +421,11 @@ ZEST_CASE(IdleUserJobsCap) {
     ZEXPECT(!core.slot_of(3));
 }
 
-ZEST_CASE(RetiringSlotTakesNothing) {
+ZEST_CASE(ScalingDownTakesNothing) {
     Core core(3);
-    core.advance(WorkerScheduler::idle_retire);
+    core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB);
-    ZASSERT(core.all<scheduler::Retire>().size() == 1u);
+    ZASSERT(core.all<scheduler::ScaleDown>().size() == 1u);
     for(RequestId id = 1; id <= 3; id += 1) {
         core.submit(id, Priority::Low);
     }
@@ -591,19 +591,19 @@ ZEST_CASE(QueuedCancelDrops) {
     ZEXPECT(!core.slot_of(2));
 }
 
-ZEST_CASE(IdlePoolRetires) {
+ZEST_CASE(IdlePoolScalesDown) {
     Core core(3);
-    core.advance(WorkerScheduler::idle_retire);
+    core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB);
-    auto retires = core.all<scheduler::Retire>();
-    ZASSERT(retires.size() == 1u);
-    ZEXPECT(retires[0].slot == 2u);
-    core.advance(WorkerScheduler::idle_retire);
+    auto scale_downs = core.all<scheduler::ScaleDown>();
+    ZASSERT(scale_downs.size() == 1u);
+    ZEXPECT(scale_downs[0].slot == 2u);
+    core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB);
-    core.advance(WorkerScheduler::idle_retire);
+    core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB);
     // Down to min_workers, one.
-    ZEXPECT(core.all<scheduler::Retire>().size() == 2u);
+    ZEXPECT(core.all<scheduler::ScaleDown>().size() == 2u);
 }
 
 ZEST_CASE(StarvedForegroundSpawns) {

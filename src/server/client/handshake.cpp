@@ -112,7 +112,7 @@ void LSPClient::register_lifecycle() {
                         -> RequestResult<protocol::InitializeParams> {
         // At dispatch: an initialized read right behind the request must find
         // the server initialized.
-        this->server.pool.foreground_pulse();
+        this->server.pool.user_activity();
         auto& srv = this->server;
         if(srv.lifecycle != ServerLifecycle::Uninitialized) {
             return kotatsu::outcome_error(protocol::Error{"Server already initialized"});
@@ -392,7 +392,7 @@ void LSPClient::register_lifecycle() {
                const protocol::ShutdownParams& params) -> RequestResult<protocol::ShutdownParams> {
             // At dispatch: an exit read right behind the request must find
             // the server shutting down.
-            this->server.pool.foreground_pulse();
+            this->server.pool.user_activity();
             this->server.lifecycle = ServerLifecycle::ShuttingDown;
             LOG_INFO("Shutdown requested");
             // Clients kill a server soon after `exit`, Zed at once: the

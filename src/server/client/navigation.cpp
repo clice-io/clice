@@ -340,7 +340,7 @@ void LSPClient::register_navigation() {
     // interleaved rank by rank, a symbol two projects index listed once.
     on_request<protocol::WorkspaceSymbolParams>(
         [this](RequestContext& ctx, const protocol::WorkspaceSymbolParams& params) -> RawResult {
-            server.pool.foreground_pulse();
+            server.pool.user_activity();
             // Another checkout of the same code opened beside it (a
             // worktree) holds a copy of each symbol at the same place in the
             // same text of its folder: the copy of a folder with open
