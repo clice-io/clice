@@ -61,8 +61,9 @@ function cmakeCross(name: string, prefix: string, processor: string, flags = "")
     });
 }
 
-/// Conda's GCC and clang of the pixi `toolchains` environment, run without
-/// its activation as a build outside it runs them.
+/// Conda's GCC and clang and Intel's oneAPI compilers of the pixi
+/// `toolchains` environment, run without its activation as a build outside
+/// it runs them.
 const CONDA = path.join(REPO_ROOT, ".pixi", "envs", "toolchains", "bin");
 
 /// xclang, the toolchain clice itself builds with: one clang for every
@@ -156,8 +157,8 @@ function nvcc(
     };
 }
 
-/// Intel's oneAPI DPC++/C++ compilers of the pixi `toolchains`
-/// environment, run without its activation as `cuda`'s nvcc is.
+/// Where the pixi `toolchains` environment has Intel's oneAPI compilers
+/// on Windows.
 const ONEAPI_WINDOWS = path.join(REPO_ROOT, ".pixi", "envs", "toolchains", "Library", "bin");
 
 /// A SYCL source compiles in a device job, then the host's: clice reads it

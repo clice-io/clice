@@ -85,20 +85,16 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
         return std::unexpected(failure("Failed to build compilation"));
     }
 
-    const clang::driver::Command* cmd = nullptr;
-    for(const auto& job: compilation->getJobs()) {
-        if(job.getCreator().getName() != llvm::StringRef("clang")) {
-            continue;
-        }
-        if(!is_sycl_device_job(job.getArguments())) {
-            cmd = &job;
-            break;
-        }
-        if(!cmd) {
-            cmd = &job;
-        }
+    auto clang_jobs = views::filter(compilation->getJobs(), [](const clang::driver::Command& job) {
+        return job.getCreator().getName() == llvm::StringRef("clang");
+    });
+    auto cmd = ranges::find_if(clang_jobs, [](const clang::driver::Command& job) {
+        return !is_sycl_device_job(job.getArguments());
+    });
+    if(cmd == clang_jobs.end()) {
+        cmd = clang_jobs.begin();
     }
-    if(!cmd) {
+    if(cmd == clang_jobs.end()) {
         return std::unexpected(failure("No clang job found"));
     }
 

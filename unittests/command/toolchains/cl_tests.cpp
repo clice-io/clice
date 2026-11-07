@@ -135,7 +135,7 @@ echo 'msc_full_ver 194435207'
     ZEXPECT(ours[2] == tmp.path("llvm/lib/clang/20/include"));
 }
 
-ZEST_CASE(IntelCLSYCLHostJob, skip = Windows) {
+ZEST_CASE(IntelCLHostJob, skip = Windows) {
     // icx-cl takes cl's options, and its SYCL compilation reads as the
     // host job, built after the device's.
     auto icx = fake_cl("icx-cl");
