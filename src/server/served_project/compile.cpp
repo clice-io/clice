@@ -973,15 +973,15 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
     // Only a join for a document of this project starts an attempt, and the
     // attempt gets here before its first suspension: nothing can have closed
     // or moved it.
-    auto* document = find_document(path_id);
-    assert(document && "AST attempt for a document not this project's");
+    assert(find_document(path_id) && "AST attempt for a document not this project's");
+    auto session = server.find_session(path_id);
     auto idle = llvm::make_scope_exit([&] { enter_phase(path_id, CompilePhase::Idle); });
     // Covers every spawn path, including waiter-driven respawns: content
     // that just crashed a worker must not reach one more.
-    if(compile_stopped(*document->session)) {
+    if(compile_stopped(*session)) {
         co_return Result::Failed;
     }
-    CompileAttempt run(*this, attempt, document->session);
+    CompileAttempt run(*this, attempt, std::move(session));
     co_return co_await run.run();
 }
 

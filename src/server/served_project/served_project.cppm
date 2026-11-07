@@ -203,12 +203,11 @@ struct DocumentCompile {
     std::shared_ptr<KeptAnswers> kept = std::make_shared<KeptAnswers>();
 };
 
-/// An open document as the project serving it sees it: its latest compile,
-/// whether the document is compiled or served from the index, and whether
-/// its command was borrowed or guessed.
+/// What the project serving an open document derives for it: its latest
+/// compile, what that read, whether the document is compiled, and its
+/// merged index. The document itself, its session and its owner, is the
+/// master's (MasterServer::Document).
 struct ServedDocument {
-    std::shared_ptr<Session> session;
-
     /// Null before the document's first compile.
     std::shared_ptr<const DocumentCompile> latest;
 
@@ -366,7 +365,7 @@ public:
     /// moving from another project: discover the databases around it, and
     /// decide whether it is compiled or served from the index (now, or once
     /// the project starts).
-    void adopt(std::shared_ptr<Session> session);
+    void adopt(Fid path_id);
 
     /// Let go of a document closed or moving to another project: the worker
     /// holding its AST drops it, its compile goes, and its background index
@@ -377,8 +376,9 @@ public:
     ServedDocument* find_document(Fid path_id);
     const ServedDocument* find_document(Fid path_id) const;
 
-    /// Whether `session` is a document of this project: the project writes
-    /// about a document — its output, a crash, a refresh — only while it is.
+    /// Whether `session` is the open document of its file and this project
+    /// its owner (MasterServer::Document): the project writes about a
+    /// document — its output, a crash, a refresh — only while it is.
     bool owns(const Session& session) const;
 
     /// After the editor saved a file that belongs here: record it as a provisional
@@ -772,7 +772,7 @@ private:
     /// compiling: one that already diverged from its shard does; the file is
     /// indexed first in the background when nothing can serve it. A compiled
     /// document needs no decision — builds are pull-driven.
-    void decide_compiling(ServedDocument& document);
+    void decide_compiling(Fid path_id);
 
     /// When this project holds its cache directory's writer lock, the
     /// commands that find it taken ask this server to index for them:
@@ -850,7 +850,7 @@ private:
     /// after a change of its inputs dropped them, in its turn. Only a file
     /// of its own database entry is reported on
     /// (UnitRequest::skipped_diagnostics).
-    void book_skipped_diagnostics(const ServedDocument& document, bool first);
+    void book_skipped_diagnostics(Fid path_id, bool first);
 
     /// The file's last background run brought new skipped-body diagnostics:
     /// what the editor's compile, which skips the function bodies of the

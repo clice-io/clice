@@ -40,15 +40,15 @@ void ServedProject::commands_changed(CDBDiff delta) {
 
 void ServedProject::follow(const Affected& affected) {
     bool refresh = false;
-    auto mark_stale = [&](ServedDocument& document) {
-        inputs_changed(*document.session);
-        refresh = refresh || document.compiles;
+    auto mark_stale = [&](Fid path_id) {
+        inputs_changed(*server.find_session(path_id));
+        refresh = refresh || find_document(path_id)->compiles;
     };
     for(auto path_id: affected.stale) {
-        mark_stale(*find_document(path_id));
+        mark_stale(path_id);
     }
     for(auto path_id: affected.reindexed) {
-        book_skipped_diagnostics(*find_document(path_id), false);
+        book_skipped_diagnostics(path_id, false);
     }
     // An open document whose command moved recompiles: one whose entry
     // appeared, changed or left, a header whose host's command did or that
@@ -61,7 +61,7 @@ void ServedProject::follow(const Affected& affected) {
             auto& latest = document.latest;
             if(!latest || latest->command != selected.ref.command ||
                latest->host != selected.host) {
-                mark_stale(document);
+                mark_stale(path_id);
             }
         }
     }
@@ -97,8 +97,8 @@ void ServedProject::recheck_choices() {
         flipped = true;
         // Whether the choice holds is part of what the document compiles
         // under.
-        if(auto* document = find_document(file)) {
-            choice_changed(*document->session);
+        if(find_document(file)) {
+            choice_changed(*server.find_session(file));
         }
     }
     if(flipped) {

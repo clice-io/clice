@@ -167,8 +167,8 @@ void ServedProject::start() {
         schedule_metadata_flush();
     }
     for(auto& [path_id, document]: documents) {
-        book_skipped_diagnostics(document, true);
-        decide_compiling(document);
+        book_skipped_diagnostics(path_id, true);
+        decide_compiling(path_id);
     }
     loaded.set();
 
@@ -218,11 +218,11 @@ const ServedDocument* ServedProject::find_document(Fid path_id) const {
 }
 
 bool ServedProject::owns(const Session& session) const {
-    auto* document = find_document(session.path_id);
-    return document && document->session.get() == &session;
+    auto* document = server.find_document(session.path_id);
+    return document && document->session.get() == &session && document->owner == this;
 }
 
-void ServedProject::adopt(std::shared_ptr<Session> session) {
+void ServedProject::adopt(Fid path_id) {
     // A database generated since the start counts: the poll, or the
     // discovery around this file, has loaded it by now. A provisional
     // member's command is a guess too.
@@ -236,12 +236,10 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
             "https://docs.clice.io/clice/guide/quick-start#project-setup for setup.",
             why);
     }
-    auto path_id = session->path_id;
     // Every invalidation from now on counts in the generation its compiles
     // and its requests' PCH adoptions read, before its first compile too.
     project.graph.add(ast_node(path_id));
-    auto& document = documents[path_id];
-    document = ServedDocument{.session = std::move(session)};
+    documents[path_id] = {};
     if(project.settings.project.readonly == ReadonlyMode::Off ||
        server.own_context_only.contains(path_id)) {
         start_compiling(path_id);
@@ -257,20 +255,16 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
         schedule_metadata_flush();
     }
     server.recheck_choice(path_id);
-    // The change may have moved other documents in: the table may have
-    // grown since the reference above was taken.
-    auto& adopted = documents.find(path_id)->second;
-    book_skipped_diagnostics(adopted, true);
-    decide_compiling(adopted);
+    book_skipped_diagnostics(path_id, true);
+    decide_compiling(path_id);
 }
 
-void ServedProject::decide_compiling(ServedDocument& document) {
+void ServedProject::decide_compiling(Fid path_id) {
     // A compiled document needs no decision: builds stay pull-driven.
-    if(document.compiles) {
+    if(find_document(path_id)->compiles) {
         return;
     }
-    auto& session = *document.session;
-    auto path_id = session.path_id;
+    auto& session = *server.find_session(path_id);
     auto& background = project.background_index;
     if(auto* shard = project.index.shard(path_id)) {
         // A buffer that already diverges from the indexed content (a

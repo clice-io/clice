@@ -51,7 +51,7 @@ struct ServedProjectFixture {
         auto path_id = intern(path);
         auto session = std::make_shared<Session>(path_id, std::move(text), version);
         server.documents[path_id] = {.session = session, .owner = served.get()};
-        served->adopt(session);
+        served->adopt(path_id);
         return session;
     }
 

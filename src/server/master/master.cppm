@@ -491,6 +491,11 @@ private:
     /// with its owner once the projects run.
     void open_first_name(Fid path_id, std::string text, int version);
 
+    /// The document's session ends, closed or replaced by a reopen: what a
+    /// request computed on it is void, and its owner lets it go while the
+    /// table still holds it.
+    void end_session(Document& document);
+
     // contexts.cpp
 
     /// Serialize the choices `project` holds into its database's bytes,

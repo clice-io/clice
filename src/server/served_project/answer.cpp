@@ -21,10 +21,8 @@ ipc::Error content_modified() {
 }
 
 bool ServedProject::compiles(const Session& session) const {
-    auto* document = find_document(session.path_id);
-    assert(document && document->session.get() == &session &&
-           "a fresh ticket's document belongs to the project it was taken in");
-    return document->compiles;
+    assert(owns(session) && "a fresh ticket's document belongs to the project it was taken in");
+    return find_document(session.path_id)->compiles;
 }
 
 async::task<Route> ServedProject::pick_route(const Ticket& ticket,
@@ -132,9 +130,10 @@ std::optional<index::IndexQuery::Cursor>
 /// file's shard indexed, and the compile skipped some code — unless the
 /// user asked for the file's own context alone. Null otherwise.
 const static ServedDocument::MergedIndex* merged_index(const ServedProject& served,
+                                                       Fid path_id,
                                                        const ServedDocument& document) {
     auto& compiled = document.latest;
-    auto& session = *document.session;
+    auto& session = *served.server.find_session(path_id);
     if(!compiled || !compiled->index || !compiled->index->loaded() ||
        compiled->inactive_regions.empty() ||
        served.server.own_context_only.contains(session.path_id)) {
@@ -175,9 +174,9 @@ const static ServedDocument::MergedIndex* merged_index(const ServedProject& serv
 std::vector<index::OpenBuffer> ServedProject::open_buffers() const {
     std::vector<index::OpenBuffer> open;
     for(auto& [path_id, document]: documents) {
-        auto& session = *document.session;
+        auto& session = *server.find_session(path_id);
         auto& compiled = document.latest;
-        auto* merged = merged_index(*this, document);
+        auto* merged = merged_index(*this, path_id, document);
         open.push_back({
             .file = path_id,
             .text = session.text(),
@@ -194,7 +193,7 @@ std::vector<index::OpenBuffer> ServedProject::open_buffers() const {
 
 ServedProject::SkippedCode ServedProject::skipped_code(Fid file) const {
     auto* document = find_document(file);
-    auto* merged = document ? merged_index(*this, *document) : nullptr;
+    auto* merged = document ? merged_index(*this, file, *document) : nullptr;
     if(!merged) {
         return {};
     }
@@ -211,7 +210,7 @@ bool ServedProject::merge_again(Fid file) const {
     }
     auto before = document->merged ? document->merged->additions : 0;
     document->merged.reset();
-    auto* merged = merged_index(*this, *document);
+    auto* merged = merged_index(*this, file, *document);
     return before != (merged ? merged->additions : 0);
 }
 

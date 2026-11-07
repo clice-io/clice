@@ -104,10 +104,9 @@ std::vector<feature::FileDiagnostic>
     return feature::confirmed_skipped(skipped->diagnostics, output.diagnostics);
 }
 
-void ServedProject::book_skipped_diagnostics(const ServedDocument& document, bool first) {
-    auto& session = *document.session;
-    auto path_id = session.path_id;
-    if(!project.settings.project.skip_header_bodies || !document.compiles ||
+void ServedProject::book_skipped_diagnostics(Fid path_id, bool first) {
+    auto& session = *server.find_session(path_id);
+    if(!project.settings.project.skip_header_bodies || !find_document(path_id)->compiles ||
        project.entries(path_id).empty()) {
         return;
     }
@@ -131,7 +130,7 @@ void ServedProject::show_skipped_diagnostics(Fid path_id) {
     if(!current(path_id)) {
         return;
     }
-    auto& session = *find_document(path_id)->session;
+    auto& session = *server.find_session(path_id);
     auto compiled = latest_at(path_id, session.version);
     if(!compiled) {
         return;
