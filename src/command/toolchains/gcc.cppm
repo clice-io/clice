@@ -1,5 +1,6 @@
 module clice:command.toolchains.gcc;
 
+import :command.table;
 import :command.toolchains.clang;
 import :support.prelude;
 
@@ -89,6 +90,7 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
 /// driver only passes on (assembler), or a driver that is neither GCC nor
 /// clang (Intel's icc).
 async::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::string> args,
+                                                           const Command& command,
                                                            std::size_t driver_tokens,
                                                            std::string cwd);
 

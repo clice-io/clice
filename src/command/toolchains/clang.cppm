@@ -74,7 +74,9 @@ std::string standard_from_macros(llvm::StringRef cplusplus,
                                  llvm::StringRef stdc_version,
                                  bool strict);
 
-bool names_standard(llvm::ArrayRef<std::string> args);
+/// Whether `args` set the language standard in clang's spelling: `-std=`,
+/// or through clang-cl's `/clang:` or `-Xclang`.
+bool names_standard(llvm::ArrayRef<Arg> args);
 
 /// The flags of a command of `family`, spelled as that family spells them,
 /// as clang takes them when its compiler is not clang (GCC, cl, nvcc): the

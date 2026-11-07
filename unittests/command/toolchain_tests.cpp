@@ -114,8 +114,8 @@ ZEST_CASE(KeyTracksSemantics) {
 }
 
 ZEST_CASE(KeyTracksWrittenAlias) {
-    /// A GCC may know an option by one name alone; nvcc's query reads
-    /// clang's names, whichever the command wrote.
+    /// A GCC may know an option by one name alone; nvcc's query hands its
+    /// arguments to clang's driver, which knows them all.
     auto g = f.add("/fake", "/tmp/a.c", {"gcc", "-G", "8", "/tmp/a.c"});
     auto limit = f.add("/fake", "/tmp/b.c", {"gcc", "-msmall-data-limit=8", "/tmp/b.c"});
     ZEXPECT(f.key(g) != f.key(limit));

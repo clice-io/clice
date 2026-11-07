@@ -2,9 +2,10 @@ module clice;
 
 import :command.argument;
 import :command.normalize;
+import :command.table;
 import :command.toolchains.gcc;
 import :command.toolchains.nvcc;
-import :command.table;
+import :command.toolchains.own_options;
 import :support.logging;
 import :support.shell;
 import :vfs.file_system;
@@ -46,6 +47,64 @@ CompilerFamily with_driver_mode(CompilerFamily family,
         }
     }
     return family;
+}
+
+using ParsedArgs = std::vector<std::expected<cli::ParsedArg, cli::Error>>;
+
+/// `staged` with what its `-Xclang` options pass on read by cc1's options,
+/// which clang's driver passes their values to together, in order. The
+/// command keeps them as written but for an option clice manages itself or
+/// the compile never takes, which goes as its driver spelling does
+/// (classify_option). CMake passes a target's precompiled header to cc1
+/// directly, `-Xclang -include-pch -Xclang <pch>` in its units' commands,
+/// `-Xclang -emit-pch` in the one building it: the file on disk may come
+/// from GCC or another clang, so a unit loads clice's own build of it
+/// instead (Project::pch_writer). Bazel's module rules (xclang's) embed a
+/// module's sources in it (`-fmodules-embed-all-files`).
+ParsedArgs read_xclang(ParsedArgs staged, CommandTable& commands) {
+    llvm::SmallVector<std::size_t> xclang;
+    llvm::SmallVector<std::string_view> passed;
+    for(std::size_t i = 0; i < staged.size(); i += 1) {
+        if(staged[i] && is_xclang_option(staged[i]->id)) {
+            xclang.push_back(i);
+            passed.push_back(staged[i]->values[0]);
+        }
+    }
+    // The option an argument reads as in place of the -Xclang options it
+    // starts, which go.
+    std::vector<std::optional<cli::ParsedArg>> read(staged.size());
+    std::vector<bool> gone(staged.size());
+    auto cc1 = cli::ParseOptions{.visibility = clang_options::CC1Option};
+    for(auto& option: clang_options::table().parse(passed, cc1)) {
+        // An option missing its value, which only the last can be.
+        if(!option) {
+            break;
+        }
+        if(option->id == clang_options::OPT_UNKNOWN || option->id == clang_options::OPT_INPUT) {
+            continue;
+        }
+        llvm::SmallVector<const char*> values;
+        for(auto value: option->values) {
+            values.push_back(commands.intern(value).data());
+        }
+        auto cls = classify_option(option->id, values);
+        if(cls && cls != ArgClass::Precompiled) {
+            continue;
+        }
+        for(auto k = option->index; k < option->next_index; k += 1) {
+            gone[xclang[k]] = true;
+        }
+        read[xclang[option->index]] = std::move(*option);
+    }
+    ParsedArgs result;
+    for(std::size_t i = 0; i < staged.size(); i += 1) {
+        if(read[i]) {
+            result.push_back(std::move(*read[i]));
+        } else if(!gone[i]) {
+            result.push_back(std::move(staged[i]));
+        }
+    }
+    return result;
 }
 
 }  // namespace
@@ -147,24 +206,23 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     /// nvcc spellings are rewritten into clang's before the table parse —
     /// the table cannot parse them, and unparsed tokens keep no semantics.
     if(command.family == CompilerFamily::NVCC) {
+        command.host = nvcc_host(parse_args);
         llvm::SmallVector<const char*, 32> argv = {command.driver};
         for(auto& argument: parse_args) {
             argv.push_back(argument.c_str());
         }
-        parse_args = translate_nvcc_command(argv, directory);
+        parse_args = translate_nvcc_command(argv, directory, command.host);
         parse_args.erase(parse_args.begin());
     }
 
-    auto parse_options = cli::ParseOptions{.dash_dash_parsing = true,
-                                           .visibility = family_visibility(command.family)};
+    auto family = option_family(command);
+    auto parse_options =
+        cli::ParseOptions{.dash_dash_parsing = true, .visibility = family_visibility(family)};
 
     /// Two passes: the staging pass keeps every parse result alive, so the
     /// classification pass can decide input pairing (which /Tc-/Tp names
     /// the entry file) before it lays down arguments.
-    std::vector<std::expected<cli::ParsedArg, cli::Error>> staged;
-    for(auto& parsed: clang_options::table().parse(parse_args, parse_options)) {
-        staged.push_back(parsed);
-    }
+    auto staged = read_xclang(parse_arguments(parse_args, family, parse_options), commands);
 
     /// Relative paths of the command resolve where the compile runs: the
     /// entry directory, moved by `-working-directory`.
@@ -199,7 +257,6 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     std::vector<LocalArg> args;
     args.reserve(staged.size() + 1);
     bool slot_placed = false;
-    bool included_pch = false;
 
     auto place_slot = [&] {
         args.push_back({.opt_id = clang_options::OPT_INPUT, .cls = ArgClass::Input});
@@ -248,51 +305,16 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
             continue;
         }
 
-        /// CMake passes a target's precompiled header to cc1 directly:
-        /// `-Xclang -include-pch -Xclang <pch>` in its units' commands,
-        /// `-Xclang -emit-pch` in the one building it. Both take the
-        /// driver's spelling, an argument clice manages itself: the file
-        /// on disk may come from GCC or another clang, so a unit loads
-        /// clice's own build of it instead (Project::pch_writer).
-        if(is_xclang_option(id) && parsed->values.size() == 1) {
-            llvm::StringRef value = parsed->values[0];
-            if(included_pch) {
-                included_pch = false;
-                args.push_back({
-                    .opt_id = clang_options::OPT_include_pch,
-                    .cls = ArgClass::Precompiled,
-                    .values =
-                        {anchored(commands, clang_options::OPT_include_pch, value, anchor, mounts)
-                             .data()},
-                });
-                continue;
-            }
-            if(value == "-include-pch") {
-                included_pch = true;
-                continue;
-            }
-            if(value == "-emit-pch") {
-                args.push_back(
-                    {.opt_id = clang_options::OPT_emit_pch, .cls = ArgClass::Precompiled});
-                continue;
-            }
-            /// Bazel's module rules (xclang's) embed a module's sources in
-            /// it: the flag goes as its driver spelling does
-            /// (is_discarded_option).
-            if(value == "-fmodules-embed-all-files") {
-                continue;
-            }
-        }
-
         auto local = commands.local_arg(parsed, parse_args);
         if(!local) {
             continue;
         }
 
         /// g++ knows warnings clang does not (-Wlogical-op, -Wuseless-cast),
-        /// each of which clang would report as unknown on every file.
-        if(command.family == CompilerFamily::GCC && id == clang_options::OPT_W_Joined &&
-           !clang_warning(local->values[0])) {
+        /// each of which clang would report as unknown on every file: in its
+        /// commands, and in what nvcc passes it.
+        if((family == CompilerFamily::GCC || command.host == CompilerFamily::GCC) &&
+           id == clang_options::OPT_W_Joined && !clang_warning(local->values[0])) {
             continue;
         }
 
@@ -433,10 +455,13 @@ std::vector<std::string> Normalizer::expand_response_files(kotatsu::string_list_
     /// nvcc's options files splice in where they stand. A cycle of them
     /// stops 8 files deep.
     std::vector<std::string> spliced;
-    for(std::size_t i = 0; i < expanded.size(); i += 1) {
-        auto names = depth < 8 ? options_files(expanded, i) : std::nullopt;
-        if(!names) {
-            spliced.push_back(std::move(expanded[i]));
+    for(std::size_t i = 0; i < expanded.size();) {
+        auto start = i;
+        auto names = options_files(expanded, i);
+        if(!names || depth >= 8) {
+            spliced.insert(spliced.end(),
+                           std::make_move_iterator(expanded.begin() + start),
+                           std::make_move_iterator(expanded.begin() + i));
             continue;
         }
         for(auto& name: *names) {

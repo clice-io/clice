@@ -23,5 +23,5 @@ test("gcc warnings", { errors: [MISSING, UNCONVERTED] }, async (t) => {
 test("errors of other compilers", { errors: [MISSING, UNCONVERTED] }, async (t) => {
     await t.cli("command convert -- missing-g++ -Wall -Werror -Werror=shadow main.cpp");
     await t.cli("command convert -- cl-missing /W4 /WX main.cpp");
-    await t.cli("command convert -- nvcc-missing -Xcompiler -Werror -c main.cpp");
+    await t.cli("command convert -- nvcc-missing -ccbin g++ -Xcompiler -Werror -c main.cpp");
 });

@@ -251,6 +251,16 @@ ZEST_CASE(ClangJobKeepsStandard, skip = Windows) {
     ZEXPECT(!contains(argv, "-std=gnu++14"));
 }
 
+ZEST_CASE(DeferralAskedThroughXclang, skip = Windows) {
+    /// An MSVC target's default template deferral stays only when the
+    /// command asks for it, to the driver or to cc1.
+    auto driver = fake_clang(
+        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-pc-windows-msvc" "-fdelayed-template-parsing")");
+    ZEXPECT(!contains(f.resolve(add("a.cpp", {driver.c_str()})), "-fdelayed-template-parsing"));
+    auto asked = f.resolve(add("b.cpp", {driver.c_str(), "-Xclang", "-fdelayed-template-parsing"}));
+    ZEXPECT(contains(asked, "-fdelayed-template-parsing"));
+}
+
 ZEST_CASE(UniversalBuildFirstArch, skip = Windows) {
     /// clang refuses to preprocess for two architectures at once.
     auto driver = fake_driver("clang++", R"(case " $* " in

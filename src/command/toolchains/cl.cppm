@@ -1,6 +1,7 @@
 module clice:command.toolchains.cl;
 
 import :command.argument;
+import :command.table;
 import :command.toolchains.clang;
 import :support.prelude;
 
@@ -41,7 +42,7 @@ std::vector<std::string> cl_driver_mode(llvm::StringRef driver, CompilerFamily f
 /// one that detection finds, from the toolset its flags select
 /// (`/winsysroot`), as it does here.
 async::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> args,
-                                                    CompilerFamily family,
+                                                    const Command& command,
                                                     llvm::StringRef input,
                                                     std::string cwd);
 

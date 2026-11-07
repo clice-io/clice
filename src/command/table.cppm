@@ -26,6 +26,10 @@ struct Command {
     /// From the driver filename plus an explicit --driver-mode= scan.
     CompilerFamily family = CompilerFamily::Unknown;
 
+    /// An nvcc command's host compiler (nvcc_host); Unknown for every other
+    /// command.
+    CompilerFamily host = CompilerFamily::Unknown;
+
     /// Ordered arguments, exactly one ArgClass::Input slot among them.
     llvm::ArrayRef<Arg> args;
 
@@ -35,6 +39,14 @@ struct Command {
 
     friend bool operator==(const Command&, const Command&) = default;
 };
+
+/// The family whose spellings `command`'s arguments are in: those of an
+/// nvcc command whose host compiler is cl are cl's, nvcc passing what it
+/// does not know itself on to cl.
+constexpr CompilerFamily option_family(const Command& command) {
+    return command.family == CompilerFamily::NVCC && cl_mode(command.host) ? command.host
+                                                                           : command.family;
+}
 
 enum class CommandID : std::uint32_t {};
 
@@ -218,6 +230,7 @@ struct DenseMapInfo<clice::Command> {
                                                   command.driver,
                                                   command.subcommand,
                                                   static_cast<unsigned>(command.family),
+                                                  static_cast<unsigned>(command.host),
                                                   command.query_toolchain);
         for(auto& arg: command.args) {
             hash = llvm::hash_combine(hash,

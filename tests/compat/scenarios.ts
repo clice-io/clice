@@ -157,9 +157,9 @@ function nvcc(
     };
 }
 
-/// Where the pixi `toolchains` environment has Intel's oneAPI compilers
-/// on Windows.
-const ONEAPI_WINDOWS = path.join(REPO_ROOT, ".pixi", "envs", "toolchains", "Library", "bin");
+/// Where the pixi `toolchains` environment has its compilers on Windows:
+/// Intel's oneAPI ones and nvcc.
+const CONDA_WINDOWS = path.join(REPO_ROOT, ".pixi", "envs", "toolchains", "Library", "bin");
 
 /// A SYCL source compiles in a device job, then the host's: clice reads it
 /// as the host job.
@@ -639,18 +639,51 @@ export const SCENARIOS: Scenario[] = [
         name: "cmake ninja icx sycl",
         platforms: ["win32"],
         msvc: true,
-        requires: ["cmake", "ninja", `${ONEAPI_WINDOWS}/icx.exe`],
+        requires: ["cmake", "ninja", `${CONDA_WINDOWS}/icx.exe`],
         build: [
             ...cmake(
                 "Ninja",
-                `${ONEAPI_WINDOWS}/icx.exe`,
-                `${ONEAPI_WINDOWS}/icx.exe`,
+                `${CONDA_WINDOWS}/icx.exe`,
+                `${CONDA_WINDOWS}/icx.exe`,
                 "-DCOMPAT_SYCL=ON",
                 "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY",
             ).slice(0, 1),
             ["cmake", "--build", "build", "--target", "compat_sycl"],
         ],
         files: SYCL_FILES,
+    },
+    {
+        // nvcc compiles with cl on Windows, which the build finds in the
+        // developer prompt and clice, outside it as under an editor, where
+        // nvcc looks for it: in the newest toolset Visual Studio installed.
+        // CCCL's headers take C++17 and cl's conforming preprocessor only.
+        name: "cmake ninja nvcc msvc",
+        platforms: ["win32"],
+        msvc: true,
+        requires: ["cmake", "ninja", `${CONDA_WINDOWS}/nvcc.exe`],
+        build: [
+            [
+                "cmake",
+                "-S",
+                ".",
+                "-B",
+                "build",
+                "-G",
+                "Ninja",
+                "-DCOMPAT_CUDA=ON",
+                "-DCMAKE_CUDA_STANDARD=17",
+                "-DCMAKE_CUDA_FLAGS=-Xcompiler=/Zc:preprocessor",
+                `-DCMAKE_CUDA_COMPILER=${CONDA_WINDOWS}/nvcc.exe`,
+                `-DCUDAToolkit_ROOT=${path.dirname(CONDA_WINDOWS)}`,
+            ],
+            ["cmake", "--build", "build", "--target", "compat_cuda"],
+        ],
+        files: {
+            "cuda/kernel.cu": {
+                recorded: [["-Xcompiler=/Zc:preprocessor"]],
+                contains: [["-fcuda-is-device"]],
+            },
+        },
     },
     // Its macOS and MSVC targets read Apple's and Microsoft's SDKs, which
     // xclang fetches only on a license accepted by hand.

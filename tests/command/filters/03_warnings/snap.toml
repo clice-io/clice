@@ -46,7 +46,7 @@ error: The command stays a driver command: Cannot find driver: cl-missing
 '''
 exit = 1
 
-["errors of other compilers"."$ clice command convert -- nvcc-missing -Xcompiler -Werror -c main.cpp"]
+["errors of other compilers"."$ clice command convert -- nvcc-missing -ccbin g++ -Xcompiler -Werror -c main.cpp"]
 stdout = "nvcc-missing -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
 error: Toolchain query failed: Cannot find driver: nvcc-missing

@@ -32,7 +32,7 @@ Distilled from real correction history — these mistakes keep recurring:
 
 - `src/support/` — utilities: logging, JSON, text, processes, fuzzy matching, failure records and their policies
 - `src/vfs/` — clice's view of the disk over `kotatsu::fs`: source text and its change stamps, the file table and its freshness checks, the file system a compile sees, the on-disk cache store, finding a Cygwin or MSYS2 runtime's mount table
-- `src/command/` — compile commands: the option table and argument model, file kinds, the command table, normalizing raw commands, the compilation database, rule edits, header search configurations, the clang invocation, the toolchain and its queries, one file per compiler kind under `toolchains/` (GCC-style, cl, nvcc, clang)
+- `src/command/` — compile commands: the option table and argument model, file kinds, the command table, normalizing raw commands, the compilation database, rule edits, header search configurations, the clang invocation, the toolchain and its queries, one file per compiler kind under `toolchains/` (GCC-style, cl, nvcc, clang), beside the table of the spellings compilers write that clang's table reads otherwise or not at all (`own_options`)
 - `src/syntax/` — lexer, scanner, tokens, include resolution, dependency graph
 - `src/compile/` — compilation: compilation unit, tokens, directives, the code the preprocessor skipped (inactive regions), diagnostics, clang-tidy
 - `src/semantic/` — semantic analysis over the AST: symbol kinds, relations, the template resolver (`template_resolver/`: pseudo-instantiation of dependent names, calls and patterns, one partition outside it), declaration, type and expression helpers; the per-unit semantic map (AST visitor), selection, entity identities and doc comments
