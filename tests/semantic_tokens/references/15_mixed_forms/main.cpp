@@ -33,3 +33,13 @@ int use(shapes::Small grid, const char* label) {
     other[0] = SQUARE(grid[1]);
     return label[0] == 'x' and other[0] > 0;
 }
+
+struct Base {
+    virtual void draw();
+    virtual void paint();
+};
+
+struct Derived final : Base {
+    void draw() override;
+    void paint() final;
+};

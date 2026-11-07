@@ -1,7 +1,7 @@
 module clice;
 
 import :feature.folding_ranges;
-import :feature.index_entries;
+import :index.entries;
 import :index.symbol;
 import :semantic.symbol;
 import :syntax.lexer;
@@ -140,7 +140,7 @@ void g() {
     auto f_end = static_cast<std::uint32_t>(content.find("#endif") + 6);
     auto g_begin = static_cast<std::uint32_t>(content.find("void g"));
     auto g_end = static_cast<std::uint32_t>(content.rfind('}') + 1);
-    std::vector<feature::IndexDecl> entries = {
+    std::vector<index::DeclEntry> entries = {
         {.range = {5, 6},                     .extent = {0, f_end}, .symbol = 1, .definition = true},
         {.range = {g_begin + 5, g_begin + 6},
          .extent = {g_begin, g_end},

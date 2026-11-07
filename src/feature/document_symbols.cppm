@@ -1,7 +1,7 @@
 module clice:feature.document_symbols;
 
 import :compile.compilation;
-import :feature.index_entries;
+import :index.entries;
 import :index.query;
 import :semantic.symbol;
 import :support.prelude;
@@ -124,8 +124,8 @@ auto to_symbol_information(llvm::ArrayRef<DocumentSymbol> symbols,
 /// The outline of the file `source` holds, from its index entries: the
 /// AST's (outline()) without details, a macro's parameters aside.
 auto document_symbols(SourceText& source,
-                      const IndexEntries& entries,
-                      IndexSymbolResolver resolve,
+                      const index::FileEntries& entries,
+                      index::SymbolResolver resolve,
                       const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
 
 /// The same from the index serving the file (see semantic_tokens).

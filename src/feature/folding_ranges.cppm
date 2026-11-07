@@ -1,7 +1,7 @@
 module clice:feature.folding_ranges;
 
 import :compile.compilation;
-import :feature.index_entries;
+import :index.entries;
 import :index.query;
 import :semantic.symbol;
 import :support.prelude;
@@ -77,8 +77,8 @@ auto to_protocol(llvm::ArrayRef<FoldingRange> ranges,
 /// branches unbalance braces produce no fold — a raw pairing there is
 /// wrong for some preprocessing variant.
 auto folding_ranges(SourceText& source,
-                    llvm::ArrayRef<IndexDecl> decls,
-                    IndexSymbolResolver resolve) -> std::vector<FoldingRange>;
+                    llvm::ArrayRef<index::DeclEntry> decls,
+                    index::SymbolResolver resolve) -> std::vector<FoldingRange>;
 
 /// The same from the index serving the file (see semantic_tokens).
 auto folding_ranges(SourceText& source,
