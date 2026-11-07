@@ -204,13 +204,13 @@ std::size_t WorkerScheduler::running_on(std::size_t slot, bool stateful) const {
 
 bool WorkerScheduler::runs_alone(std::size_t slot) const {
     auto it = slots.find(slot);
-    return it != slots.end() && it->second.request && one_running();
+    return it != slots.end() && it->second.request && requests_running() == 1;
 }
 
-bool WorkerScheduler::one_running() const {
+std::size_t WorkerScheduler::requests_running() const {
     return ranges::count_if(requests, [](const auto& entry) {
-               return entry.second.stateful || entry.second.slot.has_value();
-           }) == 1;
+        return entry.second.stateful || entry.second.slot.has_value();
+    });
 }
 
 std::uint64_t WorkerScheduler::reached(std::size_t slot) const {
@@ -310,10 +310,7 @@ bool WorkerScheduler::memory_admits(const Request& request, const Slot& slot) co
     // With nothing beside it, waiting would free no memory: it starts unless
     // check_memory would kill it at once.
     if(running(Priority::Low) == 0) {
-        auto alone = ranges::none_of(requests, [](const auto& entry) {
-            return entry.second.stateful || entry.second.slot.has_value();
-        });
-        return headroom >= (alone ? reserve / lone_share : reserve);
+        return headroom >= (requests_running() == 0 ? reserve / lone_share : reserve);
     }
     // The worker's own memory is the request's to reuse. Sampled before its
     // last request ended, it still counts what that request freed since,
@@ -484,9 +481,9 @@ void WorkerScheduler::check_memory(SchedulerTime now) {
     // takes it for too big for the machine.
     auto low = running(Priority::Low);
     auto reserve = last_sample.reserve;
-    auto short_by = low > 1                     ? reserve + growth_soon()
-                    : low == 1 && one_running() ? reserve / lone_share + growth_soon()
-                                                : reserve;
+    auto short_by = low > 1                               ? reserve + growth_soon()
+                    : low == 1 && requests_running() == 1 ? reserve / lone_share + growth_soon()
+                                                          : reserve;
     if(last_sample.headroom >= short_by && !(low > 1 && last_sample.swapping)) {
         return;
     }

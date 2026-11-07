@@ -168,9 +168,9 @@ struct StatelessOptions {
     /// What the request is expected to take.
     RequestCost cost = {};
 
-    /// Where a finished request puts the peak of its worker's own memory
+    /// Where a finished request puts the most of its worker's own memory
     /// while it ran.
-    std::uint64_t* peak = nullptr;
+    std::uint64_t* reached = nullptr;
 
     /// Asked once the request has its slot, right before it reaches the
     /// worker: a request that waited in the queue while a request like it
@@ -278,8 +278,10 @@ public:
     /// its AST, and a compile of it still running leaves none behind.
     void forget_document(std::uint32_t path_id);
 
-    /// Whether a worker of the kind serves or will: a slot of the kind is
-    /// alive, coming back, or given up until its revival.
+    /// Whether a worker of the kind serves or will with no request asking:
+    /// one alive and staying, dying, respawning, or given up until its
+    /// revival. None will in a pool with no slot of the kind — the command
+    /// line's has no stateful worker.
     bool will_serve(bool stateful) const;
 
     /// Wait until a worker of the kind can take a request. False when none
@@ -343,6 +345,11 @@ private:
         void fresh_budget() {
             crash_streak = 0;
             counted_deaths.clear();
+        }
+
+        /// Alive and staying: it takes requests.
+        bool serves() const {
+            return state == SlotState::Alive && !scaling_down;
         }
 
         async::process proc;
@@ -442,37 +449,20 @@ private:
         }
     };
 
-    /// A request in flight on a slot's incarnation, registered for the span
-    /// of its send: the crash tag a death and its worker's start report are
-    /// matched against, and whether it is a build (see worker::is_build),
-    /// which picks the deadline a kill reports.
+    /// A request in flight on a slot, registered for the span of its send:
+    /// the crash tag a death is matched against, and whether it is a build
+    /// (see worker::is_build), which picks the deadline a kill reports.
     struct Inflight {
         WorkerPool& pool;
 
         RequestId id;
 
-        std::size_t slot;
-
-        bool stateful;
-
-        unsigned generation;
-
         std::string tag;
 
         bool build;
 
-        /// Stateful: its worker reported it began its work.
-        bool started = false;
-
-        Inflight(WorkerPool& pool,
-                 RequestId id,
-                 std::size_t slot,
-                 bool stateful,
-                 unsigned generation,
-                 std::string tag,
-                 bool build) :
-            pool(pool), id(id), slot(slot), stateful(stateful), generation(generation),
-            tag(std::move(tag)), build(build) {
+        Inflight(WorkerPool& pool, RequestId id, std::string tag, bool build) :
+            pool(pool), id(id), tag(std::move(tag)), build(build) {
             pool.flights[id] = this;
         }
 
@@ -529,8 +519,9 @@ private:
 
     void send_evict(Residency::Eviction eviction);
 
-    /// The slots of the kind that serve or are about to: alive and not
-    /// scaling down, dying, or respawning.
+    /// The slots of the kind that serve or are about to: alive and staying,
+    /// dying, or respawning. A given-up slot serves only after its
+    /// cooldown.
     std::size_t capacity(bool stateful) const;
 
     /// Stateless slots holding a process or owed one: all but the scaled
@@ -627,12 +618,9 @@ private:
 
     async::task<> monitor_worker(std::size_t index, bool stateful);
 
-    /// The stateful worker in `index` began the work of the request of
-    /// `tag`: the earliest such request in flight on it that had not.
-    void work_started(std::size_t index, llvm::StringRef tag);
-
     /// Send a request to the current incarnation of the slot, registered as
-    /// in flight while it is; when the link breaks under it, the
+    /// in flight while it is; a stateful worker is told the id its start
+    /// report names it by first. When the link breaks under it, the
     /// incarnation is declared dead at once, so follow-up requests fail
     /// fast instead of piling onto a corpse.
     template <typename Params>
@@ -677,7 +665,7 @@ private:
     llvm::DenseMap<RequestId, PendingStateless*> pending;
 
     /// The requests in flight, by id.
-    llvm::DenseMap<RequestId, Inflight*> flights;
+    llvm::DenseMap<RequestId, const Inflight*> flights;
 
     RequestId next_request = 1;
 
@@ -744,13 +732,10 @@ RequestResult<Params> WorkerPool::send_to(RequestId id,
     auto& w = slot(index, stateful);
     auto peer = w.peer;
     auto generation = w.generation;
-    Inflight inflight(*this,
-                      id,
-                      index,
-                      stateful,
-                      generation,
-                      worker::crash_tag(params),
-                      worker::is_build<Params>);
+    Inflight inflight(*this, id, worker::crash_tag(params), worker::is_build<Params>);
+    if(stateful) {
+        peer->send_notification(worker::NextRequestParams{id});
+    }
     auto result = hooks ? co_await hooks->send(peer, params, std::move(opts))
                         : co_await peer->send_request(params, std::move(opts));
     if(!result.has_value() && worker::is_transport_error(result.error()) &&
@@ -903,8 +888,8 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // healthy; pass it through untouched.
         if(result.has_value() || !worker::is_transport_error(result.error())) {
             auto peak = request.finish();
-            if(options.peak) {
-                *options.peak = peak;
+            if(options.reached) {
+                *options.reached = peak;
             }
             co_return std::move(result);
         }

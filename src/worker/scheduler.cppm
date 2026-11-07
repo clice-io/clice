@@ -388,8 +388,8 @@ private:
 
     std::size_t running(worker::Priority priority) const;
 
-    /// Exactly one request runs, stateless or stateful.
-    bool one_running() const;
+    /// The requests running, stateless or stateful.
+    std::size_t requests_running() const;
 
     /// The peak a background request is expected to reach.
     std::uint64_t estimate(const Request& request) const;

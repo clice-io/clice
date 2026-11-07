@@ -86,7 +86,7 @@ void park_at_gate(llvm::StringRef tag) {
     erase_gate(find());
 }
 
-/// The environment's value of `name`, read once.
+/// The environment's value of `name`.
 std::optional<std::string> test_env(const char* name) {
     std::string value;
     return sys::get_env(value, name) ? std::optional(std::move(value)) : std::nullopt;

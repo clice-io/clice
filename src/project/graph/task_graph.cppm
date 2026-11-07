@@ -254,7 +254,7 @@ private:
         llvm::SmallVector<NodeId, 8> received;
 
         /// See Attempt::on_foreground.
-        Signal<> foreground;
+        Signal<> on_foreground;
     };
 
     struct Node {

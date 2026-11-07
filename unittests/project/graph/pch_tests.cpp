@@ -83,9 +83,8 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
     // Two acquires of one poisoned key observe the same Failed attempt; the
     // worker names the build, so its one death is attributed to it at once — no
     // resend — and recorded on the key.
-    int deaths = 0;
-    logging::set_anomaly_trap_for_testing(
-        [&](logging::AnomalyId id) { deaths += id == logging::AnomalyId::WorkerCrash ? 1 : 0; });
+    std::size_t deaths = 0;
+    count_crashes(deaths);
     std::optional<Result> a, b;
 
     execute([&]() -> async::task<> {
@@ -101,7 +100,7 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
 
     ZEXPECT(a == Result::Failed);
     ZEXPECT(b == Result::Failed);
-    ZEXPECT(deaths == 1);
+    ZEXPECT(deaths == 1u);
     auto* crash = project.pch_build_crash("shared-key");
     ZASSERT(crash != nullptr);
     ZEXPECT(!crash->cause.empty());
@@ -142,9 +141,8 @@ ZEST_CASE(OwnerGoneStillRecords) {
 }
 
 ZEST_CASE(ForgetLiftsRefusal) {
-    int deaths = 0;
-    logging::set_anomaly_trap_for_testing(
-        [&](logging::AnomalyId id) { deaths += id == logging::AnomalyId::WorkerCrash ? 1 : 0; });
+    std::size_t deaths = 0;
+    count_crashes(deaths);
     std::optional<Result> refused, retried;
 
     execute([&]() -> async::task<> {
@@ -152,7 +150,7 @@ ZEST_CASE(ForgetLiftsRefusal) {
         co_await acquire(request(poison));
         // Refused before any dispatch: no second death.
         refused = co_await acquire(request(poison));
-        ZASSERT(deaths == 1);
+        ZASSERT(deaths == 1u);
 
         project.forget_pch_failure("shared-key");
         retried = co_await acquire(request(poison));
@@ -160,7 +158,7 @@ ZEST_CASE(ForgetLiftsRefusal) {
 
     ZEXPECT(refused == Result::Failed);
     ZEXPECT(retried == Result::Failed);
-    ZEXPECT(deaths == 2);
+    ZEXPECT(deaths == 2u);
 
     logging::reset_anomaly_for_testing();
 }
@@ -169,9 +167,8 @@ ZEST_CASE(DeclaredCrashLifts) {
     // A precompiled header the build declares is keyed by its command, not
     // by the header's text: its crash is known to have read the header,
     // and a fix there builds it again.
-    int deaths = 0;
-    logging::set_anomaly_trap_for_testing(
-        [&](logging::AnomalyId id) { deaths += id == logging::AnomalyId::WorkerCrash ? 1 : 0; });
+    std::size_t deaths = 0;
+    count_crashes(deaths);
     tmp.touch("a.h", "#pragma clang __debug crash\n");
     auto header = tmp.path("a.h");
     auto whole = [&] {
@@ -191,7 +188,7 @@ ZEST_CASE(DeclaredCrashLifts) {
     execute([&]() -> async::task<> {
         co_await acquire(whole());
         refused = co_await acquire(whole());
-        ZASSERT(deaths == 1);
+        ZASSERT(deaths == 1u);
 
         tmp.touch("a.h", "#define FIXED 1\n");
         fixed = co_await acquire(whole());
@@ -199,7 +196,7 @@ ZEST_CASE(DeclaredCrashLifts) {
 
     ZEXPECT(refused == Result::Failed);
     ZEXPECT(fixed == Result::Success);
-    ZEXPECT(deaths == 1);
+    ZEXPECT(deaths == 1u);
 
     logging::reset_anomaly_for_testing();
 }

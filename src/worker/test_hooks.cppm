@@ -78,11 +78,6 @@ std::optional<LoopEvent> parse_loop_event(llvm::StringRef name);
 /// build, without making one slow.
 class TestHooks {
 public:
-    /// Builds a worker ran to their end — answered, or died running — per
-    /// file, indexed by BuildKind. One the master withdrew (preempted,
-    /// outdated) is not counted and passes every hold.
-    llvm::StringMap<std::array<std::uint32_t, build_kind_names.size()>> builds;
-
     /// Send a request to the worker behind `peer`; the gate waiting for a
     /// request of its tag, if any, goes ahead of it.
     template <typename Params>
@@ -90,11 +85,11 @@ public:
                                     const Params& params,
                                     ipc::request_options opts);
 
-    /// A request that reached a worker ended with `result`, its worker free
-    /// again: a build the worker ran to its end is counted, and its reply
-    /// parked while a hold takes it. A build the master withdrew comes back
-    /// cancelled whatever the worker had done, or as a compile the worker
-    /// stopped.
+    /// A request ended with `result`, its worker free again: a build a
+    /// worker ran to its end is counted, and its reply parked while a hold
+    /// takes it. A build the master withdrew comes back cancelled whatever
+    /// the worker had done, or as a compile the worker stopped; one no
+    /// worker took, unavailable.
     template <typename Params, typename Result>
     async::task<> replied(const Params& params, const Result& result);
 
@@ -143,10 +138,6 @@ public:
     /// dropped.
     void happened(LoopEvent event);
 
-    /// A hold parked a reply, a gate a request's work, or a watch saw its
-    /// event; carries its id.
-    Signal<std::uint64_t> on_held;
-
     struct Hold {
         std::uint64_t id;
         BuildKind kind;
@@ -181,6 +172,15 @@ public:
         return standing;
     }
 
+    /// Builds a worker ran to their end — answered, or died running — per
+    /// file, indexed by BuildKind. One the master withdrew (preempted,
+    /// outdated) is not counted and passes every hold.
+    llvm::StringMap<std::array<std::uint32_t, build_kind_names.size()>> builds;
+
+    /// A hold parked a reply, a gate a request's work, or a watch saw its
+    /// event; carries its id.
+    Signal<std::uint64_t> on_held;
+
 private:
     struct Watch {
         std::uint64_t id;
@@ -189,6 +189,7 @@ private:
 
     std::uint64_t take_id();
 
+private:
     std::vector<Hold> placed;
 
     std::vector<Gate> standing;
@@ -215,7 +216,9 @@ ipc::RequestResult<Params> TestHooks::send(const std::shared_ptr<ipc::BincodePee
 
 template <typename Params, typename Result>
 async::task<> TestHooks::replied(const Params& params, const Result& result) {
-    if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
+    // Withdrawn, or never sent: no worker found to take it.
+    if(!result.has_value() && (result.error().code == worker::dispatch_errc::cancelled ||
+                               result.error().code == worker::dispatch_errc::worker_unavailable)) {
         co_return;
     }
     if constexpr(std::same_as<Params, worker::CompileParams>) {

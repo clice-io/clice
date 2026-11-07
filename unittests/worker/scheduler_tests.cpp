@@ -585,7 +585,7 @@ ZEST_CASE(UnstartedRequestUntimed) {
     ZEXPECT(kills[0].requests == std::vector<RequestId>{10});
 }
 
-ZEST_CASE(QueuedBuildTimedFromStart) {
+ZEST_CASE(BuildTimedFromStart) {
     // A build that waited for a thread of its worker behind other builds
     // is timed from when the worker began it, not from its send.
     Core core(1);

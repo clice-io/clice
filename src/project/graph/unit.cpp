@@ -179,7 +179,7 @@ async::task<UnitResult>
                                                        {.priority = worker::Priority::Low,
                                                         .cancel = attempt.token(),
                                                         .cost = cost,
-                                                        .peak = &measured});
+                                                        .reached = &measured});
     // clang reports an import of a module whose build failed as not found:
     // the run's report says why it did not build, as the editor does.
     if(reply.has_value()) {
@@ -298,7 +298,7 @@ async::task<UnitResult>
        project.pool->will_serve(false)) {
         // The outage is a window, not a decision: the pool revives given-up
         // slots, so the requeued attempt can succeed once one returns to
-        // service.
+        // service. With no worker to come, the failure is final.
         co_return UnitResult{.status = Status::Preempted, .error = reply.error().message};
     }
     co_return UnitResult{.status = Status::Failed, .error = reply.error().message};

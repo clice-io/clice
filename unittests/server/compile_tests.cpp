@@ -1163,9 +1163,8 @@ ZEST_CASE(QueuedRequestStops) {
     // while the second waits in the queue for that only worker. The second
     // is checked where it would reach the worker, after its wait, and the
     // crash of its kind on its content stops it there: no second death.
-    int deaths = 0;
-    logging::set_anomaly_trap_for_testing(
-        [&](logging::AnomalyId id) { deaths += id == logging::AnomalyId::WorkerCrash ? 1 : 0; });
+    std::size_t deaths = 0;
+    count_crashes(deaths);
 
     TempDir tmp;
     tmp.touch("a.cpp", "");
@@ -1192,7 +1191,7 @@ ZEST_CASE(QueuedRequestStops) {
             ZEXPECT(result.value().list.data == "null");
         };
         co_await async::when_all(complete(), complete());
-        ZEXPECT(deaths == 1);
+        ZEXPECT(deaths == 1u);
         auto notes = session->crash_notes();
         ZASSERT(notes.size() == 1u);
         ZEXPECT(notes[0].kind == feature::RequestKind::Completion);
@@ -1385,9 +1384,8 @@ ZEST_CASE(PoisonPreambleShared) {
     // re-trigger the build and burn a worker of its own. After one crashed
     // build the key is refused before any dispatch, and every other
     // document books the same death instead of a fresh one.
-    int deaths = 0;
-    logging::set_anomaly_trap_for_testing(
-        [&](logging::AnomalyId id) { deaths += id == logging::AnomalyId::WorkerCrash ? 1 : 0; });
+    std::size_t deaths = 0;
+    count_crashes(deaths);
 
     TempDir tmp;
     ServedProjectFixture fixture(tmp.root);
@@ -1424,7 +1422,7 @@ ZEST_CASE(PoisonPreambleShared) {
         };
         ZASSERT(!co_await build(first));
         ZASSERT(crashed(first));
-        ZEXPECT(deaths == 1);
+        ZEXPECT(deaths == 1u);
 
         // Refused without touching a worker, each document stopped by the
         // same death.
@@ -1432,7 +1430,7 @@ ZEST_CASE(PoisonPreambleShared) {
         ZEXPECT(crashed(second));
         ZASSERT(!co_await build(third));
         ZEXPECT(crashed(third));
-        ZEXPECT(deaths == 1);
+        ZEXPECT(deaths == 1u);
 
         co_await fixture.server.pool.stop();
         done = true;

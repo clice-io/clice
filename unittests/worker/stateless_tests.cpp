@@ -154,8 +154,8 @@ ZEST_CASE(GateParksWork) {
 }
 
 ZEST_CASE(ReportsMemoryPeak) {
-    /// However short its work, a request's reply follows the peak of the
-    /// worker's own memory while it ran.
+    // However short its work, a request's reply follows the peak of the
+    // worker's own memory while it ran.
     WorkerHandle w;
     ZASSERT(w.spawn());
 

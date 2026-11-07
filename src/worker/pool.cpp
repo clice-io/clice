@@ -78,15 +78,12 @@ std::size_t WorkerPool::schedulable_stateless() const {
     if(stop_scope.cancelled()) {
         return 0;
     }
-    return ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
-        return w.state == SlotState::Alive && !w.scaling_down;
-    });
+    return ranges::count_if(stateless_workers, &WorkerProcess::serves);
 }
 
 std::size_t WorkerPool::capacity(bool stateful) const {
     return ranges::count_if(workers(stateful), [](const WorkerProcess& w) {
-        return (w.state == SlotState::Alive && !w.scaling_down) || w.state == SlotState::Dying ||
-               w.state == SlotState::Respawning;
+        return w.serves() || w.state == SlotState::Dying || w.state == SlotState::Respawning;
     });
 }
 
@@ -157,8 +154,8 @@ bool WorkerPool::launch(std::size_t index, bool stateful) {
     transport->set_remote_max_payload(ipc::default_max_payload);
     w.peer = std::make_shared<ipc::BincodePeer>(loop, std::move(transport));
     if(stateful) {
-        w.peer->on_notification([this, index](const worker::StartedParams& params) {
-            work_started(index, params.tag);
+        w.peer->on_notification([this](const worker::StartedParams& params) {
+            scheduler.stateful_started(params.id, now());
         });
     } else {
         w.peer->on_notification([this, index](const worker::PeakParams& params) {
@@ -198,8 +195,7 @@ async::task<> WorkerPool::run_peer(std::shared_ptr<ipc::BincodePeer> peer,
     // The worker closed its end, as it does once it dies: no request may be
     // dispatched to it in the while before its exit is observed.
     auto& w = slot(index, stateful);
-    if(!stop_scope.cancelled() && w.generation == generation && w.state == SlotState::Alive &&
-       !w.scaling_down) {
+    if(!stop_scope.cancelled() && w.generation == generation && w.serves()) {
         mark_worker_dead(index, stateful, true);
     }
 }
@@ -476,7 +472,7 @@ void WorkerPool::exempt_death(const ipc::Error& error) {
     [[maybe_unused]] bool malformed =
         parts[1].getAsInteger(10, index) || parts[2].getAsInteger(10, generation);
     assert(!malformed);
-    auto& w = (parts[0] == "sf" ? stateful_workers : stateless_workers)[index];
+    auto& w = slot(index, parts[0] == "sf");
     if(auto it = ranges::find(w.counted_deaths, generation); it != w.counted_deaths.end()) {
         w.counted_deaths.erase(it);
         w.crash_streak -= 1;
@@ -609,17 +605,13 @@ ipc::Error WorkerPool::death_error(const WorkerDeath& death,
 }
 
 bool WorkerPool::will_serve(bool stateful) const {
-    return ranges::any_of(workers(stateful), [](const WorkerProcess& w) {
-        return w.state != SlotState::ScaledDown && !w.scaling_down;
-    });
+    return capacity(stateful) > 0 ||
+           ranges::contains(workers(stateful), SlotState::GivenUp, &WorkerProcess::state);
 }
 
 async::task<bool> WorkerPool::await_capacity(bool stateful) {
     while(!stop_scope.cancelled() && will_serve(stateful)) {
-        auto serving = ranges::any_of(workers(stateful), [](const WorkerProcess& w) {
-            return w.state == SlotState::Alive && !w.scaling_down;
-        });
-        if(serving) {
+        if(ranges::any_of(workers(stateful), &WorkerProcess::serves)) {
             co_return true;
         }
         capacity_returned.reset();
@@ -673,10 +665,6 @@ void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
     w.state = SlotState::GivenUp;
     w.revive_at = chrono::steady_clock::now() + options.revive_after;
     if(capacity(stateful) == 0) {
-        // Queued requests fail now instead of waiting for a dispatch.
-        if(!stateful) {
-            fail_pending_requests();
-        }
         auto seconds = chrono::duration_cast<chrono::seconds>(options.revive_after).count();
         if(stateful) {
             LOG_GUIDANCE(
@@ -684,6 +672,8 @@ void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
                 "compiles of the open files wait until then. The server log has the crash reports",
                 seconds);
         } else {
+            // Queued requests fail now instead of waiting for a dispatch.
+            fail_pending_requests();
             LOG_GUIDANCE(
                 "clice's background workers keep crashing and are stopped for {} seconds: "
                 "completion, signature help, formatting and indexing wait until then. The "
@@ -696,9 +686,7 @@ void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
 void WorkerPool::revive_due() {
     auto now = chrono::steady_clock::now();
     for(bool stateful: {false, true}) {
-        auto& slots = workers(stateful);
-        for(std::size_t index = 0; index < slots.size(); index += 1) {
-            auto& w = slots[index];
+        for(auto [index, w]: views::enumerate(workers(stateful))) {
             if(w.state != SlotState::GivenUp || now < w.revive_at) {
                 continue;
             }
@@ -708,7 +696,8 @@ void WorkerPool::revive_due() {
             LOG_INFO("Worker {} reviving after cooldown", w.name);
             w.fresh_budget();
             w.state = SlotState::Respawning;
-            worker_tasks.spawn(respawn_after(index, stateful, chrono::milliseconds(0)));
+            worker_tasks.spawn(
+                respawn_after(static_cast<std::size_t>(index), stateful, chrono::milliseconds(0)));
         }
     }
 }
@@ -867,9 +856,7 @@ void WorkerPool::sample() {
     std::vector<sys::ProcessStats> usage;
     std::uint64_t swapped = 0;
     for(bool stateful: {false, true}) {
-        auto& slots = workers(stateful);
-        for(std::size_t index = 0; index < slots.size(); index += 1) {
-            auto& w = slots[index];
+        for(auto [index, w]: views::enumerate(workers(stateful))) {
             if(w.state != SlotState::Alive) {
                 continue;
             }
@@ -884,7 +871,8 @@ void WorkerPool::sample() {
             if(!stateful) {
                 auto cpu = chrono::duration_cast<chrono::milliseconds>(read->user_time +
                                                                        read->system_time);
-                sample.workers.push_back({.slot = index, .memory = read->memory, .cpu = cpu});
+                sample.workers.push_back(
+                    {.slot = static_cast<std::size_t>(index), .memory = read->memory, .cpu = cpu});
             }
         }
     }
@@ -920,9 +908,8 @@ void WorkerPool::tick_oom_scores(std::uint64_t memory_limit) {
         oom_holding = std::min(*oom_base + above_master, 1000);
     }
     for(bool stateful: {false, true}) {
-        auto& slots = workers(stateful);
-        for(std::size_t index = 0; index < slots.size(); index += 1) {
-            set_oom_score(slots[index], holds_work(index, stateful));
+        for(auto [index, w]: views::enumerate(workers(stateful))) {
+            set_oom_score(w, holds_work(static_cast<std::size_t>(index), stateful));
         }
     }
 }
@@ -959,22 +946,6 @@ void WorkerPool::scale_up_worker() {
     w.state = SlotState::Respawning;
     LOG_INFO("Scaling up: {}", w.name);
     worker_tasks.spawn(respawn_after(index, false, chrono::milliseconds(0)));
-}
-
-void WorkerPool::work_started(std::size_t index, llvm::StringRef tag) {
-    // A worker runs requests about one document one at a time, in the
-    // order they arrived: the earliest one not started is the one.
-    Inflight* started = nullptr;
-    for(auto& [id, flight]: flights) {
-        if(flight->stateful && flight->slot == index &&
-           flight->generation == stateful_workers[index].generation && !flight->started &&
-           flight->tag == tag && (!started || id < started->id)) {
-            started = flight;
-        }
-    }
-    assert(started && "a worker reports the start of a request it was sent");
-    started->started = true;
-    scheduler.stateful_started(started->id, now());
 }
 
 }  // namespace clice

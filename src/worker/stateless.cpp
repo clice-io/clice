@@ -641,8 +641,14 @@ static auto run_lowered(Work& work) {
     return std::move(*result);
 }
 
-/// The most of the worker's own memory while a request's work runs, sampled
-/// on a thread of its own.
+namespace {
+
+/// The most of the worker's own memory while a request's work runs: sampled
+/// on a thread of its own through the work's first two seconds, which the
+/// master's samples, a second apart, can miss; and once at its end. It
+/// stops sampling then, as its own CPU time would keep the master from
+/// seeing a request whose work stopped moving (SchedulerOptions::
+/// stall_deadline).
 class OwnMemoryPeak {
 public:
     OwnMemoryPeak() :
@@ -650,13 +656,10 @@ public:
             std::mutex mutex;
             std::condition_variable_any wake;
             std::unique_lock lock(mutex);
-            while(true) {
+            for(int sample = 0; sample < 20 && !stop.stop_requested(); sample += 1) {
                 take();
                 // Time is the feature: the pace of the samples.
                 wake.wait_for(lock, stop, chrono::milliseconds(100), [] { return false; });
-                if(stop.stop_requested()) {
-                    return;
-                }
             }
         }) {}
 
@@ -675,10 +678,13 @@ private:
         }
     }
 
+private:
     std::uint64_t peak = 0;
 
     std::jthread sampler;
 };
+
+}  // namespace
 
 /// Register the handler of one request type, which runs on the pool
 /// thread, or on a lowered thread it joins (ServeOptions::lowered). A

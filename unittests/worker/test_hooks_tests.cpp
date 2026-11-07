@@ -32,17 +32,20 @@ ZEST_CASE(counts_by_kind) {
 
 ZEST_CASE(counts_builds_run) {
     // A build counts once its worker ran it to its end; one the master
-    // withdrew does not, nor does any other request.
+    // withdrew or no worker took does not, nor does any other request.
     using Compiled = kotatsu::outcome<worker::CompileResult, ipc::Error>;
     worker::CompileParams compile{.path = "/w/main.cpp"};
     Compiled withdrawn = kotatsu::outcome_error(
         ipc::Error{worker::dispatch_errc::cancelled, "Request preempted by the scheduler"});
     Compiled stopped = worker::CompileResult{.status = worker::CompileStatus::Cancelled};
+    Compiled unsent = kotatsu::outcome_error(
+        ipc::Error{worker::dispatch_errc::worker_unavailable, "No stateful workers available"});
     Compiled done = worker::CompileResult{};
     worker::FormatParams format{.file = "/w/main.cpp"};
     kotatsu::outcome<worker::FormatResult, ipc::Error> formatted = worker::FormatResult{};
     run(hooks.replied(compile, withdrawn),
         hooks.replied(compile, stopped),
+        hooks.replied(compile, unsent),
         hooks.replied(compile, done),
         hooks.replied(format, formatted));
     ZEXPECT(hooks.builds["/w/main.cpp"][std::to_underlying(BuildKind::Compile)] == 1u);

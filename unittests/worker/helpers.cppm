@@ -8,6 +8,7 @@ module;
 module clice:unittests.worker.helpers;
 
 import :command.table;
+import :support.anomaly;
 import :support.prelude;
 import :support.process;
 import :unittests.utils.temp_dir;
@@ -41,6 +42,14 @@ inline std::vector<std::string> make_args(const std::string& file_path,
     return args;
 }
 
+/// Count into `crashes` the worker crashes the pool reports (WorkerCrash
+/// anomalies) until the anomaly trap is reset.
+inline void count_crashes(std::size_t& crashes) {
+    logging::set_anomaly_trap_for_testing([&crashes](logging::AnomalyId id) {
+        crashes += id == logging::AnomalyId::WorkerCrash ? 1 : 0;
+    });
+}
+
 /// Returns once a worker parked the work behind `hooks`' gate `id`.
 inline async::task<> parked(TestHooks& hooks, std::uint64_t id) {
     async::event held;
@@ -70,10 +79,10 @@ struct WorkerHandle : zest::LoopFixture {
     llvm::DenseSet<std::uint64_t> parked_gates;
     async::event gate_parked{false};
 
-    /// What the worker reported of its requests: a stateful one the tags
-    /// of the work it began, a stateless one the peak of its memory before
+    /// What the worker reported of its requests: a stateful one the ids of
+    /// the work it began, a stateless one the peak of its memory before
     /// each reply.
-    std::vector<std::string> started;
+    std::vector<std::uint64_t> started;
     std::vector<std::uint64_t> peaks;
 
     WorkerHandle() {
@@ -125,7 +134,7 @@ struct WorkerHandle : zest::LoopFixture {
             gate_parked.set();
         });
         peer->on_notification(
-            [this](const worker::StartedParams& params) { started.push_back(params.tag); });
+            [this](const worker::StartedParams& params) { started.push_back(params.id); });
         peer->on_notification(
             [this](const worker::PeakParams& params) { peaks.push_back(params.memory); });
         proc = std::move(spawn.proc);

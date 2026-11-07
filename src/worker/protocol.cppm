@@ -601,11 +601,17 @@ struct EvictParams {
     std::string path;
 };
 
-/// A stateful worker began the work of the request of `tag`
-/// (crash_tag), on a thread of its own: the master times it from here, not
-/// from its send, as it may wait behind the work of other documents.
+/// The id the request sent next to a stateful worker goes by in its start
+/// report (StartedParams).
+struct NextRequestParams {
+    std::uint64_t id = 0;
+};
+
+/// A stateful worker began the work of a request, on a thread of its own:
+/// the master times it from here, not from its send, as it may wait behind
+/// the work of other documents.
 struct StartedParams {
-    std::string tag;
+    std::uint64_t id = 0;
 };
 
 /// The most of its own memory a stateless worker held while its request
@@ -732,6 +738,11 @@ struct RequestTraits<clice::worker::FormatParams> {
 template <>
 struct NotificationTraits<clice::worker::EvictParams> {
     constexpr inline static std::string_view method = "clice/worker/evict";
+};
+
+template <>
+struct NotificationTraits<clice::worker::NextRequestParams> {
+    constexpr inline static std::string_view method = "clice/worker/nextRequest";
 };
 
 template <>

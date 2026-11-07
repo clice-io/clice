@@ -17,6 +17,8 @@ import :worker.test_hooks;
 
 namespace clice::testing {
 
+namespace {
+
 /// The link of a slot the fixture adds, which no process is behind: what
 /// is written to it goes nowhere, and the fixture never reads it.
 struct NullTransport : ipc::Transport {
@@ -36,6 +38,8 @@ struct NullTransport : ipc::Transport {
         return {};
     }
 };
+
+}  // namespace
 
 /// Test fixture with friend access to WorkerPool internals.
 struct WorkerPoolFixture {
@@ -58,16 +62,10 @@ struct WorkerPoolFixture {
         // memory admit everything.
         pool.scheduler = WorkerScheduler({.background_jobs = 64, .max_workers = 64});
         sample();
-        logging::set_anomaly_trap_for_testing([this](logging::AnomalyId id) {
-            crashes += id == logging::AnomalyId::WorkerCrash ? 1 : 0;
-        });
+        count_crashes(crashes);
     }
 
-    /// A slot given up outside run() left its revival waiting: stopped, it
-    /// ends with the pool.
     ~WorkerPoolFixture() {
-        pool.stop_scope.cancel();
-        loop.run();
         logging::reset_anomaly_for_testing();
     }
 
@@ -141,15 +139,8 @@ struct WorkerPoolFixture {
     }
 
     /// A request in flight on the slot, as a send registers it.
-    std::unique_ptr<WorkerPool::Inflight>
-        inflight(RequestId id, std::size_t idx, bool stateful, std::string tag, bool build) {
-        return std::make_unique<WorkerPool::Inflight>(pool,
-                                                      id,
-                                                      idx,
-                                                      stateful,
-                                                      pool.slot(idx, stateful).generation,
-                                                      std::move(tag),
-                                                      build);
+    std::unique_ptr<WorkerPool::Inflight> inflight(RequestId id, std::string tag, bool build) {
+        return std::make_unique<WorkerPool::Inflight>(pool, id, std::move(tag), build);
     }
 
     /// A stateful request sent to slot `idx`, as dispatch_stateful
@@ -180,13 +171,11 @@ struct WorkerPoolFixture {
     }
 
     void set_crash_streak(std::size_t idx, bool stateful, unsigned streak) {
-        auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
-        workers[idx].crash_streak = streak;
+        pool.slot(idx, stateful).crash_streak = streak;
     }
 
     void set_uptime(std::size_t idx, bool stateful, chrono::milliseconds uptime) {
-        auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
-        workers[idx].spawn_time = chrono::steady_clock::now() - uptime;
+        pool.slot(idx, stateful).spawn_time = chrono::steady_clock::now() - uptime;
     }
 
     /// The worker a new document would go to; SIZE_MAX for none.
@@ -298,8 +287,7 @@ struct WorkerPoolFixture {
     }
 
     bool slot_given_up(std::size_t idx, bool stateful = false) const {
-        auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
-        return workers[idx].state == WorkerPool::SlotState::GivenUp;
+        return pool.workers(stateful)[idx].state == WorkerPool::SlotState::GivenUp;
     }
 
     std::size_t stateless_count() const {
@@ -338,15 +326,9 @@ struct WorkerPoolFixture {
         return pool.stop();
     }
 
-    /// Run a test body on the loop; the pool's own coroutines end with it,
-    /// a given-up slot's revival among them.
     template <typename F>
     void run(F&& coro_factory) {
-        auto body = [](WorkerPoolFixture& f, F factory) -> async::task<> {
-            co_await factory();
-            f.pool.stop_scope.cancel();
-        };
-        loop.schedule(body(*this, std::forward<F>(coro_factory)));
+        loop.schedule(coro_factory());
         loop.run();
     }
 
@@ -408,12 +390,11 @@ struct WorkerPoolFixture {
     }
 
     SlotState state(std::size_t idx, bool stateful = false) const {
-        return stateful ? pool.stateful_workers[idx].state : pool.stateless_workers[idx].state;
+        return pool.workers(stateful)[idx].state;
     }
 
     unsigned generation(std::size_t idx, bool stateful = false) const {
-        return stateful ? pool.stateful_workers[idx].generation
-                        : pool.stateless_workers[idx].generation;
+        return pool.workers(stateful)[idx].generation;
     }
 
     bool killed_on_purpose(std::size_t idx) const {
@@ -421,8 +402,7 @@ struct WorkerPoolFixture {
     }
 
     unsigned crash_streak(std::size_t idx, bool stateful = false) const {
-        return stateful ? pool.stateful_workers[idx].crash_streak
-                        : pool.stateless_workers[idx].crash_streak;
+        return pool.workers(stateful)[idx].crash_streak;
     }
 
     bool worker_alive(std::size_t idx) const {
@@ -723,7 +703,7 @@ ZEST_CASE(FailWakesQueuedOnly) {
     ZEXPECT(!running->ready.is_set());
 }
 
-ZEST_CASE(PulseNarrowsBackground) {
+ZEST_CASE(ActivityNarrowsBackground) {
     WorkerPoolFixture f;
     f.add_stateless();
     f.add_stateless();
@@ -820,9 +800,9 @@ ZEST_CASE(DeadlineKillNames) {
     f.set_deadlines(chrono::seconds(10), chrono::seconds(1));
     f.add_stateful();
     auto query = f.stateful_request(0);
-    auto hover = f.inflight(query, 0, true, "clice/worker/hover /b.cpp", false);
+    auto hover = f.inflight(query, "clice/worker/hover /b.cpp", false);
     auto other = f.stateful_request(0);
-    auto links = f.inflight(other, 0, true, "clice/worker/documentLink /c.cpp", false);
+    auto links = f.inflight(other, "clice/worker/documentLink /c.cpp", false);
     auto death = f.death(0, true);
     // One kill names every overdue request of the worker.
     f.kill(0, true, scheduler::KillReason::Deadline, {query, other});
@@ -837,7 +817,7 @@ ZEST_CASE(DeadlineKillNames) {
     f.add_stateless();
     f.add_stateless();
     auto run = f.submit(worker::Priority::Low);
-    auto index = f.inflight(run->id, 0, false, "clice/worker/compileUnit /c.cpp", true);
+    auto index = f.inflight(run->id, "clice/worker/compileUnit /c.cpp", true);
     f.kill(0, false, scheduler::KillReason::Deadline, {run->id});
     ZEXPECT(f.death(0, false)->named[0] == "clice/worker/compileUnit /c.cpp");
     ZEXPECT(f.death(0, false)->cause == "killed after over 10 seconds of CPU time");
@@ -845,7 +825,7 @@ ZEST_CASE(DeadlineKillNames) {
 
     auto stuck = f.submit(worker::Priority::Low);
     ZASSERT(stuck->slot == 1u);
-    auto stalled = f.inflight(stuck->id, 1, false, "clice/worker/compileUnit /d.cpp", true);
+    auto stalled = f.inflight(stuck->id, "clice/worker/compileUnit /d.cpp", true);
     f.kill(1, false, scheduler::KillReason::Stalled, {stuck->id});
     ZEXPECT(f.death(1, false)->named[0] == "clice/worker/compileUnit /d.cpp");
     ZEXPECT(f.death(1, false)->cause == "killed after 300 seconds without using the CPU");
@@ -1361,7 +1341,7 @@ ZEST_CASE(RapidCrashSequence) {
     ZEXPECT(f.crashes == 3u);
 }
 
-ZEST_CASE(DeadPoolReturnsError) {
+ZEST_CASE(GivenUpPoolFails) {
     WorkerPoolFixture f;
     f.add_stateless();
     f.set_max_crash_streak(0);
@@ -1378,7 +1358,7 @@ ZEST_CASE(DeadPoolReturnsError) {
     ZEXPECT(code == worker::dispatch_errc::worker_unavailable);
 }
 
-ZEST_CASE(DeadPoolWakesQueued) {
+ZEST_CASE(GiveUpWakesQueued) {
     WorkerPoolFixture f;
     f.add_stateless();
     f.set_max_crash_streak(0);
@@ -1586,7 +1566,7 @@ ZEST_CASE(CrashAndRestart) {
     ZEXPECT(done);
 }
 
-ZEST_CASE(DeadSlotRevives) {
+ZEST_CASE(GivenUpSlotRevives) {
     TempDir tmp;
     tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
 
@@ -1727,7 +1707,7 @@ ZEST_CASE(BusyRanksAboveMaster) {
 }
 #endif
 
-ZEST_CASE(ScalingDownHoldsScaleUp) {
+ZEST_CASE(ScaleDownBlocksGrowth) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
@@ -1748,7 +1728,7 @@ ZEST_CASE(ScalingDownHoldsScaleUp) {
     ZEXPECT(done);
 }
 
-ZEST_CASE(ScaleUpSparesGivenUp) {
+ZEST_CASE(GivenUpWaitsCooldown) {
     // A given-up slot waits out its cooldown: a scale-up neither brings it
     // back early nor appends past the ceiling it still counts toward.
     TempDir tmp;
@@ -1779,7 +1759,7 @@ ZEST_CASE(ScaleUpSparesGivenUp) {
     ZEXPECT(done);
 }
 
-ZEST_CASE(ScaleUpReusesScaledDown) {
+ZEST_CASE(GrowthReusesScaledDown) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
