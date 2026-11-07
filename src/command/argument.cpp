@@ -116,8 +116,14 @@ CompilerFamily driver_family(llvm::StringRef driver) {
             return CompilerFamily::MSVC;
         if(name == "nvcc")
             return CompilerFamily::NVCC;
-        if(name.ends_with("clang-cl"))
+        // Intel's -cl drivers read cl's options too, and so does its icx
+        // on Windows, which Intel's own driver runs in cl mode there.
+        if(name.ends_with("clang-cl") || name.contains("icx-cl") || name.contains("dpcpp-cl"))
             return CompilerFamily::ClangCL;
+#ifdef _WIN32
+        if(name == "icx" || name == "icx.exe")
+            return CompilerFamily::ClangCL;
+#endif
         if(name.ends_with("clang") || name.ends_with("clang++"))
             return CompilerFamily::Clang;
         // Intel must precede GCC: `icc` would otherwise match ends_with("cc").

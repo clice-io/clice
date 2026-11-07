@@ -2,6 +2,7 @@ module clice;
 
 import :command.argument;
 import :unittests.utils;
+import :unittests.utils.platform;
 
 namespace clice::testing {
 
@@ -195,8 +196,13 @@ ZEST_CASE(DriverFamily) {
     ZEXPECT(driver_family("CL.EXE") == MSVC);
     ZEXPECT(driver_family("Clang-Cl.exe") == ClangCL);
     ZEXPECT(driver_family("nvcc") == NVCC);
-    ZEXPECT(driver_family("icx") == Intel);
+    ZEXPECT(driver_family("icx") == (Windows ? ClangCL : Intel));
+    ZEXPECT(driver_family("icx.exe") == (Windows ? ClangCL : Intel));
+    ZEXPECT(driver_family("icx-cl") == ClangCL);
+    ZEXPECT(driver_family("icx-cl.exe") == ClangCL);
+    ZEXPECT(driver_family("dpcpp-cl") == ClangCL);
     ZEXPECT(driver_family("icpx") == Intel);
+    ZEXPECT(driver_family("icpx.exe") == Intel);
     ZEXPECT(driver_family("icc") == Intel);
     ZEXPECT(driver_family("icpc") == Intel);
     ZEXPECT(driver_family("dpcpp") == Intel);

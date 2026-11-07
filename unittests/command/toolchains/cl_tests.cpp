@@ -135,6 +135,17 @@ echo 'msc_full_ver 194435207'
     ZEXPECT(ours[2] == tmp.path("llvm/lib/clang/20/include"));
 }
 
+ZEST_CASE(IntelCLSYCLHostJob, skip = Windows) {
+    // icx-cl takes cl's options, and its SYCL compilation reads as the
+    // host job, built after the device's.
+    auto icx = fake_cl("icx-cl");
+    auto argv = f.resolve(add("a.cpp", {icx.c_str(), "/DWIN32", "/EHsc", "-fsycl", "/c"}));
+    ZEXPECT(contains(argv, "-fsycl-is-host"));
+    ZEXPECT(!contains(argv, "-fsycl-is-device"));
+    ZEXPECT(adjacent(argv, "-D", "WIN32"));
+    ZEXPECT(contains(argv, "-fcxx-exceptions"));
+}
+
 ZEST_CASE(UnqueriedCLRunsNothing, skip = Windows) {
     // Nor is cl asked its standard: clang's own cl mode reads the command.
     auto ran = tmp.path("ran");

@@ -48,9 +48,9 @@ enum class CompilerFamily : std::uint8_t {
     GCC,      // Covers gcc, g++, cc, c++, and versioned/arch variants
     Clang,    // Covers clang, clang++, and versioned variants (excluding clang-cl)
     MSVC,     // Covers cl
-    ClangCL,  // Covers clang-cl explicitly, and clang --driver-mode=cl
+    ClangCL,  // Covers clang-cl, icx-cl, dpcpp-cl, icx on Windows, and clang --driver-mode=cl
     NVCC,     // Covers nvcc
-    Intel,    // Covers icc, icpc, icx, dpcpp
+    Intel,    // Covers icc, icpc, icpx, icx elsewhere, dpcpp
     Zig,      // Covers zig cc / zig c++ (assumed GCC/Clang compatible for query)
 };
 
