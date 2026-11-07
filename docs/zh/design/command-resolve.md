@@ -135,15 +135,15 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 1. 读取每条记录的 `directory`、`file` 和 `arguments`（或 `command`）字段
 2. 根据驱动模式展开响应文件（`@file`），并可处理 UTF-16 编码文件和嵌套响应文件
-3. 将 NVCC 命令转换为等效的 clang CUDA 调用
+3. 将 NVCC 命令转换为等效的 clang CUDA 调用：nvcc 的选项由它自己的一张选项表读取，每个选项的长写法和短写法都能识别；nvcc 交给宿主编译器的内容（`-Xcompiler`）按该编译器拆分命令行的方式拆分，并按它的选项读取：Windows 上读作 cl 的选项，其他平台上读作 GCC 的选项，或者读作 `-ccbin` 所指定编译器的选项
 4. 过滤非 C/C++ 文件（例如 `.rc`、`.asm`、`.def`）
 5. 将相对文件路径解析为绝对路径
-6. 将每个选项解析、分类一次并存入结构化命令，同时以 `directory` 为基准将相对包含路径转换为绝对路径
+6. 将每个选项解析、分类一次并存入结构化命令，同时以 `directory` 为基准将相对包含路径转换为绝对路径。clang 的选项表不认识、但编译器认识的写法，由一张记录该编译器自身写法的表读取：读作它所表示的 clang 选项（Intel 的 `-qopenmp`、`/Qstd:`、`/fsycl`），或者在只有构建才读取它时去掉（GCC 的 `-fmodule-mapper=`）
 7. 将相同的命令去重，使其共享 `CommandID`
 
 在 Cygwin 或 MSYS2 内部写出的数据库（由在它们的 shell 中运行的 CMake 或类似的工具写出）按 POSIX 风格书写路径：`/cygdrive/c/proj` 或 `/c/proj`，编译器则写作 `/usr/bin/c++.exe`。在 Windows 上，写出这些路径的 Cygwin 或 MSYS2 运行时用它的挂载表（mount table）把它们映射为 Windows 路径，包括条目的目录和文件、它的编译器，以及它的路径选项的值。这个运行时是 `PATH` 上第一个满足以下条件的运行时：它的挂载表能把首个此类条目的目录映射到实际存在的文件，该条目的编译器若也按这种风格书写，同样要映射到实际存在的文件。其他运行时的挂载表会把该目录映射到各自的根目录之下；Git for Windows 的 MSYS2 对盘符路径的映射虽与独立安装的 MSYS2 相同，却没有后者的 `/usr/bin/c++.exe`。这种数据库的 `command` 字符串按 sh 的规则拆分。如果 `PATH` 上没有运行时能映射该数据库，clice 不读取它，并提示用户把正确的运行时加入其中。
 
-解析过程还会识别 CMake 直接传给 cc1 的预编译头文件：翻译单元的 `-Xclang -include-pch -Xclang <pchfile>`，以及构建该 PCH 的条目中的 `-Xclang -emit-pch`，都会成为结构化选项，任何编译都不会把它们渲染到命令中。磁盘上的 PCH 可能出自其他编译器，因此 clice 会用写出它的那个条目的命令自行构建一份（在 CMake 中即 `cmake_pch.hxx.cxx` 的条目；GCC 在强制包含的头文件旁写出的 `.gch` 同样能用来找到该条目），读取该 PCH 的每个翻译单元都改为加载 clice 构建的版本：打开文件的 Preamble PCH 以链式 PCH 的方式接在它之后，后台索引也在它之上解析。PCH 所含的头文件单独打开时，编译不使用该 PCH：否则 PCH 中的头文件保护会跳过该头文件自身的正文。与编译借以进入头文件的其他强制包含一样，PCH 所代表的那个强制包含的头文件也会从命令中去掉（见[编译上下文](compilation-context.md#automatic-self-containedness-detection)）。
+`-Xclang` 传递的内容按 cc1 的选项读取：编译从不采用的选项会被去掉，与它的驱动程序写法一样；CMake 直接传给 cc1 的预编译头文件也会被识别：翻译单元的 `-Xclang -include-pch -Xclang <pchfile>`，以及构建该 PCH 的条目中的 `-Xclang -emit-pch`，都会成为结构化选项，任何编译都不会把它们渲染到命令中。磁盘上的 PCH 可能出自其他编译器，因此 clice 会用写出它的那个条目的命令自行构建一份（在 CMake 中即 `cmake_pch.hxx.cxx` 的条目；GCC 在强制包含的头文件旁写出的 `.gch` 同样能用来找到该条目），读取该 PCH 的每个翻译单元都改为加载 clice 构建的版本：打开文件的 Preamble PCH 以链式 PCH 的方式接在它之后，后台索引也在它之上解析。PCH 所含的头文件单独打开时，编译不使用该 PCH：否则 PCH 中的头文件保护会跳过该头文件自身的正文。与编译借以进入头文件的其他强制包含一样，PCH 所代表的那个强制包含的头文件也会从命令中去掉（见[编译上下文](compilation-context.md#automatic-self-containedness-detection)）。
 
 ### 工具链查询
 
@@ -160,7 +160,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 **MSVC / ClangCL**：先让 cl 或 clang-cl 预处理（`/EP`）一个写着 `_MSVC_LANG` 和 `_MSC_FULL_VER` 的文件，只问一次。由此得知它编译所用的 C++ 标准，因为 `/std:c++latest` 的含义随版本而变；还得知 cl 的版本，因为 clang 自己的探测会取已安装的最新工具集。随后由处于 MSVC 兼容模式（`--driver-mode=cl`）的 Clang 驱动构建 cc1 命令，使用这个标准，并把 cl 的版本作为 `-fms-compatibility-version`。clang-cl 的版本则是同一套探测从它的参数所选的工具集（`/winsysroot`）中得出的版本。cl 只会收到命令里的 `/std:`：其余参数是按 clang 的 cl 模式写的，cl 会拒绝；命令用 clang 写法设定的标准或版本（例如规则追加的 `-std=c++23`）仍以 clang 的读法为准。位于某个工具集里的 cl.exe（`<toolset>/bin/Hostx64/x64/cl.exe`）用这个工具集的头文件编译：Clang 驱动会被告知这个工具集（`/vctoolsdir`），否则它自己的探测会取已安装的最新工具集。在开发者命令行里，则以它设置的 `INCLUDE` 列出的构建所用头文件为准。
 
-**nvcc**：nvcc 的 dry run 会给出 CUDA 根目录、宿主编译器、nvcc 定义的宏，以及它交给宿主编译器的头文件目录（工具包的 `include`，以及 CUDA 13 的 `include/cccl`，thrust、CUB 和 libcu++ 都在那里）。宿主编译器按 GCC 风格驱动程序的方式询问，使用输入文件的语言，带上命令的 `--sysroot`，但不带命令的其他标志：GCC 宿主编译器像上文那样固定目标和搜索列表，clang 宿主编译器则什么都不需要。随后由 Clang 驱动带上 nvcc 的宏构建 cc1 命令，输入为 CUDA 文件时使用 CUDA 模式；nvcc 的头文件目录排在命令自己的目录之后、宿主编译器的目录之前，与 nvcc 自己的宿主编译命令一致。
+**nvcc**：nvcc 的 dry run 会给出 CUDA 根目录、宿主编译器、nvcc 定义的宏，以及它交给宿主编译器的头文件目录（工具包的 `include`，以及 CUDA 13 的 `include/cccl`，thrust、CUB 和 libcu++ 都在那里）。宿主编译器按 GCC 风格驱动程序的方式询问，使用输入文件的语言，带上命令的 `--sysroot`，但不带命令的其他标志：GCC 宿主编译器像上文那样固定目标和搜索列表，clang 宿主编译器则什么都不需要。随后由 Clang 驱动带上 nvcc 的宏构建 cc1 命令，输入为 CUDA 文件时使用 CUDA 模式；nvcc 的头文件目录排在命令自己的目录之后、宿主编译器的目录之前，与 nvcc 自己的宿主编译命令一致。宿主编译器为 cl 时（这是 nvcc 在 Windows 上的默认设置），dry run 运行时会把 cl 所在的目录放到 `PATH` 上，因为 nvcc 只在那里查找 cl：该目录是 `-ccbin` 指定的目录；命令没有指定、开发者命令行也没有把 cl 放到 `PATH` 上时，则是 Visual Studio 安装的最新工具集的目录。dry run 输出中 cudafe++ 的那一行给出 cl 的 C++ 方言和版本，随后由 cl 模式下的 Clang 驱动构建 cc1 命令，nvcc 交给 cl 的 `/EHsc` 排在命令自身的标志之前。
 
 **clang 理解不同的标志**：GCC、cl 或 nvcc 当作错误的警告，在 clice 里仍是警告：`-Werror` 和 `/WX` 去掉，`-Werror=<group>` 改为 `-W<group>`。clice 的 clang 会报出这些编译器不报的警告，而它们的构建从不把这些当作错误。GCC 的 `-fmodules` 也会去掉：它开启的是 GCC 的 C++20 模块，clang 的 C++20 本来就有，而 clang 自己的 `-fmodules` 意味着它的头文件模块。clang 的命令则原样保留这两者。
 
@@ -222,7 +222,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 - **不跟随头文件中的 Cygwin 符号链接。** Cygwin 以符号链接形式安装的头文件（例如 ncurses 的 `ncurses.h`，位于 Cygwin 的 `/usr/include` 中）只有 Cygwin 程序才会跟随：clice 的 clang 读到的是链接本身。clice 只对驱动程序跟随这种链接。
 
-- **部分编译器家族支持不完整。** 对查询既不给出 clang 任务、也不给出 GCC 任务的驱动程序——Intel 的经典编译器 `icc`、其他厂商的编译器——会使用 clang 针对当前机器的默认设置，工具链错误会说明这一点。NVCC 已有专门的查询逻辑（解析 `nvcc --dryrun` 输出并将其转换为 clang CUDA 调用），但仅支持以 GCC 或 Clang 作为宿主编译器——不支持由 nvcc 驱动 MSVC `cl`，多架构命令也只解析最新的架构。
+- **部分编译器家族支持不完整。** 对查询既不给出 clang 任务、也不给出 GCC 任务的驱动程序——Intel 的经典编译器 `icc`、其他厂商的编译器——会使用 clang 针对当前机器的默认设置，工具链错误会说明这一点。NVCC 已有专门的查询逻辑（解析 `nvcc --dryrun` 输出并将其转换为 clang CUDA 调用），多架构命令则只解析最新的架构。
 
 - **只有 GCC 接受的语言特性按 clang 的理解解析。** 只有 GCC 能编译的代码——GCC 专有的内建函数和扩展、在 clang 不支持它的目标上使用 `__float128`、嵌套函数——会显示 clang 的报错；只有 GCC 认识的 CPU 名称会丢失其特性对应的宏。
 
