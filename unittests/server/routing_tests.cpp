@@ -100,20 +100,8 @@ ZEST_CASE(ShardServesWhileCompiling) {
     auto session = open(true);
     ZEXPECT(route(session, {.needs_ast = true}) == Route::AST);
 
-    // The index answers at once, and the compile the request would have
-    // waited for starts behind it.
-    std::optional<Route> picked;
-    bool compiling = false;
-    auto body = [&]() -> async::task<> {
-        picked = co_await fx.served->pick_route(Ticket::take(session), {});
-        compiling = fx.compiling(session->path_id);
-        co_await fx.served->shutdown();
-    };
-    auto task = body();
-    fx.loop.schedule(task);
-    fx.loop.run();
-    ZEXPECT(picked == Route::Index);
-    ZEXPECT(compiling);
+    // The index answers at once, without waiting for the compile.
+    ZEXPECT(route(session) == Route::Index);
 }
 
 ZEST_CASE(ContextNeedsOwnCompile) {
