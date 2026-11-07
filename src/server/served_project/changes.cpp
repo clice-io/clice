@@ -40,15 +40,15 @@ void ServedProject::commands_changed(CDBDiff delta) {
 
 void ServedProject::follow(const Affected& affected) {
     bool refresh = false;
-    auto mark_stale = [&](ServedDocument& document) {
-        inputs_changed(*document.session);
-        refresh = refresh || document.serving == ServingMode::Escalated;
+    auto mark_stale = [&](Fid path_id) {
+        inputs_changed(*server.find_session(path_id));
+        refresh = refresh || find_document(path_id)->compiles;
     };
     for(auto path_id: affected.stale) {
-        mark_stale(*find_document(path_id));
+        mark_stale(path_id);
     }
     for(auto path_id: affected.reindexed) {
-        book_skipped_diagnostics(*find_document(path_id), false);
+        book_skipped_diagnostics(path_id, false);
     }
     // An open document whose command moved recompiles: one whose entry
     // appeared, changed or left, a header whose host's command did or that
@@ -61,7 +61,7 @@ void ServedProject::follow(const Affected& affected) {
             auto& latest = document.latest;
             if(!latest || latest->command != selected.ref.command ||
                latest->host != selected.host) {
-                mark_stale(document);
+                mark_stale(path_id);
             }
         }
     }
@@ -81,7 +81,7 @@ void ServedProject::follow(const Affected& affected) {
     // The database gained or lost entries: an open document may belong to
     // another project now.
     if(!commands.added.empty() || !commands.removed.empty()) {
-        server.reroute();
+        server.update_owners();
     }
     // A database found or a member recorded: the directories on the way to
     // it decide what loads too.
@@ -89,25 +89,25 @@ void ServedProject::follow(const Affected& affected) {
 }
 
 void ServedProject::recheck_choices() {
-    bool rerouted = false;
+    bool flipped = false;
     for(auto& [file, entry]: server.choices) {
         if(entry.project != this || !server.recheck_choice(file)) {
             continue;
         }
-        rerouted = true;
+        flipped = true;
         // Whether the choice holds is part of what the document compiles
         // under.
-        if(auto* document = find_document(file)) {
-            choice_changed(*document->session);
+        if(find_document(file)) {
+            choice_changed(*server.find_session(file));
         }
     }
-    if(rerouted) {
-        server.reroute();
+    if(flipped) {
+        server.update_owners();
     }
 }
 
 std::size_t ServedProject::reload_databases(bool force) {
-    if(!watching) {
+    if(!watches_build()) {
         return 0;
     }
     // A reload would record the other build's commands as the ones this
@@ -132,7 +132,7 @@ std::size_t ServedProject::reload_databases(bool force) {
 }
 
 async::task<bool> ServedProject::poll_sources() {
-    if(!watching) {
+    if(!watches_build()) {
         co_return false;
     }
     auto walked =
@@ -146,7 +146,7 @@ async::task<bool> ServedProject::poll_sources() {
 }
 
 void ServedProject::discover_around(Fid path_id) {
-    if(!watching) {
+    if(!watches_build()) {
         return;
     }
     if(auto found = project.discover_databases({path_id}, {.load_now = true}); !found.empty()) {

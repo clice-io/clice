@@ -40,7 +40,7 @@ void release_free_memory();
 /// shared `requested` flag) calls `stop` for a graceful stop. A second
 /// Ctrl-C exits at once; a repeated SIGTERM or SIGHUP does not: supervisors
 /// send it more than once (GNU timeout signals the child, then its whole
-/// process group) and escalate with SIGKILL themselves.
+/// process group) and follow with SIGKILL themselves.
 async::task<> watch_termination(int signum, bool& requested, std::function<void()> stop);
 
 #ifdef __APPLE__

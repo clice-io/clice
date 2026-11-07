@@ -1,6 +1,7 @@
 module clice;
 
 import :command.file_kind;
+import :feature.protocol;
 import :server.client;
 import :server.master;
 import :support.logging;
@@ -14,7 +15,7 @@ void LSPClient::register_document_sync() {
             return;
         srv.pool.user_activity();
 
-        auto spelled = uri_to_path(params.text_document.uri);
+        auto spelled = feature::to_path(params.text_document.uri);
         if(!spelled) {
             LOG_INFO("didOpen: {} names no file; not served", params.text_document.uri);
             return;
@@ -47,7 +48,7 @@ void LSPClient::register_document_sync() {
             return;
         srv.pool.user_activity();
 
-        auto spelled = uri_to_path(params.text_document.uri);
+        auto spelled = feature::to_path(params.text_document.uri);
         if(!spelled || is_other_language_path(*spelled)) {
             return;
         }
@@ -67,7 +68,7 @@ void LSPClient::register_document_sync() {
         // open forever when the editor already closed it. The diagnostics
         // clear is suppressed until the handshake completes — nothing was
         // pushed, and publishDiagnostics may not flow yet.
-        auto spelled = uri_to_path(params.text_document.uri);
+        auto spelled = feature::to_path(params.text_document.uri);
         if(!spelled) {
             return;
         }
@@ -84,7 +85,7 @@ void LSPClient::register_document_sync() {
             return;
         srv.pool.user_activity();
 
-        auto path = uri_to_path(params.text_document.uri);
+        auto path = feature::to_path(params.text_document.uri);
         if(!path) {
             return;
         }

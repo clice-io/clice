@@ -195,11 +195,12 @@ struct Rule {
     std::string directory;
 };
 
-/// How open files are served (`readonly`). Routing is not governed by this:
-/// every request is answered by the best source available at that moment
-/// (see ServedProject::pick_route); the mode only decides whether PCH/AST builds are a goal
-/// at all. Builds are always pull-driven — no lifecycle event starts one,
-/// the first request that needs the AST does.
+/// How open files are served (`readonly`): whether an open document is
+/// compiled, PCH and AST, or its reads answered from the index alone
+/// (ServedDocument::compiles). Every request is answered by the best source
+/// available at that moment (ServedProject::pick_route). Builds are always
+/// pull-driven — no lifecycle event starts one, the first request that
+/// needs the AST does.
 enum class ReadonlyMode : std::uint8_t {
     /// Every open file targets a full AST; the index answers while the
     /// pulled compile is in flight.

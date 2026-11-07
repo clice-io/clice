@@ -61,8 +61,8 @@ static ext::SwitchConfigurationResult select_configuration(const Project& projec
 
 async::task<ext::SwitchContextResult>
     LSPClient::switch_context(const ext::SwitchContextParams& params) {
-    auto path = uri_to_path(params.uri);
-    auto context_path = uri_to_path(params.context_uri);
+    auto path = feature::to_path(params.uri);
+    auto context_path = feature::to_path(params.context_uri);
     if(!path || !context_path) {
         co_return ext::SwitchContextResult{};
     }
@@ -72,7 +72,7 @@ async::task<ext::SwitchContextResult>
 }
 
 ext::SwitchContextResult LSPClient::reset_context(const ext::ResetContextParams& params) {
-    auto path = uri_to_path(params.uri);
+    auto path = feature::to_path(params.uri);
     if(!path) {
         return {};
     }
@@ -177,7 +177,7 @@ void LSPClient::register_extensions() {
         "clice/queryContext",
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
             this->server.pool.user_activity();
-            auto path = uri_to_path(params.uri);
+            auto path = feature::to_path(params.uri);
             if(!path) {
                 co_return to_raw(ext::QueryContextResult{});
             }
@@ -192,7 +192,7 @@ void LSPClient::register_extensions() {
             if(document.project->broken()) {
                 co_return to_raw(ext::CurrentContextResult{});
             }
-            auto path_id = document.session ? document.path_id : Fid();
+            auto path_id = document.ticket.session ? document.path_id : Fid();
             co_return to_raw(co_await this->server.current_context(path_id));
         });
 
@@ -213,7 +213,7 @@ void LSPClient::register_extensions() {
     on_request<ext::ShowOtherContextsParams>(
         "clice/showOtherContexts",
         [this](RequestContext& ctx, const ext::ShowOtherContextsParams& params) -> RawResult {
-            auto path = uri_to_path(params.uri);
+            auto path = feature::to_path(params.uri);
             if(!path) {
                 co_return to_raw(ext::SwitchContextResult{});
             }

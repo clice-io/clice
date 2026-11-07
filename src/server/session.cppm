@@ -164,10 +164,6 @@ public:
     /// compiled.
     std::shared_ptr<SourceText> source;
 
-    /// xxh3 of the text, rewritten with it: what "the buffer holds these
-    /// bytes" is compared by against disk observations and index shards.
-    std::uint64_t hash = 0;
-
     /// Bumped by every edit, a move to another project, another context and
     /// the close: whatever a request computed under an older one describes
     /// a buffer, a project or a context that no longer serves the document.

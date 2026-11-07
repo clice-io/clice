@@ -222,8 +222,8 @@ ZEST_CASE(CrashAfterMoveIgnored) {
     fixture.server.projects.push_back(other);
     auto session = fixture.open("/proj/a.cpp", "int x;\n");
     served.release(session->path_id);
-    other->adopt(session);
     fixture.server.documents[session->path_id].owner = other.get();
+    other->adopt(session->path_id);
 
     served.record_crash(session,
                         feature::RequestKind::Completion,

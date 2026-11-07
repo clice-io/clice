@@ -69,48 +69,6 @@ static std::vector<feature::ModuleChoice> module_choices(const Imports& imports,
     return choices;
 }
 
-void ServedProject::record_crash(const std::shared_ptr<Session>& session,
-                                 feature::RequestKind kind,
-                                 llvm::StringRef death,
-                                 std::string cause) {
-    auto path_id = session->path_id;
-    // A document that left the project compiles under another command now:
-    // what crashed here is no record of its.
-    if(!owns(*session)) {
-        LOG_WARN("{} crashed a worker after it left the project: {}",
-                 project.file_table.resolve(path_id),
-                 cause);
-        return;
-    }
-    bool shown = session->crashed(kind, death, std::move(cause), Session::Clock::now());
-    auto* record = session->crash_record(kind);
-    LOG_WARN("{} crashed a worker: {}",
-             project.file_table.resolve(path_id),
-             feature::crash_note({.kind = kind,
-                                  .cause = record->cause,
-                                  .count = record->count,
-                                  .save_only = record->save_only(Session::policy)})
-                 .message);
-    // A silent first crash leaves the published state alone (see Session
-    // invariant 4).
-    if(!shown) {
-        return;
-    }
-    // A stopped compile leaves no AST behind the old diagnostics: they go,
-    // and the note says why.
-    auto previous = latest(path_id);
-    if(previous && previous->output.has_value() &&
-       (kind == feature::RequestKind::Compile || kind == feature::RequestKind::PCH)) {
-        update_latest(path_id, [&](DocumentCompile& compiled) {
-            compiled.output = CompileOutput{
-                .text = session->source,
-                .diagnostics = {.source = previous->output->diagnostics.source},
-            };
-        });
-    }
-    republish(session);
-}
-
 bool ServedProject::attribute_crash(const std::shared_ptr<Session>& session,
                                     bool tidy,
                                     const std::optional<std::string>& consumed,
@@ -154,18 +112,6 @@ bool ServedProject::attribute_crash(const std::shared_ptr<Session>& session,
     return false;
 }
 
-void ServedProject::republish(const std::shared_ptr<Session>& session) {
-    if(!owns(*session)) {
-        return;
-    }
-    if(auto previous = latest(session->path_id); !previous || !previous->output.has_value()) {
-        update_latest(session->path_id, [&](DocumentCompile& compiled) {
-            compiled.output = CompileOutput{.text = session->source};
-        });
-    }
-    push_output(*session, true);
-}
-
 bool ServedProject::compile_stopped(const Session& session) const {
     auto now = Session::Clock::now();
     return session.crash_stops(feature::RequestKind::Compile, now) ||
@@ -192,7 +138,7 @@ void ServedProject::retry_after_save(Session& session) {
             !compiled || feature::missing_context_diagnostics(compiled->output->diagnostics.own,
                                                               session.text()) > 0;
         if(project.header_saved(*selection.self_containment,
-                                project.file_table.intern_version(path_id, session.hash),
+                                project.file_table.intern_version(path_id, session.source->hash()),
                                 leans)) {
             invalidate(path_id);
         }
@@ -237,56 +183,6 @@ void ServedProject::retry_after_save(Session& session) {
     }
 }
 
-std::vector<feature::FileDiagnostic>
-    ServedProject::shown_skipped_diagnostics(const Session& session,
-                                             const CompileOutput& output) const {
-    auto* skipped = project.background_index.skipped_diagnostics(session.path_id);
-    if(!skipped || skipped->text_hash != session.hash ||
-       output.diagnostics.source != CommandSource::Database || active_choice(session.path_id)) {
-        return {};
-    }
-    return feature::confirmed_skipped(skipped->diagnostics, output.diagnostics);
-}
-
-void ServedProject::book_skipped_diagnostics(const ServedDocument& document, bool first) {
-    auto& session = *document.session;
-    auto path_id = session.path_id;
-    if(!project.settings.project.skip_header_bodies || document.serving != ServingMode::Escalated ||
-       project.entries(path_id).empty()) {
-        return;
-    }
-    auto& background = project.background_index;
-    if(auto* skipped = background.skipped_diagnostics(path_id);
-       skipped && skipped->text_hash == session.hash) {
-        return;
-    }
-    if(first) {
-        background.index_first(path_id, /*diagnostics=*/true);
-    } else {
-        background.enqueue(path_id, ReindexReason::DepsOnly, /*diagnostics=*/true);
-    }
-}
-
-void ServedProject::show_skipped_diagnostics(Fid path_id) {
-    // A compile owed shows them as it commits (CompileAttempt::commit).
-    if(!current(path_id)) {
-        return;
-    }
-    auto& session = *find_document(path_id)->session;
-    auto compiled = latest_at(path_id, session.version);
-    if(!compiled) {
-        return;
-    }
-    auto shown = shown_skipped_diagnostics(session, *compiled->output);
-    if(ranges::equal(compiled->output->diagnostics.skipped, shown, feature::same_diagnostic)) {
-        return;
-    }
-    update_latest(path_id, [&](DocumentCompile& compiled) {
-        compiled.output->diagnostics.skipped = std::move(shown);
-    });
-    push_output(session, false);
-}
-
 void ServedProject::each_input(Fid path_id, llvm::function_ref<void(const Inputs&)> visit) const {
     auto* document = find_document(path_id);
     if(!document) {
@@ -315,9 +211,9 @@ void ServedProject::edited(Session& session) {
     if(auto it = compile_interrupts.find(path_id); it != compile_interrupts.end()) {
         it->second->cancel();
     }
-    // Editing is the canonical escalation trigger: from here on the
-    // document invests in PCH/AST.
-    escalate(path_id);
+    // An edit is the first edit intent: from here on the document is
+    // compiled.
+    start_compiling(path_id);
 }
 
 void ServedProject::invalidate(Fid path_id) {
@@ -358,13 +254,12 @@ void ServedProject::inputs_changed(Session& session) {
     session.changed(Session::Clock::now());
 }
 
-void ServedProject::escalate(Fid path_id) {
+void ServedProject::start_compiling(Fid path_id) {
     auto& document = *find_document(path_id);
-    if(document.serving != ServingMode::IndexOnly ||
-       project.settings.project.readonly == ReadonlyMode::On) {
+    if(document.compiles || project.settings.project.readonly == ReadonlyMode::On) {
         return;
     }
-    document.serving = ServingMode::Escalated;
+    document.compiles = true;
     // Its compile serves the file's index, unless it skips the bodies of
     // the headers: then only a background run shows what they hold.
     if(!project.settings.project.skip_header_bodies) {
@@ -650,7 +545,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
             project.commit_self_containment(
                 *self_containment,
                 !leans,
-                project.file_table.intern_version(path_id, session->hash),
+                project.file_table.intern_version(path_id, session->source->hash()),
                 std::move(inputs));
             if(leans) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", file_path);
@@ -1070,11 +965,6 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     entry.inputs->append(resolution.inputs.begin(), resolution.inputs.end());
     session->succeeded(Compile, ticket.generation);
     served.push_output(*session, true);
-    // The push above told the client to re-pull what the fresh AST now
-    // answers better; one refresh per commit.
-    if(served.server.client && served.owns(*session)) {
-        served.server.client->index_served.erase(path_id);
-    }
     project.background_index.schedule();
     return still_current ? Result::Success : Result::Stale;
 }
@@ -1083,15 +973,15 @@ async::task<Result> ServedProject::compile(Attempt& attempt, Fid path_id) {
     // Only a join for a document of this project starts an attempt, and the
     // attempt gets here before its first suspension: nothing can have closed
     // or moved it.
-    auto* document = find_document(path_id);
-    assert(document && "AST attempt for a document not this project's");
+    assert(find_document(path_id) && "AST attempt for a document not this project's");
+    auto session = server.find_session(path_id);
     auto idle = llvm::make_scope_exit([&] { enter_phase(path_id, CompilePhase::Idle); });
     // Covers every spawn path, including waiter-driven respawns: content
     // that just crashed a worker must not reach one more.
-    if(compile_stopped(*document->session)) {
+    if(compile_stopped(*session)) {
         co_return Result::Failed;
     }
-    CompileAttempt run(*this, attempt, document->session);
+    CompileAttempt run(*this, attempt, std::move(session));
     co_return co_await run.run();
 }
 
@@ -1137,63 +1027,6 @@ void ServedProject::enter_phase(Fid path_id, CompilePhase phase) {
     if(server.client) {
         server.client->report_compile_phase(path_id, phase);
     }
-}
-
-void ServedProject::push_output(const Session& session, bool compiled) {
-    if(server.client && owns(session)) {
-        server.client->push_output(*this, session, compiled);
-    }
-}
-
-std::shared_ptr<const DocumentCompile> ServedProject::latest(Fid path_id) const {
-    auto* document = find_document(path_id);
-    return document ? document->latest : nullptr;
-}
-
-std::shared_ptr<const DocumentCompile> ServedProject::latest_at(Fid path_id, int version) const {
-    auto compiled = latest(path_id);
-    return compiled && compiled->output && compiled->output->version == version ? compiled
-                                                                                : nullptr;
-}
-
-bool ServedProject::current(Fid path_id) const {
-    auto compiled = latest(path_id);
-    return compiled && compiled->generation &&
-           *compiled->generation == project.graph.generation(ast_node(path_id));
-}
-
-bool ServedProject::index_current(Fid path_id) const {
-    auto compiled = latest(path_id);
-    return current(path_id) && compiled->index && compiled->index->loaded();
-}
-
-void ServedProject::update_latest(Fid path_id, llvm::function_ref<void(DocumentCompile&)> edit) {
-    auto& document = *find_document(path_id);
-    auto next = document.latest ? DocumentCompile(*document.latest) : DocumentCompile();
-    edit(next);
-    document.latest = std::make_shared<const DocumentCompile>(std::move(next));
-}
-
-std::vector<feature::FileDiagnostic>
-    ServedProject::shown_diagnostics(const Session& session, const CompileOutput& output) const {
-    auto diagnostics = feature::shown_diagnostics(output.diagnostics, project.settings.diagnostics);
-    for(auto& note: session.crash_notes()) {
-        diagnostics.push_back(feature::crash_note(note));
-    }
-    return diagnostics;
-}
-
-std::vector<feature::FileDiagnostic>
-    ServedProject::finished_diagnostics(const Session& session) const {
-    if(session.closed) {
-        return {};
-    }
-    // A compile that failed or is stopped left an output of an older
-    // buffer, whose ranges a versionless report would place on this one.
-    if(auto compiled = latest_at(session.path_id, session.version)) {
-        return shown_diagnostics(session, *compiled->output);
-    }
-    return shown_diagnostics(session, {});
 }
 
 }  // namespace clice

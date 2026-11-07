@@ -88,10 +88,10 @@ links = [
     { at = '#include ⟦"header.h"⟧', target = "header.h" },
 ]
 
-["edit escalates to compile".edited]
+["edit starts compiling".edited]
 pushes = []
 
-["edit escalates to compile".read.hover]
+["edit starts compiling".read.hover]
 markdown = '''
 **function** `add`
 
@@ -101,16 +101,16 @@ int add(int a, int b)
 '''
 range = "return ⟦add⟧(x, x);"
 
-["edit escalates to compile".pushed]
+["edit starts compiling".pushed]
 pushes = [[]]
 
-["diverged open buffer escalates".restored]
+["diverged open buffer compiles".restored]
 document_symbols = [
     { name = "twice", kind = "Function", at = "int ⟦twice⟧(int x) {" },
     { name = "main", kind = "Function", at = "int ⟦main⟧() { return twice(2); }" },
 ]
 
-["diverged open buffer escalates".pushed]
+["diverged open buffer compiles".pushed]
 pushes = [[]]
 
 ["readonly on builds no pch".completion.completion]
@@ -124,10 +124,10 @@ pushes = []
 ["readonly on pull builds nothing".pulled]
 diagnostics = []
 
-["escalation upgrades inlay hints".read-only]
+["compiling upgrades inlay hints".read-only]
 inlay_hints = []
 
-["escalation upgrades inlay hints".edited]
+["compiling upgrades inlay hints".edited]
 inlay_hints = [
     { line = "return add(⟨a:⟩x, ⟨b:⟩x);" },
 ]
@@ -161,15 +161,15 @@ document_symbols = [
 ["index answers while pull compile runs".pushed]
 pushes = [[]]
 
-["completion escalates".completion.completion]
+["completion starts compiling".completion.completion]
 items = [
     { label = "twice(int x)", kind = "Function", detail = "int" },
 ]
 
-["completion escalates".completed]
+["completion starts compiling".completed]
 pushes = []
 
-["completion escalates".read.hover]
+["completion starts compiling".read.hover]
 markdown = '''
 **function** `add`
 
@@ -179,7 +179,7 @@ int add(int a, int b)
 '''
 range = "return ⟦add⟧(x, x);"
 
-["completion escalates".pushed]
+["completion starts compiling".pushed]
 pushes = [[]]
 
 ["header served read-only".header]

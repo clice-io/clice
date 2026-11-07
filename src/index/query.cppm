@@ -229,8 +229,8 @@ inline bool is_function(SymbolKind kind) {
 ///   4. An open session without a current file index is served by the
 ///      file's shard under closed-file rules — but only while the buffer
 ///      is byte-identical to the content the shard was built from. This
-///      is what serves documents opened for reading before any compile is
-///      invested in them; the moment the buffer diverges the shard
+///      is what serves documents opened for reading before any compile of
+///      theirs; the moment the buffer diverges the shard
 ///      withdraws and clauses 1-3 govern again. While both describe the
 ///      buffer, the file index serves merged with the shard's entries in
 ///      the code its compile skipped (OpenBuffer::merged): the compile

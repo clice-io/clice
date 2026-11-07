@@ -133,7 +133,8 @@ void LSPClient::register_editing() {
     on_document<protocol::CompletionParams>([this](RequestContext& ctx,
                                                    const auto& params,
                                                    ResolvedDoc document) -> RawResult {
-        auto& [path, path_id, session, served, version, dispatched] = document;
+        auto& [path, path_id, served, version, dispatched] = document;
+        auto& session = dispatched.session;
         auto& project = *served;
         // The task starts once the messages read with the request are
         // dispatched: a $/cancelRequest among them (rapid-fire completions
@@ -155,7 +156,7 @@ void LSPClient::register_editing() {
         // Asking for code completion is edit intent: the document is
         // compiled from now on (a no-op when it already is or under
         // readonly = "on").
-        project.escalate(path_id);
+        project.start_compiling(path_id);
         auto pause = ScopedPause(project.project.background_index);
 
         llvm::StringRef trigger;
@@ -247,7 +248,8 @@ void LSPClient::register_editing() {
     // indexing for the request's span.
     on_document<protocol::SignatureHelpParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
-            auto& [path, path_id, session, served, version, ticket] = document;
+            auto& [path, path_id, served, version, ticket] = document;
+            auto& session = ticket.session;
             auto& project = *served;
             if(!ticket.fresh()) {
                 co_await async::fail(content_modified());
@@ -257,7 +259,7 @@ void LSPClient::register_editing() {
                !feature::can_hold_call(session->text(), *offset, project.dialect(path_id))) {
                 co_return codec::raw_value{"null"};
             }
-            project.escalate(path_id);
+            project.start_compiling(path_id);
             auto pause = ScopedPause(project.project.background_index);
             // The popup the client shows: the user may have moved it to another
             // overload.
@@ -293,7 +295,7 @@ void LSPClient::register_editing() {
             co_await async::fail(request_failed(std::move(result->error)));
         }
         auto edits = feature::to_protocol(result->edits,
-                                          document.session->positions(),
+                                          document.ticket.session->positions(),
                                           server.position_encoding);
         assert(edits && "the edits are of the text the ticket was taken on");
         co_return to_raw(*edits);
@@ -315,7 +317,8 @@ void LSPClient::register_editing() {
     on_document<protocol::CodeActionParams>([this](RequestContext& ctx,
                                                    const auto& params,
                                                    ResolvedDoc document) -> RawResult {
-        auto& [path, path_id, session, served, version, ticket] = document;
+        auto& [path, path_id, served, version, ticket] = document;
+        auto& session = ticket.session;
         auto& project = *served;
         auto encoding = server.position_encoding;
         auto& files = project.project.file_table;
@@ -327,15 +330,15 @@ void LSPClient::register_editing() {
         bool offer_switches =
             params.context.trigger_kind != protocol::CodeActionTriggerKind::Automatic;
 
-        if(!ticket.fresh()) {
+        // Code actions are AST products the index cannot compute; a document
+        // that is not compiled answers honestly empty rather than forcing a
+        // compile.
+        auto route = co_await pick_route(document, {.needs_ast = true});
+        if(route == Route::Outdated) {
             co_await async::fail(content_modified());
         }
-        // Code actions are AST products the index cannot compute; a document
-        // the policy keeps un-compiled answers honestly empty rather than
-        // forcing the compile the policy declined.
         std::vector<protocol::CodeAction> result;
-        if(feature::admits_any(only) && (project.ast_answerable(*session) ||
-                                         project.serving_of(*session) != ServingMode::IndexOnly)) {
+        if(feature::admits_any(only) && route == Route::AST) {
             // Clamped against the buffer the ticket was taken on: a buffer
             // that moves before the reply arrives turns the reply into
             // ContentModified.
@@ -457,7 +460,8 @@ void LSPClient::register_editing() {
     // index them.
     on_document<protocol::RenameParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
-            auto& [path, path_id, session, served, version, ticket] = document;
+            auto& [path, path_id, served, version, ticket] = document;
+            auto& session = ticket.session;
             auto& project = served->project;
             auto& position = params.position;
             auto& new_name = params.new_name;

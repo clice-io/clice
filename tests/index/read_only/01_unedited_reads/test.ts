@@ -48,7 +48,7 @@ test("cold outline awaits the boost", async (t) => {
 
 // The edit turns the file to "off"; the build itself waits for the next
 // read, whose compile pushes the diagnostics.
-test("edit escalates to compile", async (t) => {
+test("edit starts compiling", async (t) => {
     const s = await t.start(AUTO);
     s.open("main.cpp", { pull: false });
     await s.sync();
@@ -59,9 +59,9 @@ test("edit escalates to compile", async (t) => {
 });
 
 // A restored unsaved buffer differs from what the index holds: the open
-// itself escalates, so the first read pulls a compile instead of answering
+// itself starts compiling, so the first read pulls a compile instead of answering
 // empty from entries that no longer fit the text.
-test("diverged open buffer escalates", async (t) => {
+test("diverged open buffer compiles", async (t) => {
     const s = await t.start(AUTO);
     s.open("main.cpp", { pull: false });
     await s.indexed();
@@ -95,7 +95,7 @@ test("readonly on pull builds nothing", async (t) => {
 
 // The edit turns the file to "off": the inlay hints asked again ride the
 // pulled compile and answer from the AST.
-test("escalation upgrades inlay hints", async (t) => {
+test("compiling upgrades inlay hints", async (t) => {
     const s = await t.start(AUTO);
     s.open("main.cpp", { pull: false });
     await s.sync();
@@ -104,7 +104,7 @@ test("escalation upgrades inlay hints", async (t) => {
     await t.show("edited", s.inlayHints("main.cpp"));
 });
 
-// Under "on" a diverged buffer cannot escalate: answers from the index
+// Under "on" a diverged buffer cannot start compiling: answers from the index
 // withdraw rather than map entries of the old text onto the new.
 test("diverged buffer serves no links", async (t) => {
     const s = await t.start(AUTO);
@@ -154,7 +154,7 @@ test("index answers while pull compile runs", async (t) => {
 // Completion is an edit intent: under "auto" it turns the file to "off",
 // so the next read pulls a compile, answers from it, and its diagnostics
 // are pushed.
-test("completion escalates", async (t) => {
+test("completion starts compiling", async (t) => {
     const s = await t.start(AUTO);
     s.open("main.cpp", { pull: false });
     await s.sync();

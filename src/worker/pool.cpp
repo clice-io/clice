@@ -269,7 +269,7 @@ async::task<> WorkerPool::stop() {
     }
 
     // A wedged worker that ignores SIGTERM would otherwise block the join
-    // below forever; escalate after a grace period.
+    // below forever; SIGKILL it after a grace period.
     async::task_group<> watchdog;
     watchdog.spawn(kill_stragglers());
 
@@ -283,7 +283,7 @@ async::task<> WorkerPool::stop() {
 async::task<> WorkerPool::kill_stragglers() {
     // Time is the feature: the grace a worker gets after SIGTERM.
     co_await async::sleep(chrono::milliseconds(5000), loop);
-    LOG_WARN("Workers still alive 5s after SIGTERM; escalating to SIGKILL");
+    LOG_WARN("Workers still alive 5s after SIGTERM; sending SIGKILL");
     for(bool stateful: {false, true}) {
         for(auto& w: workers(stateful)) {
             if(w.state == SlotState::Alive) {

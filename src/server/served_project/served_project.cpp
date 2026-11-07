@@ -31,25 +31,31 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
         if(!document) {
             return;
         }
-        if(document->serving == ServingMode::IndexOnly && !query().serving(path_id)) {
-            escalate(path_id);
+        if(!document->compiles && !query().serving(path_id)) {
+            start_compiling(path_id);
         }
         show_skipped_diagnostics(path_id);
     });
     index_conn = project.on_index_changed.connect([this](llvm::ArrayRef<Fid> path_ids) {
-        // Documents without a current file index serve these very shards
-        // (freshness clause 4), and the AST's answers take the file's other
-        // contexts from them: the client asks again for what it pulled.
+        // The AST's answers take the file's other contexts from these
+        // shards, and documents without a current file index serve them
+        // (freshness clause 4): the client asks again for what it pulled.
         bool completed = false;
+        llvm::SmallVector<Fid> reading;
         for(auto id: path_ids) {
             completed |= merge_again(id);
+            if(find_document(id) && !index_current(id)) {
+                reading.push_back(id);
+            }
         }
         auto* client = this->server.client;
-        if(client && (completed || ranges::any_of(path_ids, [&](Fid id) {
-                          return find_document(id) && !index_current(id) &&
-                                 client->index_served.contains(id);
-                      }))) {
+        if(!client) {
+            return;
+        }
+        if(completed) {
             client->refresh();
+        } else {
+            client->index_changed(reading);
         }
     });
     metadata_conn = project.on_metadata_changed.connect([this] { schedule_metadata_flush(); });
@@ -148,10 +154,10 @@ void ServedProject::start() {
     server.load_choices(*this);
 
     // Documents adopted before the project started — held while its root's
-    // previous project shut down — have their serving decided now, after
-    // the load: divergence detection sees the persisted shards it just
-    // loaded (a restored unsaved buffer must escalate, not read as merely
-    // unindexed).
+    // previous project shut down — have it decided now whether they
+    // compile, after the load: divergence detection sees the persisted
+    // shards it just loaded (a restored unsaved buffer must compile, not
+    // read as merely unindexed).
     bool recorded = false;
     for(auto& [path_id, document]: documents) {
         recorded = project.record_provisional(path_id) || recorded;
@@ -161,7 +167,8 @@ void ServedProject::start() {
         schedule_metadata_flush();
     }
     for(auto& [path_id, document]: documents) {
-        decide_serving(document);
+        book_skipped_diagnostics(path_id, true);
+        decide_compiling(path_id);
     }
     loaded.set();
 
@@ -172,7 +179,6 @@ void ServedProject::start() {
     project.file_table.disk.add_root(project.root, {.max = poll_seconds});
     // Watched from the project load on: each database is baselined at the
     // read its entries came from.
-    watching = true;
     project.watch_databases();
     for(auto& [path_id, document]: documents) {
         discover_around(path_id);
@@ -211,11 +217,40 @@ const ServedDocument* ServedProject::find_document(Fid path_id) const {
 }
 
 bool ServedProject::owns(const Session& session) const {
-    auto* document = find_document(session.path_id);
-    return document && document->session.get() == &session;
+    auto* document = server.find_document(session.path_id);
+    return document && document->session.get() == &session && document->owner == this;
 }
 
-void ServedProject::adopt(std::shared_ptr<Session> session) {
+std::shared_ptr<const DocumentCompile> ServedProject::latest(Fid path_id) const {
+    auto* document = find_document(path_id);
+    return document ? document->latest : nullptr;
+}
+
+std::shared_ptr<const DocumentCompile> ServedProject::latest_at(Fid path_id, int version) const {
+    auto compiled = latest(path_id);
+    return compiled && compiled->output && compiled->output->version == version ? compiled
+                                                                                : nullptr;
+}
+
+bool ServedProject::current(Fid path_id) const {
+    auto compiled = latest(path_id);
+    return compiled && compiled->generation &&
+           *compiled->generation == project.graph.generation(ast_node(path_id));
+}
+
+bool ServedProject::index_current(Fid path_id) const {
+    auto compiled = latest(path_id);
+    return current(path_id) && compiled->index && compiled->index->loaded();
+}
+
+void ServedProject::update_latest(Fid path_id, llvm::function_ref<void(DocumentCompile&)> edit) {
+    auto& document = *find_document(path_id);
+    auto next = document.latest ? DocumentCompile(*document.latest) : DocumentCompile();
+    edit(next);
+    document.latest = std::make_shared<const DocumentCompile>(std::move(next));
+}
+
+void ServedProject::adopt(Fid path_id) {
     // A database generated since the start counts: the poll, or the
     // discovery around this file, has loaded it by now. A provisional
     // member's command is a guess too.
@@ -229,15 +264,13 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
             "https://docs.clice.io/clice/guide/quick-start#project-setup for setup.",
             why);
     }
-    auto path_id = session->path_id;
     // Every invalidation from now on counts in the generation its compiles
     // and its requests' PCH adoptions read, before its first compile too.
     project.graph.add(ast_node(path_id));
-    auto& document = documents[path_id];
-    document = ServedDocument{.session = std::move(session), .serving = ServingMode::IndexOnly};
+    documents[path_id] = {};
     if(project.settings.project.readonly == ReadonlyMode::Off ||
        server.own_context_only.contains(path_id)) {
-        escalate(path_id);
+        start_compiling(path_id);
     }
     // What the disk holds under the buffer: a later save or outside
     // write is then a change from it, even for a file nothing else knew.
@@ -250,32 +283,23 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
         schedule_metadata_flush();
     }
     server.recheck_choice(path_id);
-    // The change may have moved other documents in: the table may have
-    // grown since the reference above was taken.
-    decide_serving(documents.find(path_id)->second);
+    book_skipped_diagnostics(path_id, true);
+    decide_compiling(path_id);
 }
 
-void ServedProject::decide_serving(ServedDocument& document) {
-    // An escalated document needs no decision: builds stay pull-driven. When
-    // they skip the bodies of the headers, the file's background run shows
-    // what those hold (show_skipped_diagnostics), and goes first when none
-    // has reported on its text.
-    auto& session = *document.session;
-    auto path_id = session.path_id;
-    auto& background = project.background_index;
-    if(document.serving == ServingMode::Escalated) {
-        if(background.started() && !background.queue().in_flight(path_id) &&
-           !background.failed(path_id)) {
-            book_skipped_diagnostics(document, true);
-        }
+void ServedProject::decide_compiling(Fid path_id) {
+    // A compiled document needs no decision: builds stay pull-driven.
+    if(find_document(path_id)->compiles) {
         return;
     }
+    auto& session = *server.find_session(path_id);
+    auto& background = project.background_index;
     if(auto* shard = project.index.shard(path_id)) {
         // A buffer that already diverges from the indexed content (a
-        // restored unsaved file) can never be served read-only: escalate
+        // restored unsaved file) can never be served read-only: it compiles
         // now instead of answering empty until the first edit.
-        if(!shard->matches_content(session.text().size(), session.hash)) {
-            escalate(path_id);
+        if(!shard->matches_content(session.text().size(), session.source->hash())) {
+            start_compiling(path_id);
         }
         return;
     }
@@ -284,11 +308,11 @@ void ServedProject::decide_serving(ServedDocument& document) {
     // build (a header, which only the units reading it index), in which
     // case no shard will arrive soon and only an AST can serve the
     // document. An index_first the background index cannot fulfill
-    // escalates through the adapter's attempt-finished check.
+    // starts compiling through the attempt-finished check.
     if(background.started() && project.is_unit(path_id)) {
         background.index_first(path_id);
     } else {
-        escalate(path_id);
+        start_compiling(path_id);
     }
 }
 
