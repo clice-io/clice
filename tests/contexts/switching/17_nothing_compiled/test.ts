@@ -24,6 +24,8 @@ test("the host leaves the database", async (t) => {
     expect(await s.errors("only.h")).toEqual([]);
     t.disk.database({});
     expect(await s.poll("cdb")).toBe(1);
+    // The new command compiles only.h again; the AST answers.
+    expect(await s.errors("only.h")).toEqual([]);
     await t.show("host gone", {
         tokens: s.semanticTokens("only.h"),
         hover: s.hover(t.marker("fast")),
