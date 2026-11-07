@@ -9,7 +9,6 @@ import :server.served_project;
 import :support.logging;
 import :syntax.scan;
 import :vfs.file_system;
-import :vfs.path;
 import :support.timer;
 import :worker.protocol;
 
@@ -227,8 +226,7 @@ index::IndexQuery ServedProject::query_all() const {
 index::IndexQuery ServedProject::editing_query() const {
     std::vector<index::OpenBuffer> open;
     for(auto& other: server.projects) {
-        if(other.get() == this || (!project.root.empty() && !other->project.root.empty() &&
-                                   path::is_within(other->project.root, project.root))) {
+        if(other.get() == this || holds(other->project.root)) {
             open.append_range(other->open_buffers());
         }
     }

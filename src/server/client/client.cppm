@@ -295,6 +295,14 @@ private:
                                                 llvm::StringRef path,
                                                 const PositionMap& positions);
 
+    /// What a diagnostics pull of the open document answers now, placed at
+    /// `path`, the name it was pulled by: its finished diagnostics
+    /// (ServedProject::finished_diagnostics). The pull's answer, and what
+    /// push_output compares with the answer the client pulled.
+    codec::raw_value pull_report(const ServedProject& project,
+                                 const Session& session,
+                                 llvm::StringRef path);
+
     /// What a second name tells the user while its text differs from the
     /// first name's.
     std::string divergence_message(const MasterServer::SecondName& second);

@@ -38,7 +38,7 @@ LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     // A document under a second name has a buffer of its own: it is the
     // file — its session, its index — only while both hold the same text.
     if(auto* second = server.find_second_name(path_id, *path)) {
-        if(session && second->buffer.text() != session->text()) {
+        if(server.find_document(path_id)->diverged(*second)) {
             return ResolvedDoc{.path = std::move(*path).str(), .project = std::move(project)};
         }
         version = second->buffer.version;
@@ -526,7 +526,7 @@ void LSPClient::register_document_requests() {
             // taking its root over from starting, and the pull would wait
             // for that one's compile.
             served.reset();
-            std::vector<feature::FileDiagnostic> items;
+            auto report = full_report(std::vector<protocol::Diagnostic>());
             while(session && !session->closed) {
                 auto* open = server.find_document(path_id);
                 if(!open || open->session != session || !open->owner) {
@@ -540,23 +540,18 @@ void LSPClient::register_document_requests() {
                         continue;
                     }
                 }
-                items = owner->finished_diagnostics(*session);
+                report = pull_report(*owner, *session, path);
                 break;
             }
             // A second name answers the warning once its text parted from
             // the first name's, before the pull or while it waited.
             auto* second = second_name(path);
-            auto shown = second ? server.find_session(second->buffer.path_id) : nullptr;
-            if(second && (!shown || second->buffer.text() != shown->text())) {
+            if(second && server.find_document(second->buffer.path_id)->diverged(*second)) {
                 co_return full_report(
                     to_client({feature::file_warning(divergence_message(*second))},
                               path,
                               second->buffer.positions()));
             }
-            // A pull's diagnostics are of the session's text
-            // (finished_diagnostics).
-            auto report = full_report(session ? to_client(items, path, session->positions())
-                                              : std::vector<protocol::Diagnostic>());
             if(session) {
                 // Recorded against the live session: one that replaced this
                 // pull's meanwhile (a reopen) compiles the same text, and its

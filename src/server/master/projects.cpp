@@ -9,19 +9,13 @@ import :vfs.path;
 
 namespace clice {
 
-/// Whether the project's root holds `path`; the rootless project's holds
-/// none.
-static bool holds_path(const ServedProject& project, CanonicalRef path) {
-    return !project.project.root.empty() && path::is_within(path, project.project.root);
-}
-
 /// The deepest of the projects `accept` takes whose root holds `path`.
 static ServedProject* deepest_holding(llvm::ArrayRef<std::shared_ptr<ServedProject>> projects,
                                       CanonicalRef path,
                                       llvm::function_ref<bool(ServedProject&)> accept) {
     ServedProject* deepest = nullptr;
     for(auto& project: projects) {
-        if(holds_path(*project, path) && accept(*project) &&
+        if(project->holds(path) && accept(*project) &&
            (!deepest || project->project.root.size() > deepest->project.root.size())) {
             deepest = project.get();
         }
@@ -135,6 +129,7 @@ void MasterServer::update_owners() {
         }
         if(auto& to = pick_owner(path_id); &to != document.owner) {
             change_owner(document, to);
+            replace_shown(document);
         }
     }
 }
@@ -151,7 +146,6 @@ void MasterServer::change_owner(Document& document, ServedProject& to) {
     if(client) {
         client->moved(session.path_id);
     }
-    replace_shown(document);
 }
 
 void MasterServer::replace_shown(Document& document) {
@@ -175,7 +169,7 @@ void MasterServer::replace_shown(Document& document) {
 void MasterServer::discover_around(Fid path_id) {
     auto path = files.resolve(path_id);
     for(auto& project: projects) {
-        if(holds_path(*project, path)) {
+        if(project->holds(path)) {
             project->discover_around(path_id);
         }
     }

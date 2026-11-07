@@ -211,6 +211,12 @@ public:
         ServedProject* owner = nullptr;
 
         llvm::SmallVector<SecondName, 1> second_names;
+
+        /// Whether the text of `second`, one of its second names, parted
+        /// from the document's own.
+        bool diverged(const SecondName& second) const {
+            return session->text() != second.buffer.text();
+        }
     };
 
     Document* find_document(Fid path_id);
@@ -472,8 +478,8 @@ private:
 
     /// Move the document to `to`: its generation moves on, so what a
     /// request computed under the old owner is void, the old owner releases
-    /// it and `to` adopts it. The client keeps what it shows until `to`'s
-    /// answers replace it (replace_shown).
+    /// it and `to` adopts it. The client keeps what it shows until the
+    /// caller has `to`'s answers replace it (replace_shown).
     void change_owner(Document& document, ServedProject& to);
 
     /// The client shows what the document's previous project or context

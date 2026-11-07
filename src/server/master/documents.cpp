@@ -81,8 +81,7 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
         auto above = find_project_root(Spelling(path.parent()));
         auto root = above.empty() ? CanonicalPath() : CanonicalPath(above);
         auto covered = [&](auto& project) {
-            if(!project->project.root.empty() && path::is_within(path, project->project.root) &&
-               path::is_within(project->project.root, root)) {
+            if(project->holds(path) && path::is_within(project->project.root, root)) {
                 return true;
             }
             auto& cdb = project->project.cdb;

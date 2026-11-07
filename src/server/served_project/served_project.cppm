@@ -26,6 +26,7 @@ import :syntax.token;
 import :vfs.disk_state;
 import :vfs.file_system;
 import :vfs.file_table;
+import :vfs.path;
 import :worker.pool;
 import :worker.protocol;
 
@@ -359,6 +360,12 @@ public:
     /// files under its root answer every request at once with nothing.
     bool broken() const {
         return has_error(settings_issues);
+    }
+
+    /// Whether the project's root holds `path`; the rootless project's
+    /// holds none.
+    bool holds(CanonicalRef path) const {
+        return !project.root.empty() && path::is_within(path, project.root);
     }
 
     /// Take over an open document that belongs here now — just opened, or

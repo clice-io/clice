@@ -119,10 +119,8 @@ ext::QueryContextResult MasterServer::query_contexts(Fid path_id,
             continue;
         }
         for(auto& item: project->project.list_contexts(path_id)) {
-            if(ranges::none_of(items, [&](const ListedContext& known) {
-                   return known.file == item.file && known.occurrence == item.occurrence &&
-                          known.command_hash == item.command_hash;
-               })) {
+            if(ranges::none_of(items,
+                               [&](const ListedContext& known) { return known.same_context(item); })) {
                 items.push_back(std::move(item));
             }
         }
@@ -159,12 +157,13 @@ async::task<ext::SwitchContextResult>
         co_await project.project.resolve_with_trees(path_id, [&] {
             return project.command_request(path_id, &wanted);
         });
+        ListedContext listed{
+            .file = context_path_id,
+            .occurrence = params.occurrence,
+            .command_hash = params.command_hash,
+        };
         co_return ranges::any_of(project.project.list_contexts(path_id),
-                                 [&](const ListedContext& item) {
-                                     return item.file == context_path_id &&
-                                            item.occurrence == params.occurrence &&
-                                            item.command_hash == params.command_hash;
-                                 });
+                                 [&](const ListedContext& item) { return item.same_context(listed); });
     };
     auto target = owner;
     if(!co_await offers(*owner)) {
@@ -294,8 +293,8 @@ ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
         change_owner(*document, to);
     } else {
         owner.choice_changed(*document->session);
-        replace_shown(*document);
     }
+    replace_shown(*document);
     return {.success = true};
 }
 
