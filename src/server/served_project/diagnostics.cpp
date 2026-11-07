@@ -97,7 +97,7 @@ std::vector<feature::FileDiagnostic>
     ServedProject::shown_skipped_diagnostics(const Session& session,
                                              const CompileOutput& output) const {
     auto* skipped = project.background_index.skipped_diagnostics(session.path_id);
-    if(!skipped || skipped->text_hash != session.hash ||
+    if(!skipped || skipped->text_hash != session.source->hash() ||
        output.diagnostics.source != CommandSource::Database || active_choice(session.path_id)) {
         return {};
     }
@@ -112,7 +112,7 @@ void ServedProject::book_skipped_diagnostics(Fid path_id, bool first) {
     }
     auto& background = project.background_index;
     if(auto* skipped = background.skipped_diagnostics(path_id);
-       skipped && skipped->text_hash == session.hash) {
+       skipped && skipped->text_hash == session.source->hash()) {
         return;
     }
     if(first) {

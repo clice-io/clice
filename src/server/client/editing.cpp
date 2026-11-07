@@ -133,7 +133,8 @@ void LSPClient::register_editing() {
     on_document<protocol::CompletionParams>([this](RequestContext& ctx,
                                                    const auto& params,
                                                    ResolvedDoc document) -> RawResult {
-        auto& [path, path_id, session, served, version, dispatched] = document;
+        auto& [path, path_id, served, version, dispatched] = document;
+        auto& session = dispatched.session;
         auto& project = *served;
         // The task starts once the messages read with the request are
         // dispatched: a $/cancelRequest among them (rapid-fire completions
@@ -247,7 +248,8 @@ void LSPClient::register_editing() {
     // indexing for the request's span.
     on_document<protocol::SignatureHelpParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
-            auto& [path, path_id, session, served, version, ticket] = document;
+            auto& [path, path_id, served, version, ticket] = document;
+            auto& session = ticket.session;
             auto& project = *served;
             if(!ticket.fresh()) {
                 co_await async::fail(content_modified());
@@ -293,7 +295,7 @@ void LSPClient::register_editing() {
             co_await async::fail(request_failed(std::move(result->error)));
         }
         auto edits = feature::to_protocol(result->edits,
-                                          document.session->positions(),
+                                          document.ticket.session->positions(),
                                           server.position_encoding);
         assert(edits && "the edits are of the text the ticket was taken on");
         co_return to_raw(*edits);
@@ -315,7 +317,8 @@ void LSPClient::register_editing() {
     on_document<protocol::CodeActionParams>([this](RequestContext& ctx,
                                                    const auto& params,
                                                    ResolvedDoc document) -> RawResult {
-        auto& [path, path_id, session, served, version, ticket] = document;
+        auto& [path, path_id, served, version, ticket] = document;
+        auto& session = ticket.session;
         auto& project = *served;
         auto encoding = server.position_encoding;
         auto& files = project.project.file_table;
@@ -457,7 +460,8 @@ void LSPClient::register_editing() {
     // index them.
     on_document<protocol::RenameParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
-            auto& [path, path_id, session, served, version, ticket] = document;
+            auto& [path, path_id, served, version, ticket] = document;
+            auto& session = ticket.session;
             auto& project = served->project;
             auto& position = params.position;
             auto& new_name = params.new_name;

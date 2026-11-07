@@ -142,7 +142,7 @@ const static ServedDocument::MergedIndex* merged_index(const ServedProject& serv
     auto& state = *compiled->index;
     auto& own = state.shard_of(state.focus_file());
     if(!served.current(session.path_id) &&
-       !own.matches_content(session.text().size(), session.hash)) {
+       !own.matches_content(session.text().size(), session.source->hash())) {
         document.merged.reset();
         return nullptr;
     }
@@ -150,7 +150,7 @@ const static ServedDocument::MergedIndex* merged_index(const ServedProject& serv
         return &*document.merged;
     }
     auto* stored = served.project.index.shard(session.path_id);
-    if(!stored || !stored->matches_content(session.text().size(), session.hash)) {
+    if(!stored || !stored->matches_content(session.text().size(), session.source->hash())) {
         document.merged.reset();
         return nullptr;
     }
@@ -179,7 +179,7 @@ std::vector<index::OpenBuffer> ServedProject::open_buffers() const {
         open.push_back({
             .file = path_id,
             .text = session.text(),
-            .hash = session.hash,
+            .hash = session.source->hash(),
             .positions = session.positions(),
             .index = compiled ? compiled->index : nullptr,
             .current = current(path_id),

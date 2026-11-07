@@ -179,7 +179,6 @@ void ServedProject::start() {
     project.file_table.disk.add_root(project.root, {.max = poll_seconds});
     // Watched from the project load on: each database is baselined at the
     // read its entries came from.
-    watching = true;
     project.watch_databases();
     for(auto& [path_id, document]: documents) {
         discover_around(path_id);
@@ -270,7 +269,7 @@ void ServedProject::decide_compiling(Fid path_id) {
         // A buffer that already diverges from the indexed content (a
         // restored unsaved file) can never be served read-only: it compiles
         // now instead of answering empty until the first edit.
-        if(!shard->matches_content(session.text().size(), session.hash)) {
+        if(!shard->matches_content(session.text().size(), session.source->hash())) {
             start_compiling(path_id);
         }
         return;

@@ -192,7 +192,7 @@ void LSPClient::register_extensions() {
             if(document.project->broken()) {
                 co_return to_raw(ext::CurrentContextResult{});
             }
-            auto path_id = document.session ? document.path_id : Fid();
+            auto path_id = document.ticket.session ? document.path_id : Fid();
             co_return to_raw(co_await this->server.current_context(path_id));
         });
 

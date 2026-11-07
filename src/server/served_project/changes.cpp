@@ -107,7 +107,7 @@ void ServedProject::recheck_choices() {
 }
 
 std::size_t ServedProject::reload_databases(bool force) {
-    if(!watching) {
+    if(!watches_build()) {
         return 0;
     }
     // A reload would record the other build's commands as the ones this
@@ -132,7 +132,7 @@ std::size_t ServedProject::reload_databases(bool force) {
 }
 
 async::task<bool> ServedProject::poll_sources() {
-    if(!watching) {
+    if(!watches_build()) {
         co_return false;
     }
     auto walked =
@@ -146,7 +146,7 @@ async::task<bool> ServedProject::poll_sources() {
 }
 
 void ServedProject::discover_around(Fid path_id) {
-    if(!watching) {
+    if(!watches_build()) {
         return;
     }
     if(auto found = project.discover_databases({path_id}, {.load_now = true}); !found.empty()) {

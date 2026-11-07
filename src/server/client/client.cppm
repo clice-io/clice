@@ -209,8 +209,8 @@ private:
     void register_document_requests();
 
     /// Shared front half of every document-addressed handler: URI → path →
-    /// interned path_id → open session (null when the document is not open)
-    /// → the project serving it, held for the request: a folder removed
+    /// interned path_id → a ticket on its open session (with none when the
+    /// document is not open) → the project serving it, held for the request: a folder removed
     /// while the request runs keeps its project alive until it completes.
     /// `version` is the document's as the request names it, a second name's
     /// own. The ticket is taken as the request is dispatched, ahead of the
@@ -219,7 +219,6 @@ private:
     struct ResolvedDoc {
         std::string path;
         Fid path_id;
-        std::shared_ptr<Session> session;
         std::shared_ptr<ServedProject> project;
         std::optional<int> version;
         Ticket ticket;
@@ -495,7 +494,7 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
             }
         }();
         server.pool.used(document.path_id.raw);
-        if(!options.closed && !document.session) {
+        if(!options.closed && !document.ticket.session) {
             // A second name whose text parted from the first name's has no
             // answers until they agree again.
             if(second_name(document.path)) {

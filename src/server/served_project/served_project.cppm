@@ -775,6 +775,12 @@ private:
 
     // served_project.cpp
 
+    /// start() opened the project from disk and watches its build: never
+    /// the rootless project, nor a broken one, nor before it starts.
+    bool watches_build() const {
+        return started && !broken() && !project.root.empty();
+    }
+
     /// Decide whether a freshly opened document that is not compiled starts
     /// compiling: one that already diverged from its shard does; the file is
     /// indexed first in the background when nothing can serve it. A compiled
@@ -954,10 +960,6 @@ private:
     /// The cancel of each document's in-flight compile send, which edited()
     /// and stop_compiles() fire to interrupt the worker's parse.
     llvm::DenseMap<Fid, std::unique_ptr<async::cancellation_source>> compile_interrupts;
-
-    /// Whether start() began watching the databases: never for the rootless
-    /// project, nor before it starts.
-    bool watching = false;
 
     /// The project's background tasks (checkpoints, flushes, polls, the
     /// control listener); cancelled and joined in shutdown().

@@ -43,14 +43,12 @@ LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
         }
         version = second->buffer.version;
     }
-    auto ticket = Ticket::take(session);
     return ResolvedDoc{
         .path = std::move(*path).str(),
         .path_id = path_id,
-        .session = std::move(session),
         .project = std::move(project),
         .version = version,
-        .ticket = std::move(ticket),
+        .ticket = Ticket::take(std::move(session)),
     };
 }
 
@@ -101,7 +99,8 @@ static llvm::ArrayRef<std::uint32_t> other_contexts(const ServedProject& served,
 LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
                                             async::cancellation_token token,
                                             TokensRequest request) {
-    auto& [path, path_id, session, served, version, ticket] = document;
+    auto& [path, path_id, served, version, ticket] = document;
+    auto& session = ticket.session;
     std::optional<index::IndexSource> source;
     auto from_index = [&] {
         return feature::semantic_tokens(served->text_of(*session),
@@ -171,7 +170,8 @@ void LSPClient::register_document_requests() {
     on_document<protocol::HoverParams>([this](RequestContext& ctx,
                                               const auto& params,
                                               ResolvedDoc document) -> RawResult {
-        auto& [path, path_id, session, served, version, ticket] = document;
+        auto& [path, path_id, served, version, ticket] = document;
+        auto& session = ticket.session;
         auto& project = *served;
         auto encoding = server.position_encoding;
         auto& position = params.position;
@@ -308,7 +308,8 @@ void LSPClient::register_document_requests() {
 
     on_document<protocol::InlayHintParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
-            auto& [path, path_id, session, served, version, ticket] = document;
+            auto& [path, path_id, served, version, ticket] = document;
+            auto& session = ticket.session;
             auto encoding = server.position_encoding;
             auto route = co_await pick_route(document, {.needs_ast = true});
             if(route == Route::Outdated) {
@@ -347,7 +348,8 @@ void LSPClient::register_document_requests() {
 
     on_document<protocol::FoldingRangeParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
-            auto& [path, path_id, session, served, version, ticket] = document;
+            auto& [path, path_id, served, version, ticket] = document;
+            auto& session = ticket.session;
             auto convert = [&](llvm::ArrayRef<feature::FoldingRange> folds) {
                 return to_raw(feature::to_protocol(folds,
                                                    session->text(),
@@ -386,7 +388,8 @@ void LSPClient::register_document_requests() {
     on_document<protocol::SelectionRangeParams>([this](RequestContext& ctx,
                                                        const auto& params,
                                                        ResolvedDoc document) -> RawResult {
-        auto& [path, path_id, session, served, version, ticket] = document;
+        auto& [path, path_id, served, version, ticket] = document;
+        auto& session = ticket.session;
         auto encoding = server.position_encoding;
         std::vector<std::uint32_t> offsets;
         auto map = session->positions();
@@ -437,7 +440,8 @@ void LSPClient::register_document_requests() {
     on_document<protocol::DocumentSymbolParams>([this](RequestContext& ctx,
                                                        const auto& params,
                                                        ResolvedDoc document) -> RawResult {
-        auto& [path, path_id, session, served, version, ticket] = document;
+        auto& [path, path_id, served, version, ticket] = document;
+        auto& session = ticket.session;
         auto encoding = server.position_encoding;
         auto convert = [&](llvm::ArrayRef<feature::DocumentSymbol> symbols) {
             if(symbol_client.hierarchical) {
@@ -487,7 +491,8 @@ void LSPClient::register_document_requests() {
     // links.
     on_document<protocol::DocumentLinkParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
-            auto& [path, path_id, session, served, version, ticket] = document;
+            auto& [path, path_id, served, version, ticket] = document;
+            auto& session = ticket.session;
             auto encoding = server.position_encoding;
             auto& files = served->project.file_table;
             switch(co_await pick_route(document, {.waits_for_first_index = true})) {
@@ -520,7 +525,8 @@ void LSPClient::register_document_requests() {
     // clear what they hold or stop pulling the document.
     on_document<protocol::DocumentDiagnosticParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
-            auto& [path, path_id, session, served, version, ticket] = document;
+            auto& [path, path_id, served, version, ticket] = document;
+            auto& session = ticket.session;
             // The pull follows the document, not the project it belonged
             // to: held, a removed folder's project would keep the project
             // taking its root over from starting, and the pull would wait

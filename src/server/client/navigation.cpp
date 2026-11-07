@@ -47,7 +47,8 @@ void LSPClient::register_navigation() {
     // index retry after the compile refreshes a dirty document.
     on_document<protocol::DefinitionParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
-            auto& [path, path_id, session, served, version, ticket] = document;
+            auto& [path, path_id, served, version, ticket] = document;
+            auto& session = ticket.session;
             auto& project = *served;
             auto& position = params.position;
             auto encoding = server.position_encoding;

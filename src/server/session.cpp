@@ -11,7 +11,6 @@ Session::Session(Fid path_id, std::string text, int version) : path_id(path_id),
 
 void Session::set_text(std::string text) {
     source = std::make_shared<SourceText>(std::move(text));
-    hash = llvm::xxh3_64bits(source->text());
 }
 
 bool Session::edit(llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> changes,
