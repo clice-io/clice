@@ -68,12 +68,12 @@ struct NotifyMessage {
 
 /// The server process: the file table, the worker pool, the editor's state —
 /// the open documents, their owners and the users' context choices — and the
-/// projects it serves, with every file routed to one of them. A project
+/// projects it serves, every file belonging to one of them. A project
 /// (ServedProject) holds what it derives from the documents it is given; the
 /// editor's state is one per process, so a document moving between projects
 /// changes owner and nothing is carried. Its work is split in files:
-/// startup and shutdown (lifecycle.cpp), the projects and routing
-/// (projects.cpp), the documents (documents.cpp), the context choices
+/// startup and shutdown (lifecycle.cpp), the projects and the documents'
+/// owners (projects.cpp), the documents (documents.cpp), the context choices
 /// (contexts.cpp), polling (polling.cpp), test hooks (test_hooks.cpp) and
 /// the transports (serve.cpp).
 class MasterServer {
@@ -86,7 +86,7 @@ public:
     /// Start serving the projects of `folders` (see project_roots): load
     /// each project's settings, start the pool sized for all of them, and
     /// start the projects; the documents opened before go to the projects
-    /// routing picks for them.
+    /// pick_owner picks for them.
     void initialize();
 
     /// The `[semantic_tokens]` options the legend is built from, read as
@@ -141,17 +141,17 @@ public:
     /// (didChangeWorkspaceFolders); before initialize, edit the folders it
     /// will serve. The projects follow the folders (see project_roots);
     /// open documents of a project that stops serving move to the project
-    /// routing picks for them now. A folder both removed and added (a
+    /// pick_owner picks for them now. A folder both removed and added (a
     /// rename) keeps serving.
     void change_folders(std::vector<Spelling> removed, std::vector<Spelling> added);
 
     /// The project serving a file: the owner of its open document, else
-    /// the one routing picks now.
+    /// the one pick_owner picks now.
     ServedProject& owner_of(Fid path_id);
 
-    /// Every open document routing now sends to another project moves there
-    /// (change_owner).
-    void reroute();
+    /// Every open document that pick_owner now gives to another project
+    /// moves there (change_owner).
+    void update_owners();
 
     /// A project's indexing progress moved: fold every project's pass
     /// into index_progress and tell the client.
@@ -219,7 +219,7 @@ public:
 
     /// didOpen of the file `path_id` spelled `spelling`: a second name of a
     /// file open already waits with its own buffer; else the document goes
-    /// to the project routing picks, once every project holding it
+    /// to the project pick_owner picks, once every project holding it
     /// discovered the databases above it. A file no project can compile
     /// starts serving the project found nearest above it (a clice.toml or a
     /// compilation database) — when no folder holds the file, or when that
@@ -254,8 +254,8 @@ public:
     /// The user's context choice for a file: the project it belongs to,
     /// which persists it and checks it against its build, and whether it
     /// holds there now (choice_holds). One that stops holding waits,
-    /// inactive, and applies again once it holds; only an active one routes
-    /// the file and resolves its command.
+    /// inactive, and applies again once it holds; only an active one gives
+    /// the file to its project and resolves its command.
     struct ChoiceEntry {
         ContextChoice choice;
 
@@ -296,8 +296,8 @@ public:
     async::task<ext::CurrentContextResult> current_context(Fid path_id);
 
     /// clice/resetContext: drop the file's choice and serve it under the
-    /// automatic context — moving it back to the project it routes to when
-    /// the choice had moved it.
+    /// automatic context — moving it back to the project pick_owner picks
+    /// when the choice had moved it.
     ext::SwitchContextResult reset_context(Fid path_id);
 
     /// clice/showOtherContexts: show the code the file's other contexts
@@ -439,7 +439,7 @@ private:
 
     /// Make the projects served those project_roots names: make the
     /// missing ones, stop the ones no folder needs, and move the open
-    /// documents to the projects routing picks now. A project made while
+    /// documents to the projects pick_owner picks now. A project made while
     /// its root's previous one is still alive (a folder removed and added
     /// again) holds the root's documents, their compiles waiting
     /// (ServedProject::loaded), and starts once that is gone (make_project
@@ -453,7 +453,7 @@ private:
     std::vector<CanonicalPath> taken_cache_dirs(CanonicalRef successor = {}) const;
 
     /// Before a file's first compile: every project whose root holds the
-    /// file registers the databases between it and the root, so routing
+    /// file registers the databases between it and the root, so pick_owner
     /// finds its entry.
     void discover_around(Fid path_id);
 
@@ -464,9 +464,9 @@ private:
     /// holds it, else any — to borrow a host there; null when none can.
     ServedProject* compiling_project(Fid path_id);
 
-    /// The project a file belongs to: its compiling_project, else the
+    /// The project a file belongs to now: its compiling_project, else the
     /// deepest root holding it, else the first project.
-    ServedProject& route(Fid path_id);
+    ServedProject& pick_owner(Fid path_id);
 
     /// Move the document to `to`: its generation moves on, so what a
     /// request computed under the old owner is void, the old owner releases

@@ -31,8 +31,8 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
         if(!document) {
             return;
         }
-        if(document->serving == ServingMode::IndexOnly && !query().serving(path_id)) {
-            escalate(path_id);
+        if(!document->compiles && !query().serving(path_id)) {
+            start_compiling(path_id);
         }
         show_skipped_diagnostics(path_id);
     });
@@ -148,10 +148,10 @@ void ServedProject::start() {
     server.load_choices(*this);
 
     // Documents adopted before the project started — held while its root's
-    // previous project shut down — have their serving decided now, after
-    // the load: divergence detection sees the persisted shards it just
-    // loaded (a restored unsaved buffer must escalate, not read as merely
-    // unindexed).
+    // previous project shut down — have it decided now whether they
+    // compile, after the load: divergence detection sees the persisted
+    // shards it just loaded (a restored unsaved buffer must compile, not
+    // read as merely unindexed).
     bool recorded = false;
     for(auto& [path_id, document]: documents) {
         recorded = project.record_provisional(path_id) || recorded;
@@ -161,7 +161,7 @@ void ServedProject::start() {
         schedule_metadata_flush();
     }
     for(auto& [path_id, document]: documents) {
-        decide_serving(document);
+        decide_compiling(document);
     }
     loaded.set();
 
@@ -234,10 +234,10 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
     // and its requests' PCH adoptions read, before its first compile too.
     project.graph.add(ast_node(path_id));
     auto& document = documents[path_id];
-    document = ServedDocument{.session = std::move(session), .serving = ServingMode::IndexOnly};
+    document = ServedDocument{.session = std::move(session)};
     if(project.settings.project.readonly == ReadonlyMode::Off ||
        server.own_context_only.contains(path_id)) {
-        escalate(path_id);
+        start_compiling(path_id);
     }
     // What the disk holds under the buffer: a later save or outside
     // write is then a change from it, even for a file nothing else knew.
@@ -252,18 +252,18 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
     server.recheck_choice(path_id);
     // The change may have moved other documents in: the table may have
     // grown since the reference above was taken.
-    decide_serving(documents.find(path_id)->second);
+    decide_compiling(documents.find(path_id)->second);
 }
 
-void ServedProject::decide_serving(ServedDocument& document) {
-    // An escalated document needs no decision: builds stay pull-driven. When
+void ServedProject::decide_compiling(ServedDocument& document) {
+    // A compiled document needs no decision: builds stay pull-driven. When
     // they skip the bodies of the headers, the file's background run shows
     // what those hold (show_skipped_diagnostics), and goes first when none
     // has reported on its text.
     auto& session = *document.session;
     auto path_id = session.path_id;
     auto& background = project.background_index;
-    if(document.serving == ServingMode::Escalated) {
+    if(document.compiles) {
         if(background.started() && !background.queue().in_flight(path_id) &&
            !background.failed(path_id)) {
             book_skipped_diagnostics(document, true);
@@ -272,10 +272,10 @@ void ServedProject::decide_serving(ServedDocument& document) {
     }
     if(auto* shard = project.index.shard(path_id)) {
         // A buffer that already diverges from the indexed content (a
-        // restored unsaved file) can never be served read-only: escalate
+        // restored unsaved file) can never be served read-only: it compiles
         // now instead of answering empty until the first edit.
         if(!shard->matches_content(session.text().size(), session.hash)) {
-            escalate(path_id);
+            start_compiling(path_id);
         }
         return;
     }
@@ -284,11 +284,11 @@ void ServedProject::decide_serving(ServedDocument& document) {
     // build (a header, which only the units reading it index), in which
     // case no shard will arrive soon and only an AST can serve the
     // document. An index_first the background index cannot fulfill
-    // escalates through the adapter's attempt-finished check.
+    // starts compiling through the attempt-finished check.
     if(background.started() && project.is_unit(path_id)) {
         background.index_first(path_id);
     } else {
-        escalate(path_id);
+        start_compiling(path_id);
     }
 }
 

@@ -206,7 +206,7 @@ async::task<ext::SwitchContextResult>
     }
     // A context choice asks for the context-pure AST view; the merged
     // index cannot give it (union entries).
-    target->escalate(path_id);
+    target->start_compiling(path_id);
     replace_shown(*document);
     result.success = true;
     co_return result;
@@ -290,7 +290,7 @@ ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
     choices.erase(it);
     save_choices(*project);
     auto& owner = *document->owner;
-    if(auto& to = route(path_id); &to != &owner) {
+    if(auto& to = pick_owner(path_id); &to != &owner) {
         change_owner(*document, to);
     } else {
         owner.choice_changed(*document->session);
@@ -313,7 +313,7 @@ ext::SwitchContextResult MasterServer::show_other_contexts(Fid path_id, bool sho
     }
     // The file's own context alone is its AST's, as a context choice is.
     if(!show && owner) {
-        owner->escalate(path_id);
+        owner->start_compiling(path_id);
     }
     if(client) {
         client->refresh();

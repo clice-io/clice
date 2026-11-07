@@ -155,7 +155,7 @@ void LSPClient::register_editing() {
         // Asking for code completion is edit intent: the document is
         // compiled from now on (a no-op when it already is or under
         // readonly = "on").
-        project.escalate(path_id);
+        project.start_compiling(path_id);
         auto pause = ScopedPause(project.project.background_index);
 
         llvm::StringRef trigger;
@@ -257,7 +257,7 @@ void LSPClient::register_editing() {
                !feature::can_hold_call(session->text(), *offset, project.dialect(path_id))) {
                 co_return codec::raw_value{"null"};
             }
-            project.escalate(path_id);
+            project.start_compiling(path_id);
             auto pause = ScopedPause(project.project.background_index);
             // The popup the client shows: the user may have moved it to another
             // overload.
@@ -331,11 +331,11 @@ void LSPClient::register_editing() {
             co_await async::fail(content_modified());
         }
         // Code actions are AST products the index cannot compute; a document
-        // the policy keeps un-compiled answers honestly empty rather than
-        // forcing the compile the policy declined.
+        // that is not compiled answers honestly empty rather than forcing a
+        // compile.
         std::vector<protocol::CodeAction> result;
-        if(feature::admits_any(only) && (project.ast_answerable(*session) ||
-                                         project.serving_of(*session) != ServingMode::IndexOnly)) {
+        if(feature::admits_any(only) &&
+           (project.ast_answerable(*session) || project.compiles(*session))) {
             // Clamped against the buffer the ticket was taken on: a buffer
             // that moves before the reply arrives turns the reply into
             // ContentModified.

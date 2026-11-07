@@ -42,7 +42,7 @@ void ServedProject::follow(const Affected& affected) {
     bool refresh = false;
     auto mark_stale = [&](ServedDocument& document) {
         inputs_changed(*document.session);
-        refresh = refresh || document.serving == ServingMode::Escalated;
+        refresh = refresh || document.compiles;
     };
     for(auto path_id: affected.stale) {
         mark_stale(*find_document(path_id));
@@ -81,7 +81,7 @@ void ServedProject::follow(const Affected& affected) {
     // The database gained or lost entries: an open document may belong to
     // another project now.
     if(!commands.added.empty() || !commands.removed.empty()) {
-        server.reroute();
+        server.update_owners();
     }
     // A database found or a member recorded: the directories on the way to
     // it decide what loads too.
@@ -89,20 +89,20 @@ void ServedProject::follow(const Affected& affected) {
 }
 
 void ServedProject::recheck_choices() {
-    bool rerouted = false;
+    bool flipped = false;
     for(auto& [file, entry]: server.choices) {
         if(entry.project != this || !server.recheck_choice(file)) {
             continue;
         }
-        rerouted = true;
+        flipped = true;
         // Whether the choice holds is part of what the document compiles
         // under.
         if(auto* document = find_document(file)) {
             choice_changed(*document->session);
         }
     }
-    if(rerouted) {
-        server.reroute();
+    if(flipped) {
+        server.update_owners();
     }
 }
 

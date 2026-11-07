@@ -20,11 +20,11 @@ ipc::Error content_modified() {
                       "Document changed while the request was in flight"};
 }
 
-ServingMode ServedProject::serving_of(const Session& session) const {
+bool ServedProject::compiles(const Session& session) const {
     auto* document = find_document(session.path_id);
     assert(document && document->session.get() == &session &&
            "a fresh ticket's document belongs to the project it was taken in");
-    return document->serving;
+    return document->compiles;
 }
 
 bool ServedProject::ast_answerable(const Session& session) const {
@@ -42,12 +42,12 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
         if(ast_answerable(session)) {
             co_return Route::AST;
         }
-        auto serving = serving_of(session);
+        bool compiled = compiles(session);
         // An oversized buffer is not worth a synchronous main-thread lex;
         // the features computed from the index by lexing the whole buffer
-        // follow the investment policy instead. Answers that only look the
-        // index up serve at any size.
-        bool capped = options.full_lex && session.text().size() > full_lex_cap;
+        // wait for the compile instead. Answers that only look the index up
+        // serve at any size.
+        bool capped = options.lexes_whole_buffer && session.text().size() > max_lexed_buffer;
         if(!capped) {
             // The document's own index when current (the answer while a
             // crash stops the compile — the worker cannot be asked, the
@@ -57,17 +57,16 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
             // The disk shard merges every context the file compiles in, or
             // holds its first command's: a context the user chose, or one
             // the user wants alone, waits for its own compile.
-            if(admitted && admitted->kind == index::IndexSource::Kind::Shard &&
-               serving == ServingMode::Escalated &&
+            if(admitted && admitted->kind == index::IndexSource::Kind::Shard && compiled &&
                (active_choice(session.path_id) ||
                 server.own_context_only.contains(session.path_id))) {
                 admitted.reset();
             }
             if(admitted) {
-                // An index answer must not strand an escalated document's
+                // An index answer must not strand a compiled document's
                 // pending build: this request still pulls the compile it
                 // would otherwise have waited on, just without blocking.
-                if(serving == ServingMode::Escalated && !current(session.path_id)) {
+                if(compiled && !current(session.path_id)) {
                     request_compile(ticket.session);
                 }
                 if(source) {
@@ -76,10 +75,10 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
                 co_return Route::Index;
             }
         }
-        if(serving == ServingMode::Escalated) {
+        if(compiled) {
             co_return Route::AST;
         }
-        if(options.await_cold_attempt && !waited) {
+        if(options.waits_for_first_index && !waited) {
             waited = true;
             co_await project.background_index.await_attempt(session.path_id);
             continue;
@@ -284,7 +283,7 @@ async::task<std::vector<index::DocumentLink>, ipc::Error>
     // An include leaves no index entry: the skipped code's includes link
     // even when the index holds no entries there.
     auto skipped = skipped_code(session.path_id).regions;
-    if(skipped.empty() || session.text().size() > full_lex_cap) {
+    if(skipped.empty() || session.text().size() > max_lexed_buffer) {
         co_return links;
     }
     co_return feature::merge(std::move(links),

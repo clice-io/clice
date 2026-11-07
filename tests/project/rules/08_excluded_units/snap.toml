@@ -10,10 +10,10 @@ main_sym = [
 ]
 tp_sym = []
 
-["excluded unit escalates when read".symbols]
+["excluded unit compiles when read".symbols]
 document_symbols = [
     { name = "tp_sym", kind = "Function", at = "int ⟦tp_sym⟧() { return 1; }" },
 ]
 
-["excluded unit escalates when read".pushed]
+["excluded unit compiles when read".pushed]
 pushes = [[]]

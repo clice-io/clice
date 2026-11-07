@@ -26,7 +26,7 @@ MasterServer::SecondName* LSPClient::second_name(llvm::StringRef spelling) {
 }
 
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
-    auto path = uri_to_path(uri);
+    auto path = feature::to_path(uri);
     if(!path) {
         // Not a file: no document of ours.
         return ResolvedDoc{.project = server.projects.front()};
@@ -75,7 +75,7 @@ static std::optional<feature::HoverInfo> index_hover_card(ServedProject& project
 static llvm::ArrayRef<std::uint32_t> other_contexts(const ServedProject& served,
                                                     const Session& session,
                                                     std::optional<index::IndexSource>& source) {
-    if(session.text().size() > full_lex_cap) {
+    if(session.text().size() > max_lexed_buffer) {
         return {};
     }
     auto skipped = served.skipped_code(session.path_id);
@@ -98,7 +98,7 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
                                         served->project.settings.semantic_tokens);
     };
     std::vector<feature::SemanticToken> tokens;
-    switch(co_await served->pick_route(ticket, {.full_lex = true}, &source)) {
+    switch(co_await served->pick_route(ticket, {.lexes_whole_buffer = true}, &source)) {
         case Route::Outdated: co_await async::fail(content_modified());
         case Route::Index: {
             index_served.insert(path_id);
@@ -162,10 +162,9 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
 void LSPClient::register_document_requests() {
     // Whole-document features and hover are routed by readiness
     // (ServedProject::pick_route): the AST answers when current, the results
-    // computed from the index answer while it is not, and a document the
-    // policy keeps un-compiled answers with its pinned degraded surface
-    // (empty inlay hints). Each forwards the request's cancellation token
-    // to the worker sends (ServedProject::ast_request).
+    // computed from the index answer while it is not, and a document that
+    // is not compiled answers what the index gives (empty inlay hints). Each forwards the request's
+    // cancellation token to the worker sends (ServedProject::ast_request).
     on_document<protocol::HoverParams>([this](RequestContext& ctx,
                                               const auto& params,
                                               ResolvedDoc document) -> RawResult {
@@ -220,8 +219,7 @@ void LSPClient::register_document_requests() {
                 // name (the entity the buffer's index recorded can be gone, as
                 // after an imported interface changed): while a compile can
                 // run, the AST's card is worth the wait.
-                if(info->definition.empty() && info->file.empty() &&
-                   project.serving_of(*session) == ServingMode::Escalated &&
+                if(info->definition.empty() && info->file.empty() && project.compiles(*session) &&
                    !project.compile_stopped(*session)) {
                     break;
                 }
@@ -315,10 +313,10 @@ void LSPClient::register_document_requests() {
                 co_await async::fail(content_modified());
             }
             // Inlay hints are Sema products the index cannot compute; a document
-            // the policy keeps un-compiled answers honestly empty. The compile
-            // that follows an escalation pushes an inlayHint refresh, so clients
+            // that is not compiled answers honestly empty. Its first compile,
+            // once it starts compiling, pushes an inlayHint refresh, so clients
             // re-pull once real hints exist.
-            if(served->serving_of(*session) == ServingMode::IndexOnly) {
+            if(!served->compiles(*session)) {
                 index_served.insert(path_id);
                 co_return codec::raw_value{"[]"};
             }
@@ -360,7 +358,7 @@ void LSPClient::register_document_requests() {
             auto from_index = [&] {
                 return feature::folding_ranges(served->text_of(*session), served->query(), *source);
             };
-            switch(co_await served->pick_route(ticket, {.full_lex = true}, &source)) {
+            switch(co_await served->pick_route(ticket, {.lexes_whole_buffer = true}, &source)) {
                 case Route::Outdated: co_await async::fail(content_modified());
                 case Route::Index: {
                     index_served.insert(path_id);
@@ -412,7 +410,7 @@ void LSPClient::register_document_requests() {
             return to_raw(result);
         };
         auto lexical = [&] {
-            if(session->text().size() > full_lex_cap) {
+            if(session->text().size() > max_lexed_buffer) {
                 std::vector<std::vector<LocalSourceRange>> points;
                 for(auto offset: offsets) {
                     points.push_back({
@@ -468,9 +466,10 @@ void LSPClient::register_document_requests() {
                                              *source,
                                              served->project.settings.document_symbols);
         };
-        switch(co_await served->pick_route(ticket,
-                                           {.full_lex = true, .await_cold_attempt = true},
-                                           &source)) {
+        switch(
+            co_await served->pick_route(ticket,
+                                        {.lexes_whole_buffer = true, .waits_for_first_index = true},
+                                        &source)) {
             case Route::Outdated: co_await async::fail(content_modified());
             case Route::Index: {
                 index_served.insert(path_id);
@@ -504,7 +503,7 @@ void LSPClient::register_document_requests() {
             auto& [path, path_id, session, served, version, ticket] = document;
             auto encoding = server.position_encoding;
             auto& files = served->project.file_table;
-            switch(co_await served->pick_route(ticket, {.await_cold_attempt = true})) {
+            switch(co_await served->pick_route(ticket, {.waits_for_first_index = true})) {
                 case Route::Outdated: co_await async::fail(content_modified());
                 case Route::Index: {
                     // Manifest edges cover the whole document (the background
@@ -530,13 +529,13 @@ void LSPClient::register_document_requests() {
     // rather than answering ContentModified — a pull names no version, and
     // clients clear what they hold on that error. Following has no bound of
     // its own: a client that no longer wants the answer cancels the pull. A
-    // document the policy keeps un-compiled waits for nothing. A pull is
+    // document that is not compiled waits for nothing. A pull is
     // always answered with a report, never an error: on an error, clients
     // clear what they hold or stop pulling the document.
     on_document<protocol::DocumentDiagnosticParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
             auto& [path, path_id, session, served, version, ticket] = document;
-            // The pull follows the document, not the project it was routed
+            // The pull follows the document, not the project it belonged
             // to: held, a removed folder's project would keep the project
             // taking its root over from starting, and the pull would wait
             // for that one's compile.
@@ -548,7 +547,7 @@ void LSPClient::register_document_requests() {
                     break;
                 }
                 auto owner = open->owner->shared_from_this();
-                if(owner->serving_of(*session) == ServingMode::Escalated) {
+                if(owner->compiles(*session)) {
                     auto taken = Ticket::take(session);
                     co_await owner->ensure_compiled(session, {.ast = false});
                     if(!taken.fresh()) {

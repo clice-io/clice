@@ -161,7 +161,7 @@ void MasterServer::initialize() {
     // The documents opened before wait for their owners.
     for(auto& [path_id, document]: documents) {
         discover_around(path_id);
-        auto& owner = route(path_id);
+        auto& owner = pick_owner(path_id);
         document.owner = &owner;
         owner.adopt(document.session);
     }

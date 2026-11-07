@@ -94,9 +94,9 @@ void LSPClient::register_navigation() {
                 co_return codec::raw_value{"[]"};
             }
 
-            // An index-only document never owes the compile the worker query
-            // implies, a document served under freshness clause 4
-            // (escalated, compile still in flight) already routed to the
+            // A document that is not compiled never owes the compile the
+            // worker query implies, a document served under freshness clause
+            // 4 (compiled, compile still in flight) already went to the
             // index, and a document whose compile a crash stops cannot reach
             // a worker at all. What the worker leg covers — include
             // directives, which have no symbol occurrence — the manifest
@@ -106,8 +106,7 @@ void LSPClient::register_navigation() {
             auto query = project.query();
             auto serving = query.serving(path_id);
             bool shard_served = serving && serving->kind == index::IndexSource::Kind::Shard;
-            if(project.serving_of(*session) == ServingMode::IndexOnly ||
-               project.compile_stopped(*session) ||
+            if(!project.compiles(*session) || project.compile_stopped(*session) ||
                (shard_served && !project.cursor_at(path_id, position))) {
                 if(offset) {
                     auto links = feature::document_links(project.text_of(*session), query, path_id);

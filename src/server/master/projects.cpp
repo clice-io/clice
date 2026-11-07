@@ -73,8 +73,8 @@ ServedProject* MasterServer::compiling_project(Fid path_id) {
     return borrowed != projects.end() ? borrowed->get() : nullptr;
 }
 
-ServedProject& MasterServer::route(Fid path_id) {
-    assert(!projects.empty() && "routing before the projects start");
+ServedProject& MasterServer::pick_owner(Fid path_id) {
+    assert(!projects.empty() && "picking an owner before the projects start");
     if(auto* compiling = compiling_project(path_id)) {
         return *compiling;
     }
@@ -87,7 +87,7 @@ ServedProject& MasterServer::owner_of(Fid path_id) {
     if(auto* document = find_document(path_id); document && document->owner) {
         return *document->owner;
     }
-    return route(path_id);
+    return pick_owner(path_id);
 }
 
 std::shared_ptr<ServedProject> MasterServer::make_project(CanonicalPath root) {
@@ -126,7 +126,7 @@ std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef successor
     return dirs;
 }
 
-void MasterServer::reroute() {
+void MasterServer::update_owners() {
     if(lifecycle != ServerLifecycle::Ready) {
         return;
     }
@@ -134,7 +134,7 @@ void MasterServer::reroute() {
         if(!document.owner) {
             continue;
         }
-        if(auto& to = route(path_id); &to != document.owner) {
+        if(auto& to = pick_owner(path_id); &to != document.owner) {
             change_owner(document, to);
         }
     }
@@ -166,7 +166,7 @@ void MasterServer::replace_shown(Document& document) {
     }
     // A compile finishing on unchanged text has the client re-pull what it
     // holds.
-    if(owner.find_document(session->path_id)->serving == ServingMode::Escalated) {
+    if(owner.compiles(*session)) {
         owner.request_compile(session);
     } else if(client) {
         client->refresh();
@@ -329,13 +329,13 @@ void MasterServer::serve_folders() {
             }
         }
     }
-    // A stopped project's choices route nothing any more.
+    // A stopped project's choices give it nothing any more.
     for(auto& project: leaving) {
         forget_choices(*project);
     }
     // Documents may belong elsewhere now: a database under a new root
     // lists them, they sit inside it, or their project stopped serving.
-    reroute();
+    update_owners();
     for(auto& project: leaving) {
         LOG_INFO("No longer serving project {}", project->project.root);
         if(auto it = index_pass.find(project.get()); it != index_pass.end()) {

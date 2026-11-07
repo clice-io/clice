@@ -431,9 +431,6 @@ constexpr inline std::string_view configuration_action_kind = "source.clice.conf
 /// and the one selected for the next start (clice/listConfigurations).
 ext::ListConfigurationsResult list_configurations(const Project& project);
 
-/// The file a `file:` URI names; nullopt for any other URI.
-std::optional<Spelling> uri_to_path(llvm::StringRef uri);
-
 /// The answer to a diagnostics pull.
 codec::raw_value full_report(std::vector<protocol::Diagnostic> items);
 

@@ -251,7 +251,7 @@ std::vector<feature::FileDiagnostic>
 void ServedProject::book_skipped_diagnostics(const ServedDocument& document, bool first) {
     auto& session = *document.session;
     auto path_id = session.path_id;
-    if(!project.settings.project.skip_header_bodies || document.serving != ServingMode::Escalated ||
+    if(!project.settings.project.skip_header_bodies || !document.compiles ||
        project.entries(path_id).empty()) {
         return;
     }
@@ -315,9 +315,9 @@ void ServedProject::edited(Session& session) {
     if(auto it = compile_interrupts.find(path_id); it != compile_interrupts.end()) {
         it->second->cancel();
     }
-    // Editing is the canonical escalation trigger: from here on the
-    // document invests in PCH/AST.
-    escalate(path_id);
+    // An edit is the first edit intent: from here on the document is
+    // compiled.
+    start_compiling(path_id);
 }
 
 void ServedProject::invalidate(Fid path_id) {
@@ -358,13 +358,12 @@ void ServedProject::inputs_changed(Session& session) {
     session.changed(Session::Clock::now());
 }
 
-void ServedProject::escalate(Fid path_id) {
+void ServedProject::start_compiling(Fid path_id) {
     auto& document = *find_document(path_id);
-    if(document.serving != ServingMode::IndexOnly ||
-       project.settings.project.readonly == ReadonlyMode::On) {
+    if(document.compiles || project.settings.project.readonly == ReadonlyMode::On) {
         return;
     }
-    document.serving = ServingMode::Escalated;
+    document.compiles = true;
     // Its compile serves the file's index, unless it skips the bodies of
     // the headers: then only a background run shows what they hold.
     if(!project.settings.project.skip_header_bodies) {

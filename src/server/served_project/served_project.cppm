@@ -53,18 +53,6 @@ enum class CompilePhase : std::uint8_t {
     Parsing,
 };
 
-/// An open document's resource-investment state. Written at exactly two
-/// points: adoption (from the readonly mode) and ServedProject::escalate (the
-/// triggers). Everything else derives routing from readiness, not from this
-/// flag.
-enum class ServingMode : std::uint8_t {
-    /// No PCH/AST investment: the document is served from the index.
-    IndexOnly,
-    /// PCH/AST investment is on; the index still answers while a compile
-    /// is in flight.
-    Escalated,
-};
-
 /// The publishable products of the most recent compilation (materialized
 /// whole-document feature results). The data lives in the document's
 /// compile; the client reads it from there when it is pushed, and with no
@@ -228,8 +216,10 @@ struct ServedDocument {
     /// staleness detection.
     std::optional<Inputs> inputs;
 
-    /// See ServingMode for the write discipline.
-    ServingMode serving = ServingMode::Escalated;
+    /// The document is compiled, as the first request needing its AST
+    /// asks; otherwise only the index answers it. Set by start_compiling,
+    /// never cleared.
+    bool compiles = false;
 
     /// The latest compile's file index merged with the file's shard's
     /// entries in the code the compile skipped (index::OpenBuffer::merged):
@@ -269,25 +259,26 @@ enum class Route : std::uint8_t {
     /// Ask the worker holding the AST (ServedProject::ast_request, which
     /// compiles as needed).
     AST,
-    /// No source can serve and none is being invested in (IndexOnly with
-    /// no matching shard): answer honestly empty.
+    /// No source can serve and the document is not compiled: answer
+    /// honestly empty.
     Empty,
 };
 
 struct RouteOptions {
     /// The feature's answer from the index raw-lexes the whole buffer
-    /// (semantic tokens, folds, the outline): it follows the investment
-    /// policy once the buffer is oversized, while answers that only look
-    /// the index up serve at any size.
-    bool full_lex = false;
+    /// (semantic tokens, folds, the outline): past max_lexed_buffer it
+    /// waits for the compile, or answers empty when the document is not
+    /// compiled, while answers that only look the index up serve at any
+    /// size.
+    bool lexes_whole_buffer = false;
 
     /// The feature has no refresh request, so an empty reply to a cold
     /// document would be cached by the client for good — no signal ever
     /// makes it re-pull. Await the didOpen index_first once (bounded by one index
     /// attempt) before answering Empty, and decide again from whatever
-    /// source is there once it finishes: the shard, the escalated compile,
-    /// or honestly empty under readonly "on".
-    bool await_cold_attempt = false;
+    /// source is there once it finishes: the shard, the compile, or
+    /// honestly empty under readonly "on".
+    bool waits_for_first_index = false;
 };
 
 struct EnsureOptions {
@@ -303,7 +294,7 @@ struct GateStop {
 };
 
 /// The largest buffer the master lexes whole on its own thread.
-constexpr std::size_t full_lex_cap = 8 * 1024 * 1024;
+constexpr std::size_t max_lexed_buffer = 8 * 1024 * 1024;
 
 /// What a request answers when the workers could not serve it.
 template <typename Value>
@@ -316,8 +307,8 @@ Value empty_value() {
 }
 
 /// One project the server serves: the project on disk, which builds over
-/// the process's worker pool, the open documents the master
-/// routed to it, and everything the project derives for them. Its work is
+/// the process's worker pool, the open documents that belong to it, and
+/// everything the project derives for them. Its work is
 /// split in files: lifetime, adoption and the open documents' commands
 /// (served_project.cpp), compiling the open documents (compile.cpp), what
 /// answers a request on them now and asking the workers (answer.cpp), and
@@ -328,10 +319,10 @@ public:
     /// `root` is the project's directory; empty for the rootless project a
     /// server without folders runs, which loads nothing. What the project
     /// tells of its index reaches the documents: an index attempt ending
-    /// (the index_first in decide_serving promised the index would serve the
-    /// cold document, and one that finishes without a servable shard ends
-    /// that promise — it escalates like the disabled-indexing branch, or the
-    /// document answers empty until its first edit; its run's skipped-body
+    /// (the index_first in decide_compiling promised the index would serve
+    /// the cold document, and one that finishes without a servable shard ends
+    /// that promise — it starts compiling like the disabled-indexing branch,
+    /// or the document answers empty until its first edit; its run's skipped-body
     /// diagnostics show), shards changing (documents without a current file
     /// index serve these very shards, freshness clause 4: the client asks
     /// again for what it pulled from them), and the records beside the index
@@ -351,7 +342,7 @@ public:
     /// Open the project (Project::open), queue what its index lacks, load
     /// the context choices it saved, and start its store-lifetime services;
     /// then watch its databases and files. Documents adopted before have
-    /// their serving decided now. A broken project starts nothing.
+    /// it decided now whether they compile. A broken project starts nothing.
     void start();
 
     /// Quiesce the compiles, then the project's own shutdown: the background
@@ -364,7 +355,7 @@ public:
         return has_error(settings_issues);
     }
 
-    /// Take over an open document the master routed here — just opened, or
+    /// Take over an open document that belongs here now — just opened, or
     /// moving from another project: discover the databases around it, and
     /// decide whether it is compiled or served from the index (now, or once
     /// the project starts).
@@ -383,7 +374,7 @@ public:
     /// about a document — its output, a crash, a refresh — only while it is.
     bool owns(const Session& session) const;
 
-    /// After the editor saved a file routed here: record it as a provisional
+    /// After the editor saved a file that belongs here: record it as a provisional
     /// member (Project::record_provisional).
     void record_saved(Fid path_id);
 
@@ -409,19 +400,19 @@ public:
     /// one-attempt-per-node discipline dedupes concurrent requests.
     void request_compile(std::shared_ptr<Session> session);
 
-    /// The escalation triggers' single write point: flip an index-only
-    /// document to Escalated. The build stays pull-driven — the next
-    /// request that needs the AST starts it. A no-op for already-escalated
-    /// documents and under readonly = "on" (the mode transition is
-    /// disabled).
-    void escalate(Fid path_id);
+    /// From now on the document is compiled (ServedDocument::compiles): as
+    /// it is taken over under readonly "off", and at the edit intents — an
+    /// edit, completion, signature help, a context choice. The build stays
+    /// pull-driven — the next request that needs the AST starts it. Nothing
+    /// under readonly "on", which never compiles a document.
+    void start_compiling(Fid path_id);
 
     /// The document was edited: the latest compile is no longer current and
     /// the in-flight attempt's result is void. Fires the attempt's advisory
     /// token and cancels its compile over IPC, which interrupts the
     /// worker's parse (the attempt still observes the real reply: crash
     /// accounting depends on it); the document is compiled from now on
-    /// (escalate).
+    /// (start_compiling).
     void edited(Session& session);
 
     /// The document compiles in another context now: a different
@@ -570,7 +561,8 @@ public:
 
     /// The project's context choices hold again or no longer do after the
     /// build or the include graph changed: an open document whose choice
-    /// flipped compiles in another context, and routing follows.
+    /// flipped compiles in another context, and the documents' owners
+    /// follow.
     void recheck_choices();
 
     // answer.cpp: what answers a request on an open document now, and
@@ -578,13 +570,15 @@ public:
     // the document's AST, from the products of its PCH build (the
     // preamble's links, cached here because the AST is built on top of the
     // PCH and cannot see the preamble), or from the index; which one is
-    // derived per request from readiness, never from a mode flag. Every
+    // derived per request from readiness and whether the document is
+    // compiled. Every
     // dispatch of a document's content to a worker is admitted by its crash
     // records and finishes through one exit (finish).
 
-    /// How the project serves the document of a ticket still fresh: a move
-    /// or a close makes every ticket of the document outdated.
-    ServingMode serving_of(const Session& session) const;
+    /// Whether the document of a ticket still fresh is compiled
+    /// (ServedDocument::compiles): a move or a close makes every ticket of
+    /// the document outdated.
+    bool compiles(const Session& session) const;
 
     /// Whether the worker's AST can answer for this document right now:
     /// compiled, current, and its compile not stopped by a crash (the check
@@ -594,10 +588,10 @@ public:
     bool ast_answerable(const Session& session) const;
 
     /// See Route: a current AST answers; otherwise an index source that is
-    /// byte-identical to the buffer; otherwise the compile the policy owes,
-    /// or nothing when it owes none. Starts an escalated document's compile
-    /// so an index answer never strands the AST investment the policy asked
-    /// for. A Route::Index decision stores the admitted source into `source`
+    /// byte-identical to the buffer; otherwise the compile of a compiled
+    /// document, or nothing for one that is not. Starts a compiled
+    /// document's compile so an index answer never leaves it waiting for a
+    /// request that needs the AST. A Route::Index decision stores the admitted source into `source`
     /// (when given) — callers must serve from it rather than re-derive, or
     /// the state could shift between the decision and the read.
     async::task<Route> pick_route(const Ticket& ticket,
@@ -759,8 +753,6 @@ public:
 
     /// Built over the server's pool, its runners set at construction —
     /// nodes materialize on demand, so a module-free project pays nothing.
-    /// The background index is serving-neutral; the document-side policy is
-    /// installed into its hooks at construction.
     Project project;
 
     /// Problems found while reading the settings, kept so the client can
@@ -774,11 +766,11 @@ private:
 
     // served_project.cpp
 
-    /// Decide a freshly opened index-only document's serving: escalate one
-    /// that already diverged from its shard, or index the file first in the
-    /// background when nothing can serve it. Escalated documents need no
-    /// decision — builds are pull-driven.
-    void decide_serving(ServedDocument& document);
+    /// Decide whether a freshly opened document that is not compiled starts
+    /// compiling: one that already diverged from its shard does; the file is
+    /// indexed first in the background when nothing can serve it. A compiled
+    /// document needs no decision — builds are pull-driven.
+    void decide_compiling(ServedDocument& document);
 
     /// When this project holds its cache directory's writer lock, the
     /// commands that find it taken ask this server to index for them:
@@ -901,7 +893,7 @@ private:
     /// The build's commands changed (`delta`, what databases' reloads report,
     /// or none for a member just recorded): the project follows
     /// (Project::update_members), every open document whose command moved
-    /// recompiles, and routing follows.
+    /// recompiles, and the documents' owners follow.
     void commands_changed(CDBDiff delta);
 
     /// What a change of the project's inputs did to the open documents: the
@@ -910,15 +902,15 @@ private:
     /// moved. Then the context choices are checked again, the background
     /// index runs what the change queued, a client holding answers of
     /// documents that went stale is asked to pull again, and when commands
-    /// changed, routing and the watched settings follow.
+    /// changed, the documents' owners and the watched settings follow.
     void follow(const Affected& affected);
 
 private:
-    /// The open documents routed here.
+    /// The open documents that belong here.
     llvm::DenseMap<Fid, ServedDocument> documents;
 
-    /// start() ran: documents adopted from now on have their serving
-    /// decided at once.
+    /// start() ran: documents adopted from now on have it decided at once
+    /// whether they compile.
     bool started = false;
 
     /// The build configuration the project activates (LoadedSettings).

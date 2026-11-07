@@ -21,13 +21,13 @@ test("index skips excluded units", async (t) => {
     });
 });
 
-test("excluded unit escalates when read", async (t) => {
+test("excluded unit compiles when read", async (t) => {
     // No shard will ever serve an excluded unit: the read-only session
     // compiles it at once when it is opened.
     const s = await t.start({ config: { project: { readonly: "auto" } } });
     s.open("third_party/lib.cpp", { pull: false });
     await s.sync();
     await t.show("symbols", s.documentSymbols("third_party/lib.cpp"));
-    // Nothing pulled: the compile the escalation started pushed these.
+    // Nothing pulled: the compile the read started pushed these.
     await t.show("pushed", s.pushes("third_party/lib.cpp"));
 });

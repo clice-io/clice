@@ -22,6 +22,19 @@ inline auto to_uri(llvm::StringRef file) -> std::string {
     return uri->str();
 }
 
+/// The file a `file:` URI names; nullopt for any other URI.
+inline auto to_path(llvm::StringRef uri) -> std::optional<Spelling> {
+    auto parsed = lsp::URI::parse(uri.str());
+    if(!parsed) {
+        return std::nullopt;
+    }
+    auto path = parsed->file_path();
+    if(!path || !path::is_absolute(*path)) {
+        return std::nullopt;
+    }
+    return Spelling::absolute(*path);
+}
+
 /// The LSP range of a site, and the location of its file, counted in
 /// `encoding`.
 protocol::Range to_range(const index::Site& site, PositionEncoding encoding);
