@@ -27,6 +27,9 @@ test("checkout under an open header", async (t) => {
     await s.indexed();
     await targets(t, s, "v1");
     s.open("header.h");
+    // Settled first: the open header's compile, ending after the checkout,
+    // would report it before the poll does.
+    await s.sync();
     expect(await s.poll("workspace")).toBe(0);
     // The editor reloads a clean buffer after a checkout: a change, no save.
     // The buffer shadows the disk for the header's own compile only, so the
