@@ -80,7 +80,7 @@ Live index     The index of the open buffer's latest compile
 
 **Instantiations** of a file hold what the template instantiations and macro expansions of every indexed translation unit resolve in that file's text and its shard leaves open (see below). They live beside the shard, at its content generation.
 
-An open file's **live index** comes from its most recent in-memory compilation and is owned by the document's latest compile. It is never written to global state — it only overlays queries, so results reflect the buffer the user is actually editing.
+An open file's **live index** comes from its most recent in-memory compilation and is owned by the document's latest compile. It is never written to global state — it only overlays queries, so results reflect the buffer the user is actually editing. The compile indexed the one context it ran in, the shard every context the file compiles in: while the buffer is the text the shard indexed, the live index is merged, in memory and once per compile, with the shard's entries in the code the compile skipped (its inactive regions), so the code only the file's other contexts compile answers too. The user can hide them per file (`clice/showOtherContexts`).
 
 ### Symbol Table Layering
 
@@ -143,7 +143,7 @@ Using "find references" as an example to illustrate the full cross-file query fl
 1. In the current file, use the cursor's byte offset to binary-search the `Occurrence` entries and obtain the `SymbolHash` of the symbol under the cursor
 2. Find the files holding the symbol's entries. For an external symbol, its reference-file bitmap in `ProjectIndex` lists them, and its instantiation-file bitmap the files whose instantiations name it. A symbol below that scope is in the file the cursor stands in and in the files of every manifest listing, for it, a file already found — a `static` in a header is found in every unit that includes the header, or reads it through a precompiled header
 3. Query each file in the list:
-   - If the file is open, its live index (from the latest in-memory compile) answers, provided it is current for the buffer
+   - If the file is open, its live index (from the latest in-memory compile) answers, provided it is current for the buffer — with the shard's entries in the code the compile skipped while the buffer is the text the shard indexed
    - Disk data for an **open** file is consulted only when the buffer content is byte-identical to the content the shard indexed — an edited buffer never serves stale disk positions
    - Files that are not open answer from their shard's live variants and their instantiation shard's live resolutions
 4. Aggregate all `Relation` entries found across files (filtering by the target `RelationKind`), convert to LSP positions, and return to the client
