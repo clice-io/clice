@@ -227,6 +227,20 @@ tests/diagnostics/clang_tidy/02_default_checks
 
 <!-- BEGIN CAPABILITY: supported -->
 
+**不运行的检查**
+
+对编辑器来说过慢的检查会点名告知，不会被悄悄略过
+
+已打开的文件既不运行对编辑器来说过慢的检查，也不运行在编辑中的代码上不可靠的检查。对于 `.clang-tidy` 启用的过慢检查，clice 会列出一次它们的名字，并说明如何运行；`clice lint` 两类都会运行。
+
+```case
+tests/diagnostics/clang_tidy/03_editor_exclusions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
 **使用 NOLINT 抑制诊断**
 
 `NOLINT` 注释会抑制所在行的检查结果，也会抑制编译器警告
@@ -267,9 +281,23 @@ tests/diagnostics/clang_tidy/09_turned_off
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**运行过慢的检查**
+
+设置 `clang_tidy_slow_checks = true` 后，对编辑器来说过慢的检查也会运行
+
+对编辑器来说过慢的检查（例如 `misc-const-correctness`）只有在明确要求时才会在已打开的文件上运行：文件的每次编译都要等它们完成。
+
+```case
+tests/diagnostics/clang_tidy/20_slow_checks
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
-- [x] 对编辑器来说过慢的检查，以及在编辑中的代码上不可靠的检查，不在编辑器中运行；`clice lint` 会运行它们
+- [x] 对编辑器来说过慢的检查，只有在 `clang_tidy_slow_checks` 要求时才会在已打开的文件上运行，clice 会列出它略过的检查；在编辑中的代码上不可靠的检查始终不运行；`clice lint` 会运行所有这些检查
 - [x] `performance-use-std-move` 既不在编辑器中运行，也不在 `clice lint` 中运行：在 clice 所基于的 LLVM 中，它处理从 PCH 或模块中读取的类时会崩溃
 - [x] 对 `.clang-tidy` 的修改会在已打开文件下次编译时生效
 - [x] 某个 clang-tidy 检查崩溃时，只暂停该文件的 clang-tidy，不影响它的其他功能

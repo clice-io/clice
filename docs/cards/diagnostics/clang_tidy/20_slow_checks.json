@@ -1,0 +1,63 @@
+{
+  "id": "diagnostics/clang_tidy/20_slow_checks",
+  "topic": "diagnostics",
+  "subtopic": "clang_tidy",
+  "title": "Running the slow checks",
+  "summary": "`clang_tidy_slow_checks = true` also runs the checks too slow for an editor",
+  "prose": "Checks too slow for an editor, such as `misc-const-correctness`, run on open files only when asked for: every compile of the file waits for them.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-tidy",
+      "text": "Checks: \"-*,misc-const-correctness\"\n",
+      "markers": []
+    },
+    {
+      "path": "clice.toml",
+      "text": "[diagnostics]\nclang_tidy_slow_checks = true\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "int twice(int value) {\n    int result = value * 2;\n    return result;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "⟦int⟧ result = value * 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 7
+                    }
+                  }
+                },
+                "severity": "warning",
+                "message": "variable 'result' of type 'int' can be declared 'const'",
+                "source": "clang-tidy",
+                "code": "misc-const-correctness",
+                "link": "https://clang.llvm.org/extra/clang-tidy/checks/misc/const-correctness.html",
+                "tags": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

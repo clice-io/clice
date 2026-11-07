@@ -1,0 +1,17 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = "⟦int⟧ unchanged = 1;",
+        severity = "warning",
+        message = "variable 'unchanged' of type 'int' can be declared 'const'",
+        source = "clang-tidy",
+        code = "misc-const-correctness",
+    },
+    {
+        at = "⟦S⟧ t = std::move(s);",
+        severity = "warning",
+        message = "variable 't' of type 'S' can be declared 'const'",
+        source = "clang-tidy",
+        code = "misc-const-correctness",
+    },
+]
