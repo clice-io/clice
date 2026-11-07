@@ -5,7 +5,6 @@ module;
 
 module clice:feature.hierarchy;
 
-import :index.peer_queries;
 import :index.query;
 import :index.site;
 import :index.symbol;
@@ -78,11 +77,11 @@ TypeHierarchy type_hierarchy(const index::IndexQuery& index,
 /// `operator delete`) has no item, nor has a function's local, which no
 /// function but its own calls.
 std::vector<protocol::CallHierarchyItem>
-    call_hierarchy_items(const index::PeerQueries& queries,
+    call_hierarchy_items(const index::IndexQuery& query,
                          const index::IndexQuery::Cursor& cursor,
                          PositionEncoding encoding);
 std::vector<protocol::TypeHierarchyItem>
-    type_hierarchy_items(const index::PeerQueries& queries,
+    type_hierarchy_items(const index::IndexQuery& query,
                          const index::IndexQuery::Cursor& cursor,
                          PositionEncoding encoding);
 
@@ -95,21 +94,21 @@ std::optional<index::SymbolHash> item_symbol(const index::IndexQuery& query,
                                              const std::optional<protocol::LSPAny>& data);
 
 /// A symbol's neighbours in the call graph and the type hierarchy, asked
-/// of every project knowing it (index::PeerQueries): each project's in the
-/// files it answers for, the same entity once.
-std::vector<protocol::CallHierarchyIncomingCall> incoming_calls(const index::PeerQueries& queries,
+/// of every project knowing it (index::IndexQuery::asked): each project's
+/// in the files it answers for, the same entity once.
+std::vector<protocol::CallHierarchyIncomingCall> incoming_calls(const index::IndexQuery& query,
                                                                 index::SymbolHash symbol,
                                                                 Fid file,
                                                                 PositionEncoding encoding);
-std::vector<protocol::CallHierarchyOutgoingCall> outgoing_calls(const index::PeerQueries& queries,
+std::vector<protocol::CallHierarchyOutgoingCall> outgoing_calls(const index::IndexQuery& query,
                                                                 index::SymbolHash symbol,
                                                                 Fid file,
                                                                 PositionEncoding encoding);
-std::vector<protocol::TypeHierarchyItem> supertypes(const index::PeerQueries& queries,
+std::vector<protocol::TypeHierarchyItem> supertypes(const index::IndexQuery& query,
                                                     index::SymbolHash symbol,
                                                     Fid file,
                                                     PositionEncoding encoding);
-std::vector<protocol::TypeHierarchyItem> subtypes(const index::PeerQueries& queries,
+std::vector<protocol::TypeHierarchyItem> subtypes(const index::IndexQuery& query,
                                                   index::SymbolHash symbol,
                                                   Fid file,
                                                   PositionEncoding encoding);

@@ -7,30 +7,42 @@ module;
 module clice;
 
 import :command.database;
-import :server.master;
-import :server.served_project;
+import :project.graph.task_graph;
+import :project.members;
+import :project.project;
+import :settings.rules;
 import :settings.settings;
-import :unittests.server.served_project_fixture;
+import :syntax.dependency_graph;
+import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.indexer_fixture;
+import :unittests.utils.project_fixture;
 import :unittests.utils.temp_dir;
-import :unittests.utils;
 import :vfs.disk_state;
+import :vfs.file_table;
 import :vfs.ids;
 import :vfs.path;
 
 namespace clice::testing {
 namespace {
 
-/// A project served from `root`, its databases loaded by the test and then
-/// watched (watch_databases).
-using Fixture = ServedProjectFixture;
+/// A project at `root`, its databases loaded by the test and then watched
+/// (watch_databases).
+struct Fixture : ProjectFixture {
+    using ProjectFixture::ProjectFixture;
+
+    void discover_around(Fid file) {
+        project.update_members(project.discover_databases({file}, {.load_now = true}), open_files);
+    }
+};
 
 /// A master tick as the databases' watch sees it: the file table looks at
 /// the flags, then every database is ticked against what the looks found.
 CDBDiff tick(Fixture& fixture, bool force = false) {
-    fixture.server.files.disk.look_flags();
-    return fixture.database_delta(force);
+    fixture.files.disk.look_flags();
+    return fixture.project.look_at_databases(
+        force,
+        ranges::to<llvm::SmallVector<Fid>>(views::transform(fixture.open_files, &OpenFile::file)));
 }
 
 /// What one workspace tick of the test hook saw: a look at every file, then
@@ -48,10 +60,11 @@ struct WorkspaceTick {
 };
 
 WorkspaceTick workspace_tick(Fixture& fixture) {
-    auto& disk = fixture.server.files.disk;
+    auto& disk = fixture.files.disk;
+    auto& project = fixture.project;
     disk.look_all();
-    auto [joined] = async::run(fixture.served->poll_sources());
-    return {.joined = *joined, .changes = disk.take_changes()};
+    auto added = project.refresh_default_sources(walk_sources(project.rules.source_walk()));
+    return {.joined = !added.empty(), .changes = disk.take_changes()};
 }
 
 ZEST_SUITE(Databases) {
@@ -61,13 +74,13 @@ ZEST_CASE(CDBTickDebounces) {
     tmp.touch("main.cpp", R"(int main() {})");
     tmp.touch("lib.cpp", R"(int lib() { return 1; })");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    fixture.watch_databases();
+    project.watch_databases();
 
     // Rewrite with one more entry: the first tick only records the pending
     // content, the second sees it stable and reloads.
@@ -91,13 +104,13 @@ ZEST_CASE(CDBTickForceImmediate) {
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    fixture.watch_databases();
+    project.watch_databases();
 
     tmp.touch("compile_commands.json",
               build_cdb_json({
@@ -113,7 +126,7 @@ ZEST_CASE(CDBTickDiscoversLate) {
     tmp.touch("main.cpp", R"(int main() {})");
     // No compile_commands.json when the watch starts.
     Fixture fixture(tmp.root);
-    fixture.watch_databases();
+    fixture.project.watch_databases();
     ZASSERT(tick(fixture, /*force=*/true).empty());
 
     tmp.touch("compile_commands.json",
@@ -132,7 +145,7 @@ ZEST_CASE(CDBTickWatchesSubdirectory) {
     tmp.touch("main.cpp", R"(int main() {})");
     tmp.mkdir("build");
     Fixture fixture(tmp.root);
-    fixture.watch_databases();
+    fixture.project.watch_databases();
     ZASSERT(tick(fixture).empty());
 
     tmp.touch("build/compile_commands.json",
@@ -152,7 +165,7 @@ ZEST_CASE(CDBTickNewSubdirectory) {
     tmp.touch("main.cpp", R"(int main() {})");
     ZASSERT(set_file_mtime(tmp.root, file_mtime_ns(tmp.root) - 10'000'000'000));
     Fixture fixture(tmp.root);
-    fixture.watch_databases();
+    fixture.project.watch_databases();
     ZASSERT(tick(fixture).empty());
 
     tmp.touch("out/compile_commands.json",
@@ -173,7 +186,7 @@ ZEST_CASE(CDBTickDanglingSymlink) {
     ZASSERT(::symlink(elsewhere.path("target").c_str(), tmp.path("build").c_str()) == 0);
     ZASSERT(set_file_mtime(tmp.root, file_mtime_ns(tmp.root) - 10'000'000'000));
     Fixture fixture(tmp.root);
-    fixture.watch_databases();
+    fixture.project.watch_databases();
     ZASSERT(tick(fixture).empty());
 
     elsewhere.touch("target/compile_commands.json",
@@ -191,8 +204,8 @@ ZEST_CASE(CDBTickAboveOpenFile) {
     TempDir tmp;
     tmp.touch("a/b/main.cpp", R"(int main() {})");
     Fixture fixture(tmp.root);
-    fixture.watch_databases();
-    auto main_id = fixture.open(tmp.path("a/b/main.cpp"), "")->path_id;
+    fixture.project.watch_databases();
+    auto main_id = fixture.open_document(tmp.path("a/b/main.cpp"));
     ZASSERT(tick(fixture).empty());
 
     tmp.touch("a/b/compile_commands.json",
@@ -208,13 +221,13 @@ ZEST_CASE(CDBTickDeleteRecreate) {
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    fixture.watch_databases();
+    project.watch_databases();
 
     // Deletion (mid-regeneration): keep serving the loaded entries.
     fs::remove_all(tmp.path("compile_commands.json"));
@@ -236,11 +249,11 @@ ZEST_CASE(CDBTickRetriesFailedLoad) {
     TempDir tmp;
     tmp.touch("compile_commands.json", "[ ");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     auto id = project.cdb.add_source(Spelling::absolute(tmp.path("compile_commands.json")));
     ZASSERT(!project.cdb.load_source(id).has_value());
     auto before = file_mtime_ns(tmp.path("compile_commands.json"));
-    fixture.watch_databases();
+    project.watch_databases();
 
     tmp.touch("compile_commands.json", "[]");
     ZASSERT(set_file_mtime(tmp.path("compile_commands.json"), before));
@@ -259,13 +272,13 @@ ZEST_CASE(CDBTickRelocates) {
     tmp.touch("main.cpp", R"(int main() {})");
     tmp.touch("only.cpp", R"(int only() {})");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     auto original = build_cdb_json({
         {tmp.root, tmp.path("main.cpp"), {}},
         {tmp.root, tmp.path("only.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, original);
-    fixture.watch_databases();
+    project.watch_databases();
     auto main_id = fixture.intern(tmp.path("main.cpp"));
     auto only_id = fixture.intern(tmp.path("only.cpp"));
     auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
@@ -299,7 +312,7 @@ ZEST_CASE(CDBDeletedBeforeWatch) {
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
@@ -308,7 +321,7 @@ ZEST_CASE(CDBDeletedBeforeWatch) {
     auto id = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
     ZASSERT(project.cdb.present(id));
     fs::remove_all(tmp.path("compile_commands.json"));
-    fixture.watch_databases();
+    project.watch_databases();
     ZEXPECT(tick(fixture).empty());
     ZEXPECT(tick(fixture).empty());
     ZEXPECT(!project.cdb.present(id));
@@ -322,14 +335,14 @@ ZEST_CASE(ResponseRewriteBeforeWatch) {
     tmp.touch("main.cpp", R"(int main() {})");
     tmp.touch("flags.rsp", "-DONE\n");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
     }));
     tmp.touch("flags.rsp", "-DTWO\n");
-    fixture.watch_databases();
+    project.watch_databases();
     ZEXPECT(tick(fixture).empty());
     auto delta = tick(fixture);
     auto main = fixture.intern(tmp.path("main.cpp"));
@@ -343,13 +356,13 @@ ZEST_CASE(ResponseAddedByReload) {
     tmp.touch("main.cpp", R"(int main() {})");
     tmp.touch("flags.rsp", "-DONE\n");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    fixture.watch_databases();
+    project.watch_databases();
     tmp.touch("compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
@@ -369,13 +382,13 @@ ZEST_CASE(CDBTickRenameOver) {
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
     }));
-    fixture.watch_databases();
+    project.watch_databases();
     auto before = file_mtime_ns(tmp.path("compile_commands.json"));
 
     tmp.touch("replacement.json",
@@ -398,30 +411,29 @@ ZEST_CASE(CDBDiscoverRetriesRegistered) {
     TempDir tmp;
     tmp.touch("a/main.cpp", R"(int main() {})");
     Fixture fixture(tmp.root);
-    auto& served = *fixture.served;
-    auto& project = served.project;
+    auto& project = fixture.project;
     project.settings.finalize(project.root);
     project.rules = Rules(project.settings, project.root, "");
     auto id = project.cdb.add_source(Spelling::absolute(tmp.path("a/compile_commands.json")));
-    fixture.watch_databases();
+    project.watch_databases();
     auto main = fixture.intern(tmp.path("a/main.cpp"));
     // Every change of the build the project follows moves the commands'
     // epoch on.
     auto epoch = project.commands_epoch;
-    served.discover_around(main);
+    fixture.discover_around(main);
     ZEXPECT(project.commands_epoch == epoch);
 
     tmp.touch("a/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/main.cpp"), {}}
     }));
-    served.discover_around(main);
+    fixture.discover_around(main);
     ZEXPECT(project.commands_epoch == epoch + 1);
     ZEXPECT(!project.entries(main).empty());
-    ZEXPECT(IndexerFixture::pending_files(served.project.background_index.queue()) ==
+    ZEXPECT(IndexerFixture::pending_files(project.background_index.queue()) ==
             llvm::SmallVector<Fid>{main});
     ZEXPECT(project.cdb.loaded(id));
-    served.discover_around(main);
+    fixture.discover_around(main);
     ZEXPECT(project.commands_epoch == epoch + 1);
 }
 
@@ -442,10 +454,10 @@ ZEST_CASE(CDBTickFollowsRetarget) {
     auto database = tmp.path("compile_commands.json");
     ZASSERT(::symlink(tmp.path("debug.json").c_str(), database.c_str()) == 0);
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     auto id = project.cdb.add_source(Spelling::absolute(database));
     ZASSERT(project.cdb.load_source(id));
-    fixture.watch_databases();
+    project.watch_databases();
 
     fs::remove(database);
     ZASSERT(::symlink(tmp.path("release.json").c_str(), database.c_str()) == 0);
@@ -465,35 +477,34 @@ ZEST_CASE(CDBTickDiscoversAround) {
     tmp.touch("a/b/main.cpp", R"(int main() {})");
     tmp.touch("a/other.cpp", R"(int other() {})");
     Fixture fixture(tmp.root);
-    auto& served = *fixture.served;
-    auto& project = served.project;
+    auto& project = fixture.project;
     project.settings.finalize(project.root);
     project.rules = Rules(project.settings, project.root, "");
     tmp.touch("a/b/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/b/main.cpp"), {}}
     }));
-    fixture.watch_databases();
+    project.watch_databases();
     auto main_id = fixture.intern(tmp.path("a/b/main.cpp"));
     auto other_id = fixture.intern(tmp.path("a/other.cpp"));
 
     // Every change of the build the project follows moves the commands'
     // epoch on.
     auto epoch = project.commands_epoch;
-    served.discover_around(main_id);
+    fixture.discover_around(main_id);
     ZASSERT(project.commands_epoch == epoch + 1);
     ZASSERT(!project.entries(main_id).empty());
-    ZASSERT(IndexerFixture::pending_files(served.project.background_index.queue()) ==
+    ZASSERT(IndexerFixture::pending_files(project.background_index.queue()) ==
             llvm::SmallVector<Fid>{main_id});
-    served.discover_around(main_id);
+    fixture.discover_around(main_id);
     ZEXPECT(project.commands_epoch == epoch + 1);
-    served.discover_around(other_id);
+    fixture.discover_around(other_id);
     ZEXPECT(project.commands_epoch == epoch + 1);
     auto outside = fixture.intern(path::join(path::parent(tmp.root), "x.cpp"));
-    served.discover_around(outside);
+    fixture.discover_around(outside);
     ZEXPECT(project.commands_epoch == epoch + 1);
 
-    fixture.open(tmp.path("a/other.cpp"), "");
+    fixture.open_document(tmp.path("a/other.cpp"));
     tmp.touch("a/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/other.cpp"), {}}
@@ -511,12 +522,12 @@ ZEST_CASE(CDBTickPhantomReplacement) {
     tmp.touch("main.cpp", R"(int main() {})");
     tmp.touch("other.cpp", R"(int other() {})");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     auto original = build_cdb_json({
         {tmp.root, tmp.path("main.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, original);
-    fixture.watch_databases();
+    project.watch_databases();
     auto main_id = fixture.intern(tmp.path("main.cpp"));
     auto other_id = fixture.intern(tmp.path("other.cpp"));
     auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
@@ -546,12 +557,12 @@ ZEST_CASE(CDBTickCoalescesSources) {
     tmp.touch("a/main.cpp", R"(int main() {})");
     tmp.touch("b/other.cpp", R"(int other() {})");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     project.settings.finalize(project.root);
     project.rules = Rules(project.settings, project.root, "");
     auto a = project.cdb.add_source(Spelling::absolute(tmp.path("a/compile_commands.json")));
     auto b = project.cdb.add_source(Spelling::absolute(tmp.path("b/compile_commands.json")));
-    fixture.watch_databases();
+    project.watch_databases();
     tmp.touch("a/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/main.cpp"), {}}
@@ -573,7 +584,7 @@ ZEST_CASE(CDBRewriteBeforeWatch) {
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
@@ -583,7 +594,7 @@ ZEST_CASE(CDBRewriteBeforeWatch) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DLONGER"}}
     }));
-    fixture.watch_databases();
+    project.watch_databases();
 
     ZASSERT(tick(fixture).empty());
     auto delta = tick(fixture);
@@ -599,7 +610,7 @@ ZEST_CASE(CDBSameStampRewrite) {
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
@@ -610,7 +621,7 @@ ZEST_CASE(CDBSameStampRewrite) {
     auto mtime = file_mtime_ns(database) + 3'600'000'000'000;
     ZASSERT(set_file_mtime(database, mtime));
     ZASSERT(project.cdb.reload_and_diff(SourceID(0)));
-    fixture.watch_databases();
+    project.watch_databases();
     ZASSERT(tick(fixture).empty());
 
     tmp.touch("compile_commands.json",
@@ -632,7 +643,7 @@ ZEST_CASE(CDBForgedStampSeen) {
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
@@ -642,7 +653,7 @@ ZEST_CASE(CDBForgedStampSeen) {
     auto mtime = file_mtime_ns(database) - 3'600'000'000'000;
     ZASSERT(set_file_mtime(database, mtime));
     ZASSERT(project.cdb.reload_and_diff(SourceID(0)));
-    fixture.watch_databases();
+    project.watch_databases();
     ZASSERT(tick(fixture).empty());
     ZASSERT(tick(fixture).empty());
 
@@ -661,9 +672,9 @@ ZEST_CASE(WorkspaceTickStateMachine) {
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");
     Fixture fixture(tmp.root);
-    auto& disk = fixture.server.files.disk;
+    auto& disk = fixture.files.disk;
     auto header = fixture.intern(tmp.path("header.h"));
-    fixture.watch_databases();
+    fixture.project.watch_databases();
 
     // A first look is no change.
     disk.current(header);
@@ -706,7 +717,7 @@ ZEST_CASE(WorkspaceTickKeepsListedMember) {
     TempDir tmp;
     tmp.touch("src/both.cpp", R"(int both() {})");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     project.settings.rules.push_back(
         Rule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
     project.settings.finalize(project.root);
@@ -716,7 +727,7 @@ ZEST_CASE(WorkspaceTickKeepsListedMember) {
               build_cdb_json({
                   {tmp.root, tmp.path("src/both.cpp"), {}}
     }));
-    fixture.watch_databases();
+    project.watch_databases();
     auto both = fixture.intern(tmp.path("src/both.cpp"));
     project.file_table.disk.current(both);
     ZASSERT(workspace_tick(fixture).empty());
@@ -735,10 +746,10 @@ ZEST_CASE(WorkspaceTickSeesOpen) {
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");
     Fixture fixture(tmp.root);
-    auto& disk = fixture.server.files.disk;
-    auto header = fixture.open(tmp.path("header.h"), "")->path_id;
+    auto& disk = fixture.files.disk;
+    auto header = fixture.open_document(tmp.path("header.h"));
     disk.current(header);
-    fixture.watch_databases();
+    fixture.project.watch_databases();
     ZASSERT(workspace_tick(fixture).empty());
 
     tmp.touch("header.h", R"(int x = 2222;)");
@@ -761,11 +772,11 @@ ZEST_CASE(WorkspaceTickAfterScan) {
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");
     Fixture fixture(tmp.root);
-    auto& disk = fixture.server.files.disk;
+    auto& disk = fixture.files.disk;
     auto header = fixture.intern(tmp.path("header.h"));
     disk.read(header);
     tmp.touch("header.h", R"(int x = 2222;)");
-    fixture.watch_databases();
+    fixture.project.watch_databases();
 
     auto first = workspace_tick(fixture);
     ZASSERT(!first.joined);
@@ -782,7 +793,7 @@ ZEST_CASE(AnyLookReportsChange) {
     tmp.touch("header.h", R"(int x = 1;)");
     tmp.touch("main.cpp", R"(#include "header.h")");
     Fixture fixture(tmp.root);
-    auto& project = fixture.served->project;
+    auto& project = fixture.project;
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({
@@ -791,9 +802,9 @@ ZEST_CASE(AnyLookReportsChange) {
     scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
     auto header = fixture.intern(tmp.path("header.h"));
-    fixture.watch_databases();
+    project.watch_databases();
     tmp.touch("header.h", R"(int x = 2222;)");
-    project.rescan_disk_file(header);
+    rescan_dependency_graph(project.cdb, project.toolchain, project.dep_graph, header);
 
     auto first = workspace_tick(fixture);
     ZASSERT(!first.joined);
@@ -811,14 +822,14 @@ ZEST_CASE(CheckoutMakesWorkspaceDue) {
     tmp.touch("header.h", R"(int x = 1;)");
 
     Fixture fixture(tmp.root);
-    auto& files = fixture.server.files;
+    auto& files = fixture.files;
     auto time = vfs::DiskState::Clock::now();
     files.disk.now = [&] {
         return time;
     };
     auto header = fixture.intern(tmp.path("header.h"));
     files.disk.current(header);
-    fixture.watch_databases();
+    fixture.project.watch_databases();
 
     tmp.touch("header.h", R"(int x = 2222;)");
     files.disk.tick(chrono::hours(1));
@@ -838,45 +849,19 @@ ZEST_CASE(LinkedWorktreeWatched) {
     tmp.touch("wt/header.h", R"(int x = 1;)");
 
     Fixture fixture(tmp.path("wt"));
-    auto& files = fixture.server.files;
+    auto& files = fixture.files;
     auto time = vfs::DiskState::Clock::now();
     files.disk.now = [&] {
         return time;
     };
     auto header = fixture.intern(tmp.path("wt/header.h"));
     files.disk.current(header);
-    fixture.watch_databases();
+    fixture.project.watch_databases();
 
     tmp.touch("wt/header.h", R"(int x = 2222;)");
     tmp.touch("repo/.git/worktrees/wt/HEAD", "ref: refs/heads/other\n");
     files.disk.tick(chrono::hours(1));
     ZASSERT(files.disk.take_changes() == llvm::SmallVector<Fid>{header});
-}
-
-ZEST_CASE(ListingBeatsRecordedMember) {
-    /// A file the nested project recorded as a provisional member, which
-    /// the enclosing project's database lists: the listing serves it, the
-    /// deeper root notwithstanding. A record is no listing.
-    TempDir tmp;
-    tmp.touch("sub/x.cpp", "int x;\n");
-    Fixture fixture(tmp.path("sub"));
-    auto& nested = *fixture.served;
-    auto outer = std::make_shared<ServedProject>(fixture.server,
-                                                 CanonicalPath(Spelling::absolute(tmp.root)));
-    fixture.server.projects.push_back(outer);
-    Fixture::hold_flushes(*outer);
-    auto file = fixture.intern(tmp.path("sub/x.cpp"));
-    ZASSERT(nested.project.record_provisional(file));
-    nested.project.update_members({});
-    ZASSERT(nested.project.is_unit(file));
-    ZASSERT(&fixture.server.owner_of(file) == &nested);
-
-    write_cdb(tmp,
-              outer->project.cdb,
-              build_cdb_json({
-                  {tmp.root, tmp.path("sub/x.cpp"), {}}
-    }));
-    ZEXPECT(&fixture.server.owner_of(file) == outer.get());
 }
 
 };  // ZEST_SUITE(Databases)

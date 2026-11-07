@@ -1,8 +1,8 @@
 module clice;
 
 import :index.project_index;
+import :project.background;
 import :project.graph.unit;
-import :project.indexer;
 import :project.project;
 import :support.environment;
 import :support.logging;
@@ -30,7 +30,6 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                                    PassState& pass) {
     using Status = UnitResult::Status;
     auto path_id = taken.id;
-    auto* serving = project.serving;
     auto file_path = std::string(project.file_table.resolve(path_id));
     // A booked content change is authoritative: whoever booked it saw
     // the edit. The dep-hash check cannot be trusted
@@ -38,21 +37,19 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
     // dependencies), so only deps-only reindexes — where it exists to
     // deduplicate cascade storms — may take the shortcut.
     bool content_changed = reindexes.pending_reason(path_id) == ReindexReason::ContentChanged;
-    bool served = !content_changed && serving && serving->compiled_by_session(path_id);
-    bool skipped = serving && project.settings.project.skip_header_bodies;
-    if(!served && (content_changed || (skipped && serving->lacks_skipped_diagnostics(path_id)) ||
-                   project.index.needs_reindex(path_id) ||
-                   project.index.indexed_command(path_id) != project.command_identity(path_id))) {
+    bool diagnostics = reindexes.wants_diagnostics(path_id);
+    auto compiled_by = project.compiled_by(path_id);
+    if(content_changed ||
+       (compiled_by != CompiledBy::Document && (diagnostics || !project.index_holds(path_id)))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
         // A build compiling the unit indexes it but brings no such
-        // diagnostics: only an open document lacking them compiles it for
-        // them.
-        bool wants_skipped = skipped && (!project.compiled_by_build(path_id) ||
-                                         serving->lacks_skipped_diagnostics(path_id));
+        // diagnostics: only a booking asking for them compiles it for them.
+        bool wants_skipped =
+            options.skipped_diagnostics && (compiled_by != CompiledBy::Build || diagnostics);
         auto result = co_await project.compile_unit(
             path_id,
             {.index = true,
-             .errors = errors,
+             .errors = options.errors,
              .skipped_diagnostics = wants_skipped,
              .outdated = [this, taken] { return reindexes.outdated(taken); }});
         if(!result) {
@@ -72,11 +69,12 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
         switch(result->status) {
             case Status::Completed: {
                 record(path_id, {.errors = std::move(result->errors)});
+                // Unless a reindex booked during the run says they describe
+                // inputs that changed.
                 if(auto pending = reindexes.peek(path_id);
                    wants_skipped && pending && pending->seq == taken.seq) {
-                    serving->report_skipped_diagnostics(path_id,
-                                                        result->text_hash,
-                                                        std::move(result->skipped_diagnostics));
+                    skipped[path_id] = {.text_hash = result->text_hash,
+                                        .diagnostics = std::move(result->skipped_diagnostics)};
                 }
                 indexed_units += 1;
                 LOG_PERF("index",
@@ -189,15 +187,12 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
     // staleness by content hash. A re-enqueue during the flight booked
     // a newer reindex: the finish leaves it standing.
     reindexes.finish(taken);
-    // The attempt finished with no retry pending; the serving side judges
-    // whether an open session still waiting on the index can ever be
-    // served by it, before its waiters wake (contract 15).
-    if(serving && !reindexes.contains(path_id)) {
-        serving->attempt_finished(path_id);
+    if(!reindexes.contains(path_id)) {
+        on_attempt_finished.emit(path_id);
     }
     // Wake the waiters parked on this attempt (and older sequence numbers it
-    // covers) after the escalation above, so they re-derive their route
-    // against the finished state. Waiters of a requeue made during the
+    // covers) after what the attempt's end made of their document, so they
+    // re-derive their route against the finished state. Waiters of a requeue made during the
     // flight bound the fresh sequence number and stay parked for that newer
     // attempt.
     wake_waiters(path_id, taken.seq);
@@ -394,12 +389,12 @@ async::task<> BackgroundIndex::run_pass() {
     }
 }
 
-void BackgroundIndex::start(bool errors) {
+void BackgroundIndex::start(BackgroundOptions options) {
     if(state != State::Off) {
         return;
     }
     state = State::Started;
-    this->errors = errors;
+    this->options = options;
     auto& index = project.index;
     for(auto member: project.members()) {
         if(!index.indexed(member)) {
@@ -415,7 +410,7 @@ void BackgroundIndex::start(bool errors) {
     schedule();
 }
 
-bool BackgroundIndex::enqueue(Fid file, ReindexReason reason) {
+bool BackgroundIndex::enqueue(Fid file, ReindexReason reason, bool diagnostics) {
     // The one admission point of the background index: a file the build
     // does not compile as a unit, or a rule's `index = false` keeps out,
     // stays out here, whichever path asked — a cascade reaching a unit the
@@ -428,22 +423,32 @@ bool BackgroundIndex::enqueue(Fid file, ReindexReason reason) {
     // skip would finish the fresh sequence number on a result memoized
     // before the change and the file would never re-index.
     project.index.clear_staleness_cache();
-    reindexes.record(file, reason);
+    reindexes.record(file, reason, diagnostics);
     return true;
 }
 
-void BackgroundIndex::index_first(Fid file) {
-    if(!enqueue(file, ReindexReason::DepsOnly)) {
-        // No attempt will ever finish for an excluded file: the serving
-        // side hears that now, or the session waits on the index forever.
-        if(auto* serving = project.serving) {
-            serving->attempt_finished(file);
-        }
+void BackgroundIndex::index_first(Fid file, bool diagnostics) {
+    if(!enqueue(file, ReindexReason::DepsOnly, diagnostics)) {
+        // No attempt will ever finish for an excluded file: a document
+        // waiting on the index hears that now, or waits forever.
+        on_attempt_finished.emit(file);
         return;
     }
     // The file someone is reading beats the bulk backlog.
     reindexes.move_to_front(file);
     schedule(/*immediate=*/true);
+}
+
+void BackgroundIndex::leave_to_document(Fid file) {
+    documents_compile.insert(file);
+}
+
+void BackgroundIndex::take_back(Fid file) {
+    documents_compile.erase(file);
+    if(!project.file_table.disk.seen_missing(file) && !failed(file) &&
+       enqueue(file, ReindexReason::DepsOnly)) {
+        schedule();
+    }
 }
 
 void BackgroundIndex::forget(Fid file) {

@@ -79,6 +79,11 @@ std::unique_ptr<clang::CompilerInvocation>
     // in CompilationUnit's destructor instead.
     pp_opts.RetainRemappedFileBuffers = true;
 
+    // Clang opens the focus file by the name its command gives. Served by
+    // another name (the editor's, through a link), the file is parsed from a
+    // copy of that name's content cache, which the completion point clang
+    // marks later in the original never reaches.
+    auto opened = invocation->getFrontendOpts().Inputs[0].getFile();
     for(auto& [file, text]: input.buffers) {
         auto& buffer = remapped_buffers.emplace_back();
         if(file == input.focus && !input.suffix.empty()) {
@@ -88,7 +93,7 @@ std::unique_ptr<clang::CompilerInvocation>
         } else {
             buffer = llvm::MemoryBuffer::getMemBuffer(text);
         }
-        pp_opts.addRemappedFile(file, buffer.get());
+        pp_opts.addRemappedFile(file == input.focus ? opened : file, buffer.get());
     }
     if(params.kind != CompilationKind::Preamble) {
         pp_opts.Includes.append_range(input.forced_includes);

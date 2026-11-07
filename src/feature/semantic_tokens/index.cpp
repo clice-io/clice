@@ -113,11 +113,12 @@ auto semantic_tokens(SourceText& source,
 
 void merge_other_contexts(std::vector<SemanticToken>& tokens, llvm::ArrayRef<SemanticToken> index) {
     auto inactive = mask(SemanticTokenModifier::Inactive);
-    auto begin_of = [](const SemanticToken& token) {
-        return token.range.begin;
+    auto end_of = [](const SemanticToken& token) {
+        return token.range.end;
     };
     // The AST merges the adjacent tokens of inactive code it classifies
-    // alike (`f()` one plain token): the index's tokens split them.
+    // alike (`f()` one plain token) and the index a name of several tokens
+    // (`~Widget`): each splits the other's.
     std::vector<SemanticToken> merged;
     merged.reserve(tokens.size());
     auto next = index.begin();
@@ -126,18 +127,27 @@ void merge_other_contexts(std::vector<SemanticToken>& tokens, llvm::ArrayRef<Sem
             merged.push_back(token);
             continue;
         }
-        next = ranges::lower_bound(next, index.end(), token.range.begin, {}, begin_of);
+        next = ranges::upper_bound(next, index.end(), token.range.begin, {}, end_of);
         auto at = token.range.begin;
-        for(; next != index.end() && next->range.end <= token.range.end; ++next) {
-            if(next->range.begin > at) {
+        for(; next != index.end() && next->range.begin < token.range.end; ++next) {
+            auto begin = std::max(next->range.begin, at);
+            auto end = std::min(next->range.end, token.range.end);
+            if(begin > at) {
                 merged.push_back({
-                    {at, next->range.begin},
+                    {at, begin},
                     token.kind,
                     token.modifiers
                 });
             }
-            merged.push_back({next->range, next->kind, next->modifiers | inactive});
-            at = next->range.end;
+            merged.push_back({
+                {begin, end},
+                next->kind,
+                next->modifiers | inactive
+            });
+            at = end;
+            if(next->range.end > token.range.end) {
+                break;
+            }
         }
         if(at < token.range.end) {
             merged.push_back({

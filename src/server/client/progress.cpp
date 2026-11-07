@@ -1,7 +1,7 @@
 module clice;
 
 import :feature.protocol;
-import :project.indexer;
+import :project.background;
 import :server.client;
 import :server.master;
 import :vfs.path;

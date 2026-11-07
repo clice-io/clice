@@ -4,7 +4,6 @@ import :compile.compilation;
 import :feature.inlay_hints;
 import :feature.protocol;
 import :index.indexer;
-import :index.peer_queries;
 import :index.query;
 import :index.site;
 import :index.symbol;
@@ -1925,9 +1924,9 @@ auto to_protocol(llvm::ArrayRef<InlayHint> hints,
 auto to_protocol(llvm::ArrayRef<InlayHint> hints,
                  const PositionMap& map,
                  PositionEncoding encoding,
-                 const index::PeerQueries& queries,
+                 const index::IndexQuery& query,
                  Fid file) -> std::vector<protocol::InlayHint> {
-    auto& files = queries.own.file_table();
+    auto& files = query.file_table();
     // A reply names the same few types and parameters over and over.
     llvm::DenseMap<std::pair<index::SymbolHash, Fid>, std::optional<protocol::Location>> located;
     auto locate = [&](const InlayHintPart& part) -> std::optional<protocol::Location> {
@@ -1946,17 +1945,17 @@ auto to_protocol(llvm::ArrayRef<InlayHint> hints,
         if(!inserted) {
             return it->second;
         }
-        auto sites = queries.gather(part.symbol,
-                                    anchor,
-                                    [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                        for(auto kind:
-                                            {RelationKind::Declaration, RelationKind::Definition}) {
-                                            if(auto site = from.first_site(named, anchor, kind)) {
-                                                return std::vector{std::move(*site)};
-                                            }
-                                        }
-                                        return std::vector<index::Site>{};
-                                    });
+        auto sites =
+            query.gather(part.symbol,
+                         anchor,
+                         [&](const index::IndexQuery& from, index::SymbolHash named) {
+                             for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
+                                 if(auto site = from.first_site(named, anchor, kind)) {
+                                     return std::vector{std::move(*site)};
+                                 }
+                             }
+                             return std::vector<index::Site>{};
+                         });
         if(!sites.empty()) {
             it->second = to_location(sites.front(), encoding);
         }

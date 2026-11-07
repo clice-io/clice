@@ -1,8 +1,8 @@
 import { test } from "@clice/tools/testing";
 
-// Loaded preamble states follow the open documents (their count and two
-// more, kept warm): closing every document unloads some, and a document
-// opened again reloads its state from disk and answers from it.
+// Loaded preamble states live while a document's compile holds them:
+// closing every document unloads them, and a document opened again reloads
+// its state from disk and answers from it.
 
 test(async (t) => {
     const s = await t.start();

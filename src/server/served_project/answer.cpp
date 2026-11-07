@@ -1,11 +1,16 @@
 module clice;
 
-import :index.peer_queries;
+import :feature.inactive_regions;
+import :index.project_index;
+import :index.query;
+import :index.shard;
 import :server.master;
 import :server.served_project;
 import :support.logging;
+import :support.bytes;
 import :syntax.scan;
 import :vfs.file_system;
+import :vfs.path;
 import :support.timer;
 import :worker.protocol;
 
@@ -49,7 +54,7 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
             // crash stops the compile — the worker cannot be asked, the
             // index is still true), else the disk shard admitted by
             // freshness clause 4.
-            auto admitted = project.index_query.serving(session.path_id);
+            auto admitted = query().serving(session.path_id);
             // The disk shard merges every context the file compiles in, or
             // holds its first command's: a context the user chose waits for
             // its own compile.
@@ -120,18 +125,151 @@ std::optional<index::IndexQuery::Cursor>
     if(!path_id.valid()) {
         return std::nullopt;
     }
-    return project.index_query.symbol_at(path_id, position, server.position_encoding);
+    return query().symbol_at(path_id, position, server.position_encoding);
 }
 
-index::PeerQueries ServedProject::peer_queries() {
-    return {
-        .own = project.index_query,
-        .peers = [this] { return server.peer_queries(*this); },
-        .open_in = [this](Fid file) -> const index::IndexQuery* {
-            auto* document = server.find_document(file);
-            return document && document->owner ? &document->owner->project.index_query : nullptr;
-        },
+/// A shard's entries counted and hashed, whichever variants hold them: a
+/// merge only adds to the entries of the shards it takes, so equal counts
+/// are equal entries.
+struct Entries {
+    std::size_t count = 0;
+    std::uint64_t hash = 0;
+};
+
+static Entries entries_of(const index::Shard& shard) {
+    Entries entries;
+    shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
+        entries.count += 1;
+        entries.hash = llvm::hash_combine(entries.hash,
+                                          occurrence.range.begin,
+                                          occurrence.range.end,
+                                          occurrence.target);
+        return true;
+    });
+    shard.for_each_relation([&](index::SymbolHash symbol, const index::Relation& relation) {
+        entries.count += 1;
+        entries.hash = llvm::hash_combine(entries.hash,
+                                          symbol,
+                                          static_cast<std::uint32_t>(relation.kind),
+                                          relation.range.begin,
+                                          relation.range.end,
+                                          relation.target);
+        return true;
+    });
+    return entries;
+}
+
+/// The document's merged index (ServedDocument::merged), made if missing:
+/// while its compile describes the buffer, the buffer is the text the
+/// file's shard indexed, and the compile skipped some code. Null otherwise.
+const static ServedDocument::MergedIndex* merged_index(const ServedProject& served,
+                                                       const ServedDocument& document) {
+    auto& compiled = document.latest;
+    auto& session = *document.session;
+    if(!compiled || !compiled->index || !compiled->index->loaded() ||
+       compiled->inactive_regions.empty()) {
+        document.merged.reset();
+        return nullptr;
+    }
+    auto& state = *compiled->index;
+    auto& own = state.shard_of(state.focus_file());
+    if(!served.current(session.path_id) &&
+       !own.matches_content(session.text().size(), session.hash)) {
+        document.merged.reset();
+        return nullptr;
+    }
+    if(document.merged && document.merged->index == compiled->index) {
+        return &*document.merged;
+    }
+    auto* stored = served.project.index.shard(session.path_id);
+    if(!stored || !stored->matches_content(session.text().size(), session.hash)) {
+        document.merged.reset();
+        return nullptr;
+    }
+    // A context that indexes nothing in the file leaves no section of it:
+    // the merge takes the shard's entries alone.
+    auto keep = served.project.index.live_variants(session.path_id);
+    auto fresh = own.loaded() ? llvm::ArrayRef(&own, 1) : llvm::ArrayRef<index::Shard>();
+    if(own.loaded()) {
+        keep.erase(ranges::remove(keep, own.variants().front()).begin(), keep.end());
+    }
+    auto& skipped = compiled->inactive_regions;
+    auto bytes = index::merge_shards(*stored, keep, fresh, [&](std::uint32_t offset) {
+        return feature::inactive_at(skipped, offset);
+    });
+    auto shard = std::make_shared<index::Shard>(
+        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))));
+    auto entries = entries_of(*shard);
+    document.merged = ServedDocument::MergedIndex{
+        .index = compiled->index,
+        .shard = std::move(shard),
+        .additions = entries.count != entries_of(own).count ? entries.hash : 0,
     };
+    return &*document.merged;
+}
+
+std::vector<index::OpenBuffer> ServedProject::open_buffers() const {
+    std::vector<index::OpenBuffer> open;
+    for(auto& [path_id, document]: documents) {
+        auto& session = *document.session;
+        auto& compiled = document.latest;
+        auto* merged = merged_index(*this, document);
+        open.push_back({
+            .file = path_id,
+            .text = session.text(),
+            .hash = session.hash,
+            .positions = session.positions(),
+            .index = compiled ? compiled->index : nullptr,
+            .current = current(path_id),
+            .preamble = compiled ? compiled->preamble_index : nullptr,
+            .merged = merged ? merged->shard : nullptr,
+        });
+    }
+    return open;
+}
+
+ServedProject::SkippedCode ServedProject::skipped_code(Fid file) const {
+    auto* document = find_document(file);
+    auto* merged = document ? merged_index(*this, *document) : nullptr;
+    if(!merged) {
+        return {};
+    }
+    return {
+        .regions = document->latest->inactive_regions,
+        .indexed = merged->additions != 0,
+    };
+}
+
+bool ServedProject::merge_again(Fid file) const {
+    auto* document = find_document(file);
+    if(!document) {
+        return false;
+    }
+    auto before = document->merged ? document->merged->additions : 0;
+    document->merged.reset();
+    auto* merged = merged_index(*this, *document);
+    return before != (merged ? merged->additions : 0);
+}
+
+index::IndexQuery ServedProject::query_all() const {
+    std::vector<index::IndexQuery> others;
+    for(auto& other: server.projects) {
+        if(other.get() != this) {
+            others.push_back(other->query());
+        }
+    }
+    return query().asking(std::move(others));
+}
+
+index::IndexQuery ServedProject::editing_query() const {
+    std::vector<index::OpenBuffer> open;
+    for(auto& other: server.projects) {
+        if(other.get() == this || (!project.root.empty() && !other->project.root.empty() &&
+                                   path::is_within(other->project.root, project.root))) {
+            open.append_range(other->open_buffers());
+        }
+    }
+    return project.index_query.reading(std::move(open));
 }
 
 SourceText& ServedProject::text_of(Session& session) {
@@ -143,12 +281,11 @@ SearchConfig ServedProject::search_of(Fid path_id) {
     // Editor use: the search follows the command (context choice, chosen
     // database entry) the open buffer compiles under.
     return project.toolchain.search_config(
-        project.select_command(path_id, {.choice = active_choice(path_id), .open = true}).ref);
+        project.select_command(path_id, command_request(path_id)).ref);
 }
 
 ScanResult ServedProject::declared_module(Fid path_id, llvm::StringRef text) {
-    auto rendered = project.render(
-        project.select_command(path_id, {.choice = active_choice(path_id), .open = true}).ref);
+    auto rendered = project.render(project.select_command(path_id, command_request(path_id)).ref);
     std::vector<const char*> argv;
     argv.reserve(rendered.arguments.size());
     for(auto& argument: rendered.arguments) {
@@ -161,7 +298,7 @@ ScanResult ServedProject::declared_module(Fid path_id, llvm::StringRef text) {
 }
 
 std::vector<index::DocumentLink> ServedProject::preamble_links(const Session& session) const {
-    auto state = project.index_query.preamble_index(session.path_id);
+    auto state = query().preamble_index(session.path_id);
     return state ? state->links() : std::vector<index::DocumentLink>{};
 }
 

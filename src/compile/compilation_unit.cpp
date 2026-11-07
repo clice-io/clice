@@ -4,6 +4,7 @@ import :compile.compilation;
 import :compile.tokens;
 import :syntax.lexical_scan;
 import :syntax.preamble;
+import :syntax.scan;
 import :syntax.source_text;
 import :vfs.file_system;
 import :vfs.path;
@@ -196,18 +197,7 @@ auto CompilationUnit::entry_path(clang::FileEntryRef entry) -> llvm::StringRef {
     /// path — the dependency set must cover every spelling the compile
     /// read. A file only memory holds (a header context's fragment) is
     /// named like a missing one, through its directory.
-    llvm::SmallString<128> spelled(entry.getName());
-    auto& files = SM().getFileManager();
-    files.makeAbsolutePath(spelled);
-    // An -ivfsoverlay can name a file by a path only the overlay knows;
-    // the file read is the one it redirects to.
-    if(auto& vfs = files.getVirtualFileSystem(); llvm::isa<llvm::vfs::RedirectingFileSystem>(vfs)) {
-        llvm::SmallString<128> redirected;
-        if(!vfs.getRealPath(spelled, redirected)) {
-            spelled = redirected;
-        }
-    }
-    auto path = CanonicalPath(Spelling::absolute(spelled)).str();
+    auto path = input_path(SM().getFileManager(), entry);
     auto [it, inserted] = path_cache.try_emplace(entry, llvm::StringSaver(path_storage).save(path));
     assert(inserted && "File path already exists");
     return it->second;
@@ -624,20 +614,7 @@ std::vector<ReportedInput> CompilationUnit::deps() {
 }
 
 std::vector<std::string> CompilationUnit::absent() {
-    std::vector<std::string> result;
-    for(auto& entry: absent_paths) {
-        // The candidates over-approximate where a lookup looked (an
-        // `#include_next` does not start at the first directory, a lookup
-        // also fails on a directory of that name): only a place holding
-        // nothing is absent.
-        // FIXME: a header generated here while the compile ran, after its lookup
-        // failed, is filtered out too, and its creation is never seen.
-        if(!fs::exists(entry.getKey())) {
-            result.emplace_back(entry.getKey());
-        }
-    }
-    ranges::sort(result);
-    return result;
+    return absent_places(absent_paths);
 }
 
 clang::TranslationUnitDecl* CompilationUnit::tu() {

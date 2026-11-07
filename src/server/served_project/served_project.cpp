@@ -7,15 +7,14 @@ module clice;
 import :command.table;
 import :index.project_index;
 import :index.writer_lock;
+import :project.background;
 import :project.graph.task_graph;
-import :project.indexer;
 import :server.client;
 import :server.control;
 import :server.master;
 import :server.served_project;
 import :settings.settings;
 import :support.logging;
-import :vfs.cache_store;
 import :vfs.path;
 import :worker.probe;
 import :worker.protocol;
@@ -24,37 +23,39 @@ namespace clice {
 
 ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
     server(server), project(server.files, std::move(root), &server.loop, &server.pool) {
-    project.index_query.attach(*this);
-    project.serving = this;
-    progress_conn = project.background_index.on_progress_changed.connect(
-        [this]() { this->server.index_progress_changed(*this); });
+    auto& background = project.background_index;
+    progress_conn = background.on_progress_changed.connect(
+        [this] { this->server.index_progress_changed(*this); });
+    attempt_conn = background.on_attempt_finished.connect([this](Fid path_id) {
+        auto* document = find_document(path_id);
+        if(!document) {
+            return;
+        }
+        if(document->serving == ServingMode::IndexOnly && !query().serving(path_id)) {
+            escalate(path_id);
+        }
+        show_skipped_diagnostics(path_id);
+    });
+    index_conn = project.on_index_changed.connect([this](llvm::ArrayRef<Fid> path_ids) {
+        // Documents without a current file index serve these very shards
+        // (freshness clause 4), and the AST's answers take the file's other
+        // contexts from them: the client asks again for what it pulled.
+        bool completed = false;
+        for(auto id: path_ids) {
+            completed |= merge_again(id);
+        }
+        auto* client = this->server.client;
+        if(client && (completed || ranges::any_of(path_ids, [&](Fid id) {
+                          return find_document(id) && !index_current(id) &&
+                                 client->index_served.contains(id);
+                      }))) {
+            client->refresh();
+        }
+    });
+    metadata_conn = project.on_metadata_changed.connect([this] { schedule_metadata_flush(); });
 }
 
 ServedProject::~ServedProject() = default;
-
-void ServedProject::attempt_finished(Fid path_id) {
-    auto* document = find_document(path_id);
-    if(document && document->serving == ServingMode::IndexOnly &&
-       !matching_shard(*document->session)) {
-        escalate(path_id);
-    }
-}
-
-void ServedProject::index_changed(llvm::ArrayRef<Fid> path_ids) {
-    // The answers of a document the AST serves take the file's other
-    // contexts from its shard.
-    bool completed = false;
-    for(auto id: path_ids) {
-        completed |= merge_again(id);
-    }
-    auto* client = server.client;
-    if(client && (completed || ranges::any_of(path_ids, [&](Fid id) {
-                      return find_document(id) && !index_current(id) &&
-                             client->index_served.contains(id);
-                  }))) {
-        client->refresh();
-    }
-}
 
 /// Where a problem of the settings is, as compilers name a place, its file
 /// spelled `file`.
@@ -117,13 +118,6 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
                          ? std::format(". {} is served until it is fixed and saved", unserved)
                          : std::string());
     }
-    if(broken()) {
-        return;
-    }
-    auto& cfg = project.settings.project;
-    if(cfg.cache_dir_defaulted) {
-        CacheStore::write_ignore_markers(cfg.cache_dir);
-    }
 }
 
 void ServedProject::start() {
@@ -148,7 +142,8 @@ void ServedProject::start() {
             !project.rules.declares_sources() && !project.found_unreadable_database();
     }
     if(project.settings.project.enable_indexing) {
-        project.background_index.start();
+        project.background_index.start(
+            {.skipped_diagnostics = project.settings.project.skip_header_bodies});
     }
     server.load_choices(*this);
 
@@ -178,10 +173,7 @@ void ServedProject::start() {
     // Watched from the project load on: each database is baselined at the
     // read its entries came from.
     watching = true;
-    for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
-        watch_database(SourceID(i));
-    }
-    watch_checkout();
+    project.watch_databases();
     for(auto& [path_id, document]: documents) {
         discover_around(path_id);
     }
@@ -199,10 +191,9 @@ async::task<> ServedProject::shutdown() {
     }
     bg_tasks.cancel();
     co_await bg_tasks.join();
-    tree_tasks.cancel();
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
-    co_await async::when_all(stop_compiles(), tree_tasks.join());
+    co_await stop_compiles();
     // Requests have unwound and released their interest; the shared tail
     // stops the background index and winds down the graph's attempts before
     // the persistence pass.
@@ -243,11 +234,10 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
     // and its requests' PCH adoptions read, before its first compile too.
     project.graph.add(ast_node(path_id));
     auto& document = documents[path_id];
-    document = ServedDocument{
-        .session = std::move(session),
-        .serving = project.settings.project.readonly == ReadonlyMode::Off ? ServingMode::Escalated
-                                                                          : ServingMode::IndexOnly,
-    };
+    document = ServedDocument{.session = std::move(session), .serving = ServingMode::IndexOnly};
+    if(project.settings.project.readonly == ReadonlyMode::Off) {
+        escalate(path_id);
+    }
     // What the disk holds under the buffer: a later save or outside
     // write is then a change from it, even for a file nothing else knew.
     project.file_table.disk.current(path_id);
@@ -267,16 +257,15 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
 void ServedProject::decide_serving(ServedDocument& document) {
     // An escalated document needs no decision: builds stay pull-driven. When
     // they skip the bodies of the headers, the file's background run shows
-    // what those hold (report_skipped_diagnostics), and goes first when none
+    // what those hold (show_skipped_diagnostics), and goes first when none
     // has reported on its text.
     auto& session = *document.session;
     auto path_id = session.path_id;
     auto& background = project.background_index;
     if(document.serving == ServingMode::Escalated) {
-        if(project.settings.project.skip_header_bodies && background.started() &&
-           lacks_skipped_diagnostics(path_id) && !background.queue().in_flight(path_id) &&
+        if(background.started() && !background.queue().in_flight(path_id) &&
            !background.failed(path_id)) {
-            background.index_first(path_id);
+            book_skipped_diagnostics(document, true);
         }
         return;
     }
@@ -306,21 +295,9 @@ void ServedProject::release(Fid path_id) {
     auto path = project.file_table.resolve(path_id);
     server.pool.forget_document(path_id.raw);
     project.graph.invalidate(ast_node(path_id));
-    project.import_scans.buffers.erase(path_id);
+    project.buffer_scans.forget(path_id);
     documents.erase(path_id);
-    // The document's compile may have stood in for the file's background
-    // index (ServingSide::compiled_by_session); the disk's turn again, unless
-    // it was deleted meanwhile or its index run failed for good, which
-    // waits for a change.
-    auto& background = project.background_index;
-    if(!project.file_table.disk.seen_missing(path_id) && !background.failed(path_id) &&
-       background.enqueue(path_id, ReindexReason::DepsOnly)) {
-        background.schedule();
-    }
-    // PCH entries are content-keyed and may be shared with other documents,
-    // so nothing entry-level to clean up — but the loaded-index budget
-    // shrinks with the open count, and this is the moment it does.
-    project.enforce_loaded_budget();
+    project.background_index.take_back(path_id);
     server.return_freed_memory();
     LOG_DEBUG("Released {}", path);
 }
@@ -330,7 +307,7 @@ void ServedProject::record_saved(Fid path_id) {
         return;
     }
     // The open files the save made stale show what their background run
-    // finds as soon as it can (report_skipped_diagnostics).
+    // finds as soon as it can (show_skipped_diagnostics).
     if(project.settings.project.skip_header_bodies) {
         auto& background = project.background_index;
         for(auto& [open, document]: documents) {
@@ -414,6 +391,26 @@ async::task<> ServedProject::sources_poll_task() {
         co_await async::sleep(interval);
         co_await poll_sources();
     }
+}
+
+CommandRequest ServedProject::command_request(Fid path_id, const ContextChoice* candidate) const {
+    return {.choice = candidate ? candidate : active_choice(path_id), .open = true};
+}
+
+const ContextChoice* ServedProject::active_choice(Fid path_id) const {
+    auto* entry = server.choice(path_id);
+    return entry && entry->project == this && entry->active ? &entry->choice : nullptr;
+}
+
+Fid ServedProject::host_of(Fid path_id) {
+    if(auto* choice = active_choice(path_id); choice && choice->host.valid()) {
+        return choice->host;
+    }
+    return project.host_of(path_id);
+}
+
+const clang::LangOptions& ServedProject::dialect(Fid path_id) {
+    return project.dialect(path_id, active_choice(path_id));
 }
 
 }  // namespace clice

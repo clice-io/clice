@@ -10,8 +10,8 @@ import :command.database;
 import :command.edit;
 import :command.table;
 import :index.tu_manifest;
+import :project.background;
 import :project.command;
-import :project.indexer;
 import :project.members;
 import :project.project;
 import :settings.rules;
@@ -632,13 +632,9 @@ ZEST_CASE(RuleTurnsQueryOff) {
     CanonicalRef own_file = own;
     CanonicalRef vendor_file = vendor;
     CanonicalRef third_party_file = third_party;
-    auto edit_hash = [&](CanonicalRef file) {
-        return project.rules.identity(project.rule_edits(files.intern(file), {}));
-    };
     ZEXPECT(project.rules.edits({own_file}).query_toolchain);
     ZEXPECT(!project.rules.edits({vendor_file}).query_toolchain);
-    ZEXPECT(edit_hash(own_file) != edit_hash(vendor_file));
-    ZEXPECT(edit_hash(third_party_file) != 0);
+    ZEXPECT(!project.rules.edits({third_party_file}).query_toolchain);
 
     // One command under the same appends: only the query tells them apart.
     auto command = std::format("clang++ {}", vendor.str());
@@ -649,6 +645,8 @@ ZEST_CASE(RuleTurnsQueryOff) {
                                        {.base = entry.command, .source = CommandSource::Database});
     ZEXPECT(!project.commands.get(unqueried.command).query_toolchain);
     ZEXPECT(project.commands.get(queried.command).query_toolchain);
+    ZEXPECT(project.commands.command_hash(unqueried.command) !=
+            project.commands.command_hash(queried.command));
 
     auto borrowed = project.apply_rules(
         files.intern(own_file),
@@ -689,7 +687,7 @@ ZEST_CASE(MembersFollowCommands) {
                   {tmp.root, tmp.path("kept.cpp"), {"-DCHANGED"}}
     }));
     auto epoch = project.commands_epoch;
-    ZEXPECT(!project.update_members({.changed = {kept}, .removed = {gone}}).empty());
+    ZEXPECT(!project.update_members({.changed = {kept}, .removed = {gone}}).commands.empty());
     ZEXPECT(project.commands_epoch == epoch + 1);
     ZEXPECT(!project.index.indexed(gone));
     ZEXPECT(!f.queue.pending_reason(gone).has_value());
@@ -697,10 +695,10 @@ ZEST_CASE(MembersFollowCommands) {
     ZEXPECT(IndexInternals::outdated(project.index, kept));
     ZEXPECT(f.queue.pending_reason(kept) == ReindexReason::ContentChanged);
 
-    auto disk = project.disk_epoch;
-    ZEXPECT(project.update_members({}).empty());
+    auto graph = project.dep_graph.generation();
+    ZEXPECT(project.update_members({}).commands.empty());
     ZEXPECT(project.commands_epoch == epoch + 1);
-    ZEXPECT(project.disk_epoch == disk);
+    ZEXPECT(project.dep_graph.generation() == graph);
     ZEXPECT(IndexerFixture::pending_files(f.queue) == llvm::SmallVector<Fid>{kept});
 }
 

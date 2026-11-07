@@ -107,10 +107,8 @@ llvm::SetVector<Fid> module_closure(const Project& project, llvm::ArrayRef<Fid> 
         if(!project.built_pcm(read[i])) {
             continue;
         }
-        for(auto dep: project.graph.dependencies(module_node(read[i]))) {
-            if(dep.kind == NodeKind::PCM && !is_unresolved_import(dep)) {
-                read.insert(dep.file());
-            }
+        for(auto module: imported_modules(project.graph, module_node(read[i]))) {
+            read.insert(module);
         }
     }
     return read;
@@ -176,13 +174,6 @@ bool refused(Project& project, Fid module, llvm::StringRef pcm_key, llvm::String
 /// edges, wait on them, keep the last build while it holds, else dispatch a
 /// new one.
 async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id) {
-    // Inputs that moved may import otherwise: a scan taken before is no
-    // answer for them, even while no event has reached the disk state yet.
-    if(auto* inputs = project.module_inputs(path_id);
-       inputs && !inputs_hold(project.file_table, *inputs)) {
-        project.import_scans.disk.erase(path_id);
-    }
-
     // The import list is scanner truth, not build output: commit it as
     // the node's edges before building, so a build that fails stays
     // reachable from its imports — fixing or providing one re-dirties it.
@@ -328,7 +319,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, Fid path_id
     auto pending = project.store->begin_store("pcm", blob);
     bp.output_path = pending.tmp_path;
     bp.pcms = project.imported_pcms(resolved);
-    auto transfer = project.request_index(path_id, bp);
+    auto transfer = project.request_index(path_id, bp.indexing);
 
     // The modules it imports are inputs as much as its own text — the PCM
     // embeds what it read of them — and theirs already carry their own
@@ -455,15 +446,15 @@ async::task<Imports> Project::scan_imports(Fid path_id,
         joined.append(arg);
     }
     auto arguments_hash = llvm::xxh3_64bits(joined);
-    auto epoch = disk_epoch;
 
-    auto& scans = content ? import_scans.buffers : import_scans.disk;
+    // A buffer's own text is no input of its scan: the directives stand
+    // for it.
+    auto& scans = content ? buffer_scans : disk_scans;
     ImportScan scan;
-    if(auto memo = scans.find(path_id);
-       memo != scans.end() && memo->second.directives == directives &&
-       memo->second.bound == bound && memo->second.arguments == arguments_hash &&
-       memo->second.epoch == epoch) {
-        scan = memo->second;
+    if(auto* memo = scans.lookup(file_table, path_id, content ? path_id : Fid{});
+       memo && memo->result.directives == directives && memo->result.bound == bound &&
+       memo->result.arguments == arguments_hash) {
+        scan = memo->result;
     } else {
         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs =
             llvm::makeIntrusiveRefCnt<vfs::View>(resolution.hidden);
@@ -488,18 +479,20 @@ async::task<Imports> Project::scan_imports(Fid path_id,
             append_include(text, suffix);
             content = text;
         }
-        import_scans.runs += 1;
+        import_scan_runs += 1;
         std::vector<const char*> argv;
         argv.reserve(resolution.arguments.size());
         for(auto& arg: resolution.arguments) {
             argv.push_back(arg.c_str());
         }
+        auto started_at = chrono::duration_cast<chrono::milliseconds>(
+                              chrono::system_clock::now().time_since_epoch())
+                              .count();
         auto scanned = co_await async::queue(
             [&] { return scan_precise(argv, resolution.directory, content, std::move(vfs)); });
         scan = {.directives = directives,
                 .bound = bound,
                 .arguments = arguments_hash,
-                .epoch = epoch,
                 .imports = std::move(scanned.modules),
                 .offsets = std::move(scanned.import_offsets),
                 .module_unit = !scanned.module_name.empty()};
@@ -508,7 +501,19 @@ async::task<Imports> Project::scan_imports(Fid path_id,
             scan.imports.push_back(std::move(scanned.module_name));
             scan.offsets.push_back(std::numeric_limits<std::uint32_t>::max());
         }
-        scans[path_id] = scan;
+        // A header context's files exist in memory alone: the chain files
+        // its text embeds stand for them.
+        if(auto& synthesized = resolution.synthesized) {
+            llvm::StringSet<> memory;
+            for(auto& file: synthesized->files) {
+                memory.insert(CanonicalPath(Spelling::absolute(file.path)).str());
+            }
+            std::erase_if(scanned.deps,
+                          [&](const ReportedInput& input) { return memory.contains(input.path); });
+        }
+        auto inputs = intern_inputs(file_table, scanned.deps, started_at);
+        inputs.append(resolution.inputs.begin(), resolution.inputs.end());
+        scans.commit(path_id, scan, std::move(inputs));
     }
 
     // Every scanned name goes into the edge set, resolved or not: an
@@ -526,10 +531,6 @@ async::task<Imports> Project::scan_imports(Fid path_id,
                               : module_node(nearest_provider(file_table, providers, path_id)));
     }
     co_return imports;
-}
-
-llvm::SmallVector<NodeId> Project::provider_appeared(llvm::StringRef name) {
-    return graph.invalidate(unresolved_import(name));
 }
 
 Work Project::module_work(Fid module) {
@@ -556,12 +557,12 @@ std::optional<feature::ModuleFailure> Project::module_failure(Fid module) const 
     return failure;
 }
 
-bool Project::forget_build_failure(Fid module) {
+bool Project::forget_module_failure(Fid module) {
     auto it = pcms.find(module);
     return it != pcms.end() && std::exchange(it->second.failure, std::nullopt).has_value();
 }
 
-const FailureRecord* Project::build_crash(Fid module) {
+const FailureRecord* Project::module_build_crash(Fid module) {
     // FIXME: what a crash is known to read leaves out the headers the module
     // includes: a fix there waits for an importer's edit or save, and its
     // importers fail to index until then.
@@ -589,12 +590,12 @@ async::task<std::optional<BuiltImports>> Project::build_imports(Fid file,
     // build of the module, by a parse that may retry it, re-dirties this one.
     llvm::SmallVector<Fid> waited;
     for(auto module: built.imports.resolved()) {
-        if(auto* crash = build_crash(module)) {
+        if(auto* crash = module_build_crash(module)) {
             if(!options.retry_crashed) {
                 built.refused.push_back(*crash);
                 continue;
             }
-            forget_build_failure(module);
+            forget_module_failure(module);
         }
         waited.push_back(module);
     }
@@ -687,14 +688,6 @@ std::unordered_map<std::string, std::string>
         }
     }
     return paths;
-}
-
-llvm::SmallVector<Fid> Project::invalidate_module(Fid path_id) {
-    llvm::SmallVector<Fid> dirtied;
-    for(auto id: graph.invalidate(module_node(path_id))) {
-        dirtied.push_back(id.file());
-    }
-    return dirtied;
 }
 
 }  // namespace clice

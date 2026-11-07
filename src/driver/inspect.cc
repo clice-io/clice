@@ -5,6 +5,7 @@ import :command.table;
 import :compile.compilation;
 import :compile.tidy;
 import :driver.driver;
+import :driver.run;
 import :feature.code_actions;
 import :feature.code_completion;
 import :feature.diagnostics;
@@ -708,7 +709,9 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
     CompilationInput input{.project_root = project.root.str()};
     auto path_id = project.file_table.intern(Spelling::absolute(file.path));
     auto resolve = [&] {
-        auto resolution = project.resolve_command(path_id, {.choice = choice, .preprocess = true});
+        auto [resolved] = async::run(
+            project.resolve_with_trees(path_id, [&] { return CommandRequest{.choice = choice}; }));
+        auto& resolution = *resolved;
         input.directory = resolution.directory;
         input.arguments = resolution.arguments;
         return resolution;

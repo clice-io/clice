@@ -51,7 +51,7 @@ public:
     }
 
     /// This save left state that an immediate retry commits: reindexes
-    /// owed after its listings serialized (write-time
+    /// owed after the members record serialized (write-time
     /// corruption recovery), or a batch a full map refused before the
     /// map grew.
     bool owes_retry = false;
@@ -225,10 +225,10 @@ public:
                                 Fid anchor,
                                 llvm::function_ref<void(Fid)> visit) const;
 
-    /// The include edges of a document, the input of the document links
-    /// computed from the index: every way a unit resolved its `#include` lines at its
-    /// shard's content generation. Empty when the file was never indexed.
-    std::vector<IncludeEdge> include_edges(Fid file) const;
+    /// The includes of a document as units resolved them, the input of the
+    /// document links computed from the index: every way a unit resolved its `#include` lines at
+    /// its shard's content generation. Empty when the file was never indexed.
+    std::vector<ResolvedInclude> resolved_includes(Fid file) const;
 
     /// The file's shard, read from the database on first use. Null when the
     /// file has no index. Pointers stay valid until the next save or clear,

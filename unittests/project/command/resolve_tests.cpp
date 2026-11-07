@@ -10,6 +10,13 @@ import :unittests.utils.temp_dir;
 namespace clice::testing {
 namespace {
 
+/// The file's resolution once the include trees its host search misses are
+/// taken.
+Resolution resolve_taking_trees(Project& project, Fid file, CommandRequest request = {}) {
+    auto [resolution] = async::run(project.resolve_with_trees(file, [&] { return request; }));
+    return std::move(*resolution);
+}
+
 ZEST_SUITE(ResolveCommand) {
 
 ZEST_CASE(DefaultSourceKeepsOwnCommand) {
@@ -40,7 +47,7 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
     ZEXPECT(part_resolution.ref.source == CommandSource::Default);
     ZEXPECT(ranges::any_of(part_resolution.arguments,
                            [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
-    auto header_resolution = project.resolve_command(header, {.preprocess = true});
+    auto header_resolution = resolve_taking_trees(project, header);
     ZEXPECT(header_resolution.ref.source == CommandSource::Host);
     ZEXPECT(header_resolution.host == main);
 }
@@ -65,15 +72,15 @@ ZEST_CASE(ExtrasReachBorrowedHeader) {
     project.dep_graph.build_reverse_map();
 
     std::vector<std::string> extras{"-DLINT_EXTRA"};
-    CommandRequest request{.extra_append = extras, .preprocess = true};
+    CommandRequest request{.extra_append = extras};
     auto has_extra = [](llvm::ArrayRef<std::string> arguments) {
         return ranges::any_of(arguments,
                               [](llvm::StringRef arg) { return arg.contains("LINT_EXTRA"); });
     };
-    auto main_resolution = project.resolve_command(main, request);
+    auto main_resolution = resolve_taking_trees(project, main, request);
     ZEXPECT(main_resolution.ref.source == CommandSource::Default);
     ZEXPECT(has_extra(main_resolution.arguments));
-    auto header_resolution = project.resolve_command(header, request);
+    auto header_resolution = resolve_taking_trees(project, header, request);
     ZEXPECT(header_resolution.ref.source == CommandSource::Host);
     ZEXPECT(has_extra(header_resolution.arguments));
 }
@@ -116,7 +123,7 @@ ZEST_CASE(TreeSkipsFirstHost) {
     ZEXPECT(waiting.ref.source == CommandSource::Host);
     ZEXPECT(ranges::any_of(waiting.arguments,
                            [](llvm::StringRef argument) { return argument.contains("config_a"); }));
-    auto resolution = project.resolve_command(header, {.preprocess = true});
+    auto resolution = resolve_taking_trees(project, header);
     ZEXPECT(!resolution.missing_tree);
     ZEXPECT(resolution.host == b);
 }
@@ -166,7 +173,7 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     project.rebuild_dependency_graph();
 
     auto forced = [&](Fid file) {
-        auto resolution = project.resolve_command(file, {.preprocess = true});
+        auto resolution = resolve_taking_trees(project, file);
         auto& arguments = resolution.arguments;
         std::vector<std::string> names;
         for(std::size_t i = 0; i + 1 < arguments.size(); i += 1) {
@@ -246,6 +253,39 @@ ZEST_CASE(DialectFollowsCommand) {
     auto& borrowed = project.dialect(borrowing, nullptr);
     ZEXPECT(bool(borrowed.CPlusPlus));
     ZEXPECT((borrowed.LangStd == clang::LangStandard::lang_cxx14));
+}
+
+ZEST_CASE(IdentityIsEffectiveCommand) {
+    /// A unit's index is keyed by the command it compiles under, rules
+    /// applied, with the project root written as `${workspace}`: a checkout
+    /// moved elsewhere keeps it, a rule whose configuration moves under
+    /// .clice/ — its relative paths mean another directory — changes it.
+    auto identity = [](TempDir& tmp, llvm::StringRef rule_directory) {
+        tmp.touch("src/main.cpp", "");
+        FileTable files;
+        Project project{files};
+        project.settings.rules.push_back(Rule{
+            .patterns = {"${workspace}/src/**"},
+            .default_command = std::string("clang++"),
+            .append = {"-Iinc"},
+        });
+        project.settings.rules.back().directory =
+            rule_directory.empty() ? tmp.root : tmp.path(rule_directory);
+        project.root = CanonicalPath(Spelling::absolute(tmp.root));
+        project.commands.set_project_root(project.root);
+        project.settings.finalize(project.root);
+        project.rules = Rules(project.settings, project.root, "");
+        auto main = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+        return project.command_identity(main);
+    };
+    TempDir checkout;
+    TempDir moved;
+    auto at_root = identity(checkout, "");
+    ZEXPECT(at_root != 0u);
+    ZEXPECT(identity(moved, "") == at_root);
+    auto under_clice = identity(checkout, ".clice");
+    ZEXPECT(under_clice != 0u);
+    ZEXPECT(under_clice != at_root);
 }
 
 };  // ZEST_SUITE(ResolveCommand)

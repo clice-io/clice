@@ -1,6 +1,5 @@
 module clice;
 
-import :index.peer_queries;
 import :project.discovery;
 import :server.client;
 import :server.master;
@@ -105,17 +104,6 @@ std::shared_ptr<ServedProject> MasterServer::make_project(CanonicalPath root) {
         }
     };
     return std::shared_ptr<ServedProject>(new ServedProject(*this, std::move(root)), released);
-}
-
-llvm::SmallVector<const index::IndexQuery*>
-    MasterServer::peer_queries(const ServedProject& project) const {
-    llvm::SmallVector<const index::IndexQuery*> peers;
-    for(auto& other: projects) {
-        if(other.get() != &project) {
-            peers.push_back(&other->project.index_query);
-        }
-    }
-    return peers;
 }
 
 std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef successor) const {

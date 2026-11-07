@@ -1,6 +1,6 @@
 module clice:feature.workspace_symbols;
 
-import :index.peer_queries;
+import :index.query;
 import :index.site;
 import :index.symbol;
 import :support.prelude;
@@ -33,7 +33,7 @@ struct WorkspaceSymbol {
 /// The project's symbols matching `text` (index::SymbolQuery, its paths
 /// relative to `root`), best first, at most workspace_symbol_limit; an
 /// open file's only from the project serving its buffer.
-std::vector<WorkspaceSymbol> workspace_symbols(const index::PeerQueries& queries,
+std::vector<WorkspaceSymbol> workspace_symbols(const index::IndexQuery& query,
                                                llvm::StringRef text,
                                                const Spelling& root,
                                                PositionEncoding encoding);

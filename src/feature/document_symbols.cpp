@@ -1150,13 +1150,22 @@ void merge_other_contexts(std::vector<DocumentSymbol>& outline,
             known.try_emplace(key(symbol), position);
         }
         std::vector<DocumentSymbol> added;
+        std::vector<const DocumentSymbol*> level;
         for(const auto& symbol: from) {
+            level.push_back(&symbol);
+        }
+        for(std::size_t i = 0; i < level.size(); i += 1) {
+            const auto& symbol = *level[i];
             if(auto it = known.find(key(symbol)); it != known.end()) {
                 self(into[it->second].children, symbol.children);
-            } else if(symbol.kind != SymbolKind::Directive &&
-                      inactive_at(skipped, symbol.selection_range.begin)) {
+            } else if(symbol.kind == SymbolKind::Directive) {
                 // The index lists a mark wherever the text writes it, code
-                // no context compiles included.
+                // no context compiles included: its section's entries stand
+                // at its level without it.
+                for(const auto& child: symbol.children) {
+                    level.push_back(&child);
+                }
+            } else if(inactive_at(skipped, symbol.selection_range.begin)) {
                 added.push_back(symbol);
             }
         }

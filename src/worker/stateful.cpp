@@ -268,13 +268,15 @@ RequestResult<worker::CompileParams>
                 result.started_at = unit->started_at().count();
                 result.deps = unit->deps();
 
-                index_error = send_index(
-                    index::build_tu_index(*unit,
-                                          {.known_instantiations = params.known_instantiations,
-                                           .standard_library_instantiations =
-                                               params.standard_library_instantiations}),
-                    params.index_output_path,
-                    result);
+                index_error =
+                    send_index(index::build_tu_index(
+                                   *unit,
+                                   {.known_variants = params.indexing.known_variants,
+                                    .known_instantiations = params.indexing.known_instantiations,
+                                    .standard_library_instantiations =
+                                        params.indexing.standard_library_instantiations}),
+                               params.indexing.output_path,
+                               result);
             }
 
             if(unit->completed()) {
