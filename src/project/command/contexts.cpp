@@ -1,5 +1,6 @@
 module clice;
 
+import :command.argument;
 import :index.project_index;
 import :project.command;
 import :project.project;
@@ -13,20 +14,20 @@ namespace clice {
 
 namespace {
 
-/// The flags a context's label tells a command by: each -D, -O and -std, a
-/// separate value joined to its -D or -O.
+/// The flags a context's label tells a command by: its macro definitions,
+/// optimization levels and language standards, clang's or cl's, each in
+/// one piece (`-DNAME=1`, `-O2`, `/std:c++20`).
 llvm::SmallVector<std::string> state_flags(Project& project, CommandID command) {
-    auto argv = project.commands.render_full(command);
     llvm::SmallVector<std::string> flags;
-    for(std::size_t j = 0; j < argv.size(); j += 1) {
-        llvm::StringRef a(argv[j]);
-        if(a.starts_with("-D") || a.starts_with("-O") || a.starts_with("-std=")) {
-            flags.push_back(a.str());
-            if((a == "-D" || a == "-O") && j + 1 < argv.size()) {
-                j += 1;
-                flags.back() += argv[j];
-            }
+    for(auto& arg: project.commands.get(command).args) {
+        using namespace clang_options;
+        auto id = arg.opt_id;
+        if(id != OPT_D && id != OPT_std_EQ && id != OPT__SLASH_std && id != OPT__SLASH_O &&
+           !table().option(id)->matches(OPT_O_Group)) {
+            continue;
         }
+        auto& flag = flags.emplace_back();
+        render_arg(arg, [&](std::string_view part) { flag += part; });
     }
     return flags;
 }

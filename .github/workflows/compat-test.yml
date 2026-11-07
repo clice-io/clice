@@ -41,9 +41,9 @@ jobs:
           persist-credentials: false
 
       # The `cuda` and `toolchains` environments hold nvcc and conda's
-      # compilers for the Linux scenarios, `toolchains` Intel's for the
-      # Windows ones too, and have no packages elsewhere; a release older
-      # than one of them neither declares nor uses it.
+      # compilers for the Linux scenarios, `toolchains` Intel's and nvcc for
+      # the Windows ones too, and have no packages elsewhere; a release
+      # older than one of them neither declares nor uses it.
       - name: Pick the pixi environments
         id: environments
         run: |

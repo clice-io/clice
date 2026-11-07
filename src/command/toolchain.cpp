@@ -327,7 +327,8 @@ Toolchain::QueryKey Toolchain::query_key(CommandID id, InputKind input) {
         if(!in_query_view(arg, command.family)) {
             continue;
         }
-        out.key += std::to_string(keeps_alias(arg, command.family) ? arg.alias : arg.opt_id);
+        out.key +=
+            std::to_string(keeps_alias(arg, option_family(command)) ? arg.alias : arg.opt_id);
         out.key += '\0';
         /// All unknown options share one id; their identity is the spelling
         /// (the NVCC translation carries `-ccbin=<path>` through here, and
@@ -355,19 +356,24 @@ Toolchain::QueryArgv Toolchain::query_argv(const Command& command) {
     };
 
     out.slot = out.argv.size();
+    // A universal build (`-arch arm64 -arch x86_64`) compiles once for each
+    // architecture, and a driver preprocesses for one only: clice reads the
+    // code for the first.
+    bool arch = false;
     for(auto& arg: command.args) {
         if(arg.cls == ArgClass::Input) {
             out.slot = out.argv.size();
             continue;
         }
-        if(!in_query_view(arg, command.family)) {
+        if(!in_query_view(arg, command.family) || (arch && arg.opt_id == clang_options::OPT_arch)) {
             continue;
         }
+        arch = arch || arg.opt_id == clang_options::OPT_arch;
         if(arg.opt_id == clang_options::OPT_UNKNOWN) {
             out.argv.push_back(arg.spelling);
             continue;
         }
-        render_driver_arg(arg, command.family, emit);
+        render_driver_arg(arg, option_family(command), emit);
     }
 
     return out;
@@ -564,10 +570,9 @@ Toolchain::QueryAdmission Toolchain::admit_query(CommandID id, InputKind input) 
     auto argv = query_argv(command);
     admission.kind = QueryAdmission::Kind::Ready;
     admission.spec.argv = std::move(argv.argv);
+    admission.spec.command = &command;
     admission.spec.slot = argv.slot;
     admission.spec.kind = input.value;
-    admission.spec.family = command.family;
-    admission.spec.query_toolchain = command.query_toolchain;
     admission.spec.cwd =
         query_cwd(pk.cwd_sensitive ? command.directory : llvm::StringRef(commands.project_root()));
     return admission;
@@ -784,7 +789,7 @@ std::vector<const char*> Toolchain::render_for_clang(const CommandRef& ref,
     auto driver = commands.render_driver(ref, path, opts);
     // Resolving the command read it already, and logged what the driver said.
     auto reading = read_as_clang({driver.begin(), driver.end()},
-                                 command.family,
+                                 option_family(command),
                                  command.directory,
                                  /*quiet=*/true);
     std::vector<const char*> argv;

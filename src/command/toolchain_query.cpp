@@ -1,6 +1,7 @@
 module clice;
 
 import :command.argument;
+import :command.table;
 import :command.toolchain_query;
 import :command.toolchains.cl;
 import :command.toolchains.clang;
@@ -116,8 +117,9 @@ bool names_unknown(const cli::ParsedArg& arg,
 }  // namespace
 
 async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
+    auto& command = *spec.command;
     auto driver = find_driver(spec.argv[0], spec.cwd);
-    if(!driver && spec.query_toolchain) {
+    if(!driver && command.query_toolchain) {
         co_return std::unexpected(std::move(driver.error()));
     }
 
@@ -143,17 +145,20 @@ async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     }
     args.insert(args.begin() + spec.slot, std::string(input->path()));
 
-    std::size_t driver_tokens = spec.family == CompilerFamily::Zig ? 2 : 1;
+    std::size_t driver_tokens = command.family == CompilerFamily::Zig ? 2 : 1;
     std::expected<Job, std::string> job;
-    bool cl = cl_mode(spec.family);
-    if(!spec.query_toolchain) {
-        job = std::move(read_as_clang(std::move(args), spec.family, spec.cwd).job);
-    } else if(cl) {
-        job = co_await ask_cl(args, spec.family, input->path(), spec.cwd);
-    } else if(spec.family == CompilerFamily::NVCC) {
-        job = co_await ask_nvcc(args, input->path(), spec.kind, spec.cwd);
+    if(!command.query_toolchain) {
+        // The options only nvcc resolves are none of clang's.
+        if(command.family == CompilerFamily::NVCC) {
+            std::erase_if(args, [](llvm::StringRef arg) { return is_nvcc_query_flag(arg); });
+        }
+        job = std::move(read_as_clang(std::move(args), option_family(command), spec.cwd).job);
+    } else if(cl_mode(command.family)) {
+        job = co_await ask_cl(args, command, input->path(), spec.cwd);
+    } else if(command.family == CompilerFamily::NVCC) {
+        job = co_await ask_nvcc(args, command, input->path(), spec.kind, spec.cwd);
     } else {
-        job = co_await ask_gcc_style(std::move(args), driver_tokens, spec.cwd);
+        job = co_await ask_gcc_style(std::move(args), command, driver_tokens, spec.cwd);
     }
     co_return job;
 }

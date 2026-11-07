@@ -1,6 +1,7 @@
 module clice:command.toolchain_query;
 
 import :command.argument;
+import :command.table;
 import :command.toolchains.clang;
 import :support.prelude;
 
@@ -12,17 +13,16 @@ struct QuerySpec {
     /// Driver (+ subcommand) + non-user-content flags; no input among them.
     std::vector<const char*> argv;
 
+    /// The command `argv` renders, which its table keeps while the query
+    /// runs. Its compiler never runs when it does not query the toolchain:
+    /// clang's own driver answers in its place.
+    const Command* command = nullptr;
+
     /// Where the temp input is inserted (an index into argv).
     std::size_t slot = 0;
 
     /// The input language (InputKind value).
     std::string kind;
-
-    CompilerFamily family = CompilerFamily::Unknown;
-
-    /// False: clang's own driver answers in place of the command's, which
-    /// never runs.
-    bool query_toolchain = true;
 
     /// Query working directory; empty inherits the process cwd.
     std::string cwd;

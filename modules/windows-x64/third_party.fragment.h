@@ -155,6 +155,7 @@ import std.compat;
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/RISCVISAInfo.h"
 #include "llvm/TargetParser/Triple.h"
+#include "llvm/WindowsDriver/MSVCPaths.h"
 #include "roaring/roaring.hh"
 #include "lmdb.h"
 #include "spdlog/details/log_msg.h"
