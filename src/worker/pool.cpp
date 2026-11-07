@@ -362,10 +362,8 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
     if(stateful) {
         w.death->documents = residency.worker_died(index);
     }
-    if(w.peer) {
-        w.peer->close();
-        w.peer.reset();
-    }
+    w.peer->close();
+    w.peer.reset();
     if(kill_process) {
         // Make sure the process is really gone so monitor_worker's
         // proc.wait() is guaranteed to deliver a result.

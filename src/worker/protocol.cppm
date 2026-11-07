@@ -205,7 +205,7 @@ struct CompileResult {
     /// name the blob's path, or they are AST-deserialization errors naming
     /// no other prebuilt input. Holds whether the reader rejected the blob
     /// at setup or hit a fatal error past it (a Done status with real,
-    /// publishable diagnostics). Either way the PCH is the culprit:
+    /// publishable diagnostics). Either way the PCH is at fault:
     /// the master should retract the pair and rebuild instead of trusting
     /// the corrupt bytes until the preamble changes.
     bool pch_suspect = false;
