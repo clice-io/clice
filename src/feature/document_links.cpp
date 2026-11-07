@@ -1,7 +1,7 @@
 module clice;
 
+import :compile.inactive_regions;
 import :feature.document_links;
-import :feature.inactive_regions;
 import :feature.protocol;
 import :index.query;
 import :index.symbol;
@@ -94,12 +94,34 @@ auto document_links(SourceText& source, llvm::ArrayRef<index::ResolvedInclude> i
     return links;
 }
 
-auto document_links(SourceText& source, const index::IndexQuery& query, Fid file)
+auto document_links(SourceText& source,
+                    const index::IndexQuery& query,
+                    Fid file,
+                    std::optional<AstAnswer<std::vector<index::DocumentLink>>> ast)
     -> std::vector<index::DocumentLink> {
-    if(!query.shard_matching(file, source.text())) {
-        return {};
+    std::vector<index::DocumentLink> links;
+    if(query.shard_matching(file, source.text())) {
+        links = document_links(source, query.project().resolved_includes(file));
     }
-    return document_links(source, query.project().resolved_includes(file));
+    if(!ast) {
+        return links;
+    }
+    auto& merged = ast->answer;
+    auto count = merged.size();
+    for(const auto& link: links) {
+        if(inactive_at(ast->skipped, link.range.begin) &&
+           ranges::none_of(merged, [&](const index::DocumentLink& known) {
+               return known.range == link.range && known.target == link.target;
+           })) {
+            merged.push_back(link);
+        }
+    }
+    if(merged.size() != count) {
+        ranges::stable_sort(merged, {}, [](const index::DocumentLink& link) {
+            return link.range.begin;
+        });
+    }
+    return std::move(merged);
 }
 
 auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,
@@ -129,25 +151,6 @@ auto link_at(llvm::ArrayRef<index::DocumentLink> links, std::uint32_t offset)
         return link.range.contains(offset);
     });
     return it != links.end() ? &*it : nullptr;
-}
-
-void merge_other_contexts(std::vector<index::DocumentLink>& links,
-                          llvm::ArrayRef<index::DocumentLink> index,
-                          llvm::ArrayRef<std::uint32_t> skipped) {
-    auto count = links.size();
-    for(const auto& link: index) {
-        if(inactive_at(skipped, link.range.begin) &&
-           ranges::none_of(links, [&](const index::DocumentLink& known) {
-               return known.range == link.range && known.target == link.target;
-           })) {
-            links.push_back(link);
-        }
-    }
-    if(links.size() != count) {
-        ranges::stable_sort(links, {}, [](const index::DocumentLink& link) {
-            return link.range.begin;
-        });
-    }
 }
 
 }  // namespace clice::feature

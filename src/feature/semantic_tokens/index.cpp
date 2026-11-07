@@ -1,5 +1,6 @@
 module clice;
 
+import :compile.inactive_regions;
 import :feature.index_entries;
 import :feature.semantic_tokens;
 import :feature.semantic_tokens.stream;
@@ -103,15 +104,17 @@ auto semantic_tokens(SourceText& source,
 auto semantic_tokens(SourceText& source,
                      const index::IndexQuery& query,
                      const index::IndexSource& index,
-                     const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
-    return semantic_tokens(
+                     const SemanticTokensOptions& options,
+                     std::optional<AstAnswer<std::vector<SemanticToken>>> ast)
+    -> std::vector<SemanticToken> {
+    auto tokens = semantic_tokens(
         source,
         extract_index_entries(*index.shard),
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },
         options);
-}
-
-void merge_other_contexts(std::vector<SemanticToken>& tokens, llvm::ArrayRef<SemanticToken> index) {
+    if(!ast) {
+        return tokens;
+    }
     auto inactive = mask(SemanticTokenModifier::Inactive);
     auto end_of = [](const SemanticToken& token) {
         return token.range.end;
@@ -120,16 +123,16 @@ void merge_other_contexts(std::vector<SemanticToken>& tokens, llvm::ArrayRef<Sem
     // alike (`f()` one plain token) and the index a name of several tokens
     // (`~Widget`): each splits the other's.
     std::vector<SemanticToken> merged;
-    merged.reserve(tokens.size());
-    auto next = index.begin();
-    for(const auto& token: tokens) {
-        if(!(token.modifiers & inactive)) {
+    merged.reserve(ast->answer.size());
+    auto next = tokens.cbegin();
+    for(const auto& token: ast->answer) {
+        if(!inactive_at(ast->skipped, token.range.begin)) {
             merged.push_back(token);
             continue;
         }
-        next = ranges::upper_bound(next, index.end(), token.range.begin, {}, end_of);
+        next = ranges::upper_bound(next, tokens.cend(), token.range.begin, {}, end_of);
         auto at = token.range.begin;
-        for(; next != index.end() && next->range.begin < token.range.end; ++next) {
+        for(; next != tokens.cend() && next->range.begin < token.range.end; ++next) {
             auto begin = std::max(next->range.begin, at);
             auto end = std::min(next->range.end, token.range.end);
             if(begin > at) {
@@ -157,7 +160,7 @@ void merge_other_contexts(std::vector<SemanticToken>& tokens, llvm::ArrayRef<Sem
             });
         }
     }
-    tokens = std::move(merged);
+    return merged;
 }
 
 void merge_preamble_macros(const index::TUIndex& preamble, std::vector<SemanticToken>& tokens) {

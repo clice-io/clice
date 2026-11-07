@@ -676,8 +676,9 @@ public:
     std::vector<index::DocumentLink> preamble_links(const Session& session) const;
 
     /// The include-like directive links of a document's whole buffer: the
-    /// PCH's cached preamble links, then the worker's AST's for the rest.
-    /// Module names go through the ordinary index pipeline, not these.
+    /// PCH's cached preamble links, then the worker's AST's for the rest,
+    /// and the index's in the code the compile skipped. Module names go
+    /// through the ordinary index pipeline, not these.
     async::task<std::vector<index::DocumentLink>, ipc::Error>
         directive_links(const Ticket& ticket, async::cancellation_token token);
 

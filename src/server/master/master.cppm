@@ -300,6 +300,11 @@ public:
     /// the choice had moved it.
     ext::SwitchContextResult reset_context(Fid path_id);
 
+    /// clice/showOtherContexts: show the code the file's other contexts
+    /// compile in its answers, or its own context alone; the client asks
+    /// again for what it shows.
+    void show_other_contexts(Fid path_id, bool show);
+
     // polling.cpp
 
     /// Hand the disk changes the file table saw to every project knowing
@@ -358,6 +363,10 @@ public:
 
     /// The users' context choices, at most one per file.
     llvm::DenseMap<Fid, ChoiceEntry> choices;
+
+    /// The files whose answers show their own context alone
+    /// (clice/showOtherContexts).
+    llvm::DenseSet<Fid> own_context_only;
 
     /// The projects' indexing passes as one: it begins with the first
     /// project's pass and ends with the last one's, and a project whose

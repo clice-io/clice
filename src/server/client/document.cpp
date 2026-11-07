@@ -1,11 +1,12 @@
 module clice;
 
+import :compile.inactive_regions;
 import :feature.diagnostics;
 import :feature.document_links;
 import :feature.document_symbols;
 import :feature.folding_ranges;
 import :feature.hover;
-import :feature.inactive_regions;
+import :feature.index_entries;
 import :feature.inlay_hints;
 import :feature.protocol;
 import :feature.selection_ranges;
@@ -68,26 +69,22 @@ static std::optional<feature::HoverInfo> index_hover_card(ServedProject& project
                                project.project.settings.documentation);
 }
 
-/// What completes the answers the AST gives for a document: the code its
-/// context skipped that the file's other contexts compile, and the index
-/// serving the document, which holds their entries there; none when no
-/// other context compiles any of it or the buffer is too large to lex
-/// again.
-struct OtherContexts {
-    llvm::ArrayRef<std::uint32_t> skipped;
-    index::IndexSource index;
-};
-
-static std::optional<OtherContexts> other_contexts(const ServedProject& served,
-                                                   const Session& session) {
+/// The code the AST's context skipped, when the index serving the document
+/// holds the entries of the file's other contexts there and the buffer is
+/// not too large to lex again: the index completes the AST's answer there,
+/// `source` set to it. Empty otherwise.
+static llvm::ArrayRef<std::uint32_t> other_contexts(const ServedProject& served,
+                                                    const Session& session,
+                                                    std::optional<index::IndexSource>& source) {
     if(session.text().size() > full_lex_cap) {
-        return std::nullopt;
+        return {};
     }
     auto skipped = served.skipped_code(session.path_id);
     if(!skipped.indexed) {
-        return std::nullopt;
+        return {};
     }
-    return OtherContexts{skipped.regions, *served.query().serving(session.path_id)};
+    source = served.query().serving(session.path_id);
+    return skipped.regions;
 }
 
 LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
@@ -95,15 +92,11 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
                                             TokensRequest request) {
     auto& [path, path_id, session, served, version, ticket] = document;
     std::optional<index::IndexSource> source;
-    std::optional<std::vector<feature::SemanticToken>> tokens;
+    std::optional<feature::AstAnswer<std::vector<feature::SemanticToken>>> ast;
     switch(co_await served->pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Outdated: co_await async::fail(content_modified());
         case Route::Index: {
             index_served.insert(path_id);
-            tokens = feature::semantic_tokens(served->text_of(*session),
-                                              served->query(),
-                                              *source,
-                                              served->project.settings.semantic_tokens);
             break;
         }
         case Route::Empty: {
@@ -116,41 +109,39 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
             co_return codec::raw_value{"null"};
         }
         case Route::Ast: {
-            tokens = co_await served
-                         ->ast_request(ticket,
-                                       feature::RequestKind::SemanticTokens,
-                                       "SemanticTokens",
-                                       worker::SemanticTokensParams{
-                                           .settings = served->project.settings,
-                                       },
-                                       std::move(token))
-                         .or_fail();
-            auto other = other_contexts(*served, *session);
-            if(tokens && other) {
-                feature::merge_other_contexts(
-                    *tokens,
-                    feature::semantic_tokens(served->text_of(*session),
-                                             served->query(),
-                                             other->index,
-                                             served->project.settings.semantic_tokens));
+            auto tokens = co_await served
+                              ->ast_request(ticket,
+                                            feature::RequestKind::SemanticTokens,
+                                            "SemanticTokens",
+                                            worker::SemanticTokensParams{
+                                                .settings = served->project.settings,
+                                            },
+                                            std::move(token))
+                              .or_fail();
+            if(!tokens) {
+                co_return codec::raw_value{"null"};
             }
+            ast.emplace(std::move(*tokens), other_contexts(*served, *session, source));
             break;
         }
     }
-    if(!tokens) {
-        co_return codec::raw_value{"null"};
-    }
+    auto tokens = source ? feature::semantic_tokens(served->text_of(*session),
+                                                    served->query(),
+                                                    *source,
+                                                    served->project.settings.semantic_tokens,
+                                                    std::move(ast))
+                         : std::move(ast->answer);
     if(auto preamble = served->query().preamble_index(path_id)) {
-        feature::merge_preamble_macros(*preamble, *tokens);
+        feature::merge_preamble_macros(*preamble, tokens);
     }
     // Encoded against the document's text right away.
     auto encoding = server.position_encoding;
     auto positions = session->positions();
     if(request.window) {
         auto window = positions.offset_range(*request.window, encoding);
-        co_return to_raw(feature::to_protocol(*tokens, positions, encoding, token_legend, window));
+        co_return to_raw(feature::to_protocol(tokens, positions, encoding, token_legend, window));
     }
-    auto encoded = feature::to_protocol(*tokens, positions, encoding, token_legend);
+    auto encoded = feature::to_protocol(tokens, positions, encoding, token_legend);
     next_result_id += 1;
     encoded.result_id = std::to_string(next_result_id);
     auto& sent = sent_tokens[path_id];
@@ -213,7 +204,8 @@ void LSPClient::register_document_requests() {
                     if(auto shown =
                            directive_card(feature::document_links(project.text_of(*session),
                                                                   project.query(),
-                                                                  path_id))) {
+                                                                  path_id,
+                                                                  std::nullopt))) {
                         index_served.insert(path_id);
                         co_return std::move(*shown);
                     }
@@ -288,7 +280,7 @@ void LSPClient::register_document_requests() {
         // Code the compile's context skipped: another context of the file
         // compiles it, and the index has its card.
         if(auto skipped = project.skipped_code(path_id);
-           offset && skipped.indexed && feature::inactive_at(skipped.regions, *offset)) {
+           offset && skipped.indexed && inactive_at(skipped.regions, *offset)) {
             if(auto info = index_hover_card(project, *session, position)) {
                 co_return card(*info);
             }
@@ -352,54 +344,55 @@ void LSPClient::register_document_requests() {
                                                   path_id));
         });
 
-    on_document<protocol::FoldingRangeParams>([this](RequestContext& ctx,
-                                                     const auto& params,
-                                                     ResolvedDoc document) -> RawResult {
-        auto& [path, path_id, session, served, version, ticket] = document;
-        auto convert = [&](llvm::ArrayRef<feature::FoldingRange> folds) {
-            return to_raw(feature::to_protocol(folds,
-                                               session->text(),
-                                               session->positions(),
-                                               server.position_encoding,
-                                               folding_client));
-        };
-        std::optional<index::IndexSource> source;
-        switch(co_await served->pick_route(ticket, {.full_lex = true}, &source)) {
-            case Route::Outdated: co_await async::fail(content_modified());
-            case Route::Index: {
-                auto folds =
-                    feature::folding_ranges(served->text_of(*session), served->query(), *source);
-                index_served.insert(path_id);
-                co_return convert(folds);
+    on_document<protocol::FoldingRangeParams>(
+        [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
+            auto& [path, path_id, session, served, version, ticket] = document;
+            auto convert = [&](llvm::ArrayRef<feature::FoldingRange> folds) {
+                return to_raw(feature::to_protocol(folds,
+                                                   session->text(),
+                                                   session->positions(),
+                                                   server.position_encoding,
+                                                   folding_client));
+            };
+            std::optional<index::IndexSource> source;
+            std::optional<feature::AstAnswer<std::vector<feature::FoldingRange>>> ast;
+            switch(co_await served->pick_route(ticket, {.full_lex = true}, &source)) {
+                case Route::Outdated: co_await async::fail(content_modified());
+                case Route::Index: {
+                    index_served.insert(path_id);
+                    break;
+                }
+                case Route::Empty: {
+                    // Same contract as the semantic-tokens Empty route: the
+                    // client caches this reply, and only a foldingRange
+                    // refresh makes it re-pull once the cold document's
+                    // shard arrives.
+                    index_served.insert(path_id);
+                    co_return codec::raw_value{"[]"};
+                }
+                case Route::Ast: {
+                    auto folds = co_await served
+                                     ->ast_request(ticket,
+                                                   feature::RequestKind::FoldingRange,
+                                                   "FoldingRange",
+                                                   worker::FoldingRangeParams{},
+                                                   ctx.cancellation)
+                                     .or_fail();
+                    if(!folds) {
+                        co_return codec::raw_value{"null"};
+                    }
+                    ast.emplace(std::move(*folds), other_contexts(*served, *session, source));
+                    break;
+                }
             }
-            case Route::Empty: {
-                // Same contract as the semantic-tokens Empty route: the
-                // client caches this reply, and only a foldingRange
-                // refresh makes it re-pull once the cold document's
-                // shard arrives.
-                index_served.insert(path_id);
-                co_return codec::raw_value{"[]"};
+            if(!source) {
+                co_return convert(ast->answer);
             }
-            case Route::Ast: break;
-        }
-        auto folds = co_await served
-                         ->ast_request(ticket,
-                                       feature::RequestKind::FoldingRange,
-                                       "FoldingRange",
-                                       worker::FoldingRangeParams{},
-                                       ctx.cancellation)
-                         .or_fail();
-        if(!folds) {
-            co_return codec::raw_value{"null"};
-        }
-        if(auto other = other_contexts(*served, *session)) {
-            feature::merge_other_contexts(
-                *folds,
-                feature::folding_ranges(served->text_of(*session), served->query(), other->index),
-                other->skipped);
-        }
-        co_return convert(*folds);
-    });
+            co_return convert(feature::folding_ranges(served->text_of(*session),
+                                                      served->query(),
+                                                      *source,
+                                                      std::move(ast)));
+        });
 
     // One chain of selection ranges per position: from the AST, or for a
     // document without one from the raw lex of its text.
@@ -471,43 +464,41 @@ void LSPClient::register_document_requests() {
                                                          params.text_document.uri));
         };
         std::optional<index::IndexSource> source;
+        std::optional<feature::AstAnswer<std::vector<feature::DocumentSymbol>>> ast;
         switch(co_await served->pick_route(ticket,
                                            {.full_lex = true, .await_cold_attempt = true},
                                            &source)) {
             case Route::Outdated: co_await async::fail(content_modified());
             case Route::Index: {
-                auto symbols = feature::document_symbols(served->text_of(*session),
-                                                         served->query(),
-                                                         *source,
-                                                         served->project.settings.document_symbols);
                 index_served.insert(path_id);
-                co_return convert(symbols);
+                break;
             }
             case Route::Empty: co_return codec::raw_value{"[]"};
-            case Route::Ast: break;
+            case Route::Ast: {
+                auto symbols = co_await served
+                                   ->ast_request(ticket,
+                                                 feature::RequestKind::DocumentSymbol,
+                                                 "DocumentSymbol",
+                                                 worker::DocumentSymbolParams{
+                                                     .settings = served->project.settings,
+                                                 },
+                                                 ctx.cancellation)
+                                   .or_fail();
+                if(!symbols) {
+                    co_return codec::raw_value{"null"};
+                }
+                ast.emplace(std::move(*symbols), other_contexts(*served, *session, source));
+                break;
+            }
         }
-        auto symbols = co_await served
-                           ->ast_request(ticket,
-                                         feature::RequestKind::DocumentSymbol,
-                                         "DocumentSymbol",
-                                         worker::DocumentSymbolParams{
-                                             .settings = served->project.settings,
-                                         },
-                                         ctx.cancellation)
-                           .or_fail();
-        if(!symbols) {
-            co_return codec::raw_value{"null"};
+        if(!source) {
+            co_return convert(ast->answer);
         }
-        if(auto other = other_contexts(*served, *session)) {
-            feature::merge_other_contexts(
-                *symbols,
-                feature::document_symbols(served->text_of(*session),
-                                          served->query(),
-                                          other->index,
-                                          served->project.settings.document_symbols),
-                other->skipped);
-        }
-        co_return convert(*symbols);
+        co_return convert(feature::document_symbols(served->text_of(*session),
+                                                    served->query(),
+                                                    *source,
+                                                    served->project.settings.document_symbols,
+                                                    std::move(ast)));
     });
 
     // The worker's focus-file links merged behind the PCH's cached preamble
@@ -525,7 +516,8 @@ void LSPClient::register_document_requests() {
                     // __has_include/#embed have no edge and produce no link.
                     auto links = feature::document_links(served->text_of(*session),
                                                          served->query(),
-                                                         path_id);
+                                                         path_id,
+                                                         std::nullopt);
                     index_served.insert(path_id);
                     co_return to_raw(
                         feature::to_protocol(links, session->positions(), encoding, files));
@@ -534,15 +526,6 @@ void LSPClient::register_document_requests() {
                 case Route::Ast: break;
             }
             auto links = co_await served->directive_links(ticket, ctx.cancellation).or_fail();
-            // An include leaves no index entry: the skipped code's includes
-            // link even when the index holds no entries there.
-            if(auto skipped = served->skipped_code(path_id);
-               session->text().size() <= full_lex_cap && !skipped.regions.empty()) {
-                feature::merge_other_contexts(
-                    links,
-                    feature::document_links(served->text_of(*session), served->query(), path_id),
-                    skipped.regions);
-            }
             co_return to_raw(feature::to_protocol(links, session->positions(), encoding, files));
         });
 

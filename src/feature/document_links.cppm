@@ -1,6 +1,7 @@
 module clice:feature.document_links;
 
 import :compile.compilation;
+import :feature.index_entries;
 import :index.query;
 import :index.symbol;
 import :index.tu_manifest;
@@ -28,17 +29,14 @@ auto document_links(SourceText& source, llvm::ArrayRef<index::ResolvedInclude> i
 /// Unlike the entries the other results computed from the index serve,
 /// the includes are disk truth: a buffer edited since (its compile stopped by
 /// a crash, its own index current) must not get them — an edited
-/// directive would get the old target, confidently wrong.
-auto document_links(SourceText& source, const index::IndexQuery& query, Fid file)
+/// directive would get the old target, confidently wrong. With the AST's
+/// answer, the links it gives, and those in the code its context skipped:
+/// the includes of the file's other contexts.
+auto document_links(SourceText& source,
+                    const index::IndexQuery& query,
+                    Fid file,
+                    std::optional<AstAnswer<std::vector<index::DocumentLink>>> ast)
     -> std::vector<index::DocumentLink>;
-
-/// Adds to the links the AST gives those `index`, the links of the index
-/// serving the file, holds in the code the AST's context skipped
-/// (`skipped`, flat as InactiveScan's): the includes of the file's other
-/// contexts.
-void merge_other_contexts(std::vector<index::DocumentLink>& links,
-                          llvm::ArrayRef<index::DocumentLink> index,
-                          llvm::ArrayRef<std::uint32_t> skipped);
 
 /// The links in LSP form, each target named the way the user knows the
 /// file; a link outside `map`'s text is left out.

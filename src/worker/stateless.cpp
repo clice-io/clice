@@ -6,11 +6,11 @@ module clice;
 
 import :compile.compilation;
 import :compile.diagnostic;
+import :compile.inactive_regions;
 import :feature.code_completion;
 import :feature.diagnostics;
 import :feature.document_links;
 import :feature.formatting;
-import :feature.inactive_regions;
 import :feature.signature_help;
 import :index.include_tree;
 import :index.indexer;
@@ -56,7 +56,7 @@ static std::vector<std::byte> serialize_preamble_index(CompilationUnit& unit,
                                                        std::uint32_t preamble_bound) {
     ScopedTimer links_timer;
     auto links = feature::document_links(unit);
-    auto inactive = feature::inactive_regions(unit, {}, 0, preamble_bound);
+    auto inactive = inactive_regions(unit, {}, 0, preamble_bound);
     auto links_ms = links_timer.ms_f();
     auto diagnostics = to_client_json(feature::diagnostics(unit), "[]");
 

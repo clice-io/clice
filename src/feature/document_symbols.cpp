@@ -1,8 +1,8 @@
 module clice;
 
 import :compile.compilation;
+import :compile.inactive_regions;
 import :feature.document_symbols;
-import :feature.inactive_regions;
 import :feature.index_entries;
 import :index.query;
 import :index.symbol;
@@ -1127,17 +1127,17 @@ auto document_symbols(SourceText& source,
 auto document_symbols(SourceText& source,
                       const index::IndexQuery& query,
                       const index::IndexSource& index,
-                      const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
-    return document_symbols(
+                      const DocumentSymbolsOptions& options,
+                      std::optional<AstAnswer<std::vector<DocumentSymbol>>> ast)
+    -> std::vector<DocumentSymbol> {
+    auto outline = document_symbols(
         source,
         extract_index_entries(*index.shard),
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },
         options);
-}
-
-void merge_other_contexts(std::vector<DocumentSymbol>& outline,
-                          llvm::ArrayRef<DocumentSymbol> index,
-                          llvm::ArrayRef<std::uint32_t> skipped) {
+    if(!ast) {
+        return outline;
+    }
     auto merge = [&](this auto& self,
                      std::vector<DocumentSymbol>& into,
                      llvm::ArrayRef<DocumentSymbol> from) -> void {
@@ -1165,7 +1165,7 @@ void merge_other_contexts(std::vector<DocumentSymbol>& outline,
                 for(const auto& child: symbol.children) {
                     level.push_back(&child);
                 }
-            } else if(inactive_at(skipped, symbol.selection_range.begin)) {
+            } else if(inactive_at(ast->skipped, symbol.selection_range.begin)) {
                 added.push_back(symbol);
             }
         }
@@ -1179,7 +1179,8 @@ void merge_other_contexts(std::vector<DocumentSymbol>& outline,
             return symbol.range.begin;
         });
     };
-    merge(outline, index);
+    merge(ast->answer, outline);
+    return std::move(ast->answer);
 }
 
 }  // namespace clice::feature

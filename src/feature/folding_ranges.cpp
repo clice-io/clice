@@ -1,8 +1,8 @@
 module clice;
 
 import :compile.compilation;
+import :compile.inactive_regions;
 import :feature.folding_ranges;
-import :feature.inactive_regions;
 import :feature.index_entries;
 import :index.query;
 import :semantic.decls;
@@ -1065,37 +1065,39 @@ auto folding_ranges(SourceText& source,
 
 auto folding_ranges(SourceText& source,
                     const index::IndexQuery& query,
-                    const index::IndexSource& index) -> std::vector<FoldingRange> {
-    return folding_ranges(
-        source,
-        extract_index_entries(*index.shard).decls,
-        [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); });
-}
-
-void merge_other_contexts(std::vector<FoldingRange>& folds,
-                          llvm::ArrayRef<FoldingRange> index,
-                          llvm::ArrayRef<std::uint32_t> skipped) {
+                    const index::IndexSource& index,
+                    std::optional<AstAnswer<std::vector<FoldingRange>>> ast)
+    -> std::vector<FoldingRange> {
+    auto folds =
+        folding_ranges(source,
+                       extract_index_entries(*index.shard).decls,
+                       [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); });
+    if(!ast) {
+        return folds;
+    }
+    auto& merged = ast->answer;
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, std::size_t> known;
-    for(auto [position, fold]: views::enumerate(folds)) {
+    for(auto [position, fold]: views::enumerate(merged)) {
         known.try_emplace({fold.range.begin, fold.range.end}, position);
     }
-    auto count = folds.size();
-    for(const auto& fold: index) {
-        if(!inactive_at(skipped, fold.range.begin)) {
+    auto count = merged.size();
+    for(const auto& fold: folds) {
+        if(!inactive_at(ast->skipped, fold.range.begin)) {
             continue;
         }
         auto it = known.find({fold.range.begin, fold.range.end});
         if(it == known.end()) {
-            folds.push_back(fold);
-        } else if(!folds[it->second].kind) {
+            merged.push_back(fold);
+        } else if(!merged[it->second].kind) {
             // A block in inactive code folds by its braces alone; the
             // index knows the declaration owning it.
-            folds[it->second] = fold;
+            merged[it->second] = fold;
         }
     }
-    if(folds.size() != count) {
-        ranges::stable_sort(folds, {}, [](const FoldingRange& fold) { return fold.range.begin; });
+    if(merged.size() != count) {
+        ranges::stable_sort(merged, {}, [](const FoldingRange& fold) { return fold.range.begin; });
     }
+    return std::move(merged);
 }
 
 }  // namespace clice::feature

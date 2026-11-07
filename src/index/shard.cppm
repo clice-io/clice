@@ -177,12 +177,31 @@ std::vector<std::byte>
 /// holds at least one variant, and a file whose last variant died is
 /// retired by the caller, not compacted to nothing. Every fresh shard
 /// must be a loaded single-variant blob of the same content generation as
-/// the other inputs. `within`, when given, keeps of `old`'s entries those
-/// it accepts the offset of, and the relations between two symbols one of
-/// which the occurrences kept name.
+/// the other inputs.
 std::vector<std::byte> merge_shards(const Shard& old,
                                     llvm::ArrayRef<VariantHash> keep,
-                                    llvm::ArrayRef<Shard> fresh,
-                                    llvm::function_ref<bool(std::uint32_t)> within = nullptr);
+                                    llvm::ArrayRef<Shard> fresh);
+
+/// An open file's index with its other contexts (merge_other_contexts).
+struct MergedContexts {
+    Shard shard;
+
+    /// Zero when the merge adds nothing to the compile's index, else a hash
+    /// of its entries: two tell whether the additions changed.
+    std::uint64_t additions = 0;
+};
+
+/// What an open file's compile indexed in the one context it ran in
+/// (`own`, unloaded when that indexed nothing in the file), merged with the
+/// entries the file's shard of the same content (`stored`, every context's;
+/// `live`, its variants still live) holds in the code the compile skipped
+/// (`skipped`, flat begin/end offset pairs as InactiveScan's) — and with the
+/// relations between two symbols, which have no place of their own, when
+/// the entries kept name either. Nullopt when there is nothing to merge:
+/// `own` is unloaded and no live variant of `stored` is left.
+std::optional<MergedContexts> merge_other_contexts(const Shard& stored,
+                                                   llvm::ArrayRef<VariantHash> live,
+                                                   const Shard& own,
+                                                   llvm::ArrayRef<std::uint32_t> skipped);
 
 }  // namespace clice::index

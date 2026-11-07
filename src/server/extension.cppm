@@ -84,11 +84,23 @@ struct CurrentContextResult {
     /// The listing generation it answers under (QueryContextResult::epoch):
     /// a listing of another epoch is out of date.
     std::uint64_t epoch = 0;
+
+    /// Whether the file's answers show, beside its own context, the code
+    /// its other contexts compile (clice/showOtherContexts).
+    bool other_contexts = true;
 };
 
 /// clice/resetContext: drop the user's choice, back to the automatic one.
 struct ResetContextParams {
     std::string uri;
+};
+
+/// clice/showOtherContexts: whether a file's answers show, beside its own
+/// context, the code its other contexts compile — the default —, or its
+/// own context alone. Kept while the server runs.
+struct ShowOtherContextsParams {
+    std::string uri;
+    bool show = true;
 };
 
 struct SwitchContextParams {

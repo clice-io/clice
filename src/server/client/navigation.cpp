@@ -110,7 +110,10 @@ void LSPClient::register_navigation() {
                project.compile_stopped(*session) ||
                (shard_served && !project.cursor_at(path_id, position))) {
                 if(offset) {
-                    auto links = feature::document_links(project.text_of(*session), query, path_id);
+                    auto links = feature::document_links(project.text_of(*session),
+                                                         query,
+                                                         path_id,
+                                                         std::nullopt);
                     if(auto* link = feature::link_at(links, *offset)) {
                         co_return to_raw(std::vector{feature::directive_location(files, *link)});
                     }

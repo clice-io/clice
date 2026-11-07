@@ -42,4 +42,13 @@ auto extract_index_entries(const index::Shard& shard) -> IndexEntries;
 
 using IndexSymbolResolver = llvm::function_ref<std::optional<index::SymbolInfo>(index::SymbolHash)>;
 
+/// What a file's AST answered, which the index's answer completes in the
+/// code its context skipped (`skipped`, flat begin/end offset pairs as
+/// InactiveScan's): the code the file's other contexts compile.
+template <typename Answer>
+struct AstAnswer {
+    Answer answer;
+    llvm::ArrayRef<std::uint32_t> skipped;
+};
+
 }  // namespace clice::feature

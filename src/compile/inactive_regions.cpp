@@ -1,11 +1,11 @@
 module clice;
 
 import :compile.directive;
-import :feature.inactive_regions;
+import :compile.inactive_regions;
 import :support.text;
 import :syntax.lexical_scan;
 
-namespace clice::feature {
+namespace clice {
 
 /// Where the directive at `offset` ends: past the lines a backslash
 /// continues and a block comment spans.
@@ -160,4 +160,4 @@ bool inactive_at(llvm::ArrayRef<std::uint32_t> regions, std::uint32_t offset) {
     return (ranges::upper_bound(regions, offset) - regions.begin()) % 2 == 1;
 }
 
-}  // namespace clice::feature
+}  // namespace clice

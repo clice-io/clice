@@ -3,6 +3,7 @@ module clice;
 import :feature.protocol;
 import :project.command;
 import :project.project;
+import :server.client;
 import :server.master;
 import :server.served_project;
 import :support.logging;
@@ -255,6 +256,7 @@ async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id
     }
     auto* active = owner->active_choice(path_id);
     result.automatic = active == nullptr;
+    result.other_contexts = !own_context_only.contains(path_id);
     if(auto item = project.current_context_item(path_id, resolution)) {
         result.context = to_item(files, std::move(*item));
     }
@@ -294,6 +296,13 @@ ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
         replace_shown(*document);
     }
     return {.success = true};
+}
+
+void MasterServer::show_other_contexts(Fid path_id, bool show) {
+    bool changed = show ? own_context_only.erase(path_id) : own_context_only.insert(path_id).second;
+    if(changed && client) {
+        client->refresh();
+    }
 }
 
 }  // namespace clice

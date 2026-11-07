@@ -1,13 +1,13 @@
 module clice;
 
-import :feature.inactive_regions;
+import :feature.document_links;
+import :feature.index_entries;
 import :index.project_index;
 import :index.query;
 import :index.shard;
 import :server.master;
 import :server.served_project;
 import :support.logging;
-import :support.bytes;
 import :syntax.scan;
 import :vfs.file_system;
 import :vfs.path;
@@ -56,10 +56,12 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
             // freshness clause 4.
             auto admitted = query().serving(session.path_id);
             // The disk shard merges every context the file compiles in, or
-            // holds its first command's: a context the user chose waits for
-            // its own compile.
+            // holds its first command's: a context the user chose, or one
+            // the user wants alone, waits for its own compile.
             if(admitted && admitted->kind == index::IndexSource::Kind::Shard &&
-               serving == ServingMode::Escalated && active_choice(session.path_id)) {
+               serving == ServingMode::Escalated &&
+               (active_choice(session.path_id) ||
+                server.own_context_only.contains(session.path_id))) {
                 admitted.reset();
             }
             if(admitted) {
@@ -128,46 +130,17 @@ std::optional<index::IndexQuery::Cursor>
     return query().symbol_at(path_id, position, server.position_encoding);
 }
 
-/// A shard's entries counted and hashed, whichever variants hold them: a
-/// merge only adds to the entries of the shards it takes, so equal counts
-/// are equal entries.
-struct Entries {
-    std::size_t count = 0;
-    std::uint64_t hash = 0;
-};
-
-static Entries entries_of(const index::Shard& shard) {
-    Entries entries;
-    shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
-        entries.count += 1;
-        entries.hash = llvm::hash_combine(entries.hash,
-                                          occurrence.range.begin,
-                                          occurrence.range.end,
-                                          occurrence.target);
-        return true;
-    });
-    shard.for_each_relation([&](index::SymbolHash symbol, const index::Relation& relation) {
-        entries.count += 1;
-        entries.hash = llvm::hash_combine(entries.hash,
-                                          symbol,
-                                          static_cast<std::uint32_t>(relation.kind),
-                                          relation.range.begin,
-                                          relation.range.end,
-                                          relation.target);
-        return true;
-    });
-    return entries;
-}
-
 /// The document's merged index (ServedDocument::merged), made if missing:
 /// while its compile describes the buffer, the buffer is the text the
-/// file's shard indexed, and the compile skipped some code. Null otherwise.
+/// file's shard indexed, and the compile skipped some code — unless the
+/// user asked for the file's own context alone. Null otherwise.
 const static ServedDocument::MergedIndex* merged_index(const ServedProject& served,
                                                        const ServedDocument& document) {
     auto& compiled = document.latest;
     auto& session = *document.session;
     if(!compiled || !compiled->index || !compiled->index->loaded() ||
-       compiled->inactive_regions.empty()) {
+       compiled->inactive_regions.empty() ||
+       served.server.own_context_only.contains(session.path_id)) {
         document.merged.reset();
         return nullptr;
     }
@@ -186,30 +159,18 @@ const static ServedDocument::MergedIndex* merged_index(const ServedProject& serv
         document.merged.reset();
         return nullptr;
     }
-    // A context that indexes nothing in the file leaves no section of it:
-    // the merge takes the shard's entries alone.
-    auto keep = served.project.index.live_variants(session.path_id);
-    auto fresh = own.loaded() ? llvm::ArrayRef(&own, 1) : llvm::ArrayRef<index::Shard>();
-    if(own.loaded()) {
-        keep.erase(ranges::remove(keep, own.variants().front()).begin(), keep.end());
-    } else if(ranges::none_of(keep,
-                              [&](std::uint64_t hash) { return stored->has_variant(hash); })) {
-        // The shard outlives the last context reading the file until the
-        // index is saved.
+    auto merged = index::merge_other_contexts(*stored,
+                                              served.project.index.live_variants(session.path_id),
+                                              own,
+                                              compiled->inactive_regions);
+    if(!merged) {
         document.merged.reset();
         return nullptr;
     }
-    auto& skipped = compiled->inactive_regions;
-    auto bytes = index::merge_shards(*stored, keep, fresh, [&](std::uint32_t offset) {
-        return feature::inactive_at(skipped, offset);
-    });
-    auto shard = std::make_shared<index::Shard>(
-        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))));
-    auto entries = entries_of(*shard);
     document.merged = ServedDocument::MergedIndex{
         .index = compiled->index,
-        .shard = std::move(shard),
-        .additions = entries.count != entries_of(own).count ? entries.hash : 0,
+        .shard = std::make_shared<index::Shard>(std::move(merged->shard)),
+        .additions = merged->additions,
     };
     return &*document.merged;
 }
@@ -318,9 +279,19 @@ async::task<std::vector<index::DocumentLink>, ipc::Error>
                       .or_fail();
     // The preamble is compiled into the PCH, so the worker's AST only
     // covers the rest of the file — merge the preamble's links in front.
-    auto links = preamble_links(*ticket.session);
+    auto& session = *ticket.session;
+    auto links = preamble_links(session);
     links.insert(links.end(), result.begin(), result.end());
-    co_return links;
+    // An include leaves no index entry: the skipped code's includes link
+    // even when the index holds no entries there.
+    auto skipped = skipped_code(session.path_id).regions;
+    if(skipped.empty() || session.text().size() > full_lex_cap) {
+        co_return links;
+    }
+    co_return feature::document_links(text_of(session),
+                                      query(),
+                                      session.path_id,
+                                      feature::AstAnswer{std::move(links), skipped});
 }
 
 bool ServedProject::admits(const Session& session,

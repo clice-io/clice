@@ -1,8 +1,8 @@
 module clice;
 
-import :feature.inactive_regions;
-import :unittests.utils;
+import :compile.inactive_regions;
 import :unittests.utils.tester;
+import :unittests.utils;
 
 namespace clice::testing {
 
@@ -10,12 +10,12 @@ namespace {
 
 ZEST_SUITE(inactive_regions, Tester) {
 
-feature::InactiveScan scan;
+InactiveScan scan;
 
 void run(llvm::StringRef source) {
     add_focus("main.cpp", source);
     ZASSERT(compile("-std=c++17"));
-    scan = feature::inactive_regions(*unit);
+    scan = clice::inactive_regions(*unit);
 }
 
 ZEST_CASE(FalseBranch) {

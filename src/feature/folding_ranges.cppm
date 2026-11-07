@@ -80,18 +80,14 @@ auto folding_ranges(SourceText& source,
                     llvm::ArrayRef<IndexDecl> decls,
                     IndexSymbolResolver resolve) -> std::vector<FoldingRange>;
 
-/// The same from the index serving the file (see semantic_tokens).
+/// The same from the index serving the file (see semantic_tokens). With
+/// the AST's answer, the folds it gives, and those the index makes in the
+/// code its context skipped — the blocks of the file's other contexts —,
+/// with the kind of a block there the AST folds by its braces alone.
 auto folding_ranges(SourceText& source,
                     const index::IndexQuery& query,
-                    const index::IndexSource& index) -> std::vector<FoldingRange>;
-
-/// Adds to the folds the AST gives those only `index`, the folds of the
-/// index serving the file, makes in the code the AST's context skipped
-/// (`skipped`, flat as InactiveScan's) — the blocks of the file's other
-/// contexts —, and the kind of a block there the AST folds by its braces
-/// alone.
-void merge_other_contexts(std::vector<FoldingRange>& folds,
-                          llvm::ArrayRef<FoldingRange> index,
-                          llvm::ArrayRef<std::uint32_t> skipped);
+                    const index::IndexSource& index,
+                    std::optional<AstAnswer<std::vector<FoldingRange>>> ast)
+    -> std::vector<FoldingRange>;
 
 }  // namespace clice::feature

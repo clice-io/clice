@@ -1,13 +1,13 @@
 module clice;
 
 import :compile.compilation;
-import :feature.inactive_regions;
-import :feature.semantic_tokens;
+import :compile.inactive_regions;
 import :feature.semantic_tokens.stream;
+import :feature.semantic_tokens;
 import :semantic.decls;
-import :semantic.template_resolver;
 import :semantic.semantics;
 import :semantic.symbol;
+import :semantic.template_resolver;
 import :semantic.token_class;
 import :syntax.token;
 

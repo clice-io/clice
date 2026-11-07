@@ -1,5 +1,6 @@
 module clice;
 
+import :compile.inactive_regions;
 import :index.columns;
 import :index.format;
 import :index.shard;
@@ -1842,10 +1843,12 @@ std::vector<std::byte>
     return emit_blob(merged, locals, {}, content_info_of(content));
 }
 
-std::vector<std::byte> merge_shards(const Shard& old,
-                                    llvm::ArrayRef<VariantHash> keep,
-                                    llvm::ArrayRef<Shard> fresh,
-                                    llvm::function_ref<bool(std::uint32_t)> within) {
+/// merge_shards, keeping of `old`'s entries those `within` accepts when
+/// given.
+static std::vector<std::byte> merge_blobs(const Shard& old,
+                                          llvm::ArrayRef<VariantHash> keep,
+                                          llvm::ArrayRef<Shard> fresh,
+                                          llvm::function_ref<bool(std::uint32_t)> within) {
     auto old_variants = old.variants();
 
     // old-id -> new-id; -1 drops the variant.
@@ -1900,6 +1903,65 @@ std::vector<std::byte> merge_shards(const Shard& old,
                                 std::move(variants),
                                 content,
                                 within);
+}
+
+std::vector<std::byte> merge_shards(const Shard& old,
+                                    llvm::ArrayRef<VariantHash> keep,
+                                    llvm::ArrayRef<Shard> fresh) {
+    return merge_blobs(old, keep, fresh, nullptr);
+}
+
+/// A shard's entries counted and hashed, whichever variants hold them: a
+/// merge only adds to the entries of the shards it takes, so equal counts
+/// are equal entries.
+static std::pair<std::size_t, std::uint64_t> count_entries(const Shard& shard) {
+    std::size_t count = 0;
+    std::uint64_t hash = 0;
+    shard.for_each_occurrence([&](const Occurrence& occurrence) {
+        count += 1;
+        hash = llvm::hash_combine(hash,
+                                  occurrence.range.begin,
+                                  occurrence.range.end,
+                                  occurrence.target);
+        return true;
+    });
+    shard.for_each_relation([&](SymbolHash symbol, const Relation& relation) {
+        count += 1;
+        hash = llvm::hash_combine(hash,
+                                  symbol,
+                                  static_cast<std::uint32_t>(relation.kind),
+                                  relation.range.begin,
+                                  relation.range.end,
+                                  relation.target);
+        return true;
+    });
+    return {count, hash};
+}
+
+std::optional<MergedContexts> merge_other_contexts(const Shard& stored,
+                                                   llvm::ArrayRef<VariantHash> live,
+                                                   const Shard& own,
+                                                   llvm::ArrayRef<std::uint32_t> skipped) {
+    llvm::SmallVector<VariantHash> keep(live.begin(), live.end());
+    auto fresh = own.loaded() ? llvm::ArrayRef(&own, 1) : llvm::ArrayRef<Shard>();
+    if(own.loaded()) {
+        keep.erase(ranges::remove(keep, own.variants().front()).begin(), keep.end());
+    } else if(ranges::none_of(keep, [&](VariantHash hash) { return stored.has_variant(hash); })) {
+        // The shard outlives the last context reading the file until the
+        // index is saved.
+        return std::nullopt;
+    }
+    auto bytes = merge_blobs(stored, keep, fresh, [&](std::uint32_t offset) {
+        return inactive_at(skipped, offset);
+    });
+    MergedContexts merged{
+        .shard = Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))),
+    };
+    auto [count, hash] = count_entries(merged.shard);
+    if(count != count_entries(own).first) {
+        merged.additions = hash;
+    }
+    return merged;
 }
 
 }  // namespace clice::index

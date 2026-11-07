@@ -29,6 +29,7 @@ import {
     ReleaseRequest,
     ResetContextRequest,
     RestartServerRequest,
+    ShowOtherContextsRequest,
     StatsRequest,
     SwitchConfigurationRequest,
     SwitchContextRequest,
@@ -1089,6 +1090,10 @@ export class CliceClient {
 
     resetContext(uri: string): Promise<SwitchContextResult> {
         return this.sendRequest(ResetContextRequest, { uri });
+    }
+
+    showOtherContexts(uri: string, show: boolean): Promise<SwitchContextResult> {
+        return this.sendRequest(ShowOtherContextsRequest, { uri, show });
     }
 
     switchContext(

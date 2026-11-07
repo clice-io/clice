@@ -88,6 +88,10 @@ export interface CurrentContextResult {
     /// The listing generation it answers under (QueryContextResult.epoch):
     /// a listing of another epoch is out of date.
     epoch: number;
+
+    /// Whether the file's answers show, beside its own context, the code
+    /// its other contexts compile (clice/showOtherContexts).
+    otherContexts: boolean;
 }
 
 export const CurrentContextRequest = new RequestType<
@@ -132,6 +136,20 @@ export interface ResetContextParams {
 export const ResetContextRequest = new RequestType<ResetContextParams, SwitchContextResult, void>(
     "clice/resetContext",
 );
+
+/// clice/showOtherContexts: whether a file's answers show, beside its own
+/// context, the code its other contexts compile — the default —, or its
+/// own context alone. Kept while the server runs.
+export interface ShowOtherContextsParams {
+    uri: string;
+    show: boolean;
+}
+
+export const ShowOtherContextsRequest = new RequestType<
+    ShowOtherContextsParams,
+    SwitchContextResult,
+    void
+>("clice/showOtherContexts");
 
 /// The build the links in the active configuration's database paths
 /// resolve to (rules with `resolve_symlinks`).
