@@ -167,7 +167,7 @@ End of search list.)";
 }
 
 ZEST_CASE(IntelSYCLHostJob, skip = Windows) {
-    /// icpx prints the device pass first. Clice reads the host pass.
+    /// icpx's host job, printed after its device job.
     auto driver = fake_gcc(
         "icpx",
         R"("/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" query.cpp
@@ -175,7 +175,8 @@ ZEST_CASE(IntelSYCLHostJob, skip = Windows) {
     auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-fsycl", "-c"}));
     ZEXPECT(adjacent(argv, "-triple", "x86_64-unknown-linux-gnu"));
     ZEXPECT(!contains(argv, "-fsycl-is-device"));
-    /// The internal header and footer are temporary files, gone by parse time.
+    /// The integration header and footer the device job wrote are gone
+    /// with the query's temporary directory.
     ZEXPECT(!contains(argv, "-include"));
 }
 

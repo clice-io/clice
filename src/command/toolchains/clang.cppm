@@ -18,8 +18,9 @@ struct Job {
 };
 
 /// The job clang's own driver builds for `args` (a driver, its flags and
-/// the input) when run in `cwd`, the process's own when empty. The errors
-/// the driver reports though it builds one go to `errors`, else the log.
+/// the input) when run in `cwd`, the process's own when empty: its first
+/// clang job, a SYCL compilation's host job. The errors the driver reports
+/// though it builds one go to `errors`, else the log.
 std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
                                              llvm::StringRef cwd,
                                              std::vector<std::string>* errors = nullptr);
@@ -59,12 +60,10 @@ private:
     llvm::IntrusiveRefCntPtr<clang::TargetInfo> target;
 };
 
-/// The first clang job a driver prints under `-v`: its program, -cc1 and
-/// its arguments as printed. Empty when there is none.
+/// The first clang job a driver prints under `-v`, a SYCL compilation's
+/// host job: its program, -cc1 and its arguments as printed. Empty when
+/// there is none.
 std::vector<std::string> parse_clang_job(llvm::StringRef output);
-
-/// A SYCL compilation's host pass, else the driver's first job.
-std::vector<std::string> parse_clang_host_job(llvm::StringRef output);
 
 /// The -std value for the macros a driver predefines: `__cplusplus` names
 /// the C++ standard, `__STDC_VERSION__` the C one, and `__STRICT_ANSI__`

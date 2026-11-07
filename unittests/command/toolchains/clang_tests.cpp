@@ -36,10 +36,11 @@ ZEST_CASE(ClangJobMultiCall) {
 }
 
 ZEST_CASE(SYCLHostJob) {
-    /// icpx and clang print the device pass first. Clice reads the host pass.
-    auto job = parse_clang_host_job(
-        R"("/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" "a.cpp"
-"/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fsycl-is-host" "a.cpp")");
+    /// icpx prints two device jobs before the host's, the one read.
+    auto job = parse_clang_job(
+        R"( "/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" "-E" "a.cpp"
+ "/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" "-fsyntax-only" "a.cpp"
+ "/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fsycl-is-host" "a.cpp")");
     std::vector<std::string> host = {"/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang",
                                      "-cc1",
                                      "-triple",
@@ -48,31 +49,41 @@ ZEST_CASE(SYCLHostJob) {
                                      "a.cpp"};
     ZEXPECT(job == host);
 
-    /// A device-only query has no host pass to choose.
-    auto device = parse_clang_host_job(
-        R"("/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" "a.cpp")");
-    std::vector<std::string> only_device = {"/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang",
-                                            "-cc1",
-                                            "-triple",
-                                            "spir64-unknown-unknown",
-                                            "-fsycl-is-device",
-                                            "a.cpp"};
-    ZEXPECT(device == only_device);
+    /// A compilation for the device alone has no host job: the first stays.
+    auto device = parse_clang_job(
+        R"( "/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" "-E" "a.cpp"
+ "/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" "-fsyntax-only" "a.cpp")");
+    std::vector<std::string> first = {"/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang",
+                                      "-cc1",
+                                      "-triple",
+                                      "spir64-unknown-unknown",
+                                      "-fsycl-is-device",
+                                      "-E",
+                                      "a.cpp"};
+    ZEXPECT(device == first);
 }
 
 ZEST_CASE(CUDAKeepsFirstJob) {
-    /// CUDA is unaffected: an unqueried nvcc keeps the first, device job.
-    auto job = parse_clang_host_job(
-        R"("/usr/bin/clang-22" "-cc1" "-triple" "nvptx64-nvidia-cuda" "-fcuda-is-device" "a.cu"
-"/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "a.cu")");
+    /// clang prints CUDA's device job first too, and it stays the one read.
+    auto job = parse_clang_job(
+        R"( "/usr/bin/clang-22" "-cc1" "-triple" "nvptx64-nvidia-cuda" "-fcuda-is-device" "a.cu"
+ "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "a.cu")");
     std::vector<std::string> device =
         {"/usr/bin/clang-22", "-cc1", "-triple", "nvptx64-nvidia-cuda", "-fcuda-is-device", "a.cu"};
     ZEXPECT(job == device);
 }
 
 ZEST_CASE(UnqueriedSYCLHostJob) {
-    /// clang's own driver prints the same two passes. The fallback reads the host.
+    /// clang's own driver builds the device job first too.
     auto argv = f.resolve(unqueried(add("a.cpp", {"clang++", "-fsycl", "-c"})));
+    ZEXPECT(contains(argv, "-fsycl-is-host"));
+    ZEXPECT(!contains(argv, "-fsycl-is-device"));
+
+    argv = f.resolve(unqueried(add("b.cpp", {"clang++", "-fsycl", "-fsycl-device-only", "-c"})));
+    ZEXPECT(contains(argv, "-fsycl-is-device"));
+
+    /// clang-cl's SYCL compilation too.
+    argv = f.resolve(unqueried(add("c.cpp", {"clang-cl", "-fsycl", "/c"})));
     ZEXPECT(contains(argv, "-fsycl-is-host"));
     ZEXPECT(!contains(argv, "-fsycl-is-device"));
 }
