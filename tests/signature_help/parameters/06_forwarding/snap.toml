@@ -74,10 +74,6 @@ signatures = [
 ]
 active = 0
 
-[answers.converting_cast.signature_help]
-signatures = ["narrowed(⟦Args &&...args⟧) -> T *"]
-active = 0
-
 [answers.array_elements.signature_help]
 signatures = ["many(⟦Args &&...args⟧) -> T *"]
 active = 0

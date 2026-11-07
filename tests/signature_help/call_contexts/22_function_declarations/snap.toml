@@ -29,10 +29,6 @@ active = 0
 signatures = ["Gauge()", "Gauge(⟦int level⟧)", "Gauge(⟦const Gauge &⟧)", "Gauge(⟦Gauge &&⟧)"]
 active = 0
 
-[answers.macro_argument.signature_help]
-signatures = ["Widget(⟦int width⟧, double scale)", "Widget(⟦const Widget &⟧)", "Widget(⟦Widget &&⟧)"]
-active = 0
-
 [answers.class_scope.signature_help]
 signatures = []
 

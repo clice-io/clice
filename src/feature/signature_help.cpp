@@ -96,11 +96,8 @@ bool constructs(llvm::ArrayRef<clang::CodeCompleteConsumer::OverloadCandidate> c
 /// Whether anything but its closing parenthesis follows `open_paren`,
 /// before or after the completion point.
 bool holds_argument(clang::Sema& sema, clang::SourceLocation open_paren) {
-    auto& sources = sema.getSourceManager();
-    if(sources.isMacroArgExpansion(open_paren)) {
-        open_paren = sources.getSpellingLoc(open_paren);
-    }
-    auto token = clang::Lexer::findNextToken(open_paren, sources, sema.getLangOpts());
+    auto token =
+        clang::Lexer::findNextToken(open_paren, sema.getSourceManager(), sema.getLangOpts());
     return token && !token->isOneOf(clang::tok::r_paren, clang::tok::eof);
 }
 
@@ -367,6 +364,7 @@ std::pair<unsigned, unsigned> expanded_pack(const clang::FunctionDecl& function)
 bool names_std(const clang::UnresolvedLookupExpr& lookup, llvm::ArrayRef<llvm::StringRef> names) {
     auto* identifier = lookup.getName().getAsIdentifierInfo();
     return identifier && ranges::contains(names, identifier->getName()) &&
+           !lookup.decls().empty() &&
            ranges::all_of(lookup.decls(),
                           [](const clang::NamedDecl* decl) { return decl->isInStdNamespace(); });
 }
@@ -381,13 +379,6 @@ bool passes_pack(llvm::ArrayRef<const clang::Expr*> args, const clang::ParmVarDe
     }
     const auto* arg = expansion->getPattern()->IgnoreParenImpCasts();
     if(const auto* cast = llvm::dyn_cast<clang::ExplicitCastExpr>(arg)) {
-        // `static_cast<Args&&>(args)` forwards; a cast to another type
-        // passes on no argument as written.
-        const auto* expanded = pack->getType()->getAs<clang::PackExpansionType>();
-        if(!expanded || cast->getTypeAsWritten().getNonReferenceType().getCanonicalType() !=
-                            expanded->getPattern().getNonReferenceType().getCanonicalType()) {
-            return false;
-        }
         arg = cast->getSubExpr()->IgnoreParenImpCasts();
     } else if(const auto* call = llvm::dyn_cast<clang::CallExpr>(arg);
               call && call->getNumArgs() == 1) {

@@ -28,10 +28,6 @@ Gauge aliased = Meter(§(alias_expression));
 Gauge qualified = units::Level(§(qualified_alias));
 Gauge* fresh = new Gauge(§(new_expression));
 
-#define KEEP(declaration) declaration
-
-KEEP(Widget kept(§(macro_argument)800, 1.5));
-
 struct Factory {
     Widget build(§(class_scope));
 };
