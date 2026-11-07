@@ -27,10 +27,6 @@ bool ServedProject::compiles(const Session& session) const {
     return document->compiles;
 }
 
-bool ServedProject::ast_answerable(const Session& session) const {
-    return index_current(session.path_id) && !compile_stopped(session);
-}
-
 async::task<Route> ServedProject::pick_route(const Ticket& ticket,
                                              RouteOptions options,
                                              std::optional<index::IndexSource>* source) {
@@ -39,7 +35,10 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
             co_return Route::Outdated;
         }
         auto& session = *ticket.session;
-        if(ast_answerable(session)) {
+        // A current AST answers, unless a crash stops the compile: then the
+        // index answers before a compile is awaited, which a stopped
+        // document's request would find failed.
+        if(index_current(session.path_id) && !compile_stopped(session)) {
             co_return Route::AST;
         }
         bool compiled = compiles(session);
@@ -48,7 +47,7 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
         // wait for the compile instead. Answers that only look the index up
         // serve at any size.
         bool capped = options.lexes_whole_buffer && session.text().size() > max_lexed_buffer;
-        if(!capped) {
+        if(!options.needs_ast && !capped) {
             // The document's own index when current (the answer while a
             // crash stops the compile — the worker cannot be asked, the
             // index is still true), else the disk shard admitted by

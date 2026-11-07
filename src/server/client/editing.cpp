@@ -327,15 +327,15 @@ void LSPClient::register_editing() {
         bool offer_switches =
             params.context.trigger_kind != protocol::CodeActionTriggerKind::Automatic;
 
-        if(!ticket.fresh()) {
-            co_await async::fail(content_modified());
-        }
         // Code actions are AST products the index cannot compute; a document
         // that is not compiled answers honestly empty rather than forcing a
         // compile.
+        auto route = co_await pick_route(document, {.needs_ast = true});
+        if(route == Route::Outdated) {
+            co_await async::fail(content_modified());
+        }
         std::vector<protocol::CodeAction> result;
-        if(feature::admits_any(only) &&
-           (project.ast_answerable(*session) || project.compiles(*session))) {
+        if(feature::admits_any(only) && route == Route::AST) {
             // Clamped against the buffer the ticket was taken on: a buffer
             // that moves before the reply arrives turns the reply into
             // ContentModified.

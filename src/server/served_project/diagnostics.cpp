@@ -117,7 +117,10 @@ void ServedProject::book_skipped_diagnostics(const ServedDocument& document, boo
         return;
     }
     if(first) {
-        background.index_first(path_id, /*diagnostics=*/true);
+        if(background.started() && !background.queue().in_flight(path_id) &&
+           !background.failed(path_id)) {
+            background.index_first(path_id, /*diagnostics=*/true);
+        }
     } else {
         background.enqueue(path_id, ReindexReason::DepsOnly, /*diagnostics=*/true);
     }

@@ -124,6 +124,12 @@ void LSPClient::refresh() {
     }
 }
 
+void LSPClient::index_changed(llvm::ArrayRef<Fid> files) {
+    if(ranges::any_of(files, [&](Fid file) { return index_served.contains(file); })) {
+        refresh();
+    }
+}
+
 void LSPClient::publish_second_name(MasterServer::Document& document,
                                     MasterServer::SecondName& second) {
     if(!client_ready) {
@@ -273,8 +279,9 @@ void LSPClient::push_output(ServedProject& project, const Session& session, bool
     }
 
     // Two cases make the client re-pull whole-document results it already
-    // holds: results computed from the index served while this compile was pending
-    // (their answers just got better), and a compile of unchanged text from
+    // holds: results computed from the index served while this compile was
+    // pending (their answers just got better; once asked, the client's next
+    // pulls note what the index answers again), and a compile of unchanged text from
     // changed inputs — a context switch or a changed dependency reshapes
     // tokens (including their inactive regions), hints and folds with no
     // didChange to trigger the client's own re-pull. Edit-driven compiles
@@ -286,7 +293,7 @@ void LSPClient::push_output(ServedProject& project, const Session& session, bool
         bool reshaped = last.version == output.version && last.generation != latest->generation;
         last.version = output.version;
         last.generation = latest->generation;
-        if(index_served.contains(session.path_id) || reshaped) {
+        if(index_served.erase(session.path_id) || reshaped) {
             refresh();
         }
     }

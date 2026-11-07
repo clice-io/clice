@@ -37,19 +37,25 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
         show_skipped_diagnostics(path_id);
     });
     index_conn = project.on_index_changed.connect([this](llvm::ArrayRef<Fid> path_ids) {
-        // Documents without a current file index serve these very shards
-        // (freshness clause 4), and the AST's answers take the file's other
-        // contexts from them: the client asks again for what it pulled.
+        // The AST's answers take the file's other contexts from these
+        // shards, and documents without a current file index serve them
+        // (freshness clause 4): the client asks again for what it pulled.
         bool completed = false;
+        llvm::SmallVector<Fid> reading;
         for(auto id: path_ids) {
             completed |= merge_again(id);
+            if(find_document(id) && !index_current(id)) {
+                reading.push_back(id);
+            }
         }
         auto* client = this->server.client;
-        if(client && (completed || ranges::any_of(path_ids, [&](Fid id) {
-                          return find_document(id) && !index_current(id) &&
-                                 client->index_served.contains(id);
-                      }))) {
+        if(!client) {
+            return;
+        }
+        if(completed) {
             client->refresh();
+        } else {
+            client->index_changed(reading);
         }
     });
     metadata_conn = project.on_metadata_changed.connect([this] { schedule_metadata_flush(); });
@@ -161,6 +167,7 @@ void ServedProject::start() {
         schedule_metadata_flush();
     }
     for(auto& [path_id, document]: documents) {
+        book_skipped_diagnostics(document, true);
         decide_compiling(document);
     }
     loaded.set();
@@ -252,24 +259,19 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
     server.recheck_choice(path_id);
     // The change may have moved other documents in: the table may have
     // grown since the reference above was taken.
-    decide_compiling(documents.find(path_id)->second);
+    auto& adopted = documents.find(path_id)->second;
+    book_skipped_diagnostics(adopted, true);
+    decide_compiling(adopted);
 }
 
 void ServedProject::decide_compiling(ServedDocument& document) {
-    // A compiled document needs no decision: builds stay pull-driven. When
-    // they skip the bodies of the headers, the file's background run shows
-    // what those hold (show_skipped_diagnostics), and goes first when none
-    // has reported on its text.
+    // A compiled document needs no decision: builds stay pull-driven.
+    if(document.compiles) {
+        return;
+    }
     auto& session = *document.session;
     auto path_id = session.path_id;
     auto& background = project.background_index;
-    if(document.compiles) {
-        if(background.started() && !background.queue().in_flight(path_id) &&
-           !background.failed(path_id)) {
-            book_skipped_diagnostics(document, true);
-        }
-        return;
-    }
     if(auto* shard = project.index.shard(path_id)) {
         // A buffer that already diverges from the indexed content (a
         // restored unsaved file) can never be served read-only: it compiles

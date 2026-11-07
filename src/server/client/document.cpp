@@ -54,6 +54,18 @@ LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     };
 }
 
+async::task<Route> LSPClient::pick_route(const ResolvedDoc& document,
+                                         RouteOptions options,
+                                         std::optional<index::IndexSource>* source) {
+    auto route = co_await document.project->pick_route(document.ticket, options, source);
+    // The client caches an empty reply too, and only a refresh makes it
+    // pull again once the document's shard or compile arrives.
+    if(route == Route::Index || route == Route::Empty) {
+        index_served.insert(document.path_id);
+    }
+    co_return route;
+}
+
 /// The card the index gives for the symbol at a position of the document's
 /// serving source (feature::hover_info).
 static std::optional<feature::HoverInfo> index_hover_card(ServedProject& project,
@@ -98,22 +110,13 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
                                         served->project.settings.semantic_tokens);
     };
     std::vector<feature::SemanticToken> tokens;
-    switch(co_await served->pick_route(ticket, {.lexes_whole_buffer = true}, &source)) {
+    switch(co_await pick_route(document, {.lexes_whole_buffer = true}, &source)) {
         case Route::Outdated: co_await async::fail(content_modified());
         case Route::Index: {
-            index_served.insert(path_id);
             tokens = from_index();
             break;
         }
-        case Route::Empty: {
-            // The client caches this null, and only a semanticTokens
-            // refresh makes it re-pull once the cold document's shard
-            // arrives — the merge refreshes the documents served from the
-            // index, so an empty pull registers the same interest as a
-            // served one.
-            index_served.insert(path_id);
-            co_return codec::raw_value{"null"};
-        }
+        case Route::Empty: co_return codec::raw_value{"null"};
         case Route::AST: {
             auto ast = co_await served
                            ->ast_request(ticket,
@@ -199,7 +202,7 @@ void LSPClient::register_document_requests() {
             return hover ? to_raw(*hover) : codec::raw_value{"null"};
         };
 
-        switch(co_await project.pick_route(ticket, {})) {
+        switch(co_await pick_route(document, {})) {
             case Route::Outdated: co_await async::fail(content_modified());
             case Route::Index: {
                 if(on_directive) {
@@ -207,7 +210,6 @@ void LSPClient::register_document_requests() {
                            directive_card(feature::document_links(project.text_of(*session),
                                                                   project.query(),
                                                                   path_id))) {
-                        index_served.insert(path_id);
                         co_return std::move(*shown);
                     }
                 }
@@ -223,7 +225,6 @@ void LSPClient::register_document_requests() {
                    !project.compile_stopped(*session)) {
                     break;
                 }
-                index_served.insert(path_id);
                 co_return card(*info);
             }
             case Route::Empty: co_return codec::raw_value{"null"};
@@ -309,15 +310,15 @@ void LSPClient::register_document_requests() {
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
             auto& [path, path_id, session, served, version, ticket] = document;
             auto encoding = server.position_encoding;
-            if(!ticket.fresh()) {
+            auto route = co_await pick_route(document, {.needs_ast = true});
+            if(route == Route::Outdated) {
                 co_await async::fail(content_modified());
             }
             // Inlay hints are Sema products the index cannot compute; a document
             // that is not compiled answers honestly empty. Its first compile,
             // once it starts compiling, pushes an inlayHint refresh, so clients
             // re-pull once real hints exist.
-            if(!served->compiles(*session)) {
-                index_served.insert(path_id);
+            if(route == Route::Empty) {
                 co_return codec::raw_value{"[]"};
             }
             // Clamped against the buffer the ticket was taken on: a buffer that
@@ -358,20 +359,10 @@ void LSPClient::register_document_requests() {
             auto from_index = [&] {
                 return feature::folding_ranges(served->text_of(*session), served->query(), *source);
             };
-            switch(co_await served->pick_route(ticket, {.lexes_whole_buffer = true}, &source)) {
+            switch(co_await pick_route(document, {.lexes_whole_buffer = true}, &source)) {
                 case Route::Outdated: co_await async::fail(content_modified());
-                case Route::Index: {
-                    index_served.insert(path_id);
-                    co_return convert(from_index());
-                }
-                case Route::Empty: {
-                    // Same contract as the semantic-tokens Empty route: the
-                    // client caches this reply, and only a foldingRange
-                    // refresh makes it re-pull once the cold document's
-                    // shard arrives.
-                    index_served.insert(path_id);
-                    co_return codec::raw_value{"[]"};
-                }
+                case Route::Index: co_return convert(from_index());
+                case Route::Empty: co_return codec::raw_value{"[]"};
                 case Route::AST: break;
             }
             auto folds = co_await served
@@ -422,7 +413,7 @@ void LSPClient::register_document_requests() {
             return convert(feature::lexical_selection_ranges(served->text_of(*session), offsets));
         };
 
-        switch(co_await served->pick_route(ticket, {})) {
+        switch(co_await pick_route(document, {})) {
             case Route::Outdated: co_await async::fail(content_modified());
             case Route::Index:
             case Route::Empty: co_return lexical();
@@ -466,15 +457,11 @@ void LSPClient::register_document_requests() {
                                              *source,
                                              served->project.settings.document_symbols);
         };
-        switch(
-            co_await served->pick_route(ticket,
-                                        {.lexes_whole_buffer = true, .waits_for_first_index = true},
-                                        &source)) {
+        switch(co_await pick_route(document,
+                                   {.lexes_whole_buffer = true, .waits_for_first_index = true},
+                                   &source)) {
             case Route::Outdated: co_await async::fail(content_modified());
-            case Route::Index: {
-                index_served.insert(path_id);
-                co_return convert(from_index());
-            }
+            case Route::Index: co_return convert(from_index());
             case Route::Empty: co_return codec::raw_value{"[]"};
             case Route::AST: break;
         }
@@ -503,7 +490,7 @@ void LSPClient::register_document_requests() {
             auto& [path, path_id, session, served, version, ticket] = document;
             auto encoding = server.position_encoding;
             auto& files = served->project.file_table;
-            switch(co_await served->pick_route(ticket, {.waits_for_first_index = true})) {
+            switch(co_await pick_route(document, {.waits_for_first_index = true})) {
                 case Route::Outdated: co_await async::fail(content_modified());
                 case Route::Index: {
                     // Manifest edges cover the whole document (the background
@@ -512,7 +499,6 @@ void LSPClient::register_document_requests() {
                     auto links = feature::document_links(served->text_of(*session),
                                                          served->query(),
                                                          path_id);
-                    index_served.insert(path_id);
                     co_return to_raw(
                         feature::to_protocol(links, session->positions(), encoding, files));
                 }

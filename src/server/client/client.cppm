@@ -5,6 +5,7 @@ import :feature.diagnostics;
 import :feature.document_symbols;
 import :feature.folding_ranges;
 import :feature.semantic_tokens;
+import :index.query;
 import :project.project;
 import :server.extension;
 import :server.master;
@@ -65,6 +66,11 @@ public:
     /// refresh in LSP: the user reopens the file.
     void refresh();
 
+    /// The index changed under the open documents `files`, which read it
+    /// for want of a current file index: the client asks again for what it
+    /// took from the index of any of them.
+    void index_changed(llvm::ArrayRef<Fid> files);
+
     /// Ask a pulling client to pull every document's diagnostics again; a
     /// pull answered meanwhile is no report it holds any more.
     void refresh_diagnostics();
@@ -106,12 +112,6 @@ public:
     /// Follow a document's compile to `phase` with work-done progress (see
     /// CompileProgress); capability-gated.
     void report_compile_phase(Fid path_id, CompilePhase phase);
-
-    /// The open documents whose semantic tokens or folds the client pulled
-    /// from the index, or found empty while nothing served them: what the
-    /// document's compile, or a background index merge, improves on. A
-    /// commit of the document's compile clears it.
-    llvm::DenseSet<Fid> index_served;
 
 private:
     /// The last full or delta result sent for each open document, which
@@ -236,6 +236,13 @@ private:
     /// request unless it needs the document open and it is not.
     template <typename Params, typename Answer>
     void on_document(Answer answer, DocumentRequestOptions options = {});
+
+    /// What answers a request on the open document now
+    /// (ServedProject::pick_route); one the index answers, or nothing yet,
+    /// is noted in index_served.
+    async::task<Route> pick_route(const ResolvedDoc& document,
+                                  RouteOptions options,
+                                  std::optional<index::IndexSource>* source = nullptr);
 
     /// What a semantic tokens request asks for: the whole document, the
     /// edits from the result the client holds, or the tokens in a range.
@@ -393,6 +400,13 @@ private:
     llvm::DenseMap<Fid, Pushed> pushed;
 
     llvm::DenseMap<Fid, Pulled> pulled;
+
+    /// The open documents the client holds answers of that the index gave,
+    /// or that came empty while nothing served them (pick_route): what the
+    /// document's compile, or a change of the index, improves on. Cleared as
+    /// the client is asked to pull the document's answers again
+    /// (push_output) and as it closes.
+    llvm::DenseSet<Fid> index_served;
 
     /// The configuration files publish_settings_diagnostics published last.
     llvm::StringSet<> published_settings_files;

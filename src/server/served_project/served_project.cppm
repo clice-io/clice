@@ -279,6 +279,11 @@ struct RouteOptions {
     /// source is there once it finishes: the shard, the compile, or
     /// honestly empty under readonly "on".
     bool waits_for_first_index = false;
+
+    /// Only the AST answers the feature (inlay hints, code actions): the
+    /// index is not asked, and a document that is not compiled answers
+    /// empty.
+    bool needs_ast = false;
 };
 
 struct EnsureOptions {
@@ -584,13 +589,6 @@ public:
     /// the document outdated.
     bool compiles(const Session& session) const;
 
-    /// Whether the worker's AST can answer for this document right now:
-    /// compiled, current, and its compile not stopped by a crash (the check
-    /// sits before ensure_compiled's clean-AST fast path, so a stopped
-    /// document's query returns null even with a clean AST). When false,
-    /// the routing tries the index before deciding to await a compile.
-    bool ast_answerable(const Session& session) const;
-
     /// See Route: a current AST answers; otherwise an index source that is
     /// byte-identical to the buffer; otherwise the compile of a compiled
     /// document, or nothing for one that is not. Starts a compiled
@@ -846,10 +844,11 @@ private:
     void push_output(const Session& session, bool compiled);
 
     /// Book a background run for the document's skipped-body diagnostics when
-    /// it shows them and lacks those of its text, as after a restart, when
-    /// the index is current and runs nothing, or after a change of its
-    /// inputs dropped them: first in the queue, or (`first` off) in its
-    /// turn. Only a file of its own database entry is reported on
+    /// it shows them and lacks those of its text: as it opens (`first`), as
+    /// after a restart, when the index is current and runs nothing — first
+    /// in the queue, unless its run is in flight or failed for good —, or
+    /// after a change of its inputs dropped them, in its turn. Only a file
+    /// of its own database entry is reported on
     /// (UnitRequest::skipped_diagnostics).
     void book_skipped_diagnostics(const ServedDocument& document, bool first);
 

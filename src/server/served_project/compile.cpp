@@ -965,11 +965,6 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     entry.inputs->append(resolution.inputs.begin(), resolution.inputs.end());
     session->succeeded(Compile, ticket.generation);
     served.push_output(*session, true);
-    // The push above told the client to re-pull what the fresh AST now
-    // answers better; one refresh per commit.
-    if(served.server.client && served.owns(*session)) {
-        served.server.client->index_served.erase(path_id);
-    }
     project.background_index.schedule();
     return still_current ? Result::Success : Result::Stale;
 }
