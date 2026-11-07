@@ -235,7 +235,13 @@ async::task<UnitResult>
                 co_return UnitResult{.status = Status::Skipped};
             }
             ScopedTimer merge_timer;
-            auto merged = project.merge_index(path_id, *index_bytes, imports, command, peak);
+            // A worker that could not read its own memory measured nothing:
+            // the earlier peak stands.
+            auto merged = project.merge_index(path_id,
+                                              *index_bytes,
+                                              imports,
+                                              command,
+                                              peak != 0 ? peak : cost.peak);
             if(!merged) {
                 if(merged.error() == index::MergeError::Outdated) {
                     co_return UnitResult{.status = Status::Preempted,

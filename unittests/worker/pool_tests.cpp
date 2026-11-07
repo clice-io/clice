@@ -1603,6 +1603,7 @@ ZEST_CASE(StatefulTimedFromStart) {
         };
         auto driver = [&]() -> async::task<> {
             co_await parked(f.hooks, gate);
+            // Time is the feature: the build runs past its deadline.
             co_await async::sleep(chrono::milliseconds(100), f.loop);
             f.sample_pool();
             ZEXPECT(f.state(0, true) == WorkerPoolFixture::SlotState::Dying);
