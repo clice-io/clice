@@ -142,9 +142,14 @@ const JOINED_OUTPUTS = /^(-o(?!bj)|-Wp,-M+D,|-fdeps-)/;
 /// cl's options carry their values joined.
 const MSVC_OUTPUTS = /^[/-](c|FS|showIncludes|Fo.*|Fd.*)$/;
 
-/// Whether a driver takes cl's options: cl and clang-cl.
+/// Whether a driver takes cl's options: cl, clang-cl, Intel's icx-cl and
+/// dpcpp-cl, and icx on Windows.
 export function isMsvc(driver: string): boolean {
-    return /^(cl|clang-cl)(\.exe)?$/i.test(path.basename(driver));
+    const name = path.basename(driver);
+    return (
+        /^(cl|clang-cl|icx-cl|dpcpp-cl)(\.exe)?$/i.test(name) ||
+        (process.platform === "win32" && /^icx(\.exe)?$/i.test(name))
+    );
 }
 
 export function isNvcc(driver: string): boolean {

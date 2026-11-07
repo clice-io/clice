@@ -156,6 +156,21 @@ function nvcc(
     };
 }
 
+/// Intel's oneAPI DPC++/C++ compilers of the pixi `toolchains`
+/// environment, run without its activation as `cuda`'s nvcc is.
+const ONEAPI_WINDOWS = path.join(REPO_ROOT, ".pixi", "envs", "toolchains", "Library", "bin");
+
+/// A SYCL source compiles in a device job, then the host's: clice reads it
+/// as the host job.
+const SYCL_FILES: Record<string, FileExpectation> = {
+    ...BOTH,
+    "sycl/kernel.cpp": {
+        recorded: [["-fsycl"]],
+        contains: [["-fsycl-is-host"]],
+        excludes: ["-fsycl-is-device"],
+    },
+};
+
 export const SCENARIOS: Scenario[] = [
     cmakeNinja("cmake ninja gcc", ["linux"], GCC, GXX),
     // Versioned driver names, side by side as distributions install them.
@@ -609,6 +624,33 @@ export const SCENARIOS: Scenario[] = [
         '[[rules]]\npatterns = ["cuda/kernel.cu"]\nappend = ["-arch=all"]\n',
         { "cuda/kernel.cu": { excludes: ["sm_52"] }, "cuda/host.cpp": {} },
     ),
+    {
+        ...cmakeNinja("cmake ninja icpx sycl", ["linux"], `${CONDA}/icx`, `${CONDA}/icpx`, {
+            extra: ["-DCOMPAT_SYCL=ON"],
+        }),
+        files: SYCL_FILES,
+    },
+    {
+        // icx takes cl's options on Windows. It links only with the
+        // libraries its activation adds to LIB: the build compiles the
+        // SYCL library alone, and CMake checks the compilers without
+        // linking.
+        name: "cmake ninja icx sycl",
+        platforms: ["win32"],
+        msvc: true,
+        requires: ["cmake", "ninja", `${ONEAPI_WINDOWS}/icx.exe`],
+        build: [
+            ...cmake(
+                "Ninja",
+                `${ONEAPI_WINDOWS}/icx.exe`,
+                `${ONEAPI_WINDOWS}/icx.exe`,
+                "-DCOMPAT_SYCL=ON",
+                "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY",
+            ).slice(0, 1),
+            ["cmake", "--build", "build", "--target", "compat_sycl"],
+        ],
+        files: SYCL_FILES,
+    },
     // Its macOS and MSVC targets read Apple's and Microsoft's SDKs, which
     // xclang fetches only on a license accepted by hand.
     ...[
