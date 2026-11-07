@@ -100,9 +100,6 @@ std::optional<LocalArg>
     if(!parsed || parsed->id == clang_options::OPT_UNKNOWN ||
        parsed->id == clang_options::OPT_INPUT) {
         auto index = parsed ? parsed->index : parsed.error().begin;
-        if(is_discarded_unknown(tokens[index])) {
-            return std::nullopt;
-        }
         return LocalArg{.opt_id = clang_options::OPT_UNKNOWN,
                         .cls = ArgClass::Unknown,
                         .spelling = strings.save(tokens[index]).data()};
@@ -326,7 +323,7 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
             case ArgClass::Semantic:
             case ArgClass::UserContent:
             case ArgClass::Diagnostics:
-                render_driver_arg(arg, command.family, emit);
+                render_driver_arg(arg, spelling_family(command), emit);
                 if(arg.cls == ArgClass::UserContent) {
                     last_user_content = argv.size();
                 }
@@ -342,7 +339,7 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
                     llvm::StringRef driver_lang =
                         type == types::TY_INVALID ? "" : types::getTypeName(type);
                     if(driver_lang != llvm::StringRef(ref.language.value)) {
-                        if(cl_mode(command.family)) {
+                        if(cl_mode(spelling_family(command))) {
                             if(llvm::StringRef(ref.language.value) == "c++") {
                                 emit("/TP");
                             } else if(llvm::StringRef(ref.language.value) == "c") {

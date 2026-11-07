@@ -201,6 +201,22 @@ ZEST_CASE(ModuleEmbeddingDiscarded) {
     }
 };
 
+ZEST_CASE(XclangReadByCC1) {
+    /// What -Xclang passes on reads as cc1's options: a prebuilt module
+    /// goes as its driver spelling does, the rest stays as written.
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    database.add_command("/fake",
+                         "a.cpp",
+                         "clang++ -Xclang -fmodule-file=std=std.pcm -Xclang -include "
+                         "-Xclang pch.hxx -Xclang -fno-pch-timestamp a.cpp"sv);
+    auto argv = print_argv(render_entry(database, fake("a.cpp")));
+    ZEXPECT(!llvm::StringRef(argv).contains("fmodule-file"));
+    ZEXPECT(llvm::StringRef(argv).contains(
+        "-Xclang -include -Xclang pch.hxx -Xclang -fno-pch-timestamp"));
+};
+
 };  // ZEST_SUITE(Normalize)
 
 }  // namespace

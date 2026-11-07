@@ -89,10 +89,17 @@ ZEST_CASE(UnqueriedSYCLHostJob) {
 }
 
 ZEST_CASE(NamesStandard) {
+    auto names = [&](llvm::StringRef file, std::vector<const char*> arguments) {
+        return names_standard(f.commands.get(add(file, std::move(arguments)).command).args);
+    };
     /// `--std` takes its value apart as GCC writes it; `--stdlib` names none.
-    ZEXPECT(names_standard({"g++", "-std=c++20"}));
-    ZEXPECT(names_standard({"g++", "--std", "c++0x"}));
-    ZEXPECT(!names_standard({"clang++", "--stdlib", "libc++"}));
+    ZEXPECT(names("a.cpp", {"g++", "-std=c++20"}));
+    ZEXPECT(names("b.cpp", {"g++", "--std", "c++0x"}));
+    ZEXPECT(!names("c.cpp", {"clang++", "--stdlib", "libc++"}));
+    /// Through clang-cl's `/clang:` too; cl's own `/std:` is cl's to tell.
+    ZEXPECT(names("d.cpp", {"clang-cl", "/clang:-std=c++20", "/c"}));
+    ZEXPECT(!names("e.cpp", {"clang-cl", "/clang:-stdlib=libc++", "/c"}));
+    ZEXPECT(!names("f.cpp", {"cl", "/std:c++20", "/c"}));
 }
 
 ZEST_CASE(UnqueriedRunsNothing, skip = Windows) {

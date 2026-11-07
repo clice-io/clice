@@ -38,7 +38,7 @@ cc_library(
     name = "core",
     srcs = glob(["src/%s/**/*.cpp" % layer for layer in CORE]),
     hdrs = glob(
-        ["src/%s/**/*.h" % layer for layer in CORE] + ["src/compile/*.inc"],
+        ["src/%s/**/*.%s" % (layer, suffix) for layer in CORE for suffix in ["h", "inc"]],
         allow_empty = True,
     ),
     copts = CLICE_COPTS,

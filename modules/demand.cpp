@@ -270,6 +270,7 @@
 #include "kotatsu/zest/zest.h"
 #ifdef _WIN32
 #include "llvm/Support/WindowsError.h"
+#include "llvm/WindowsDriver/MSVCPaths.h"
 #endif
 
 #include "clang-tidy/ClangTidyForceLinker.h"

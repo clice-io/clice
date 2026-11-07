@@ -3,8 +3,9 @@ module clice;
 import :command.argument;
 import :command.edit;
 import :command.normalize;
-import :command.toolchains.nvcc;
 import :command.table;
+import :command.toolchains.nvcc;
+import :command.toolchains.own_options;
 import :support.logging;
 import :vfs.path;
 
@@ -54,7 +55,8 @@ CommandID
 
     Normalizer normalizer{.commands = commands, .files = files};
 
-    auto remove_parse_options = cli::ParseOptions{.visibility = family_visibility(base.family)};
+    auto spelling = spelling_family(base);
+    auto remove_parse_options = cli::ParseOptions{.visibility = family_visibility(spelling)};
 
     /// One remove pattern: the option it names, and whether a `*` joined
     /// to the option's name takes every option spelled with that prefix
@@ -70,7 +72,7 @@ CommandID
     std::deque<std::vector<std::string>> remove_storage;
     auto parse_removes = [&](llvm::ArrayRef<std::string> flags, const Spelling& anchor) {
         auto& remove_flags = remove_storage.emplace_back(
-            is_nvcc ? translate_nvcc_removes(normalizer, base.driver, flags, anchor)
+            is_nvcc ? translate_nvcc_removes(normalizer, base, flags, anchor)
                     : std::vector<std::string>(flags.begin(), flags.end()));
         std::vector<RemovePattern> removes;
         auto add = [&](const cli::ParsedArg& parsed, llvm::StringRef written) {
@@ -93,14 +95,13 @@ CommandID
                 }
             }
         };
-        for(auto parsed: clang_options::table().parse(remove_flags, remove_parse_options)) {
+        for(auto parsed: parse_arguments(remove_flags, spelling, remove_parse_options)) {
             if(!parsed.has_value()) {
                 // An option written without its value, last in the list
                 // (`-include`), removes it with every value.
                 auto& wildcard = remove_storage.emplace_back(
                     std::vector<std::string>{remove_flags[parsed.error().begin], "*"});
-                auto retried =
-                    *clang_options::table().parse(wildcard, remove_parse_options).begin();
+                auto retried = parse_arguments(wildcard, spelling, remove_parse_options)[0];
                 if(!retried) {
                     LOG_WARN("A rule removes {}, which takes several values: write them",
                              wildcard[0]);
@@ -172,7 +173,7 @@ CommandID
                           const Spelling& anchor,
                           std::vector<LocalArg>& out) {
         std::vector<std::string> flags(edit_flags.begin(), edit_flags.end());
-        for(auto& parsed: clang_options::table().parse(flags, remove_parse_options)) {
+        for(auto& parsed: parse_arguments(flags, spelling, remove_parse_options)) {
             auto added = commands.local_arg(parsed, flags);
             if(!added) {
                 continue;
@@ -202,7 +203,7 @@ CommandID
             remove_args.insert(remove_args.end(), removes.begin(), removes.end());
         } else {
             auto flags = is_nvcc ? translate_nvcc_flags(normalizer,
-                                                        base.driver,
+                                                        base,
                                                         edit.flags,
                                                         edit.directory,
                                                         /*edit=*/true)

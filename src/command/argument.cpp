@@ -278,19 +278,6 @@ bool is_discarded_option(unsigned id) {
     }
 }
 
-bool is_discarded_unknown(llvm::StringRef token) {
-    auto joined = std::array{"-fmodule-mapper=",
-                             "-fdeps-format=",
-                             "-fdeps-file=",
-                             "-fdeps-target=",
-                             "-fdiagnostics-add-output=",
-                             "-fdiagnostics-set-output=",
-                             "-fprofile-note="};
-    return ranges::any_of(joined,
-                          [&](llvm::StringRef prefix) { return token.starts_with(prefix); }) ||
-           token == "-aux-info" || token == "-index-unit-output-path";
-}
-
 bool is_user_content_option(unsigned id) {
     switch(id) {
         case OPT_I:
@@ -360,6 +347,16 @@ bool names_path(unsigned id, llvm::StringRef value) {
 
 bool is_xclang_option(unsigned id) {
     return id == OPT_Xclang;
+}
+
+unsigned driver_option(const Arg& arg) {
+    if(arg.opt_id != OPT__SLASH_clang) {
+        return arg.opt_id;
+    }
+    std::array passed = {std::string_view(arg.values[0])};
+    auto options = cli::ParseOptions{.visibility = family_visibility(CompilerFamily::Clang)};
+    auto parsed = *clang_options::table().parse(passed, options).begin();
+    return parsed ? parsed->id : OPT_UNKNOWN;
 }
 
 /// Whether `args` hold dependency file options alone. The preprocessor's -MD
@@ -552,8 +549,8 @@ static void render_alias(const Arg& arg, llvm::function_ref<void(std::string_vie
 }
 
 bool keeps_alias(const Arg& arg, CompilerFamily family) {
-    // nvcc's arguments are clice's translation of its command, which its
-    // query reads by clang's names.
+    // nvcc never runs its arguments, clice's translation of its command:
+    // its query hands them to clang's driver, which knows every alias.
     return arg.alias && !cl_mode(family) && family != CompilerFamily::NVCC &&
            clang_options::table().option(arg.alias)->has_visibility_flag(family_visibility(family));
 }

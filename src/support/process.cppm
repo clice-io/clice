@@ -24,9 +24,11 @@ constexpr inline bool can_exit_with_parent = true;
 #endif
 
 /// Run `arguments[0]` to completion and hand back what it wrote, however it
-/// ended. Fails only when the program cannot start.
+/// ended. Fails only when the program cannot start. A `path` given is the
+/// program's PATH.
 async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::string> arguments,
-                                                               std::string cwd);
+                                                               std::string cwd,
+                                                               std::string path = {});
 
 /// Hand freed heap back to the system. glibc keeps the pages of large freed
 /// arenas — an AST, a TU's index, the master's merge buffers — so without

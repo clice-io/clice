@@ -5,6 +5,7 @@ import :command.database;
 import :command.file_kind;
 import :command.table;
 import :command.toolchain;
+import :command.toolchains.own_options;
 import :driver.driver;
 import :driver.run;
 import :project.project;
@@ -328,7 +329,7 @@ llvm::SmallVector<Spelling> compiled_sources(llvm::ArrayRef<std::string> command
     auto anchor = directory;
     std::string language;
     llvm::SmallVector<std::string> inputs;
-    for(auto& parsed: clang_options::table().parse(args, options)) {
+    for(auto& parsed: parse_arguments(args, family, options)) {
         if(!parsed) {
             continue;
         }

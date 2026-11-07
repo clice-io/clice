@@ -385,34 +385,23 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
 }
 
 async::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::string> args,
+                                                           const Command& command,
                                                            std::size_t driver_tokens,
                                                            std::string cwd) {
-    // A universal build (`-arch arm64 -arch x86_64`) compiles once for each
-    // architecture, and a driver preprocesses for one only: clice reads the
-    // code for the first.
-    for(std::size_t i = 0, seen = 0; i + 1 < args.size();) {
-        if(args[i] == "-arch") {
-            seen += 1;
-            if(seen > 1) {
-                args.erase(args.begin() + i, args.begin() + i + 2);
-                continue;
-            }
-        }
-        i += 1;
-    }
-
     auto output = co_await run_gcc_style(args, driver_tokens, cwd);
     if(!output) {
         co_return std::unexpected(std::move(output.error()));
     }
     auto standard =
-        names_standard(args) || output->standard.empty() ? "" : "-std=" + output->standard;
+        names_standard(command.args) || output->standard.empty() ? "" : "-std=" + output->standard;
     if(!output->clang_job.empty()) {
         Job job{.args = std::move(output->clang_job)};
         // As for cl: an MSVC target's default template deferral leaves
         // deferred bodies without an AST, so it stays only when the command
         // asks for it.
-        if(!ranges::contains(args, "-fdelayed-template-parsing")) {
+        if(!ranges::contains(command.args,
+                             clang_options::OPT_fdelayed_template_parsing,
+                             &Arg::opt_id)) {
             std::erase(job.args, "-fdelayed-template-parsing");
         }
         if(!standard.empty()) {

@@ -290,6 +290,28 @@ ZEST_CASE(ChoiceNamesWrittenCommand) {
     ZEXPECT(!project.choice_holds(file, choice));
 }
 
+ZEST_CASE(LabelsTellCLFlags) {
+    // A cl command's macros and optimization levels set it apart as
+    // clang's do.
+    tmp.touch("main.cpp");
+    auto entry = [&](llvm::StringRef define, llvm::StringRef optimize) {
+        return std::format(
+            R"({{"directory": "{}", "file": "main.cpp", "arguments": ["cl", "{}", "{}", "/c", "main.cpp"]}})",
+            json_escape(tmp.root),
+            define,
+            optimize);
+    };
+    write_cdb(tmp,
+              project.cdb,
+              std::format("[{},\n{}]", entry("/DFIRST", "/O1"), entry("/DSECOND", "/O2")));
+    llvm::SmallVector<std::string> labels;
+    for(auto& item: project.list_contexts(fx.intern(tmp.path("main.cpp")))) {
+        labels.push_back(item.label);
+    }
+    ZEXPECT(ranges::contains(labels, "-DFIRST /O1"));
+    ZEXPECT(ranges::contains(labels, "-DSECOND /O2"));
+}
+
 ZEST_CASE(ValidChoiceStaysActive) {
     tmp.touch("host.cpp", R"(#include "h.h")");
     tmp.touch("h.h");

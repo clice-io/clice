@@ -20,8 +20,9 @@ ZEST_SUITE(NVCCTests) {
 
 std::vector<std::string> translate(std::vector<const char*> arguments,
                                    llvm::StringRef directory = "",
-                                   bool edit = false) {
-    return translate_nvcc_command(arguments, directory, edit);
+                                   bool edit = false,
+                                   CompilerFamily host = CompilerFamily::GCC) {
+    return translate_nvcc_command(arguments, directory, host, edit);
 }
 
 ZEST_CASE(TranslateCMakeShape) {
@@ -165,6 +166,72 @@ ZEST_CASE(XcompilerUnwrapped) {
     ZEXPECT(contains(escaped, "-Wl,-z,defs"));
 }
 
+ZEST_CASE(XcompilerSplitAsHost) {
+    // nvcc writes each piece into the host's command line, which the host
+    // splits: a POSIX shell for GCC, the Windows rules for cl.
+    auto gcc = translate({"nvcc", "-Xcompiler", "-O2 -g", "-Xcompiler", R"(-DA="x y")"});
+    ZEXPECT(contains(gcc, "-O2"));
+    ZEXPECT(contains(gcc, "-g"));
+    ZEXPECT(contains(gcc, "-DA=x y"));
+
+    auto cl = translate({"nvcc",
+                         "-Xcompiler= /EHsc",
+                         R"(-Xcompiler=-FdCMakeFiles\k.dir\k.pdb,-FS)",
+                         "-Xcompiler= -Zi -Ob0"},
+                        "",
+                        false,
+                        CompilerFamily::MSVC);
+    ZEXPECT(contains(cl, "/EHsc"));
+    ZEXPECT(contains(cl, R"(-FdCMakeFiles\k.dir\k.pdb)"));
+    ZEXPECT(contains(cl, "-FS"));
+    ZEXPECT(contains(cl, "-Zi"));
+    ZEXPECT(contains(cl, "-Ob0"));
+}
+
+ZEST_CASE(HostFromCcbin) {
+    // The last -ccbin names the host; a directory names nvcc's default there.
+#ifdef _WIN32
+    auto fallback = CompilerFamily::MSVC;
+#else
+    auto fallback = CompilerFamily::GCC;
+#endif
+    ZEXPECT(nvcc_host({"-ccbin", "/usr/bin/clang++-18", "-c", "k.cu"}) == CompilerFamily::Clang);
+    ZEXPECT(nvcc_host({"--compiler-bindir=C:/VC/bin/Hostx64/x64/cl.exe"}) == CompilerFamily::MSVC);
+    ZEXPECT(nvcc_host({"-ccbin=g++-12", "-ccbin", "/usr/bin"}) == fallback);
+    ZEXPECT(nvcc_host({"-Xcompiler", "-ccbin=cl"}) == fallback);
+    ZEXPECT(nvcc_host({"-c", "k.cu"}) == fallback);
+}
+
+ZEST_CASE(CLHostSpellings) {
+    // With a cl host, what nvcc passes on reads as cl's options: the
+    // runtime library stays, the program database goes, and no `-Fd...`
+    // reads as a framework directory.
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
+    std::vector<const char*> arguments = {"nvcc",
+                                          "-ccbin=C:/VC/bin/Hostx64/x64/cl.exe",
+                                          "-forward-unknown-to-host-compiler",
+                                          "-Xcompiler= /EHsc",
+                                          "-Xcompiler=-MDd",
+                                          R"(-Xcompiler=-FdCMakeFiles\k.dir\k.pdb,-FS)",
+                                          "-x",
+                                          "cu",
+                                          "-c",
+                                          "/tmp/k.cu"};
+    db.add_command("/tmp", "/tmp/k.cu", arguments);
+    auto& entry = db.candidate_entries("/tmp/k.cu").front();
+    auto& command = commands.get(entry.command);
+    ZEXPECT(command.host == CompilerFamily::MSVC);
+    auto has = [&](unsigned id) {
+        return ranges::contains(command.args, id, &Arg::opt_id);
+    };
+    ZEXPECT(has(clang_options::OPT__SLASH_EH));
+    ZEXPECT(has(clang_options::OPT__SLASH_MDd));
+    ZEXPECT(!has(clang_options::OPT__SLASH_Fd));
+    ZEXPECT(!has(clang_options::OPT_F));
+}
+
 ZEST_CASE(MacroToggles) {
     auto args = translate({"nvcc",
                            "--expt-relaxed-constexpr",
@@ -222,11 +289,44 @@ ZEST_CASE(MacroToggles) {
 }
 
 ZEST_CASE(PairedValueDrops) {
-    // The wrapped values would parse as host flags on their own; bare
-    // nvcc-only flags pass through for the CDB classification to discard.
-    auto args = translate({"nvcc", "-Xptxas", "-O3", "-t", "4", "-lineinfo"});
-    std::vector<std::string> expected = {"nvcc", "-lineinfo"};
+    // nvcc's own options drop with their values, which would parse as host
+    // flags or inputs on their own.
+    auto args = translate({"nvcc",
+                           "-Xptxas",
+                           "-O3",
+                           "-t",
+                           "4",
+                           "-lineinfo",
+                           "-maxrregcount",
+                           "32",
+                           "-Wno-deprecated-gpu-targets",
+                           "-Xcudafe",
+                           "--diag_suppress=20012"});
+    std::vector<std::string> expected = {"nvcc"};
     ZEXPECT(args == expected);
+}
+
+ZEST_CASE(SpellingsOfNVCC) {
+    // Every option in nvcc's two spellings, its value separate or after `=`.
+    ZEXPECT(contains(translate({"nvcc", "--generate-code", "arch=compute_80,code=sm_80"}),
+                     "--cuda-gpu-arch=sm_80"));
+    ZEXPECT(contains(translate({"nvcc", "-gencode=arch=compute_80,code=sm_80"}),
+                     "--cuda-gpu-arch=sm_80"));
+    ZEXPECT(contains(translate({"nvcc", "--gpu-architecture", "sm_70"}), "--cuda-gpu-arch=sm_70"));
+
+    // What nvcc does not know is the host compiler's, forwarded as written.
+    auto forwarded = translate({"nvcc", "-forward-unknown-to-host-compiler", "-fPIC"});
+    std::vector<std::string> expected = {"nvcc", "-fPIC"};
+    ZEXPECT(forwarded == expected);
+}
+
+ZEST_CASE(ClangCounterparts) {
+    auto args =
+        translate({"nvcc", "-noeh", "--ftemplate-depth", "512", "-stdlib=libc++", "-Wreorder"});
+    ZEXPECT(contains(args, "-fno-exceptions"));
+    ZEXPECT(contains(args, "-ftemplate-depth=512"));
+    ZEXPECT(contains(args, "-stdlib=libc++"));
+    ZEXPECT(contains(args, "-Wreorder"));
 }
 
 ZEST_CASE(OutputsDropped) {
@@ -241,7 +341,7 @@ ZEST_CASE(OutputsDropped) {
                            "a.o",
                            "--compile",
                            "-lineinfo"});
-    std::vector<std::string> expected = {"nvcc", "-lineinfo"};
+    std::vector<std::string> expected = {"nvcc"};
     ZEXPECT(args == expected);
 }
 
@@ -326,6 +426,19 @@ ZEST_CASE(OptionsFileExpanded) {
     ZEXPECT(!contains(missing, "--options-file=missing.rsp"));
 }
 
+ZEST_CASE(OptionsFileValue) {
+    // The value of another option names no options file.
+    std::vector<std::string> args = {"-Xcompiler", "-optf", "-optf", "a.rsp,b.rsp"};
+    std::size_t i = 0;
+    ZEXPECT(!options_files(args, i));
+    ZEXPECT(i == 2u);
+    auto files = options_files(args, i);
+    ZASSERT(files);
+    ZEXPECT(files->size() == 2u);
+    ZEXPECT((*files)[1] == "b.rsp");
+    ZEXPECT(i == 4u);
+}
+
 ZEST_CASE(OptionsFileMarkSkipped) {
     // A byte order mark does not glue itself to the first option.
     TempDir tmp;
@@ -356,7 +469,7 @@ ZEST_CASE(MachineNormalized) {
     }
     ZEXPECT(contains(translate({"nvcc", "--machine=32"}), "-m32"));
 
-    // The joined short form is already clang's own spelling.
+    // nvcc's -m64 is an option of its own, --m64's short name.
     ZEXPECT(contains(translate({"nvcc", "-m64"}), "-m64"));
 
     // A value nvcc rejects pins no machine model.
@@ -389,11 +502,10 @@ ZEST_CASE(HostFlagsFollowXcompiler) {
 }
 
 ZEST_CASE(DisableWarningsMapped) {
-    for(const char* spelling: {"--disable-warnings", "-disable-warnings"}) {
-        auto args = translate({"nvcc", spelling});
-        ZEXPECT(contains(args, "-w"));
-        ZEXPECT(!contains(args, spelling));
-    }
+    auto args = translate({"nvcc", "--disable-warnings"});
+    ZEXPECT(contains(args, "-w"));
+    ZEXPECT(!contains(args, "--disable-warnings"));
+    ZEXPECT(contains(translate({"nvcc", "-w"}), "-w"));
 }
 
 ZEST_CASE(EditEmitsStateOverrides) {
@@ -492,6 +604,27 @@ ZEST_CASE(DryrunParsed) {
     auto multi_info = parse_nvcc_dryrun(multi);
     ZASSERT(multi_info);
     ZEXPECT(multi_info->default_arch == "sm_90");
+}
+
+ZEST_CASE(DryrunCLHost) {
+    // With a cl host, cudafe++ names cl's dialect and version, and nvcc
+    // redirects cl's preprocessed output.
+    constexpr llvm::StringRef dryrun = R"(#$ PATH=C:/VC/bin/Hostx64/x64;C:/Windows
+#$ cl.exe > "C:/Temp/k.cpp4.ii" -D__CUDA_ARCH_LIST__=750 -nologo -E -TP -EHsc -D__CUDACC__ -D__NVCC__  "-IC:/cuda/include" -D__CUDACC_VER_MAJOR__=13 "k.cu"
+#$ cudafe++ --ms_c++14 --static-host-stub --microsoft_version=1951 --msvc_target_version=1951 --orig_src_file_name "k.cu"
+#$ cl.exe > "C:/Temp/k.cpp1.ii" -D__CUDA_ARCH__=750 -D__CUDA_ARCH_LIST__=750 -nologo -E -TP -DCUDA_DOUBLE_MATH_FUNCTIONS -EHsc -D__CUDACC__ -D__NVCC__  "-IC:/cuda/include" -D__CUDACC_VER_MAJOR__=13 "k.cu"
+#$ cicc --ms_c++14 -arch compute_75 "C:/Temp/k.cpp1.ii" -o "C:/Temp/k.ptx"
+)";
+    auto info = parse_nvcc_dryrun(dryrun);
+    ZASSERT(info);
+    ZEXPECT(info->host_compiler == "cl.exe");
+    ZEXPECT(info->cpp_dialect == "c++14");
+    ZEXPECT(info->ms_version == "19.51");
+    ZEXPECT(info->default_arch == "sm_75");
+    std::vector<std::string> include_dirs = {"C:/cuda/include"};
+    ZEXPECT(info->include_dirs == include_dirs);
+    ZEXPECT(ranges::contains(info->host_defines, "__CUDACC_VER_MAJOR__=13"));
+    ZEXPECT(ranges::contains(info->device_defines, "CUDA_DOUBLE_MATH_FUNCTIONS"));
 }
 
 ZEST_CASE(DryrunRejectsIncomplete) {
@@ -661,8 +794,13 @@ ZEST_CASE(AppendOverridesBase) {
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase db{file_table, commands};
-    std::vector<const char*> arguments =
-        {"nvcc", "-rdc=true", "-default-stream=per-thread", "-arch=sm_75", "-c", "/tmp/kern.cu"};
+    std::vector<const char*> arguments = {"nvcc",
+                                          "-ccbin=g++",
+                                          "-rdc=true",
+                                          "-default-stream=per-thread",
+                                          "-arch=sm_75",
+                                          "-c",
+                                          "/tmp/kern.cu"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
 
     // NVCC's stateful options are last-wins across the whole command, so an
@@ -713,7 +851,7 @@ ZEST_CASE(ExtrasStayClangDialect) {
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase db{file_table, commands};
-    std::vector<const char*> arguments = {"nvcc", "-rdc=true", "-c", "/tmp/kern.cu"};
+    std::vector<const char*> arguments = {"nvcc", "-ccbin=g++", "-rdc=true", "-c", "/tmp/kern.cu"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
 
     // A lint plan's extra args are clang args by definition (clang-tidy
@@ -736,6 +874,7 @@ ZEST_CASE(GencodeAppendAccumulates) {
     CommandTable commands;
     CompilationDatabase db{file_table, commands};
     std::vector<const char*> arguments = {"nvcc",
+                                          "-ccbin=g++",
                                           "--generate-code=arch=compute_90,code=sm_90",
                                           "-c",
                                           "/tmp/kern.cu"};
@@ -1042,8 +1181,8 @@ ZEST_CASE(NVCCUnknownHost, skip = Windows) {
 
 ZEST_CASE(UnqueriedNVCC) {
     // clang's own CUDA support reads an nvcc that is not here on the device
-    // side, as for an nvcc clice runs; the tokens only nvcc's dryrun reads
-    // are unknown to clang and leave its first job, the device one, alone.
+    // side, as for an nvcc clice runs; the tokens only nvcc's dryrun reads,
+    // unknown to clang, stay out of what it reads.
     auto nvcc = tmp.path("nvcc");
     auto argv = f.resolve(unqueried(add("a.cu", {nvcc.c_str(), "-ccbin", "g++", "-c"})));
     ZEXPECT(contains(argv, "-fcuda-is-device"));

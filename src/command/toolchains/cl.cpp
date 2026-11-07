@@ -1,6 +1,7 @@
 module clice;
 
 import :command.argument;
+import :command.table;
 import :command.toolchains.cl;
 import :command.toolchains.clang;
 import :support.process;
@@ -47,9 +48,10 @@ std::vector<std::string> cl_driver_mode(llvm::StringRef driver, CompilerFamily f
 }
 
 async::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> args,
-                                                    CompilerFamily family,
+                                                    const Command& command,
                                                     llvm::StringRef input,
                                                     std::string cwd) {
+    auto family = command.family;
     if(auto error = fs::write_file(input, cl_query_source)) {
         co_return std::unexpected(
             std::format("Failed to write {}: {}", input.str(), error.message()));
@@ -65,16 +67,17 @@ async::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> 
     if(family == CompilerFamily::ClangCL) {
         query.push_back("-v");
     }
-    bool names_standard = false;
     bool names_version = false;
-    for(llvm::StringRef arg: args.drop_front()) {
-        if(arg.starts_with("/std:") || arg.starts_with("--driver-mode=")) {
-            query.push_back(arg.str());
+    for(auto& arg: command.args) {
+        if(arg.opt_id == clang_options::OPT__SLASH_std ||
+           arg.opt_id == clang_options::OPT_driver_mode) {
+            render_driver_arg(arg, family, [&](std::string_view part) {
+                query.emplace_back(part);
+            });
         }
-        arg.consume_front("/clang:");
-        names_standard = names_standard || arg.starts_with("-std=");
-        names_version = names_version || arg.starts_with("-fms-compatibility-version=") ||
-                        arg.starts_with("-fmsc-version=");
+        auto id = driver_option(arg);
+        names_version = names_version || id == clang_options::OPT_fms_compatibility_version ||
+                        id == clang_options::OPT_fmsc_version;
     }
     query.push_back(input.str());
     auto output = co_await execute(std::move(query), cwd);
@@ -102,7 +105,7 @@ async::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> 
     if(!job) {
         co_return job;
     }
-    if(!names_standard && !parsed.standard.empty()) {
+    if(!names_standard(command.args) && !parsed.standard.empty()) {
         job->args.push_back("-std=" + parsed.standard);
     }
     if(family == CompilerFamily::MSVC && !names_version && !parsed.version.empty()) {

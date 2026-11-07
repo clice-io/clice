@@ -2,6 +2,7 @@ module clice:command.toolchains.nvcc;
 
 import :command.argument;
 import :command.normalize;
+import :command.table;
 import :command.toolchains.clang;
 import :support.prelude;
 import :vfs.path;
@@ -18,18 +19,26 @@ namespace clice {
 /// build's real toolchain.
 bool is_nvcc_query_flag(llvm::StringRef arg);
 
-/// The files an nvcc options-file argument at `arguments[i]` names —
-/// `-optf` or `--options-file`, its value separate or after `=`, a
-/// comma-separated list with `\,` for a literal comma — advancing `i` past
-/// a separate value; nullopt when the argument is no such option. Their
-/// arguments splice in where it stood, like a response file's (CMake
-/// routes long CUDA include lists through one).
+/// The files the nvcc argument at `arguments[i]` names when it is an
+/// options file — `-optf` or `--options-file`, its value separate or after
+/// `=`, a comma-separated list with `\,` for a literal comma — else
+/// nullopt; `i` advances to the next argument either way, past the values
+/// of other options (`-Xcompiler -optf` names no file). Their arguments
+/// splice in where it stood, like a response file's (CMake routes long
+/// CUDA include lists through one).
 std::optional<llvm::SmallVector<std::string>> options_files(llvm::ArrayRef<std::string> arguments,
                                                             std::size_t& i);
 
+/// The host compiler of an nvcc command with `args`: the one the last
+/// `-ccbin` names, else nvcc's default, cl on Windows and GCC elsewhere,
+/// which a `-ccbin` naming a directory names too.
+CompilerFamily nvcc_host(llvm::ArrayRef<std::string> args);
+
 /// Rewrite an nvcc driver command into flags clang's option table parses,
 /// so the regular CDB classification (canonical / user-content / discarded)
-/// applies unchanged:
+/// applies unchanged. nvcc's options are read by a table of their own,
+/// every option `nvcc --help` lists in its long and short spellings, a
+/// value separate or after `=`:
 ///
 /// - The `-gencode` entries and the (last-wins) `-arch` choice — nvcc
 ///   compiles their union, one device pass each — collapse to the single
@@ -43,16 +52,20 @@ std::optional<llvm::SmallVector<std::string>> options_files(llvm::ArrayRef<std::
 /// - Preprocessor options split their comma-separated values, short
 ///   spellings included: `-Ia,b` names two directories, `-DA=1,B=2` two
 ///   macros.
-/// - `-Xcompiler` values unwrap into plain host flags, `-x cu` becomes
-///   `-x cuda`, and macro-defining toggles (`--extended-lambda`,
+/// - `-Xcompiler` values unwrap into the flags of `host`, the command's
+///   host compiler, split as its command line is, `-x cu` becomes
+///   `-x cuda`, `--no-exceptions`, `--ftemplate-depth` and `--stdlib`
+///   become clang's options of the same meaning, and macro-defining toggles (`--extended-lambda`,
 ///   `-rdc=true`, `-dc`, `-ewp`, `--default-stream per-thread`, ...) become
 ///   their exact macro effect. `--use_fast_math` becomes clang's
 ///   `-fgpu-approx-transcendentals`, which selects the same fast
 ///   transcendentals in the math wrapper.
 /// - A path-shaped `-ccbin` resolves against `directory`, the working
 ///   directory nvcc resolves it against.
-/// - Remaining nvcc-only options are dropped, together with their values
-///   when those could be mistaken for host flags (`-Xptxas -O3`).
+/// - nvcc's other options are dropped with their values (`-Xptxas -O3`,
+///   `-lineinfo`); what nvcc does not know passes on as written: an input,
+///   or the host compiler's option nvcc forwards
+///   (`-forward-unknown-to-host-compiler`).
 ///
 /// With `edit` set the flags are a config-rule edit appended after an
 /// already-translated base command, not a self-contained command: stateful
@@ -66,6 +79,7 @@ std::optional<llvm::SmallVector<std::string>> options_files(llvm::ArrayRef<std::
 /// against the base's.
 std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> arguments,
                                                 llvm::StringRef directory,
+                                                CompilerFamily host,
                                                 bool edit = false);
 
 /// Collapse the architecture flags of a combined command (translated base
@@ -120,9 +134,14 @@ struct NVCCDryrun {
     /// and libcu++ are.
     std::vector<std::string> include_dirs;
 
-    /// nvcc's default C++ dialect (`cudafe++ --c++17` → "c++17"), applied
-    /// when the user command names none.
+    /// nvcc's default C++ dialect (`cudafe++ --c++17` → "c++17", with a cl
+    /// host `--ms_c++14`), applied when the user command names none.
     std::string cpp_dialect;
+
+    /// The version of a cl host as `-fms-compatibility-version` takes it:
+    /// cudafe++'s `--microsoft_version=1951`, cl's `_MSC_VER`, is "19.51".
+    /// Empty for any other host.
+    std::string ms_version;
 
     /// nvcc's default GPU architecture (`cicc -arch compute_52` → "sm_52"),
     /// applied when the user command names none.
@@ -142,29 +161,32 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
 
 /// nvcc: its dryrun names the toolkit root, the host compiler, the macros
 /// nvcc injects and its header directories — none of which clang can
-/// derive on its own. The host compiler is then asked as a GCC-style
+/// derive on its own. A GCC-style host compiler is then asked as such a
 /// driver is, in the input's language and with the command's sysroot, and
-/// clang's own driver builds the job, in CUDA mode for a CUDA input.
+/// clang's own driver builds the job, in CUDA mode for a CUDA input; with
+/// a cl host, clang's driver in its cl mode, after the dryrun found cl
+/// where nvcc looks for it. `args` run `command`.
 async::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string> args,
+                                                      const Command& command,
                                                       llvm::StringRef input,
                                                       llvm::StringRef kind,
                                                       std::string cwd);
 
-/// A rule's flags for an NVCC command, in the same nvcc spellings as the
-/// command they edit, rewritten like the command itself: the options files
+/// A rule's flags for `base`, an NVCC command, in the same nvcc spellings
+/// as the command they edit, rewritten like the command itself: the options files
 /// they name spliced in, then translated (translate_nvcc_command, `edit`
 /// as there). Relative paths in the flags, and in the files they name, are
 /// relative to the rule's `anchor`.
 std::vector<std::string> translate_nvcc_flags(Normalizer& normalizer,
-                                              const char* driver,
+                                              const Command& base,
                                               llvm::ArrayRef<std::string> flags,
                                               const Spelling& anchor,
                                               bool edit);
 
-/// A rule's remove list for an NVCC command, as the flags of the
+/// A rule's remove list for `base`, an NVCC command, as the flags of the
 /// translated base it names.
 std::vector<std::string> translate_nvcc_removes(Normalizer& normalizer,
-                                                const char* driver,
+                                                const Command& base,
                                                 llvm::ArrayRef<std::string> flags,
                                                 const Spelling& anchor);
 

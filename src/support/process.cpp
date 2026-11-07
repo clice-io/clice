@@ -19,18 +19,25 @@ import :support.process;
 namespace clice {
 
 async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::string> arguments,
-                                                               std::string cwd) {
+                                                               std::string cwd,
+                                                               std::string path) {
     auto file = arguments[0];
     LOG_INFO("Execute command: {}", file);
 
     arguments.erase(arguments.begin());
+    // Keeps the output callers parse unlocalized. Not LANG alone: GCC
+    // translates its `-v` report under LC_ALL or LC_MESSAGES, which win over
+    // LANG.
+    std::vector<sys::EnvChange> env_changes = {
+        {.name = "LC_ALL", .value = "C"}
+    };
+    if(!path.empty()) {
+        env_changes.push_back({.name = "PATH", .value = std::move(path)});
+    }
     auto captured = co_await async::process::capture({
         .program = file,
         .args = std::move(arguments),
-        // Keeps the output callers parse unlocalized. Not LANG alone: GCC
-        // translates its `-v` report under LC_ALL or LC_MESSAGES, which win
-        // over LANG.
-        .env_changes = {{.name = "LC_ALL", .value = "C"}},
+        .env_changes = std::move(env_changes),
         .cwd = std::move(cwd),
         .creation = {.exit_with_parent = can_exit_with_parent},
     });

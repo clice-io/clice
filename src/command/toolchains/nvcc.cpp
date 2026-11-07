@@ -2,9 +2,12 @@ module clice;
 
 import :command.argument;
 import :command.normalize;
+import :command.table;
+import :command.toolchains.cl;
 import :command.toolchains.clang;
 import :command.toolchains.gcc;
 import :command.toolchains.nvcc;
+import :command.toolchains.own_options;
 import :support.process;
 import :support.shell;
 import :vfs.path;
@@ -17,6 +20,69 @@ constexpr llvm::StringLiteral ccbin_prefix = "-ccbin=";
 constexpr llvm::StringLiteral target_directory_prefix = "--target-directory=";
 constexpr llvm::StringLiteral allow_unsupported_flag = "--allow-unsupported-compiler";
 constexpr llvm::StringLiteral gpu_arch_prefix = "-arch=";
+
+namespace nvcc_options {
+
+/// nvcc's options (nvcc_options.inc), with ids after the table's input and
+/// unknown option, as clang's are (clang_options::ID).
+enum ID : std::uint32_t {
+    OPT_INPUT = OptionSpellings::input,
+    OPT_UNKNOWN = OptionSpellings::unknown,
+#define NVCC_OPTION(ID, NAME, SHORT_NAME, VALUE) OPT_##ID,
+#include "command/toolchains/nvcc_options.inc"
+#undef NVCC_OPTION
+    OPT_END,
+};
+
+}  // namespace nvcc_options
+
+/// How an nvcc option takes its value (nvcc_options.inc).
+enum class Value : std::uint8_t {
+    None,
+    Separate,
+    Joined,
+};
+
+const cli::OptTable& nvcc_table() {
+    struct Option {
+        std::string_view name;
+        std::string_view short_name;
+        Value value;
+    };
+    using enum Value;
+    constexpr Option options[] = {
+#define NVCC_OPTION(ID, NAME, SHORT_NAME, VALUE) {NAME, SHORT_NAME, VALUE},
+#include "command/toolchains/nvcc_options.inc"
+#undef NVCC_OPTION
+    };
+    const static OptionSpellings table(nvcc_options::OPT_END, [&] {
+        std::vector<OptionSpellings::Spelling> spellings;
+        for(auto [index, option]: views::enumerate(options)) {
+            auto id = static_cast<std::uint32_t>(OptionSpellings::first_option + index);
+            for(auto [prefix, name]: {
+                    std::pair{"--", option.name      },
+                    std::pair{"-",  option.short_name}
+            }) {
+                if(name.empty()) {
+                    continue;
+                }
+                auto spelled = std::string(prefix) + std::string(name);
+                if(option.value == None) {
+                    spellings.push_back({spelled, cli::OptionKind::Flag, id});
+                    continue;
+                }
+                bool joined = option.value == Joined && llvm::StringRef(prefix) == "-";
+                spellings.push_back(
+                    {spelled,
+                     joined ? cli::OptionKind::JoinedOrSeparate : cli::OptionKind::Separate,
+                     id});
+                spellings.push_back({spelled + "=", cli::OptionKind::Joined, id});
+            }
+        }
+        return spellings;
+    }());
+    return table.table();
+}
 
 /// One GPU architecture named inside an -arch/-gencode value.
 struct ArchToken {
@@ -56,20 +122,6 @@ void collect_archs(llvm::StringRef spec, llvm::SmallVectorImpl<ArchToken>& out) 
     }
 }
 
-/// Only the `arch=` clause of a -gencode value names the virtual
-/// architecture the device front end compiles for; `code=` entries are
-/// ptxas targets (`-gencode arch=compute_80,code=sm_90` preprocesses with
-/// `__CUDA_ARCH__` == 800).
-void collect_gencode_archs(llvm::StringRef spec, llvm::SmallVectorImpl<ArchToken>& out) {
-    llvm::SmallVector<llvm::StringRef> pieces;
-    spec.split(pieces, ',', -1, false);
-    for(llvm::StringRef piece: pieces) {
-        piece = piece.trim();
-        if(piece.consume_front("arch="))
-            collect_archs(piece, out);
-    }
-}
-
 /// The newest architecture wins; at equal number the fuller feature set does
 /// ('a' unlocks the arch-specific instructions the family 'f' and plain
 /// forms hide, e.g. sm_90a for Hopper GMMA/TMA).
@@ -85,15 +137,6 @@ std::string select_gpu_arch(llvm::ArrayRef<ArchToken> archs) {
     if(best.suffix != 0)
         result += best.suffix;
     return result;
-}
-
-/// nvcc resolves relative paths against its working directory — the compile
-/// directory — not against ours. A leading slash is absolute on POSIX and
-/// root-relative on Windows: never compile-directory-relative.
-std::string absolutize(llvm::StringRef value, llvm::StringRef directory) {
-    if(value.empty() || value.front() == '/')
-        return value.str();
-    return path::join(directory, value);
 }
 
 /// Split on unescaped commas, `\,` reading as a literal comma. Other
@@ -121,6 +164,60 @@ void split_list(llvm::StringRef value, llvm::SmallVectorImpl<std::string>& out) 
         out.push_back(std::move(piece));
 }
 
+/// The nvcc option the single argument `arg` is; none when it is no option
+/// of nvcc's or misses its value.
+std::optional<cli::ParsedArg> nvcc_option(llvm::StringRef arg) {
+    std::array argv = {std::string_view(arg)};
+    auto parsed = *nvcc_table().parse(argv).begin();
+    if(!parsed || parsed->id < OptionSpellings::first_option) {
+        return std::nullopt;
+    }
+    return std::move(*parsed);
+}
+
+/// Whether nvcc's option `id` is one only nvcc resolves (is_nvcc_query_flag).
+bool is_query_option(std::uint32_t id) {
+    using namespace nvcc_options;
+    return id == OPT_compiler_bindir || id == OPT_allow_unsupported_compiler ||
+           id == OPT_target_directory || id == OPT_gpu_architecture;
+}
+
+/// The PATH nvcc runs with when its host is cl, which it looks for on PATH
+/// alone whatever `-ccbin` names: led by the directory `ccbin` names when a
+/// path, else by the newest toolset Visual Studio installed when PATH has
+/// no cl (an editor started clice outside a developer prompt). Empty to
+/// keep PATH as it is.
+std::string cl_search_path(llvm::StringRef ccbin) {
+#ifdef _WIN32
+    std::string directory;
+    std::string found;
+    if(path::is_absolute(ccbin)) {
+        directory = fs::is_directory(ccbin) ? ccbin.str() : std::string(path::parent(ccbin));
+    } else if(sys::find_program(found, "cl")) {
+        std::string toolchain;
+        llvm::ToolsetLayout layout;
+        if(llvm::findVCToolChainViaSetupConfig(*llvm::vfs::getRealFileSystem(),
+                                               std::nullopt,
+                                               toolchain,
+                                               layout)) {
+            directory =
+                llvm::getSubDirectoryPath(llvm::SubDirectoryType::Bin,
+                                          layout,
+                                          toolchain,
+                                          llvm::Triple(llvm::sys::getProcessTriple()).getArch());
+        }
+    }
+    std::string path;
+    if(!directory.empty() && sys::get_env(path, "PATH")) {
+        directory += ';';
+        directory += path;
+    }
+    return directory;
+#else
+    return {};
+#endif
+}
+
 /// The host compiler nvcc's dryrun names, as a path. The dryrun spells it
 /// the way nvcc resolves it — often a bare name that only exists on nvcc's
 /// own augmented PATH: that PATH, then next to the nvcc binary, then ours.
@@ -143,30 +240,46 @@ std::expected<std::string, std::string> find_nvcc_host(const NVCCDryrun& info,
 }  // namespace
 
 bool is_nvcc_query_flag(llvm::StringRef arg) {
-    return arg.starts_with(ccbin_prefix) || arg == allow_unsupported_flag ||
-           arg.starts_with(target_directory_prefix) || arg.starts_with(gpu_arch_prefix);
+    auto option = nvcc_option(arg);
+    return option && is_query_option(option->id);
 }
 
 std::optional<llvm::SmallVector<std::string>> options_files(llvm::ArrayRef<std::string> arguments,
                                                             std::size_t& i) {
-    llvm::StringRef arg = arguments[i];
+    auto parsed = *nvcc_table().parse(arguments.drop_front(i)).begin();
+    if(!parsed) {
+        i = arguments.size();
+        return std::nullopt;
+    }
+    i += parsed->next_index;
+    if(parsed->id != nvcc_options::OPT_options_file) {
+        return std::nullopt;
+    }
     llvm::SmallVector<std::string> files;
-    if(arg == "-optf" || arg == "--options-file") {
-        if(i + 1 < arguments.size()) {
-            i += 1;
-            split_list(arguments[i], files);
+    split_list(parsed->values[0], files);
+    return files;
+}
+
+CompilerFamily nvcc_host(llvm::ArrayRef<std::string> args) {
+    auto host = CompilerFamily::Unknown;
+    for(auto& parsed: nvcc_table().parse(args)) {
+        if(parsed && parsed->id == nvcc_options::OPT_compiler_bindir) {
+            host = driver_family(parsed->values[0]);
         }
-        return files;
     }
-    if(arg.consume_front("-optf=") || arg.consume_front("--options-file=")) {
-        split_list(arg, files);
-        return files;
+    if(host != CompilerFamily::Unknown) {
+        return host;
     }
-    return std::nullopt;
+#ifdef _WIN32
+    return CompilerFamily::MSVC;
+#else
+    return CompilerFamily::GCC;
+#endif
 }
 
 std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> arguments,
                                                 llvm::StringRef directory,
+                                                CompilerFamily host,
                                                 bool edit) {
     std::vector<std::string> result;
     result.emplace_back(arguments[0]);
@@ -192,30 +305,6 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
 
     llvm::ArrayRef<const char*> args = arguments.drop_front();
 
-    /// Match `-opt value` / `-opt=value` for any of the spellings, advancing
-    /// past a separate value. A spelling at the end of the command matches
-    /// with an empty value.
-    auto value_of = [&](std::size_t& i,
-                        std::initializer_list<llvm::StringRef> spellings,
-                        llvm::StringRef& value) {
-        llvm::StringRef arg = args[i];
-        for(auto spelling: spellings) {
-            if(arg == spelling) {
-                value = {};
-                if(i + 1 < args.size()) {
-                    i += 1;
-                    value = args[i];
-                }
-                return true;
-            }
-            if(arg.starts_with(spelling) && arg[spelling.size()] == '=') {
-                value = arg.substr(spelling.size() + 1);
-                return true;
-            }
-        }
-        return false;
-    };
-
     /// nvcc treats every preprocessor value as a comma-separated list,
     /// short spellings included: `-Ia,b` names two directories.
     auto emit_list = [&](llvm::StringRef flag, llvm::StringRef value) {
@@ -227,210 +316,131 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
         }
     };
 
-    for(std::size_t i = 0; i < args.size(); i += 1) {
-        llvm::StringRef arg = args[i];
-        llvm::StringRef value;
-
-        if(value_of(i, {"-gencode", "--generate-code"}, value)) {
-            collect_gencode_archs(value, gencode_archs);
-            continue;
+    auto quoting = cl_mode(host) ? sys::cmd::Quoting::Windows : sys::cmd::Quoting::POSIX;
+    using namespace nvcc_options;
+    for(auto& parsed: nvcc_table().parse(args)) {
+        // nvcc rejects an option missing its value, which only the last
+        // argument can be.
+        if(!parsed) {
+            break;
         }
-        if(value_of(i, {"-arch", "--gpu-architecture"}, value)) {
-            arch_archs.clear();
-            arch_special = {};
-            collect_archs(value, arch_archs);
-            if(arch_archs.empty())
-                arch_special = value;
-            continue;
-        }
-        /// ptxas targets only — consumed so the value cannot leak, never
-        /// harvested.
-        if(value_of(i, {"-code", "--gpu-code"}, value)) {
-            continue;
-        }
-
-        if(value_of(i, {"-ccbin", "--compiler-bindir"}, value)) {
+        llvm::StringRef value = parsed->values.empty() ? "" : parsed->values[0];
+        switch(parsed->id) {
+            // An input, or an option of the host compiler's nvcc passes on
+            // (-forward-unknown-to-host-compiler); nvcc's own warnings clang
+            // names alike.
+            case OPT_INPUT:
+            case OPT_UNKNOWN:
+            case OPT_Wreorder:
+            case OPT_Wno_deprecated_declarations:
+            case OPT_Wconversion: result.emplace_back(args[parsed->index]); break;
+            /// Only the `arch=` clause of a -gencode value names the virtual
+            /// architecture the device front end compiles for; `code=`
+            /// entries are ptxas targets (`-gencode arch=compute_80,code=sm_90`
+            /// preprocesses with `__CUDA_ARCH__` == 800).
+            case OPT_generate_code: {
+                llvm::SmallVector<llvm::StringRef> pieces;
+                value.split(pieces, ',', -1, false);
+                for(llvm::StringRef piece: pieces) {
+                    piece = piece.trim();
+                    if(piece.consume_front("arch=")) {
+                        collect_archs(piece, gencode_archs);
+                    }
+                }
+                break;
+            }
+            case OPT_gpu_architecture:
+                arch_archs.clear();
+                arch_special = {};
+                collect_archs(value, arch_archs);
+                if(arch_archs.empty()) {
+                    arch_special = value;
+                }
+                break;
             /// A bare program name resolves on PATH like nvcc would; only
-            /// path-shaped values anchor to the compile directory.
-            bool path_shaped =
-                value.contains('/') || value.contains('\\') || value == "." || value == "..";
-            host_compiler = path_shaped ? absolutize(value, directory) : value.str();
-            continue;
+            /// path-shaped values anchor to the compile directory, nvcc's
+            /// working directory. A leading slash is absolute on POSIX and
+            /// root-relative on Windows: never compile-directory-relative.
+            case OPT_compiler_bindir: {
+                bool path_shaped =
+                    value.contains('/') || value.contains('\\') || value == "." || value == "..";
+                host_compiler = path_shaped && !value.starts_with("/")
+                                    ? path::join(directory, value)
+                                    : value.str();
+                break;
+            }
+            case OPT_allow_unsupported_compiler: allow_unsupported = true; break;
+            case OPT_target_directory: target_directory = value; break;
+            /// nvcc packs several host flags into one comma-separated value,
+            /// under the same `\,` escape as every other list option
+            /// (`-Xcompiler=-Wl\,-z\,defs` reaches the host as one flag).
+            /// It writes each piece into the host's command line as it
+            /// stands, which the host splits: a POSIX shell for GCC, the
+            /// Windows rules after the program for cl (CMake's
+            /// `-Xcompiler=" -Zi -Ob0 -Od /RTC1"`).
+            case OPT_compiler_options: {
+                llvm::SmallVector<std::string> pieces;
+                split_list(value, pieces);
+                for(auto& piece: pieces) {
+                    auto line = split_command("host " + piece, quoting);
+                    result.insert(result.end(),
+                                  std::make_move_iterator(line.begin() + 1),
+                                  std::make_move_iterator(line.end()));
+                }
+                break;
+            }
+            case OPT_std: result.emplace_back(("-std=" + value).str()); break;
+            case OPT_stdlib: result.emplace_back(("-stdlib=" + value).str()); break;
+            case OPT_x:
+                result.emplace_back("-x");
+                result.emplace_back(value == "cu" ? "cuda" : value.str());
+                break;
+            /// A value nvcc rejects pins nothing.
+            case OPT_machine:
+                if(value == "32" || value == "64") {
+                    machine = value;
+                }
+                break;
+            case OPT_m64: machine = "64"; break;
+            case OPT_optimize: optimize = value; break;
+            case OPT_disable_warnings: result.emplace_back("-w"); break;
+            case OPT_relocatable_device_code: rdc = value == "true"; break;
+            /// Separate compilation implies -rdc=true.
+            case OPT_device_c: rdc = true; break;
+            case OPT_extensible_whole_program: ewp = true; break;
+            case OPT_default_stream: default_stream = value; break;
+            /// Feature toggles whose only parse-visible effect is a macro.
+            case OPT_expt_relaxed_constexpr: relaxed_constexpr = true; break;
+            case OPT_extended_lambda:
+            case OPT_expt_extended_lambda: extended_lambda = true; break;
+            /// Consumed rather than passed through: clang reads a bare -G as
+            /// its small-data-threshold option.
+            case OPT_device_debug: device_debug = true; break;
+            /// Device fast math has no preprocess-visible effect in nvcc
+            /// (cicc swaps the transcendentals itself); clang's flag selects
+            /// the same fast variants in its math wrapper via
+            /// __CLANG_GPU_APPROX_TRANSCENDENTALS__.
+            case OPT_use_fast_math: use_fast_math = true; break;
+            /// Preprocessor list options, rewritten to the short spellings
+            /// the CDB classification knows.
+            case OPT_system_include: emit_list("-isystem", value); break;
+            case OPT_pre_include: emit_list("-include", value); break;
+            case OPT_include_path: emit_list("-I", value); break;
+            case OPT_define_macro: emit_list("-D", value); break;
+            case OPT_undefine_macro: emit_list("-U", value); break;
+            case OPT_no_exceptions: result.emplace_back("-fno-exceptions"); break;
+            case OPT_ftemplate_depth:
+                result.emplace_back(("-ftemplate-depth=" + value).str());
+                break;
+            case OPT_ftemplate_backtrace_limit:
+                result.emplace_back(("-ftemplate-backtrace-limit=" + value).str());
+                break;
+            /// What has no effect on the parse, dropped with its value:
+            /// nvcc's outputs and actions, its device code generation,
+            /// linking, the options of the tools it runs, and its options
+            /// files, spliced in before (Normalizer::expand_response_files).
+            default: break;
         }
-        if(arg == "--allow-unsupported-compiler" || arg == "-allow-unsupported-compiler") {
-            allow_unsupported = true;
-            continue;
-        }
-        if(value_of(i, {"-target-dir", "--target-directory"}, value)) {
-            target_directory = value;
-            continue;
-        }
-
-        /// nvcc packs several host flags into one comma-separated value,
-        /// under the same `\,` escape as every other list option
-        /// (`-Xcompiler=-Wl\,-z\,defs` reaches the host as one flag).
-        if(value_of(i, {"-Xcompiler", "--compiler-options"}, value)) {
-            llvm::SmallVector<std::string> pieces;
-            split_list(value, pieces);
-            for(auto& piece: pieces)
-                result.emplace_back(std::move(piece));
-            continue;
-        }
-
-        if(value_of(i, {"-std", "--std"}, value)) {
-            result.emplace_back(("-std=" + value).str());
-            continue;
-        }
-
-        if(value_of(i, {"-x", "--x"}, value)) {
-            result.emplace_back("-x");
-            result.emplace_back(value == "cu" ? "cuda" : value.str());
-            continue;
-        }
-
-        /// The joined short forms -m32/-m64 are nvcc-fatal and fall through
-        /// below as clang's own spellings; a value nvcc rejects pins
-        /// nothing.
-        if(value_of(i, {"-m", "--machine"}, value)) {
-            if(value == "32" || value == "64")
-                machine = value;
-            continue;
-        }
-
-        if(value_of(i, {"-O", "--optimize"}, value)) {
-            optimize = value;
-            continue;
-        }
-        /// nvcc reads joined -O3 as its own option, not host passthrough.
-        if(arg.size() > 2 && arg.starts_with("-O") &&
-           ranges::all_of(arg.drop_front(2), llvm::isDigit)) {
-            optimize = arg.drop_front(2);
-            continue;
-        }
-
-        if(arg == "--disable-warnings" || arg == "-disable-warnings") {
-            result.emplace_back("-w");
-            continue;
-        }
-
-        if(value_of(i, {"-rdc", "--relocatable-device-code"}, value)) {
-            rdc = value == "true";
-            continue;
-        }
-        /// Separate compilation implies -rdc=true.
-        if(arg == "-dc" || arg == "--device-c") {
-            rdc = true;
-            continue;
-        }
-        if(arg == "-ewp" || arg == "--extensible-whole-program") {
-            ewp = true;
-            continue;
-        }
-
-        if(value_of(i, {"-default-stream", "--default-stream"}, value)) {
-            default_stream = value;
-            continue;
-        }
-
-        /// Feature toggles whose only parse-visible effect is a macro.
-        if(arg == "--expt-relaxed-constexpr" || arg == "-expt-relaxed-constexpr") {
-            relaxed_constexpr = true;
-            continue;
-        }
-        if(arg == "--expt-extended-lambda" || arg == "-expt-extended-lambda" ||
-           arg == "--extended-lambda" || arg == "-extended-lambda") {
-            extended_lambda = true;
-            continue;
-        }
-        /// Consumed rather than passed through: clang reads a bare -G as
-        /// its small-data-threshold option.
-        if(arg == "-G" || arg == "--device-debug") {
-            device_debug = true;
-            continue;
-        }
-        /// Device fast math has no preprocess-visible effect in nvcc (cicc
-        /// swaps the transcendentals itself); clang's flag selects the same
-        /// fast variants in its math wrapper via
-        /// __CLANG_GPU_APPROX_TRANSCENDENTALS__.
-        if(arg == "--use_fast_math" || arg == "-use_fast_math") {
-            use_fast_math = true;
-            continue;
-        }
-
-        /// Preprocessor list options, rewritten to the short spellings the
-        /// CDB classification knows. The exact-spelling matches must come
-        /// before the direct-join ones: `-include` also starts with "-I".
-        if(value_of(i, {"-isystem", "--system-include"}, value)) {
-            emit_list("-isystem", value);
-            continue;
-        }
-        if(value_of(i, {"-include", "--pre-include"}, value)) {
-            emit_list("-include", value);
-            continue;
-        }
-        if(arg.size() > 2 && arg.starts_with("-I") && arg[2] != '=') {
-            emit_list("-I", arg.substr(2));
-            continue;
-        }
-        if(value_of(i, {"-I", "--include-path"}, value)) {
-            emit_list("-I", value);
-            continue;
-        }
-        if(arg.size() > 2 && arg.starts_with("-D") && arg[2] != '=') {
-            emit_list("-D", arg.substr(2));
-            continue;
-        }
-        if(value_of(i, {"-D", "--define-macro"}, value)) {
-            emit_list("-D", value);
-            continue;
-        }
-        if(arg.size() > 2 && arg.starts_with("-U") && arg[2] != '=') {
-            emit_list("-U", arg.substr(2));
-            continue;
-        }
-        if(value_of(i, {"-U", "--undefine-macro"}, value)) {
-            emit_list("-U", value);
-            continue;
-        }
-
-        /// What the build writes, in nvcc's own spellings clang's table does
-        /// not know: its output, its dependency file and their names.
-        if(value_of(i,
-                    {"--output-file",
-                     "--dependency-output",
-                     "--dependency-target-name",
-                     "--output-directory",
-                     "-odir"},
-                    value)) {
-            continue;
-        }
-        if(arg == "--generate-dependencies-with-compile" ||
-           arg == "--generate-nonsystem-dependencies-with-compile" || arg == "--compile") {
-            continue;
-        }
-
-        /// Pass-through wrappers for other tools: dropped together with the
-        /// value, which could otherwise be mistaken for a host flag
-        /// (`-Xptxas -O3` sets the ptxas level, not the host one).
-        if(value_of(i,
-                    {"-Xptxas",
-                     "--ptxas-options",
-                     "-Xnvlink",
-                     "--nvlink-options",
-                     "-Xfatbin",
-                     "--fatbin-options",
-                     "-Xarchive",
-                     "--archive-options",
-                     "-Xlinker",
-                     "--linker-options",
-                     "-Xcudafe",
-                     "--threads",
-                     "-t"},
-                    value)) {
-            continue;
-        }
-
-        result.emplace_back(arg);
     }
 
     /// nvcc injects its macros ahead of the user's preprocessor flags, so a
@@ -573,7 +583,7 @@ std::optional<llvm::SmallVector<std::size_t>>
 }
 
 std::vector<std::string> translate_nvcc_flags(Normalizer& normalizer,
-                                              const char* driver,
+                                              const Command& base,
                                               llvm::ArrayRef<std::string> flags,
                                               const Spelling& anchor,
                                               bool edit) {
@@ -581,64 +591,51 @@ std::vector<std::string> translate_nvcc_flags(Normalizer& normalizer,
         return {};
     }
     auto expanded = normalizer.expand_response_files(flags, anchor, CompilerFamily::NVCC);
-    llvm::SmallVector<const char*, 32> argv = {driver};
+    llvm::SmallVector<const char*, 32> argv = {base.driver};
     for(auto& flag: expanded) {
         argv.push_back(flag.c_str());
     }
-    auto translated = translate_nvcc_command(argv, anchor, edit);
+    auto translated = translate_nvcc_command(argv, anchor, base.host, edit);
     return {std::make_move_iterator(translated.begin() + 1),
             std::make_move_iterator(translated.end())};
 }
 
 std::vector<std::string> translate_nvcc_removes(Normalizer& normalizer,
-                                                const char* driver,
+                                                const Command& base,
                                                 llvm::ArrayRef<std::string> flags,
                                                 const Spelling& anchor) {
-    std::vector<std::string> source(flags.begin(), flags.end());
-    /// A wildcard arch removal (`-arch=*`, `--generate-code=*`) must
-    /// clear whichever form the translated base carries: numeric archs
-    /// become `--cuda-gpu-arch=`, non-numeric selections persist as
-    /// `-arch=` query tokens — rewrite to both wildcards.
-    for(std::size_t i = 0; i < source.size(); i += 1) {
-        llvm::StringRef flag = source[i];
-        for(llvm::StringRef spelling:
-            {"-arch", "--gpu-architecture", "-gencode", "--generate-code"}) {
-            bool joined = flag.starts_with(spelling) && flag.substr(spelling.size()) == "=*";
-            bool separate = flag == spelling && i + 1 < source.size() && source[i + 1] == "*";
-            if(!joined && !separate) {
-                continue;
-            }
-            if(separate) {
-                source.erase(source.begin() + i + 1);
-            }
-            source[i] = "--cuda-gpu-arch=*";
-            source.insert(source.begin() + i + 1, "-arch=*");
-            i += 1;
-            break;
-        }
-    }
     /// Remove patterns are an independent list, not one command: translated
     /// whole, nvcc's last-wins would swallow every alternative value of a
     /// stateful option but the last. Each pattern translates alone —
     /// standalone, so it reproduces exactly the flags the base translation
-    /// emitted — pairing a separate value token (never dash-led) with its
-    /// spelling.
+    /// emitted.
     std::vector<std::string> removes;
-    for(std::size_t i = 0; i < source.size(); i += 1) {
-        std::size_t count = 1;
-        if(llvm::StringRef(source[i]).starts_with("-") && i + 1 < source.size() &&
-           !llvm::StringRef(source[i + 1]).starts_with("-")) {
-            count = 2;
+    for(auto& parsed: nvcc_table().parse(flags)) {
+        // An option written without its value, last in the list, stays as
+        // written: the edit takes it for every value.
+        if(!parsed) {
+            removes.push_back(flags[parsed.error().begin]);
+            break;
         }
-        auto pattern = translate_nvcc_flags(normalizer,
-                                            driver,
-                                            llvm::ArrayRef(source).slice(i, count),
-                                            anchor,
-                                            /*edit=*/false);
+        /// A wildcard arch removal (`-arch=*`, `--generate-code=*`) must
+        /// clear whichever form the translated base carries: numeric archs
+        /// become `--cuda-gpu-arch=`, non-numeric selections persist as
+        /// `-arch=` query tokens — rewrite to both wildcards.
+        auto id = parsed->id;
+        if((id == nvcc_options::OPT_gpu_architecture || id == nvcc_options::OPT_generate_code) &&
+           parsed->values[0] == "*") {
+            removes.insert(removes.end(), {"--cuda-gpu-arch=*", "-arch=*"});
+            continue;
+        }
+        auto pattern =
+            translate_nvcc_flags(normalizer,
+                                 base,
+                                 flags.slice(parsed->index, parsed->next_index - parsed->index),
+                                 anchor,
+                                 /*edit=*/false);
         removes.insert(removes.end(),
                        std::make_move_iterator(pattern.begin()),
                        std::make_move_iterator(pattern.end()));
-        i += count - 1;
     }
     return removes;
 }
@@ -739,11 +736,16 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
         llvm::StringRef argv0 = tokens[0];
         auto program = path::filename(argv0);
 
+        /// cudafe++ names the C++ dialect nvcc compiles in, cl's after an
+        /// `ms_` (`--c++17`, `--ms_c++14`), and with a cl host the version
+        /// of that cl (`--microsoft_version=1951`, its `_MSC_VER`).
         if(program == "cudafe++") {
             for(llvm::StringRef token: tokens) {
-                if(token.starts_with("--c++")) {
-                    info.cpp_dialect = token.substr(2);
-                    break;
+                if(token.consume_front("--microsoft_version=") && token.size() > 2) {
+                    info.ms_version = (token.drop_back(2) + "." + token.take_back(2)).str();
+                } else if((token.consume_front("--ms_") || token.consume_front("--")) &&
+                          token.starts_with("c++")) {
+                    info.cpp_dialect = token;
                 }
             }
             continue;
@@ -814,6 +816,7 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
 }
 
 async::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string> args,
+                                                      const Command& command,
                                                       llvm::StringRef input,
                                                       llvm::StringRef kind,
                                                       std::string cwd) {
@@ -822,20 +825,32 @@ async::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string
     /// host step. The dryrun query follows the effective language so it
     /// reports the pipeline the real file gets.
     bool cuda_input = kind == "cuda";
+    bool cl_host = cl_mode(command.host);
     std::vector<std::string> dryrun_args = {args[0], "--dryrun", "-c", input.str()};
+    llvm::StringRef ccbin;
     for(llvm::StringRef arg: args) {
-        if(is_nvcc_query_flag(arg)) {
-            dryrun_args.push_back(arg.str());
+        auto option = nvcc_option(arg);
+        if(!option || !is_query_option(option->id)) {
+            continue;
+        }
+        dryrun_args.push_back(arg.str());
+        if(option->id == nvcc_options::OPT_compiler_bindir) {
+            ccbin = option->values[0];
         }
     }
-    auto dryrun = co_await execute(std::move(dryrun_args), cwd);
+    std::string path;
+    if(cl_host) {
+        path = cl_search_path(ccbin);
+    }
+    auto dryrun = co_await execute(std::move(dryrun_args), cwd, std::move(path));
     if(!dryrun) {
         co_return std::unexpected(std::move(dryrun.error()));
     }
     if(!dryrun->failure.empty()) {
         co_return std::unexpected(std::move(dryrun->failure));
     }
-    auto info = parse_nvcc_dryrun(dryrun->err);
+    // nvcc prints its dryrun to stderr, on Windows to stdout.
+    auto info = parse_nvcc_dryrun(dryrun->out + dryrun->err);
     if(!info) {
         co_return std::unexpected(std::move(info.error()));
     }
@@ -844,39 +859,49 @@ async::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string
     if(!host) {
         co_return std::unexpected(std::move(host.error()));
     }
-    auto host_family = driver_family(*host);
-    if(cl_mode(host_family)) {
-        co_return std::unexpected(std::format("Unsupported nvcc host compiler: {}", *host));
-    }
-    /// nvcc hands its host compiler a CUDA input as C++. The host's headers
-    /// follow the sysroot the command gives it (`-Xcompiler --sysroot=<dir>`).
-    std::vector<std::string> host_query = {*host, "-x", cuda_input ? "c++" : kind.str()};
-    for(llvm::StringRef arg: args.drop_front()) {
-        if(arg.starts_with("--sysroot=")) {
-            host_query.push_back(arg.str());
+    /// nvcc hands its host compiler a CUDA input as C++; a GCC-style host is
+    /// asked how it compiles that, its headers following the sysroot the
+    /// command gives it (`-Xcompiler --sysroot=<dir>`). Clang's own driver
+    /// knows cl's: in its cl mode, it takes those of the cl nvcc runs
+    /// (cl_driver_mode).
+    std::optional<GCCStyleOutput> host_output;
+    if(!cl_host) {
+        std::vector<std::string> host_query = {*host, "-x", cuda_input ? "c++" : kind.str()};
+        for(auto& arg: command.args) {
+            if(arg.opt_id == clang_options::OPT__sysroot_EQ) {
+                host_query.push_back(std::format("--sysroot={}", arg.values[0]));
+            }
         }
-    }
-    host_query.push_back(input.str());
-    auto host_output = co_await run_gcc_style(host_query, 1, cwd);
-    if(!host_output) {
-        co_return std::unexpected(std::move(host_output.error()));
-    }
-    if(host_output->clang_job.empty() && host_output->gcc_job.empty()) {
-        co_return std::unexpected(std::format("Unsupported nvcc host compiler: {}", *host));
+        host_query.push_back(input.str());
+        auto output = co_await run_gcc_style(host_query, 1, cwd);
+        if(!output) {
+            co_return std::unexpected(std::move(output.error()));
+        }
+        if(output->clang_job.empty() && output->gcc_job.empty()) {
+            co_return std::unexpected(std::format("Unsupported nvcc host compiler: {}", *host));
+        }
+        host_output = std::move(*output);
     }
 
-    std::vector<std::string> cuda_args = {*host, "-fno-delayed-template-parsing"};
+    /// clang's options cl's mode does not read go through `/clang:`.
+    auto clang_option = [&](std::string option) {
+        return cl_host ? "/clang:" + option : option;
+    };
+    std::vector<std::string> cuda_args = {*host};
+    if(!cl_host) {
+        cuda_args.push_back("-fno-delayed-template-parsing");
+    }
     if(cuda_input) {
         /// Without a root from the dryrun, clang's own CUDA detection (which
         /// knows the distro-specific install locations) is the remaining
         /// chance.
         if(!info->cuda_path.empty()) {
-            cuda_args.push_back("--cuda-path=" + info->cuda_path);
+            cuda_args.push_back(clang_option("--cuda-path=" + info->cuda_path));
         }
         /// A toolkit newer than the linked clang still parses, modulo
         /// missing feature macros; without this the version warning would
         /// land in every file's diagnostics.
-        cuda_args.push_back("--no-cuda-version-check");
+        cuda_args.push_back(clang_option("--no-cuda-version-check"));
 
         /// Default to the device-side view: reading CUDA code means reading
         /// the `__CUDA_ARCH__` world — CUTLASS keeps every arch-specific
@@ -885,34 +910,41 @@ async::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string
         /// flips a file to the host view instead; the last selector wins,
         /// matching the driver's own reading of the forwarded flags.
         std::optional<bool> selected_host;
-        for(llvm::StringRef arg: args) {
-            /// The structured render spells aliases unaliased:
-            /// --cuda-host-only arrives as --offload-host-only.
-            if(arg == "--offload-host-only") {
+        for(auto& arg: command.args) {
+            if(arg.opt_id == clang_options::OPT_offload_host_only) {
                 selected_host = true;
-            } else if(arg == "--offload-device-only") {
+            } else if(arg.opt_id == clang_options::OPT_offload_device_only) {
                 selected_host = false;
             }
         }
         if(!selected_host) {
-            cuda_args.push_back("--cuda-device-only");
+            cuda_args.push_back(clang_option("--cuda-device-only"));
         }
         for(auto& define:
             selected_host.value_or(false) ? info->host_defines : info->device_defines) {
             cuda_args.push_back("-D" + define);
         }
 
-        if(!names_standard(args) && !info->cpp_dialect.empty()) {
-            cuda_args.push_back("-std=" + info->cpp_dialect);
+        /// A cl host's `/std:`, which clang's cl mode reads alike, names
+        /// one too.
+        bool named = names_standard(command.args) ||
+                     ranges::contains(command.args, clang_options::OPT__SLASH_std, &Arg::opt_id);
+        if(!named && !info->cpp_dialect.empty()) {
+            cuda_args.push_back(clang_option("-std=" + info->cpp_dialect));
         }
 
         /// An `-arch=` query token is an explicit selection too: its
         /// resolution replaces it in place below.
-        bool selects_arch = ranges::any_of(args, [](llvm::StringRef arg) {
-            return arg.starts_with("--offload-arch=") || arg.starts_with("-arch=");
+        bool selects_arch = ranges::any_of(command.args, [](const Arg& arg) {
+            if(arg.opt_id == clang_options::OPT_offload_arch_EQ) {
+                return true;
+            }
+            auto option =
+                arg.opt_id == clang_options::OPT_UNKNOWN ? nvcc_option(arg.spelling) : std::nullopt;
+            return option && option->id == nvcc_options::OPT_gpu_architecture;
         });
         if(!selects_arch && !info->default_arch.empty()) {
-            cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
+            cuda_args.push_back(clang_option("--cuda-gpu-arch=" + info->default_arch));
         }
     } else {
         /// The single host step still carries nvcc's identity macros
@@ -921,16 +953,27 @@ async::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string
             cuda_args.push_back("-D" + define);
         }
     }
+    /// What nvcc gives cl ahead of the command's own host flags: C++
+    /// exceptions, and the version of cl itself, which clang would
+    /// otherwise take from the newest toolset installed.
+    if(cl_host) {
+        cuda_args.push_back("/EHsc");
+        if(!info->ms_version.empty()) {
+            cuda_args.push_back("-fms-compatibility-version=" + info->ms_version);
+        }
+    }
 
-    for(llvm::StringRef arg: flags_for_clang(args.drop_front(), CompilerFamily::NVCC)) {
-        if(is_nvcc_query_flag(arg)) {
+    for(llvm::StringRef arg: flags_for_clang(args.drop_front(), spelling_family(command))) {
+        auto option = nvcc_option(arg);
+        if(option && is_query_option(option->id)) {
             /// The dryrun's resolution of an `-arch=<special>` token lands
             /// exactly where the token sat: an edit-appended selection
             /// carries `--no-offload-arch=all` right before it, and
             /// inserting the resolution any earlier would put it on the
             /// cleared side.
-            if(cuda_input && arg.starts_with("-arch=") && !info->default_arch.empty()) {
-                cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
+            if(cuda_input && option->id == nvcc_options::OPT_gpu_architecture &&
+               !info->default_arch.empty()) {
+                cuda_args.push_back(clang_option("--cuda-gpu-arch=" + info->default_arch));
             }
             continue;
         }
@@ -939,8 +982,14 @@ async::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string
 
     /// A clang host needs no setup: clang's own driver already defaults to
     /// the running machine's triple.
-    auto job = !host_output->gcc_job.empty() ? query_as_gcc(*host_output, cuda_args, cwd)
-                                             : query_driver(cuda_args, cwd);
+    std::expected<Job, std::string> job;
+    if(cl_host) {
+        job = ask_clang(cuda_args, cl_driver_mode(*host, command.host), cwd);
+    } else if(!host_output->gcc_job.empty()) {
+        job = query_as_gcc(*host_output, cuda_args, cwd);
+    } else {
+        job = query_driver(cuda_args, cwd);
+    }
     if(!job) {
         co_return job;
     }

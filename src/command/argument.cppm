@@ -161,13 +161,6 @@ bool is_codegen_option(unsigned id);
 /// and anything the driver itself accepts and ignores.
 bool is_discarded_option(unsigned id);
 
-/// Whether `token`, an option clang's table does not know, is one of the
-/// ones naming a file of each unit the build writes: GCC's module mapper
-/// and dependency scan output, its SARIF and profile notes, Apple's index
-/// unit output. A command leaves them out as it does the ones clang knows
-/// (is_discarded_option).
-bool is_discarded_unknown(llvm::StringRef token);
-
 /// User-content options that go into the per-file patch rather than the
 /// shared canonical command: -I, -D, -U, -include, -imacros, -isystem, -iquote,
 /// -idirafter.
@@ -186,6 +179,10 @@ bool names_path(unsigned id, llvm::StringRef value);
 
 /// Check if this is the -Xclang pass-through option.
 bool is_xclang_option(unsigned id);
+
+/// The option `arg` gives clang's driver: the one a `/clang:` passes on
+/// (`/clang:-std=c++20`), read by clang's table, else `arg`'s own.
+unsigned driver_option(const Arg& arg);
 
 /// Diagnostics-presentation options (-W*, -R*, -pedantic*, -w): they affect
 /// which warnings are emitted but never the token stream produced by

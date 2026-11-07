@@ -10217,8 +10217,22 @@ using ::kotatsu::sys::windows::find_create_process_program;
 
 export namespace llvm {
 using ::llvm::InitStatus;
+using ::llvm::SubDirectoryType;
+using ::llvm::ToolsetLayout;
+using ::llvm::appendArchToWindowsSDKLibPath;
+using ::llvm::archToDevDivInternalArch;
+using ::llvm::archToLegacyVCArch;
+using ::llvm::archToWindowsSDKArch;
+using ::llvm::findVCToolChainViaCommandLine;
+using ::llvm::findVCToolChainViaEnvironment;
+using ::llvm::findVCToolChainViaRegistry;
+using ::llvm::findVCToolChainViaSetupConfig;
+using ::llvm::getSubDirectoryPath;
+using ::llvm::getUniversalCRTSdkDir;
+using ::llvm::getWindowsSDKDir;
 using ::llvm::mapLastWindowsError;
 using ::llvm::mapWindowsError;
+using ::llvm::useUniversalCRT;
 using enum ::llvm::InitStatus;
 }
 
