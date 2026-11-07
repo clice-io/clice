@@ -57,6 +57,50 @@ bool object_written(clang::Sema& sema, clang::SourceLocation open_paren) {
     return access && access->isOneOf(clang::tok::period, clang::tok::arrow);
 }
 
+/// Whether `open_paren` follows a name a namespace scope declares, `Widget
+/// make(` or `Widget Factory::build(`: a type ends right before the name
+/// and its qualifiers, where an expression naming a class has an operator
+/// (`= Widget(`, `= std::string(`, `new Widget(`).
+bool declares_at_namespace_scope(clang::Sema& sema, clang::SourceLocation open_paren) {
+    auto name = token_before(sema, open_paren);
+    if(!name || !name->is(clang::tok::raw_identifier) ||
+       !sema.CurContext->getRedeclContext()->isFileContext()) {
+        return false;
+    }
+    auto before = token_before(sema, name->getLocation());
+    while(before && before->is(clang::tok::coloncolon)) {
+        auto qualifier = token_before(sema, before->getLocation());
+        if(!qualifier || !qualifier->is(clang::tok::raw_identifier)) {
+            before = qualifier;
+            break;
+        }
+        before = token_before(sema, qualifier->getLocation());
+    }
+    if(before && before->is(clang::tok::raw_identifier)) {
+        return before->getRawIdentifier() != "new";
+    }
+    return before && before->isOneOf(clang::tok::greater,
+                                     clang::tok::star,
+                                     clang::tok::amp,
+                                     clang::tok::ampamp);
+}
+
+/// Whether a call's candidates construct a class.
+bool constructs(llvm::ArrayRef<clang::CodeCompleteConsumer::OverloadCandidate> candidates) {
+    return !candidates.empty() &&
+           (candidates.front().getKind() ==
+                clang::CodeCompleteConsumer::OverloadCandidate::CK_Aggregate ||
+            llvm::isa_and_present<clang::CXXConstructorDecl>(candidates.front().getFunction()));
+}
+
+/// Whether anything but its closing parenthesis follows `open_paren`,
+/// before or after the completion point.
+bool holds_argument(clang::Sema& sema, clang::SourceLocation open_paren) {
+    auto token =
+        clang::Lexer::findNextToken(open_paren, sema.getSourceManager(), sema.getLangOpts());
+    return token && !token->isOneOf(clang::tok::r_paren, clang::tok::eof);
+}
+
 /// Whether the argument list `open` opens is still open at the completion
 /// point. Once the parse stopped there, clang still offers a call whose
 /// arguments fail to parse, as in a member function body it parses after
@@ -315,6 +359,164 @@ std::pair<unsigned, unsigned> expanded_pack(const clang::FunctionDecl& function)
     return {begin, begin + function.getNumParams() + 1 - params.size()};
 }
 
+/// Whether `lookup`, a name a template's definition leaves unresolved,
+/// names one of the standard library's functions `names`.
+bool names_std(const clang::UnresolvedLookupExpr& lookup, llvm::ArrayRef<llvm::StringRef> names) {
+    auto* identifier = lookup.getName().getAsIdentifierInfo();
+    return identifier && ranges::contains(names, identifier->getName()) &&
+           !lookup.decls().empty() &&
+           ranges::all_of(lookup.decls(),
+                          [](const clang::NamedDecl* decl) { return decl->isInStdNamespace(); });
+}
+
+/// Whether `args`, written in a template's definition, are its parameter
+/// pack `pack` passed on whole: `args...`, `std::forward<Args>(args)...`.
+bool passes_pack(llvm::ArrayRef<const clang::Expr*> args, const clang::ParmVarDecl* pack) {
+    const auto* expansion =
+        args.size() == 1 ? llvm::dyn_cast<clang::PackExpansionExpr>(args.front()) : nullptr;
+    if(!expansion) {
+        return false;
+    }
+    const auto* arg = expansion->getPattern()->IgnoreParenImpCasts();
+    if(const auto* cast = llvm::dyn_cast<clang::ExplicitCastExpr>(arg)) {
+        arg = cast->getSubExpr()->IgnoreParenImpCasts();
+    } else if(const auto* call = llvm::dyn_cast<clang::CallExpr>(arg);
+              call && call->getNumArgs() == 1) {
+        if(const auto* callee = llvm::dyn_cast<clang::UnresolvedLookupExpr>(call->getCallee());
+           callee && names_std(*callee, {"forward", "move"})) {
+            arg = call->getArg(0)->IgnoreParenImpCasts();
+        }
+    }
+    const auto* ref = llvm::dyn_cast<clang::DeclRefExpr>(arg);
+    return ref && ref->getDecl() == pack;
+}
+
+/// Finds what a type written in a function template takes from inside it:
+/// a parameter pack (`std::tuple<Args...>`, `std::array<int,
+/// sizeof...(Args)>`), made of the arguments' own types, or a declaration
+/// local to the function, which no substitution outside its instantiation
+/// reaches.
+struct InnerMention : clang::RecursiveASTVisitor<InnerMention> {
+    bool found = false;
+
+    bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* type) {
+        return !note(type->isParameterPack());
+    }
+
+    bool VisitSizeOfPackExpr(clang::SizeOfPackExpr*) {
+        return !note(true);
+    }
+
+    bool VisitTagType(clang::TagType* type) {
+        return !note(type->getDecl()->getParentFunctionOrMethod());
+    }
+
+    bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
+        return !note(expr->getDecl()->getParentFunctionOrMethod());
+    }
+
+    bool note(bool mention) {
+        found = found || mention;
+        return found;
+    }
+};
+
+/// The type a template's definition builds from its trailing parameter
+/// pack passed on whole: `new T(args...)`, `T(args...)`, `T{args...}`, a
+/// variable `T value(args...)`, or `std::make_unique<T>(args...)`, aliases
+/// resolved; none that takes from inside the function (InnerMention).
+struct PackConstruction : clang::RecursiveASTVisitor<PackConstruction> {
+    const clang::ParmVarDecl* pack;
+
+    clang::QualType built;
+
+    bool VisitCXXUnresolvedConstructExpr(clang::CXXUnresolvedConstructExpr* expr) {
+        llvm::ArrayRef<const clang::Expr*> args(expr->arg_begin(), expr->arg_end());
+        // `T{args...}` passes its braces as its one argument.
+        if(expr->isListInitialization() && args.size() == 1) {
+            args = arguments(args.front());
+        }
+        return !found(expr->getTypeAsWritten(), args);
+    }
+
+    bool VisitCXXNewExpr(clang::CXXNewExpr* expr) {
+        // The arguments of `new T[n]{args...}` initialize the elements.
+        return expr->isArray() ||
+               !found(expr->getAllocatedType(), arguments(expr->getInitializer()));
+    }
+
+    bool VisitVarDecl(clang::VarDecl* var) {
+        return !found(var->getType(), arguments(var->getInit()));
+    }
+
+    bool VisitCallExpr(clang::CallExpr* call) {
+        const auto* callee = llvm::dyn_cast<clang::UnresolvedLookupExpr>(call->getCallee());
+        if(!callee || !names_std(*callee, {"make_unique", "make_shared"}) ||
+           callee->getNumTemplateArgs() == 0) {
+            return true;
+        }
+        const auto& first = callee->getTemplateArgs()[0].getArgument();
+        return first.getKind() != clang::TemplateArgument::Type ||
+               !found(first.getAsType(), {call->getArgs(), call->getNumArgs()});
+    }
+
+    /// The arguments a dependent initializer passes, `(args...)` or
+    /// `{args...}`.
+    static llvm::ArrayRef<const clang::Expr*> arguments(const clang::Expr* init) {
+        if(const auto* list = llvm::dyn_cast_or_null<clang::ParenListExpr>(init)) {
+            return list->exprs();
+        }
+        if(const auto* list = llvm::dyn_cast_or_null<clang::InitListExpr>(init)) {
+            return list->inits();
+        }
+        return {};
+    }
+
+    bool found(clang::QualType type, llvm::ArrayRef<const clang::Expr*> args) {
+        if(!passes_pack(args, pack)) {
+            return false;
+        }
+        auto canonical = type.getCanonicalType();
+        InnerMention mention;
+        mention.TraverseType(canonical);
+        if(!mention.found) {
+            built = canonical;
+        }
+        return !built.isNull();
+    }
+};
+
+/// The class `specialization` builds from its trailing parameter pack, as
+/// its template's definition writes it (PackConstruction), the template's
+/// parameters substituted.
+clang::QualType built_from_pack(clang::Sema& sema,
+                                const clang::FunctionDecl& specialization,
+                                clang::SourceLocation at) {
+    const auto* pattern = decls::function_pattern(specialization);
+    const clang::FunctionDecl* definition = nullptr;
+    if(!pattern || !pattern->hasBody(definition)) {
+        return {};
+    }
+    PackConstruction finder{.pack = definition->parameters().back()};
+    finder.TraverseStmt(definition->getBody());
+    if(finder.built.isNull() || !finder.built->isDependentType()) {
+        return finder.built;
+    }
+    clang::Sema::SFINAETrap trap(sema);
+    clang::Sema::InstantiatingTemplate instantiating(
+        sema,
+        at,
+        const_cast<clang::FunctionDecl*>(&specialization));
+    if(instantiating.isInvalid()) {
+        return {};
+    }
+    auto built = sema.SubstType(finder.built,
+                                sema.getTemplateInstantiationArgs(&specialization),
+                                at,
+                                clang::DeclarationName());
+    return trap.hasErrorOccurred() ? clang::QualType() : built;
+}
+
 /// One signature as it is built: its label and the range of each
 /// parameter in it.
 struct Signature {
@@ -382,10 +584,15 @@ public:
                                    clang::SourceLocation open_paren,
                                    bool braced) final {
         if(forwarding) {
-            // The standard library reaches only public constructors.
+            clang::Sema::ContextRAII inside(
+                sema,
+                const_cast<clang::FunctionDecl*>(forwarding->specialization),
+                /*NewThisContext=*/false);
             for(auto& candidate: ranges::subrange(candidates, candidates + candidate_count)) {
-                auto* constructor = candidate.getFunction();
-                if(constructor->getAccess() == clang::AS_public) {
+                auto* constructor = llvm::cast<clang::CXXConstructorDecl>(candidate.getFunction());
+                if(sema.IsSimplyAccessible(constructor,
+                                           constructor->getParent(),
+                                           clang::QualType())) {
                     add_forwarded(*shown(constructor), [&](Signature& signature) {
                         arguments(signature, *shown(constructor));
                     });
@@ -395,6 +602,12 @@ public:
         }
 
         if(!holds_point(sema, open_paren)) {
+            return;
+        }
+        // Clang takes `Widget make(` for a variable its constructor builds:
+        // until an argument is written, a function declaration reads alike.
+        if(current_arg == 0 && !braced && constructs({candidates, candidate_count}) &&
+           declares_at_namespace_scope(sema, open_paren) && !holds_argument(sema, open_paren)) {
             return;
         }
 
@@ -669,12 +882,16 @@ private:
         signature.stream << "}";
     }
 
-    /// The class a standard library function forwards its trailing pack to
-    /// the constructor of: `make_unique<Widget>(`, a container's
-    /// `emplace_back(`. Null for any other function, and for an overload
-    /// whose `initializer_list` goes to the constructor too.
+    /// The class a function forwards its trailing pack to the constructor
+    /// of: `make_unique<Widget>(`, a container's `emplace_back(`, a factory
+    /// whose definition builds its template argument from the pack
+    /// (built_from_pack). The standard library's go by name, their
+    /// definitions reaching the constructor through its internals. Null for
+    /// any other function, and for an overload whose `initializer_list`
+    /// goes to the constructor too.
     static clang::QualType forwarding_target(clang::Sema& sema,
-                                             const clang::FunctionDecl& function) {
+                                             const clang::FunctionDecl& function,
+                                             clang::SourceLocation at) {
         auto* name = function.getIdentifier();
         auto params = shown(&function)->parameters();
         if(!name || !function.getTemplateSpecializationArgs() || params.empty() ||
@@ -686,9 +903,11 @@ private:
         }
 
         clang::QualType target;
-        if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(&function)) {
-            if(!method->getParent()->isInStdNamespace() ||
-               (!name->getName().starts_with("emplace") && name->getName() != "try_emplace")) {
+        auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(&function);
+        if(!(method ? method->getParent()->isInStdNamespace() : function.isInStdNamespace())) {
+            target = built_from_pack(sema, function, at);
+        } else if(method) {
+            if(!name->getName().starts_with("emplace") && name->getName() != "try_emplace") {
                 return {};
             }
             // A map's try_emplace builds the mapped value, every other
@@ -701,8 +920,7 @@ private:
             }
             target = alias->getUnderlyingType();
         } else {
-            if(!function.isInStdNamespace() ||
-               !ranges::contains(std::array{"make_unique", "make_shared", "allocate_shared"},
+            if(!ranges::contains(std::array{"make_unique", "make_shared", "allocate_shared"},
                                  name->getName())) {
                 return {};
             }
@@ -710,21 +928,22 @@ private:
             target = function.getTemplateSpecializationArgs()->get(0).getAsType();
         }
 
-        if(!target->getAsCXXRecordDecl() || !sema.isCompleteType(function.getLocation(), target)) {
+        if(target.isNull() || !target->getAsCXXRecordDecl() ||
+           !sema.isCompleteType(function.getLocation(), target)) {
             return {};
         }
         return target;
     }
 
-    /// Answers a standard library function that forwards its arguments to
-    /// a constructor with the constructors that can take the arguments
-    /// written so far, each after the function's own parameters before
-    /// the pack; false for any other function.
+    /// Answers a function that forwards its arguments to a constructor
+    /// (forwarding_target) with the constructors that can take the
+    /// arguments written so far, each after the function's own parameters
+    /// before the pack; false for any other function.
     bool forwarded(clang::Sema& sema,
                    const clang::FunctionDecl& candidate,
                    std::uint32_t current_arg,
                    clang::SourceLocation open_paren) {
-        auto target = forwarding_target(sema, candidate);
+        auto target = forwarding_target(sema, candidate, open_paren);
         if(target.isNull()) {
             return false;
         }
@@ -738,15 +957,23 @@ private:
         // then holds no type for some argument, or one for an argument not
         // written yet.
         auto template_arguments = candidate.getTemplateSpecializationArgs()->asArray();
-        auto pack = ranges::find_if(template_arguments, [](const auto& argument) {
-            return argument.getKind() == clang::TemplateArgument::Pack;
-        });
-        if(pack->pack_size() != (current_arg > prefix ? current_arg - prefix : 0)) {
+        const auto* expansion =
+            function.parameters().back()->getType()->getAs<clang::PackExpansionType>();
+        const auto* expanded = expansion ? expansion->getPattern()
+                                               .getNonReferenceType()
+                                               ->getAs<clang::TemplateTypeParmType>()
+                                         : nullptr;
+        if(!expanded || expanded->getIndex() >= template_arguments.size()) {
+            return false;
+        }
+        const auto& pack = template_arguments[expanded->getIndex()];
+        if(pack.getKind() != clang::TemplateArgument::Pack ||
+           pack.pack_size() != (current_arg > prefix ? current_arg - prefix : 0)) {
             return false;
         }
         auto& context = sema.getASTContext();
         llvm::SmallVector<clang::Expr*> typed;
-        for(const auto& element: pack->pack_elements()) {
+        for(const auto& element: pack.pack_elements()) {
             auto type = element.getAsType();
             typed.push_back(new (context) clang::OpaqueValueExpr(
                 open_paren,
@@ -754,19 +981,23 @@ private:
                 type->isLValueReferenceType() ? clang::VK_LValue : clang::VK_XValue));
         }
 
-        // A member's return type may depend on the arguments, as the
-        // enable_if of optional's emplace does, so each constructor listed
-        // shows the declared one; a factory's depends on the class alone.
+        // A standard container's emplace may return what depends on the
+        // arguments, as the enable_if of optional's does, so each constructor
+        // listed shows the declared type; a factory's depends on the class
+        // alone.
+        const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(&candidate);
         forwarding = Forwarding{
             .function = &function,
-            .result = llvm::isa<clang::CXXMethodDecl>(function) ? function.getReturnType()
-                                                                : candidate.getReturnType(),
+            .specialization = &candidate,
+            .result = method && method->getParent()->isInStdNamespace() ? function.getReturnType()
+                                                                        : candidate.getReturnType(),
             .argument = current_arg,
         };
 
+        auto* record = target->getAsCXXRecordDecl();
+
         // Parentheses initialize an aggregate too since C++20, which Sema's
         // constructor help leaves to braces.
-        auto* record = target->getAsCXXRecordDecl();
         if(record->isAggregate() && sema.getLangOpts().CPlusPlus20 &&
            typed.size() <
                record->getNumBases() + std::distance(record->field_begin(), record->field_end())) {
@@ -804,6 +1035,9 @@ private:
     /// The forwarding call whose constructors Sema is reporting.
     struct Forwarding {
         const clang::FunctionDecl* function;
+        /// The specialization the call reaches, which calls the
+        /// constructors its access allows.
+        const clang::FunctionDecl* specialization;
         clang::QualType result;
         /// The argument the cursor is on in the forwarding call.
         std::uint32_t argument;

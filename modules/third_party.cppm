@@ -1148,6 +1148,7 @@ using ::clang::ConditionalOperator;
 using ::clang::ConflictMarkerKind;
 using ::clang::ConstAttr;
 using ::clang::ConstCFGElementRef;
+using ::clang::ConstDeclVisitor;
 using ::clang::ConstInitAttr;
 using ::clang::ConstOMPClauseVisitor;
 using ::clang::ConstSearchDirIterator;
@@ -1230,6 +1231,7 @@ using ::clang::DeclRefExpr;
 using ::clang::DeclResult;
 using ::clang::DeclSpec;
 using ::clang::DeclStmt;
+using ::clang::DeclVisitor;
 using ::clang::DeclarationName;
 using ::clang::DeclarationNameInfo;
 using ::clang::DeclarationNameLoc;
@@ -2690,6 +2692,7 @@ using ::clang::SyncScope;
 using ::clang::SyntaxOnlyAction;
 using ::clang::SysVABIAttr;
 using ::clang::TLSModelAttr;
+using ::clang::TPOC;
 using ::clang::TUFragmentKind;
 using ::clang::TagDecl;
 using ::clang::TagType;
@@ -2713,6 +2716,7 @@ using ::clang::TemplateArgumentListInfo;
 using ::clang::TemplateArgumentLoc;
 using ::clang::TemplateArgumentLocInfo;
 using ::clang::TemplateDecl;
+using ::clang::TemplateDeclInstantiator;
 using ::clang::TemplateDeductionResult;
 using ::clang::TemplateDiffTypes;
 using ::clang::TemplateIdAnnotation;
@@ -2732,6 +2736,7 @@ using ::clang::TemplateSpecializationKind;
 using ::clang::TemplateSpecializationLocInfo;
 using ::clang::TemplateSpecializationType;
 using ::clang::TemplateSpecializationTypeLoc;
+using ::clang::TemplateSubstitutionKind;
 using ::clang::TemplateTemplateParmDecl;
 using ::clang::TemplateTypeParmDecl;
 using ::clang::TemplateTypeParmType;
@@ -3269,6 +3274,7 @@ using enum ::clang::SelectorLocationsKind;
 using enum ::clang::SimplifiedTypeClass;
 using enum ::clang::StorageClass;
 using enum ::clang::StorageDuration;
+using enum ::clang::TPOC;
 using enum ::clang::TemplateNameKind;
 using enum ::clang::TemplateSpecializationKind;
 using enum ::clang::ThreadStorageClassSpecifier;
@@ -4448,6 +4454,10 @@ using ::clang::concepts::ExprRequirement;
 using ::clang::concepts::NestedRequirement;
 using ::clang::concepts::Requirement;
 using ::clang::concepts::TypeRequirement;
+}
+
+export namespace clang::declvisitor {
+using ::clang::declvisitor::Base;
 }
 
 export namespace clang::dependency_directives_scan {

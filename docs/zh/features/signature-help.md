@@ -284,11 +284,13 @@ tests/signature_help/parameters/05_explicit_object_parameters
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#517 clangd#638 -->
+<!-- BEGIN CAPABILITY: supported clangd#517 clangd#638 -->
 
 **转发函数**
 
-将实参转发给构造函数的调用会显示用于转发的参数包，而非构造函数的形参
+将实参转发给构造函数的调用会显示构造函数的参数
+
+函数模板若在定义中用末尾的参数包构造一个类——`new T(args...)`、`T(args...)`、`T{args...}`、以这种方式构造的变量，或 `std::make_unique<T>(args...)`——就会显示它所构造的类的构造函数，每个构造函数的参数都排在该函数自身位于参数包之前的参数之后。若该函数是这个类的成员，私有构造函数也会列出。参数包若用于构造由各实参自身类型组成的类型，则按声明中的写法显示。
 
 ```case
 tests/signature_help/parameters/06_forwarding
