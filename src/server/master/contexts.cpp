@@ -119,8 +119,9 @@ ext::QueryContextResult MasterServer::query_contexts(Fid path_id,
             continue;
         }
         for(auto& item: project->project.list_contexts(path_id)) {
-            if(ranges::none_of(items,
-                               [&](const ListedContext& known) { return known.same_context(item); })) {
+            if(ranges::none_of(items, [&](const ListedContext& known) {
+                   return known.same_context(item);
+               })) {
                 items.push_back(std::move(item));
             }
         }
@@ -162,8 +163,9 @@ async::task<ext::SwitchContextResult>
             .occurrence = params.occurrence,
             .command_hash = params.command_hash,
         };
-        co_return ranges::any_of(project.project.list_contexts(path_id),
-                                 [&](const ListedContext& item) { return item.same_context(listed); });
+        co_return ranges::any_of(
+            project.project.list_contexts(path_id),
+            [&](const ListedContext& item) { return item.same_context(listed); });
     };
     auto target = owner;
     if(!co_await offers(*owner)) {

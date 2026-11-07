@@ -172,8 +172,8 @@ ZEST_CASE(WaitsForFirstIndex) {
 
     std::optional<Route> picked;
     auto ask = [&]() -> async::task<> {
-        picked = co_await fx.served->pick_route(Ticket::take(session),
-                                                {.waits_for_first_index = true});
+        picked =
+            co_await fx.served->pick_route(Ticket::take(session), {.waits_for_first_index = true});
     };
     auto asked = ask();
     fx.loop.schedule(asked);
