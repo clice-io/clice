@@ -177,6 +177,7 @@ async function onInspect(
     const client = new Inspect(root, c.markers, {
         sources: copied.filter((file) => SOURCE.test(file)),
         config: options.config,
+        compareIndex: true,
     });
     const shows: Shows = { output: new Output(), compared: new Output() };
     const run = async (): Promise<void> => {

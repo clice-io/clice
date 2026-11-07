@@ -223,24 +223,23 @@ private:
     }
 
     /// A body the command defers (-fdelayed-template-parsing) has no AST:
-    /// it folds at the last braces of its declaration, as the index's
-    /// folds do.
+    /// it folds at the braces closing its declaration.
     void add_deferred_body(const clang::FunctionDecl* function, protocol::FoldingRangeKind kind) {
-        auto focus = unit.focus_file();
-        auto extent = focus.produced_range(function->getSourceRange());
-        auto head = focus.offset(function->getLocation());
-        if(!extent || !head) {
+        auto tokens = unit.focus_file().tokens().expanded(function->getSourceRange());
+        if(tokens.empty() || tokens.back().kind() != clang::tok::r_brace) {
             return;
         }
-        if(braces.empty()) {
-            braces = code_braces(lexical);
-        }
-        auto group = last_brace_group(braces, *extent);
-        if(!group) {
-            return;
-        }
-        if(auto* fold = add_range(*group, std::move(kind), "{...}", Priority::Syntax)) {
-            fold->lines = declaration_lines(content, fold->range, *head, block_directives);
+        std::uint32_t depth = 0;
+        for(const auto& token: llvm::reverse(tokens)) {
+            if(token.kind() == clang::tok::r_brace) {
+                depth += 1;
+            } else if(token.kind() == clang::tok::l_brace && --depth == 0) {
+                add_declaration_block(
+                    clang::SourceRange(token.location(), tokens.back().location()),
+                    function->getLocation(),
+                    std::move(kind));
+                return;
+            }
         }
     }
 
@@ -769,10 +768,6 @@ private:
     const LexicalInfo& lexical;
     llvm::StringRef content;
     std::vector<Candidate> candidates;
-
-    /// The file's braces outside comments, literals and directives, scanned
-    /// for the first deferred body.
-    std::vector<Brace> braces;
 
     /// Where each conditional or region directive begins, in source order.
     std::vector<std::uint32_t> block_directives;

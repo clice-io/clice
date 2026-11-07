@@ -2,8 +2,8 @@
 /// file from its index until the file's AST is current, then from the AST,
 /// and what the editor shows must not change in between. What the index
 /// gives must be what the AST gives; what it leaves out passes — a token, a
-/// modifier, a fold's kind, an outline entry — and so does what it gives in
-/// code the AST dims as inactive, which only the AST knows.
+/// modifier, a fold's kind, an outline entry — and so does a token it gives
+/// in code the AST dims as inactive, which only the AST knows.
 
 import type { Fold, Link, OutlineSymbol, Token } from "../render/answers.ts";
 import type { Range } from "../render/position.ts";

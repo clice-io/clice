@@ -245,6 +245,7 @@ export class Inspect extends Client {
     /// Where the index answered a whole-document feature differently from
     /// the AST (index_answers.ts).
     private readonly differences: string[] = [];
+    private readonly compareIndex: boolean;
     private runs = 0;
 
     /// `sources` are the copy's source files: those importing a module
@@ -258,6 +259,9 @@ export class Inspect extends Client {
             /// The bound on one run, which only a hang reaches: a case's unit
             /// compiles in seconds, a real project's can take minutes.
             timeout?: number;
+            /// Each whole-document feature is asked from the file's index
+            /// too, and where the two answers differ is kept.
+            compareIndex?: boolean;
         },
     ) {
         super(marks);
@@ -268,6 +272,7 @@ export class Inspect extends Client {
         this.sources = options.sources.filter((file) => !this.importers.has(file));
         this.config = options.config;
         this.timeout = options.timeout ?? 300_000;
+        this.compareIndex = options.compareIndex ?? false;
         if (options.config !== undefined) {
             recordConfig(options.config);
         }
@@ -464,9 +469,7 @@ export class Inspect extends Client {
             ((await this.document("semantic-tokens", file, index)) as RawToken[])
                 .filter((raw) => raw.range.begin < raw.range.end && raw.range.end <= size)
                 .flatMap((raw) => this.pieces(source, raw));
-        const ast = await tokens(false);
-        this.differences.push(...tokenDifferences(file, ast, await tokens(true)));
-        return ast;
+        return this.compared(tokens, (ast, index) => tokenDifferences(file, ast, index));
     }
 
     protected async fetchInlayHints(file: string, range: Range): Promise<InlayHint[]> {
@@ -509,9 +512,7 @@ export class Inspect extends Client {
                 kind: raw.kind ?? undefined,
                 collapsedText: raw.collapsed_text === "" ? undefined : raw.collapsed_text,
             }));
-        const ast = await folds(false);
-        this.differences.push(...foldDifferences(file, ast, await folds(true)));
-        return ast;
+        return this.compared(folds, (ast, index) => foldDifferences(file, ast, index));
     }
 
     protected async fetchSymbols(file: string): Promise<OutlineSymbol[]> {
@@ -527,9 +528,7 @@ export class Inspect extends Client {
         });
         const symbols = async (index: boolean): Promise<OutlineSymbol[]> =>
             ((await this.document("document-symbols", file, index)) as RawSymbol[]).map(convert);
-        const ast = await symbols(false);
-        this.differences.push(...outlineDifferences(file, ast, await symbols(true)));
-        return ast;
+        return this.compared(symbols, (ast, index) => outlineDifferences(file, ast, index));
     }
 
     protected async fetchLinks(file: string): Promise<Link[]> {
@@ -540,9 +539,7 @@ export class Inspect extends Client {
                 location: this.location(source, raw.range),
                 target: context.pathOfFile(raw.target),
             }));
-        const ast = await links(false);
-        this.differences.push(...linkDifferences(file, ast, await links(true)));
-        return ast;
+        return this.compared(links, (ast, index) => linkDifferences(file, ast, index));
     }
 
     protected fetchCounterparts(file: string): Promise<Counterparts> {
@@ -616,6 +613,18 @@ export class Inspect extends Client {
             }
         }
         return out;
+    }
+
+    /// The AST's answer, and with compareIndex where the index's differs.
+    private async compared<T>(
+        answer: (index: boolean) => Promise<T>,
+        differences: (ast: T, index: T) => string[],
+    ): Promise<T> {
+        const ast = await answer(false);
+        if (this.compareIndex) {
+            this.differences.push(...differences(ast, await answer(true)));
+        }
+        return ast;
     }
 
     /// A whole-document feature's answer for `file`, the AST's or the

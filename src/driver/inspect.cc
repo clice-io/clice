@@ -205,18 +205,22 @@ struct UnitIndex {
         };
     }
 
-    /// The focus file's includes the unit entered, as the index resolves
-    /// them.
+    /// The focus file's include directives as the index resolves them
+    /// (ProjectIndex::resolved_includes): those of the TU root and of the
+    /// focus file entered again.
     auto includes() const -> std::vector<index::ResolvedInclude> {
         std::vector<index::ResolvedInclude> includes;
         for(std::uint32_t i = 0; i < tu.node_count(); i += 1) {
             auto node = tu.node(i);
-            if(node.skipped || node.parent == index::no_node ||
-               tu.node(node.parent).file != tu.focus_file()) {
-                continue;
+            if(node.parent == index::no_node || tu.node(node.parent).file == tu.focus_file()) {
+                includes.push_back({.line = node.line, .target = tu.path(node.file).str()});
             }
-            includes.push_back({.line = node.line, .target = tu.path(node.file).str()});
         }
+        auto key = [](const index::ResolvedInclude& include) {
+            return std::tie(include.line, include.target);
+        };
+        ranges::sort(includes, {}, key);
+        includes.erase(ranges::unique(includes, {}, key).begin(), includes.end());
         return includes;
     }
 };

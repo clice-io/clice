@@ -68,7 +68,10 @@ bool opens_captures(clang::tok::TokenKind kind) {
         case clang::tok::r_square:
         case clang::tok::r_brace:
         case clang::tok::greater:
-        case clang::tok::greatergreater: return false;
+        case clang::tok::greatergreater:
+        case clang::tok::plusplus:
+        case clang::tok::minusminus:
+        case clang::tok::ellipsis: return false;
         case clang::tok::kw_return:
         case clang::tok::kw_co_return:
         case clang::tok::kw_co_yield:
@@ -865,9 +868,10 @@ private:
     bool after_template = false;
     clang::tok::TokenKind previous = clang::tok::unknown;
 
-    /// Open `[`, each whether it opens a lambda's captures, and whether the
-    /// last `]` closed them.
+    /// Open `[`, each whether it opens a lambda's captures.
     llvm::SmallVector<bool> captures;
+
+    /// Whether the last `]` closed a lambda's captures.
     bool closes_captures = false;
 
     struct AttributeList {

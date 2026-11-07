@@ -168,10 +168,10 @@ A script registers tests of two kinds, each `(fn)`, `(name, fn)`,
   one client cannot answer fails at once: the test declares `paths`. An
   answers test only reads; `compile: true` checks each action's edits and
   restores the files. On inspect, every semantic tokens, outline, folding
-  ranges and document links answer is asked twice more, as the server
+  ranges and document links answer is asked once more, as the server
   answers before the file's AST is current — from its index — and the
   index's answer must be the AST's or less of it: a token, modifier, fold
-  kind or entry it leaves out passes, and so does anything in code the AST
+  kind or entry it leaves out passes, and so does a token in code the AST
   dims as inactive.
 - **`test`**: everything else, on servers, the command line, or both.
   `t.start(options?)` starts a server on the copy; `t.cli(...)` runs a command
