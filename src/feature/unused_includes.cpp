@@ -226,7 +226,7 @@ private:
                 if(!file) {
                     continue;
                 }
-                auto definition = header_of(macro.macro->getDefinitionLoc());
+                auto definition = macro_header(macro.macro->getDefinitionLoc());
                 for(auto& include: directives) {
                     auto& files = closure(include.header);
                     if(files.test(*file) && !(definition && files.test(*definition))) {
@@ -296,6 +296,20 @@ private:
             }
             fid = sources.getFileID(included);
         }
+    }
+
+    /// The header a macro defined at `location` comes from: the one it is
+    /// defined in, even without a guard (every inclusion defines it), else
+    /// as for a declaration (header_of).
+    std::optional<std::uint32_t> macro_header(clang::SourceLocation location) {
+        auto fid = unit.produced_at(location).file;
+        auto entry = fid.isValid() ? sources.getFileEntryRefForID(fid) : std::nullopt;
+        if(entry && !focus.contains(fid)) {
+            if(auto it = nodes.find(unit.file_path(*entry)); it != nodes.end()) {
+                return it->second;
+            }
+        }
+        return header_of(location);
     }
 
     void add_need(llvm::SmallVector<std::uint32_t, 4> providers,
@@ -511,7 +525,7 @@ private:
                 if(!focus.contains(at.file)) {
                     continue;
                 }
-                if(auto header = header_of(macro.macro->getDefinitionLoc())) {
+                if(auto header = macro_header(macro.macro->getDefinitionLoc())) {
                     add_need({*header}, at.offset);
                 }
             }
@@ -720,6 +734,13 @@ private:
         std::map<std::uint32_t, std::vector<llvm::SmallVector<std::uint32_t, 2>>> uses;
         for(auto& [file, symbols]: named) {
             for(auto symbol: symbols) {
+                // Any header reopens a namespace; where the index puts its
+                // definition (one header of those a macro opens it in) says
+                // nothing.
+                if(auto view = index.find_symbol(symbol);
+                   view && view->kind == SymbolKind::Namespace) {
+                    continue;
+                }
                 llvm::SmallVector<std::uint32_t, 2> declared;
                 if(auto it = declarations.find(symbol); it != declarations.end()) {
                     declared = it->second;
@@ -738,9 +759,12 @@ private:
                 if(macro.kind != MacroRef::Ref) {
                     continue;
                 }
+                // A header the macro's own header includes is part of it: its
+                // test adapts to being included from there.
                 auto file = header_of(macro.loc);
-                auto definition = file ? header_of(macro.macro->getDefinitionLoc()) : std::nullopt;
-                if(definition && *definition != *file) {
+                auto definition =
+                    file ? macro_header(macro.macro->getDefinitionLoc()) : std::nullopt;
+                if(definition && !closure(*definition).test(*file)) {
                     uses[*file].push_back({*definition});
                 }
             }
