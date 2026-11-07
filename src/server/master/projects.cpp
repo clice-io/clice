@@ -146,6 +146,7 @@ void MasterServer::change_owner(Document& document, ServedProject& to) {
     if(client) {
         client->moved(session.path_id);
     }
+    watch_settings();
 }
 
 void MasterServer::replace_shown(Document& document) {

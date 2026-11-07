@@ -478,8 +478,9 @@ private:
 
     /// Move the document to `to`: its generation moves on, so what a
     /// request computed under the old owner is void, the old owner releases
-    /// it and `to` adopts it. The client keeps what it shows until the
-    /// caller has `to`'s answers replace it (replace_shown).
+    /// it, `to` adopts it, and the configuration files `to` reads for it
+    /// are watched. The client keeps what it shows until the caller has
+    /// `to`'s answers replace it (replace_shown).
     void change_owner(Document& document, ServedProject& to);
 
     /// The client shows what the document's previous project or context
