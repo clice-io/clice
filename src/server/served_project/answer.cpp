@@ -159,10 +159,10 @@ const static ServedDocument::MergedIndex* merged_index(const ServedProject& serv
         document.merged.reset();
         return nullptr;
     }
-    auto merged = index::merge_other_contexts(*stored,
-                                              served.project.index.live_variants(session.path_id),
-                                              own,
-                                              compiled->inactive_regions);
+    auto merged = index::merge_contexts(*stored,
+                                        served.project.index.live_variants(session.path_id),
+                                        own,
+                                        compiled->inactive_regions);
     if(!merged) {
         document.merged.reset();
         return nullptr;

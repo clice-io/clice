@@ -327,7 +327,7 @@ ZEST_CASE(CompactionDropsVariant) {
     ZASSERT(hash_at(compacted, 11) == 0u);
 }
 
-ZEST_CASE(OtherContextsMerge) {
+ZEST_CASE(MergeContexts) {
     // Of the stored shard, the entries in the skipped code stay, its
     // relations as its occurrences, a relation between two symbols with
     // the symbols; the compile's own entries all stay.
@@ -352,7 +352,7 @@ ZEST_CASE(OtherContextsMerge) {
     auto own = make_shard(write_fresh(own_index, content));
     std::vector<std::uint32_t> skipped = {10, 20};
 
-    auto merged = index::merge_other_contexts(stored, stored.variants(), own, skipped);
+    auto merged = index::merge_contexts(stored, stored.variants(), own, skipped);
     ZASSERT(merged);
     ZEXPECT(merged->additions != 0u);
     ZEXPECT(hash_at(merged->shard, 1) == 0u);
@@ -368,13 +368,13 @@ ZEST_CASE(OtherContextsMerge) {
 
     // Nothing stored in the skipped code adds nothing.
     std::vector<std::uint32_t> elsewhere = {4, 8};
-    auto unchanged = index::merge_other_contexts(stored, stored.variants(), own, elsewhere);
+    auto unchanged = index::merge_contexts(stored, stored.variants(), own, elsewhere);
     ZASSERT(unchanged);
     ZEXPECT(unchanged->additions == 0u);
 
     // A compile that indexed nothing merges nothing once no context of the
     // stored shard lives.
-    ZEXPECT(!index::merge_other_contexts(stored, {}, index::Shard(), skipped));
+    ZEXPECT(!index::merge_contexts(stored, {}, index::Shard(), skipped));
 }
 
 ZEST_CASE(KWayMerge) {

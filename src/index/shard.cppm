@@ -182,7 +182,7 @@ std::vector<std::byte> merge_shards(const Shard& old,
                                     llvm::ArrayRef<VariantHash> keep,
                                     llvm::ArrayRef<Shard> fresh);
 
-/// An open file's index with its other contexts (merge_other_contexts).
+/// An open file's index with its other contexts (merge_contexts).
 struct MergedContexts {
     Shard shard;
 
@@ -199,9 +199,9 @@ struct MergedContexts {
 /// relations between two symbols, which have no place of their own, when
 /// the entries kept name either. Nullopt when there is nothing to merge:
 /// `own` is unloaded and no live variant of `stored` is left.
-std::optional<MergedContexts> merge_other_contexts(const Shard& stored,
-                                                   llvm::ArrayRef<VariantHash> live,
-                                                   const Shard& own,
-                                                   llvm::ArrayRef<std::uint32_t> skipped);
+std::optional<MergedContexts> merge_contexts(const Shard& stored,
+                                             llvm::ArrayRef<VariantHash> live,
+                                             const Shard& own,
+                                             llvm::ArrayRef<std::uint32_t> skipped);
 
 }  // namespace clice::index

@@ -1938,10 +1938,10 @@ static std::pair<std::size_t, std::uint64_t> count_entries(const Shard& shard) {
     return {count, hash};
 }
 
-std::optional<MergedContexts> merge_other_contexts(const Shard& stored,
-                                                   llvm::ArrayRef<VariantHash> live,
-                                                   const Shard& own,
-                                                   llvm::ArrayRef<std::uint32_t> skipped) {
+std::optional<MergedContexts> merge_contexts(const Shard& stored,
+                                             llvm::ArrayRef<VariantHash> live,
+                                             const Shard& own,
+                                             llvm::ArrayRef<std::uint32_t> skipped) {
     llvm::SmallVector<VariantHash> keep(live.begin(), live.end());
     auto fresh = own.loaded() ? llvm::ArrayRef(&own, 1) : llvm::ArrayRef<Shard>();
     if(own.loaded()) {
