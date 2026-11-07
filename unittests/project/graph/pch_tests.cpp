@@ -4,7 +4,7 @@ import :project.graph.pch;
 import :project.graph.task_graph;
 import :project.project;
 import :support.anomaly;
-import :unittests.server.worker_test_helpers;
+import :unittests.worker.helpers;
 import :unittests.utils;
 import :unittests.utils.temp_dir;
 import :vfs.cache_store;
@@ -83,12 +83,9 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
     // Two acquires of one poisoned key observe the same Failed attempt; the
     // worker names the build, so its one death is attributed to it at once — no
     // resend — and recorded on the key.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
-
     int deaths = 0;
-    pool.on_crash = [&](const WorkerCrashInfo&) {
-        deaths += 1;
-    };
+    logging::set_anomaly_trap_for_testing(
+        [&](logging::AnomalyId id) { deaths += id == logging::AnomalyId::WorkerCrash ? 1 : 0; });
     std::optional<Result> a, b;
 
     execute([&]() -> async::task<> {
@@ -145,12 +142,9 @@ ZEST_CASE(OwnerGoneStillRecords) {
 }
 
 ZEST_CASE(ForgetLiftsRefusal) {
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
-
     int deaths = 0;
-    pool.on_crash = [&](const WorkerCrashInfo&) {
-        deaths += 1;
-    };
+    logging::set_anomaly_trap_for_testing(
+        [&](logging::AnomalyId id) { deaths += id == logging::AnomalyId::WorkerCrash ? 1 : 0; });
     std::optional<Result> refused, retried;
 
     execute([&]() -> async::task<> {
@@ -175,12 +169,9 @@ ZEST_CASE(DeclaredCrashLifts) {
     // A precompiled header the build declares is keyed by its command, not
     // by the header's text: its crash is known to have read the header,
     // and a fix there builds it again.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
-
     int deaths = 0;
-    pool.on_crash = [&](const WorkerCrashInfo&) {
-        deaths += 1;
-    };
+    logging::set_anomaly_trap_for_testing(
+        [&](logging::AnomalyId id) { deaths += id == logging::AnomalyId::WorkerCrash ? 1 : 0; });
     tmp.touch("a.h", "#pragma clang __debug crash\n");
     auto header = tmp.path("a.h");
     auto whole = [&] {

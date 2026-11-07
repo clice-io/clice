@@ -45,7 +45,7 @@ struct SchedulerOptions {
 
     /// A stateless request is taken for hung past this much of its
     /// worker's CPU time, a stateful one past this much time since its
-    /// document's earlier requests ended.
+    /// worker began its work.
     chrono::milliseconds build_deadline{chrono::minutes(10)};
 
     chrono::milliseconds query_deadline{chrono::minutes(2)};
@@ -72,7 +72,8 @@ struct SchedulerSample {
     bool swapping = false;
 
     /// The stateless processes the pool holds or is bringing back: in
-    /// service, starting, or dead and about to respawn.
+    /// service, starting, dead and about to respawn, or given up until
+    /// their cooldown ends.
     std::size_t stateless_processes = 0;
 
     struct Worker {
@@ -163,14 +164,18 @@ using SchedulerAction = std::variant<scheduler::Dispatch,
 ///     admits the next: the headroom less the growth still due from the
 ///     running background requests must leave its peak plus the reserve.
 ///     One memory holds back lets those behind it that fit go first, for
-///     long_wait; then the queue waits for it, and with no background
-///     request running it starts once the headroom exceeds the reserve.
+///     long_wait; then the queue waits for it. With no background request
+///     running it starts once memory is above where a lone one would be
+///     killed: a third of the reserve with nothing else running, the
+///     reserve beside other work.
 ///   - Below the reserve, one background request is killed at a time, the
 ///     newest; the next only once that process has exited.
 ///   - A stateless request's deadline is its worker's CPU time; a stateful
-///     one's is the time since its document's earlier requests ended, a
-///     query's not counted while a build runs on the same worker, up to the
-///     build deadline. One kill names every overdue request of the worker.
+///     one's is the time since its worker began its work, which may wait
+///     behind its document's earlier requests and for a thread. One kill
+///     names every overdue request of the worker.
+///   - A background request foreground interest joins becomes foreground,
+///     queued or running.
 ///
 /// Invariants: a slot runs at most one stateless request; a request is
 /// queued, running on one slot, or gone; at most one memory kill is in
@@ -190,20 +195,24 @@ public:
     /// is cancelled cooperatively, and killed if it ignores that.
     void cancel(RequestId id, SchedulerTime now);
 
+    /// The user waits for a background request now: it becomes foreground,
+    /// queued or running. A cancel already asked of it stands.
+    void raise(RequestId id, SchedulerTime now);
+
     /// Its answer arrived, or its sender went away. Returns the peak of the
     /// worker's own memory sampled while it ran.
     std::uint64_t finish(RequestId id, SchedulerTime now);
 
-    /// A stateful request the pool placed on `slot`, about `document`:
-    /// counted as foreground activity while it runs, and timed from when the
-    /// earlier requests about the same document ended, since its worker
-    /// runs those one at a time.
-    void stateful_begin(RequestId id,
-                        std::size_t slot,
-                        std::uint32_t document,
-                        bool build,
-                        SchedulerTime now);
+    /// A stateful request the pool sent to `slot`: counted as foreground
+    /// activity until it ends, and timed once its worker began its work
+    /// (stateful_started).
+    void stateful_begin(RequestId id, std::size_t slot, bool build, SchedulerTime now);
+    void stateful_started(RequestId id, SchedulerTime now);
     void stateful_end(RequestId id, SchedulerTime now);
+
+    /// The stateless slot's worker held at most `memory` of its own while
+    /// its request ran, as it measured itself.
+    void reported_peak(std::size_t slot, std::uint64_t memory);
 
     /// A stateless slot entered service: spawned, respawned or revived.
     void worker_ready(std::size_t slot, SchedulerTime now);
@@ -288,9 +297,8 @@ public:
 
     /// The head of the background queue memory holds back lets later
     /// requests that fit run beside the ones running for this long; then
-    /// the queue drains for it. With no background request running it
-    /// starts at once: it runs alone, and a kill then shows it does not fit
-    /// this machine.
+    /// the queue drains for it. Alone, it starts once a lone request would
+    /// not be killed, and a kill then shows it does not fit this machine.
     constexpr static chrono::seconds long_wait{30};
 
     /// How far behind the head a request that fits is looked for.
@@ -320,12 +328,6 @@ private:
 
         bool build = false;
 
-        /// Stateful: the document it is about, and whether an earlier
-        /// request about it still runs, which it waits behind untimed.
-        std::uint32_t document = 0;
-
-        bool waiting = false;
-
         /// See RequestCost.
         std::uint64_t peak = 0;
 
@@ -333,10 +335,11 @@ private:
 
         SchedulerTime submitted;
 
-        /// Running: its slot, and when it started.
+        /// Running: its slot.
         std::optional<std::size_t> slot;
 
-        SchedulerTime started;
+        /// Stateful: when its worker began its work.
+        std::optional<SchedulerTime> started;
 
         /// Dispatch order, the age victims are chosen by.
         std::uint64_t order = 0;
@@ -379,8 +382,6 @@ private:
 
         /// Last sampled.
         std::uint64_t memory = 0;
-
-        chrono::milliseconds cpu{0};
     };
 
     bool user_active(SchedulerTime now) const;

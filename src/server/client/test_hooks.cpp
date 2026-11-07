@@ -2,11 +2,11 @@ module clice;
 
 import :feature.protocol;
 import :server.client;
-import :server.extension;
 import :server.master;
 import :server.served_project;
+import :server.test_hooks;
 import :support.logging;
-import :worker.probe;
+import :worker.test_hooks;
 
 namespace clice {
 
@@ -57,6 +57,10 @@ static std::expected<std::string, ipc::Error> park_target(MasterServer& srv, con
 }
 
 void LSPClient::register_test_hooks() {
+    held_conn = server.hooks.on_held.connect([this](std::uint64_t id) {
+        this->peer.send_notification("clice/internal/held", ext::HeldParams{id});
+    });
+
     // Looks at the disk once (see ext::PollParams).
     // Test-only and not a stable API.
     on_request<ext::PollParams>(
@@ -122,7 +126,7 @@ void LSPClient::register_test_hooks() {
             if(!file) {
                 co_await async::fail(std::move(file.error()));
             }
-            co_return to_raw(ext::HoldResult{srv.probe.hold(*kind, std::move(*file))});
+            co_return to_raw(ext::HoldResult{srv.hooks.hold(*kind, std::move(*file))});
         });
 
     on_request<ext::GateParams>(
@@ -142,7 +146,7 @@ void LSPClient::register_test_hooks() {
                 co_await async::fail(std::move(file.error()));
             }
             co_return to_raw(ext::HoldResult{
-                srv.probe.gate(std::format("clice/worker/{} {}", params.request, *file))});
+                srv.hooks.gate(std::format("clice/worker/{} {}", params.request, *file))});
         });
 
     on_request<ext::ReleaseParams>(
@@ -152,7 +156,7 @@ void LSPClient::register_test_hooks() {
             if(!srv.test_hooks()) {
                 co_await async::fail(hooks_off());
             }
-            if(!srv.probe.release(params.id)) {
+            if(!srv.hooks.release(params.id)) {
                 co_await async::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
                                                 std::format("no hold {}", params.id)});
             }
@@ -172,7 +176,7 @@ void LSPClient::register_test_hooks() {
                     ipc::Error{protocol::ErrorCode::InvalidParams,
                                R"(a watch names "databaseChange", "diskChange" or "checkpoint")"});
             }
-            co_return to_raw(ext::HoldResult{srv.probe.watch(*event)});
+            co_return to_raw(ext::HoldResult{srv.hooks.watch(*event)});
         });
 
     on_request<ext::LogFloodParams>(
@@ -232,7 +236,7 @@ void LSPClient::register_test_hooks() {
                              .stateless = this->server.pool.worker_pids(false)};
             stats.checks_looked = this->server.files.disk.checks.looked;
             stats.checks_trusted = this->server.files.disk.checks.trusted;
-            for(auto& entry: this->server.probe.builds) {
+            for(auto& entry: this->server.hooks.builds) {
                 auto& counts = entry.getValue();
                 stats.builds.push_back({
                     .uri = feature::to_uri(this->server.files.display(

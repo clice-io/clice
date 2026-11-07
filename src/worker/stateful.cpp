@@ -23,9 +23,9 @@ import :support.process;
 import :vfs.file_system;
 import :worker.common;
 import :worker.crash_report;
-import :worker.gate;
 import :worker.protocol;
 import :worker.stateful;
+import :worker.test_hooks;
 
 namespace clice {
 
@@ -109,12 +109,29 @@ struct [[nodiscard]] CompileGuard {
     }
 };
 
+/// The threads the worker runs its requests' work on: libuv's pool, whose
+/// size it sets before the first use.
+constexpr std::ptrdiff_t work_threads = 4;
+
 /// The worker keeps the documents the master's pool sends it, until the
 /// pool evicts them (WorkerPool, worker::EvictParams).
 class StatefulWorker {
     ipc::BincodePeer& peer;
 
     llvm::StringMap<std::shared_ptr<DocumentEntry>> documents;
+
+    /// A unit per thread: a request holding one finds a thread free, so
+    /// its work starts as it reports it started (worker::StartedParams).
+    async::semaphore threads{work_threads};
+
+    /// Take a thread for the request of `params` and tell the master its
+    /// work starts.
+    template <typename Params>
+    async::task<async::semaphore::guard> start_work(const Params& params) {
+        auto thread = co_await threads.scoped_acquire();
+        peer.send_notification(worker::StartedParams{worker::crash_tag(params)});
+        co_return std::move(thread);
+    }
 
     std::shared_ptr<DocumentEntry> get_or_create(llvm::StringRef path) {
         auto [it, inserted] = documents.try_emplace(path, nullptr);
@@ -145,6 +162,7 @@ class StatefulWorker {
         ScopedTimer timer;
         co_await doc.ast_ready.wait();
         auto strand = co_await doc.strand.scoped_lock();
+        auto thread = co_await start_work(params);
         auto acquire_ms = timer.ms_f();
         double compute_ms = 0;
 
@@ -207,6 +225,7 @@ RequestResult<worker::CompileParams>
     // waiting for it to finish; an interrupted unit reports
     // !completed() and the phases after it are skipped like any other
     // incomplete compile.
+    auto thread = co_await start_work(params);
     auto stop = std::make_shared<std::atomic_bool>(false);
     auto compile_result = co_await async::queue(
         [&]() -> worker::CompileResult {
@@ -446,6 +465,7 @@ int run_stateful_worker_mode(const std::string& worker_name, const std::string& 
 
     LOG_INFO("Starting stateful worker");
     install_crash_report();
+    sys::set_env("UV_THREADPOOL_SIZE", std::to_string(work_threads));
 
     async::event_loop loop;
 
@@ -457,7 +477,7 @@ int run_stateful_worker_mode(const std::string& worker_name, const std::string& 
     (*transport_result)->set_remote_max_payload(ipc::default_max_payload);
 
     ipc::BincodePeer peer(loop, std::move(*transport_result));
-    install_test_gates(peer, loop);
+    install_test_hooks(peer, loop);
 
     StatefulWorker worker(peer);
     worker.register_handlers();

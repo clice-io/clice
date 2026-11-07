@@ -173,13 +173,13 @@ async::task<UnitResult>
     } else if(auto manifest = project.index.manifest(path_id)) {
         cost.peak = manifest->peak;
     }
-    StatelessReport measured;
+    std::uint64_t measured = 0;
     ScopedTimer timer;
     auto reply = co_await project.pool->send_stateless(params,
-                                                       worker::Priority::Low,
-                                                       attempt.token(),
-                                                       cost,
-                                                       &measured);
+                                                       {.priority = worker::Priority::Low,
+                                                        .cancel = attempt.token(),
+                                                        .cost = cost,
+                                                        .peak = &measured});
     // clang reports an import of a module whose build failed as not found:
     // the run's report says why it did not build, as the editor does.
     if(reply.has_value()) {
@@ -192,7 +192,7 @@ async::task<UnitResult>
         }
     }
     // The samples may miss a peak a killed run already reached.
-    auto peak = measured.peak != 0 ? std::max(measured.peak, cost.floor) : 0;
+    auto peak = measured != 0 ? std::max(measured, cost.floor) : 0;
     if(peak != 0) {
         history().cost = RequestCost{.peak = peak};
     }
@@ -235,13 +235,7 @@ async::task<UnitResult>
                 co_return UnitResult{.status = Status::Skipped};
             }
             ScopedTimer merge_timer;
-            // A run shorter than a sample interval measured nothing: the
-            // earlier peak stands.
-            auto merged = project.merge_index(path_id,
-                                              *index_bytes,
-                                              imports,
-                                              command,
-                                              peak != 0 ? peak : cost.peak);
+            auto merged = project.merge_index(path_id, *index_bytes, imports, command, peak);
             if(!merged) {
                 if(merged.error() == index::MergeError::Outdated) {
                     co_return UnitResult{.status = Status::Preempted,
@@ -300,11 +294,10 @@ async::task<UnitResult>
        reply.error().code == worker::dispatch_errc::worker_lost) {
         co_return UnitResult{.status = Status::Lost, .error = reply.error().message};
     }
-    if(reply.error().code == worker::dispatch_errc::worker_unavailable &&
-       project.pool->revives_slots()) {
-        // The outage is a window, not a decision: the pool revives dead
+    if(reply.error().code == worker::dispatch_errc::worker_unavailable) {
+        // The outage is a window, not a decision: the pool revives given-up
         // slots, so the requeued attempt can succeed once one returns to
-        // service. Without revival the failure below is terminal.
+        // service.
         co_return UnitResult{.status = Status::Preempted, .error = reply.error().message};
     }
     co_return UnitResult{.status = Status::Failed, .error = reply.error().message};

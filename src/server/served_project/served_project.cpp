@@ -16,7 +16,7 @@ import :server.served_project;
 import :settings.settings;
 import :support.logging;
 import :vfs.path;
-import :worker.probe;
+import :worker.test_hooks;
 import :worker.protocol;
 
 namespace clice {
@@ -354,7 +354,7 @@ async::task<> ServedProject::checkpoint_task() {
         co_await async::sleep(checkpoint_interval());
         co_await project.checkpoint();
         if(project.index.last_save_shards() > 0) {
-            server.probe.happened(LoopEvent::Checkpoint);
+            server.hooks.happened(LoopEvent::Checkpoint);
         }
     }
 }

@@ -1,6 +1,7 @@
 module clice:project.graph.task_graph;
 
 import :support.prelude;
+import :support.signal;
 import :vfs.ids;
 
 namespace clice {
@@ -127,6 +128,10 @@ public:
     /// foreground waiter may have joined after the attempt started.
     bool foreground() const;
 
+    /// Emitted when a foreground waiter joins the attempt: what it sent
+    /// Low runs at foreground class from then on.
+    Signal<>& on_foreground() const;
+
     /// Advisory cancellation: fires when the attempt is overtaken or loses
     /// all interest.
     const async::cancellation_token& token() const {
@@ -247,6 +252,9 @@ private:
 
         /// The waits that returned Success: the products the attempt read.
         llvm::SmallVector<NodeId, 8> received;
+
+        /// See Attempt::on_foreground.
+        Signal<> foreground;
     };
 
     struct Node {

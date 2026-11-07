@@ -31,10 +31,6 @@ std::optional<Spelling> uri_to_path(llvm::StringRef uri) {
 }
 
 LSPClient::LSPClient(MasterServer& server, ipc::JSONPeer& peer) : server(server), peer(peer) {
-    held_conn = server.probe.on_held.connect([this](std::uint64_t id) {
-        this->peer.send_notification("clice/internal/held", ext::HeldParams{id});
-    });
-
     register_lifecycle();
     register_document_sync();
     register_document_requests();

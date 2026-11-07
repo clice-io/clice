@@ -13,7 +13,7 @@ import :support.environment;
 import :support.logging;
 import :support.process;
 import :vfs.file_system;
-import :worker.probe;
+import :worker.test_hooks;
 import :worker.resources;
 
 namespace clice {
@@ -147,7 +147,7 @@ void MasterServer::initialize() {
              pool_opts.stateless_count);
 
     if(projects.front()->project.settings.project.test_hooks) {
-        pool.probe = &probe;
+        pool.hooks = &hooks;
     }
     if(pool.start(pool_opts)) {
         lifecycle = ServerLifecycle::Ready;
@@ -178,7 +178,7 @@ void MasterServer::schedule_shutdown() {
 }
 
 bool MasterServer::test_hooks() const {
-    return pool.probe != nullptr;
+    return pool.hooks != nullptr;
 }
 
 feature::SemanticTokensOptions MasterServer::startup_token_options() const {
@@ -194,6 +194,9 @@ async::task<> MasterServer::stop() {
             // project may start from here on (a project stop finishing below
             // would serve the folders again, see make_project).
             server.lifecycle = ServerLifecycle::ShuttingDown;
+            // A parked reply would hold its attempt, and the stop behind it,
+            // forever.
+            server.hooks.release_all();
             co_await server.pool.stop();
             server.polling.cancel();
             co_await server.polling.join();

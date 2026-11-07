@@ -8,24 +8,45 @@ module clice;
 
 import :support.anomaly;
 import :support.signal;
-import :unittests.server.worker_test_helpers;
+import :unittests.worker.helpers;
 import :unittests.utils;
 import :worker.pool;
-import :worker.probe;
 import :worker.protocol;
 import :worker.scheduler;
+import :worker.test_hooks;
 
 namespace clice::testing {
+
+/// The link of a slot the fixture adds, which no process is behind: what
+/// is written to it goes nowhere, and the fixture never reads it.
+struct NullTransport : ipc::Transport {
+    async::task<std::string, ipc::ReadError> read_message() override {
+        co_return std::string();
+    }
+
+    async::task<void, ipc::Error> write_message(std::string_view) override {
+        co_return;
+    }
+
+    async::task<void, ipc::Error> close_output() override {
+        co_return;
+    }
+
+    ipc::Result<void> close() override {
+        return {};
+    }
+};
 
 /// Test fixture with friend access to WorkerPool internals.
 struct WorkerPoolFixture {
     using SlotState = WorkerPool::SlotState;
 
     async::event_loop loop;
-    BuildProbe probe;
+    TestHooks hooks;
     WorkerPool pool;
 
-    std::vector<WorkerCrashInfo> crash_reports;
+    /// The crashes the pool reported, as WorkerCrash anomalies.
+    std::size_t crashes = 0;
 
     /// Documents the fixture assigns on its own count from here, clear of
     /// the tests' own.
@@ -37,24 +58,35 @@ struct WorkerPoolFixture {
         // memory admit everything.
         pool.scheduler = WorkerScheduler({.background_jobs = 64, .max_workers = 64});
         sample();
-        logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
-        pool.on_crash = [this](const WorkerCrashInfo& info) {
-            crash_reports.push_back(info);
-        };
+        logging::set_anomaly_trap_for_testing([this](logging::AnomalyId id) {
+            crashes += id == logging::AnomalyId::WorkerCrash ? 1 : 0;
+        });
     }
 
+    /// A slot given up outside run() left its revival waiting: stopped, it
+    /// ends with the pool.
     ~WorkerPoolFixture() {
+        pool.stop_scope.cancel();
+        loop.run();
         logging::reset_anomaly_for_testing();
+    }
+
+    /// A slot's process as a spawn leaves it, with no process behind it.
+    WorkerPool::WorkerProcess& add_slot(bool stateful, bool alive) {
+        auto& slots = pool.workers(stateful);
+        slots.push_back({.name = std::format("{}-{}", stateful ? "SF" : "SL", slots.size())});
+        auto& w = slots.back();
+        w.peer = std::make_shared<ipc::BincodePeer>(loop, std::make_unique<NullTransport>());
+        w.spawn_time = chrono::steady_clock::now();
+        w.state = alive ? SlotState::Alive : SlotState::GivenUp;
+        return w;
     }
 
     /// A stateless slot with no process behind it; one alive is in the
     /// scheduler's service.
     void add_stateless(bool alive = true) {
         auto idx = pool.stateless_workers.size();
-        pool.stateless_workers.push_back(WorkerPool::WorkerProcess{});
-        auto& w = pool.stateless_workers.back();
-        w.name = "SL-" + std::to_string(idx);
-        w.state = alive ? SlotState::Alive : SlotState::GivenUp;
+        add_slot(false, alive);
         if(alive) {
             pool.scheduler.worker_ready(idx, WorkerPool::now());
         }
@@ -64,10 +96,7 @@ struct WorkerPoolFixture {
     /// it already.
     void add_stateful(bool alive = true, std::size_t documents = 0) {
         auto idx = pool.stateful_workers.size();
-        pool.stateful_workers.push_back(WorkerPool::WorkerProcess{});
-        auto& w = pool.stateful_workers.back();
-        w.name = "SF-" + std::to_string(idx);
-        w.state = alive ? SlotState::Alive : SlotState::GivenUp;
+        add_slot(true, alive);
         for(std::size_t i = 0; i < documents; i += 1) {
             pool.residency.assign(next_document, idx, "");
             next_document += 1;
@@ -79,7 +108,9 @@ struct WorkerPoolFixture {
         auto& w = pool.stateless_workers[idx];
         w.state = SlotState::Alive;
         w.death = std::make_shared<WorkerDeath>();
-        pool.serving(idx, false);
+        w.peer = std::make_shared<ipc::BincodePeer>(loop, std::make_unique<NullTransport>());
+        pool.scheduler.worker_ready(idx, WorkerPool::now());
+        pool.execute();
     }
 
     /// Hand the scheduler a look at memory: plenty unless told otherwise,
@@ -110,16 +141,24 @@ struct WorkerPoolFixture {
     }
 
     /// A request in flight on the slot, as a send registers it.
-    std::unique_ptr<WorkerPool::Inflight> inflight(RequestId id, std::string tag, bool build) {
-        return std::make_unique<WorkerPool::Inflight>(pool, id, std::move(tag), build);
+    std::unique_ptr<WorkerPool::Inflight>
+        inflight(RequestId id, std::size_t idx, bool stateful, std::string tag, bool build) {
+        return std::make_unique<WorkerPool::Inflight>(pool,
+                                                      id,
+                                                      idx,
+                                                      stateful,
+                                                      pool.slot(idx, stateful).generation,
+                                                      std::move(tag),
+                                                      build);
     }
 
     /// A stateful request sent to slot `idx`, as dispatch_stateful
     /// registers it with the scheduler.
-    RequestId stateful_request(std::size_t idx, bool build = false, std::uint32_t document = 0) {
+    RequestId stateful_request(std::size_t idx, bool build = false) {
         auto id = pool.next_request;
         pool.next_request += 1;
-        pool.scheduler.stateful_begin(id, idx, document, build, WorkerPool::now());
+        pool.scheduler.stateful_begin(id, idx, build, WorkerPool::now());
+        pool.scheduler.stateful_started(id, WorkerPool::now());
         return id;
     }
 
@@ -275,8 +314,8 @@ struct WorkerPoolFixture {
         return pool.backoff_delay(streak);
     }
 
-    bool scale_up() {
-        return pool.scale_up_worker();
+    void scale_up() {
+        pool.scale_up_worker();
     }
 
     bool start(std::uint32_t stateless = 2,
@@ -299,9 +338,15 @@ struct WorkerPoolFixture {
         return pool.stop();
     }
 
+    /// Run a test body on the loop; the pool's own coroutines end with it,
+    /// a given-up slot's revival among them.
     template <typename F>
     void run(F&& coro_factory) {
-        loop.schedule(coro_factory());
+        auto body = [](WorkerPoolFixture& f, F factory) -> async::task<> {
+            co_await factory();
+            f.pool.stop_scope.cancel();
+        };
+        loop.schedule(body(*this, std::forward<F>(coro_factory)));
         loop.run();
     }
 
@@ -332,8 +377,7 @@ struct WorkerPoolFixture {
         auto params = index_params(file);
         async::task_group<> group;
         auto sender = [&]() -> async::task<> {
-            [[maybe_unused]] auto result =
-                co_await pool.send_stateless(params, worker::Priority::High);
+            [[maybe_unused]] auto result = co_await pool.send_stateless(params);
         };
         // The spawn runs the sender up to its wait for the reply.
         group.spawn(sender());
@@ -343,7 +387,7 @@ struct WorkerPoolFixture {
     }
 
     std::size_t capacity() const {
-        return pool.stateless_capacity();
+        return pool.capacity(false);
     }
 
     std::size_t documents_on(std::size_t idx) const {
@@ -402,11 +446,11 @@ struct WorkerPoolFixture {
     }
 
     /// Park the work of the next request like `params` where it starts in
-    /// its worker (see BuildProbe::gate); returns the gate's id.
+    /// its worker (see TestHooks::gate); returns the gate's id.
     template <typename Params>
     std::uint64_t gate(const Params& params) {
-        pool.probe = &probe;
-        return probe.gate(worker::crash_tag(params));
+        pool.hooks = &hooks;
+        return hooks.gate(worker::crash_tag(params));
     }
 
     int worker_pid(std::size_t idx) const {
@@ -455,7 +499,7 @@ struct WorkerPoolFixture {
         std::uint64_t peak = 0;
         bool answered = false;
         auto sender = [&]() -> async::task<> {
-            auto result = co_await pool.send_stateless(index_params(file), worker::Priority::High);
+            auto result = co_await pool.send_stateless(index_params(file));
             ZEXPECT(result);
             answered = true;
         };
@@ -706,7 +750,7 @@ ZEST_CASE(MemoryKillRecordsDeath) {
     // The scheduler forgot the request with its worker.
     ZEXPECT(f.running_on(0) == 0u);
     // A kill on purpose is not a crash: no report, no crash accounting.
-    ZEXPECT(f.crash_reports.empty());
+    ZEXPECT(f.crashes == 0u);
     ZEXPECT(f.crash_streak(0) == 0u);
 }
 
@@ -776,9 +820,9 @@ ZEST_CASE(DeadlineKillNames) {
     f.set_deadlines(chrono::seconds(10), chrono::seconds(1));
     f.add_stateful();
     auto query = f.stateful_request(0);
-    auto hover = f.inflight(query, "clice/worker/hover /b.cpp", false);
-    auto other = f.stateful_request(0, false, 1);
-    auto links = f.inflight(other, "clice/worker/documentLink /c.cpp", false);
+    auto hover = f.inflight(query, 0, true, "clice/worker/hover /b.cpp", false);
+    auto other = f.stateful_request(0);
+    auto links = f.inflight(other, 0, true, "clice/worker/documentLink /c.cpp", false);
     auto death = f.death(0, true);
     // One kill names every overdue request of the worker.
     f.kill(0, true, scheduler::KillReason::Deadline, {query, other});
@@ -793,7 +837,7 @@ ZEST_CASE(DeadlineKillNames) {
     f.add_stateless();
     f.add_stateless();
     auto run = f.submit(worker::Priority::Low);
-    auto index = f.inflight(run->id, "clice/worker/compileUnit /c.cpp", true);
+    auto index = f.inflight(run->id, 0, false, "clice/worker/compileUnit /c.cpp", true);
     f.kill(0, false, scheduler::KillReason::Deadline, {run->id});
     ZEXPECT(f.death(0, false)->named[0] == "clice/worker/compileUnit /c.cpp");
     ZEXPECT(f.death(0, false)->cause == "killed after over 10 seconds of CPU time");
@@ -801,7 +845,7 @@ ZEST_CASE(DeadlineKillNames) {
 
     auto stuck = f.submit(worker::Priority::Low);
     ZASSERT(stuck->slot == 1u);
-    auto stalled = f.inflight(stuck->id, "clice/worker/compileUnit /d.cpp", true);
+    auto stalled = f.inflight(stuck->id, 1, false, "clice/worker/compileUnit /d.cpp", true);
     f.kill(1, false, scheduler::KillReason::Stalled, {stuck->id});
     ZEXPECT(f.death(1, false)->named[0] == "clice/worker/compileUnit /d.cpp");
     ZEXPECT(f.death(1, false)->cause == "killed after 300 seconds without using the CPU");
@@ -874,10 +918,8 @@ ZEST_CASE(StatefulLostDocuments) {
 
     f.simulate_crash(0, true);
 
-    ZASSERT(f.crash_reports.size() == 1u);
-    auto& report = f.crash_reports[0];
-    ZEXPECT(report.stateful);
-    ZEXPECT(report.worker_index == 0u);
+    ZEXPECT(f.crashes == 1u);
+    ZEXPECT(f.state(0, true) == WorkerPoolFixture::SlotState::Dying);
 
     for(auto path_id: expected) {
         ZEXPECT(!f.assigned(path_id));
@@ -945,27 +987,24 @@ ZEST_CASE(TransportErrorClassification) {
     ZEXPECT(!worker::is_transport_error(Error{ErrorCode::RequestCancelled, "cancelled"}));
 }
 
-ZEST_CASE(CrashInfoSignal) {
+ZEST_CASE(DeathTellsSignal) {
     WorkerPoolFixture f;
     f.add_stateless();
 
     f.simulate_crash(0, false, 0, 11);
 
-    ZASSERT(f.crash_reports.size() == 1u);
-    ZEXPECT(f.crash_reports[0].exit_signal == 11);
-    ZEXPECT(f.crash_reports[0].exit_code == 0);
-    ZEXPECT(!f.crash_reports[0].stateful);
+    ZEXPECT(f.crashes == 1u);
+    ZEXPECT(llvm::StringRef(f.death(0, false)->cause).starts_with("killed by"));
 }
 
-ZEST_CASE(CrashInfoExitCode) {
+ZEST_CASE(DeathTellsExitCode) {
     WorkerPoolFixture f;
     f.add_stateless();
 
     f.simulate_crash(0, false, 42, 0);
 
-    ZASSERT(f.crash_reports.size() == 1u);
-    ZEXPECT(f.crash_reports[0].exit_code == 42);
-    ZEXPECT(f.crash_reports[0].exit_signal == 0);
+    ZEXPECT(f.crashes == 1u);
+    ZEXPECT(f.death(0, false)->cause == "exited with code 42");
 }
 
 ZEST_CASE(WillRestartWithinBudget) {
@@ -977,9 +1016,7 @@ ZEST_CASE(WillRestartWithinBudget) {
     auto should_restart = f.simulate_crash(0, false);
 
     ZEXPECT(should_restart);
-    ZASSERT(f.crash_reports.size() == 1u);
-    ZEXPECT(f.crash_reports[0].will_restart);
-    ZEXPECT(f.crash_reports[0].crash_streak == 2u);
+    ZEXPECT(f.crash_streak(0) == 2u);
 }
 
 ZEST_CASE(CrashBudgetExhausted) {
@@ -991,8 +1028,6 @@ ZEST_CASE(CrashBudgetExhausted) {
     auto should_restart = f.simulate_crash(0, false);
 
     ZEXPECT(!should_restart);
-    ZASSERT(f.crash_reports.size() == 1u);
-    ZEXPECT(!f.crash_reports[0].will_restart);
     ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::GivenUp);
 }
 
@@ -1172,7 +1207,6 @@ ZEST_CASE(DeathFreesDocuments) {
     ZEXPECT(f.assign_worker(1) == 1u);
 
     f.simulate_crash(0, true);
-    ZASSERT(f.crash_reports.size() == 1u);
     ZEXPECT(f.worker_of(1) == 1u);
 }
 
@@ -1324,7 +1358,7 @@ ZEST_CASE(RapidCrashSequence) {
     f.simulate_crash(2, false);
 
     ZEXPECT(f.pool.schedulable_stateless() == 0u);
-    ZEXPECT(f.crash_reports.size() == 3u);
+    ZEXPECT(f.crashes == 3u);
 }
 
 ZEST_CASE(DeadPoolReturnsError) {
@@ -1337,8 +1371,7 @@ ZEST_CASE(DeadPoolReturnsError) {
 
     std::optional<protocol::integer> code;
     f.run([&]() -> async::task<> {
-        auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params("/a.cpp"),
-                                                     worker::Priority::High);
+        auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params("/a.cpp"));
         ZASSERT(!result.has_value());
         code = result.error().code;
     });
@@ -1479,8 +1512,7 @@ ZEST_CASE(StatelessRequest) {
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
 
-        auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src),
-                                                     worker::Priority::High);
+        auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src));
         ZEXPECT(result);
         co_await f.stop();
         done = true;
@@ -1510,24 +1542,22 @@ ZEST_CASE(AdvisoryCancelCooperates) {
         bool cancelled = false;
         auto gate = f.gate(params);
         auto sender = [&]() -> async::task<> {
-            auto result =
-                co_await f.pool.send_stateless(params, worker::Priority::High, advisory.token());
+            auto result = co_await f.pool.send_stateless(params, {.cancel = advisory.token()});
             cancelled =
                 !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
         // The build is under way in the worker when the token fires.
         auto driver = [&]() -> async::task<> {
-            co_await parked(f.probe, gate);
+            co_await parked(f.hooks, gate);
             advisory.cancel();
-            f.probe.release(gate);
+            f.hooks.release(gate);
         };
         co_await async::when_all(sender(), driver());
         ZEXPECT(cancelled);
 
         // The worker replied and survived: the same slot serves the next
         // request.
-        auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(small_src),
-                                                     worker::Priority::High);
+        auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(small_src));
         ZEXPECT(result);
 
         co_await f.stop();
@@ -1705,11 +1735,12 @@ ZEST_CASE(ScalingDownHoldsScaleUp) {
         f.set_max_stateless(2);
         f.set_scaling_down(0);
 
-        // The scaling_down worker still holds its process until the monitor
+        // The worker scaling down still holds its process until the monitor
         // reaps it: a replacement now would run three processes against a
         // ceiling of two, worsening the pressure that scaled it down.
-        ZEXPECT(!f.scale_up());
+        f.scale_up();
         ZEXPECT(f.stateless_count() == 2u);
+        ZEXPECT(f.state(1) == WorkerPoolFixture::SlotState::Alive);
 
         co_await f.stop();
         done = true;
@@ -1717,50 +1748,26 @@ ZEST_CASE(ScalingDownHoldsScaleUp) {
     ZEXPECT(done);
 }
 
-ZEST_CASE(RevivesSlotsGate) {
-    // Revival — and with it the indexer's requeue-on-unavailable — is only
-    // promised by a started pool with a nonzero cooldown.
+ZEST_CASE(ScaleUpSparesGivenUp) {
+    // A given-up slot waits out its cooldown: a scale-up neither brings it
+    // back early nor appends past the ceiling it still counts toward.
     WorkerPoolFixture f;
-    ZEXPECT(!f.pool.revives_slots());
+    f.add_stateless();
+    f.add_stateless();
+    f.set_max_crash_streak(0);
+    ZEXPECT(!f.simulate_crash(0, false));
+    ZASSERT(f.slot_given_up(0));
 
-    bool done = false;
-    f.run([&]() -> async::task<> {
-        ZASSERT(f.start(1, 0));
-        ZEXPECT(f.pool.revives_slots());
-        f.set_revive_after(chrono::milliseconds(0));
-        ZEXPECT(!f.pool.revives_slots());
-        co_await f.stop();
-        done = true;
-    });
-    ZEXPECT(done);
-}
+    f.set_max_stateless(2);
+    f.scale_up();
+    ZEXPECT(f.stateless_count() == 2u);
+    ZEXPECT(f.slot_given_up(0));
 
-ZEST_CASE(ScaleUpRevivesDead) {
-    TempDir tmp;
-    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
-
-    WorkerPoolFixture f;
-    bool done = false;
-    f.run([&]() -> async::task<> {
-        ZASSERT(f.start(2, 0));
-        // Cooldown far in the future: only scale-up can bring the slot back.
-        f.set_revive_after(chrono::minutes(10));
-        f.set_max_crash_streak(0);
-
-        co_await f.kill_running_worker(tmp.path("slow.cpp"));
-        ZASSERT(f.slot_given_up(0));
-
-        // Scale-up pressure revives the dead slot instead of appending a
-        // third worker next to it.
-        ZASSERT(f.scale_up());
-        ZEXPECT(f.stateless_count() == 2u);
-        co_await f.serves(0);
-        ZEXPECT(f.crash_streak(0) == 0u);
-
-        co_await f.stop();
-        done = true;
-    });
-    ZEXPECT(done);
+    f.set_max_stateless(3);
+    f.scale_up();
+    ZEXPECT(f.stateless_count() == 3u);
+    ZEXPECT(f.state(2) == WorkerPoolFixture::SlotState::Respawning);
+    ZEXPECT(f.slot_given_up(0));
 }
 
 ZEST_CASE(ScaleUpReusesScaledDown) {
@@ -1774,7 +1781,7 @@ ZEST_CASE(ScaleUpReusesScaledDown) {
 
         // The scaled-down slot is refilled instead of a third appended: a
         // scale-down/scale-up cycle must not grow the slot table.
-        ZASSERT(f.scale_up());
+        f.scale_up();
         ZEXPECT(f.stateless_count() == 2u);
         co_await f.serves(1);
 
@@ -1784,7 +1791,7 @@ ZEST_CASE(ScaleUpReusesScaledDown) {
     ZEXPECT(done);
 }
 
-ZEST_CASE(CrashNotification) {
+ZEST_CASE(KilledIdleWorkerReturns) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
@@ -1793,12 +1800,10 @@ ZEST_CASE(CrashNotification) {
         f.kill_worker(0);
         co_await f.exited(0);
 
-        ZASSERT(!f.crash_reports.empty());
-        ZEXPECT(!f.crash_reports[0].stateful);
-        ZEXPECT(f.crash_reports[0].exit_signal == 9);
-        ZEXPECT(f.crash_reports[0].will_restart);
+        ZEXPECT(f.crashes == 1u);
         // An idle worker's kill spends no crash budget.
-        ZEXPECT(f.crash_reports[0].crash_streak == 0u);
+        ZEXPECT(f.crash_streak(0) == 0u);
+        co_await f.serves(0);
 
         co_await f.stop();
         done = true;
@@ -1823,8 +1828,7 @@ ZEST_CASE(CrashDuringRequest) {
         f.kill_worker(0);
         f.kill_worker(1);
 
-        auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src),
-                                                     worker::Priority::High);
+        auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src));
         ZASSERT(!result.has_value());
         ZEXPECT(result.error().code == worker::dispatch_errc::worker_died);
 
@@ -1847,8 +1851,7 @@ ZEST_CASE(MemoryKillReportsMemory) {
         std::optional<ipc::Error> error;
         async::task_group<> group;
         auto sender = [&]() -> async::task<> {
-            auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src),
-                                                         worker::Priority::High);
+            auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src));
             if(!result.has_value())
                 error = result.error();
         };
@@ -1865,7 +1868,7 @@ ZEST_CASE(MemoryKillReportsMemory) {
 
         // A kill on purpose is not a crash: no report, and the worker comes
         // back with an untouched budget.
-        ZEXPECT(f.crash_reports.empty());
+        ZEXPECT(f.crashes == 0u);
         co_await f.serves(0);
         ZEXPECT(f.crash_streak(0) == 0u);
 
@@ -1890,8 +1893,7 @@ ZEST_CASE(MemoryKillBeatsCancel) {
         async::task_group<> group;
         auto sender = [&]() -> async::task<> {
             auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src),
-                                                         worker::Priority::High,
-                                                         source.token());
+                                                         {.cancel = source.token()});
             if(!result.has_value())
                 code = result.error().code;
         };
@@ -1923,8 +1925,7 @@ ZEST_CASE(CancelledCrashEndsSlot) {
         protocol::integer code = 0;
         async::task_group<> group;
         auto sender = [&]() -> async::task<> {
-            auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src),
-                                                         worker::Priority::High);
+            auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src));
             if(!result.has_value())
                 code = result.error().code;
         };
@@ -1985,7 +1986,7 @@ ZEST_CASE(MemoryKillReachesSender) {
         auto params = WorkerPoolFixture::index_params(tmp.path("slow.cpp"));
         async::task_group<> group;
         auto sender = [&]() -> async::task<> {
-            auto result = co_await f.pool.send_stateless(params, worker::Priority::High);
+            auto result = co_await f.pool.send_stateless(params);
             if(!result.has_value()) {
                 error = result.error();
             }

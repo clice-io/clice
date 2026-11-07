@@ -77,11 +77,16 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
                llvm::function_ref<void(FailureRecord, Inputs)> fail) {
     constexpr bool pch = std::same_as<Params, worker::BuildPCHParams>;
     constexpr llvm::StringRef what = pch ? "PCH" : "PCM";
-    auto priority = attempt.foreground() ? worker::Priority::High : worker::Priority::Low;
     auto result = co_await deliver(
         *project.pool,
         false,
-        [&] { return project.pool->send_stateless(params, priority, attempt.token()); },
+        [&] {
+            return project.pool->send_stateless(
+                params,
+                {.priority = attempt.foreground() ? worker::Priority::High : worker::Priority::Low,
+                 .raised = &attempt.on_foreground(),
+                 .cancel = attempt.token()});
+        },
         [&](const ipc::Error& error) {
             fail(failed_build(worker::death_of(error), error.message), std::move(known));
         });

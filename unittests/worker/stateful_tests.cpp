@@ -3,7 +3,7 @@ module clice;
 import :feature.hover;
 import :support.json;
 import :syntax.source_text;
-import :unittests.server.worker_test_helpers;
+import :unittests.worker.helpers;
 import :unittests.utils;
 import :worker.protocol;
 
@@ -43,6 +43,8 @@ ZEST_CASE(CompileRequest) {
         auto result = co_await w.peer->send_request(params);
         ZASSERT(result);
         ZEXPECT(result.value().version == 1);
+        // The worker said when the compile's work began, ahead of the reply.
+        ZEXPECT(w.started == std::vector{worker::crash_tag(params)});
         test_done = true;
     });
 

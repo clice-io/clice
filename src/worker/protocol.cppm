@@ -601,21 +601,18 @@ struct EvictParams {
     std::string path;
 };
 
-/// Test hook (see BuildProbe::gate): park the work of the next request
-/// whose crash_tag is `tag` where it starts, until released.
-struct GateParams {
-    std::uint64_t id = 0;
+/// A stateful worker began the work of the request of `tag`
+/// (crash_tag), on a thread of its own: the master times it from here, not
+/// from its send, as it may wait behind the work of other documents.
+struct StartedParams {
     std::string tag;
 };
 
-/// Test hook: the gate parked a request's work.
-struct GateParkedParams {
-    std::uint64_t id = 0;
-};
-
-/// Test hook: let the work the gate parked go on, or drop the gate.
-struct GateReleaseParams {
-    std::uint64_t id = 0;
+/// The most of its own memory a stateless worker held while its request
+/// ran, sent right before the reply: the master samples it a second
+/// apart, too seldom for a shorter request.
+struct PeakParams {
+    std::uint64_t memory = 0;
 };
 
 /// Whether a request builds — a compile, a PCH or PCM, an indexing run:
@@ -738,18 +735,13 @@ struct NotificationTraits<clice::worker::EvictParams> {
 };
 
 template <>
-struct NotificationTraits<clice::worker::GateParams> {
-    constexpr inline static std::string_view method = "clice/worker/gate";
+struct NotificationTraits<clice::worker::StartedParams> {
+    constexpr inline static std::string_view method = "clice/worker/started";
 };
 
 template <>
-struct NotificationTraits<clice::worker::GateParkedParams> {
-    constexpr inline static std::string_view method = "clice/worker/gateParked";
-};
-
-template <>
-struct NotificationTraits<clice::worker::GateReleaseParams> {
-    constexpr inline static std::string_view method = "clice/worker/gateRelease";
+struct NotificationTraits<clice::worker::PeakParams> {
+    constexpr inline static std::string_view method = "clice/worker/peak";
 };
 
 }  // namespace kotatsu::ipc::protocol

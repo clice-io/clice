@@ -5,7 +5,7 @@ import :index.tu_index;
 import :semantic.display;
 import :semantic.symbol;
 import :support.bytes;
-import :unittests.server.worker_test_helpers;
+import :unittests.worker.helpers;
 import :unittests.utils;
 import :worker.protocol;
 
@@ -151,6 +151,21 @@ ZEST_CASE(GateParksWork) {
     });
 
     ZASSERT(test_done);
+}
+
+ZEST_CASE(ReportsMemoryPeak) {
+    /// However short its work, a request's reply follows the peak of the
+    /// worker's own memory while it ran.
+    WorkerHandle w;
+    ZASSERT(w.spawn());
+
+    w.run([&]() -> async::task<> {
+        worker::FormatParams params{.file = "/w/main.cpp", .text = "int  x;\n"};
+        auto result = co_await w.peer->send_request(params);
+        ZEXPECT(result);
+        ZASSERT(w.peaks.size() == 1u);
+        ZEXPECT(w.peaks[0] > 0u);
+    });
 }
 
 ZEST_CASE(BuildPCHRequest) {

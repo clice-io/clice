@@ -6,6 +6,7 @@ module clice:worker.common;
 
 import :compile.compilation;
 import :support.bytes;
+import :support.environment;
 import :support.prelude;
 import :support.timer;
 import :vfs.file_system;
@@ -34,7 +35,10 @@ inline std::shared_ptr<const llvm::MemoryBuffer>
 /// refuses a frame past 64 MiB (kotatsu's limit) and the whole reply is
 /// lost with it; the margin leaves room for the rest of the reply. Tests
 /// lower it through CLICE_TEST_MAX_INDEX_BYTES.
-std::size_t max_index_bytes();
+inline std::size_t max_index_bytes() {
+    static std::size_t limit = env_integer("CLICE_TEST_MAX_INDEX_BYTES").value_or(56 * 1024 * 1024);
+    return limit;
+}
 
 /// Put a built index into `result`: inline when it fits, else written to
 /// `output_path` — the master's transfer file — with the reply saying so.

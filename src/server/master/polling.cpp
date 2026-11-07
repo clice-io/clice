@@ -3,7 +3,7 @@ module clice;
 import :server.master;
 import :server.served_project;
 import :support.process;
-import :worker.probe;
+import :worker.test_hooks;
 
 namespace clice {
 
@@ -18,12 +18,12 @@ async::task<> MasterServer::poll_task() {
         co_await async::sleep(interval);
         if(polling_files) {
             if(files.disk.tick(budget) > 0) {
-                probe.happened(LoopEvent::DiskChange);
+                hooks.happened(LoopEvent::DiskChange);
             }
             for(auto& project: projects) {
                 if(project->project.settings.tracker.workspace_poll_seconds > 0 &&
                    project->reload_databases(false) > 0) {
-                    probe.happened(LoopEvent::DatabaseChange);
+                    hooks.happened(LoopEvent::DatabaseChange);
                 }
             }
         }

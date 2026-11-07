@@ -51,6 +51,21 @@ void WorkerScheduler::cancel(RequestId id, SchedulerTime now) {
     }
 }
 
+void WorkerScheduler::raise(RequestId id, SchedulerTime now) {
+    auto it = requests.find(id);
+    if(it == requests.end() || it->second.priority == Priority::High) {
+        return;
+    }
+    auto& request = it->second;
+    request.priority = Priority::High;
+    if(!request.slot) {
+        std::erase(low_queue, id);
+        high_queue.push_back(id);
+    }
+    last_activity = now;
+    decide(now);
+}
+
 std::uint64_t WorkerScheduler::finish(RequestId id, SchedulerTime now) {
     auto it = requests.find(id);
     // Gone with its worker.
@@ -75,55 +90,42 @@ std::uint64_t WorkerScheduler::finish(RequestId id, SchedulerTime now) {
     return request.max_memory;
 }
 
-void WorkerScheduler::stateful_begin(RequestId id,
-                                     std::size_t slot,
-                                     std::uint32_t document,
-                                     bool build,
-                                     SchedulerTime now) {
-    auto waiting = ranges::any_of(requests, [&](const auto& entry) {
-        auto& other = entry.second;
-        return other.stateful && other.slot == slot && other.document == document;
-    });
+void
+    WorkerScheduler::stateful_begin(RequestId id, std::size_t slot, bool build, SchedulerTime now) {
     requests.emplace(id,
                      Request{.id = id,
                              .priority = Priority::High,
                              .stateful = true,
                              .build = build,
-                             .document = document,
-                             .waiting = waiting,
                              .submitted = now,
                              .slot = slot,
-                             .started = now,
                              .order = next_order});
     next_order += 1;
     last_activity = now;
     decide(now);
 }
 
-void WorkerScheduler::stateful_end(RequestId id, SchedulerTime now) {
-    auto it = requests.find(id);
+void WorkerScheduler::stateful_started(RequestId id, SchedulerTime now) {
     // Gone with its worker.
-    if(it == requests.end()) {
-        return;
+    if(auto it = requests.find(id); it != requests.end()) {
+        it->second.started = now;
     }
-    auto ended = std::move(it->second);
-    requests.erase(it);
+}
+
+void WorkerScheduler::stateful_end(RequestId id, SchedulerTime now) {
+    requests.erase(id);
     last_activity = now;
-    // One that waited ended out of turn: the one ahead of it still runs.
-    if(ended.waiting) {
+}
+
+void WorkerScheduler::reported_peak(std::size_t slot, std::uint64_t memory) {
+    auto& running = slots.at(slot).request;
+    // The request ended first: its sender cancelled it while it waited
+    // for the reply, or the pool is stopping.
+    if(!running) {
         return;
     }
-    Request* next = nullptr;
-    for(auto& [_, other]: requests) {
-        if(other.stateful && other.waiting && other.slot == ended.slot &&
-           other.document == ended.document && (!next || other.order < next->order)) {
-            next = &other;
-        }
-    }
-    if(next) {
-        next->waiting = false;
-        next->started = now;
-    }
+    auto& request = requests.at(*running);
+    request.max_memory = std::max(request.max_memory, memory);
 }
 
 void WorkerScheduler::worker_ready(std::size_t slot, SchedulerTime now) {
@@ -158,7 +160,6 @@ void WorkerScheduler::sample(SchedulerSample sample, SchedulerTime now) {
     for(auto& worker: sample.workers) {
         auto& slot = slots.at(worker.slot);
         slot.memory = worker.memory;
-        slot.cpu = worker.cpu;
         if(!slot.request) {
             continue;
         }
@@ -306,9 +307,13 @@ std::uint64_t WorkerScheduler::growth_soon() const {
 bool WorkerScheduler::memory_admits(const Request& request, const Slot& slot) const {
     auto headroom = last_sample.headroom;
     auto reserve = last_sample.reserve;
-    // With nothing beside it, waiting would free no memory.
+    // With nothing beside it, waiting would free no memory: it starts unless
+    // check_memory would kill it at once.
     if(running(Priority::Low) == 0) {
-        return headroom >= reserve;
+        auto alone = ranges::none_of(requests, [](const auto& entry) {
+            return entry.second.stateful || entry.second.slot.has_value();
+        });
+        return headroom >= (alone ? reserve / lone_share : reserve);
     }
     // The worker's own memory is the request's to reuse. Sampled before its
     // last request ended, it still counts what that request freed since,
@@ -332,7 +337,6 @@ bool WorkerScheduler::busy() const {
 
 void WorkerScheduler::start(Request& request, Slot& slot, SchedulerTime now) {
     request.slot = slot.slot;
-    request.started = now;
     request.order = next_order;
     next_order += 1;
     request.memory = slot.memory;
@@ -531,33 +535,20 @@ void WorkerScheduler::check_deadlines(SchedulerTime now) {
         }
     }
 
-    // Stateful: by worker, every overdue request; a query is not timed
-    // while a build runs on its worker, as it may wait behind the build for
-    // a thread, but not past the build deadline either.
-    std::map<std::size_t, llvm::SmallVector<const Request*>> by_slot;
+    // Stateful: by worker, every overdue request among those its worker
+    // began.
+    std::map<std::size_t, llvm::SmallVector<const Request*>> late;
     for(auto& [_, request]: requests) {
-        if(request.stateful && !request.killed) {
-            by_slot[*request.slot].push_back(&request);
+        if(!request.stateful || request.killed || !request.started) {
+            continue;
+        }
+        auto limit = request.build ? options.build_deadline : options.query_deadline;
+        if(now - *request.started > limit) {
+            late[*request.slot].push_back(&request);
         }
     }
-    for(auto& [_, list]: by_slot) {
-        // FIXME: a query hung in its own work is spared as well, up to the build
-        // deadline, while any build of its worker is listed, even one waiting behind
-        // it: only the worker can tell when a request really starts.
-        auto building = ranges::any_of(list, &Request::build);
-        llvm::SmallVector<const Request*> late;
-        for(auto* request: list) {
-            auto running = now - request->started;
-            auto overdue = request->build ? running > options.build_deadline
-                                          : running > options.query_deadline &&
-                                                (!building || running > options.build_deadline);
-            if(!request->waiting && overdue) {
-                late.push_back(request);
-            }
-        }
-        if(!late.empty()) {
-            kill(late, scheduler::KillReason::Deadline);
-        }
+    for(auto& [_, overdue]: late) {
+        kill(overdue, scheduler::KillReason::Deadline);
     }
 }
 

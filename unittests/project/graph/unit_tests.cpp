@@ -8,7 +8,7 @@ import :project.graph.unit;
 import :settings.rules;
 import :settings.settings;
 import :support.anomaly;
-import :unittests.server.worker_test_helpers;
+import :unittests.worker.helpers;
 import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.indexer_fixture;
