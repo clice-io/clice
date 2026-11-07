@@ -472,10 +472,13 @@ ZEST_CASE(StarvedMachineHoldsAll) {
 
 ZEST_CASE(LoneStartsInsideReserve) {
     // A limit the master takes half of leaves the headroom under the reserve
-    // for good: a request alone still starts where it would not be killed.
+    // for good: a request alone still starts, given room to grow above the
+    // line where it is found too big.
     Core core(1);
-    core.sample(504 * MiB);
+    core.sample(300 * MiB);
     core.submit(1, Priority::Low);
+    ZEXPECT(!core.slot_of(1));
+    core.sample(504 * MiB);
     ZEXPECT(core.slot_of(1).has_value());
 }
 

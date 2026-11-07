@@ -1,6 +1,7 @@
 module clice;
 
 import :project.graph.task_graph;
+import :support.signal;
 import :unittests.utils;
 import :unittests.utils.async;
 
@@ -1196,6 +1197,38 @@ ZEST_CASE(foreground_late_join) {
         ZASSERT(calls == 2);
         ZEXPECT(!classes[0]);
         ZEXPECT(classes[1]);
+    });
+}
+
+ZEST_CASE(foreground_raises_running) {
+    // Foreground interest joining an attempt already running at Low tells
+    // it once, however many join: its request is raised where it is.
+    async::event started;
+    async::event proceed;
+    Signal<>::Connection connection;
+    int raised = 0;
+    Work work{.run = [&](Attempt& attempt) {
+        connection = attempt.on_foreground().connect([&] { raised += 1; });
+        started.set();
+        return reply_after(proceed, Result::Success);
+    }};
+
+    Probe background, first, second;
+    execute([&]() -> async::task<> {
+        auto driver = [&]() -> async::task<> {
+            co_await started.wait();
+            proceed.set();
+        };
+
+        co_await async::when_all(run_join(a(1), work, background),
+                                 run_join(a(1), work, first, {.foreground = true}),
+                                 run_join(a(1), work, second, {.foreground = true}),
+                                 driver());
+
+        ZEXPECT(background.result == Result::Success);
+        ZEXPECT(first.result == Result::Success);
+        ZEXPECT(second.result == Result::Success);
+        ZEXPECT(raised == 1);
     });
 }
 

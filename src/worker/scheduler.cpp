@@ -307,10 +307,12 @@ std::uint64_t WorkerScheduler::growth_soon() const {
 bool WorkerScheduler::memory_admits(const Request& request, const Slot& slot) const {
     auto headroom = last_sample.headroom;
     auto reserve = last_sample.reserve;
-    // With nothing beside it, waiting would free no memory: it starts unless
-    // check_memory would kill it at once.
+    // With nothing beside it, waiting would free no memory. The only request
+    // starts where it can grow by a share of the reserve before check_memory
+    // takes it for too big for the machine; beside a stateful one, where it
+    // would not be killed at once.
     if(running(Priority::Low) == 0) {
-        return headroom >= (requests_running() == 0 ? reserve / lone_share : reserve);
+        return headroom >= (requests_running() == 0 ? 2 * reserve / lone_share : reserve);
     }
     // The worker's own memory is the request's to reuse. Sampled before its
     // last request ended, it still counts what that request freed since,

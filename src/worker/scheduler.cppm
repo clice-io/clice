@@ -165,9 +165,9 @@ using SchedulerAction = std::variant<scheduler::Dispatch,
 ///     running background requests must leave its peak plus the reserve.
 ///     One memory holds back lets those behind it that fit go first, for
 ///     long_wait; then the queue waits for it. With no background request
-///     running it starts once memory is above where a lone one would be
-///     killed: a third of the reserve with nothing else running, the
-///     reserve beside other work.
+///     running it starts at two thirds of the reserve with nothing else
+///     running, a third above where it would be found too big, and at the
+///     reserve beside other work, where it would be killed.
 ///   - Below the reserve, one background request is killed at a time, the
 ///     newest; the next only once that process has exited.
 ///   - A stateless request's deadline is its worker's CPU time; a stateful

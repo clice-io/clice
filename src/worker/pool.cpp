@@ -526,28 +526,11 @@ bool WorkerPool::process_crash(std::size_t index,
     }
     // Relay the tail of the dead incarnation's own log into the master log
     // so CI, which only sees the master's output, still gets the worker's
-    // final assert/error message. The LLVM crash backtrace itself stays in
-    // the worker log: truncate the relay at the first "CRASH STACK TRACE" or
-    // "Stack dump" marker so the master log carries the diagnosis, not the
-    // (noisy, non-portable) stack frames.
+    // final assert/error message.
     std::string content;
     if(!options.log_dir.empty() &&
        !fs::read_file(content, path::join(options.log_dir, w.name + ".log"))) {
-        llvm::StringRef output = llvm::StringRef(content).drop_front(w.log_offset);
-        for(llvm::StringRef marker: {"CRASH STACK TRACE", "Stack dump"}) {
-            if(auto pos = output.find(marker); pos != llvm::StringRef::npos)
-                output = output.substr(0, pos);
-        }
-        output = output.rtrim();
-
-        constexpr std::size_t max_output = 4096;
-        if(output.size() > max_output) {
-            output = output.take_back(max_output);
-            if(auto nl = output.find('\n'); nl != llvm::StringRef::npos) {
-                output = output.drop_front(nl + 1);
-            }
-        }
-        if(!output.empty())
+        if(auto output = crash_output(content, w.log_offset); !output.empty())
             LOG_ERROR("Last output of crashed worker {}:\n{}", w.name, output);
     }
 
@@ -584,6 +567,26 @@ bool WorkerPool::process_crash(std::size_t index,
         return false;
     }
     return true;
+}
+
+llvm::StringRef WorkerPool::crash_output(llvm::StringRef log, std::size_t from) {
+    // The LLVM crash backtrace itself stays in the worker log: the master
+    // log carries the diagnosis, not the (noisy, non-portable) stack frames.
+    auto output = log.substr(from);
+    for(llvm::StringRef marker: {"CRASH STACK TRACE", "Stack dump"}) {
+        if(auto pos = output.find(marker); pos != llvm::StringRef::npos)
+            output = output.substr(0, pos);
+    }
+    output = output.rtrim();
+
+    constexpr std::size_t max_output = 4096;
+    if(output.size() > max_output) {
+        output = output.take_back(max_output);
+        if(auto nl = output.find('\n'); nl != llvm::StringRef::npos) {
+            output = output.drop_front(nl + 1);
+        }
+    }
+    return output;
 }
 
 ipc::Error WorkerPool::death_error(const WorkerDeath& death,

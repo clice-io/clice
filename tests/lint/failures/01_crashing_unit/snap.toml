@@ -8,9 +8,9 @@ stderr = '''
 warning: [SL-0] clice worker crashed in: clice/worker/compileUnit ${WS}/poison.cpp
 error: Last stderr of crashed worker SL-0:
 clice worker crashed in: clice/worker/compileUnit ${WS}/poison.cpp
-error: [anomaly:WorkerCrash] Worker SL-0 ${CRASH} (crash streak: 0)
 error: Last output of crashed worker SL-0:
 ===
+error: [anomaly:WorkerCrash] Worker SL-0 ${CRASH} (crash streak: 0)
 warning: Lint gave up on ${WS}/poison.cpp: it crashed the worker: ${CRASH}
 '''
 exit = 2

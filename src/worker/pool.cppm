@@ -495,6 +495,11 @@ private:
                                   llvm::StringRef tag,
                                   codec::dyn::Value identity);
 
+    /// What of a crashed worker's log the master's log quotes: the lines the
+    /// dead incarnation wrote from `from` on, its last few kilobytes, up to
+    /// the crash's stack trace.
+    static llvm::StringRef crash_output(llvm::StringRef log, std::size_t from);
+
     static SchedulerTime now() {
         return chrono::steady_clock::now();
     }

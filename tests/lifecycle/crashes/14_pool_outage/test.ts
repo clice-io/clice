@@ -64,5 +64,5 @@ test({ errors: ["exceeded crash budget"] }, async (t) => {
     }
     await t.show("sync", { failed: (await s.sync()).failed });
     await t.show("symbols after the revival", s.workspaceSymbols("unit_"));
-    await t.show("told", s.guidance());
+    await t.show("told", await s.guidance());
 });
