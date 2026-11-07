@@ -165,8 +165,9 @@ void LSPClient::register_document_requests() {
     // Whole-document features and hover are routed by readiness
     // (ServedProject::pick_route): the AST answers when current, the results
     // computed from the index answer while it is not, and a document that
-    // is not compiled answers what the index gives (empty inlay hints). Each forwards the request's
-    // cancellation token to the worker sends (ServedProject::ast_request).
+    // is not compiled answers what the index gives (empty inlay hints).
+    // Each forwards the request's cancellation token to the worker sends
+    // (ServedProject::ast_request).
     on_document<protocol::HoverParams>([this](RequestContext& ctx,
                                               const auto& params,
                                               ResolvedDoc document) -> RawResult {

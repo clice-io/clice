@@ -600,9 +600,10 @@ public:
     /// byte-identical to the buffer; otherwise the compile of a compiled
     /// document, or nothing for one that is not. Starts a compiled
     /// document's compile so an index answer never leaves it waiting for a
-    /// request that needs the AST. A Route::Index decision stores the admitted source into `source`
-    /// (when given) — callers must serve from it rather than re-derive, or
-    /// the state could shift between the decision and the read.
+    /// request that needs the AST. A Route::Index decision stores the
+    /// admitted source into `source` (when given) — callers must serve from
+    /// it rather than re-derive, or the state could shift between the
+    /// decision and the read.
     async::task<Route> pick_route(const Ticket& ticket,
                                   RouteOptions options,
                                   std::optional<index::IndexSource>* source = nullptr);

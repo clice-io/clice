@@ -210,8 +210,9 @@ private:
 
     /// Shared front half of every document-addressed handler: URI → path →
     /// interned path_id → a ticket on its open session (with none when the
-    /// document is not open) → the project serving it, held for the request: a folder removed
-    /// while the request runs keeps its project alive until it completes.
+    /// document is not open) → the project serving it, held for the
+    /// request: a folder removed while the request runs keeps its project
+    /// alive until it completes.
     /// `version` is the document's as the request names it, a second name's
     /// own. The ticket is taken as the request is dispatched, ahead of the
     /// messages read with it: an edit among those arrives before the
