@@ -1,5 +1,5 @@
 // The options of compilers other than nvcc that clang's table reads
-// otherwise or not at all, one row per spelling:
+// otherwise or not at all, one entry per spelling:
 //
 //   OWN_OPTION(SPELLING, KIND, CLANG, FAMILIES)
 //

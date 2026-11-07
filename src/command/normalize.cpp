@@ -51,60 +51,58 @@ CompilerFamily with_driver_mode(CompilerFamily family,
 
 using ParsedArgs = std::vector<std::expected<cli::ParsedArg, cli::Error>>;
 
-/// `staged` with what its `-Xclang` options pass on read by cc1's options.
-/// The command keeps them as written but for an option clice manages
-/// itself or the compile never takes, which goes as its driver spelling
-/// does (classify_option). CMake passes a target's precompiled header to
-/// cc1 directly, `-Xclang -include-pch -Xclang <pch>` in its units'
-/// commands, `-Xclang -emit-pch` in the one building it: the file on disk
-/// may come from GCC or another clang, so a unit loads clice's own build
-/// of it instead (Project::pch_writer). Bazel's module rules (xclang's)
-/// embed a module's sources in it (`-fmodules-embed-all-files`).
+/// `staged` with what its `-Xclang` options pass on read by cc1's options,
+/// which clang's driver passes their values to together, in order. The
+/// command keeps them as written but for an option clice manages itself or
+/// the compile never takes, which goes as its driver spelling does
+/// (classify_option). CMake passes a target's precompiled header to cc1
+/// directly, `-Xclang -include-pch -Xclang <pch>` in its units' commands,
+/// `-Xclang -emit-pch` in the one building it: the file on disk may come
+/// from GCC or another clang, so a unit loads clice's own build of it
+/// instead (Project::pch_writer). Bazel's module rules (xclang's) embed a
+/// module's sources in it (`-fmodules-embed-all-files`).
 ParsedArgs read_xclang(ParsedArgs staged, CommandTable& commands) {
-    ParsedArgs result;
-    result.reserve(staged.size());
-    for(std::size_t i = 0; i < staged.size();) {
-        auto end = i;
-        while(end < staged.size() && staged[end] && is_xclang_option(staged[end]->id)) {
-            end += 1;
+    llvm::SmallVector<std::size_t> xclang;
+    llvm::SmallVector<std::string_view> passed;
+    for(std::size_t i = 0; i < staged.size(); i += 1) {
+        if(staged[i] && is_xclang_option(staged[i]->id)) {
+            xclang.push_back(i);
+            passed.push_back(staged[i]->values[0]);
         }
-        if(end == i) {
-            result.push_back(std::move(staged[i]));
-            i += 1;
+    }
+    // The option an argument reads as in place of the -Xclang options it
+    // starts, which go.
+    std::vector<std::optional<cli::ParsedArg>> read(staged.size());
+    std::vector<bool> gone(staged.size());
+    auto cc1 = cli::ParseOptions{.visibility = clang_options::CC1Option};
+    for(auto& option: clang_options::table().parse(passed, cc1)) {
+        // An option missing its value, which only the last can be.
+        if(!option) {
+            break;
+        }
+        if(option->id == clang_options::OPT_UNKNOWN || option->id == clang_options::OPT_INPUT) {
             continue;
         }
-        llvm::SmallVector<std::string_view> passed;
-        for(auto k = i; k < end; k += 1) {
-            passed.push_back(staged[k]->values[0]);
+        llvm::SmallVector<const char*> values;
+        for(auto value: option->values) {
+            values.push_back(commands.intern(value).data());
         }
-        auto cc1 = cli::ParseOptions{.visibility = clang_options::CC1Option};
-        auto kept = i;
-        for(auto& option: clang_options::table().parse(passed, cc1)) {
-            // An option missing its value, which only the last can be.
-            if(!option) {
-                break;
-            }
-            if(option->id == clang_options::OPT_UNKNOWN || option->id == clang_options::OPT_INPUT) {
-                continue;
-            }
-            llvm::SmallVector<const char*> values;
-            for(auto value: option->values) {
-                values.push_back(commands.intern(value).data());
-            }
-            auto cls = classify_option(option->id, values);
-            if(cls && cls != ArgClass::Precompiled) {
-                continue;
-            }
-            for(; kept < i + option->index; kept += 1) {
-                result.push_back(std::move(staged[kept]));
-            }
-            kept = i + option->next_index;
-            result.push_back(std::move(option));
+        auto cls = classify_option(option->id, values);
+        if(cls && cls != ArgClass::Precompiled) {
+            continue;
         }
-        for(; kept < end; kept += 1) {
-            result.push_back(std::move(staged[kept]));
+        for(auto k = option->index; k < option->next_index; k += 1) {
+            gone[xclang[k]] = true;
         }
-        i = end;
+        read[xclang[option->index]] = std::move(*option);
+    }
+    ParsedArgs result;
+    for(std::size_t i = 0; i < staged.size(); i += 1) {
+        if(read[i]) {
+            result.push_back(std::move(*read[i]));
+        } else if(!gone[i]) {
+            result.push_back(std::move(staged[i]));
+        }
     }
     return result;
 }
@@ -217,14 +215,14 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
         parse_args.erase(parse_args.begin());
     }
 
-    auto spelling = spelling_family(command);
+    auto family = option_family(command);
     auto parse_options =
-        cli::ParseOptions{.dash_dash_parsing = true, .visibility = family_visibility(spelling)};
+        cli::ParseOptions{.dash_dash_parsing = true, .visibility = family_visibility(family)};
 
     /// Two passes: the staging pass keeps every parse result alive, so the
     /// classification pass can decide input pairing (which /Tc-/Tp names
     /// the entry file) before it lays down arguments.
-    auto staged = read_xclang(parse_arguments(parse_args, spelling, parse_options), commands);
+    auto staged = read_xclang(parse_arguments(parse_args, family, parse_options), commands);
 
     /// Relative paths of the command resolve where the compile runs: the
     /// entry directory, moved by `-working-directory`.
@@ -313,9 +311,10 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
         }
 
         /// g++ knows warnings clang does not (-Wlogical-op, -Wuseless-cast),
-        /// each of which clang would report as unknown on every file.
-        if(spelling == CompilerFamily::GCC && id == clang_options::OPT_W_Joined &&
-           !clang_warning(local->values[0])) {
+        /// each of which clang would report as unknown on every file: in its
+        /// commands, and in what nvcc passes it.
+        if((family == CompilerFamily::GCC || command.host == CompilerFamily::GCC) &&
+           id == clang_options::OPT_W_Joined && !clang_warning(local->values[0])) {
             continue;
         }
 

@@ -43,7 +43,7 @@ struct Command {
 /// The family whose spellings `command`'s arguments are in: those of an
 /// nvcc command whose host compiler is cl are cl's, nvcc passing what it
 /// does not know itself on to cl.
-constexpr CompilerFamily spelling_family(const Command& command) {
+constexpr CompilerFamily option_family(const Command& command) {
     return command.family == CompilerFamily::NVCC && cl_mode(command.host) ? command.host
                                                                            : command.family;
 }

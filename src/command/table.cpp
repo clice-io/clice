@@ -323,7 +323,7 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
             case ArgClass::Semantic:
             case ArgClass::UserContent:
             case ArgClass::Diagnostics:
-                render_driver_arg(arg, spelling_family(command), emit);
+                render_driver_arg(arg, option_family(command), emit);
                 if(arg.cls == ArgClass::UserContent) {
                     last_user_content = argv.size();
                 }
@@ -338,16 +338,19 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
                     auto type = suffix_type(source);
                     llvm::StringRef driver_lang =
                         type == types::TY_INVALID ? "" : types::getTypeName(type);
-                    if(driver_lang != llvm::StringRef(ref.language.value)) {
-                        if(cl_mode(spelling_family(command))) {
-                            if(llvm::StringRef(ref.language.value) == "c++") {
-                                emit("/TP");
-                            } else if(llvm::StringRef(ref.language.value) == "c") {
-                                emit("/TC");
-                            }
-                        } else {
+                    llvm::StringRef language(ref.language.value);
+                    bool cl = cl_mode(option_family(command));
+                    if(driver_lang != language) {
+                        if(cl && language == "c++") {
+                            emit("/TP");
+                        } else if(cl && language == "c") {
+                            emit("/TC");
+                        } else if(!cl || language == "cuda") {
+                            // cl has no selector of CUDA, which an nvcc
+                            // command with a cl host compiles: clang's -x
+                            // is one of cl mode's options too.
                             emit("-x");
-                            emit(ref.language.value);
+                            emit(language);
                         }
                     }
                 }

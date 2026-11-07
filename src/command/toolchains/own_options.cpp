@@ -40,11 +40,11 @@ const cli::OptTable& own_options() {
 
 }  // namespace
 
-OptionSpellings::OptionSpellings(std::uint32_t end, llvm::ArrayRef<Spelling> spellings) :
+OptionSpellings::OptionSpellings(std::uint32_t end, llvm::ArrayRef<Entry> spellings) :
     options(build(end, spellings, names)), opt_table(options) {}
 
 std::vector<cli::Option> OptionSpellings::build(std::uint32_t end,
-                                                llvm::ArrayRef<Spelling> spellings,
+                                                llvm::ArrayRef<Entry> spellings,
                                                 llvm::StringSaver& names) {
     std::vector<cli::Option> options = {cli::Option::input(input), cli::Option::unknown(unknown)};
     // An option of no spelling of its own, a group no argument matches.

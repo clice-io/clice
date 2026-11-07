@@ -56,7 +56,7 @@ const cli::OptTable& nvcc_table() {
 #undef NVCC_OPTION
     };
     const static OptionSpellings table(nvcc_options::OPT_END, [&] {
-        std::vector<OptionSpellings::Spelling> spellings;
+        std::vector<OptionSpellings::Entry> spellings;
         for(auto [index, option]: views::enumerate(options)) {
             auto id = static_cast<std::uint32_t>(OptionSpellings::first_option + index);
             for(auto [prefix, name]: {
@@ -965,7 +965,7 @@ async::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string
         }
     }
 
-    for(llvm::StringRef arg: flags_for_clang(args.drop_front(), spelling_family(command))) {
+    for(llvm::StringRef arg: flags_for_clang(args.drop_front(), option_family(command))) {
         auto option = nvcc_option(arg);
         if(option && is_query_option(option->id)) {
             /// The dryrun's resolution of an `-arch=<special>` token lands

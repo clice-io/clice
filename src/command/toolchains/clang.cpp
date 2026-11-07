@@ -112,7 +112,7 @@ std::expected<Job, std::string> query_driver(llvm::ArrayRef<std::string> args,
 
 bool names_standard(llvm::ArrayRef<Arg> args) {
     return ranges::any_of(args, [](const Arg& arg) {
-        return driver_option(arg) == clang_options::OPT_std_EQ;
+        return effective_option(arg) == clang_options::OPT_std_EQ;
     });
 }
 

@@ -55,8 +55,8 @@ CommandID
 
     Normalizer normalizer{.commands = commands, .files = files};
 
-    auto spelling = spelling_family(base);
-    auto remove_parse_options = cli::ParseOptions{.visibility = family_visibility(spelling)};
+    auto family = option_family(base);
+    auto remove_parse_options = cli::ParseOptions{.visibility = family_visibility(family)};
 
     /// One remove pattern: the option it names, and whether a `*` joined
     /// to the option's name takes every option spelled with that prefix
@@ -95,13 +95,13 @@ CommandID
                 }
             }
         };
-        for(auto parsed: parse_arguments(remove_flags, spelling, remove_parse_options)) {
+        for(auto parsed: parse_arguments(remove_flags, family, remove_parse_options)) {
             if(!parsed.has_value()) {
                 // An option written without its value, last in the list
                 // (`-include`), removes it with every value.
                 auto& wildcard = remove_storage.emplace_back(
                     std::vector<std::string>{remove_flags[parsed.error().begin], "*"});
-                auto retried = parse_arguments(wildcard, spelling, remove_parse_options)[0];
+                auto retried = parse_arguments(wildcard, family, remove_parse_options)[0];
                 if(!retried) {
                     LOG_WARN("A rule removes {}, which takes several values: write them",
                              wildcard[0]);
@@ -173,7 +173,7 @@ CommandID
                           const Spelling& anchor,
                           std::vector<LocalArg>& out) {
         std::vector<std::string> flags(edit_flags.begin(), edit_flags.end());
-        for(auto& parsed: parse_arguments(flags, spelling, remove_parse_options)) {
+        for(auto& parsed: parse_arguments(flags, family, remove_parse_options)) {
             auto added = commands.local_arg(parsed, flags);
             if(!added) {
                 continue;

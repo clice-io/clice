@@ -349,13 +349,14 @@ bool is_xclang_option(unsigned id) {
     return id == OPT_Xclang;
 }
 
-unsigned driver_option(const Arg& arg) {
-    if(arg.opt_id != OPT__SLASH_clang) {
+unsigned effective_option(const Arg& arg) {
+    if(arg.opt_id != OPT__SLASH_clang && arg.opt_id != OPT_Xclang) {
         return arg.opt_id;
     }
     std::array passed = {std::string_view(arg.values[0])};
-    auto options = cli::ParseOptions{.visibility = family_visibility(CompilerFamily::Clang)};
-    auto parsed = *clang_options::table().parse(passed, options).begin();
+    auto visibility =
+        arg.opt_id == OPT_Xclang ? unsigned(CC1Option) : family_visibility(CompilerFamily::Clang);
+    auto parsed = *clang_options::table().parse(passed, {.visibility = visibility}).begin();
     return parsed ? parsed->id : OPT_UNKNOWN;
 }
 

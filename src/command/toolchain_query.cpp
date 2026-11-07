@@ -152,7 +152,7 @@ async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
         if(command.family == CompilerFamily::NVCC) {
             std::erase_if(args, [](llvm::StringRef arg) { return is_nvcc_query_flag(arg); });
         }
-        job = std::move(read_as_clang(std::move(args), spelling_family(command), spec.cwd).job);
+        job = std::move(read_as_clang(std::move(args), option_family(command), spec.cwd).job);
     } else if(cl_mode(command.family)) {
         job = co_await ask_cl(args, command, input->path(), spec.cwd);
     } else if(command.family == CompilerFamily::NVCC) {

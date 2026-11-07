@@ -401,7 +401,7 @@ async::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::stri
         // asks for it.
         if(!ranges::contains(command.args,
                              clang_options::OPT_fdelayed_template_parsing,
-                             &Arg::opt_id)) {
+                             effective_option)) {
             std::erase(job.args, "-fdelayed-template-parsing");
         }
         if(!standard.empty()) {

@@ -1,4 +1,4 @@
-// nvcc's options, one row per option `nvcc --help` lists (CUDA 13.4), in its
+// nvcc's options, one entry per option `nvcc --help` lists (CUDA 13.4), in its
 // order:
 //
 //   NVCC_OPTION(ID, NAME, SHORT_NAME, VALUE)

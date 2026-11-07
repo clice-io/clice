@@ -16,4 +16,5 @@ test("nvcc options", { errors: [MISSING, UNCONVERTED] }, async (t) => {
     await t.cli(
         'command convert -- nvcc-missing -ccbin cl --cuda-path=missing-cuda "-Xcompiler= /EHsc /W4" -Xcompiler=-MDd,-Fdk.pdb,-FS -c main.cu',
     );
+    await t.cli("command convert -- nvcc-missing -ccbin cl --cuda-path=missing-cuda -c kernel.cuh");
 });

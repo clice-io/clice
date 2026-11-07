@@ -290,26 +290,38 @@ ZEST_CASE(ChoiceNamesWrittenCommand) {
     ZEXPECT(!project.choice_holds(file, choice));
 }
 
-ZEST_CASE(LabelsTellCLFlags) {
-    // A cl command's macros and optimization levels set it apart as
-    // clang's do.
+ZEST_CASE(LabelsTellFlags) {
+    // The macros, optimization levels and standards that set a command
+    // apart, clang's or cl's.
     tmp.touch("main.cpp");
-    auto entry = [&](llvm::StringRef define, llvm::StringRef optimize) {
-        return std::format(
-            R"({{"directory": "{}", "file": "main.cpp", "arguments": ["cl", "{}", "{}", "/c", "main.cpp"]}})",
-            json_escape(tmp.root),
-            define,
-            optimize);
+    tmp.touch("other.cpp");
+    auto entry = [&](llvm::StringRef file, llvm::StringRef flags) {
+        return std::format(R"({{"directory": "{}", "file": "{}", "command": "{} {}"}})",
+                           json_escape(tmp.root),
+                           file,
+                           flags,
+                           file);
     };
     write_cdb(tmp,
               project.cdb,
-              std::format("[{},\n{}]", entry("/DFIRST", "/O1"), entry("/DSECOND", "/O2")));
-    llvm::SmallVector<std::string> labels;
-    for(auto& item: project.list_contexts(fx.intern(tmp.path("main.cpp")))) {
-        labels.push_back(item.label);
-    }
-    ZEXPECT(ranges::contains(labels, "-DFIRST /O1"));
-    ZEXPECT(ranges::contains(labels, "-DSECOND /O2"));
+              std::format("[{},\n{},\n{},\n{}]",
+                          entry("main.cpp", "cl /DFIRST /O1 /std:c++17 /c"),
+                          entry("main.cpp", "cl /DSECOND /O2 /std:c++20 /c"),
+                          entry("other.cpp", "clang++ -O0 -c"),
+                          entry("other.cpp", "clang++ -O2 -c")));
+    auto labels = [&](llvm::StringRef file) {
+        llvm::SmallVector<std::string> labels;
+        for(auto& item: project.list_contexts(fx.intern(tmp.path(file)))) {
+            labels.push_back(item.label);
+        }
+        return labels;
+    };
+    auto cl = labels("main.cpp");
+    ZEXPECT(ranges::contains(cl, "-DFIRST /O1 /std:c++17"));
+    ZEXPECT(ranges::contains(cl, "-DSECOND /O2 /std:c++20"));
+    auto clang = labels("other.cpp");
+    ZEXPECT(ranges::contains(clang, "-O0"));
+    ZEXPECT(ranges::contains(clang, "-O2"));
 }
 
 ZEST_CASE(ValidChoiceStaysActive) {

@@ -14,7 +14,7 @@ namespace clice {
 /// takes cl's `-` too.
 class OptionSpellings {
 public:
-    struct Spelling {
+    struct Entry {
         std::string name;
 
         cli::OptionKind kind;
@@ -35,7 +35,7 @@ public:
     constexpr static std::uint32_t first_option = 3;
 
     /// The options `first_option` to `end` - 1, named by `spellings`.
-    OptionSpellings(std::uint32_t end, llvm::ArrayRef<Spelling> spellings);
+    OptionSpellings(std::uint32_t end, llvm::ArrayRef<Entry> spellings);
 
     OptionSpellings(const OptionSpellings&) = delete;
 
@@ -45,7 +45,7 @@ public:
 
 private:
     static std::vector<cli::Option> build(std::uint32_t end,
-                                          llvm::ArrayRef<Spelling> spellings,
+                                          llvm::ArrayRef<Entry> spellings,
                                           llvm::StringSaver& names);
 
 private:

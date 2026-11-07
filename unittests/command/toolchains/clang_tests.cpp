@@ -96,8 +96,10 @@ ZEST_CASE(NamesStandard) {
     ZEXPECT(names("a.cpp", {"g++", "-std=c++20"}));
     ZEXPECT(names("b.cpp", {"g++", "--std", "c++0x"}));
     ZEXPECT(!names("c.cpp", {"clang++", "--stdlib", "libc++"}));
-    /// Through clang-cl's `/clang:` too; cl's own `/std:` is cl's to tell.
+    /// Through clang-cl's `/clang:` or -Xclang too; cl's own `/std:` is
+    /// cl's to tell.
     ZEXPECT(names("d.cpp", {"clang-cl", "/clang:-std=c++20", "/c"}));
+    ZEXPECT(names("g.cpp", {"clang++", "-Xclang", "-std=c++20"}));
     ZEXPECT(!names("e.cpp", {"clang-cl", "/clang:-stdlib=libc++", "/c"}));
     ZEXPECT(!names("f.cpp", {"cl", "/std:c++20", "/c"}));
 }

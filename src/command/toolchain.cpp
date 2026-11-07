@@ -328,7 +328,7 @@ Toolchain::QueryKey Toolchain::query_key(CommandID id, InputKind input) {
             continue;
         }
         out.key +=
-            std::to_string(keeps_alias(arg, spelling_family(command)) ? arg.alias : arg.opt_id);
+            std::to_string(keeps_alias(arg, option_family(command)) ? arg.alias : arg.opt_id);
         out.key += '\0';
         /// All unknown options share one id; their identity is the spelling
         /// (the NVCC translation carries `-ccbin=<path>` through here, and
@@ -373,7 +373,7 @@ Toolchain::QueryArgv Toolchain::query_argv(const Command& command) {
             out.argv.push_back(arg.spelling);
             continue;
         }
-        render_driver_arg(arg, spelling_family(command), emit);
+        render_driver_arg(arg, option_family(command), emit);
     }
 
     return out;
@@ -789,7 +789,7 @@ std::vector<const char*> Toolchain::render_for_clang(const CommandRef& ref,
     auto driver = commands.render_driver(ref, path, opts);
     // Resolving the command read it already, and logged what the driver said.
     auto reading = read_as_clang({driver.begin(), driver.end()},
-                                 spelling_family(command),
+                                 option_family(command),
                                  command.directory,
                                  /*quiet=*/true);
     std::vector<const char*> argv;

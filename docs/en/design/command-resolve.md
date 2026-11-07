@@ -135,7 +135,7 @@ CDB loading uses simdjson for streaming JSON parsing, processing entries one by 
 
 1. Read each entry's `directory`, `file`, and `arguments` (or `command`) fields
 2. Expand response files (`@file`), driver-mode aware, tolerating UTF-16 encoded files and nesting
-3. Translate NVCC commands into an equivalent clang CUDA invocation: nvcc's options are read by a table of their own, every option in its long and short spellings, and what nvcc passes its host compiler (`-Xcompiler`) is split as that compiler splits its command line and read as its options: cl's on Windows, GCC's elsewhere, or those of the compiler `-ccbin` names
+3. Translate NVCC commands into an equivalent clang CUDA invocation: nvcc's options are read by a table of their own, every option in its long and short spellings, and what nvcc passes its host compiler (`-Xcompiler`) is split as that compiler splits its command line: the compiler `-ccbin` names, else cl on Windows and GCC elsewhere. A cl host's flags read as cl's options, and a GCC host's warnings clang does not know go, as in a GCC command
 4. Filter out non-C/C++ files (e.g., `.rc`, `.asm`, `.def`)
 5. Resolve relative file paths to absolute paths
 6. Parse and classify each option once into the structured command, absolutizing relative include paths against `directory`. A spelling clang's option table does not know but the compiler does is read by a table of the compiler's own spellings: as the clang option it means (Intel's `-qopenmp`, `/Qstd:`, `/fsycl`), or dropped when only the build reads it (GCC's `-fmodule-mapper=`)

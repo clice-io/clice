@@ -215,6 +215,17 @@ ZEST_CASE(XclangReadByCC1) {
     ZEXPECT(!llvm::StringRef(argv).contains("fmodule-file"));
     ZEXPECT(llvm::StringRef(argv).contains(
         "-Xclang -include -Xclang pch.hxx -Xclang -fno-pch-timestamp"));
+
+    /// The driver passes every -Xclang value on together: a precompiled
+    /// header and its file need not stand side by side.
+    database.add_command("/fake",
+                         "b.cpp",
+                         "clang++ -Xclang -include-pch -Wall -Xclang b.pch b.cpp"sv);
+    auto& command = commands.get(database.candidate_entries(fake("b.cpp")).front().command);
+    auto pch = ranges::find(command.args, clang_options::OPT_include_pch, &Arg::opt_id);
+    ZASSERT(pch != command.args.end());
+    ZEXPECT(llvm::StringRef(pch->values[0]).ends_with("b.pch"));
+    ZEXPECT(!ranges::contains(command.args, clang_options::OPT_Xclang, &Arg::opt_id));
 };
 
 };  // ZEST_SUITE(Normalize)

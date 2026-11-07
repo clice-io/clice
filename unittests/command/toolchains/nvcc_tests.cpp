@@ -1,5 +1,6 @@
 module clice;
 
+import :command.argument;
 import :command.database;
 import :command.edit;
 import :command.table;
@@ -230,6 +231,31 @@ ZEST_CASE(CLHostSpellings) {
     ZEXPECT(has(clang_options::OPT__SLASH_MDd));
     ZEXPECT(!has(clang_options::OPT__SLASH_Fd));
     ZEXPECT(!has(clang_options::OPT_F));
+
+    // A rule's flags for it read as cl's too.
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Append, {"-Xcompiler=/DRULED"}}
+    };
+    auto edited = commands.get(apply_edits(commands, file_table, entry.command, {.edits = edits}));
+    ZEXPECT(ranges::any_of(edited.args, [](const Arg& arg) {
+        return arg.opt_id == clang_options::OPT_D && llvm::StringRef(arg.values[0]) == "RULED";
+    }));
+}
+
+ZEST_CASE(HostWarningsClangLacks) {
+    // A GCC host's warnings clang does not know go, as in a GCC command.
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase db{file_table, commands};
+    std::vector<const char*> arguments = {"nvcc",
+                                          "-ccbin=g++",
+                                          "-Xcompiler=-Wlogical-op,-Wshadow",
+                                          "-c",
+                                          "/tmp/k.cu"};
+    db.add_command("/tmp", "/tmp/k.cu", arguments);
+    auto flags = commands.render_full(db.candidate_entries("/tmp/k.cu").front().command);
+    ZEXPECT(contains(flags, "-Wshadow"));
+    ZEXPECT(!contains(flags, "-Wlogical-op"));
 }
 
 ZEST_CASE(MacroToggles) {
@@ -1170,6 +1196,37 @@ End of search list.)",
                                          tmp.path("host/include")};
     ZEXPECT(dirs == expected);
     ZEXPECT(!contains(argv, "-Werror"));
+}
+
+ZEST_CASE(NVCCHostCL, skip = Windows) {
+    /// With a cl host, the dryrun, which Windows' nvcc prints on stdout,
+    /// names cl's dialect and version: clang's driver in cl mode builds the
+    /// job in them, with nvcc's macros and, in the host view, the C++
+    /// exceptions of the /EHsc nvcc gives cl. A standard the command gives
+    /// cl stands.
+    fake_driver("cl.exe", "");
+    auto nvcc = fake_driver("nvcc",
+                            std::format(R"(cat <<'DRYRUN'
+#$ TOP={0}/cuda
+#$ PATH={0}
+#$ cl.exe > "k.cpp4.ii" -D__CUDA_ARCH_LIST__=750 -nologo -E -TP -EHsc -D__CUDACC__ -D__NVCC__ -D__CUDACC_VER_MAJOR__=13 "k.cu"
+#$ cudafe++ --ms_c++14 --microsoft_version=1951 "k.cu"
+#$ cl.exe > "k.cpp1.ii" -D__CUDA_ARCH__=750 -D__CUDA_ARCH_LIST__=750 -nologo -E -TP -EHsc -D__CUDACC__ -D__NVCC__ -D__CUDACC_VER_MAJOR__=13 "k.cu"
+#$ cicc --ms_c++14 -arch compute_75 "k.cpp1.ii" -o "k.ptx"
+DRYRUN
+)",
+                                        tmp.root));
+    auto argv = f.resolve(add("a.cu", {nvcc.c_str(), "-ccbin", "cl", "-c"}));
+    ZEXPECT(contains(argv, "-fms-compatibility-version=19.51"));
+    ZEXPECT(contains(argv, "-std=c++14"));
+    ZEXPECT(adjacent(argv, "-D", "__CUDACC_VER_MAJOR__=13"));
+    auto host = f.resolve(add("c.cu", {nvcc.c_str(), "-ccbin", "cl", "--cuda-host-only", "-c"}));
+    ZEXPECT(contains(host, "-fcxx-exceptions"));
+
+    auto chosen =
+        f.resolve(add("b.cu", {nvcc.c_str(), "-ccbin", "cl", "-Xcompiler=/std:c++20", "-c"}));
+    ZEXPECT(contains(chosen, "-std=c++20"));
+    ZEXPECT(!contains(chosen, "-std=c++14"));
 }
 
 ZEST_CASE(NVCCUnknownHost, skip = Windows) {

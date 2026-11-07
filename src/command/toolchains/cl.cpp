@@ -75,7 +75,7 @@ async::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> 
                 query.emplace_back(part);
             });
         }
-        auto id = driver_option(arg);
+        auto id = effective_option(arg);
         names_version = names_version || id == clang_options::OPT_fms_compatibility_version ||
                         id == clang_options::OPT_fmsc_version;
     }
