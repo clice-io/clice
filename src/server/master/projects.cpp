@@ -4,7 +4,6 @@ import :project.discovery;
 import :server.client;
 import :server.master;
 import :server.served_project;
-import :settings.settings;
 import :support.logging;
 import :vfs.path;
 
@@ -173,30 +172,6 @@ void MasterServer::replace_shown(Document& document) {
     }
 }
 
-void MasterServer::ask_restart(RestartReason reason) {
-    if(!reason.topic.empty()) {
-        std::erase_if(restart_reasons,
-                      [&](const RestartReason& earlier) { return earlier.topic == reason.topic; });
-    }
-    if(ranges::contains(restart_reasons, reason.message, &RestartReason::message)) {
-        return;
-    }
-    LOG_INFO("Restart needed: {}", reason.message);
-    restart_reasons.push_back(std::move(reason));
-    if(client) {
-        client->ask_for_restart();
-    }
-}
-
-void MasterServer::withdraw_restart(llvm::StringRef topic) {
-    if(std::erase_if(restart_reasons,
-                     [&](const RestartReason& reason) { return reason.topic == topic; }) > 0) {
-        if(client) {
-            client->ask_for_restart();
-        }
-    }
-}
-
 void MasterServer::discover_around(Fid path_id) {
     auto path = files.resolve(path_id);
     for(auto& project: projects) {
@@ -204,6 +179,14 @@ void MasterServer::discover_around(Fid path_id) {
             project->discover_around(path_id);
         }
     }
+}
+
+std::size_t MasterServer::apply_disk_changes() {
+    auto changed = files.disk.take_changes();
+    for(auto& project: projects) {
+        project->disk_changed(changed);
+    }
+    return changed.size();
 }
 
 void MasterServer::change_folders(std::vector<Spelling> removed, std::vector<Spelling> added) {
@@ -395,61 +378,6 @@ void MasterServer::fold_index_progress() {
     index_progress = all;
     if(client) {
         client->report_index_progress();
-    }
-}
-
-void MasterServer::watch_settings() {
-    std::vector<CanonicalPath> dirs(folders.begin(), folders.end());
-    for(auto& project: projects) {
-        auto more = project->configuration_dirs();
-        dirs.insert(dirs.end(),
-                    std::make_move_iterator(more.begin()),
-                    std::make_move_iterator(more.end()));
-    }
-    ranges::sort(dirs);
-    dirs.erase(ranges::unique(dirs).begin(), dirs.end());
-    std::vector<SettingsWatch> watches;
-    for(auto& dir: dirs) {
-        if(auto it = ranges::find(settings_watches, dir, &SettingsWatch::dir);
-           it != settings_watches.end()) {
-            watches.push_back(std::move(*it));
-            continue;
-        }
-        auto& watch = watches.emplace_back(SettingsWatch{
-            .dir = dir,
-            .file = {.path = path::join(dir, settings_file_names[0])},
-            .hidden = {.path = path::join(dir, settings_file_names[1])},
-        });
-        watch.file.look();
-        watch.hidden.look();
-    }
-    settings_watches = std::move(watches);
-}
-
-void MasterServer::look_at_settings() {
-    // Whether a configuration file is there and what it holds, unreadable
-    // or not: a save that keeps the content changes nothing.
-    auto content = [](const vfs::Flag& flag) {
-        return std::pair(flag.stamp.has_value(), flag.hash);
-    };
-    for(auto& watch: settings_watches) {
-        auto file = content(watch.file);
-        auto hidden = content(watch.hidden);
-        watch.file.look();
-        watch.hidden.look();
-        if(content(watch.file) == file && (watch.file.stamp || content(watch.hidden) == hidden)) {
-            continue;
-        }
-        auto& in_use = watch.file.stamp ? watch.file : watch.hidden;
-        if(!in_use.stamp) {
-            ask_restart({.message = std::format("The configuration file of {} was deleted",
-                                                files.display(watch.dir))});
-            continue;
-        }
-        ask_restart({
-            .file = in_use.path,
-            .message = std::format("{} changed", files.display_identity(in_use.path)),
-        });
     }
 }
 

@@ -72,10 +72,10 @@ struct NotifyMessage {
 /// (ServedProject) holds what it derives from the documents it is given; the
 /// editor's state is one per process, so a document moving between projects
 /// changes owner and nothing is carried. Its work is split in files:
-/// startup and shutdown (lifecycle.cpp), the projects and the documents'
-/// owners (projects.cpp), the documents (documents.cpp), the context choices
-/// (contexts.cpp), polling (polling.cpp), test hooks (test_hooks.cpp) and
-/// the transports (serve.cpp).
+/// startup, the ticks, restarts and shutdown (lifecycle.cpp), the projects
+/// and the documents' owners (projects.cpp), the documents (documents.cpp),
+/// the context choices (contexts.cpp), test hooks (test_hooks.cpp) and the
+/// transports (serve.cpp).
 class MasterServer {
 public:
     MasterServer(async::event_loop& loop, std::string requested_configuration);
@@ -135,28 +135,6 @@ public:
         memory_freed = true;
     }
 
-    // projects.cpp
-
-    /// Stop serving the `removed` folders and serve the `added` ones
-    /// (didChangeWorkspaceFolders); before initialize, edit the folders it
-    /// will serve. The projects follow the folders (see project_roots);
-    /// open documents of a project that stops serving move to the project
-    /// pick_owner picks for them now. A folder both removed and added (a
-    /// rename) keeps serving.
-    void change_folders(std::vector<Spelling> removed, std::vector<Spelling> added);
-
-    /// The project serving a file: the owner of its open document, else
-    /// the one pick_owner picks now.
-    ServedProject& owner_of(Fid path_id);
-
-    /// Every open document that pick_owner now gives to another project
-    /// moves there (change_owner).
-    void update_owners();
-
-    /// A project's indexing progress moved: fold every project's pass
-    /// into index_progress and tell the client.
-    void index_progress_changed(ServedProject& project);
-
     /// What the server was started on changed: a configuration file, the
     /// build the databases resolve to, the build configuration selected.
     /// Only a new process applies it, and only the editor can start one: it
@@ -180,6 +158,32 @@ public:
     /// looked. clice.toml is the one in use where it exists, else
     /// .clice/config.toml.
     void look_at_settings();
+
+    // projects.cpp
+
+    /// Stop serving the `removed` folders and serve the `added` ones
+    /// (didChangeWorkspaceFolders); before initialize, edit the folders it
+    /// will serve. The projects follow the folders (see project_roots);
+    /// open documents of a project that stops serving move to the project
+    /// pick_owner picks for them now. A folder both removed and added (a
+    /// rename) keeps serving.
+    void change_folders(std::vector<Spelling> removed, std::vector<Spelling> added);
+
+    /// The project serving a file: the owner of its open document, else
+    /// the one pick_owner picks now.
+    ServedProject& owner_of(Fid path_id);
+
+    /// Every open document that pick_owner now gives to another project
+    /// moves there (change_owner).
+    void update_owners();
+
+    /// A project's indexing progress moved: fold every project's pass
+    /// into index_progress and tell the client.
+    void index_progress_changed(ServedProject& project);
+
+    /// Hand the disk changes the file table saw to every project knowing
+    /// the file (ServedProject::knows); how many there were.
+    std::size_t apply_disk_changes();
 
     // documents.cpp
 
@@ -305,12 +309,6 @@ public:
     /// again for what it shows. Refused in a project that never compiles.
     ext::SwitchContextResult show_other_contexts(Fid path_id, bool show);
 
-    // polling.cpp
-
-    /// Hand the disk changes the file table saw to every project knowing
-    /// the file (ServedProject::knows); how many there were.
-    std::size_t apply_disk_changes();
-
     // test_hooks.cpp
 
     /// Test hook (clice/internal/sync): wait until nothing is in flight.
@@ -423,6 +421,10 @@ private:
     /// the editor's output panel.
     void log_settings(const ServedProject& project) const;
 
+    /// The master's ticks: the files and databases looked at while polling
+    /// is on, the configuration files, and the memory freed meanwhile.
+    async::task<> poll_task();
+
     // projects.cpp
 
     /// A project over `root`.
@@ -502,10 +504,6 @@ private:
     /// The generation of the context listings: it advances whenever a
     /// project's context epoch does or the projects served change.
     std::uint64_t context_epoch();
-
-    // polling.cpp
-
-    async::task<> poll_task();
 
 private:
     std::uint64_t context_generation = 0;

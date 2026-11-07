@@ -311,8 +311,10 @@ Value empty_value() {
 /// everything the project derives for them. Its work is
 /// split in files: lifetime, adoption and the open documents' commands
 /// (served_project.cpp), compiling the open documents (compile.cpp), what
-/// answers a request on them now and asking the workers (answer.cpp), and
-/// handling changes of its inputs (changes.cpp). Shared: a request in
+/// their diagnostics show — the compile's output, the crash notes, the
+/// skipped-body diagnostics — (diagnostics.cpp), what answers a request on
+/// them now and asking the workers (answer.cpp), and handling changes of
+/// its inputs (changes.cpp). Shared: a request in
 /// flight keeps a removed project alive until it completes.
 class ServedProject final : public std::enable_shared_from_this<ServedProject> {
 public:
@@ -443,20 +445,6 @@ public:
     /// changed and what a disk change reaches are the same files.
     void each_input(Fid path_id, llvm::function_ref<void(const Inputs&)> visit) const;
 
-    /// A dispatch of `kind` killed a worker on the document's content:
-    /// `death` is the death's identity (worker::death_of), `cause` how it
-    /// died. Records it in the document's crash records and republishes,
-    /// so the crash note shows.
-    void record_crash(const std::shared_ptr<Session>& session,
-                      feature::RequestKind kind,
-                      llvm::StringRef death,
-                      std::string cause);
-
-    /// Push the document's output again: its crash notes changed with no
-    /// compile to carry them. A document that never compiled gets an empty
-    /// versionless output to hang them on.
-    void republish(const std::shared_ptr<Session>& session);
-
     /// The compile, or the preamble it consumes, crashed a worker and may
     /// not retry now: the document has no AST to offer.
     bool compile_stopped(const Session& session) const;
@@ -485,6 +473,29 @@ public:
     /// index.
     bool index_current(Fid path_id) const;
 
+    /// Interrupt every in-flight parse and wait for the detached compile
+    /// joins. The attempts themselves finish in TaskGraph::shutdown — the
+    /// interruption is what keeps that finish prompt (an attempt's stateful
+    /// send carries the interrupt, not its advisory token: contract 2 wants
+    /// the real reply, and the interrupt makes it arrive early).
+    async::task<> stop_compiles();
+
+    // diagnostics.cpp
+
+    /// A dispatch of `kind` killed a worker on the document's content:
+    /// `death` is the death's identity (worker::death_of), `cause` how it
+    /// died. Records it in the document's crash records and republishes,
+    /// so the crash note shows.
+    void record_crash(const std::shared_ptr<Session>& session,
+                      feature::RequestKind kind,
+                      llvm::StringRef death,
+                      std::string cause);
+
+    /// Push the document's output again: its crash notes changed with no
+    /// compile to carry them. A document that never compiled gets an empty
+    /// versionless output to hang them on.
+    void republish(const std::shared_ptr<Session>& session);
+
     /// What the document's diagnostics show of a compile output of its:
     /// the output's diagnostics (feature::shown_diagnostics), then the
     /// crash notes. The one assembly of the pull and of the push, which
@@ -496,13 +507,6 @@ public:
     /// waiting for one: the output's diagnostics while it describes the
     /// buffer, then the crash notes; nothing once the document closed.
     std::vector<feature::FileDiagnostic> finished_diagnostics(const Session& session) const;
-
-    /// Interrupt every in-flight parse and wait for the detached compile
-    /// joins. The attempts themselves finish in TaskGraph::shutdown — the
-    /// interruption is what keeps that finish prompt (an attempt's stateful
-    /// send carries the interrupt, not its advisory token: contract 2 wants
-    /// the real reply, and the interrupt makes it arrive early).
-    async::task<> stop_compiles();
 
     // served_project.cpp: the open documents' commands
 
@@ -783,13 +787,6 @@ private:
     /// final shutdown save covers it).
     void schedule_metadata_flush();
 
-    /// Book a background run for the document's skipped-body diagnostics when
-    /// it shows them and lacks those of its text, as after a restart, when
-    /// the index is current and runs nothing, or after a change of its
-    /// inputs dropped them: first in the queue, or (`first` off) in its
-    /// turn. Only a file of its own database entry is reported on
-    /// (UnitRequest::skipped_diagnostics).
-    void book_skipped_diagnostics(const ServedDocument& document, bool first);
     async::task<> metadata_flush_task();
 
     /// The periodic Project::checkpoint().
@@ -838,13 +835,23 @@ private:
     /// The document's attempt moved on to `phase`: the client follows it.
     void enter_phase(Fid path_id, CompilePhase phase);
 
+    /// Replace the document's latest compile with a copy `edit` changes
+    /// (readers holding the old shared_ptr are unaffected).
+    void update_latest(Fid path_id, llvm::function_ref<void(DocumentCompile&)> edit);
+
+    // diagnostics.cpp
+
     /// Push the document's output to the client: `compiled` when a compile
     /// produced it, not when only the diagnostics it shows changed.
     void push_output(const Session& session, bool compiled);
 
-    /// Replace the document's latest compile with a copy `edit` changes
-    /// (readers holding the old shared_ptr are unaffected).
-    void update_latest(Fid path_id, llvm::function_ref<void(DocumentCompile&)> edit);
+    /// Book a background run for the document's skipped-body diagnostics when
+    /// it shows them and lacks those of its text, as after a restart, when
+    /// the index is current and runs nothing, or after a change of its
+    /// inputs dropped them: first in the queue, or (`first` off) in its
+    /// turn. Only a file of its own database entry is reported on
+    /// (UnitRequest::skipped_diagnostics).
+    void book_skipped_diagnostics(const ServedDocument& document, bool first);
 
     /// The file's last background run brought new skipped-body diagnostics:
     /// what the editor's compile, which skips the function bodies of the

@@ -13,6 +13,7 @@ import :support.environment;
 import :support.logging;
 import :support.process;
 import :vfs.file_system;
+import :vfs.path;
 import :worker.probe;
 import :worker.resources;
 
@@ -167,6 +168,114 @@ void MasterServer::initialize() {
     }
     if(client) {
         client->publish_settings_diagnostics();
+    }
+}
+
+async::task<> MasterServer::poll_task() {
+    // A tick's looks run on the event loop: bounded, so a backlog (a
+    // checkout making every file of a project due) spreads over ticks instead
+    // of stalling requests.
+    constexpr auto interval = chrono::milliseconds(250);
+    constexpr auto budget = chrono::milliseconds(2);
+    while(true) {
+        // Time is the feature: the disk loop's pace.
+        co_await async::sleep(interval);
+        if(polling_files) {
+            if(files.disk.tick(budget) > 0) {
+                probe.happened(LoopEvent::DiskChange);
+            }
+            for(auto& project: projects) {
+                if(project->project.settings.tracker.workspace_poll_seconds > 0 &&
+                   project->reload_databases(false) > 0) {
+                    probe.happened(LoopEvent::DatabaseChange);
+                }
+            }
+        }
+        look_at_settings();
+        if(std::exchange(memory_freed, false)) {
+            // On this thread, whose heap held the documents: mimalloc
+            // collects only the calling thread's heap.
+            release_free_memory();
+        }
+    }
+}
+
+void MasterServer::ask_restart(RestartReason reason) {
+    if(!reason.topic.empty()) {
+        std::erase_if(restart_reasons,
+                      [&](const RestartReason& earlier) { return earlier.topic == reason.topic; });
+    }
+    if(ranges::contains(restart_reasons, reason.message, &RestartReason::message)) {
+        return;
+    }
+    LOG_INFO("Restart needed: {}", reason.message);
+    restart_reasons.push_back(std::move(reason));
+    if(client) {
+        client->ask_for_restart();
+    }
+}
+
+void MasterServer::withdraw_restart(llvm::StringRef topic) {
+    if(std::erase_if(restart_reasons,
+                     [&](const RestartReason& reason) { return reason.topic == topic; }) > 0) {
+        if(client) {
+            client->ask_for_restart();
+        }
+    }
+}
+
+void MasterServer::watch_settings() {
+    std::vector<CanonicalPath> dirs(folders.begin(), folders.end());
+    for(auto& project: projects) {
+        auto more = project->configuration_dirs();
+        dirs.insert(dirs.end(),
+                    std::make_move_iterator(more.begin()),
+                    std::make_move_iterator(more.end()));
+    }
+    ranges::sort(dirs);
+    dirs.erase(ranges::unique(dirs).begin(), dirs.end());
+    std::vector<SettingsWatch> watches;
+    for(auto& dir: dirs) {
+        if(auto it = ranges::find(settings_watches, dir, &SettingsWatch::dir);
+           it != settings_watches.end()) {
+            watches.push_back(std::move(*it));
+            continue;
+        }
+        auto& watch = watches.emplace_back(SettingsWatch{
+            .dir = dir,
+            .file = {.path = path::join(dir, settings_file_names[0])},
+            .hidden = {.path = path::join(dir, settings_file_names[1])},
+        });
+        watch.file.look();
+        watch.hidden.look();
+    }
+    settings_watches = std::move(watches);
+}
+
+void MasterServer::look_at_settings() {
+    // Whether a configuration file is there and what it holds, unreadable
+    // or not: a save that keeps the content changes nothing.
+    auto content = [](const vfs::Flag& flag) {
+        return std::pair(flag.stamp.has_value(), flag.hash);
+    };
+    for(auto& watch: settings_watches) {
+        auto file = content(watch.file);
+        auto hidden = content(watch.hidden);
+        watch.file.look();
+        watch.hidden.look();
+        if(content(watch.file) == file && (watch.file.stamp || content(watch.hidden) == hidden)) {
+            continue;
+        }
+        auto& in_use = watch.file.stamp ? watch.file : watch.hidden;
+        if(!in_use.stamp) {
+            ask_restart({.message = std::format("The configuration file of {} was deleted",
+                                                files.display(watch.dir))});
+            continue;
+        }
+        ask_restart({
+            .file = in_use.path,
+            .message = std::format("{} changed", files.display_identity(in_use.path)),
+        });
     }
 }
 
