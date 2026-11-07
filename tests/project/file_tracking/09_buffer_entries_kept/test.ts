@@ -8,6 +8,9 @@ test("dependency change keeps buffer entries", async (t) => {
     expect(await s.errors("a.cpp")).toEqual([]);
     await s.indexed();
     expect(await s.errors("b.cpp")).toEqual([]);
+    // Opening b.cpp runs it in the background for its unused includes: that
+    // run is done before the parks below wait for the reindexes.
+    await s.indexed();
     s.edit("b.cpp", { after: "shared_sym; }\n", insert: "// unsaved\n" });
     expect(await s.errors("b.cpp")).toEqual([]);
     const use = t.at("a.cpp", "return |shared_sym");
