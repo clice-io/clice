@@ -56,6 +56,11 @@ describe("tokenDifferences", () => {
             tokenDifferences("a.cpp", ast, [token(0, "operator", ["userDefined"])]),
         ).toHaveLength(1);
     });
+
+    test("a token in code the AST dims passes", () => {
+        const ast = [{ ...token(0, "plain", ["inactive"]), length: 13 }];
+        expect(tokenDifferences("a.cpp", ast, [token(7, "macro")])).toEqual([]);
+    });
 });
 
 describe("foldDifferences", () => {

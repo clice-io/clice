@@ -64,12 +64,25 @@ export function tokenDifferences(
     index: readonly Token[],
 ): string[] {
     const byStart = new Map<string, Token>();
+    const inactive: Token[] = [];
     for (const token of ast) {
         byStart.set(`${String(token.line)}:${String(token.character)}`, token);
+        if (token.modifiers.includes("inactive")) {
+            inactive.push(token);
+        }
     }
+    // The index has no entry in code the AST dims: what it gives there is
+    // the lexer's, a directive's macro name too.
+    const dimmed = (token: Token): boolean =>
+        inactive.some(
+            (dim) =>
+                dim.line === token.line &&
+                dim.character <= token.character &&
+                token.character < dim.character + dim.length,
+        );
     const differences: string[] = [];
     for (const token of index) {
-        if (lexical(token)) {
+        if (lexical(token) || dimmed(token)) {
             continue;
         }
         const where = `${file}:${String(token.line + 1)}:${String(token.character + 1)}`;
