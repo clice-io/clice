@@ -1,6 +1,7 @@
 module clice;
 
 import :compile.compilation;
+import :compile.inactive_regions;
 import :feature.folding_ranges;
 import :index.entries;
 import :index.query;
@@ -1092,6 +1093,33 @@ auto folding_ranges(SourceText& source,
         source,
         index::extract_entries(*index.shard).decls,
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); });
+}
+
+auto merge(std::vector<FoldingRange> ast,
+           llvm::ArrayRef<FoldingRange> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<FoldingRange> {
+    llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, std::size_t> known;
+    for(auto [position, fold]: views::enumerate(ast)) {
+        known.try_emplace({fold.range.begin, fold.range.end}, position);
+    }
+    auto count = ast.size();
+    for(const auto& fold: index) {
+        if(!inactive_at(skipped, fold.range.begin)) {
+            continue;
+        }
+        auto it = known.find({fold.range.begin, fold.range.end});
+        if(it == known.end()) {
+            ast.push_back(fold);
+        } else if(!ast[it->second].kind) {
+            // A block in inactive code folds by its braces alone; the
+            // index knows the declaration owning it.
+            ast[it->second] = fold;
+        }
+    }
+    if(ast.size() != count) {
+        ranges::stable_sort(ast, {}, [](const FoldingRange& fold) { return fold.range.begin; });
+    }
+    return ast;
 }
 
 }  // namespace clice::feature

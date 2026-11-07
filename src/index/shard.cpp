@@ -1,5 +1,6 @@
 module clice;
 
+import :compile.inactive_regions;
 import :index.columns;
 import :index.format;
 import :index.shard;
@@ -1664,7 +1665,8 @@ std::vector<std::byte> write_merged(const Root* old_root,
                                     llvm::ArrayRef<Shard> fresh,
                                     std::uint32_t fresh_base,
                                     std::vector<VariantHash> variants,
-                                    const ContentInfo& content) {
+                                    const ContentInfo& content,
+                                    llvm::function_ref<bool(std::uint32_t)> within) {
     MergedEntries<MaskT> merged;
 
     // Occurrences: concatenate every fresh blob's entries (each marked with
@@ -1683,12 +1685,21 @@ std::vector<std::byte> write_merged(const Root* old_root,
     canonicalize(fresh_occurrences, occurrence_key);
 
     std::vector<OccurrenceEntry<MaskT>> old_occurrences;
+    // With `within`, the symbols the old occurrences it keeps name.
+    llvm::DenseSet<SymbolHash> named;
     if(old_root) {
         auto table = OccurrenceTable::of(*old_root);
         auto encoding = encoding_of(*old_root);
         old_occurrences = decode_occurrences<MaskT>(table, [&](std::uint32_t entry) {
             return remap_mask<MaskT>(encoding, table.masks, entry, id_map);
         });
+        if(within) {
+            std::erase_if(old_occurrences,
+                          [&](const auto& entry) { return !within(entry.occurrence.range.begin); });
+            for(const auto& entry: old_occurrences) {
+                named.insert(entry.occurrence.target);
+            }
+        }
     }
     merge_sorted(std::move(old_occurrences),
                  std::move(fresh_occurrences),
@@ -1733,7 +1744,7 @@ std::vector<std::byte> write_merged(const Root* old_root,
     // The merge below decodes every old group once, in order.
     RelationTable::Cursor old_cursor;
     auto decode_old = [&](const StoredGroup& group) {
-        return decode_relation_group<MaskT>(
+        auto entries = decode_relation_group<MaskT>(
             *old_table,
             group.begin_entry,
             group.end_entry,
@@ -1741,6 +1752,17 @@ std::vector<std::byte> write_merged(const Root* old_root,
             [&](std::uint32_t entry) {
                 return remap_mask<MaskT>(old_encoding, old_table->masks, entry, id_map);
             });
+        if(within) {
+            std::erase_if(entries, [&](const auto& entry) {
+                // A relation between two symbols has no place of its own:
+                // it goes with the symbols the kept occurrences name.
+                if(!entry.relation.range.valid()) {
+                    return !named.contains(group.hash) && !named.contains(entry.relation.target);
+                }
+                return !within(entry.relation.range.begin);
+            });
+        }
+        return entries;
     };
 
     auto lhs = old_groups.begin();
@@ -1821,9 +1843,12 @@ std::vector<std::byte>
     return emit_blob(merged, locals, {}, content_info_of(content));
 }
 
-std::vector<std::byte> merge_shards(const Shard& old,
-                                    llvm::ArrayRef<VariantHash> keep,
-                                    llvm::ArrayRef<Shard> fresh) {
+/// merge_shards, keeping of `old`'s entries those `within` accepts when
+/// given.
+static std::vector<std::byte> merge_blobs(const Shard& old,
+                                          llvm::ArrayRef<VariantHash> keep,
+                                          llvm::ArrayRef<Shard> fresh,
+                                          llvm::function_ref<bool(std::uint32_t)> within) {
     auto old_variants = old.variants();
 
     // old-id -> new-id; -1 drops the variant.
@@ -1868,9 +1893,75 @@ std::vector<std::byte> merge_shards(const Shard& old,
                                            fresh,
                                            fresh_base,
                                            std::move(variants),
-                                           content);
+                                           content,
+                                           within);
     }
-    return write_merged<Bitmap>(old_root, id_map, fresh, fresh_base, std::move(variants), content);
+    return write_merged<Bitmap>(old_root,
+                                id_map,
+                                fresh,
+                                fresh_base,
+                                std::move(variants),
+                                content,
+                                within);
+}
+
+std::vector<std::byte> merge_shards(const Shard& old,
+                                    llvm::ArrayRef<VariantHash> keep,
+                                    llvm::ArrayRef<Shard> fresh) {
+    return merge_blobs(old, keep, fresh, nullptr);
+}
+
+/// A shard's entries counted and hashed, whichever variants hold them: a
+/// merge only adds to the entries of the shards it takes, so equal counts
+/// are equal entries.
+static std::pair<std::size_t, std::uint64_t> count_entries(const Shard& shard) {
+    std::size_t count = 0;
+    std::uint64_t hash = 0;
+    shard.for_each_occurrence([&](const Occurrence& occurrence) {
+        count += 1;
+        hash = llvm::hash_combine(hash,
+                                  occurrence.range.begin,
+                                  occurrence.range.end,
+                                  occurrence.target);
+        return true;
+    });
+    shard.for_each_relation([&](SymbolHash symbol, const Relation& relation) {
+        count += 1;
+        hash = llvm::hash_combine(hash,
+                                  symbol,
+                                  static_cast<std::uint32_t>(relation.kind),
+                                  relation.range.begin,
+                                  relation.range.end,
+                                  relation.target);
+        return true;
+    });
+    return {count, hash};
+}
+
+std::optional<MergedContexts> merge_contexts(const Shard& stored,
+                                             llvm::ArrayRef<VariantHash> live,
+                                             const Shard& own,
+                                             llvm::ArrayRef<std::uint32_t> skipped) {
+    llvm::SmallVector<VariantHash> keep(live.begin(), live.end());
+    auto fresh = own.loaded() ? llvm::ArrayRef(&own, 1) : llvm::ArrayRef<Shard>();
+    if(own.loaded()) {
+        keep.erase(ranges::remove(keep, own.variants().front()).begin(), keep.end());
+    } else if(ranges::none_of(keep, [&](VariantHash hash) { return stored.has_variant(hash); })) {
+        // The shard outlives the last context reading the file until the
+        // index is saved.
+        return std::nullopt;
+    }
+    auto bytes = merge_blobs(stored, keep, fresh, [&](std::uint32_t offset) {
+        return inactive_at(skipped, offset);
+    });
+    MergedContexts merged{
+        .shard = Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))),
+    };
+    auto [count, hash] = count_entries(merged.shard);
+    if(count != count_entries(own).first) {
+        merged.additions = hash;
+    }
+    return merged;
 }
 
 }  // namespace clice::index

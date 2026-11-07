@@ -5,13 +5,13 @@ module;
 module clice;
 
 import :compile.compilation;
+import :compile.inactive_regions;
 import :feature.code_actions;
 import :feature.diagnostics;
 import :feature.document_links;
 import :feature.document_symbols;
 import :feature.folding_ranges;
 import :feature.hover;
-import :feature.inactive_regions;
 import :feature.inlay_hints;
 import :feature.selection_ranges;
 import :feature.semantic_tokens;
@@ -59,7 +59,7 @@ struct DocumentEntry {
     /// open.
     std::vector<std::uint32_t> inactive_regions() {
         auto regions = preamble_inactive_regions;
-        auto scan = feature::inactive_regions(*unit, open_conditionals, pch_bound);
+        auto scan = clice::inactive_regions(*unit, open_conditionals, pch_bound);
         regions.insert(regions.end(), scan.regions.begin(), scan.regions.end());
         return regions;
     }
@@ -295,6 +295,7 @@ RequestResult<worker::CompileParams>
                 doc->pch_bound = params.pch.second;
                 doc->open_conditionals = params.open_conditionals;
                 doc->preamble_inactive_regions = params.preamble_inactive_regions;
+                result.inactive_regions = doc->inactive_regions();
             } else {
                 result.status = unit->setup_fail() ? worker::CompileStatus::SetupFail
                                                    : worker::CompileStatus::Cancelled;

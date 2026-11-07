@@ -210,6 +210,17 @@ void LSPClient::register_extensions() {
             co_return to_raw(reset_context(params));
         });
 
+    on_request<ext::ShowOtherContextsParams>(
+        "clice/showOtherContexts",
+        [this](RequestContext& ctx, const ext::ShowOtherContextsParams& params) -> RawResult {
+            auto path = uri_to_path(params.uri);
+            if(!path) {
+                co_return to_raw(ext::SwitchContextResult{});
+            }
+            co_return to_raw(
+                this->server.show_other_contexts(this->server.files.intern(*path), params.show));
+        });
+
     on_request<ext::ListConfigurationsParams>(
         "clice/listConfigurations",
         [this](RequestContext& ctx, const ext::ListConfigurationsParams& params) -> RawResult {

@@ -20,7 +20,6 @@ export const TOPICS: Readonly<Record<string, "feature" | "engine" | "command">> 
     counterparts: "feature",
     rename: "feature",
     diagnostics: "feature",
-    inactive_regions: "feature",
     compile: "engine",
     contexts: "engine",
     project: "engine",

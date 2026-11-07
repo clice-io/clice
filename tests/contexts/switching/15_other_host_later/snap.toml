@@ -1,0 +1,40 @@
+["a host indexed later".before]
+hover = {}
+
+["a host indexed later".indexed.hover]
+plaintext = '''
+function slow_path
+
+inline int slow_path()
+'''
+range = "inline int ⟦slow_path⟧() {"
+
+["an edit until saved".edited]
+hover = {}
+
+["an edit until saved".saved.hover]
+plaintext = '''
+function slow_path
+
+inline int slow_path()
+'''
+range = "inline int ⟦slow_path⟧() {"
+
+["hidden while read only".merged]
+document_symbols = [
+    { name = "fast_path", kind = "Function", at = "inline int ⟦fast_path⟧() {" },
+    { name = "slow_path", kind = "Function", at = "inline int ⟦slow_path⟧() {" },
+]
+
+["hidden while read only".hidden]
+document_symbols = [
+    { name = "fast_path", kind = "Function", at = "inline int ⟦fast_path⟧() {" },
+]
+
+["hidden where nothing compiles".context.current_context]
+automatic = true
+
+["hidden where nothing compiles".context.current_context.context]
+label = "fast_host.cpp"
+description = "${WS}/fast_host.cpp"
+host = "fast_host.cpp"

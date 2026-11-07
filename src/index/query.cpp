@@ -200,7 +200,7 @@ const Shard* IndexQuery::buffer_shard(const OpenBuffer& buffer) const {
     auto& state = *buffer.index;
     auto& shard = state.shard_of(state.focus_file());
     if(buffer.current || shard.matches_content(buffer.text.size(), buffer.hash)) {
-        return &shard;
+        return buffer.merged ? buffer.merged.get() : &shard;
     }
     return nullptr;
 }

@@ -249,7 +249,9 @@ export function registerCompilationContext(
         }
         // The item's label can run to every flag of a command; the text only
         // says who picked the context, the detail names it.
-        const picked = current.automatic ? "picked automatically" : "chosen";
+        const picked =
+            (current.automatic ? "picked automatically" : "chosen") +
+            (current.otherContexts ? "" : ", other contexts hidden");
         status.show(
             current.automatic ? "auto" : "selected",
             current.context ? `${current.context.label}, ${picked}` : picked,
@@ -331,6 +333,25 @@ export function registerCompilationContext(
         await contextChanged();
     }
 
+    async function showOtherContexts(uri: string, show: boolean) {
+        let shown: SwitchContextResult;
+        try {
+            shown = await client.sendRequest<SwitchContextResult>("clice/showOtherContexts", {
+                uri,
+                show,
+            });
+        } catch {
+            vscode.window.showWarningMessage("clice: server not ready");
+            return;
+        }
+        if (!shown.success) {
+            vscode.window.showWarningMessage(
+                "clice: this project never compiles; its answers come from the index, which merges every context",
+            );
+        }
+        await contextChanged();
+    }
+
     async function select() {
         const editor = vscode.window.activeTextEditor;
         if (!isCppEditor(editor)) {
@@ -339,12 +360,14 @@ export function registerCompilationContext(
         const uri = editor.document.uri.toString();
         let automatic: boolean;
         let inUse: ContextItem | null;
+        let otherContexts: boolean;
         try {
             const current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
                 uri,
             });
             automatic = current.automatic;
             inUse = current.context;
+            otherContexts = current.otherContexts;
         } catch {
             vscode.window.showWarningMessage("clice: server not ready");
             return;
@@ -389,6 +412,7 @@ export function registerCompilationContext(
                 context?: ContextItem;
                 loadMore?: boolean;
                 reset?: boolean;
+                otherContexts?: boolean;
             };
             const items: ContextPick[] = [];
             if (!automatic) {
@@ -413,6 +437,20 @@ export function registerCompilationContext(
                     loadMore: true,
                 });
             }
+            items.push(
+                { label: "", kind: vscode.QuickPickItemKind.Separator },
+                otherContexts
+                    ? {
+                          label: "$(eye-closed) Hide other contexts",
+                          description: "show this context alone",
+                          otherContexts: false,
+                      }
+                    : {
+                          label: "$(eye) Show other contexts",
+                          description: "show the code other contexts compile too",
+                          otherContexts: true,
+                      },
+            );
 
             const chosen = await vscode.window.showQuickPick(items, {
                 title: "Switch Compilation Context",
@@ -423,6 +461,10 @@ export function registerCompilationContext(
             }
             if (chosen.reset) {
                 await reset(uri);
+                return;
+            }
+            if (chosen.otherContexts !== undefined) {
+                await showOtherContexts(uri, chosen.otherContexts);
                 return;
             }
             if (!chosen.context) {

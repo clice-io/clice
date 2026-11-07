@@ -37,10 +37,18 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
         show_skipped_diagnostics(path_id);
     });
     index_conn = project.on_index_changed.connect([this](llvm::ArrayRef<Fid> path_ids) {
+        // Documents without a current file index serve these very shards
+        // (freshness clause 4), and the AST's answers take the file's other
+        // contexts from them: the client asks again for what it pulled.
+        bool completed = false;
+        for(auto id: path_ids) {
+            completed |= merge_again(id);
+        }
         auto* client = this->server.client;
-        if(client && ranges::any_of(path_ids, [&](Fid id) {
-               return find_document(id) && !index_current(id) && client->index_served.contains(id);
-           })) {
+        if(client && (completed || ranges::any_of(path_ids, [&](Fid id) {
+                          return find_document(id) && !index_current(id) &&
+                                 client->index_served.contains(id);
+                      }))) {
             client->refresh();
         }
     });
@@ -227,7 +235,8 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
     project.graph.add(ast_node(path_id));
     auto& document = documents[path_id];
     document = ServedDocument{.session = std::move(session), .serving = ServingMode::IndexOnly};
-    if(project.settings.project.readonly == ReadonlyMode::Off) {
+    if(project.settings.project.readonly == ReadonlyMode::Off ||
+       server.own_context_only.contains(path_id)) {
         escalate(path_id);
     }
     // What the disk holds under the buffer: a later save or outside

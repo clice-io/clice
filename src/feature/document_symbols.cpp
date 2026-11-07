@@ -1,8 +1,8 @@
 module clice;
 
 import :compile.compilation;
+import :compile.inactive_regions;
 import :feature.document_symbols;
-import :feature.inactive_regions;
 import :index.entries;
 import :index.query;
 import :index.symbol;
@@ -420,6 +420,13 @@ bool holds(llvm::ArrayRef<Node> nodes, std::uint32_t outer_index, const Node& in
     }
     if(inner.group == outer_index) {
         return true;
+    }
+    // A variable holds no declaration of its own scope, wherever that is
+    // written: a file the index read in several contexts (a table a file
+    // includes itself to expand twice) writes one inside the other.
+    if(outer.entry.kind == SymbolKind::Variable && inner.entry.entity != 0 &&
+       outer.entry.parent == inner.entry.parent) {
+        return false;
     }
     // What an invocation's arguments name lists beside what its body makes.
     if(outer.group &&
@@ -957,17 +964,13 @@ auto document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions& optio
 auto document_symbols(CompilationUnit& unit,
                       llvm::ArrayRef<std::uint32_t> inactive_regions,
                       const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
-    auto inactive = [&](std::uint32_t offset) {
-        auto bounds = ranges::upper_bound(inactive_regions, offset) - inactive_regions.begin();
-        return bounds % 2 == 1;
-    };
     auto& semantics = unit.get<Semantics>();
     auto& source = unit.focus_file().text();
     const auto& lexical = source.lexical();
     std::vector<LexicalInfo::Directive> macros;
     std::vector<LexicalInfo::Directive> marks;
     for(const auto& directive: lexical.directives) {
-        if(inactive(directive.range.begin)) {
+        if(inactive_at(inactive_regions, directive.range.begin)) {
             continue;
         }
         if(directive.kind == LexicalInfo::Directive::Kind::Define) {
@@ -1130,6 +1133,54 @@ auto document_symbols(SourceText& source,
         index::extract_entries(*index.shard),
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },
         options);
+}
+
+auto merge(std::vector<DocumentSymbol> ast,
+           llvm::ArrayRef<DocumentSymbol> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<DocumentSymbol> {
+    auto merge_level = [&](this auto& self,
+                           std::vector<DocumentSymbol>& into,
+                           llvm::ArrayRef<DocumentSymbol> from) -> void {
+        using Key = std::tuple<std::uint32_t, std::uint32_t, std::string_view>;
+        auto key = [](const DocumentSymbol& symbol) {
+            return Key(symbol.selection_range.begin, symbol.selection_range.end, symbol.name);
+        };
+        std::map<Key, std::size_t> known;
+        for(auto [position, symbol]: views::enumerate(into)) {
+            known.try_emplace(key(symbol), position);
+        }
+        std::vector<DocumentSymbol> added;
+        std::vector<const DocumentSymbol*> level;
+        for(const auto& symbol: from) {
+            level.push_back(&symbol);
+        }
+        for(std::size_t i = 0; i < level.size(); i += 1) {
+            const auto& symbol = *level[i];
+            if(auto it = known.find(key(symbol)); it != known.end()) {
+                self(into[it->second].children, symbol.children);
+            } else if(symbol.kind == SymbolKind::Directive) {
+                // The index lists a mark wherever the text writes it, code
+                // no context compiles included: its section's entries stand
+                // at its level without it.
+                for(const auto& child: symbol.children) {
+                    level.push_back(&child);
+                }
+            } else if(inactive_at(skipped, symbol.selection_range.begin)) {
+                added.push_back(symbol);
+            }
+        }
+        if(added.empty()) {
+            return;
+        }
+        into.insert(into.end(),
+                    std::make_move_iterator(added.begin()),
+                    std::make_move_iterator(added.end()));
+        ranges::stable_sort(into, {}, [](const DocumentSymbol& symbol) {
+            return symbol.range.begin;
+        });
+    };
+    merge_level(ast, index);
+    return ast;
 }
 
 }  // namespace clice::feature

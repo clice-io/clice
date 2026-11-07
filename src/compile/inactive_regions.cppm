@@ -1,9 +1,9 @@
-module clice:feature.inactive_regions;
+module clice:compile.inactive_regions;
 
 import :compile.compilation;
 import :support.prelude;
 
-namespace clice::feature {
+namespace clice {
 
 /// Result of scanning a unit for preprocessor-inactive regions.
 struct InactiveScan {
@@ -31,4 +31,7 @@ InactiveScan inactive_regions(CompilationUnit& unit,
                               std::uint32_t resume_offset = 0,
                               std::uint32_t end_offset = UINT32_MAX);
 
-}  // namespace clice::feature
+/// Whether `offset` lies in one of `regions`, flat as InactiveScan's.
+bool inactive_at(llvm::ArrayRef<std::uint32_t> regions, std::uint32_t offset);
+
+}  // namespace clice

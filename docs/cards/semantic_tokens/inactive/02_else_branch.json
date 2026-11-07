@@ -1,7 +1,7 @@
 {
-  "id": "inactive_regions/branches/02_else_branch",
-  "topic": "inactive_regions",
-  "subtopic": "branches",
+  "id": "semantic_tokens/inactive/02_else_branch",
+  "topic": "semantic_tokens",
+  "subtopic": "inactive",
   "title": "Untaken branches",
   "summary": "Lines of a branch the preprocessor skips are dimmed, an `#else` after a taken branch included",
   "prose": "",

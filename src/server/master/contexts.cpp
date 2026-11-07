@@ -3,8 +3,10 @@ module clice;
 import :feature.protocol;
 import :project.command;
 import :project.project;
+import :server.client;
 import :server.master;
 import :server.served_project;
+import :settings.settings;
 import :support.logging;
 import :vfs.path;
 
@@ -255,6 +257,7 @@ async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id
     }
     auto* active = owner->active_choice(path_id);
     result.automatic = active == nullptr;
+    result.other_contexts = !own_context_only.contains(path_id);
     if(auto item = project.current_context_item(path_id, resolution)) {
         result.context = to_item(files, std::move(*item));
     }
@@ -292,6 +295,28 @@ ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
     } else {
         owner.choice_changed(*document->session);
         replace_shown(*document);
+    }
+    return {.success = true};
+}
+
+ext::SwitchContextResult MasterServer::show_other_contexts(Fid path_id, bool show) {
+    auto* document = find_document(path_id);
+    auto* owner = document ? document->owner : nullptr;
+    // A project that never compiles answers from its index alone, which
+    // merges every context.
+    if(!show && owner && owner->project.settings.project.readonly == ReadonlyMode::On) {
+        return {};
+    }
+    bool changed = show ? own_context_only.erase(path_id) : own_context_only.insert(path_id).second;
+    if(!changed) {
+        return {.success = true};
+    }
+    // The file's own context alone is its AST's, as a context choice is.
+    if(!show && owner) {
+        owner->escalate(path_id);
+    }
+    if(client) {
+        client->refresh();
     }
     return {.success = true};
 }

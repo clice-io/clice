@@ -85,4 +85,12 @@ auto folding_ranges(SourceText& source,
                     const index::IndexQuery& query,
                     const index::IndexSource& index) -> std::vector<FoldingRange>;
 
+/// The folds the AST gives (`ast`) and those the index makes (`index`) in
+/// the code the AST's context skipped (`skipped`, flat begin/end offset
+/// pairs as InactiveScan's) — the blocks of the file's other contexts —,
+/// with the kind of a block there the AST folds by its braces alone.
+auto merge(std::vector<FoldingRange> ast,
+           llvm::ArrayRef<FoldingRange> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<FoldingRange>;
+
 }  // namespace clice::feature

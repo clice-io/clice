@@ -203,6 +203,10 @@ struct DocumentCompile {
     /// disk-derived data from background indexing.
     std::shared_ptr<index::TUIndex> index;
 
+    /// The focus file's code the compile's preprocessor skipped (flat
+    /// begin/end offset pairs): what the file's other contexts may compile.
+    std::vector<std::uint32_t> inactive_regions;
+
     /// Publishable products of the latest compilation (see CompileOutput).
     std::optional<CompileOutput> output;
 
@@ -226,6 +230,26 @@ struct ServedDocument {
 
     /// See ServingMode for the write discipline.
     ServingMode serving = ServingMode::Escalated;
+
+    /// The latest compile's file index merged with the file's shard's
+    /// entries in the code the compile skipped (index::OpenBuffer::merged):
+    /// made on first read while the buffer holds the very bytes both
+    /// indexed, dropped when it no longer does, made again when the shard
+    /// changes (ServedProject::merge_again).
+    struct MergedIndex {
+        /// The compile's TU index it merges, which the copies of one
+        /// compile share.
+        std::shared_ptr<index::TUIndex> index;
+
+        std::shared_ptr<const index::Shard> shard;
+
+        /// Zero when the shard adds nothing to the compile's index, else a
+        /// hash of the merged index's entries: two tell whether the
+        /// additions changed.
+        std::uint64_t additions = 0;
+    };
+
+    mutable std::optional<MergedIndex> merged;
 };
 
 /// LSP's ContentModified: the request's answer would describe a buffer the
@@ -244,7 +268,7 @@ enum class Route : std::uint8_t {
     Index,
     /// Ask the worker holding the AST (ServedProject::ast_request, which
     /// compiles as needed).
-    Ast,
+    AST,
     /// No source can serve and none is being invested in (IndexOnly with
     /// no matching shard): answer honestly empty.
     Empty,
@@ -600,6 +624,24 @@ public:
     /// The open documents, as the reads of the index take them.
     std::vector<index::OpenBuffer> open_buffers() const;
 
+    /// The code the open document's latest compile skipped while its
+    /// buffer is the text the file's shard indexed: the code of the file's
+    /// other contexts, which the answers the AST gives are completed with.
+    struct SkippedCode {
+        /// Flat begin/end offset pairs; empty while the buffer is not the
+        /// shard's text.
+        llvm::ArrayRef<std::uint32_t> regions;
+
+        /// The index serving the document holds entries there.
+        bool indexed = false;
+    };
+
+    SkippedCode skipped_code(Fid file) const;
+
+    /// Merges the open document's compile with its file's shard again, the
+    /// shard having changed: whether what the merge adds changed with it.
+    bool merge_again(Fid file) const;
+
     /// The project's index over its open documents, for one synchronous
     /// read.
     index::IndexQuery query() const {
@@ -634,8 +676,9 @@ public:
     std::vector<index::DocumentLink> preamble_links(const Session& session) const;
 
     /// The include-like directive links of a document's whole buffer: the
-    /// PCH's cached preamble links, then the worker's AST's for the rest.
-    /// Module names go through the ordinary index pipeline, not these.
+    /// PCH's cached preamble links, then the worker's AST's for the rest,
+    /// and the index's in the code the compile skipped. Module names go
+    /// through the ordinary index pipeline, not these.
     async::task<std::vector<index::DocumentLink>, ipc::Error>
         directive_links(const Ticket& ticket, async::cancellation_token token);
 

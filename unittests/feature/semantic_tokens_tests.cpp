@@ -392,7 +392,7 @@ auto tokens_from(llvm::StringRef content,
         {});
 }
 
-ZEST_CASE(TokensMatchAst) {
+ZEST_CASE(TokensMatchAST) {
     add_focus("main.cpp", R"cpp(
 // a line comment
 #define VALUE 1
@@ -425,7 +425,7 @@ int total(Point point, int base) {
     expect_tokens_match_ast();
 }
 
-ZEST_CASE(OverrideTokensMatchAst) {
+ZEST_CASE(OverrideTokensMatchAST) {
     // `override` and `final` lead to the methods they override without
     // spelling them; a class's `final` leads nowhere.
     add_focus("main.cpp", R"cpp(
@@ -444,7 +444,7 @@ struct Derived final : Base {
     expect_tokens_match_ast();
 }
 
-ZEST_CASE(ModuleTokensMatchAst) {
+ZEST_CASE(ModuleTokensMatchAST) {
     add_focus("main.cpp", R"cpp(
 export module demo.core;
 
@@ -455,7 +455,7 @@ export int exported_value = 1;
     expect_tokens_match_ast();
 }
 
-ZEST_CASE(ModuleKeywordsMatchAst) {
+ZEST_CASE(ModuleKeywordsMatchAST) {
     // The contextual `module` and `import` are keywords only where they
     // open a declaration or an import; variables of those names stay
     // variables.

@@ -1,5 +1,6 @@
 module clice;
 
+import :compile.inactive_regions;
 import :feature.semantic_tokens.stream;
 import :feature.semantic_tokens;
 import :index.entries;
@@ -109,6 +110,57 @@ auto semantic_tokens(SourceText& source,
         index::extract_entries(*index.shard),
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },
         options);
+}
+
+auto merge(std::vector<SemanticToken> ast,
+           llvm::ArrayRef<SemanticToken> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<SemanticToken> {
+    auto inactive = mask(SemanticTokenModifier::Inactive);
+    auto end_of = [](const SemanticToken& token) {
+        return token.range.end;
+    };
+    // The AST merges the adjacent tokens of inactive code it classifies
+    // alike (`f()` one plain token) and the index a name of several tokens
+    // (`~Widget`): each splits the other's.
+    std::vector<SemanticToken> merged;
+    merged.reserve(ast.size());
+    auto next = index.begin();
+    for(const auto& token: ast) {
+        if(!inactive_at(skipped, token.range.begin)) {
+            merged.push_back(token);
+            continue;
+        }
+        next = ranges::upper_bound(next, index.end(), token.range.begin, {}, end_of);
+        auto at = token.range.begin;
+        for(; next != index.end() && next->range.begin < token.range.end; ++next) {
+            auto begin = std::max(next->range.begin, at);
+            auto end = std::min(next->range.end, token.range.end);
+            if(begin > at) {
+                merged.push_back({
+                    {at, begin},
+                    token.kind,
+                    token.modifiers
+                });
+            }
+            merged.push_back({
+                {begin, end},
+                next->kind,
+                next->modifiers | inactive
+            });
+            at = end;
+            if(next->range.end > token.range.end) {
+                break;
+            }
+        }
+        if(at < token.range.end) {
+            merged.push_back({
+                {at, token.range.end},
+                token.kind,
+                token.modifiers
+            });
+        }
+    }
+    return merged;
 }
 
 void merge_preamble_macros(const index::TUIndex& preamble, std::vector<SemanticToken>& tokens) {

@@ -136,6 +136,14 @@ auto semantic_tokens(SourceText& source,
                      const index::IndexSource& index,
                      const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
 
+/// The tokens the AST gives (`ast`), the code its context skipped
+/// (`skipped`, flat begin/end offset pairs as InactiveScan's) classified as
+/// the index does (`index`) — another context the file compiles in reads
+/// it —, still inactive.
+auto merge(std::vector<SemanticToken> ast,
+           llvm::ArrayRef<SemanticToken> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<SemanticToken>;
+
 /// Adds to the macros the preamble region names the modifiers their
 /// definitions give, which only the PCH's index (`preamble`) knows: neither
 /// the worker's AST nor the per-edit index covers the directives the

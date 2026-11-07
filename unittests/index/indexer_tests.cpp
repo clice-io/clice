@@ -1,7 +1,7 @@
 module clice;
 
 import :compile.diagnostic;
-import :feature.inactive_regions;
+import :compile.inactive_regions;
 import :feature.semantic_tokens;
 import :index.format;
 import :index.include_tree;
@@ -1975,10 +1975,10 @@ ZEST_CASE(DeepExpressionChain) {
     // constant stack space however deep the expression is, so any
     // reintroduced per-node recursion crashes here deterministically
     // instead of only on production workers with deeper files.
-    feature::InactiveScan scan;
+    InactiveScan scan;
     llvm::thread index_thread(std::optional<unsigned>(2u << 20), [&] {
         // Mirror the stateful worker's post-compile sequence.
-        scan = feature::inactive_regions(*unit);
+        scan = inactive_regions(*unit);
         decode_index(index::build_tu_index(*unit));
 
         // The semantic map must also serve token classification and a

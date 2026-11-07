@@ -134,4 +134,12 @@ auto document_symbols(SourceText& source,
                       const index::IndexSource& index,
                       const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
 
+/// The outline the AST gives (`ast`) with the entries the index lists
+/// (`index`) in the code the AST's context skipped (`skipped`, flat
+/// begin/end offset pairs as InactiveScan's), where they nest: another
+/// context the file compiles in declares them.
+auto merge(std::vector<DocumentSymbol> ast,
+           llvm::ArrayRef<DocumentSymbol> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<DocumentSymbol>;
+
 }  // namespace clice::feature

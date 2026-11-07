@@ -1,7 +1,7 @@
 {
-  "id": "inactive_regions/updates/01_edited_condition",
-  "topic": "inactive_regions",
-  "subtopic": "updates",
+  "id": "semantic_tokens/inactive/08_edited_condition",
+  "topic": "semantic_tokens",
+  "subtopic": "inactive",
   "title": "Editing a condition",
   "summary": "Editing the macro a condition tests moves the dimming to the branch now skipped, before the file is saved",
   "prose": "",

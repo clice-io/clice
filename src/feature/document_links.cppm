@@ -32,6 +32,13 @@ auto document_links(SourceText& source, llvm::ArrayRef<index::ResolvedInclude> i
 auto document_links(SourceText& source, const index::IndexQuery& query, Fid file)
     -> std::vector<index::DocumentLink>;
 
+/// The links the AST gives (`ast`) and those the index holds (`index`) in
+/// the code the AST's context skipped (`skipped`, flat begin/end offset
+/// pairs as InactiveScan's): the includes of the file's other contexts.
+auto merge(std::vector<index::DocumentLink> ast,
+           llvm::ArrayRef<index::DocumentLink> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<index::DocumentLink>;
+
 /// The links in LSP form, each target named the way the user knows the
 /// file; a link outside `map`'s text is left out.
 auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,

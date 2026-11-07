@@ -922,11 +922,9 @@ tests/semantic_tokens/modules/03_contextual_keywords
 - [x] 保留非活动区域内的语法高亮（[clangd#1664](https://github.com/clangd/clangd/issues/1664)）
 - [x] 保持非活动区域与注释的区别（[clangd#1545](https://github.com/clangd/clangd/issues/1545)）
 
-### 未选中的分支
+预处理器跳过的分支都会淡化显示，无论该分支由哪种指令引入。头文件中，其[宿主（host）](./header-contexts.md)跳过的分支会淡化显示。文件在其他上下文中编译的代码，淡化显示时仍保留其语义种类。编辑条件时，淡化显示会随输入实时更新。
 
-预处理器跳过的分支都会淡化显示，无论该分支由哪种指令引入。
-
-<!-- BEGIN GENERATED ITEMS: inactive_regions/branches -->
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/inactive -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -935,18 +933,10 @@ tests/semantic_tokens/modules/03_contextual_keywords
 预处理器跳过的分支中的各行都会淡化显示，也包括已选中分支之后的 `#else` 分支
 
 ```case
-tests/inactive_regions/branches/02_else_branch
+tests/semantic_tokens/inactive/02_else_branch
 ```
 
 <!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-### 头文件上下文
-
-头文件中，其[宿主（host）](./header-contexts.md)跳过的分支会淡化显示。
-
-<!-- BEGIN GENERATED ITEMS: inactive_regions/contexts -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -955,18 +945,10 @@ tests/inactive_regions/branches/02_else_branch
 头文件会显示所选宿主选中的分支，切换宿主时会立即更新淡化显示
 
 ```case
-tests/inactive_regions/contexts/01_host_switch
+tests/semantic_tokens/inactive/04_host_switch
 ```
 
 <!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-### 编辑
-
-编辑条件时，淡化显示会随输入实时更新。
-
-<!-- BEGIN GENERATED ITEMS: inactive_regions/updates -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -975,7 +957,7 @@ tests/inactive_regions/contexts/01_host_switch
 修改条件所检查的宏后，无需保存文件，淡化显示就会转移到当前被跳过的分支
 
 ```case
-tests/inactive_regions/updates/01_edited_condition
+tests/semantic_tokens/inactive/08_edited_condition
 ```
 
 <!-- END CAPABILITY -->

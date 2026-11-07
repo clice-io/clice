@@ -327,6 +327,56 @@ ZEST_CASE(CompactionDropsVariant) {
     ZASSERT(hash_at(compacted, 11) == 0u);
 }
 
+ZEST_CASE(MergeContexts) {
+    // Of the stored shard, the entries in the skipped code stay, its
+    // relations as its occurrences, a relation between two symbols with
+    // the symbols; the compile's own entries all stay.
+    index::FileIndex stored_index;
+    stored_index.occurrences = {
+        {{0, 3},   111},
+        {{10, 13}, 222},
+    };
+    stored_index.relations[222] = {
+        {.kind = RelationKind::Definition, .range = {10, 13}, .target = 0},
+        {.kind = RelationKind::Base, .target = 444},
+    };
+    stored_index.relations[111] = {
+        {.kind = RelationKind::Definition, .range = {0, 3}, .target = 0},
+        {.kind = RelationKind::Base, .target = 555},
+    };
+    auto own_index = simple_index({
+        {{20, 23}, 333}
+    });
+    auto content = "aaa bbb ccc ddd eee fff";
+    auto stored = make_shard(write_fresh(stored_index, content));
+    auto own = make_shard(write_fresh(own_index, content));
+    std::vector<std::uint32_t> skipped = {10, 20};
+
+    auto merged = index::merge_contexts(stored, stored.variants(), own, skipped);
+    ZASSERT(merged);
+    ZEXPECT(merged->additions != 0u);
+    ZEXPECT(hash_at(merged->shard, 1) == 0u);
+    ZEXPECT(hash_at(merged->shard, 11) == 222u);
+    ZEXPECT(hash_at(merged->shard, 21) == 333u);
+    std::size_t relations = 0;
+    merged->shard.for_each_relation([&](index::SymbolHash symbol, const index::Relation&) {
+        ZEXPECT(symbol == 222u);
+        relations += 1;
+        return true;
+    });
+    ZEXPECT(relations == std::size_t(2));
+
+    // Nothing stored in the skipped code adds nothing.
+    std::vector<std::uint32_t> elsewhere = {4, 8};
+    auto unchanged = index::merge_contexts(stored, stored.variants(), own, elsewhere);
+    ZASSERT(unchanged);
+    ZEXPECT(unchanged->additions == 0u);
+
+    // A compile that indexed nothing merges nothing once no context of the
+    // stored shard lives.
+    ZEXPECT(!index::merge_contexts(stored, {}, index::Shard(), skipped));
+}
+
 ZEST_CASE(KWayMerge) {
     // Several fresh variants are merged in one write; shared occurrences collapse
     // with OR-ed masks and each unique occurrence stays filterable to its owner.

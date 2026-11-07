@@ -1,6 +1,9 @@
 module clice;
 
+import :feature.document_links;
+import :index.project_index;
 import :index.query;
+import :index.shard;
 import :server.master;
 import :server.served_project;
 import :support.logging;
@@ -37,7 +40,7 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
         }
         auto& session = *ticket.session;
         if(ast_answerable(session)) {
-            co_return Route::Ast;
+            co_return Route::AST;
         }
         auto serving = serving_of(session);
         // An oversized buffer is not worth a synchronous main-thread lex;
@@ -52,10 +55,12 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
             // freshness clause 4.
             auto admitted = query().serving(session.path_id);
             // The disk shard merges every context the file compiles in, or
-            // holds its first command's: a context the user chose waits for
-            // its own compile.
+            // holds its first command's: a context the user chose, or one
+            // the user wants alone, waits for its own compile.
             if(admitted && admitted->kind == index::IndexSource::Kind::Shard &&
-               serving == ServingMode::Escalated && active_choice(session.path_id)) {
+               serving == ServingMode::Escalated &&
+               (active_choice(session.path_id) ||
+                server.own_context_only.contains(session.path_id))) {
                 admitted.reset();
             }
             if(admitted) {
@@ -72,7 +77,7 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
             }
         }
         if(serving == ServingMode::Escalated) {
-            co_return Route::Ast;
+            co_return Route::AST;
         }
         if(options.await_cold_attempt && !waited) {
             waited = true;
@@ -91,7 +96,7 @@ async::task<std::optional<GateStop>> ServedProject::navigation_gate(const Ticket
         // no compile is owed.
         case Route::Index:
         case Route::Empty: co_return std::nullopt;
-        case Route::Ast: break;
+        case Route::AST: break;
     }
     // Same posture as every AST-backed request: the document's file index
     // is produced by the very compile awaited here, so once this finishes
@@ -124,11 +129,57 @@ std::optional<index::IndexQuery::Cursor>
     return query().symbol_at(path_id, position, server.position_encoding);
 }
 
+/// The document's merged index (ServedDocument::merged), made if missing:
+/// while its compile describes the buffer, the buffer is the text the
+/// file's shard indexed, and the compile skipped some code — unless the
+/// user asked for the file's own context alone. Null otherwise.
+const static ServedDocument::MergedIndex* merged_index(const ServedProject& served,
+                                                       const ServedDocument& document) {
+    auto& compiled = document.latest;
+    auto& session = *document.session;
+    if(!compiled || !compiled->index || !compiled->index->loaded() ||
+       compiled->inactive_regions.empty() ||
+       served.server.own_context_only.contains(session.path_id)) {
+        document.merged.reset();
+        return nullptr;
+    }
+    auto& state = *compiled->index;
+    auto& own = state.shard_of(state.focus_file());
+    if(!served.current(session.path_id) &&
+       !own.matches_content(session.text().size(), session.hash)) {
+        document.merged.reset();
+        return nullptr;
+    }
+    if(document.merged && document.merged->index == compiled->index) {
+        return &*document.merged;
+    }
+    auto* stored = served.project.index.shard(session.path_id);
+    if(!stored || !stored->matches_content(session.text().size(), session.hash)) {
+        document.merged.reset();
+        return nullptr;
+    }
+    auto merged = index::merge_contexts(*stored,
+                                        served.project.index.live_variants(session.path_id),
+                                        own,
+                                        compiled->inactive_regions);
+    if(!merged) {
+        document.merged.reset();
+        return nullptr;
+    }
+    document.merged = ServedDocument::MergedIndex{
+        .index = compiled->index,
+        .shard = std::make_shared<index::Shard>(std::move(merged->shard)),
+        .additions = merged->additions,
+    };
+    return &*document.merged;
+}
+
 std::vector<index::OpenBuffer> ServedProject::open_buffers() const {
     std::vector<index::OpenBuffer> open;
     for(auto& [path_id, document]: documents) {
         auto& session = *document.session;
         auto& compiled = document.latest;
+        auto* merged = merged_index(*this, document);
         open.push_back({
             .file = path_id,
             .text = session.text(),
@@ -137,9 +188,33 @@ std::vector<index::OpenBuffer> ServedProject::open_buffers() const {
             .index = compiled ? compiled->index : nullptr,
             .current = current(path_id),
             .preamble = compiled ? compiled->preamble_index : nullptr,
+            .merged = merged ? merged->shard : nullptr,
         });
     }
     return open;
+}
+
+ServedProject::SkippedCode ServedProject::skipped_code(Fid file) const {
+    auto* document = find_document(file);
+    auto* merged = document ? merged_index(*this, *document) : nullptr;
+    if(!merged) {
+        return {};
+    }
+    return {
+        .regions = document->latest->inactive_regions,
+        .indexed = merged->additions != 0,
+    };
+}
+
+bool ServedProject::merge_again(Fid file) const {
+    auto* document = find_document(file);
+    if(!document) {
+        return false;
+    }
+    auto before = document->merged ? document->merged->additions : 0;
+    document->merged.reset();
+    auto* merged = merged_index(*this, *document);
+    return before != (merged ? merged->additions : 0);
 }
 
 index::IndexQuery ServedProject::query_all() const {
@@ -203,9 +278,18 @@ async::task<std::vector<index::DocumentLink>, ipc::Error>
                       .or_fail();
     // The preamble is compiled into the PCH, so the worker's AST only
     // covers the rest of the file — merge the preamble's links in front.
-    auto links = preamble_links(*ticket.session);
+    auto& session = *ticket.session;
+    auto links = preamble_links(session);
     links.insert(links.end(), result.begin(), result.end());
-    co_return links;
+    // An include leaves no index entry: the skipped code's includes link
+    // even when the index holds no entries there.
+    auto skipped = skipped_code(session.path_id).regions;
+    if(skipped.empty() || session.text().size() > full_lex_cap) {
+        co_return links;
+    }
+    co_return feature::merge(std::move(links),
+                             feature::document_links(text_of(session), query(), session.path_id),
+                             skipped);
 }
 
 bool ServedProject::admits(const Session& session,

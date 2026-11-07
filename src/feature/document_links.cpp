@@ -1,5 +1,6 @@
 module clice;
 
+import :compile.inactive_regions;
 import :feature.document_links;
 import :feature.protocol;
 import :index.query;
@@ -99,6 +100,26 @@ auto document_links(SourceText& source, const index::IndexQuery& query, Fid file
         return {};
     }
     return document_links(source, query.project().resolved_includes(file));
+}
+
+auto merge(std::vector<index::DocumentLink> ast,
+           llvm::ArrayRef<index::DocumentLink> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<index::DocumentLink> {
+    auto count = ast.size();
+    for(const auto& link: index) {
+        if(inactive_at(skipped, link.range.begin) &&
+           ranges::none_of(ast, [&](const index::DocumentLink& known) {
+               return known.range == link.range && known.target == link.target;
+           })) {
+            ast.push_back(link);
+        }
+    }
+    if(ast.size() != count) {
+        ranges::stable_sort(ast, {}, [](const index::DocumentLink& link) {
+            return link.range.begin;
+        });
+    }
+    return ast;
 }
 
 auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,

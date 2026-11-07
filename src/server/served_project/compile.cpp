@@ -989,6 +989,7 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     next->preamble_index = preamble_index;
     next->host = resolution.host;
     next->command = resolution.ref.command;
+    next->inactive_regions = std::move(reply.inactive_regions);
     // The AST and the file index commit together — that pairing is what lets
     // navigation trust the index after ensure_compiled. A compile that
     // produced no index data (no AST, or an index it could not send) must

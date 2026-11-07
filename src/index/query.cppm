@@ -77,6 +77,12 @@ struct OpenBuffer {
     /// The index of the PCH the last compile loaded for its preamble,
     /// shared by the buffers sharing the preamble; null for none.
     std::shared_ptr<TUIndex> preamble;
+
+    /// The last compile's file index merged with the file's shard's
+    /// entries in the code the compile skipped, which the file's other
+    /// contexts compile, while the buffer is the text both indexed; it
+    /// serves in place of the file index. Null otherwise.
+    std::shared_ptr<const Shard> merged;
 };
 
 struct FreshnessOptions {
@@ -225,8 +231,11 @@ inline bool is_function(SymbolKind kind) {
 ///      is byte-identical to the content the shard was built from. This
 ///      is what serves documents opened for reading before any compile is
 ///      invested in them; the moment the buffer diverges the shard
-///      withdraws and clauses 1-3 govern again. Arbitration is strict: a
-///      current file index always wins over the shard (never both).
+///      withdraws and clauses 1-3 govern again. While both describe the
+///      buffer, the file index serves merged with the shard's entries in
+///      the code its compile skipped (OpenBuffer::merged): the compile
+///      indexed the one context it ran in, the shard every context the
+///      file compiles in.
 ///
 ///   Symbol identity lookups (symbol_info: hash → name/kind) are not
 ///   gated: a hash identifies one symbol, so even a stale shard answers
@@ -519,7 +528,8 @@ private:
     const OpenBuffer* buffer_of(Fid file) const;
 
     /// The buffer's own file index while it describes the buffer: the
-    /// compile is current, or it compiled these very bytes.
+    /// compile is current, or it compiled these very bytes. Merged with
+    /// the other contexts' entries when the buffer holds them.
     const Shard* buffer_shard(const OpenBuffer& buffer) const;
 
     /// An open buffer's index as a source: `shard` in the buffer's

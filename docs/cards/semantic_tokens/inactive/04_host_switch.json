@@ -1,7 +1,7 @@
 {
-  "id": "inactive_regions/contexts/01_host_switch",
-  "topic": "inactive_regions",
-  "subtopic": "contexts",
+  "id": "semantic_tokens/inactive/04_host_switch",
+  "topic": "semantic_tokens",
+  "subtopic": "inactive",
   "title": "Switching the host",
   "summary": "A header shows the branches its chosen host takes, and switching hosts updates the dimming at once",
   "prose": "",

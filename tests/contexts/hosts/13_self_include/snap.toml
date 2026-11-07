@@ -20,17 +20,151 @@ symbols = [
     { name = "objects_init()", kind = "Function", at = "objects.c │ int ⟦objects_init⟧(void) {" },
 ]
 
-[open."objects.c"]
+[open.contexts]
 wrong = "the copy objects.c includes of itself is no context to switch to: the second pass never shows from the AST"
 contexts = [
     { label = "-std=c++20 -std=c11", description = "${WS}", host = "objects.c" },
 ]
 
+[open."objects.c"]
+tokens = [
+    { at = "⟦#ifndef⟧ OBJECTS_PASS_2_ @1", type = "directive" },
+    { at = "#ifndef ⟦OBJECTS_PASS_2_⟧ @1", type = "macro" },
+    { at = '⟦#include⟧ "objclass.h"', type = "directive" },
+    { at = '#include ⟦"objclass.h"⟧', type = "header" },
+    { at = "⟦#define⟧ OBJECT(name, desc, weight, cost) { name, desc }", type = "directive" },
+    {
+        at = "#define ⟦OBJECT⟧(name, desc, weight, cost) { name, desc }",
+        type = "macro",
+        modifiers = ["definition", "callable"],
+    },
+    { at = "#define OBJECT(⟦name⟧, desc, weight, cost) { name, desc }", type = "macroParameter" },
+    { at = "#define OBJECT(name, ⟦desc⟧, weight, cost) { name, desc }", type = "macroParameter" },
+    { at = "#define OBJECT(name, desc, ⟦weight⟧, cost) { name, desc }", type = "macroParameter" },
+    { at = "#define OBJECT(name, desc, weight, ⟦cost⟧) { name, desc }", type = "macroParameter" },
+    { at = "#define OBJECT(name, desc, weight, cost) { ⟦name⟧, desc }", type = "macroParameter" },
+    { at = "#define OBJECT(name, desc, weight, cost) { name, ⟦desc⟧ }", type = "macroParameter" },
+    { at = "⟦struct⟧ objdescr obj_descr[] =", type = "keyword" },
+    { at = "struct ⟦objdescr⟧ obj_descr[] =", type = "struct", modifiers = ["global"] },
+    { at = "struct objdescr ⟦obj_descr⟧[] =", type = "variable", modifiers = ["definition", "global"] },
+    { at = "struct objdescr obj_descr[] ⟦=⟧", type = "operator" },
+    { at = "⟦#else⟧", type = "directive" },
+    {
+        at = "⟦#define⟧ OBJECT(name, desc, weight, cost) { weight, cost }",
+        type = "directive",
+        modifiers = ["inactive"],
+    },
+    {
+        at = "#define ⟦OBJECT⟧(name, desc, weight, cost) { weight, cost }",
+        type = "macro",
+        modifiers = ["definition", "callable", "inactive"],
+    },
+    { at = "#define OBJECT⟦(⟧name, desc, weight, cost) { weight, cost }", type = "plain", modifiers = ["inactive"] },
+    {
+        at = "#define OBJECT(⟦name⟧, desc, weight, cost) { weight, cost }",
+        type = "macroParameter",
+        modifiers = ["inactive"],
+    },
+    { at = "#define OBJECT(name⟦,⟧ desc, weight, cost) { weight, cost }", type = "plain", modifiers = ["inactive"] },
+    {
+        at = "#define OBJECT(name, ⟦desc⟧, weight, cost) { weight, cost }",
+        type = "macroParameter",
+        modifiers = ["inactive"],
+    },
+    { at = "#define OBJECT(name, desc⟦,⟧ weight, cost) { weight, cost }", type = "plain", modifiers = ["inactive"] },
+    {
+        at = "#define OBJECT(name, desc, ⟦weight⟧, cost) { weight, cost }",
+        type = "macroParameter",
+        modifiers = ["inactive"],
+    },
+    { at = "#define OBJECT(name, desc, weight⟦,⟧ cost) { weight, cost }", type = "plain", modifiers = ["inactive"] },
+    {
+        at = "#define OBJECT(name, desc, weight, ⟦cost⟧) { weight, cost }",
+        type = "macroParameter",
+        modifiers = ["inactive"],
+    },
+    { at = "#define OBJECT(name, desc, weight, cost⟦)⟧ { weight, cost }", type = "plain", modifiers = ["inactive"] },
+    { at = "#define OBJECT(name, desc, weight, cost) ⟦{⟧ weight, cost }", type = "plain", modifiers = ["inactive"] },
+    {
+        at = "#define OBJECT(name, desc, weight, cost) { ⟦weight⟧, cost }",
+        type = "macroParameter",
+        modifiers = ["inactive"],
+    },
+    { at = "#define OBJECT(name, desc, weight, cost) { weight⟦,⟧ cost }", type = "plain", modifiers = ["inactive"] },
+    {
+        at = "#define OBJECT(name, desc, weight, cost) { weight, ⟦cost⟧ }",
+        type = "macroParameter",
+        modifiers = ["inactive"],
+    },
+    { at = "#define OBJECT(name, desc, weight, cost) { weight, cost ⟦}⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦struct⟧ objclass objects[] =", type = "keyword", modifiers = ["inactive"] },
+    { at = "struct ⟦objclass⟧ objects[] =", type = "struct", modifiers = ["global", "inactive"] },
+    { at = "struct objclass ⟦objects⟧[] =", type = "variable", modifiers = ["definition", "global", "inactive"] },
+    { at = "struct objclass objects⟦[]⟧ =", type = "plain", modifiers = ["inactive"] },
+    { at = "struct objclass objects[] ⟦=⟧", type = "operator", modifiers = ["inactive"] },
+    { at = "⟦#endif⟧ @8", type = "directive" },
+    { at = '⟦OBJECT⟧("arrow", "pointy stick", 1, 2),', type = "macro", modifiers = ["callable"] },
+    { at = 'OBJECT(⟦"arrow"⟧, "pointy stick", 1, 2),', type = "string" },
+    { at = 'OBJECT("arrow", ⟦"pointy stick"⟧, 1, 2),', type = "string" },
+    { at = 'OBJECT("arrow", "pointy stick", ⟦1⟧, 2),', type = "number", modifiers = ["inactive"] },
+    { at = 'OBJECT("arrow", "pointy stick", 1, ⟦2⟧),', type = "number", modifiers = ["inactive"] },
+    { at = '⟦OBJECT⟧("dagger", 0, 10, 4),', type = "macro", modifiers = ["callable"] },
+    { at = 'OBJECT(⟦"dagger"⟧, 0, 10, 4),', type = "string" },
+    { at = 'OBJECT("dagger", ⟦0⟧, 10, 4),', type = "number" },
+    { at = 'OBJECT("dagger", 0, ⟦10⟧, 4),', type = "number", modifiers = ["inactive"] },
+    { at = 'OBJECT("dagger", 0, 10, ⟦4⟧),', type = "number", modifiers = ["inactive"] },
+    { at = "⟦#ifndef⟧ OBJECTS_PASS_2_ @14", type = "directive" },
+    { at = "#ifndef ⟦OBJECTS_PASS_2_⟧ @14", type = "macro" },
+    { at = "⟦#undef⟧ OBJECT", type = "directive" },
+    { at = "#undef ⟦OBJECT⟧", type = "macro", modifiers = ["callable"] },
+    { at = "⟦#define⟧ OBJECTS_PASS_2_", type = "directive" },
+    { at = "#define ⟦OBJECTS_PASS_2_⟧", type = "macro", modifiers = ["definition", "empty"] },
+    { at = '⟦#include⟧ "objects.c"', type = "directive" },
+    { at = '#include ⟦"objects.c"⟧', type = "header" },
+    { at = "⟦int⟧ objects_init(void) {", type = "primitive" },
+    { at = "int ⟦objects_init⟧(void) {", type = "function", modifiers = ["definition", "global"] },
+    { at = "int objects_init(⟦void⟧) {", type = "primitive" },
+    { at = "⟦return⟧ 0;", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦0⟧;", type = "number" },
+    { at = "⟦#endif⟧ @22", type = "directive" },
+]
+outline = [
+    { name = "OBJECT", kind = "Constant", at = "#define ⟦OBJECT⟧(name, desc, weight, cost) { name, desc }" },
+    {
+        name = "obj_descr",
+        kind = "Variable",
+        at = "struct objdescr ⟦obj_descr⟧[] =",
+        children = [
+            { name = "OBJECT", kind = "Constant", at = "#define ⟦OBJECT⟧(name, desc, weight, cost) { weight, cost }" },
+        ],
+    },
+    { name = "objects", kind = "Variable", at = "struct objclass ⟦objects⟧[] =" },
+    { name = "OBJECTS_PASS_2_", kind = "Constant", at = "#define ⟦OBJECTS_PASS_2_⟧" },
+    { name = "objects_init", kind = "Function", at = "int ⟦objects_init⟧(void) {" },
+]
+links = [
+    { at = '#include ⟦"objclass.h"⟧', target = "objclass.h" },
+    { at = '#include ⟦"objects.c"⟧', target = "objects.c" },
+]
+
+[open."objects.c".hover]
+markdown = '''
+**variable** `objects`
+
+```cpp
+struct objclass objects[] =
+#endif
+{
+OBJECT("arrow", "pointy stick", 1, 2),
+OBJECT("dagger", 0, 10, 4),
+}
+```
+'''
+range = "struct objclass ⟦objects⟧[] ="
+
 [open."main.c"]
-wrong = "the open file's index holds the pass its AST compiled, not the merged shard: objects[] and the second OBJECT are gone until it closes"
-objects = ["extern struct objclass ⟦objects⟧[];"]
+objects = ["objects.c │ struct objclass ⟦objects⟧[] ="]
 symbols = [
-    { name = "objects", kind = "Variable", at = "main.c │ extern struct objclass ⟦objects⟧[];" },
     { name = "objdescr", kind = "Struct", at = "objclass.h │ struct ⟦objdescr⟧ {" },
     { name = "objclass", kind = "Struct", at = "objclass.h │ struct ⟦objclass⟧ {" },
     {
@@ -39,6 +173,12 @@ symbols = [
         at = "objects.c │ #define ⟦OBJECT⟧(name, desc, weight, cost) { name, desc }",
     },
     { name = "obj_descr", kind = "Variable", at = "objects.c │ struct objdescr ⟦obj_descr⟧[] =" },
+    {
+        name = "OBJECT",
+        kind = "Constant",
+        at = "objects.c │ #define ⟦OBJECT⟧(name, desc, weight, cost) { weight, cost }",
+    },
+    { name = "objects", kind = "Variable", at = "objects.c │ struct objclass ⟦objects⟧[] =" },
     { name = "OBJECTS_PASS_2_", kind = "Constant", at = "objects.c │ #define ⟦OBJECTS_PASS_2_⟧" },
     { name = "objects_init()", kind = "Function", at = "objects.c │ int ⟦objects_init⟧(void) {" },
 ]

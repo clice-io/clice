@@ -481,6 +481,7 @@ export class Serve extends Client {
             ...(result.inactiveChoice === undefined || result.inactiveChoice === null
                 ? {}
                 : { inactive_choice: this.contextItem(result.inactiveChoice) }),
+            ...(result.otherContexts ? {} : { other_contexts: false }),
         }));
     }
 
@@ -514,6 +515,14 @@ export class Serve extends Client {
     resetContext(file: string): Promise<SwitchContextResult> {
         return this.ask(`reset the context of ${file}`, (client) =>
             client.resetContext(this.uri(file)),
+        );
+    }
+
+    /// Show the code the file's other contexts compile in its answers, or
+    /// its own context alone (clice/showOtherContexts).
+    showOtherContexts(file: string, show: boolean): Promise<SwitchContextResult> {
+        return this.ask(`${show ? "show" : "hide"} the other contexts of ${file}`, (client) =>
+            client.showOtherContexts(this.uri(file), show),
         );
     }
 
