@@ -165,6 +165,79 @@ ZEST_CASE(CommandHashSurvivesMove) {
     ZEXPECT(hash(before) == hash(after));
 };
 
+ZEST_CASE(ModuleOutputsShare) {
+    /// Where a module unit writes its BMI leaves the command, whether it
+    /// writes one stays: that decides the BMI a precompile writes.
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    database.add_command("/fake", "m1.cppm", "clang++ -std=c++20 -fmodule-output=m1.pcm m1.cppm"sv);
+    database.add_command("/fake", "m2.cppm", "clang++ -std=c++20 -fmodule-output=m2.pcm m2.cppm"sv);
+    database.add_command("/fake", "m3.cppm", "clang++ -std=c++20 -fmodule-output m3.cppm"sv);
+    database.add_command("/fake", "m4.cppm", "clang++ -std=c++20 m4.cppm"sv);
+    auto command = [&](llvm::StringRef file) {
+        return database.candidate_entries(fake(file)).front().command;
+    };
+    ZEXPECT(command("m1.cppm") == command("m2.cppm"));
+    ZEXPECT(command("m1.cppm") == command("m3.cppm"));
+    ZEXPECT(command("m1.cppm") != command("m4.cppm"));
+    ZEXPECT(commands.command_hash(command("m1.cppm")) != commands.command_hash(command("m4.cppm")));
+};
+
+ZEST_CASE(PCHWriterKeepsOutput) {
+    /// An output stays only where it names the precompiled header a command
+    /// writes.
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    database.add_command("/fake", "a.cxx", "clang++ -x c++-header -o a.pch -c a.cxx"sv);
+    database.add_command("/fake",
+                         "b.cpp",
+                         "clang++ -Xclang -emit-pch -o first.pch -o b.pch -c b.cpp"sv);
+    database.add_command("/fake", "c.cpp", "clang++ -o c.o -c c.cpp"sv);
+    database.add_command("/fake", "d.cpp", "clang++ -o d.o -c d.cpp"sv);
+    database.add_command("/fake",
+                         "e.h",
+                         "clang++ -x c++-header -fsyntax-only -o e.h.processed e.h"sv);
+    auto command = [&](llvm::StringRef file) {
+        return database.candidate_entries(fake(file)).front().command;
+    };
+    auto writes = [&](llvm::StringRef file, llvm::StringRef pch) {
+        auto output = commands.pch_output(command(file));
+        return output && CanonicalPath(*output) == CanonicalPath(Spelling::absolute(fake(pch)));
+    };
+    ZEXPECT(writes("a.cxx", "a.pch"));
+    ZEXPECT(writes("b.cpp", "b.pch"));
+    ZEXPECT(!commands.pch_output(command("c.cpp")).has_value());
+    ZEXPECT(!commands.pch_output(command("e.h")).has_value());
+    ZEXPECT(command("c.cpp") == command("d.cpp"));
+};
+
+ZEST_CASE(OrdinaryHashStable) {
+    /// Every index records its unit's command hash: a change to the bytes
+    /// of an ordinary command's identity reindexes every project.
+    TempDir workspace;
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    commands.set_project_root(CanonicalPath(Spelling::absolute(workspace.root)));
+    auto include = "-I" + workspace.path("inc");
+    auto entry = database.add_command(workspace.root,
+                                      workspace.path("main.cpp"),
+                                      {"clang++",
+                                       "-std=c++20",
+                                       "-O2",
+                                       "-g",
+                                       "-Wall",
+                                       "-DNDEBUG",
+                                       include.c_str(),
+                                       "-c",
+                                       "-o",
+                                       "main.o",
+                                       "main.cpp"});
+    ZEXPECT(commands.command_hash(entry->command) == 0x49934bc992945eb8ULL);
+};
+
 ZEST_CASE(ForcedLanguage) {
     FileTable file_table;
     CommandTable commands;

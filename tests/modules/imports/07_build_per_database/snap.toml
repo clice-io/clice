@@ -1,0 +1,21 @@
+[test.debug.hover]
+markdown = '''
+**variable** `checked`
+
+```cpp
+export constexpr bool checked = true
+```
+**Value:** `true`
+'''
+range = "return ⟦checked⟧;"
+
+[test.release.hover]
+markdown = '''
+**variable** `checked`
+
+```cpp
+export constexpr bool checked = false
+```
+**Value:** `false`
+'''
+range = "return ⟦checked⟧;"

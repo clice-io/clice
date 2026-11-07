@@ -1,0 +1,10 @@
+[test.before]
+errors = [
+    {
+        at = "import ⟦CycA;⟧",
+        severity = "error",
+        message = "cyclic dependency in module 'CycA': CycA -> CycB -> CycA",
+        source = "clang",
+        code = "err_module_cycle",
+    },
+]

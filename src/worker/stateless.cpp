@@ -310,7 +310,7 @@ static worker::PrecompiledBuildResult
     worker::PrecompiledBuildResult result;
     std::size_t index_bytes = 0;
     ScopedTimer index_timer;
-    if(success) {
+    if(success && params.index) {
         auto blob = index::build_tu_index(*unit, index_options(params.indexing));
         index_bytes = blob.size();
         // The PCM stands without the index, whose unit then compiles itself.

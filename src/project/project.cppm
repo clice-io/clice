@@ -2,6 +2,7 @@ module clice:project.project;
 
 import :command.database;
 import :command.edit;
+import :command.invocation;
 import :command.normalize;
 import :command.table;
 import :command.toolchain;
@@ -274,8 +275,16 @@ struct Project {
     /// what failed of building and reading them.
     llvm::StringMap<PCHEntry> pchs;
 
-    /// The PCMs of the module units, by unit.
-    llvm::DenseMap<Fid, PCMEntry> pcms;
+    /// The PCMs of the module units, by PCM node (module_node).
+    llvm::DenseMap<NodeId, PCMEntry> pcms;
+
+    /// The contexts each module unit's PCM builds in, as importers pick
+    /// them (module_build).
+    llvm::DenseMap<Fid, ModuleContexts> module_contexts;
+
+    /// module_compatibility of the arguments a command renders, by their
+    /// hash with the directory's.
+    llvm::DenseMap<std::uint64_t, ModuleCompatibility> compatibilities;
 
     /// The import scans of units' disk text and of open buffers
     /// (scan_imports), each while the files it read hold.
@@ -919,8 +928,8 @@ struct Project {
 
     // graph/pcm.cpp
 
-    /// The entry of the module unit while its PCM is built; null else.
-    const PCMEntry* built_pcm(Fid module) const;
+    /// The entry of the PCM node while its PCM is built; null else.
+    const PCMEntry* built_pcm(NodeId module) const;
 
     /// How to build a module unit's PCM: an attempt declares the unit's
     /// imports as the node's edges, waits on them and on the precompiled header
@@ -930,7 +939,17 @@ struct Project {
     /// another process sharing the cache, can remove one behind the graph's
     /// back. Only the module that lost it builds again, the ones above it
     /// keep their builds: its content did not change.
-    Work module_work(Fid module);
+    Work module_work(NodeId module);
+
+    /// The PCM an import of `module` reads in a compile of `importer` under
+    /// `command`: a build the compile can read (ModuleCompatibility::reads),
+    /// under an entry of the database the compile's command comes from before
+    /// any other, as the real build gives it, and among either the module's
+    /// own command first; else the build under its own command anyway, whose reading then fails
+    /// with clang's reason — the build no entry describes is never made up. A build system lists a
+    /// module once per configuration it builds it in: CMake once per set of
+    /// its importers' language flags, a project once per build directory.
+    NodeId module_build(Fid module, Fid importer, const Resolution& command);
 
     /// Whether `modules` and every module below them have their PCMs on disk,
     /// and the PCHs those were built over. A wait on one can outlast another:
@@ -938,7 +957,7 @@ struct Project {
     /// the cache removes it. One found gone is forgotten (its build no longer
     /// names a PCM), so waiting on it again builds it again. Every one is
     /// looked at: a gone one found later must not survive an early return.
-    bool imports_present(llvm::ArrayRef<Fid> modules);
+    bool imports_present(llvm::ArrayRef<NodeId> modules);
 
     /// Wait on the PCMs of `modules`, `failed` told every one that failed to
     /// build: in `attempt`, each in turn, or from outside the graph, all at
@@ -948,8 +967,8 @@ struct Project {
     /// the attempt was overtaken or the graph shut down; Success when every
     /// one built and they are all on disk.
     async::task<Result> wait_modules(Attempt* attempt,
-                                     llvm::ArrayRef<Fid> modules,
-                                     llvm::function_ref<void(Fid)> failed = {});
+                                     llvm::ArrayRef<NodeId> modules,
+                                     llvm::function_ref<void(NodeId)> failed = {});
 
     /// Scan the imports of a parse of `text`, the buffer of `file` under
     /// `resolution` (scan_imports), declare them as the edges of the file's
@@ -966,21 +985,25 @@ struct Project {
                                                            const Resolution& resolution,
                                                            BuildOptions options);
 
+    /// The PCM nodes of a module unit: its build under its own command, and
+    /// those under the other entries importers were given (module_build).
+    llvm::SmallVector<NodeId> module_nodes(Fid unit) const;
+
     /// The crash of the module's last build, while what it is known to have
     /// read holds: every importer that finds it books it against its own
     /// document instead of burning a worker of its own.
-    const FailureRecord* module_build_crash(Fid module);
+    const FailureRecord* module_build_crash(NodeId module);
 
-    /// Why the module's last build failed, when it failed on the user's code;
-    /// nullopt for any other failure (a crash, an outage).
-    std::optional<feature::ModuleFailure> module_failure(Fid module) const;
+    /// Why the last builds of `imports` failed, for those that failed on the
+    /// user's code; none for any other failure (a crash, an outage).
+    std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<NodeId> imports) const;
 
     /// Forget the module's failed build, a crash or errors in the user's code,
     /// so the next attempt builds it again: an importer whose own record lets it
     /// retry, or that was saved, retries it. A failed build is otherwise kept
     /// until its key or one of its inputs changes. Returns whether it had
     /// failed.
-    bool forget_module_failure(Fid module);
+    bool forget_module_failure(NodeId module);
 
     /// The direct module dependencies of the unit under the arguments
     /// `resolution` renders, the ones its compile runs: a context choice or a
@@ -1007,17 +1030,18 @@ struct Project {
     /// names: theirs and, below each that built, those of the modules it
     /// imports in turn — clang loads every module below an import, and a built
     /// module's imports are built too.
-    std::unordered_map<std::string, std::string> imported_pcms(llvm::ArrayRef<Fid> modules) const;
+    std::unordered_map<std::string, std::string>
+        imported_pcms(llvm::ArrayRef<NodeId> modules) const;
 
     /// What decides whether the module's last PCM build still holds: what it
     /// read, or — for a build an import failed — what the import's failure
     /// rests on, down to the module whose own build failed. Null for a module
     /// never built and for a cycle of imports failing each other.
-    const Inputs* module_inputs(Fid module) const;
+    const Inputs* module_inputs(NodeId module) const;
 
     /// The module_inputs of `modules`, each once: what their PCMs were built
     /// from, their imports' inputs included, or what keeps them failing.
-    Inputs module_inputs(llvm::ArrayRef<Fid> modules) const;
+    Inputs module_inputs(llvm::ArrayRef<NodeId> modules) const;
 
     // graph/unit.cpp
 

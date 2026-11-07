@@ -1,0 +1,32 @@
+["changed on disk".newer.hover]
+markdown = '''
+**variable** `standard`
+
+```cpp
+export constexpr long standard = __cplusplus + 1
+```
+**Value:** `202303 (0x3163f)`
+'''
+range = "return ⟦standard⟧;"
+
+["changed on disk".older.hover]
+markdown = '''
+**variable** `standard`
+
+```cpp
+export constexpr long standard = __cplusplus + 1
+```
+**Value:** `202003 (0x31513)`
+'''
+range = "return ⟦standard⟧;"
+
+["entry added".newer.hover]
+markdown = '''
+**variable** `standard`
+
+```cpp
+export constexpr long standard = __cplusplus
+```
+**Value:** `202302 (0x3163e)`
+'''
+range = "return ⟦standard⟧;"

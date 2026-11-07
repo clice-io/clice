@@ -38,18 +38,6 @@ static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TU
     return diagnostics;
 }
 
-/// Why each import that failed to build did not.
-static std::vector<feature::ModuleFailure> module_failures(llvm::ArrayRef<Fid> imports,
-                                                           const Project& project) {
-    std::vector<feature::ModuleFailure> failures;
-    for(auto module: imports) {
-        if(auto failure = project.module_failure(module)) {
-            failures.push_back(std::move(*failure));
-        }
-    }
-    return failures;
-}
-
 /// The imports of a module several units provide, each resolved to the
 /// nearest of them (scan_imports).
 static std::vector<feature::ModuleChoice> module_choices(const Imports& imports,
@@ -216,8 +204,8 @@ void ServedProject::retry_after_save(Session& session) {
     // so a save retries its failed preamble too. Either refusal leaves the
     // compile standing, so only a fresh attempt asks for the PCH or PCM again.
     bool retry = session.crash_record(feature::RequestKind::PCM) != nullptr;
-    llvm::SmallVector<Fid> modules{session.path_id};
-    llvm::DenseSet<Fid> seen{session.path_id};
+    auto modules = project.module_nodes(session.path_id);
+    llvm::DenseSet<NodeId> seen(modules.begin(), modules.end());
     auto add_imports = [&](NodeId importer) {
         for(auto module: imported_modules(project.graph, importer)) {
             if(seen.insert(module).second) {
@@ -228,7 +216,7 @@ void ServedProject::retry_after_save(Session& session) {
     add_imports(ast_node(session.path_id));
     for(std::size_t i = 0; i < modules.size(); i += 1) {
         retry |= project.forget_module_failure(modules[i]);
-        add_imports(module_node(modules[i]));
+        add_imports(modules[i]);
     }
     // A PCH that kept its preamble's errors misses the same lookups as a
     // failed build: a save rebuilds it.
@@ -968,7 +956,7 @@ void ServedProject::CompileAttempt::assemble(std::vector<feature::FileDiagnostic
             feature::with_preamble(std::move(diagnostics), preamble_diagnostics(*preamble_index));
     }
     feature::explain_failed_imports(diagnostics,
-                                    module_failures(imports.imports.resolved(), project));
+                                    project.module_failures(imports.imports.resolved()));
     for(auto& choice: module_choices(imports.imports, project)) {
         diagnostics.push_back(feature::ambiguous_module(choice, session->text()));
     }

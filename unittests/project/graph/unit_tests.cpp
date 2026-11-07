@@ -1,6 +1,7 @@
 module clice;
 
 import :compile.compilation;
+import :project.graph.pcm;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :project.graph.unit;
@@ -221,6 +222,64 @@ ZEST_CASE(BuildsIndexModules) {
     }
 }
 
+ZEST_CASE(EntryBuildLeavesIndex) {
+    // An importer under C++23 reads the module's build under its C++23
+    // entry, which leaves the module's index to the build under its own
+    // command.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport long mv() { return __cplusplus; }\n");
+    tmp.touch("newer.cpp", "import m;\nlong use() { return mv(); }\n");
+
+    IndexerFixture f;
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"),    {}            },
+                  {tmp.root, tmp.path("m.cppm"),    {"-std=c++23"}},
+                  {tmp.root, tmp.path("newer.cpp"), {"-std=c++23"}},
+    }));
+    scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ZASSERT(store);
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    f.project.store.emplace(std::move(*store));
+
+    auto id = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+    std::optional<UnitResult::Status> result;
+    bool done = false;
+    auto body = [&]() -> async::task<> {
+        WorkerPoolOptions opts;
+        opts.program = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(f.pool.start(opts));
+
+        UnitRequest request;
+        request.index = true;
+        result = (co_await f.project.compile_unit(id("newer.cpp"), std::move(request)))->status;
+
+        co_await f.project.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(done);
+
+    ZEXPECT(result == UnitResult::Status::Completed);
+    ZASSERT(f.project.pcms.size() == 1u);
+    auto& [module, build] = *f.project.pcms.begin();
+    ZEXPECT(module_context(module) != 0u);
+    ZEXPECT(!build.path.empty());
+    ZEXPECT(f.project.index.shard(id("m.cppm")) == nullptr);
+    ZEXPECT(f.project.index.shard(id("newer.cpp")) != nullptr);
+}
+
 ZEST_CASE(ExcludedModuleStillIndexed) {
     // A module unit a rule keeps out of the index is still indexed by the
     // PCM build its importer waits on, as a header the rule covers is by
@@ -333,7 +392,7 @@ ZEST_CASE(BrokenModuleCompilesItself) {
     ZASSERT(result.has_value());
     ZEXPECT(result->status == UnitResult::Status::Completed);
     ZEXPECT(result->perf.bytes != 0u);
-    ZEXPECT(f.project.built_pcm(id) == nullptr);
+    ZEXPECT(f.project.built_pcm(module_node(id)) == nullptr);
     ZEXPECT(f.project.index.shard(id) != nullptr);
 }
 
@@ -363,8 +422,8 @@ ZEST_CASE(FailedImportWaitsOnce) {
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
     };
-    llvm::SmallVector<Fid> modules{id("bad.cppm"), id("good.cppm")};
-    llvm::SmallVector<Fid> failed;
+    llvm::SmallVector<NodeId> modules{module_node(id("bad.cppm")), module_node(id("good.cppm"))};
+    llvm::SmallVector<NodeId> failed;
     std::optional<Result> waited;
     bool done = false;
     auto body = [&]() -> async::task<> {
@@ -374,7 +433,7 @@ ZEST_CASE(FailedImportWaitsOnce) {
         opts.stateful_count = 0;
         ZASSERT(f.pool.start(opts));
 
-        auto heard = [&](Fid module) {
+        auto heard = [&](NodeId module) {
             failed.push_back(module);
         };
         Work importer{.run = [&](Attempt& attempt) {
@@ -392,8 +451,8 @@ ZEST_CASE(FailedImportWaitsOnce) {
     ZEXPECT(done);
 
     ZEXPECT(waited == Result::Failed);
-    ZEXPECT(failed == llvm::SmallVector<Fid>{id("bad.cppm")});
-    ZEXPECT(f.project.built_pcm(id("good.cppm")) != nullptr);
+    ZEXPECT(failed == llvm::SmallVector<NodeId>{module_node(id("bad.cppm"))});
+    ZEXPECT(f.project.built_pcm(module_node(id("good.cppm"))) != nullptr);
 }
 
 ZEST_CASE(EvictedModuleBelowRebuilds) {
@@ -438,7 +497,7 @@ ZEST_CASE(EvictedModuleBelowRebuilds) {
         first.index = true;
         results.push_back(
             (co_await f.project.compile_unit(id("use.cpp"), std::move(first)))->status);
-        evicted = f.project.pcms.find(id("low.cppm"))->second.path;
+        evicted = f.project.pcms.find(module_node(id("low.cppm")))->second.path;
         ZASSERT(!evicted.empty());
         ZASSERT(fs::remove(evicted).has_value());
         UnitRequest second;
@@ -457,7 +516,7 @@ ZEST_CASE(EvictedModuleBelowRebuilds) {
 
     using enum UnitResult::Status;
     ZEXPECT(results == (std::vector<UnitResult::Status>{Completed, Completed}));
-    auto low = f.project.pcms.find(id("low.cppm"));
+    auto low = f.project.pcms.find(module_node(id("low.cppm")));
     ZASSERT(low != f.project.pcms.end());
     ZEXPECT(!low->second.path.empty());
     ZEXPECT(fs::exists(low->second.path));
@@ -492,7 +551,7 @@ ZEST_CASE(CrashedModuleStaysRefused) {
     auto m = id("m.cppm");
     auto read = current_input(f.project.file_table, m);
     ZASSERT(read.has_value());
-    f.project.pcms[m].failure = {
+    f.project.pcms[module_node(m)].failure = {
         {.key = "an-earlier-key", .record = failed_build("sl:0:0", "killed by signal 11")},
         {*read}
     };
@@ -518,7 +577,7 @@ ZEST_CASE(CrashedModuleStaysRefused) {
     f.loop.run();
     ZEXPECT(done);
 
-    auto build = f.project.pcms.find(m);
+    auto build = f.project.pcms.find(module_node(m));
     ZASSERT(build != f.project.pcms.end());
     ZEXPECT(build->second.failure.has_value());
     ZEXPECT(build->second.path.empty());

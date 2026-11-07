@@ -246,6 +246,7 @@ ZEST_CASE(BuildPCMRequest) {
                             src};
         params.module_name = "test_module";
         params.output_path = tmp.path("test_module.pcm");
+        params.index = true;
 
         auto result = co_await w.peer->send_request(params);
         ZEXPECT(result);

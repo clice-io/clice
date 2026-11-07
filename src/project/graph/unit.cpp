@@ -1,6 +1,7 @@
 module clice;
 
 import :compile.tidy;
+import :feature.diagnostics;
 import :index.project_index;
 import :project.background;
 import :project.command;
@@ -99,7 +100,7 @@ async::task<UnitResult>
        project.compiled_by_build(path_id)) {
         Result built;
         if(!project.dep_graph.module_of(path_id).empty()) {
-            built = co_await project.wait_modules(&attempt, {path_id});
+            built = co_await project.wait_modules(&attempt, {module_node(path_id)});
         } else {
             auto pch = project.declared_pch_request(resolved.ref);
             auto id = pch_node(pch.pch_key);
@@ -179,6 +180,17 @@ async::task<UnitResult>
                                                        attempt.token(),
                                                        cost,
                                                        &measured);
+    // clang reports an import of a module whose build failed as not found:
+    // the run's report says why it did not build, as the editor does.
+    if(reply.has_value()) {
+        auto failures = project.module_failures(modules);
+        for(auto& error: reply.value().errors) {
+            feature::explain_failed_import(error.message, failures);
+        }
+        for(auto& diagnostic: reply.value().tidy_diagnostics) {
+            feature::explain_failed_import(diagnostic.message, failures);
+        }
+    }
     // The samples may miss a peak a killed run already reached.
     auto peak = measured.peak != 0 ? std::max(measured.peak, cost.floor) : 0;
     if(peak != 0) {

@@ -72,9 +72,10 @@ constexpr bool cl_mode(CompilerFamily family) {
 /// are not misparsed. None sees flang's.
 unsigned family_visibility(CompilerFamily family);
 
-/// How an argument participates in compilation semantics. Every parsed
-/// argument is kept in the structured command with a class; renders select
-/// by class instead of re-parsing.
+/// How an argument a command keeps participates in compilation semantics.
+/// The options the compile never takes — codegen-only ones, outputs,
+/// dependency files, those the driver ignores — leave the command when it
+/// is parsed (classify_option): commands differing only in them are one.
 enum class ArgClass : std::uint8_t {
     /// Affects frontend semantics (language, target, macros defined by mode).
     Semantic,
@@ -87,13 +88,12 @@ enum class ArgClass : std::uint8_t {
     /// warnings are emitted but never the token stream.
     Diagnostics,
 
-    /// Pure backend/linker concerns (-g, -ffunction-sections, ...): kept for the
-    /// Full view, skipped by compile renders and command hashes.
-    Codegen,
-
-    /// Irrelevant to an LSP (outputs, PCH building, dependency scan, module
-    /// flags we manage ourselves): kept for the Full view only.
-    Discarded,
+    /// The precompiled files of the build, which clice builds itself from
+    /// the files on disk: the precompiled header the command reads
+    /// (`-include-pch`), whether it writes one (`-emit-pch`, and its `-o`),
+    /// whether it names a module output (`-fmodule-output`, wherever that
+    /// goes). In the command hash, never in compile renders.
+    Precompiled,
 
     /// Unrecognized token, kept verbatim (identity is the spelling). In the
     /// command hash — dropping an option we don't understand could merge
@@ -156,17 +156,26 @@ struct LocalArg {
 ///   and -fPIC and -fstack-protector*, which define __PIC__ and __SSP__
 bool is_codegen_option(unsigned id);
 
-/// Options that are completely irrelevant to an LSP and should be discarded
-/// (input/output, PCH building, dependency scan, C++ modules, and anything
-/// the driver itself accepts and ignores).
+/// Options the compile never takes: outputs, dependency files, the
+/// precompiled files clice builds itself, the prebuilt modules of the build,
+/// and anything the driver itself accepts and ignores.
 bool is_discarded_option(unsigned id);
+
+/// Whether `token`, an option clang's table does not know, is one of the
+/// ones naming a file of each unit the build writes: GCC's module mapper
+/// and dependency scan output, its SARIF and profile notes, Apple's index
+/// unit output. A command leaves them out as it does the ones clang knows
+/// (is_discarded_option).
+bool is_discarded_unknown(llvm::StringRef token);
 
 /// User-content options that go into the per-file patch rather than the
 /// shared canonical command: -I, -D, -U, -include, -imacros, -isystem, -iquote,
 /// -idirafter.
 bool is_user_content_option(unsigned id);
 
-ArgClass classify_option(unsigned id, llvm::ArrayRef<const char*> values);
+/// The class of option `id` given `values` in a command; none for an option
+/// the command leaves out.
+std::optional<ArgClass> classify_option(unsigned id, llvm::ArrayRef<const char*> values);
 
 /// Whether `value` of option `id` names a file or directory, which every
 /// reader of the command spells the way clice spells paths (Spelling): a

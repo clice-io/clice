@@ -81,15 +81,17 @@ struct Cascade {
         }
     }
 
-    /// Mark a module unit and its transitive importers dirty, overtaking
+    /// Mark a module unit's PCMs and their transitive importers dirty, overtaking
     /// in-flight attempts: their next attempts check their builds again, and
     /// a build whose key and inputs still hold is kept — the single write
     /// point for PCM content invalidation. A product-only loss (cache
     /// eviction) is the node's check instead (Project::module_work), which
     /// re-dirties the module alone: what its importers read is unchanged.
     void invalidate_module(Fid file) {
-        for(auto dirtied: project.graph.invalidate(module_node(file))) {
-            mark_dependent(dirtied.file());
+        for(auto module: project.module_nodes(file)) {
+            for(auto dirtied: project.graph.invalidate(module)) {
+                mark_dependent(dirtied.file());
+            }
         }
     }
 
@@ -254,7 +256,7 @@ llvm::SmallVector<Fid> Project::readers(Fid file) const {
     for(auto& [module, entry]: pcms) {
         if(ranges::contains(entry.inputs, file, &Input::file) ||
            (entry.failure && ranges::contains(entry.failure->inputs, file, &Input::file))) {
-            add(module);
+            add(module.file());
         }
     }
     return result;

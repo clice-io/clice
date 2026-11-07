@@ -78,6 +78,12 @@ CommandID
                 .option = parsed,
                 .prefix = written.consume_back("*") && written == parsed.spelling,
             });
+            // A command keeps its module output without the path
+            // (CommandTable::local_arg).
+            if(remove.option.id == clang_options::OPT_fmodule_output_EQ) {
+                remove.option.id = clang_options::OPT_fmodule_output;
+                remove.option.values.clear();
+            }
             // Anchored like the base command's paths, so a relative value
             // names the file the rule's configuration means; the `*`
             // wildcard stays a wildcard.
@@ -167,7 +173,11 @@ CommandID
                           std::vector<LocalArg>& out) {
         std::vector<std::string> flags(edit_flags.begin(), edit_flags.end());
         for(auto& parsed: clang_options::table().parse(flags, remove_parse_options)) {
-            auto& local = out.emplace_back(commands.local_arg(parsed, flags));
+            auto added = commands.local_arg(parsed, flags);
+            if(!added) {
+                continue;
+            }
+            auto& local = out.emplace_back(std::move(*added));
             if(local.opt_id == clang_options::OPT_UNKNOWN) {
                 local.cls = ArgClass::Semantic;
             }

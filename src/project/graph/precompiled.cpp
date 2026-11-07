@@ -1,6 +1,7 @@
 module clice;
 
 import :project.command;
+import :project.graph.pcm;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :project.graph.unit;

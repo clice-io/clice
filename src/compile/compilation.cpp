@@ -447,10 +447,12 @@ public:
 
     /// Asked under CompilationParams::skip_bodies and instantiating, and by
     /// every completion's parse, which skips each body but the one holding
-    /// the point.
+    /// the point and a forwarding function's, whose body tells signature
+    /// help the constructor a call reaches.
     bool shouldSkipFunctionBody(clang::Decl* decl) final {
         if(unit.kind() == CompilationKind::Completion) {
-            return clang::MultiplexConsumer::shouldSkipFunctionBody(decl);
+            return !likely_forwarding(decl) &&
+                   clang::MultiplexConsumer::shouldSkipFunctionBody(decl);
         }
         auto file = unit.produced_at(decl->getLocation()).file;
         if(auto& instantiating = unit.params.instantiating;

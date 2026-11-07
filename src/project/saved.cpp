@@ -73,6 +73,10 @@ struct SavedPCM {
 
     std::uint32_t source_file;
 
+    /// The context the PCM was built in (module_node); absent for the
+    /// unit's own command.
+    std::optional<std::uint32_t> context;
+
     std::string module_name;
 
     std::vector<SavedInput> deps;
@@ -720,14 +724,17 @@ std::string Project::serialize_precompiled_records() {
         data.pch.push_back(std::move(entry));
     }
 
-    for(auto& [path_id, st]: pcms) {
+    for(auto& [module, st]: pcms) {
         if(st.path.empty())
             continue;
         SavedPCM entry;
         entry.key = st.key;
         entry.blob = st.blob;
-        entry.source_file = table.add(path_id);
-        entry.module_name = dep_graph.module_of(path_id).str();
+        entry.source_file = table.add(module.file());
+        if(auto context = module_context(module)) {
+            entry.context = context;
+        }
+        entry.module_name = dep_graph.module_of(module.file()).str();
         dump_deps(st.inputs, entry.deps);
         data.pcm.push_back(std::move(entry));
     }
@@ -828,7 +835,7 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
         auto source = table.file(entry.source_file);
         if(!source)
             continue;
-        auto& st = pcms[*source];
+        auto& st = pcms[module_node(*source, entry.context.value_or(0))];
         st.path = *pcm_path;
         st.key = entry.key;
         st.blob = std::move(*entry.blob);
