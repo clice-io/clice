@@ -628,6 +628,19 @@ async::task<Result> ServedProject::CompileAttempt::run() {
     if(project.settings.diagnostics.clang_tidy &&
        project.rules.lintable(project.file_table.resolve(path_id))) {
         tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
+        auto slow_checks = project.settings.diagnostics.clang_tidy_slow_checks;
+        tidy_config->params.slow_checks = slow_checks.value_or(false);
+        if(!slow_checks && served.named_slow_checks.insert(tidy_config->params.checks).second) {
+            if(auto checks = tidy::slow_checks(tidy_config->params); !checks.empty()) {
+                LOG_GUIDANCE(
+                    "The clang-tidy configuration of {} enables checks too slow for an editor, or "
+                    "not measured for one, which do not run on open files: {}. Set "
+                    "`clang_tidy_slow_checks = true` under `[diagnostics]` to run them, or "
+                    "`false` to leave them out without this message; `clice lint` runs them.",
+                    file_path,
+                    llvm::join(checks, ", "));
+            }
+        }
         auto& suspects = session->suspects;
         if(tidy_config->error.empty() && !suspects.tidy && suspects.pch.empty() &&
            !session->crash_record(Compile) && !session->crash_stops(Tidy, Session::Clock::now())) {

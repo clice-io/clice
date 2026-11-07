@@ -254,10 +254,11 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
 }
 
 void ServedProject::decide_serving(ServedDocument& document) {
-    // An escalated document needs no decision: builds stay pull-driven. When
-    // they skip the bodies of the headers, the file's background run shows
-    // what those hold (show_background_diagnostics), and goes first when none
-    // has reported on its text.
+    // An escalated document needs no decision: builds stay pull-driven. The
+    // file's background run shows what its compile cannot — what the
+    // skipped bodies of the headers hold, its unused includes
+    // (show_background_diagnostics) — and goes first when none has reported
+    // on its text.
     auto& session = *document.session;
     auto path_id = session.path_id;
     auto& background = project.background_index;

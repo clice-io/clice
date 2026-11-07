@@ -891,6 +891,11 @@ private:
     /// of a multi-root workspace may hold no C or C++ at all.
     bool commands_missing = false;
 
+    /// The clang-tidy Checks lists whose slow checks a guidance has named,
+    /// each once: those the editor leaves out while
+    /// `clang_tidy_slow_checks` is unset.
+    llvm::StringSet<> named_slow_checks;
+
     bool endpoint_recorded = false;
 
     bool metadata_flush_scheduled = false;
