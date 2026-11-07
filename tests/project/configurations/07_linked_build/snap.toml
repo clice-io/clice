@@ -4,6 +4,16 @@ symbols = [
 ]
 inactive = ["⟦int debug_only = 1;⟧"]
 
+["the link picks the build".release.menu]
+menu = ["active", "debug"]
+active = "active"
+selected = ""
+default = "active"
+
+["the link picks the build".release.menu.build]
+configuration = ""
+databases = ["out/release/compile_commands.json"]
+
 ["the link picks the build".debug]
 symbols = [
     { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = 1;" },
@@ -15,6 +25,10 @@ menu = ["active", "debug"]
 active = "active"
 selected = ""
 default = "active"
+
+["the link picks the build".debug.menu.build]
+configuration = "debug"
+databases = ["out/debug/compile_commands.json"]
 
 ["switching back indexes nothing"."release again"]
 workspace_symbols = [

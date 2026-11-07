@@ -35,6 +35,7 @@ void forget_pairs(Project& project, llvm::StringRef pch_key) {
     entry.discard(project.store ? &*project.store : nullptr, "pch");
     entry.index_path.clear();
     entry.index.reset();
+    entry.built_index.reset();
     if(!entry.failure && !entry.consumes) {
         project.pchs.erase(it);
     }
@@ -110,16 +111,6 @@ bool refused(Project& project, llvm::StringRef pch_key, llvm::StringRef file) {
     return false;
 }
 
-/// Move a pch key to the front of the loaded-index LRU. Called whenever an
-/// entry's pch.idx index is opened or replaced.
-void touch_loaded_index(Project& project, llvm::StringRef pch_key) {
-    auto& lru = project.loaded_pch_indexes;
-    if(auto it = ranges::find(lru, pch_key); it != lru.end()) {
-        lru.erase(it);
-    }
-    lru.insert(lru.begin(), pch_key.str());
-}
-
 /// One attempt: revalidate the registered PCH, or dispatch a build with the
 /// request's inputs and commit it, a preamble's with its index.
 async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest request) {
@@ -160,10 +151,10 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     IndexTransfer transfer;
     if(!bp.whole_file) {
         pending_idx = project.store->begin_store_aux("pch", blob);
-        bp.index_output_path = pending_idx->tmp_path;
+        bp.indexing.output_path = pending_idx->tmp_path;
     } else if(request.writer) {
         bp.index = true;
-        transfer = project.request_index(request.writer->unit, bp);
+        transfer = project.request_index(request.writer->unit, bp.indexing);
     }
 
     // What the imported modules' PCMs and the PCH built over were built
@@ -278,11 +269,11 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     entry.base_blob = std::move(base_blob);
     entry.index_path = index_path.value_or("");
     // Replace the previous blob's mapping (same key, rebuilt content);
-    // in-flight holders of the old shared_ptr stay valid.
-    entry.index = std::move(loaded);
-    if(entry.index) {
-        touch_loaded_index(project, pch_key);
-        project.enforce_loaded_budget();
+    // in-flight holders of the old shared_ptr stay valid. Handed to a parse
+    // still waiting for it: with none, nothing would ever take it.
+    entry.index = loaded;
+    if(!attempt.token().cancelled()) {
+        entry.built_index = std::move(loaded);
     }
 
     LOG_INFO("PCH built for {}: {}", bp.file, entry.path);
@@ -318,18 +309,23 @@ std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path) {
     return std::make_shared<index::TUIndex>(std::move(tu_index));
 }
 
-const std::shared_ptr<index::TUIndex>& PCHEntry::load_index() {
-    if(!index && !index_path.empty()) {
-        index = load_pch_index(index_path);
-        if(!index) {
-            // Unreadable blob: clear the path so queries don't retry the
-            // mmap + verification on every call. The pair now looks
-            // incomplete and the next acquisition rebuilds it.
-            LOG_WARN("Failed to open pch.idx envelope {}", index_path);
-            index_path.clear();
-        }
+std::shared_ptr<index::TUIndex> PCHEntry::load_index() {
+    if(auto held = index.lock()) {
+        return held;
     }
-    return index;
+    if(index_path.empty()) {
+        return nullptr;
+    }
+    auto loaded = load_pch_index(index_path);
+    if(!loaded) {
+        // Unreadable blob: clear the path so queries don't retry the
+        // mmap + verification on every call. The pair now looks
+        // incomplete and the next acquisition rebuilds it.
+        LOG_WARN("Failed to open pch.idx envelope {}", index_path);
+        index_path.clear();
+    }
+    index = loaded;
+    return loaded;
 }
 
 PCHRequest Project::declared_pch_request(const CommandRef& unit) {
@@ -419,7 +415,7 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     // absent and hides what the fragment made visible. Such a preamble
     // goes without one.
     std::string pcm_keys;
-    llvm::SmallVector<Fid> modules;
+    llvm::SmallVector<NodeId> modules;
     bool imported = false;
     assert(ranges::size(imports.declared) == ranges::size(imports.offsets));
     for(auto [dep, offset]: views::zip(imports.declared, imports.offsets)) {
@@ -428,10 +424,9 @@ PreamblePCH Project::preamble_pch(Fid path_id,
         }
         imported = true;
         if(!is_unresolved_import(dep)) {
-            auto module = dep.file();
-            if(auto* pcm = built_pcm(module)) {
+            if(auto* pcm = built_pcm(dep)) {
                 pcm_keys += pcm->key;
-                modules.push_back(module);
+                modules.push_back(dep);
             }
         }
         pcm_keys.push_back('\0');
@@ -576,25 +571,36 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
         built.preamble = key;
         // A preamble whose build crashed a worker — for this document or
         // another sharing it — is refused until the parse may retry it.
-        if(auto* crash = build_crash(key)) {
+        if(auto* crash = pch_build_crash(key)) {
             if(options.retry_crashed) {
-                forget_build_failure(key);
+                forget_pch_failure(key);
             } else {
                 built.refused = *crash;
             }
         }
         if(!built.refused) {
+            // A parse leaving without the index its build opened lets it go:
+            // it stays mapped while a compile holds it.
+            auto handoff = llvm::make_scope_exit([&] {
+                if(auto it = pchs.find(key); it != pchs.end()) {
+                    it->second.built_index.reset();
+                }
+            });
             built.result = co_await wait(std::move(*plan.request));
             if(built.result == Result::Stale) {
                 co_return std::nullopt;
+            }
+            if(built.result == Result::Success && built_pch(key)) {
+                built.index = std::move(pchs.find(key)->second.built_index);
             }
         }
     }
 
     // The declared header precompiled whole covers none of the text.
-    if(auto* pch = built.result == Result::Success ? built_pch(*built.preamble) : nullptr) {
+    if(built.result == Result::Success && built_pch(*built.preamble)) {
+        auto& pch = pchs.find(*built.preamble)->second;
         built.loaded = built.preamble;
-        built.pch = {pch->path, pch->bound};
+        built.pch = {pch.path, pch.bound};
     } else if(auto* pch = built.base ? built_pch(*built.base) : nullptr) {
         built.loaded = built.base;
         built.pch = {pch->path, 0};
@@ -622,13 +628,13 @@ void Project::discard_pch(llvm::StringRef pch_key) {
     }
 }
 
-const FailureRecord* Project::build_crash(llvm::StringRef pch_key) {
+const FailureRecord* Project::pch_build_crash(llvm::StringRef pch_key) {
     auto it = pchs.find(pch_key);
     auto* failed = it != pchs.end() ? it->second.standing_failure(file_table) : nullptr;
     return failed && failed->crashed() ? failed : nullptr;
 }
 
-bool Project::forget_build_failure(llvm::StringRef pch_key) {
+bool Project::forget_pch_failure(llvm::StringRef pch_key) {
     auto it = pchs.find(pch_key);
     return it != pchs.end() && std::exchange(it->second.failure, std::nullopt).has_value();
 }
@@ -669,10 +675,6 @@ std::shared_ptr<index::TUIndex> Project::preamble_index(llvm::StringRef pch_key)
         LOG_WARN("Discarding PCH pair {} with unreadable pch.idx envelope", pch_key);
         store->invalidate("pch", entry.blob);
     }
-    if(loaded) {
-        touch_loaded_index(*this, pch_key);
-        enforce_loaded_budget();
-    }
     return loaded;
 }
 
@@ -693,41 +695,6 @@ void Project::forget_evicted_pchs() {
         if(it != pchs.end() && !graph.is_compiling(pch_node(it->getKey()))) {
             forget_pairs(*this, it->getKey());
         }
-    }
-}
-
-void Project::enforce_loaded_budget() {
-    // One key per open document — its preamble's — and two extra slots: a
-    // closed file's recently used index survives a quick close/reopen, and
-    // a shared key serving several documents stays warm while its consumers
-    // churn.
-    // Open documents' keys always fit the budget, so an unload can only
-    // hit keys past the working set; the reload an unlucky consumer then
-    // pays (mmap + verification, on the event loop) is the accepted cost
-    // of bounding tens of MB per key.
-    // Without a serving side (tests, tools), a small editor-like working set.
-    constexpr std::size_t default_open_documents = 6;
-    std::size_t budget = 2 + (serving ? serving->open_documents() : default_open_documents);
-
-    auto& lru = loaded_pch_indexes;
-    std::size_t kept = 0;
-    std::size_t i = 0;
-    while(i < lru.size()) {
-        auto it = pchs.find(lru[i]);
-        // Erased entries and already-unloaded keys just fall out of the
-        // list (invalidation and store eviction bypass the LRU).
-        if(it == pchs.end() || !it->second.index) {
-            lru.erase(lru.begin() + i);
-            continue;
-        }
-        if(kept < budget) {
-            kept += 1;
-            i += 1;
-            continue;
-        }
-        LOG_DEBUG("Unloading pch.idx envelope of {} (budget {})", lru[i], budget);
-        it->second.index.reset();
-        lru.erase(lru.begin() + i);
     }
 }
 

@@ -3,6 +3,7 @@
   "pairs": [
     { "kind": "heading", "en": "8edfadf4e7017f8c", "zh": "e424fe8a93004aa8" },
     { "kind": "paragraph", "en": "217ab44dfc1dc191", "zh": "73aa6010194b8c52" },
+    { "kind": "paragraph", "en": "6e6ccaf4f0f113dd", "zh": "82c9ea5473eb8672" },
     { "kind": "heading", "en": "92b192d9f11dc64f", "zh": "1214a465d14f43f2" },
     { "kind": "paragraph", "en": "576f15192f03b5d0", "zh": "eb8be2246f225ac2" },
     { "kind": "paragraph", "en": "ea548b92e93120a3", "zh": "8b1945b29e2651df" },
@@ -19,10 +20,6 @@
     { "kind": "paragraph", "en": "53a4c78028d2793f", "zh": "53a4c78028d2793f" },
     { "kind": "paragraph", "en": "786a0dd92a0fa4d5", "zh": "cf50a1dc113a9f9d" },
     { "kind": "paragraph", "en": "5a1e42e342a34a81", "zh": "5a1e42e342a34a81" },
-    { "kind": "paragraph", "en": "c546ac40302de30e", "zh": "a55558a0771fa6e3" },
-    { "kind": "heading", "en": "e9980824b716b40c", "zh": "b11572249aa38b1b" },
-    { "kind": "paragraph", "en": "0a700108c3e5aa4e", "zh": "2e7618d0a1fe41c3" },
-    { "kind": "paragraph", "en": "2141d5f36e0bca34", "zh": "ce23672c4701c4c1" },
-    { "kind": "paragraph", "en": "a55d0500b6f44da0", "zh": "44fb4500d051fc66" }
+    { "kind": "paragraph", "en": "c546ac40302de30e", "zh": "a55558a0771fa6e3" }
   ]
 }

@@ -4,6 +4,7 @@ import :compile.diagnostic;
 import :feature.diagnostics;
 import :index.database;
 import :index.format;
+import :project.graph.pcm;
 import :project.project;
 import :support.bytes;
 import :unittests.utils.indexer_fixture;
@@ -189,7 +190,8 @@ ZEST_CASE(DeplessPcmDropped) {
         ZASSERT(!fs::write_file(pending.tmp_path, "pcm-bytes"));
         ZASSERT(f.project.store->commit(std::move(pending)));
 
-        auto& st = f.project.pcms[f.project.file_table.intern(Spelling::absolute(src))];
+        auto& st =
+            f.project.pcms[module_node(f.project.file_table.intern(Spelling::absolute(src)))];
         st.path = "m.pcm";
         st.key = "k";
         st.blob = "k";

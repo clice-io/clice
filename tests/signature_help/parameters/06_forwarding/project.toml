@@ -1,0 +1,3 @@
+# The standard library is the case's own header, written the way the real
+# one forwards its arguments.
+flags = ["-I.", "-nostdinc"]

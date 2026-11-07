@@ -1,7 +1,9 @@
 module clice;
 
 import :compile.tidy;
+import :feature.diagnostics;
 import :index.project_index;
+import :project.background;
 import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
@@ -98,7 +100,7 @@ async::task<UnitResult>
        project.compiled_by_build(path_id)) {
         Result built;
         if(!project.dep_graph.module_of(path_id).empty()) {
-            built = co_await project.wait_modules(&attempt, {path_id});
+            built = co_await project.wait_modules(&attempt, {module_node(path_id)});
         } else {
             auto pch = project.declared_pch_request(resolved.ref);
             auto id = pch_node(pch.pch_key);
@@ -107,8 +109,7 @@ async::task<UnitResult>
         if(built == Result::Stale) {
             co_return UnitResult{.status = Status::Preempted};
         }
-        if(built == Result::Success && project.index.indexed_command(path_id) == command &&
-           !project.index.needs_reindex(path_id)) {
+        if(built == Result::Success && project.index_holds(path_id)) {
             co_return UnitResult{.status = Status::Completed};
         }
     }
@@ -163,7 +164,7 @@ async::task<UnitResult>
     merge_inputs(imports, {&precompiled});
     IndexTransfer transfer;
     if(request.index) {
-        transfer = project.request_index(path_id, params);
+        transfer = project.request_index(path_id, params.indexing);
     }
 
     RequestCost cost;
@@ -179,6 +180,17 @@ async::task<UnitResult>
                                                        attempt.token(),
                                                        cost,
                                                        &measured);
+    // clang reports an import of a module whose build failed as not found:
+    // the run's report says why it did not build, as the editor does.
+    if(reply.has_value()) {
+        auto failures = project.module_failures(modules);
+        for(auto& error: reply.value().errors) {
+            feature::explain_failed_import(error.message, failures);
+        }
+        for(auto& diagnostic: reply.value().tidy_diagnostics) {
+            feature::explain_failed_import(diagnostic.message, failures);
+        }
+    }
     // The samples may miss a peak a killed run already reached.
     auto peak = measured.peak != 0 ? std::max(measured.peak, cost.floor) : 0;
     if(peak != 0) {
@@ -319,29 +331,22 @@ async::task<Result> attempt_compile(Project& project,
     std::unreachable();
 }
 
-template <typename Params>
-IndexTransfer ask_for_index(Project& project, Fid unit, Params& params) {
-    if(!std::exchange(project.unit_history[unit].send_in_full, false)) {
-        auto include_closure = project.dep_graph.include_closure(unit);
-        params.known_variants = project.index.known_variants(unit, include_closure);
-        params.known_instantiations =
-            project.index.known_instantiations(unit, std::move(include_closure));
-    }
-    params.standard_library_instantiations =
-        project.settings.project.standard_library_instantiations;
-    IndexTransfer transfer;
-    if(project.store) {
-        transfer.file = project.store->begin_transfer();
-        params.index_output_path = transfer.file->tmp_path;
-    }
-    return transfer;
-}
-
 }  // namespace
 
 bool Project::compiled_by_build(Fid unit) {
     return !dep_graph.module_of(unit).empty() ||
            commands.pch_output(select_command(unit).ref.command);
+}
+
+CompiledBy Project::compiled_by(Fid unit) {
+    if(background_index.left_to_document(unit)) {
+        return CompiledBy::Document;
+    }
+    return compiled_by_build(unit) ? CompiledBy::Build : CompiledBy::Itself;
+}
+
+bool Project::index_holds(Fid unit) {
+    return index.indexed_command(unit) == command_identity(unit) && !index.needs_reindex(unit);
 }
 
 std::expected<llvm::StringRef, std::string> IndexTransfer::receive(std::span<const std::byte> data,
@@ -359,16 +364,19 @@ std::expected<llvm::StringRef, std::string> IndexTransfer::receive(std::span<con
     return mapping.bytes();
 }
 
-IndexTransfer Project::request_index(Fid unit, worker::CompileUnitParams& params) {
-    return ask_for_index(*this, unit, params);
-}
-
-IndexTransfer Project::request_index(Fid unit, worker::BuildPCMParams& params) {
-    return ask_for_index(*this, unit, params);
-}
-
-IndexTransfer Project::request_index(Fid unit, worker::BuildPCHParams& params) {
-    return ask_for_index(*this, unit, params);
+IndexTransfer Project::request_index(Fid unit, worker::IndexRequest& request) {
+    if(!std::exchange(unit_history[unit].send_in_full, false)) {
+        auto include_closure = dep_graph.include_closure(unit);
+        request.known_variants = index.known_variants(unit, include_closure);
+        request.known_instantiations = index.known_instantiations(unit, std::move(include_closure));
+    }
+    request.standard_library_instantiations = settings.project.standard_library_instantiations;
+    IndexTransfer transfer;
+    if(store) {
+        transfer.file = store->begin_transfer();
+        request.output_path = transfer.file->tmp_path;
+    }
+    return transfer;
 }
 
 std::expected<void, index::MergeError> Project::merge_index(Fid unit,

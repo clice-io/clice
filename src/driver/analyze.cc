@@ -4,6 +4,7 @@ import :analysis.annotation;
 import :analysis.module_graph;
 import :analysis.wrapping;
 import :driver.driver;
+import :driver.run;
 import :feature.query;
 import :index.symbol_query;
 import :project.project;

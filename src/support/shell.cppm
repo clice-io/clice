@@ -14,12 +14,68 @@ constexpr sys::cmd::Quoting host_quoting =
     sys::cmd::Quoting::POSIX;
 #endif
 
+/// The arguments of command line `command`, quoted as `quoting` says, into
+/// `arguments`, whose strings keep their storage for the next line.
+inline void split_command(llvm::StringRef command,
+                          sys::cmd::Quoting quoting,
+                          std::vector<std::string>& arguments) {
+    std::size_t count = 0;
+    // Blanks before the program are none of the command, as clang reads a
+    // database's: Windows's rule would read them as an empty program name.
+    for(auto argument: sys::cmd::split(command.ltrim(), quoting)) {
+        if(count < arguments.size()) {
+            arguments[count].assign(argument);
+        } else {
+            arguments.emplace_back(argument);
+        }
+        count += 1;
+    }
+    arguments.resize(count);
+}
+
+/// The arguments of command line `command` when it quotes and escapes
+/// nothing and separates them by spaces alone, which every quoting reads
+/// alike: views of it, into `arguments`. False for any other line.
+inline bool split_plain(llvm::StringRef command,
+                        llvm::SmallVectorImpl<std::string_view>& arguments) {
+    arguments.clear();
+    std::size_t start = 0;
+    bool inside = false;
+    for(std::size_t i = 0; i < command.size(); i += 1) {
+        switch(command[i]) {
+            case '"':
+            case '\'':
+            case '\\':
+            case '\t':
+            case '\n':
+            case '\v':
+            case '\f':
+            case '\r': return false;
+            case ' ':
+                if(inside) {
+                    arguments.emplace_back(command.data() + start, i - start);
+                    inside = false;
+                }
+                break;
+            default:
+                if(!inside) {
+                    start = i;
+                    inside = true;
+                }
+        }
+    }
+    if(inside) {
+        arguments.emplace_back(command.data() + start, command.size() - start);
+    }
+    return true;
+}
+
 /// The arguments of command line `command`, quoted as `quoting` says.
 inline std::vector<std::string> split_command(llvm::StringRef command,
                                               sys::cmd::Quoting quoting = host_quoting) {
-    // Blanks before the program are none of the command, as clang reads a
-    // database's: Windows's rule would read them as an empty program name.
-    return ranges::to<std::vector<std::string>>(sys::cmd::split(command.ltrim(), quoting));
+    std::vector<std::string> arguments;
+    split_command(command, quoting, arguments);
+    return arguments;
 }
 
 /// `arguments` as one command line, each quoted as the host's shell and

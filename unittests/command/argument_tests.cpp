@@ -35,6 +35,50 @@ ZEST_CASE(ParseOptionID) {
     ZASSERT(parse_first({"-x", "c++"}) == OPT_x);
 };
 
+ZEST_CASE(ClassifyOptions) {
+    /// What only the build reads leaves the command: a file each unit
+    /// writes would set every command apart.
+    for(auto id: {OPT_c,
+                  OPT_MJ,
+                  OPT_MV,
+                  OPT_ftime_trace_EQ,
+                  OPT_save_temps_EQ,
+                  OPT__serialize_diags,
+                  OPT_dumpdir,
+                  OPT_Wa_COMMA,
+                  OPT_Xassembler,
+                  OPT__SLASH_Fa,
+                  OPT__SLASH_Fe,
+                  OPT__SLASH_Fi,
+                  OPT__SLASH_Fm,
+                  OPT__SLASH_FR,
+                  OPT__SLASH_doc,
+                  OPT__SLASH_sourceDependencies,
+                  OPT__SLASH_showIncludes,
+                  OPT__SLASH_showFilenames,
+                  OPT_g_Flag,
+                  OPT_frandom_seed_EQ,
+                  OPT_fsave_optimization_record,
+                  OPT_foptimization_record_file_EQ,
+                  OPT_gen_cdb_fragment_path}) {
+        ZEXPECT(!classify_option(id, {}).has_value());
+    }
+    /// Those clang does not know too: GCC's module mapper and scan output,
+    /// Apple's index unit output.
+    ZEXPECT(is_discarded_unknown("-fmodule-mapper=a.cppm.o.modmap"));
+    ZEXPECT(is_discarded_unknown("-fdeps-file=a.ddi"));
+    ZEXPECT(is_discarded_unknown("-index-unit-output-path"));
+    ZEXPECT(!is_discarded_unknown("-fmodules-ts"));
+    /// The precompiled files clice builds itself stay, for the identity.
+    for(auto id: {OPT_include_pch, OPT_emit_pch, OPT_o, OPT_fmodule_output}) {
+        ZEXPECT((classify_option(id, {}) == ArgClass::Precompiled));
+    }
+    /// -pthread defines _REENTRANT, and a specs file adds include
+    /// directories (newlib-nano's).
+    ZEXPECT((classify_option(OPT_pthread, {}) == ArgClass::Semantic));
+    ZEXPECT((classify_option(OPT_specs_EQ, {}) == ArgClass::Semantic));
+};
+
 ZEST_CASE(InputAndUnknown) {
     ZASSERT(parse_first({"main.cpp"}) == OPT_INPUT);
     ZASSERT(parse_first({"--clice-unknown-flag"}) == OPT_UNKNOWN);

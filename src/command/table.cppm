@@ -125,9 +125,11 @@ public:
 
     const Command& get(CommandID id) const;
 
-    /// Dedup the command; its args are persisted only when it is new.
+    /// Dedup the command; its args are persisted only when it is new. An
+    /// output stays only in a command writing a precompiled header.
     CommandID save(Command command, llvm::ArrayRef<LocalArg> args);
 
+    llvm::ArrayRef<Arg> persist(llvm::ArrayRef<Arg> args);
     llvm::ArrayRef<Arg> persist(llvm::ArrayRef<LocalArg> args);
 
     llvm::StringRef intern(llvm::StringRef text);
@@ -135,9 +137,10 @@ public:
     /// One parse result of `tokens` as a local arg: a token the table
     /// cannot parse, does not know or reads as an input stays verbatim
     /// (OPT_UNKNOWN, ArgClass::Unknown), a known option keeps its id and
-    /// its values, classified.
-    LocalArg local_arg(const std::expected<cli::ParsedArg, cli::Error>& parsed,
-                       llvm::ArrayRef<std::string> tokens);
+    /// its values, classified; none for an option a command leaves out
+    /// (classify_option).
+    std::optional<LocalArg> local_arg(const std::expected<cli::ParsedArg, cli::Error>& parsed,
+                                      llvm::ArrayRef<std::string> tokens);
 
     /// Derive the language of `file` compiled under `id`: walk the
     /// language-selector state machine (-x applies to inputs after it,
@@ -163,12 +166,11 @@ public:
     /// that clang and GCC load in the header's place.
     llvm::SmallVector<Spelling, 2> pch_inputs(CommandID id) const;
 
-    /// Identity hash of a command (Frontend view + slot position + directory
-    /// + schema salt), with the directory and the option values under the
-    /// project root taken by their portable names so a moved checkout
-    /// keeps it. The CDB diff identity, the index snapshot command
-    /// identity, and — computed over a rules-applied command — the pin
-    /// identity of clice/switchContext.
+    /// Identity hash of a command (every argument it keeps, the slot's
+    /// position, its directory and a schema salt), with the directory and the option values under
+    /// the project root taken by their portable names so a moved checkout keeps it. The CDB diff
+    /// identity, the index snapshot command identity, and — computed over a rules-applied command —
+    /// the pin identity of clice/switchContext.
     std::uint64_t command_hash(CommandID id);
 
     /// command_hash formatted as the persistent/protocol form (16 hex chars).
@@ -181,13 +183,13 @@ public:
                                            llvm::StringRef path,
                                            const RenderOptions& opts = {});
 
-    /// Every argument including codegen and discarded ones: the
-    /// debug/display form. The input slot names `input`, and is left out
+    /// Every argument the command keeps, the precompiled files among them:
+    /// the display form. The input slot names `input`, and is left out
     /// without one.
     std::vector<const char*> render_full(CommandID id, llvm::StringRef input = {});
 
 private:
-    /// Append the Frontend-view fragments of `id` (the hash input) to out.
+    /// Append the fragments of `id` the hash reads to out.
     void render_identity(CommandID id, std::string& out);
 
 private:

@@ -1,0 +1,23 @@
+[test."rules.h"]
+diagnostics = [
+    {
+        at = "long ⟦limit⟧(int value);",
+        severity = "error",
+        message = "functions that differ only in their return type cannot be overloaded",
+        source = "clang",
+        code = "err_ovl_diff_return_type",
+        related = [
+            { at = "host.cpp │ int ⟦limit⟧(int value);", message = "previous declaration is here" },
+        ],
+    },
+    {
+        at = "int ⟦local⟧ = 2;",
+        severity = "error",
+        message = "redefinition of 'local'",
+        source = "clang",
+        code = "err_redefinition",
+        related = [
+            { at = "host.cpp │ int ⟦local⟧ = 0;", message = "previous definition is here" },
+        ],
+    },
+]

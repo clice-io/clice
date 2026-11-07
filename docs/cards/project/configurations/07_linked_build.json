@@ -36,6 +36,21 @@
         {
           "label": "release",
           "value": {
+            "menu": {
+              "menu": [
+                "active",
+                "debug"
+              ],
+              "active": "active",
+              "build": {
+                "configuration": "",
+                "databases": [
+                  "out/release/compile_commands.json"
+                ]
+              },
+              "selected": "",
+              "default": "active"
+            },
             "symbols": [
               {
                 "name": "release_only",
@@ -83,6 +98,12 @@
                 "debug"
               ],
               "active": "active",
+              "build": {
+                "configuration": "debug",
+                "databases": [
+                  "out/debug/compile_commands.json"
+                ]
+              },
               "selected": "",
               "default": "active"
             },

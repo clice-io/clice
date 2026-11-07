@@ -1,5 +1,6 @@
 module clice;
 
+import :command.argument;
 import :command.database;
 import :command.file_kind;
 import :command.normalize;
@@ -14,6 +15,11 @@ import :vfs.path;
 namespace clice {
 
 namespace {
+
+/// How far past a document's end simdjson reads (SIMDJSON_PADDING, a
+/// constant the module does not carry): with that much room past the text,
+/// the parse reads the database where it was read into, else in a copy.
+constexpr std::size_t json_padding = 64;
 
 /// The registered path of a source: the database file (a path without the
 /// .json extension names a directory, existing or not, holding
@@ -62,8 +68,47 @@ CDBDiff diff_snapshots(const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 
 
 }  // namespace
 
+std::string per_file_option(const CommandTable& commands,
+                            llvm::ArrayRef<CompilationEntry> entries) {
+    llvm::DenseSet<std::uint32_t> distinct;
+    for(auto& entry: entries) {
+        distinct.insert(static_cast<std::uint32_t>(entry.command));
+    }
+    // A handful of entries tells nothing, and commands most entries share
+    // are no problem.
+    if(entries.size() < 64 || distinct.size() * 10 < entries.size() * 9) {
+        return {};
+    }
+    llvm::StringMap<llvm::DenseSet<std::uint64_t>> values;
+    for(auto id: distinct) {
+        for(auto& arg: commands.get(CommandID(id)).args) {
+            if(arg.cls == ArgClass::UserContent || arg.cls == ArgClass::Input) {
+                continue;
+            }
+            if(arg.opt_id == clang_options::OPT_UNKNOWN) {
+                auto [name, value] = llvm::StringRef(arg.spelling).split('=');
+                values[name].insert(llvm::xxh3_64bits(value));
+                continue;
+            }
+            std::string joined;
+            for(llvm::StringRef value: arg.values) {
+                joined += value;
+                joined += '\0';
+            }
+            auto name = clang_options::table().option(arg.opt_id)->prefixed_name();
+            values[name].insert(llvm::xxh3_64bits(joined));
+        }
+    }
+    for(auto& entry: values) {
+        if(entry.getValue().size() * 10 >= distinct.size() * 9) {
+            return entry.getKey().str();
+        }
+    }
+    return {};
+}
+
 std::optional<std::string> repaired_database_text(llvm::StringRef bytes) {
-    if(llvm::json::isUTF8(bytes)) {
+    if(simdjson::validate_utf8(bytes.data(), bytes.size())) {
         return std::nullopt;
     }
     return llvm::json::fixUTF8(bytes);
@@ -72,11 +117,7 @@ std::optional<std::string> repaired_database_text(llvm::StringRef bytes) {
 CompilationDatabase::CompilationDatabase(FileTable& files, CommandTable& commands) :
     file_table(files), command_table(commands) {}
 
-void CompilationDatabase::rebuild_entry_list() {
-    entry_list.clear();
-    for(auto& source: source_files) {
-        entry_list.insert(entry_list.end(), source.entries.begin(), source.entries.end());
-    }
+void CompilationDatabase::sort_entries() {
     ranges::sort(entry_list, [](const CompilationEntry& a, const CompilationEntry& b) {
         return std::tie(a.file, a.source, a.ordinal) < std::tie(b.file, b.source, b.ordinal);
     });
@@ -134,10 +175,9 @@ llvm::StringRef CompilationDatabase::source_path(SourceID id) const {
 
 CDBDiff CompilationDatabase::unload_source(SourceID id) {
     auto before = command_hash_snapshot();
-    auto& source = source_files[static_cast<std::size_t>(id)];
-    source.entries.clear();
-    source.loaded = false;
-    rebuild_entry_list();
+    source_files[static_cast<std::size_t>(id)].loaded = false;
+    std::erase_if(entry_list, [&](const CompilationEntry& entry) { return entry.source == id; });
+    sort_entries();
     return diff_snapshots(before, command_hash_snapshot());
 }
 
@@ -153,7 +193,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     auto& source = source_files[static_cast<std::size_t>(id)];
     llvm::StringRef path = source.path;
 
-    auto observed = vfs::read_observed(source.path);
+    auto observed = vfs::read_observed(source.path, json_padding);
     if(!observed) {
         // A database not built yet is no failure: the callers wait for it.
         if(observed.error() != std::errc::no_such_file_or_directory) {
@@ -173,11 +213,13 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     auto damaged = [&](llvm::StringRef value) {
         return repaired && value.contains("\xEF\xBF\xBD");
     };
-    simdjson::padded_string json_buf(repaired ? llvm::StringRef(*repaired)
-                                              : llvm::StringRef(observed->text));
+    auto& json_buf = repaired ? *repaired : observed->text;
+    // The padding is the text's own spaces: simdjson reads past a string's
+    // end in wide blocks, and a string's spare capacity is no memory to read.
+    auto padded = simdjson::pad(json_buf);
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
-    if(auto error = json_parser.iterate(json_buf).get(doc)) {
+    if(auto error = json_parser.iterate(padded).get(doc)) {
         LOG_ERROR("Failed to parse compilation database from {}: {}",
                   path,
                   simdjson::error_message(error));
@@ -216,7 +258,42 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // found at the first such entry, maps the entries so spelled.
     std::optional<fs::cygwin::MountTable> table;
 
+    // An entry's strings: views of the database's own bytes when they hold
+    // no escape, else unescaped into the entry's storage. simdjson's own
+    // get_string writes every string of the document into one buffer, as
+    // large as the database by its end.
+    std::string dir_storage, file_storage, command_storage, arg_storage;
+    auto text_of = [&](auto&& value, std::string& storage) -> std::optional<std::string_view> {
+        simdjson::ondemand::raw_json_string raw;
+        if(value.get_raw_json_string().get(raw)) {
+            return std::nullopt;
+        }
+        const char* first = raw.raw();
+        const char* end = json_buf.data() + json_buf.size();
+        auto* quote = static_cast<const char*>(std::memchr(first, '"', end - first));
+        if(!std::memchr(first, '\\', quote - first)) {
+            return std::string_view(first, quote - first);
+        }
+        const char* last = first;
+        for(; *last != '"'; last += 1) {
+            if(*last == '\\') {
+                last += 1;
+            }
+        }
+        storage.resize(last - first + json_padding);
+        auto* out = reinterpret_cast<std::uint8_t*>(storage.data());
+        std::string_view text;
+        if(json_parser.unescape(raw, out).get(text)) {
+            return std::nullopt;
+        }
+        return text;
+    };
+
+    // The tokens of the entry at hand, their storage kept for the next.
+    std::vector<std::string> args;
+    llvm::SmallVector<std::string_view> plain_args;
     llvm::StringMap<Spelling> working_dirs;
+    llvm::DenseMap<SharedKey, CommandID> shared;
     std::uint32_t index = 0;
     for(auto element: arr) {
         auto skip = llvm::make_scope_exit([&] { index += 1; });
@@ -232,7 +309,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         }
 
         std::string_view dir_sv, file_sv;
-        if(obj["directory"].get_string().get(dir_sv)) {
+        if(auto text = text_of(obj["directory"], dir_storage)) {
+            dir_sv = *text;
+        } else {
             LOG_ERROR(
                 "Invalid compilation database in {}. Skipping item at index {}: "
                 "'directory' key is missing.",
@@ -241,7 +320,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             continue;
         }
 
-        if(obj["file"].get_string().get(file_sv)) {
+        if(auto text = text_of(obj["file"], file_storage)) {
+            file_sv = *text;
+        } else {
             LOG_ERROR(
                 "Invalid compilation database in {}. Skipping item at index {}: "
                 "'file' key is missing.",
@@ -250,25 +331,33 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             continue;
         }
 
-        std::vector<std::string> args;
         std::optional<llvm::StringRef> command;
         simdjson::ondemand::array args_arr;
         if(!obj["arguments"].get_array().get(args_arr)) {
             bool malformed = false;
+            std::size_t count = 0;
             for(auto arg_val: args_arr) {
-                std::string_view sv;
-                if(arg_val.get_string().get(sv)) {
+                auto text = text_of(arg_val, arg_storage);
+                if(!text) {
                     malformed = true;
                     break;
                 }
-                args.emplace_back(sv);
+                if(count < args.size()) {
+                    args[count].assign(*text);
+                } else {
+                    args.emplace_back(*text);
+                }
+                count += 1;
             }
+            args.resize(count);
             if(malformed || args.empty()) {
                 continue;
             }
         } else {
             std::string_view cmd_sv;
-            if(obj["command"].get_string().get(cmd_sv)) {
+            if(auto text = text_of(obj["command"], command_storage)) {
+                cmd_sv = *text;
+            } else {
                 LOG_ERROR(
                     "Invalid compilation database in {}. Skipping item at index {}: "
                     "neither 'arguments' nor 'command' key is present.",
@@ -346,8 +435,25 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                                        ? command_table.intern(file)
                                        : llvm::StringRef();
 
-        auto normalized = command ? normalizer.normalize(working, path_id, *command)
-                                  : normalizer.normalize(working, path_id, args);
+        // A command quoting and escaping nothing is read as views of the
+        // database's bytes; any other is split into the entry's tokens.
+        bool plain = command && split_plain(*command, plain_args);
+        if(command && !plain) {
+            normalizer.split(*command, args);
+        }
+        kotatsu::string_list_ref tokens =
+            plain ? kotatsu::string_list_ref(plain_args) : kotatsu::string_list_ref(args);
+        auto key = normalizer.shared_key(working, file_ref, tokens);
+        std::optional<CommandID> normalized;
+        if(auto known = key ? shared.find(*key) : shared.end(); known != shared.end()) {
+            normalized = known->second;
+        } else {
+            normalized = normalizer.normalize(working, path_id, tokens);
+            // The command of a precompiled header's writer keeps its output.
+            if(key && normalized && !command_table.pch_output(*normalized)) {
+                shared.try_emplace(*key, *normalized);
+            }
+        }
 
         if(!normalized || is_other_language_path(file_ref) ||
            (!c_family && !command_table.forces_c_family(*normalized))) {
@@ -360,15 +466,25 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                                .spelling = spelling});
     }
 
+    if(auto option = per_file_option(command_table, new_entries); !option.empty()) {
+        LOG_WARN(
+            "Compilation database {}: nearly every entry has a command of its own, set apart by "
+            "the value of {}, so clice resolves and scans each on its own. If {} names a file "
+            "the build writes, clice should leave it out of the command: report it.",
+            path,
+            option,
+            option);
+    }
     auto count = new_entries.size();
-    source.entries = std::move(new_entries);
+    std::erase_if(entry_list, [&](const CompilationEntry& entry) { return entry.source == id; });
+    entry_list.insert(entry_list.end(), new_entries.begin(), new_entries.end());
     source.loaded = true;
     source.present = true;
     auto responses = ranges::subrange(source.inputs.begin() + 1, source.inputs.end());
     ranges::sort(responses, {}, &LoadInput::file);
     auto duplicates = ranges::unique(responses, {}, &LoadInput::file);
     source.inputs.erase(duplicates.begin(), duplicates.end());
-    rebuild_entry_list();
+    sort_entries();
     return count;
 }
 
@@ -449,13 +565,15 @@ std::optional<CompilationEntry>
         anonymous = source_files.end() - 1;
     }
     auto id = SourceID(anonymous - source_files.begin());
-    auto& source = *anonymous;
-    CompilationEntry entry{.file = file,
-                           .command = *normalized,
-                           .source = id,
-                           .ordinal = static_cast<std::uint32_t>(source.entries.size())};
-    source.entries.push_back(entry);
-    rebuild_entry_list();
+    CompilationEntry entry{
+        .file = file,
+        .command = *normalized,
+        .source = id,
+        .ordinal =
+            static_cast<std::uint32_t>(ranges::count(entry_list, id, &CompilationEntry::source)),
+    };
+    entry_list.push_back(entry);
+    sort_entries();
     return entry;
 }
 

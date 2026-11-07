@@ -105,7 +105,7 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
     ZEXPECT(a == Result::Failed);
     ZEXPECT(b == Result::Failed);
     ZEXPECT(deaths == 1);
-    auto* crash = project.build_crash("shared-key");
+    auto* crash = project.pch_build_crash("shared-key");
     ZASSERT(crash != nullptr);
     ZEXPECT(!crash->cause.empty());
 
@@ -139,7 +139,7 @@ ZEST_CASE(OwnerGoneStillRecords) {
     });
 
     ZEXPECT(joined == Result::Failed);
-    ZEXPECT(project.build_crash("shared-key") != nullptr);
+    ZEXPECT(project.pch_build_crash("shared-key") != nullptr);
 
     logging::reset_anomaly_for_testing();
 }
@@ -160,7 +160,7 @@ ZEST_CASE(ForgetLiftsRefusal) {
         refused = co_await acquire(request(poison));
         ZASSERT(deaths == 1);
 
-        project.forget_build_failure("shared-key");
+        project.forget_pch_failure("shared-key");
         retried = co_await acquire(request(poison));
     });
 
@@ -231,7 +231,7 @@ ZEST_CASE(SharedBuildBothReady) {
 
     ZEXPECT(a == Result::Success);
     ZEXPECT(b == Result::Success);
-    ZEXPECT(project.build_crash("shared-key") == nullptr);
+    ZEXPECT(project.pch_build_crash("shared-key") == nullptr);
     auto it = project.pchs.find("shared-key");
     ZASSERT(it != project.pchs.end());
     ZEXPECT(!it->second.path.empty());

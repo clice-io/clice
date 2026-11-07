@@ -24,7 +24,7 @@ TempDir dir;
 FileTable files;
 Project project{files};
 index::FreshnessGate gate{project.file_table};
-index::IndexQuery query{project.index, project.file_table, &gate, nullptr};
+index::IndexQuery query{project.index, project.file_table, &gate};
 
 Fid focus_id;
 

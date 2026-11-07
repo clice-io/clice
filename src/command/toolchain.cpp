@@ -214,8 +214,7 @@ bool in_query_view(const Arg& arg, CompilerFamily family) {
         case ArgClass::Unknown:
             return family == CompilerFamily::NVCC && is_nvcc_query_flag(arg.spelling);
         case ArgClass::UserContent:
-        case ArgClass::Codegen:
-        case ArgClass::Discarded:
+        case ArgClass::Precompiled:
         case ArgClass::Input: return false;
     }
     std::unreachable();
@@ -394,12 +393,6 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
                 job_resource_dir = llvm::StringRef(parsed->values[0]).rtrim("/\\");
                 break;
         }
-        // A newer external clang may give a known codegen option a value
-        // the linked one cannot parse (-mframe-pointer=non-leaf-no-reserve);
-        // the parse never needs them.
-        if(is_codegen_option(parsed->id)) {
-            continue;
-        }
         kept.push_back(std::move(*parsed));
     }
 
@@ -425,16 +418,22 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
                      clang_options::table().option(arg.id)->prefixed_name());
             continue;
         }
+        // What a command leaves out goes here too: a newer external clang
+        // may give a known codegen option a value the linked one cannot
+        // parse (-mframe-pointer=non-leaf-no-reserve).
         auto local = commands.local_arg(arg, tokens);
-        auto theirs = local;
+        if(!local) {
+            continue;
+        }
+        auto theirs = *local;
         if(!result.own_resource_dir) {
-            for(auto& value: local.values) {
-                if(auto ours = ours_for(local.opt_id, value, job_resource_dir)) {
+            for(auto& value: local->values) {
+                if(auto ours = ours_for(local->opt_id, value, job_resource_dir)) {
                     value = commands.intern(*ours).data();
                 }
             }
         }
-        staged.push_back(std::move(local));
+        staged.push_back(std::move(*local));
         // Another clang's builtin headers stay right after ours, which
         // shadow them: what only theirs has is found there.
         if(names_search_dir(theirs.opt_id) &&
@@ -471,9 +470,7 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& query)
     auto has = [&](unsigned id) {
         return ranges::any_of(command.args, [&](const Arg& arg) { return arg.opt_id == id; });
     };
-    bool full_bmi = has(clang_options::OPT__precompile) &&
-                    !has(clang_options::OPT_fmodule_output) &&
-                    !has(clang_options::OPT_fmodule_output_EQ);
+    bool full_bmi = has(clang_options::OPT__precompile) && !has(clang_options::OPT_fmodule_output);
 
     auto local = [](const Arg& arg) {
         return LocalArg{

@@ -3,6 +3,7 @@ module clice;
 import :command.database;
 import :command.file_kind;
 import :driver.driver;
+import :driver.run;
 import :feature.formatting;
 import :project.discovery;
 import :project.project;

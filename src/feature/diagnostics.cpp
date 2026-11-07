@@ -296,16 +296,23 @@ private:
                   LocalSourceRange range,
                   llvm::StringRef message) {
         /// A note can point into a synthetic buffer, e.g. a macro defined
-        /// on the command line, or into a header context's synthesized
-        /// fragment; there is no file to link to.
-        if(fid.isInvalid() || unit.is_builtin_file(fid) || unit.synthesized(fid) ||
-           !range.valid()) {
+        /// on the command line, or into what a header context adds to its
+        /// host's text; there is no file to link to.
+        if(fid.isInvalid() || unit.is_builtin_file(fid) || !range.valid()) {
             return;
         }
-        bool own = unit.focus_file().contains(fid);
+        if(unit.focus_file().contains(fid)) {
+            diagnostic.notes.push_back({.range = in_text(range), .message = message.str()});
+            return;
+        }
+        auto begin = unit.source_of({fid, range.begin});
+        auto end = unit.source_of({fid, range.end});
+        if(!begin || !end) {
+            return;
+        }
         diagnostic.notes.push_back({
-            .path = own ? std::string() : unit.file_path(fid).str(),
-            .range = own ? in_text(range) : range,
+            .path = begin->path.str(),
+            .range = {begin->offset, end->offset},
             .message = message.str(),
         });
     }
@@ -489,36 +496,44 @@ auto confirmed_skipped(llvm::ArrayRef<FileDiagnostic> skipped, const CompileDiag
     return result;
 }
 
+const ModuleFailure* explain_failed_import(std::string& message,
+                                           llvm::ArrayRef<ModuleFailure> failures) {
+    auto failure = ranges::find_if(failures, [&](const ModuleFailure& failure) {
+        return message == std::format("module '{}' not found", failure.chain.front());
+    });
+    if(failure == failures.end()) {
+        return nullptr;
+    }
+    llvm::ArrayRef<std::string> chain = failure->chain;
+    message.clear();
+    for(const auto& module: chain.take_front(failure->cycle.value_or(chain.size()))) {
+        message += std::format("could not build module '{}': ", module);
+    }
+    if(failure->cycle) {
+        auto cycle = chain.drop_front(*failure->cycle);
+        message += std::format("cyclic dependency in module '{}': ", cycle.front());
+        for(const auto& module: cycle) {
+            message += std::format("{} -> ", module);
+        }
+        message += cycle.front();
+    } else {
+        message += failure->error;
+    }
+    return &*failure;
+}
+
 void explain_failed_imports(std::vector<FileDiagnostic>& diagnostics,
                             llvm::ArrayRef<ModuleFailure> failures) {
-    for(const auto& failure: failures) {
-        llvm::ArrayRef<std::string> chain = failure.chain;
-        std::string message;
-        for(const auto& module: chain.take_front(failure.cycle.value_or(chain.size()))) {
-            message += std::format("could not build module '{}': ", module);
+    for(auto& diagnostic: diagnostics) {
+        if(diagnostic.id != clang::diag::err_module_not_found) {
+            continue;
         }
-        if(failure.cycle) {
-            auto cycle = chain.drop_front(*failure.cycle);
-            message += std::format("cyclic dependency in module '{}': ", cycle.front());
-            for(const auto& module: cycle) {
-                message += std::format("{} -> ", module);
-            }
-            message += cycle.front();
-        } else {
-            message += failure.error;
-        }
-        auto not_found = std::format("module '{}' not found", chain.front());
-        for(auto& diagnostic: diagnostics) {
-            if(diagnostic.id == clang::diag::err_module_not_found &&
-               diagnostic.message == not_found) {
-                diagnostic.message = message;
-                // As clang codes it: a cycle only where the imported module
-                // is on it, not built where the message starts with one
-                // that is not.
-                diagnostic.id = failure.cycle == 0 ? clang::diag::err_module_cycle
-                                                   : clang::diag::err_module_not_built;
-                diagnostic.code = failure.cycle == 0 ? "err_module_cycle" : "err_module_not_built";
-            }
+        if(auto* failure = explain_failed_import(diagnostic.message, failures)) {
+            // As clang codes it: a cycle only where the imported module is
+            // on it, not built where the message starts with one that is not.
+            diagnostic.id = failure->cycle == 0 ? clang::diag::err_module_cycle
+                                                : clang::diag::err_module_not_built;
+            diagnostic.code = failure->cycle == 0 ? "err_module_cycle" : "err_module_not_built";
         }
     }
 }

@@ -1,0 +1,21 @@
+[test."self.cppm"]
+errors = [
+    {
+        at = "⟦import⟧ Self;",
+        severity = "error",
+        message = "import of module 'Self' appears within its own interface",
+        source = "clang",
+        code = "err_module_self_import_cxx20",
+    },
+]
+
+[test."main.cpp"]
+errors = [
+    {
+        at = "import ⟦Self;⟧",
+        severity = "error",
+        message = "cyclic dependency in module 'Self': Self -> Self",
+        source = "clang",
+        code = "err_module_cycle",
+    },
+]

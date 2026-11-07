@@ -96,8 +96,10 @@ std::expected<std::string, std::error_code> read_text(llvm::StringRef path);
 /// open handle at all). A post-fstat mtime inside the guard window
 /// (coarse-granularity filesystems) demotes the pair to unreliable: a
 /// racing write can arrive within one mtime tick, so such a stat must not
-/// suppress future reads. Safe to call from any thread.
-std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path);
+/// suppress future reads. Safe to call from any thread. `padding` bytes of
+/// room stay past the text, which a parser reading in wide blocks needs.
+std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path,
+                                                           std::size_t padding = 0);
 
 /// The file statuses of one operation (a dependency check, a compile). On
 /// Windows a directory asked about often enough within the operation is

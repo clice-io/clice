@@ -1,0 +1,44 @@
+["unity source only"."b.cpp"]
+diagnostics = []
+contexts = [
+    { label = "unity.cpp", description = "${WS}/unity.cpp", host = "unity.cpp" },
+]
+definition = ["a.cpp │ static int ⟦helper⟧() {"]
+references = ["static int ⟦helper⟧() {", "b.cpp │ return ⟦helper⟧();"]
+
+["unity source only"."b.cpp".hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+static int helper()
+```
+'''
+range = "return ⟦helper⟧();"
+
+["source listed too"."b.cpp"]
+diagnostics = [
+    {
+        at = "return ⟦helper⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'helper'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]
+contexts = [
+    { label = "unity.cpp", description = "${WS}/unity.cpp", host = "unity.cpp" },
+    { label = "-std=c++20", description = "${WS}", host = "b.cpp" },
+]
+definition = ["a.cpp │ static int ⟦helper⟧() {"]
+references = ["static int ⟦helper⟧() {", "b.cpp │ return ⟦helper⟧();"]
+
+["source listed too"."b.cpp".hover]
+markdown = '''
+**function** `helper`
+
+```cpp
+static int helper()
+```
+'''
+range = "return ⟦helper⟧();"

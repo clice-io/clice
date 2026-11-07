@@ -10,6 +10,7 @@ errors = [
 ]
 
 [test."a.cppm"]
+wrong = "the range of a partition import ends at its semicolon, as a named import's does"
 errors = [
     {
         at = "export import :⟦part; … ⟧ (2 lines)",

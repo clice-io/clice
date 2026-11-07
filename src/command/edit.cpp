@@ -10,31 +10,18 @@ import :vfs.path;
 
 namespace clice {
 
-std::string CommandEdits::key(llvm::StringRef root) const {
+std::string CommandEdits::key() const {
     std::string key;
-    auto append_text = [&](llvm::StringRef text) {
-        while(!root.empty()) {
-            auto at = text.find(root);
-            if(at == llvm::StringRef::npos) {
-                break;
-            }
-            key += text.take_front(at);
-            key += path::workspace_anchor;
-            text = text.drop_front(at + root.size());
-        }
-        key += text;
-    };
     auto append_section = [&](llvm::ArrayRef<std::string> section) {
         for(auto& item: section) {
-            append_text(item);
+            key += item;
             key += '\0';
         }
         key += '\1';
     };
     for(auto& edit: edits) {
         key += edit.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
-        llvm::SmallString<256> storage;
-        key += path::portable(edit.directory, root, storage);
+        key += edit.directory.str();
         key += '\0';
         append_section(edit.flags);
     }
@@ -91,6 +78,12 @@ CommandID
                 .option = parsed,
                 .prefix = written.consume_back("*") && written == parsed.spelling,
             });
+            // A command keeps its module output without the path
+            // (CommandTable::local_arg).
+            if(remove.option.id == clang_options::OPT_fmodule_output_EQ) {
+                remove.option.id = clang_options::OPT_fmodule_output;
+                remove.option.values.clear();
+            }
             // Anchored like the base command's paths, so a relative value
             // names the file the rule's configuration means; the `*`
             // wildcard stays a wildcard.
@@ -180,7 +173,11 @@ CommandID
                           std::vector<LocalArg>& out) {
         std::vector<std::string> flags(edit_flags.begin(), edit_flags.end());
         for(auto& parsed: clang_options::table().parse(flags, remove_parse_options)) {
-            auto& local = out.emplace_back(commands.local_arg(parsed, flags));
+            auto added = commands.local_arg(parsed, flags);
+            if(!added) {
+                continue;
+            }
+            auto& local = out.emplace_back(std::move(*added));
             if(local.opt_id == clang_options::OPT_UNKNOWN) {
                 local.cls = ArgClass::Semantic;
             }

@@ -39,6 +39,13 @@ struct CompilationEntry {
     llvm::StringRef spelling;
 };
 
+/// The option whose value sets apart nearly every command `entries` compile
+/// under, by its name: one naming a file of each unit that clice does not
+/// know to leave out, which leaves the entries no command to share. Empty
+/// when most entries share their commands, or their user content (-I, -D)
+/// sets them apart.
+std::string per_file_option(const CommandTable& commands, llvm::ArrayRef<CompilationEntry> entries);
+
 /// Per-file delta of the build's commands — a compilation database
 /// reload's, and the provisional members' and rule sources' that follow
 /// it. Path ids are the shared file table's fids (stable across reloads).
@@ -134,10 +141,10 @@ public:
     llvm::ArrayRef<LoadInput> inputs(SourceID id) const;
 
     /// Whether the source's file exists on disk as last observed: set by a
-    /// successful load, then maintained by the server's
-    /// database watch (ServedProject::tick_database). A
-    /// discovered source that vanished keeps serving its entries but yields
-    /// to the present ones (see Project::source_order).
+    /// successful load, then maintained by the project's database watch
+    /// (Project::look_at_databases). A discovered source that vanished keeps
+    /// serving its entries but yields to the present ones (see
+    /// Project::source_order).
     bool present(SourceID id) const;
     void set_present(SourceID id, bool present);
 
@@ -147,7 +154,7 @@ public:
     /// Reload one source and report the per-file delta of the whole
     /// database against its state before the reload.
     ///
-    /// Entry identity is the command hash (Frontend view + directory), the
+    /// Entry identity is the command hash (CommandTable::command_hash), the
     /// same identity the rest of the system uses to pin a CDB entry (e.g.
     /// clice/switchContext). A change confined to codegen-only flags (-g,
     /// -ffunction-sections, ...) is therefore not reported as `changed` — this is
@@ -197,9 +204,8 @@ public:
                                                 llvm::StringRef command);
 
 private:
-    /// Rebuild entry_list from every source's entries, sorted by (file,
-    /// source, ordinal).
-    void rebuild_entry_list();
+    /// Sort entry_list by (file, source, ordinal) and index its writers.
+    void sort_entries();
 
     std::optional<CompilationEntry> append_test_command(Fid file,
                                                         std::optional<CommandID> normalized);
@@ -211,11 +217,9 @@ private:
 
     CommandTable& command_table;
 
-    /// Registered sources: canonical file path and the entries its last
-    /// successful load produced (in file order).
+    /// Registered sources, by SourceID; their entries are entry_list's.
     struct Source {
         std::string path;
-        std::vector<CompilationEntry> entries;
         bool loaded = false;
         bool present = false;
         std::vector<LoadInput> inputs;

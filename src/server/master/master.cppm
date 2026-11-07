@@ -2,7 +2,7 @@ module clice:server.master;
 
 import :feature.semantic_tokens;
 import :index.query;
-import :project.indexer;
+import :project.background;
 import :project.project;
 import :server.extension;
 import :server.served_project;
@@ -180,9 +180,6 @@ public:
     /// looked. clice.toml is the one in use where it exists, else
     /// .clice/config.toml.
     void look_at_settings();
-
-    /// The index queries of the projects but `project`: its peers.
-    llvm::SmallVector<const index::IndexQuery*> peer_queries(const ServedProject& project) const;
 
     // documents.cpp
 
@@ -556,42 +553,6 @@ private:
     /// Projects made but not started yet: their root's previous project is
     /// still shutting down (see serve_folders).
     std::vector<ServedProject*> waiting_projects;
-};
-
-/// The open documents a project's rename or code action reads (documents.cpp),
-/// each as the project serving it does: the project's own and those of the
-/// projects nested in its root, which are its files too. Another project's
-/// are not the project's to edit: the query reads them as closed files, from
-/// the shards it holds, and that project keeps its uses.
-class OpenDocuments final : public index::LiveSources {
-public:
-    explicit OpenDocuments(const ServedProject& reader) : reader(reader) {}
-
-    /// The reader's index query, reading the open documents through this.
-    index::IndexQuery query() const;
-
-    bool is_open(Fid file) const override;
-    std::optional<index::IndexSource> buffer_index(Fid file) const override;
-    void for_each_session(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
-    void for_each_session_index(
-        llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
-    void
-        for_each_preamble(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
-    void for_each_overlay(llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
-    std::shared_ptr<index::TUIndex> preamble_index(Fid file) const override;
-
-private:
-    /// The project serving the open `file`, when the reader reads it.
-    const ServedProject* owner(Fid file) const;
-
-    bool reads(const ServedProject& project) const;
-
-    /// Visit the live sources of every project the reader reads, `each`
-    /// handing one project's to `visit`, until a visit stops.
-    template <typename Visit, typename Each>
-    void each_project(Visit visit, Each each) const;
-
-    const ServedProject& reader;
 };
 
 int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration);

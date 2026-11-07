@@ -133,6 +133,17 @@ export const ResetContextRequest = new RequestType<ResetContextParams, SwitchCon
     "clice/resetContext",
 );
 
+/// The build the links in the active configuration's database paths
+/// resolve to (rules with `resolve_symlinks`).
+export interface LinkedBuild {
+    /// The configuration naming these databases directly, whose index the
+    /// build shares; empty when none does.
+    configuration: string;
+
+    /// The URIs of the databases the links resolve to, in priority order.
+    databases: string[];
+}
+
 /// clice/listConfigurations: the build configuration menu (the distinct
 /// `configuration` tags of the rules) and the names the selection layers
 /// hold.
@@ -142,6 +153,10 @@ export interface ListConfigurationsResult {
 
     /// The configuration this server process runs.
     active: string;
+
+    /// The build this server process runs, when the active configuration
+    /// follows links; null otherwise.
+    build: LinkedBuild | null;
 
     /// The persisted selection, applied at the next server start; empty
     /// when none was made.

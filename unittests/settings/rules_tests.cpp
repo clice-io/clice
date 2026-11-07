@@ -100,25 +100,6 @@ ZEST_CASE(FormatSet) {
     ZEXPECT(!layout.rules.formattable(CanonicalPath(Spelling::absolute("/usr/include/stdio.h"))));
 };
 
-ZEST_CASE(EditHashKeepsAnchor) {
-    /// A rule's relative paths mean another directory once its
-    /// configuration moves under .clice/, so its edit hash changes too.
-    TempDir tmp;
-    tmp.touch("main.cpp", "");
-    auto hash = [&](llvm::StringRef directory) {
-        Settings settings;
-        settings.rules.push_back(Rule{.append = {"-Iinc"}});
-        settings.rules.back().directory = directory;
-        CanonicalPath project_root = CanonicalPath(Spelling::absolute(tmp.root));
-        settings.finalize(project_root);
-        Rules rules(settings, project_root, "");
-        CanonicalPath main(Spelling::absolute(tmp.path("main.cpp")));
-        return rules.identity(rules.edits({main}));
-    };
-    ZEXPECT(hash(tmp.root) == hash(tmp.root));
-    ZEXPECT(hash(tmp.root) != hash(tmp.path(".clice")));
-};
-
 ZEST_CASE(EditsAcrossHostAndHeader) {
     /// A header borrowing a host command carries both files' edits, each
     /// rule once, in declaration order.

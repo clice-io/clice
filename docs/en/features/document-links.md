@@ -2,6 +2,8 @@
 
 Clickable links from source directives to their resolved target files.
 
+The module name in an `import` is not a link: go-to-definition on it opens the interface unit that declares the module, see [Module Navigation](./navigation.md#module-navigation).
+
 <!-- The cards in the sections below are generated from the documented cases
      in tests/document_links/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
@@ -92,26 +94,6 @@ The checked path links to the resource it looks for
 
 ```case
 tests/document_links/embed_directives/02_has_embed
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## Module Declarations
-
-The module name in an `import` links to the file that declares the module.
-
-<!-- BEGIN GENERATED ITEMS: document_links/module_declarations -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Module targets**
-
-Each imported module name links to the file that declares the module
-
-```case
-tests/document_links/module_declarations/01_module_imports
 ```
 
 <!-- END CAPABILITY -->

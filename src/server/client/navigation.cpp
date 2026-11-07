@@ -26,7 +26,7 @@ async::task<codec::raw_value, ipc::Error> stop_reply(GateStop stop) {
 template <typename Item>
 static std::expected<index::SymbolHash, ipc::Error>
     item_symbol(const ServedProject& project, Fid path_id, const Item& item, llvm::StringRef kind) {
-    auto symbol = feature::item_symbol(project.project.index_query,
+    auto symbol = feature::item_symbol(project.query(),
                                        path_id,
                                        project.cursor_at(path_id, item.selection_range.start),
                                        item.data);
@@ -51,7 +51,6 @@ void LSPClient::register_navigation() {
             auto& project = *served;
             auto& position = params.position;
             auto encoding = server.position_encoding;
-            auto& query = project.project.index_query;
             auto& files = project.project.file_table;
             if(session) {
                 if(auto stop = co_await project.navigation_gate(ticket)) {
@@ -82,7 +81,7 @@ void LSPClient::register_navigation() {
                 if(!cursor) {
                     return {};
                 }
-                return feature::to_locations(feature::definition(project.peer_queries(), *cursor),
+                return feature::to_locations(feature::definition(project.query_all(), *cursor),
                                              encoding);
             };
             if(auto result = index_definition(); !result.empty()) {
@@ -104,6 +103,7 @@ void LSPClient::register_navigation() {
             // edges answer instead, under the same content gate as the
             // index's links: manifest lines are meaningless against a buffer
             // the index never described.
+            auto query = project.query();
             auto serving = query.serving(path_id);
             bool shard_served = serving && serving->kind == index::IndexSource::Kind::Shard;
             if(project.serving_of(*session) == ServingMode::IndexOnly ||
@@ -162,7 +162,7 @@ void LSPClient::register_navigation() {
                 [&](const Cursor& cursor) -> NavigationReply {
                     auto limit = project.project.settings.references.limit;
                     return to_raw(feature::to_locations(
-                        feature::references(project.peer_queries(),
+                        feature::references(project.query_all(),
                                             cursor,
                                             params.context.include_declaration,
                                             limit),
@@ -181,9 +181,9 @@ void LSPClient::register_navigation() {
                 params.position,
                 "[]",
                 [&](const Cursor& cursor) -> NavigationReply {
-                    return to_raw(feature::to_protocol(
-                        feature::document_highlights(project.project.index_query, cursor),
-                        server.position_encoding));
+                    return to_raw(
+                        feature::to_protocol(feature::document_highlights(project.query(), cursor),
+                                             server.position_encoding));
                 });
         },
         {.closed = true});
@@ -191,17 +191,16 @@ void LSPClient::register_navigation() {
     on_document<protocol::DeclarationParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
             auto& project = *document.project;
-            co_return co_await navigate(
-                project,
-                document.ticket,
-                document.path_id,
-                params.position,
-                "[]",
-                [&](const Cursor& cursor) -> NavigationReply {
-                    return to_raw(
-                        feature::to_locations(feature::declaration(project.peer_queries(), cursor),
-                                              server.position_encoding));
-                });
+            co_return co_await navigate(project,
+                                        document.ticket,
+                                        document.path_id,
+                                        params.position,
+                                        "[]",
+                                        [&](const Cursor& cursor) -> NavigationReply {
+                                            return to_raw(feature::to_locations(
+                                                feature::declaration(project.query_all(), cursor),
+                                                server.position_encoding));
+                                        });
         },
         {.closed = true});
 
@@ -215,9 +214,9 @@ void LSPClient::register_navigation() {
                 params.position,
                 "[]",
                 [&](const Cursor& cursor) -> NavigationReply {
-                    return to_raw(feature::to_locations(
-                        feature::type_definition(project.peer_queries(), cursor),
-                        server.position_encoding));
+                    return to_raw(
+                        feature::to_locations(feature::type_definition(project.query_all(), cursor),
+                                              server.position_encoding));
                 });
         },
         {.closed = true});
@@ -232,9 +231,9 @@ void LSPClient::register_navigation() {
                 params.position,
                 "[]",
                 [&](const Cursor& cursor) -> NavigationReply {
-                    return to_raw(feature::to_locations(
-                        feature::implementation(project.peer_queries(), cursor),
-                        server.position_encoding));
+                    return to_raw(
+                        feature::to_locations(feature::implementation(project.query_all(), cursor),
+                                              server.position_encoding));
                 });
         },
         {.closed = true});
@@ -249,7 +248,7 @@ void LSPClient::register_navigation() {
                                         "null",
                                         [&](const Cursor& cursor) -> NavigationReply {
                                             auto items = feature::call_hierarchy_items(
-                                                project.peer_queries(),
+                                                project.query_all(),
                                                 cursor,
                                                 server.position_encoding);
                                             if(items.empty()) {
@@ -267,7 +266,7 @@ void LSPClient::register_navigation() {
             if(!symbol) {
                 co_await async::fail(std::move(symbol.error()));
             }
-            co_return to_raw(feature::incoming_calls(project.peer_queries(),
+            co_return to_raw(feature::incoming_calls(project.query_all(),
                                                      *symbol,
                                                      document.path_id,
                                                      server.position_encoding));
@@ -281,7 +280,7 @@ void LSPClient::register_navigation() {
             if(!symbol) {
                 co_await async::fail(std::move(symbol.error()));
             }
-            co_return to_raw(feature::outgoing_calls(project.peer_queries(),
+            co_return to_raw(feature::outgoing_calls(project.query_all(),
                                                      *symbol,
                                                      document.path_id,
                                                      server.position_encoding));
@@ -298,7 +297,7 @@ void LSPClient::register_navigation() {
                                         "null",
                                         [&](const Cursor& cursor) -> NavigationReply {
                                             auto items = feature::type_hierarchy_items(
-                                                project.peer_queries(),
+                                                project.query_all(),
                                                 cursor,
                                                 server.position_encoding);
                                             if(items.empty()) {
@@ -316,7 +315,7 @@ void LSPClient::register_navigation() {
             if(!symbol) {
                 co_await async::fail(std::move(symbol.error()));
             }
-            co_return to_raw(feature::supertypes(project.peer_queries(),
+            co_return to_raw(feature::supertypes(project.query_all(),
                                                  *symbol,
                                                  document.path_id,
                                                  server.position_encoding));
@@ -330,7 +329,7 @@ void LSPClient::register_navigation() {
             if(!symbol) {
                 co_await async::fail(std::move(symbol.error()));
             }
-            co_return to_raw(feature::subtypes(project.peer_queries(),
+            co_return to_raw(feature::subtypes(project.query_all(),
                                                *symbol,
                                                document.path_id,
                                                server.position_encoding));
@@ -354,7 +353,7 @@ void LSPClient::register_navigation() {
             });
             llvm::SmallVector<std::vector<feature::WorkspaceSymbol>> ranked;
             for(auto& project: ordered) {
-                ranked.push_back(feature::workspace_symbols(project->peer_queries(),
+                ranked.push_back(feature::workspace_symbols(project->query_all(),
                                                             params.query,
                                                             Spelling(project->project.root),
                                                             server.position_encoding));

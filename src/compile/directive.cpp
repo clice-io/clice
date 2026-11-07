@@ -3,7 +3,7 @@ module clice;
 import :compile.compilation;
 import :compile.directive;
 import :syntax.lexer;
-import :vfs.path;
+import :syntax.scan;
 
 namespace clice {
 
@@ -92,41 +92,15 @@ public:
         });
     }
 
-    /// A lookup that found nothing still consulted the disk: a file created
-    /// at any place it looked changes what the compile sees. Every such
-    /// place — the directory the includer was opened from, for a quoted
-    /// name, then each search directory the lookup walks — is recorded as
-    /// an absent input, spelled as clang looked: `..` resolves past a
-    /// symlinked directory.
+    /// A lookup that found nothing still consulted the disk: every place it
+    /// looked is an absent input.
     void add_absent(llvm::StringRef name, bool angled, clang::SourceLocation location) {
-        auto& absent = unit.absent_paths;
-        auto& files = unit.instance->getFileManager();
-        auto add = [&](llvm::StringRef directory) {
-            llvm::SmallString<256> candidate(directory);
-            path::push(candidate, name);
-            files.makeAbsolutePath(candidate);
-            absent.insert(Spelling::absolute(candidate).str());
-        };
-        if(path::is_absolute(name)) {
-            absent.insert(Spelling::absolute(name).str());
-            return;
-        }
-        if(!angled) {
-            if(auto includer = unit.SM().getFileEntryRefForID(unit.file_id(location))) {
-                add(includer->getDir().getName());
-            }
-        }
-        auto& search = unit.instance->getPreprocessor().getHeaderSearchInfo();
-        for(auto it = angled ? search.angled_dir_begin() : search.quoted_dir_begin();
-            it != search.search_dir_end();
-            ++it) {
-            // FIXME: header maps and framework directories have no plain directory:
-            // a failed lookup through them records no absent input, so a header
-            // created there later goes unnoticed.
-            if(auto directory = it->getDirRef()) {
-                add(directory->getName());
-            }
-        }
+        lookup_places(unit.instance->getFileManager(),
+                      unit.instance->getPreprocessor().getHeaderSearchInfo(),
+                      unit.SM().getFileEntryRefForID(unit.file_id(location)),
+                      name,
+                      angled,
+                      [&](std::string place) { unit.absent_paths.insert(place); });
     }
 
     void InclusionDirective(clang::SourceLocation hash_loc,

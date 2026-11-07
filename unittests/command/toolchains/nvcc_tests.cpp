@@ -229,6 +229,22 @@ ZEST_CASE(PairedValueDrops) {
     ZEXPECT(args == expected);
 }
 
+ZEST_CASE(OutputsDropped) {
+    // What the build writes goes in nvcc's long spellings too, which clang's
+    // table does not know.
+    auto args = translate({"nvcc",
+                           "--output-file",
+                           "a.o",
+                           "--dependency-output=a.d",
+                           "--generate-dependencies-with-compile",
+                           "--dependency-target-name",
+                           "a.o",
+                           "--compile",
+                           "-lineinfo"});
+    std::vector<std::string> expected = {"nvcc", "-lineinfo"};
+    ZEXPECT(args == expected);
+}
+
 ZEST_CASE(LongFormAliases) {
     auto args = translate({"nvcc",
                            "--include-path=/opt/inc",
@@ -573,7 +589,7 @@ ZEST_CASE(DatabaseTranslatesNVCC) {
     ZEXPECT(contains(flags, "-x"));
     ZEXPECT(contains(flags, "cuda"));
     ZEXPECT(contains(flags, "MY_FLAG=1"));
-    /// nvcc-only leftovers are unknown-class: full view keeps them for
+    /// nvcc-only leftovers are unknown-class: the command keeps them for
     /// identity, the compile render must not pass them to clang.
     ZEXPECT(!ranges::contains(render_entry(db, "/tmp/kern.cu"),
                               llvm::StringRef("-forward-unknown-to-host-compiler")));

@@ -16,14 +16,14 @@ Language Server Protocol features available when using clice as an editor backen
 | ----------------------------------------- | ---------------------------------------- |
 | [Code Completion](./completion.md)        | 48 supported                             |
 | [Hover](./hover.md)                       | 70 supported                             |
-| [Signature Help](./signature-help.md)     | 20 supported · 1 partial · 3 unsupported |
+| [Signature Help](./signature-help.md)     | 21 supported · 1 partial · 2 unsupported |
 | [Code Navigation](./navigation.md)        | 114 supported · 8 unsupported            |
 | [Rename](./rename.md)                     | 4 supported                              |
 | [Diagnostics](./diagnostics.md)           | 10 supported · 1 partial                 |
 | [Code Action](./code-action.md)           | 38 supported                             |
 | [Semantic Tokens](./semantic-tokens.md)   | 60 supported                             |
 | [Inlay Hints](./inlay-hints.md)           | 40 supported                             |
-| [Document Links](./document-links.md)     | 6 supported · 1 partial                  |
+| [Document Links](./document-links.md)     | 5 supported · 1 partial                  |
 | [Document Symbols](./document-symbols.md) | 29 supported                             |
 | [Folding Ranges](./folding-ranges.md)     | 24 supported                             |
 | [Selection Ranges](./selection-ranges.md) | 14 supported                             |

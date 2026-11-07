@@ -61,7 +61,8 @@ ZEST_CASE(PerFileClSelectors) {
 
 ZEST_CASE(WrapperStripped) {
     /// A compiler launcher takes no part in the command identity, nor do
-    /// its own options.
+    /// its own options, chained launchers, or ccache's guard of the token
+    /// after it.
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
@@ -70,12 +71,57 @@ ZEST_CASE(WrapperStripped) {
     database.add_command("/fake",
                          "c.cpp",
                          "ccache --set-config cache_dir=/tmp/cc clang++ -std=c++20 c.cpp"sv);
+    database.add_command("/fake", "d.cpp", "sccache clang++ -std=c++20 d.cpp"sv);
+    database.add_command("/fake", "e.cpp", "distcc icecc clang++ -std=c++20 e.cpp"sv);
+    database.add_command("/fake", "f.cpp", "ccache clang++ --ccache-skip -std=c++20 f.cpp"sv);
 
-    auto& a = database.candidate_entries(fake("a.cpp")).front();
-    auto& b = database.candidate_entries(fake("b.cpp")).front();
-    auto& c = database.candidate_entries(fake("c.cpp")).front();
-    ZEXPECT(a.command == b.command);
-    ZEXPECT(c.command == b.command);
+    auto b = database.candidate_entries(fake("b.cpp")).front().command;
+    for(auto file: {"a.cpp", "c.cpp", "d.cpp", "e.cpp", "f.cpp"}) {
+        ZEXPECT(database.candidate_entries(fake(file)).front().command == b);
+    }
+};
+
+ZEST_CASE(SharedKeys) {
+    /// Entries a build compiles alike share a key, as their commands are
+    /// one; commands that differ, even where a spelling looks alike, do not.
+    FileTable file_table;
+    CommandTable commands;
+    Normalizer normalizer{.commands = commands, .files = file_table};
+    auto directory = Spelling::absolute("/ws");
+    auto key = [&](llvm::StringRef file, llvm::StringRef line) {
+        return normalizer.shared_key(directory, file, split_command(line));
+    };
+    auto command = [&](llvm::StringRef file, llvm::StringRef line) {
+        return normalizer.normalize(directory, file_table.intern(Spelling(file, directory)), line);
+    };
+    auto same = [&](std::string_view line) {
+        std::string a_name = "a";
+        std::string b_name = "b";
+        auto a = std::vformat(line, std::make_format_args(a_name));
+        auto b = std::vformat(line, std::make_format_args(b_name));
+        auto a_key = key("a.cpp", a);
+        return a_key && a_key == key("b.cpp", b) && command("a.cpp", a) == command("b.cpp", b);
+    };
+    ZEXPECT(same("clang++ -std=c++20 -o {0}.o -c {0}.cpp"));
+    ZEXPECT(same("g++ -MD -MF {0}.d -frandom-seed={0}.o -c {0}.cpp -o {0}.o"));
+    ZEXPECT(same("gcc -Wp,-MMD,.{0}.o.d -c -o {0}.o {0}.cpp"));
+    ZEXPECT(same("cl /std:c++20 /Fo{0}.obj /c {0}.cpp"));
+    ZEXPECT(
+        same("g++ -std=c++20 -fmodules-ts -fmodule-mapper={0}.modmap -fdeps-format=p1689r5 "
+             "-fdeps-file={0}.ddi -fdeps-target={0}.o -c {0}.cpp -o {0}.o"));
+    ZEXPECT(
+        same("clang++ -foptimization-record-file={0}.yaml -gen-cdb-fragment-path cdb "
+             "-c {0}.cpp -o {0}.o"));
+
+    ZEXPECT((key("a.cpp", "cl -MT /c a.cpp") != key("b.cpp", "cl -MTd /c b.cpp")));
+    ZEXPECT((key("a.cpp", "gcc -Wp,-MMD,a.d,-DA -c a.cpp") !=
+             key("b.cpp", "gcc -Wp,-MMD,b.d,-DA -c b.cpp")));
+    ZEXPECT((key("a.cpp", "clang++ -std=c++17 a.cpp") != key("b.cpp", "clang++ -std=c++20 b.cpp")));
+
+    /// Commands reading files of their own, or naming theirs twice, have none.
+    ZEXPECT(!key("a.cpp", "clang++ @a.rsp a.cpp").has_value());
+    ZEXPECT(!key("a.cu", "nvcc -c a.cu").has_value());
+    ZEXPECT(!key("a.cpp", "clang++ -include a.cpp a.cpp").has_value());
 };
 
 ZEST_CASE(InternedCommand) {
@@ -108,22 +154,31 @@ ZEST_CASE(InternedCommand) {
     ZEXPECT(std::string_view(rendered.back()) == file_table.resolve(ref.file).str());
 };
 
-ZEST_CASE(CodegenKeptInFull) {
-    /// Codegen-only options, which the compile render leaves out, survive
-    /// in the full render.
+ZEST_CASE(LeftOutOptionsShare) {
+    /// What only the build reads — codegen options, outputs, dependency
+    /// files, timings, listings — leaves the command: entries differing in
+    /// it share one.
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
-    database.add_command(
-        "/fake",
-        "main.cpp",
-        "clang++ -std=c++20 -fPIC -fno-omit-frame-pointer -fstack-protector-strong "
-        "-fdata-sections -ffunction-sections -fcolor-diagnostics -g main.cpp"sv);
-
-    auto full = print_argv(
-        commands.render_full(database.candidate_entries(fake("main.cpp")).front().command));
-    ZEXPECT(llvm::StringRef(full).contains("-fno-omit-frame-pointer"));
-    ZEXPECT(llvm::StringRef(full).contains("-fdata-sections"));
+    database.add_command("/fake", "a.cpp", "clang++ -std=c++20 -fPIC -c a.cpp"sv);
+    database.add_command("/fake",
+                         "b.cpp",
+                         "clang++ -std=c++20 -fPIC -g -fno-omit-frame-pointer -ffunction-sections "
+                         "-c -o b.o -MD -MF b.d -MJ b.o.json -ftime-trace=b.trace.json "
+                         "-save-temps=obj --serialize-diagnostics b.dia -Wa,-adhlns=b.lst "
+                         "-frandom-seed=b.o b.cpp"sv);
+    database.add_command("/fake", "c.cpp", "cl /std:c++20 /c /Foc.obj c.cpp"sv);
+    database.add_command("/fake",
+                         "d.cpp",
+                         "cl /std:c++20 /c /Fod.obj /Fdd.pdb /Fad.asm /FRd.sbr /Fed.exe "
+                         "/sourceDependencies d.json /showIncludes /showFilenames d.cpp"sv);
+    auto command = [&](llvm::StringRef file) {
+        return database.candidate_entries(fake(file)).front().command;
+    };
+    ZEXPECT(command("a.cpp") == command("b.cpp"));
+    ZEXPECT(print_argv(commands.render_full(command("b.cpp"))) == "clang++ -std=c++20 -fPIC");
+    ZEXPECT(command("c.cpp") == command("d.cpp"));
 };
 
 ZEST_CASE(ModuleEmbeddingDiscarded) {
