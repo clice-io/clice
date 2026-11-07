@@ -94,7 +94,7 @@ jobs:
           and run the suites with the test-run environment, as CI does:
           pixi run -e test-run unit-test RelWithDebInfo.
           NOTES
-      - uses: 16bit-ykiko/agent-box@a0fc879b1b1aa0ba8922018c82479a5ca7953c12
+      - uses: 16bit-ykiko/agent-box@3d725fcfdb4368ef79b6005c41c4bbc0ab4888d7
         with:
           pubkey: ${{ inputs.pubkey }}
           minutes: ${{ inputs.minutes }}
