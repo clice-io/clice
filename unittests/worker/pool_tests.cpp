@@ -1751,23 +1751,32 @@ ZEST_CASE(ScalingDownHoldsScaleUp) {
 ZEST_CASE(ScaleUpSparesGivenUp) {
     // A given-up slot waits out its cooldown: a scale-up neither brings it
     // back early nor appends past the ceiling it still counts toward.
+    TempDir tmp;
+    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
+
     WorkerPoolFixture f;
-    f.add_stateless();
-    f.add_stateless();
-    f.set_max_crash_streak(0);
-    ZEXPECT(!f.simulate_crash(0, false));
-    ZASSERT(f.slot_given_up(0));
+    bool done = false;
+    f.run([&]() -> async::task<> {
+        ZASSERT(f.start(2, 0));
+        f.set_revive_after(chrono::minutes(10));
+        f.set_max_crash_streak(0);
+        co_await f.kill_running_worker(tmp.path("slow.cpp"));
+        ZASSERT(f.slot_given_up(0));
 
-    f.set_max_stateless(2);
-    f.scale_up();
-    ZEXPECT(f.stateless_count() == 2u);
-    ZEXPECT(f.slot_given_up(0));
+        f.set_max_stateless(2);
+        f.scale_up();
+        ZEXPECT(f.stateless_count() == 2u);
 
-    f.set_max_stateless(3);
-    f.scale_up();
-    ZEXPECT(f.stateless_count() == 3u);
-    ZEXPECT(f.state(2) == WorkerPoolFixture::SlotState::Respawning);
-    ZEXPECT(f.slot_given_up(0));
+        f.set_max_stateless(3);
+        f.scale_up();
+        ZEXPECT(f.stateless_count() == 3u);
+        co_await f.serves(2);
+        ZEXPECT(f.slot_given_up(0));
+
+        co_await f.stop();
+        done = true;
+    });
+    ZEXPECT(done);
 }
 
 ZEST_CASE(ScaleUpReusesScaledDown) {

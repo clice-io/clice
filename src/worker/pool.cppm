@@ -278,8 +278,12 @@ public:
     /// its AST, and a compile of it still running leaves none behind.
     void forget_document(std::uint32_t path_id);
 
+    /// Whether a worker of the kind serves or will: a slot of the kind is
+    /// alive, coming back, or given up until its revival.
+    bool will_serve(bool stateful) const;
+
     /// Wait until a worker of the kind can take a request. False when none
-    /// ever will again: the pool is stopping, or it has no slot of the kind.
+    /// ever will again: the pool is stopping, or none will serve.
     /// FIXME: takes no cancellation: a request its client cancels while every
     /// worker of the kind is down still waits here until one returns, up to
     /// revive_after.
@@ -393,6 +397,9 @@ private:
 
         /// The part of it in swap.
         std::uint64_t swapped = 0;
+
+        /// Given up: when its cooldown ends.
+        chrono::steady_clock::time_point revive_at{};
     };
 
     /// A stateless request between its submission and its end: what the
@@ -569,11 +576,12 @@ private:
     /// of the kind is left to serve.
     void give_up_slot(std::size_t index, bool stateful);
 
-    /// After `revive_after`, grant a given-up slot a fresh crash budget
-    /// and respawn it: the pool never stays at zero workers forever.
-    async::task<> revive_slot(std::size_t index, bool stateful);
+    /// Grant the given-up slots whose cooldown is over a fresh crash budget
+    /// and respawn them: the pool never stays at zero workers forever.
+    void revive_due();
 
-    /// The pool's pace: samples memory and the workers for the scheduler.
+    /// The pool's pace: samples memory and the workers for the scheduler,
+    /// and revives the slots due.
     async::task<> monitor_loop();
 
     /// Take a sample and hand it to the scheduler.

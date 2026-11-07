@@ -294,7 +294,8 @@ async::task<UnitResult>
        reply.error().code == worker::dispatch_errc::worker_lost) {
         co_return UnitResult{.status = Status::Lost, .error = reply.error().message};
     }
-    if(reply.error().code == worker::dispatch_errc::worker_unavailable) {
+    if(reply.error().code == worker::dispatch_errc::worker_unavailable &&
+       project.pool->will_serve(false)) {
         // The outage is a window, not a decision: the pool revives given-up
         // slots, so the requeued attempt can succeed once one returns to
         // service.

@@ -608,21 +608,19 @@ ipc::Error WorkerPool::death_error(const WorkerDeath& death,
     return ipc::Error{code, death.cause, std::move(identity)};
 }
 
+bool WorkerPool::will_serve(bool stateful) const {
+    return ranges::any_of(workers(stateful), [](const WorkerProcess& w) {
+        return w.state != SlotState::ScaledDown && !w.scaling_down;
+    });
+}
+
 async::task<bool> WorkerPool::await_capacity(bool stateful) {
-    while(!stop_scope.cancelled()) {
-        auto& slots = workers(stateful);
-        auto serving = ranges::any_of(slots, [](const WorkerProcess& w) {
+    while(!stop_scope.cancelled() && will_serve(stateful)) {
+        auto serving = ranges::any_of(workers(stateful), [](const WorkerProcess& w) {
             return w.state == SlotState::Alive && !w.scaling_down;
         });
         if(serving) {
             co_return true;
-        }
-        auto returning = ranges::any_of(slots, [](const WorkerProcess& w) {
-            return w.state == SlotState::Dying || w.state == SlotState::Respawning ||
-                   w.state == SlotState::GivenUp;
-        });
-        if(!returning) {
-            co_return false;
         }
         capacity_returned.reset();
         co_await capacity_returned.wait();
@@ -671,7 +669,9 @@ async::task<> WorkerPool::respawn_after(std::size_t index,
 }
 
 void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
-    slot(index, stateful).state = SlotState::GivenUp;
+    auto& w = slot(index, stateful);
+    w.state = SlotState::GivenUp;
+    w.revive_at = chrono::steady_clock::now() + options.revive_after;
     if(capacity(stateful) == 0) {
         // Queued requests fail now instead of waiting for a dispatch.
         if(!stateful) {
@@ -691,24 +691,26 @@ void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
                 seconds);
         }
     }
-    worker_tasks.spawn(revive_slot(index, stateful));
 }
 
-async::task<> WorkerPool::revive_slot(std::size_t index, bool stateful) {
-    // Time is the feature: the cooldown of a slot given up.
-    co_await async::with_token(async::sleep(options.revive_after, loop), stop_scope.token());
-    if(stop_scope.cancelled()) {
-        co_return;
+void WorkerPool::revive_due() {
+    auto now = chrono::steady_clock::now();
+    for(bool stateful: {false, true}) {
+        auto& slots = workers(stateful);
+        for(std::size_t index = 0; index < slots.size(); index += 1) {
+            auto& w = slots[index];
+            if(w.state != SlotState::GivenUp || now < w.revive_at) {
+                continue;
+            }
+            // A fresh budget, not a pardon: if the workload that killed the
+            // slot is still around, the budget bounds the damage again and
+            // the next revival is one cooldown away.
+            LOG_INFO("Worker {} reviving after cooldown", w.name);
+            w.fresh_budget();
+            w.state = SlotState::Respawning;
+            worker_tasks.spawn(respawn_after(index, stateful, chrono::milliseconds(0)));
+        }
     }
-    auto& w = slot(index, stateful);
-    assert(w.state == SlotState::GivenUp && "only its revival brings a given-up slot back");
-    // A fresh budget, not a pardon: if the workload that killed the slot is
-    // still around, the budget bounds the damage again and the next revival
-    // is one cooldown away.
-    LOG_INFO("Worker {} reviving after cooldown", w.name);
-    w.fresh_budget();
-    w.state = SlotState::Respawning;
-    co_await respawn_after(index, stateful, chrono::milliseconds(0));
 }
 
 std::uint64_t WorkerPool::PendingStateless::finish() {
@@ -855,6 +857,7 @@ async::task<> WorkerPool::monitor_loop() {
         if(stop_scope.cancelled())
             co_return;
         sample();
+        revive_due();
     }
 }
 
