@@ -1,0 +1,11 @@
+# clang runs an offload compilation's device job first. A SYCL compilation
+# reads as its host job, which follows; one for the device alone, and a
+# CUDA compilation, as the device job. The target is pinned: clang compiles
+# SYCL and CUDA for Linux from any host.
+flags = ["--target=x86_64-unknown-linux-gnu"]
+
+# xclang's configuration links libstdc++ statically, which -fsycl rejects.
+[units]
+"host.cpp" = ["--no-default-config", "-fsycl"]
+"device.cpp" = ["--no-default-config", "-fsycl", "-fsycl-device-only"]
+"kernel.cu" = ["-nocudainc", "-nocudalib", "--cuda-gpu-arch=sm_70"]

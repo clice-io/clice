@@ -1,0 +1,8 @@
+[test."host.cpp"]
+diagnostics = []
+
+[test."device.cpp"]
+diagnostics = []
+
+[test."kernel.cu"]
+diagnostics = []

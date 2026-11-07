@@ -167,7 +167,13 @@ A script registers tests of two kinds, each `(fn)`, `(name, fn)`,
   … — and `a.markers()` lists the case's markers in source order. A request
   one client cannot answer fails at once: the test declares `paths`. An
   answers test only reads; `compile: true` checks each action's edits and
-  restores the files.
+  restores the files. On inspect, every semantic tokens, outline, folding
+  ranges and document links answer is asked once more, as the server
+  answers before the file's AST is current — from its index — and what the
+  index's entries give must be what the AST gives: a token, modifier, fold
+  kind or entry it leaves out passes, and so does what the lexer alone
+  gives where the index has no entry (punctuation, literals, keywords, a
+  `#pragma mark`), which the AST may refine.
 - **`test`**: everything else, on servers, the command line, or both.
   `t.start(options?)` starts a server on the copy; `t.cli(...)` runs a command
   there (with `interrupt: { units, signals }` it signals the run once that many

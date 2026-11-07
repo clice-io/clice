@@ -110,16 +110,20 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
 
 ## Answers the index serves
 
-Until a file's AST is current, the server answers its outline from the
-index, and both answers must be the same. `clice inspect
-document-symbols <file> --check` compiles the file, projects the outline from
-its own TU index and lists each entry where the two differ (`only_ast`,
-`only_index`, `name`, `kind`, `range`, `parent`, `detail`, `deprecated`) at
-its 1-based line and column. When a change touches the outline or the index
-facts it reads, run it over real code — the repository's sources, the
-libc++ and libstdc++ headers, LLVM's (a header outside every project takes
-its command from a `clice.toml` above it whose rule sets `default_command`) —
-and pin each difference that matters in a case.
+Until a file's AST is current, the server answers its semantic tokens,
+outline, folding ranges and document links from the index, and what the
+editor shows must not change when the AST arrives. Every answers case checks
+it on inspect (`tests/README.md`, "answers"): what the index's entries give
+must be what the AST gives; it may leave things out, and what the lexer alone
+gives where it has no entry does not count. A difference is a bug of one answer
+or the other, fixed, never declared away. `clice
+inspect <feature> <file> --index` answers from the file's own TU index as the
+server does; when a change touches these features or the index facts they
+read, also compare it with the plain answer over real code — the
+repository's sources, the libc++ and libstdc++ headers, LLVM's (a header
+outside every project takes its command from a `clice.toml` above it whose
+rule sets `default_command`) — and pin each difference that matters in a
+case.
 
 ## C++ unit tests (zest)
 

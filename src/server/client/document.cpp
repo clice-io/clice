@@ -6,7 +6,6 @@ import :feature.document_links;
 import :feature.document_symbols;
 import :feature.folding_ranges;
 import :feature.hover;
-import :feature.index_entries;
 import :feature.inlay_hints;
 import :feature.protocol;
 import :feature.selection_ranges;

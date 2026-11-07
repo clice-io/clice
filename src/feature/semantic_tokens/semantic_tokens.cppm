@@ -1,7 +1,7 @@
 module clice:feature.semantic_tokens;
 
 import :compile.compilation;
-import :feature.index_entries;
+import :index.entries;
 import :index.query;
 import :index.tu_index;
 import :semantic.token_class;
@@ -125,8 +125,8 @@ auto semantic_tokens_edits(llvm::ArrayRef<std::uint32_t> before,
 /// records: each symbol's classified from `resolve` at its occurrences, the
 /// roles `decls` give, the writes `writes` record.
 auto semantic_tokens(SourceText& source,
-                     const IndexEntries& entries,
-                     IndexSymbolResolver resolve,
+                     const index::FileEntries& entries,
+                     index::SymbolResolver resolve,
                      const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
 
 /// The same from the index serving the file, `source`'s text the one it

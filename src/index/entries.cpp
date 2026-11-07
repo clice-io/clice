@@ -1,29 +1,29 @@
 module clice;
 
-import :feature.index_entries;
+import :index.entries;
 import :index.shard;
 import :index.symbol;
 import :semantic.symbol;
 
-namespace clice::feature {
+namespace clice::index {
 
-IndexEntries extract_index_entries(const index::Shard& shard) {
-    IndexEntries entries;
-    shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
+FileEntries extract_entries(const Shard& shard) {
+    FileEntries entries;
+    shard.for_each_occurrence([&](const Occurrence& occurrence) {
         entries.occurrences.push_back(occurrence);
         return true;
     });
     auto written = entries.occurrences;
-    ranges::sort(written, {}, [](const index::Occurrence& o) { return o.range.begin; });
+    ranges::sort(written, {}, [](const Occurrence& o) { return o.range.begin; });
     auto nested = [&](LocalSourceRange range) {
-        auto it = ranges::upper_bound(written, range.begin, {}, [](const index::Occurrence& o) {
+        auto it = ranges::upper_bound(written, range.begin, {}, [](const Occurrence& o) {
             return o.range.begin;
         });
         return it != written.begin() && std::prev(it)->range.contains(range) &&
                std::prev(it)->range != range;
     };
-    std::vector<index::Occurrence> names;
-    shard.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
+    std::vector<Occurrence> names;
+    shard.for_each_relation([&](SymbolHash hash, const Relation& relation) {
         RelationKind kind(relation.kind);
         if(kind.carries_extent()) {
             auto copy = relation;
@@ -44,4 +44,4 @@ IndexEntries extract_index_entries(const index::Shard& shard) {
     return entries;
 }
 
-}  // namespace clice::feature
+}  // namespace clice::index

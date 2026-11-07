@@ -3,13 +3,13 @@ module clice;
 import :feature.document_symbols;
 import :feature.documentation;
 import :feature.hierarchy;
-import :feature.index_entries;
 import :feature.navigation;
 import :feature.query;
 import :feature.rename;
-import :index.symbol;
+import :index.entries;
 import :index.search;
 import :index.shard;
+import :index.symbol;
 import :index.text;
 import :support.markup;
 import :syntax.documentation;
@@ -376,7 +376,7 @@ Result<DocumentSymbolsResult>
     }
     // The outline the editor shows of a file it has not compiled; a
     // function's locals are no part of it.
-    auto entries = extract_index_entries(*source->shard);
+    auto entries = index::extract_entries(*source->shard);
     auto resolve = [&](index::SymbolHash hash) {
         return ctx.query.symbol_info(hash, **file);
     };

@@ -5,6 +5,8 @@ import { test, type TestContext } from "@clice/tools/testing";
 async function answers(t: TestContext): Promise<void> {
     const s = await t.start();
     await s.indexed();
+    // Asked once b.cpp compiled: until then the index answers.
+    await s.errors("b.cpp");
     await t.show("b.cpp", {
         diagnostics: s.diagnostics("b.cpp"),
         contexts: s.contexts("b.cpp"),

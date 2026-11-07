@@ -3,7 +3,7 @@ module clice;
 import :compile.compilation;
 import :compile.inactive_regions;
 import :feature.document_symbols;
-import :feature.index_entries;
+import :index.entries;
 import :index.query;
 import :index.symbol;
 import :semantic.decls;
@@ -1037,8 +1037,8 @@ auto to_symbol_information(llvm::ArrayRef<DocumentSymbol> symbols,
 }
 
 auto document_symbols(SourceText& source,
-                      const IndexEntries& entries,
-                      IndexSymbolResolver resolve,
+                      const index::FileEntries& entries,
+                      index::SymbolResolver resolve,
                       const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
     // A name the text writes is where an occurrence of its symbol starts.
     llvm::DenseSet<std::pair<std::uint32_t, index::SymbolHash>> written;
@@ -1049,7 +1049,7 @@ auto document_symbols(SourceText& source,
     std::vector<OutlineEntry> declarations;
     std::vector<std::uint32_t> macro_names;
     llvm::DenseSet<std::uint32_t> module_names;
-    auto add = [&](const IndexDecl& decl) {
+    auto add = [&](const index::DeclEntry& decl) {
         if(!decl.extent.valid() || decl.extent.begin >= decl.extent.end) {
             return;
         }
@@ -1130,7 +1130,7 @@ auto document_symbols(SourceText& source,
                       const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
     return document_symbols(
         source,
-        extract_index_entries(*index.shard),
+        index::extract_entries(*index.shard),
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },
         options);
 }

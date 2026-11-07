@@ -9,9 +9,9 @@ module;
 
 module clice;
 
-import :feature.index_entries;
 import :feature.semantic_tokens.stream;
 import :feature.semantic_tokens;
+import :index.entries;
 import :index.symbol;
 import :semantic.token_class;
 import :syntax.lexer;
@@ -377,7 +377,7 @@ void expect_tokens_match_ast() {
 /// the token kind `kinds` gives it.
 auto tokens_from(llvm::StringRef content,
                  const clang::LangOptions& lang_opts,
-                 feature::IndexEntries synthetic,
+                 index::FileEntries synthetic,
                  llvm::ArrayRef<SemanticTokenKind> kinds) -> std::vector<feature::SemanticToken> {
     SourceText text(content, lang_opts);
     return feature::semantic_tokens(
@@ -536,7 +536,7 @@ ZEST_CASE(CDialectKeywords) {
     // under the C keyword table, or the C++ table would take `class` as
     // a keyword and shadow the entry's kind.
     llvm::StringRef content = "int class;\n";
-    feature::IndexEntries entries{
+    index::FileEntries entries{
         .decls = {{.range = {4, 9}, .extent = {0, 10}, .symbol = 1, .definition = true}},
     };
     auto c_tokens =
@@ -571,7 +571,7 @@ ZEST_CASE(StandardFromCommand) {
     // -std must lex with that standard's keyword table, or a newer
     // table would take `concept` as a keyword and shadow the entry.
     llvm::StringRef content = "int concept;\n";
-    feature::IndexEntries entries{
+    index::FileEntries entries{
         .decls = {{.range = {4, 11}, .extent = {0, 12}, .symbol = 1, .definition = true}},
     };
     auto kinds = {SemanticTokenKind::Variable};
