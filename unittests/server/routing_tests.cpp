@@ -76,8 +76,8 @@ ZEST_CASE(NothingServesUncompiled) {
     auto session = open(false);
     ZEXPECT(route(session) == Route::Empty);
     ZEXPECT(route(session, {.needs_ast = true}) == Route::Empty);
-    // Nothing indexes the file: there is no first index to wait for.
-    ZEXPECT(route(session, {.waits_for_first_index = true}) == Route::Empty);
+    // Nothing indexes the file: there is no index attempt to wait for.
+    ZEXPECT(route(session, {.waits_for_index = true}) == Route::Empty);
 }
 
 ZEST_CASE(CompiledWaitsForAST) {
@@ -150,7 +150,7 @@ ZEST_CASE(OversizedBufferSkipsIndex) {
     ZEXPECT(route(session, {.lexes_whole_buffer = true}) == Route::AST);
 }
 
-ZEST_CASE(WaitsForFirstIndex) {
+ZEST_CASE(WaitsForIndex) {
     compile_focus("int x;\n");
     auto session = open(false);
     auto file = session->path_id;
@@ -160,8 +160,7 @@ ZEST_CASE(WaitsForFirstIndex) {
 
     std::optional<Route> picked;
     auto ask = [&]() -> async::task<> {
-        picked =
-            co_await fx.served->pick_route(Ticket::take(session), {.waits_for_first_index = true});
+        picked = co_await fx.served->pick_route(Ticket::take(session), {.waits_for_index = true});
     };
     auto asked = ask();
     fx.loop.schedule(asked);

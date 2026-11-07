@@ -463,7 +463,7 @@ void LSPClient::register_document_requests() {
                                              served->project.settings.document_symbols);
         };
         switch(co_await pick_route(document,
-                                   {.lexes_whole_buffer = true, .waits_for_first_index = true},
+                                   {.lexes_whole_buffer = true, .waits_for_index = true},
                                    &source)) {
             case Route::Outdated: co_await async::fail(content_modified());
             case Route::Index: co_return convert(from_index());
@@ -496,7 +496,7 @@ void LSPClient::register_document_requests() {
             auto& session = ticket.session;
             auto encoding = server.position_encoding;
             auto& files = served->project.file_table;
-            switch(co_await pick_route(document, {.waits_for_first_index = true})) {
+            switch(co_await pick_route(document, {.waits_for_index = true})) {
                 case Route::Outdated: co_await async::fail(content_modified());
                 case Route::Index: {
                     // Manifest edges cover the whole document (the background

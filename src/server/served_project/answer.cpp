@@ -74,7 +74,7 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
         if(compiled) {
             co_return Route::AST;
         }
-        if(options.waits_for_first_index && !waited) {
+        if(options.waits_for_index && !waited) {
             waited = true;
             co_await project.background_index.await_attempt(session.path_id);
             continue;

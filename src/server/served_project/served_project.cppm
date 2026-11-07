@@ -217,8 +217,8 @@ struct ServedDocument {
     std::optional<Inputs> inputs;
 
     /// The document is compiled, as the first request needing its AST
-    /// asks; otherwise only the index answers it. Set by start_compiling,
-    /// never cleared.
+    /// asks; otherwise only the index answers its reads. Set by
+    /// start_compiling, never cleared.
     bool compiles = false;
 
     /// The latest compile's file index merged with the file's shard's
@@ -264,6 +264,7 @@ enum class Route : std::uint8_t {
     Empty,
 };
 
+/// What a request asks of its route (ServedProject::pick_route).
 struct RouteOptions {
     /// The feature's answer from the index raw-lexes the whole buffer
     /// (semantic tokens, folds, the outline): past max_lexed_buffer it
@@ -274,11 +275,11 @@ struct RouteOptions {
 
     /// The feature has no refresh request, so an empty reply to a cold
     /// document would be cached by the client for good — no signal ever
-    /// makes it re-pull. Await the didOpen index_first once (bounded by one index
-    /// attempt) before answering Empty, and decide again from whatever
-    /// source is there once it finishes: the shard, the compile, or
-    /// honestly empty under readonly "on".
-    bool waits_for_first_index = false;
+    /// makes it re-pull. Await the index attempt pending on the file once
+    /// (the didOpen index_first, or a reindex) before answering Empty, and
+    /// decide again from whatever source is there once it finishes: the
+    /// shard, the compile, or honestly empty under readonly "on".
+    bool waits_for_index = false;
 
     /// Only the AST answers the feature (inlay hints, code actions): the
     /// index is not asked, and a document that is not compiled answers
@@ -314,8 +315,9 @@ Value empty_value() {
 /// One project the server serves: the project on disk, which builds over
 /// the process's worker pool, the open documents that belong to it, and
 /// everything the project derives for them. Its work is
-/// split in files: lifetime, adoption and the open documents' commands
-/// (served_project.cpp), compiling the open documents (compile.cpp), what
+/// split in files: lifetime, adoption, the documents' latest compiles and
+/// their commands (served_project.cpp), compiling the open documents
+/// (compile.cpp), what
 /// their diagnostics show — the compile's output, the crash notes, the
 /// skipped-body diagnostics — (diagnostics.cpp), what answers a request on
 /// them now and asking the workers (answer.cpp), and handling changes of
@@ -329,11 +331,11 @@ public:
     /// (the index_first in decide_compiling promised the index would serve
     /// the cold document, and one that finishes without a servable shard ends
     /// that promise — it starts compiling like the disabled-indexing branch,
-    /// or the document answers empty until its first edit; its run's skipped-body
-    /// diagnostics show), shards changing (documents without a current file
-    /// index serve these very shards, freshness clause 4: the client asks
-    /// again for what it pulled from them), and the records beside the index
-    /// changing (schedule_metadata_flush).
+    /// or, under readonly "on", which compiles no document, it answers
+    /// empty; its run's skipped-body diagnostics show), shards changing (documents without a
+    /// current file index serve these very shards, freshness clause 4: the client asks again for
+    /// what it pulled from them), and the records beside the index changing
+    /// (schedule_metadata_flush).
     ServedProject(MasterServer& server, CanonicalPath root);
     ~ServedProject();
 
@@ -369,9 +371,8 @@ public:
     }
 
     /// Take over an open document that belongs here now — just opened, or
-    /// moving from another project: discover the databases around it, and
-    /// decide whether it is compiled or served from the index (now, or once
-    /// the project starts).
+    /// moving from another project — and decide whether it is compiled or
+    /// served from the index (now, or once the project starts).
     void adopt(Fid path_id);
 
     /// Let go of a document closed or moving to another project: the worker
@@ -387,6 +388,25 @@ public:
     /// its owner (MasterServer::Document): the project writes about a
     /// document — its output, a crash, a refresh — only while it is.
     bool owns(const Session& session) const;
+
+    /// The document's latest compile, or null before its first compile.
+    std::shared_ptr<const DocumentCompile> latest(Fid path_id) const;
+
+    /// The document's latest compile while its output describes buffer
+    /// `version`, or null.
+    std::shared_ptr<const DocumentCompile> latest_at(Fid path_id, int version) const;
+
+    /// The latest compile describes the buffer and what it read: no
+    /// invalidation reached the document's node since it ran. Whether a
+    /// worker still holds its AST is the other fact (resident).
+    bool current(Fid path_id) const;
+
+    /// Whether the latest compile's index describes the current buffer.
+    /// The arbitration key of the index freshness contract (IndexQuery
+    /// clauses 3-4): a current-but-indexless compile (no AST, or an index
+    /// the worker could not send) is an honest gap, not a servable
+    /// index.
+    bool index_current(Fid path_id) const;
 
     /// After the editor saved a file that belongs here: record it as a provisional
     /// member (Project::record_provisional).
@@ -465,25 +485,6 @@ public:
     bool resident(Fid path_id) const {
         return project.pool->resident(path_id.raw);
     }
-
-    /// The document's latest compile, or null before its first compile.
-    std::shared_ptr<const DocumentCompile> latest(Fid path_id) const;
-
-    /// The document's latest compile while its output describes buffer
-    /// `version`, or null.
-    std::shared_ptr<const DocumentCompile> latest_at(Fid path_id, int version) const;
-
-    /// The latest compile describes the buffer and what it read: no
-    /// invalidation reached the document's node since it ran. Whether a
-    /// worker still holds its AST is the other fact (resident).
-    bool current(Fid path_id) const;
-
-    /// Whether the latest compile's index describes the current buffer.
-    /// The arbitration key of the index freshness contract (IndexQuery
-    /// clauses 3-4): a current-but-indexless compile (no AST, or an index
-    /// the worker could not send) is an honest gap, not a servable
-    /// index.
-    bool index_current(Fid path_id) const;
 
     /// Interrupt every in-flight parse and wait for the detached compile
     /// joins. The attempts themselves finish in TaskGraph::shutdown — the
@@ -776,6 +777,10 @@ private:
 
     // served_project.cpp
 
+    /// Replace the document's latest compile with a copy `edit` changes
+    /// (readers holding the old shared_ptr are unaffected).
+    void update_latest(Fid path_id, llvm::function_ref<void(DocumentCompile&)> edit);
+
     /// start() opened the project from disk and watches its build: never
     /// the rootless project, nor a broken one, nor before it starts.
     bool watches_build() const {
@@ -846,10 +851,6 @@ private:
 
     /// The document's attempt moved on to `phase`: the client follows it.
     void enter_phase(Fid path_id, CompilePhase phase);
-
-    /// Replace the document's latest compile with a copy `edit` changes
-    /// (readers holding the old shared_ptr are unaffected).
-    void update_latest(Fid path_id, llvm::function_ref<void(DocumentCompile&)> edit);
 
     // diagnostics.cpp
 

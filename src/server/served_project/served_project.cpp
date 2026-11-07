@@ -221,6 +221,35 @@ bool ServedProject::owns(const Session& session) const {
     return document && document->session.get() == &session && document->owner == this;
 }
 
+std::shared_ptr<const DocumentCompile> ServedProject::latest(Fid path_id) const {
+    auto* document = find_document(path_id);
+    return document ? document->latest : nullptr;
+}
+
+std::shared_ptr<const DocumentCompile> ServedProject::latest_at(Fid path_id, int version) const {
+    auto compiled = latest(path_id);
+    return compiled && compiled->output && compiled->output->version == version ? compiled
+                                                                                : nullptr;
+}
+
+bool ServedProject::current(Fid path_id) const {
+    auto compiled = latest(path_id);
+    return compiled && compiled->generation &&
+           *compiled->generation == project.graph.generation(ast_node(path_id));
+}
+
+bool ServedProject::index_current(Fid path_id) const {
+    auto compiled = latest(path_id);
+    return current(path_id) && compiled->index && compiled->index->loaded();
+}
+
+void ServedProject::update_latest(Fid path_id, llvm::function_ref<void(DocumentCompile&)> edit) {
+    auto& document = *find_document(path_id);
+    auto next = document.latest ? DocumentCompile(*document.latest) : DocumentCompile();
+    edit(next);
+    document.latest = std::make_shared<const DocumentCompile>(std::move(next));
+}
+
 void ServedProject::adopt(Fid path_id) {
     // A database generated since the start counts: the poll, or the
     // discovery around this file, has loaded it by now. A provisional
