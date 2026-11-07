@@ -113,9 +113,10 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
 Until a file's AST is current, the server answers its semantic tokens,
 outline, folding ranges and document links from the index, and what the
 editor shows must not change when the AST arrives. Every answers case checks
-it on inspect (`tests/README.md`, "answers"): the index may leave things out,
-nothing else. `indexDiffers` is for a fact only the compile has (format
-strings, inactive branches), never for an index that answers wrong. `clice
+it on inspect (`tests/README.md`, "answers"): what the index's entries give
+must be what the AST gives; it may leave things out, and what the lexer alone
+gives where it has no entry does not count. A difference is a bug of one answer
+or the other, fixed, never declared away. `clice
 inspect <feature> <file> --index` answers from the file's own TU index as the
 server does; when a change touches these features or the index facts they
 read, also compare it with the plain answer over real code — the

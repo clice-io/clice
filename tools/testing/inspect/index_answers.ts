@@ -1,9 +1,11 @@
 /// Where the index answers differently from the AST: the server answers a
 /// file from its index until the file's AST is current, then from the AST,
-/// and what the editor shows must not change in between. What the index
-/// gives must be what the AST gives; what it leaves out passes — a token, a
-/// modifier, a fold's kind, an outline entry — and so does a token it gives
-/// in code the AST dims as inactive, which only the AST knows.
+/// and what the editor shows must not change in between. What the index's
+/// entries give must be what the AST gives; what it leaves out passes — a
+/// token, a modifier, a fold's kind, an outline entry — and so does what the
+/// lexer alone gives where the index has no entry, which the AST refines
+/// (a template's `<`, a format string's pieces, inactive code, a
+/// `#pragma mark`).
 
 import type { Fold, Link, OutlineSymbol, Token } from "../render/answers.ts";
 import type { Range } from "../render/position.ts";
@@ -25,6 +27,29 @@ function spell(token: Token): string {
     return [token.type, ...[...token.modifiers].sort()].join(" ");
 }
 
+/// The token types the lexer gives a token no entry of the index names; a
+/// user-defined operator or literal takes its modifier from an entry.
+const LEXICAL = new Set([
+    "comment",
+    "string",
+    "character",
+    "number",
+    "escape",
+    "keyword",
+    "primitive",
+    "operator",
+    "bracket",
+    "directive",
+    "header",
+    "macroParameter",
+    "attribute",
+    "plain",
+]);
+
+function lexical(token: Token): boolean {
+    return LEXICAL.has(token.type) && !token.modifiers.includes("userDefined");
+}
+
 function agrees(ast: Token, index: Token): boolean {
     return (
         ast.length === index.length &&
@@ -39,27 +64,16 @@ export function tokenDifferences(
     index: readonly Token[],
 ): string[] {
     const byStart = new Map<string, Token>();
-    const inactive: Token[] = [];
     for (const token of ast) {
         byStart.set(`${String(token.line)}:${String(token.character)}`, token);
-        if (token.modifiers.includes("inactive")) {
-            inactive.push(token);
-        }
     }
-    const dimmed = (token: Token): boolean =>
-        inactive.some(
-            (dim) =>
-                dim.line === token.line &&
-                dim.character <= token.character &&
-                token.character < dim.character + dim.length,
-        );
     const differences: string[] = [];
     for (const token of index) {
-        const where = `${file}:${String(token.line + 1)}:${String(token.character + 1)}`;
-        const twin = byStart.get(`${String(token.line)}:${String(token.character)}`);
-        if (dimmed(token)) {
+        if (lexical(token)) {
             continue;
         }
+        const where = `${file}:${String(token.line + 1)}:${String(token.character + 1)}`;
+        const twin = byStart.get(`${String(token.line)}:${String(token.character)}`);
         if (twin === undefined) {
             differences.push(`semantic tokens ${where}: only the index has ${spell(token)}`);
             continue;
@@ -104,8 +118,14 @@ interface Flat {
     parent: number;
 }
 
+/// The entries but the `#pragma mark`s (kind File), which the lexer alone
+/// finds; what a mark sections nests in the mark's parent.
 function flatten(symbols: readonly OutlineSymbol[], parent: number, out: Flat[]): Flat[] {
     for (const symbol of symbols) {
+        if (symbol.kind === "File") {
+            flatten(symbol.children, parent, out);
+            continue;
+        }
         const self = out.length;
         out.push({ symbol, parent });
         flatten(symbol.children, self, out);

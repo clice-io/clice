@@ -39,9 +39,22 @@ describe("tokenDifferences", () => {
         expect(tokenDifferences("a.cpp", ast, [token(0, "variable", ["static"])])).toHaveLength(1);
     });
 
-    test("a token inside code the AST dims passes", () => {
-        const ast = [{ ...token(0, "comment", ["inactive"]), length: 20 }];
-        expect(tokenDifferences("a.cpp", ast, [token(4, "keyword")])).toEqual([]);
+    test("what the lexer alone gives passes, a user-defined operator does not", () => {
+        const ast = [
+            token(0, "bracket"),
+            token(4, "string"),
+            token(8, "operator", ["userDefined"]),
+        ];
+        expect(
+            tokenDifferences("a.cpp", ast, [
+                token(0, "operator"),
+                { ...token(4, "string"), length: 9 },
+                token(12, "keyword"),
+            ]),
+        ).toEqual([]);
+        expect(
+            tokenDifferences("a.cpp", ast, [token(0, "operator", ["userDefined"])]),
+        ).toHaveLength(1);
     });
 });
 
@@ -83,6 +96,23 @@ describe("outlineDifferences", () => {
         expect(
             outlineDifferences("a.cpp", ast, [symbol("outer", 0, [symbol("inner", 1)])]),
         ).toEqual([]);
+    });
+
+    test("a mark is left out, what it sections nests in its parent", () => {
+        const mark = (children: OutlineSymbol[]): OutlineSymbol => ({
+            ...symbol("Section", 1, children),
+            kind: "File",
+        });
+        const ast = [symbol("outer", 0, [symbol("inner", 2)])];
+        expect(
+            outlineDifferences("a.cpp", ast, [
+                mark([]),
+                symbol("outer", 0, [mark([symbol("inner", 2)])]),
+            ]),
+        ).toEqual([]);
+        expect(
+            outlineDifferences("a.cpp", ast, [symbol("outer", 0), mark([symbol("inner", 2)])]),
+        ).toHaveLength(1);
     });
 
     test("an entry only the index lists, and what it nests, differ", () => {

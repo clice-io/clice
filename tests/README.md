@@ -169,10 +169,11 @@ A script registers tests of two kinds, each `(fn)`, `(name, fn)`,
   answers test only reads; `compile: true` checks each action's edits and
   restores the files. On inspect, every semantic tokens, outline, folding
   ranges and document links answer is asked once more, as the server
-  answers before the file's AST is current — from its index — and the
-  index's answer must be the AST's or less of it: a token, modifier, fold
-  kind or entry it leaves out passes, and so does a token in code the AST
-  dims as inactive.
+  answers before the file's AST is current — from its index — and what the
+  index's entries give must be what the AST gives: a token, modifier, fold
+  kind or entry it leaves out passes, and so does what the lexer alone
+  gives where the index has no entry (punctuation, literals, keywords, a
+  `#pragma mark`), which the AST may refine.
 - **`test`**: everything else, on servers, the command line, or both.
   `t.start(options?)` starts a server on the copy; `t.cli(...)` runs a command
   there (with `interrupt: { units, signals }` it signals the run once that many
@@ -224,7 +225,6 @@ declared fails the test, and so does a declared one that never happened.
 | `config: { … }`            | (answers) options in clice.toml's shape, taken by both clients                                    |
 | `indexing: true`           | (answers) both clients index first: the server in the background, inspect by `clice index`        |
 | `positionEncoding: "…"`    | (answers) the server's client offers that encoding, as above                                      |
-| `indexDiffers: "…"`        | (answers) why the index answers differently from the AST here; answering alike then fails         |
 
 **Recorded sessions.** A `trace.jsonl` is what a real editor sent a server,
 recorded by `tools/testing/server/record.ts` standing in for the server it

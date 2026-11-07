@@ -30,9 +30,6 @@ export interface AnswersOptions {
     /// The server's client offers this encoding before UTF-16, and the
     /// server must take it; it answers in UTF-16 otherwise.
     positionEncoding?: "utf-8" | "utf-32";
-    /// Why the index answers the whole-document features asked
-    /// differently from the AST here; without it, any difference fails.
-    indexDiffers?: string;
 }
 
 export type Registered =

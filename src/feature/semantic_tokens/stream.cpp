@@ -60,26 +60,6 @@ bool is_operator(clang::tok::TokenKind kind) {
     }
 }
 
-/// Whether a `[` after a token of `kind` opens a lambda's captures in C++:
-/// no operand ends at that token, so the `[` subscripts nothing.
-bool opens_captures(clang::tok::TokenKind kind) {
-    switch(kind) {
-        case clang::tok::r_paren:
-        case clang::tok::r_square:
-        case clang::tok::r_brace:
-        case clang::tok::greater:
-        case clang::tok::greatergreater:
-        case clang::tok::plusplus:
-        case clang::tok::minusminus:
-        case clang::tok::ellipsis: return false;
-        case clang::tok::kw_return:
-        case clang::tok::kw_co_return:
-        case clang::tok::kw_co_yield:
-        case clang::tok::kw_throw: return true;
-        default: return clang::tok::getPunctuatorSpelling(kind) != nullptr;
-    }
-}
-
 bool is_char_literal(clang::tok::TokenKind kind) {
     return kind == clang::tok::char_constant || kind == clang::tok::wide_char_constant ||
            kind == clang::tok::utf8_char_constant || kind == clang::tok::utf16_char_constant ||
@@ -622,13 +602,8 @@ private:
 
     /// A `<` opening a template's arguments or parameters and the `>`
     /// closing them, by what precedes the `<`: a template's name, the
-    /// `template` keyword, a name after it, a lambda's captures.
+    /// `template` keyword, a name after it.
     Piece bracket(clang::tok::TokenKind kind, Piece piece) {
-        if(kind == clang::tok::l_square) {
-            captures.push_back(lang_opts.CPlusPlus && !lang_opts.ObjC && opens_captures(previous));
-        } else if(kind == clang::tok::r_square) {
-            closes_captures = !captures.empty() && captures.pop_back_val();
-        }
         switch(kind) {
             case clang::tok::l_paren:
             case clang::tok::l_square:
@@ -669,8 +644,7 @@ private:
     /// Records what the next `<` follows.
     void after(clang::tok::TokenKind kind, bool template_name) {
         names_template = template_name || (after_template && clang::tok::isAnyIdentifier(kind)) ||
-                         kind == clang::tok::kw_template ||
-                         (kind == clang::tok::r_square && closes_captures);
+                         kind == clang::tok::kw_template;
         after_template = kind == clang::tok::kw_template;
         previous = kind;
     }
@@ -867,12 +841,6 @@ private:
     bool names_template = false;
     bool after_template = false;
     clang::tok::TokenKind previous = clang::tok::unknown;
-
-    /// Open `[`, each whether it opens a lambda's captures.
-    llvm::SmallVector<bool> captures;
-
-    /// Whether the last `]` closed a lambda's captures.
-    bool closes_captures = false;
 
     struct AttributeList {
         /// The bracket depth of the names.
