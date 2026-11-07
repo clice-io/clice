@@ -192,6 +192,12 @@ const static ServedDocument::MergedIndex* merged_index(const ServedProject& serv
     auto fresh = own.loaded() ? llvm::ArrayRef(&own, 1) : llvm::ArrayRef<index::Shard>();
     if(own.loaded()) {
         keep.erase(ranges::remove(keep, own.variants().front()).begin(), keep.end());
+    } else if(ranges::none_of(keep,
+                              [&](std::uint64_t hash) { return stored->has_variant(hash); })) {
+        // The shard outlives the last context reading the file until the
+        // index is saved.
+        document.merged.reset();
+        return nullptr;
     }
     auto& skipped = compiled->inactive_regions;
     auto bytes = index::merge_shards(*stored, keep, fresh, [&](std::uint32_t offset) {

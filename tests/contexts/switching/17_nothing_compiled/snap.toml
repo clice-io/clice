@@ -1,4 +1,4 @@
-[test."only.h"]
+["the host indexed"."only.h"]
 tokens = [
     { at = "⟦#pragma⟧ once", type = "directive" },
     { at = "⟦#ifdef⟧ FAST", type = "directive" },
@@ -37,7 +37,7 @@ outline = [
     },
 ]
 
-[test."only.h".hover]
+["the host indexed"."only.h".hover]
 markdown = '''
 **function** `fast_only`
 
@@ -46,3 +46,30 @@ inline int fast_only()
 ```
 '''
 range = "inline int ⟦fast_only⟧() {"
+
+["the host leaves the database"."host gone"]
+tokens = [
+    { at = "⟦#pragma⟧ once", type = "directive" },
+    { at = "⟦#ifdef⟧ FAST", type = "directive" },
+    { at = "#ifdef ⟦FAST⟧", type = "macro" },
+    { at = "⟦#pragma⟧ mark - Fast", type = "directive", modifiers = ["inactive"] },
+    { at = "#pragma ⟦mark⟧ - Fast", type = "plain", modifiers = ["inactive"] },
+    { at = "#pragma mark ⟦-⟧ Fast", type = "operator", modifiers = ["inactive"] },
+    { at = "#pragma mark - ⟦Fast⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦inline⟧ int fast_only() {", type = "keyword", modifiers = ["inactive"] },
+    { at = "inline ⟦int⟧ fast_only() {", type = "primitive", modifiers = ["inactive"] },
+    { at = "inline int ⟦fast_only()⟧ {", type = "plain", modifiers = ["inactive"] },
+    { at = "inline int fast_only() ⟦{⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦return⟧ 1;", type = "keyword", modifiers = ["controlFlow", "inactive"] },
+    { at = "return ⟦1⟧;", type = "number", modifiers = ["inactive"] },
+    { at = "return 1⟦;⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦}⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦struct⟧ Timer {", type = "keyword", modifiers = ["inactive"] },
+    { at = "struct ⟦Timer⟧ {", type = "plain", modifiers = ["inactive"] },
+    { at = "struct Timer ⟦{⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦~⟧Timer();", type = "operator", modifiers = ["inactive"] },
+    { at = "~⟦Timer();⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦};⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦#endif⟧", type = "directive" },
+]
+hover = {}
