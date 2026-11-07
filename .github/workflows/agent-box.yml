@@ -73,7 +73,7 @@ jobs:
             echo "common --disk_cache=$RUNNER_TEMP/bazel-disk"
             echo "common --repository_cache=$RUNNER_TEMP/bazel-repo"
           } > user.bazelrc
-      - uses: 16bit-ykiko/agent-box@3d725fcfdb4368ef79b6005c41c4bbc0ab4888d7
+      - uses: 16bit-ykiko/agent-box@13aac23bb1a43ff78a5481400db67f900bcd79af
         with:
           pubkey: ${{ inputs.pubkey }}
           minutes: ${{ inputs.minutes }}
