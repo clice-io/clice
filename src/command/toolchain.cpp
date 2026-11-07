@@ -220,14 +220,28 @@ bool in_query_view(const Arg& arg, CompilerFamily family) {
     std::unreachable();
 }
 
-/// Drops the SYCL integration header and footer a host job includes
-/// (`-include-internal-header <file>`, `-include-internal-footer <file>`):
-/// Intel's device job writes them to a temporary directory, gone once the
-/// query ends, and clang's own options read the flags as an `-include`.
+/// Drops the SYCL integration header and footer an Intel host job forces
+/// in: its device job writes them to a temporary directory, gone once the
+/// query ends. They are the forced includes the job keeps out of its
+/// dependencies (`-dependency-filter <file>`). oneAPI includes them with
+/// `-include-internal-header` and `-include-internal-footer`, before
+/// 2025.1 with `-include` and `-include-footer`; clang's own options read
+/// all but `-include` as an `-include` of a file named by the flag's rest.
 void drop_sycl_integration_files(std::vector<std::string>& tokens) {
-    for(std::size_t i = 0; i < tokens.size();) {
-        if(tokens[i] == "-include-internal-header" || tokens[i] == "-include-internal-footer") {
-            tokens.erase(tokens.begin() + i, tokens.begin() + std::min(i + 2, tokens.size()));
+    llvm::SmallVector<std::string> generated;
+    for(std::size_t i = 0; i + 1 < tokens.size(); i += 1) {
+        if(tokens[i] == "-dependency-filter") {
+            generated.push_back(tokens[i + 1]);
+        }
+    }
+    constexpr std::array<llvm::StringRef, 4> includes = {"-include",
+                                                         "-include-footer",
+                                                         "-include-internal-header",
+                                                         "-include-internal-footer"};
+    for(std::size_t i = 0; i + 1 < tokens.size();) {
+        if(ranges::contains(includes, llvm::StringRef(tokens[i])) &&
+           ranges::contains(generated, tokens[i + 1])) {
+            tokens.erase(tokens.begin() + i, tokens.begin() + i + 2);
         } else {
             i += 1;
         }
