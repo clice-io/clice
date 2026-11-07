@@ -37,6 +37,12 @@ import { Client, type LocationRequest, type Place } from "../render/client.ts";
 import { applyEdits, type TextEdit } from "../render/edits.ts";
 import { AnswerContext, signatures } from "../render/lsp.ts";
 import { withoutBom, type Location, type Range, type SourceText } from "../render/position.ts";
+import {
+    foldDifferences,
+    linkDifferences,
+    outlineDifferences,
+    tokenDifferences,
+} from "./index_answers.ts";
 
 /// One file entry of the output: a document feature fills `result`, a
 /// marker feature `markers` by the names --markers gave (null for a place
@@ -236,6 +242,10 @@ export class Inspect extends Client {
     private readonly documents = new Map<string, Promise<Entry>>();
     /// The errors each file compiled with, as inspected.
     private readonly compiled = new Map<string, string[]>();
+    /// Where the index answered a whole-document feature differently from
+    /// the AST (index_answers.ts).
+    private readonly differences: string[] = [];
+    private readonly compareIndex: boolean;
     private runs = 0;
 
     /// `sources` are the copy's source files: those importing a module
@@ -249,6 +259,9 @@ export class Inspect extends Client {
             /// The bound on one run, which only a hang reaches: a case's unit
             /// compiles in seconds, a real project's can take minutes.
             timeout?: number;
+            /// Each whole-document feature is asked from the file's index
+            /// too, and where the two answers differ is kept.
+            compareIndex?: boolean;
         },
     ) {
         super(marks);
@@ -259,6 +272,7 @@ export class Inspect extends Client {
         this.sources = options.sources.filter((file) => !this.importers.has(file));
         this.config = options.config;
         this.timeout = options.timeout ?? 300_000;
+        this.compareIndex = options.compareIndex ?? false;
         if (options.config !== undefined) {
             recordConfig(options.config);
         }
@@ -442,12 +456,20 @@ export class Inspect extends Client {
         return this.cannot(direction, at);
     }
 
+    /// Where the index answered the whole-document features asked
+    /// differently from the AST, one line each.
+    indexDifferences(): readonly string[] {
+        return this.differences;
+    }
+
     protected async fetchTokens(file: string): Promise<Token[]> {
         const source = this.context().file(file);
         const size = Buffer.byteLength(source.text, "utf8");
-        return ((await this.document("semantic-tokens", file)) as RawToken[])
-            .filter((raw) => raw.range.begin < raw.range.end && raw.range.end <= size)
-            .flatMap((raw) => this.pieces(source, raw));
+        const tokens = async (index: boolean): Promise<Token[]> =>
+            ((await this.document("semantic-tokens", file, index)) as RawToken[])
+                .filter((raw) => raw.range.begin < raw.range.end && raw.range.end <= size)
+                .flatMap((raw) => this.pieces(source, raw));
+        return this.compared(tokens, (ast, index) => tokenDifferences(file, ast, index));
     }
 
     protected async fetchInlayHints(file: string, range: Range): Promise<InlayHint[]> {
@@ -483,17 +505,17 @@ export class Inspect extends Client {
     }
 
     protected async fetchFolds(file: string): Promise<Fold[]> {
-        const folds = (await this.document("folding-range", file)) as RawFold[];
         const source = this.context().file(file);
-        return folds.map((raw) => ({
-            range: this.range(source, raw.range),
-            kind: raw.kind ?? undefined,
-            collapsedText: raw.collapsed_text === "" ? undefined : raw.collapsed_text,
-        }));
+        const folds = async (index: boolean): Promise<Fold[]> =>
+            ((await this.document("folding-range", file, index)) as RawFold[]).map((raw) => ({
+                range: this.range(source, raw.range),
+                kind: raw.kind ?? undefined,
+                collapsedText: raw.collapsed_text === "" ? undefined : raw.collapsed_text,
+            }));
+        return this.compared(folds, (ast, index) => foldDifferences(file, ast, index));
     }
 
     protected async fetchSymbols(file: string): Promise<OutlineSymbol[]> {
-        const symbols = (await this.document("document-symbols", file)) as RawSymbol[];
         const source = this.context().file(file);
         const convert = (raw: RawSymbol): OutlineSymbol => ({
             name: raw.name,
@@ -504,17 +526,20 @@ export class Inspect extends Client {
             tags: raw.deprecated ? ["Deprecated"] : [],
             children: raw.children.map(convert),
         });
-        return symbols.map(convert);
+        const symbols = async (index: boolean): Promise<OutlineSymbol[]> =>
+            ((await this.document("document-symbols", file, index)) as RawSymbol[]).map(convert);
+        return this.compared(symbols, (ast, index) => outlineDifferences(file, ast, index));
     }
 
     protected async fetchLinks(file: string): Promise<Link[]> {
         const context = this.context();
-        const links = (await this.document("document-links", file)) as RawLink[];
         const source = context.file(file);
-        return links.map((raw) => ({
-            location: this.location(source, raw.range),
-            target: context.pathOfFile(raw.target),
-        }));
+        const links = async (index: boolean): Promise<Link[]> =>
+            ((await this.document("document-links", file, index)) as RawLink[]).map((raw) => ({
+                location: this.location(source, raw.range),
+                target: context.pathOfFile(raw.target),
+            }));
+        return this.compared(links, (ast, index) => linkDifferences(file, ast, index));
     }
 
     protected fetchCounterparts(file: string): Promise<Counterparts> {
@@ -590,12 +615,27 @@ export class Inspect extends Client {
         return out;
     }
 
-    /// A whole-document feature's answer for `file`.
-    private async document(feature: string, file: string): Promise<unknown> {
-        const key = `${feature}\0${file}`;
+    /// The AST's answer, and with compareIndex where the index's differs.
+    private async compared<T>(
+        answer: (index: boolean) => Promise<T>,
+        differences: (ast: T, index: T) => string[],
+    ): Promise<T> {
+        const ast = await answer(false);
+        if (this.compareIndex) {
+            this.differences.push(...differences(ast, await answer(true)));
+        }
+        return ast;
+    }
+
+    /// A whole-document feature's answer for `file`, the AST's or the
+    /// index's.
+    private async document(feature: string, file: string, index = false): Promise<unknown> {
+        const key = `${feature}\0${file}\0${String(index)}`;
         let entry = this.documents.get(key);
         if (entry === undefined) {
-            entry = this.run(feature, file).then((found) => this.record(file, found));
+            entry = this.run(feature, file, undefined, index).then((found) =>
+                this.record(file, found),
+            );
             this.documents.set(key, entry);
         }
         return (await entry).result;
@@ -677,12 +717,21 @@ export class Inspect extends Client {
         return entry;
     }
 
-    /// One `clice inspect` of `file`; a failed compile or run fails.
-    private async run(feature: string, file: string, places?: Places): Promise<Entry> {
+    /// One `clice inspect` of `file`, its answer from the index with
+    /// `index`; a failed compile or run fails.
+    private async run(
+        feature: string,
+        file: string,
+        places?: Places,
+        index = false,
+    ): Promise<Entry> {
         if (this.importers.has(file)) {
             this.cannot(`${feature} in a module importer`, file);
         }
         const args = ["inspect", feature, path.join(this.root, file)];
+        if (index) {
+            args.push("--index");
+        }
         if (places !== undefined) {
             this.runs += 1;
             const table = path.join(this.scratch, `markers-${String(this.runs)}.json`);

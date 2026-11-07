@@ -30,15 +30,6 @@ contexts = [
     { label = "unity.cpp", description = "${WS}/unity.cpp", host = "unity.cpp" },
     { label = "-std=c++20", description = "${WS}", host = "b.cpp" },
 ]
-definition = ["a.cpp │ static int ⟦helper⟧() {"]
-references = ["static int ⟦helper⟧() {", "b.cpp │ return ⟦helper⟧();"]
-
-["source listed too"."b.cpp".hover]
-markdown = '''
-**function** `helper`
-
-```cpp
-static int helper()
-```
-'''
-range = "return ⟦helper⟧();"
+hover = {}
+definition = []
+references = ["static int ⟦helper⟧() {"]

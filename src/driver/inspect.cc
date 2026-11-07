@@ -13,12 +13,12 @@ import :feature.document_links;
 import :feature.document_symbols;
 import :feature.folding_ranges;
 import :feature.hover;
-import :feature.index_check;
 import :feature.inlay_hints;
 import :feature.navigation;
 import :feature.selection_ranges;
 import :feature.semantic_tokens;
 import :feature.signature_help;
+import :index.entries;
 import :index.indexer;
 import :index.instantiation_shard;
 import :index.project_index;
@@ -169,18 +169,70 @@ struct FeatureParams {
 };
 
 /// A feature: its operation and line of help, what it is asked about, and
-/// what --check runs instead, for one that checks its own results. `run`
-/// gives nullopt when its answer does not serialize.
+/// what --index runs instead, for one the index answers too. `run` gives
+/// nullopt when its answer does not serialize.
 struct FeatureSpec {
     std::string_view name;
     std::string_view description;
     Shape shape = Shape::File;
     std::optional<codec::raw_value> (*run)(const FeatureParams&) = nullptr;
-    const FeatureSpec* check = nullptr;
+    const FeatureSpec* index = nullptr;
+};
+
+/// The unit's own TU index, standing in for the server's index of a file
+/// whose AST is not current, and the focus file's text as that index
+/// serves it.
+struct UnitIndex {
+    std::vector<std::byte> bytes;
+    index::TUIndex tu;
+    SourceText source;
+
+    explicit UnitIndex(CompilationUnit& unit) :
+        bytes(index::build_tu_index(unit)), tu(index::TUIndex::from_bytes(as_chars(bytes))),
+        source(unit.focus_file().content(), unit.lang_options()) {}
+
+    auto entries() const -> index::FileEntries {
+        return index::extract_entries(tu.shard_of(tu.focus_file()));
+    }
+
+    auto resolver() const {
+        return [this](index::SymbolHash hash) -> std::optional<index::SymbolInfo> {
+            auto identity = tu.find_symbol(hash);
+            if(!identity) {
+                return std::nullopt;
+            }
+            return index::SymbolInfo::from(hash, *identity);
+        };
+    }
+
+    /// The focus file's include directives as the index resolves them
+    /// (ProjectIndex::resolved_includes): those of the TU root and of the
+    /// focus file entered again.
+    auto includes() const -> std::vector<index::ResolvedInclude> {
+        std::vector<index::ResolvedInclude> includes;
+        for(std::uint32_t i = 0; i < tu.node_count(); i += 1) {
+            auto node = tu.node(i);
+            if(node.parent == index::no_node || tu.node(node.parent).file == tu.focus_file()) {
+                includes.push_back({.line = node.line, .target = tu.path(node.file).str()});
+            }
+        }
+        auto key = [](const index::ResolvedInclude& include) {
+            return std::tie(include.line, include.target);
+        };
+        ranges::sort(includes, {}, key);
+        includes.erase(ranges::unique(includes, {}, key).begin(), includes.end());
+        return includes;
+    }
 };
 
 std::optional<codec::raw_value> run_folding_ranges(const FeatureParams& params) {
     return to_raw_json(feature::folding_ranges(params.unit));
+}
+
+std::optional<codec::raw_value> run_folding_ranges_from_index(const FeatureParams& params) {
+    UnitIndex index(params.unit);
+    return to_raw_json(
+        feature::folding_ranges(index.source, index.entries().decls, index.resolver()));
 }
 
 std::optional<codec::raw_value> run_semantic_tokens(const FeatureParams& params) {
@@ -189,22 +241,33 @@ std::optional<codec::raw_value> run_semantic_tokens(const FeatureParams& params)
                                              feature::semantic_token_legend(options)));
 }
 
-std::optional<codec::raw_value> run_semantic_tokens_check(const FeatureParams& params) {
-    return to_raw_json(
-        feature::check_semantic_tokens(params.unit, params.settings.semantic_tokens));
+std::optional<codec::raw_value> run_semantic_tokens_from_index(const FeatureParams& params) {
+    const auto& options = params.settings.semantic_tokens;
+    UnitIndex index(params.unit);
+    return to_raw_json(feature::named_tokens(
+        feature::semantic_tokens(index.source, index.entries(), index.resolver(), options),
+        feature::semantic_token_legend(options)));
 }
 
 std::optional<codec::raw_value> run_document_symbols(const FeatureParams& params) {
     return to_raw_json(feature::document_symbols(params.unit, params.settings.document_symbols));
 }
 
-std::optional<codec::raw_value> run_document_symbol_check(const FeatureParams& params) {
-    return to_raw_json(
-        feature::check_document_symbols(params.unit, params.settings.document_symbols));
+std::optional<codec::raw_value> run_document_symbols_from_index(const FeatureParams& params) {
+    UnitIndex index(params.unit);
+    return to_raw_json(feature::document_symbols(index.source,
+                                                 index.entries(),
+                                                 index.resolver(),
+                                                 params.settings.document_symbols));
 }
 
 std::optional<codec::raw_value> run_document_links(const FeatureParams& params) {
     return to_raw_json(feature::document_links(params.unit));
+}
+
+std::optional<codec::raw_value> run_document_links_from_index(const FeatureParams& params) {
+    UnitIndex index(params.unit);
+    return to_raw_json(feature::document_links(index.source, index.includes()));
 }
 
 struct RawLocation {
@@ -500,58 +563,64 @@ std::optional<codec::raw_value> run_document_highlight(const FeatureParams& para
                             }));
 }
 
-constexpr FeatureSpec document_symbols_check{.name = "document-symbols",
-                                             .run = run_document_symbol_check};
-constexpr FeatureSpec semantic_tokens_check{.name = "semantic-tokens",
-                                            .run = run_semantic_tokens_check};
+constexpr FeatureSpec document_links_from_index{.name = "document-links",
+                                                .run = run_document_links_from_index};
+constexpr FeatureSpec document_symbols_from_index{.name = "document-symbols",
+                                                  .run = run_document_symbols_from_index};
+constexpr FeatureSpec folding_ranges_from_index{.name = "folding-range",
+                                                .run = run_folding_ranges_from_index};
+constexpr FeatureSpec semantic_tokens_from_index{.name = "semantic-tokens",
+                                                 .run = run_semantic_tokens_from_index};
 
 constexpr std::array features = {
     FeatureSpec{.name = "code-action",
                 .description = "The code actions on a selection",
                 .shape = Shape::Selections,
-                .run = run_code_action},
+                .run = run_code_action               },
     FeatureSpec{.name = "code-completion",
                 .description = "The completions at a point",
                 .shape = Shape::Points,
-                .run = run_code_completion},
+                .run = run_code_completion           },
     FeatureSpec{.name = "document-highlight",
                 .description = "The places naming the symbol at a point",
                 .shape = Shape::Points,
-                .run = run_document_highlight},
+                .run = run_document_highlight        },
     FeatureSpec{.name = "document-links",
                 .description = "The file's links",
-                .run = run_document_links},
+                .run = run_document_links,
+                .index = &document_links_from_index  },
     FeatureSpec{.name = "document-symbols",
                 .description = "The file's outline",
                 .run = run_document_symbols,
-                .check = &document_symbols_check},
+                .index = &document_symbols_from_index},
     FeatureSpec{.name = "folding-range",
                 .description = "The file's folding ranges",
-                .run = run_folding_ranges},
+                .run = run_folding_ranges,
+                .index = &folding_ranges_from_index  },
     FeatureSpec{.name = "hover",
                 .description = "The hover card at a point",
                 .shape = Shape::Points,
-                .run = run_hover},
+                .run = run_hover                     },
     FeatureSpec{.name = "inlay-hint",
                 .description = "The inlay hints over a range, else the file",
                 .shape = Shape::Ranges,
-                .run = run_inlay_hints},
+                .run = run_inlay_hints               },
     FeatureSpec{.name = "selection-range",
                 .description = "The selection ranges at a point",
                 .shape = Shape::Points,
-                .run = run_selection_range},
+                .run = run_selection_range           },
     FeatureSpec{.name = "semantic-tokens",
                 .description = "The file's semantic tokens",
                 .run = run_semantic_tokens,
-                .check = &semantic_tokens_check},
+                .index = &semantic_tokens_from_index },
     FeatureSpec{.name = "signature-help",
                 .description = "The signature help at a point",
                 .shape = Shape::Points,
-                .run = run_signature_help},
+                .run = run_signature_help            },
     FeatureSpec{.name = "template-resolver",
                 .description = "What the template resolver answers at a point",
                 .shape = Shape::Points,
-                .run = run_template_resolver},
+                .run = run_template_resolver         },
 };
 
 /// The inspected file, with the markers --markers places in it.
@@ -895,16 +964,16 @@ struct Feature {
     LogLevelOption log;
 };
 
-/// The options of features[I], which checks its own results.
+/// The options of features[I], which the index answers too.
 template <std::size_t I>
-struct CheckedFeature {
+struct IndexedFeature {
     Options inspect;
 
-    KANNOTATE(&check,
+    KANNOTATE(&index,
               description =
-                  "Check the results instead of printing them: report where they "
-                  "differ from the same results computed another way")
-    bool check = false;
+                  "Answer from the file's index, as the server does while the file's "
+                  "AST is not current")
+    bool index = false;
 
     LogLevelOption log;
 };
@@ -915,7 +984,7 @@ consteval auto __kotatsu__type_annotation(std::type_identity<Feature<I>>) {
 }
 
 template <std::size_t I>
-consteval auto __kotatsu__type_annotation(std::type_identity<CheckedFeature<I>>) {
+consteval auto __kotatsu__type_annotation(std::type_identity<IndexedFeature<I>>) {
     return meta::make_annotation(codec::dsl::description = features[I].description);
 }
 
@@ -925,8 +994,8 @@ int run(Feature<I>& feature) {
 }
 
 template <std::size_t I>
-int run(CheckedFeature<I>& feature) {
-    return run_inspect(feature.inspect, feature.check ? *features[I].check : features[I]);
+int run(IndexedFeature<I>& feature) {
+    return run_inspect(feature.inspect, feature.index ? *features[I].index : features[I]);
 }
 
 KANNOTATE_TYPE(struct ConfigSchema, description = "The JSON schema of the clice configuration");
@@ -960,7 +1029,7 @@ struct Inspect {
     []<std::size_t... I>(std::index_sequence<I...>) {
         (cli::add_command<Operations>(
              dispatch<
-                 std::conditional_t<features[I].check != nullptr, CheckedFeature<I>, Feature<I>>>,
+                 std::conditional_t<features[I].index != nullptr, IndexedFeature<I>, Feature<I>>>,
              {.name = features[I].name}),
          ...);
     }(std::make_index_sequence<features.size()>{});

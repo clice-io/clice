@@ -138,6 +138,16 @@ function gateCompile(c: Case, client: string, errors: readonly string[]): void {
     }
 }
 
+/// The index answers each whole-document feature asked as the AST does
+/// (index_answers.ts).
+function gateIndex(c: Case, differences: readonly string[]): void {
+    if (differences.length > 0) {
+        throw new Error(
+            `${c.id}: the index answers differently from the AST:\n  ${differences.join("\n  ")}`,
+        );
+    }
+}
+
 /// A fresh copy of the case, its databases written.
 function copy(c: Case, prefix: string): { root: string; copied: string[] } {
     const root = copyRoot(prefix);
@@ -164,6 +174,7 @@ async function onInspect(
     const client = new Inspect(root, c.markers, {
         sources: copied.filter((file) => SOURCE.test(file)),
         config: options.config,
+        compareIndex: true,
     });
     const shows: Shows = { output: new Output(), compared: new Output() };
     const run = async (): Promise<void> => {
@@ -180,6 +191,7 @@ async function onInspect(
         // errors sit in importers fails here under compiles: false as compiling
         // cleanly.
         gateCompile(c, "clice inspect", await client.compileErrors());
+        gateIndex(c, client.indexDifferences());
     };
     try {
         await withTimeout(run(), SCRIPT_DEADLINE_MS, "the test hung");

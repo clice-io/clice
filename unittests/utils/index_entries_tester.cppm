@@ -1,6 +1,6 @@
 module clice:unittests.utils.index_entries_tester;
 
-import :feature.index_entries;
+import :index.entries;
 import :index.indexer;
 import :index.symbol;
 import :index.tu_index;
@@ -17,14 +17,14 @@ struct IndexEntriesTester : Tester {
 
     std::vector<std::byte> bytes;
 
-    feature::IndexEntries entries;
+    index::FileEntries entries;
 
     void extract_entries() {
         bytes = index::build_tu_index(*unit);
         tu = index::TUIndex::from_bytes(as_chars(bytes));
 
         auto focus_id = tu.focus_file();
-        entries = feature::extract_index_entries(tu.shard_of(focus_id));
+        entries = index::extract_entries(tu.shard_of(focus_id));
     }
 
     std::optional<index::SymbolInfo> resolve(index::SymbolHash hash) {

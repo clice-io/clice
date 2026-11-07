@@ -1,8 +1,8 @@
 module clice;
 
-import :feature.index_entries;
-import :feature.semantic_tokens;
 import :feature.semantic_tokens.stream;
+import :feature.semantic_tokens;
+import :index.entries;
 import :index.query;
 import :index.symbol;
 import :index.tu_index;
@@ -13,8 +13,8 @@ import :syntax.token;
 namespace clice::feature {
 
 auto semantic_tokens(SourceText& source,
-                     const IndexEntries& entries,
-                     IndexSymbolResolver resolve,
+                     const index::FileEntries& entries,
+                     index::SymbolResolver resolve,
                      const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
     using Kind = SemanticTokenKind;
     using Modifier = SemanticTokenModifier;
@@ -106,7 +106,7 @@ auto semantic_tokens(SourceText& source,
                      const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
     return semantic_tokens(
         source,
-        extract_index_entries(*index.shard),
+        index::extract_entries(*index.shard),
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },
         options);
 }

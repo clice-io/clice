@@ -1,0 +1,518 @@
+[answers.outline]
+document_symbols = [
+    { name = "LIMIT", kind = "Constant", at = "#define ⟦LIMIT⟧ 8" },
+    { name = "CHECK", kind = "Constant", at = "#define ⟦CHECK⟧(cond) ((cond) ? 0 : 1)", detail = "(cond)" },
+    {
+        name = "app",
+        kind = "Namespace",
+        at = "namespace ⟦app⟧::inline v1 {",
+        children = [
+            {
+                name = "v1",
+                kind = "Namespace",
+                at = "namespace app::inline ⟦v1⟧ {",
+                children = [
+                    {
+                        name = "Number",
+                        kind = "TypeParameter",
+                        at = "concept ⟦Number⟧ = requires(T value) { value + value; };",
+                        detail = "concept",
+                    },
+                    {
+                        name = "clamp",
+                        kind = "Function",
+                        at = "[[nodiscard]] T ⟦clamp⟧(T value, T low, T high);",
+                        detail = "template T (T value, T low, T high)",
+                    },
+                    {
+                        name = "Shape",
+                        kind = "Struct",
+                        at = "struct ⟦Shape⟧ {",
+                        detail = "struct",
+                        children = [
+                            {
+                                name = "~Shape",
+                                kind = "Method",
+                                at = "virtual ⟦~Shape⟧() = default;",
+                                detail = "virtual",
+                            },
+                            {
+                                name = "area",
+                                kind = "Method",
+                                at = "virtual double ⟦area⟧() const = 0;",
+                                detail = "virtual double () const = 0",
+                            },
+                            {
+                                name = "range",
+                                kind = "Method",
+                                at = "template <typename U> int ⟦range⟧() const { return begin<U>(); }",
+                                detail = "template int () const",
+                            },
+                            {
+                                name = "begin",
+                                kind = "Method",
+                                at = "template <typename U> int ⟦begin⟧() const { return 0; }",
+                                detail = "template int () const",
+                            },
+                        ],
+                    },
+                    {
+                        name = "Circle",
+                        kind = "Class",
+                        at = "class ⟦Circle⟧ final : public Shape {",
+                        detail = "class : public Shape",
+                        children = [
+                            {
+                                name = "Circle",
+                                kind = "Method",
+                                at = "explicit ⟦Circle⟧(double radius);",
+                                detail = "(double radius)",
+                            },
+                            {
+                                name = "area",
+                                kind = "Method",
+                                at = "double ⟦area⟧() const override;",
+                                detail = "virtual double () const",
+                            },
+                            {
+                                name = "unit",
+                                kind = "Method",
+                                at = "static Circle ⟦unit⟧();",
+                                detail = "static Circle ()",
+                            },
+                            {
+                                name = "operator==",
+                                kind = "Operator",
+                                at = "friend bool ⟦operator==⟧(const Circle&, const Circle&) = default;",
+                                detail = "bool (const Circle &, const Circle &)",
+                            },
+                            {
+                                name = "radius_",
+                                kind = "Field",
+                                at = "double ⟦radius_⟧, diameter_;",
+                                detail = "double",
+                            },
+                            {
+                                name = "diameter_",
+                                kind = "Field",
+                                at = "double radius_, ⟦diameter_⟧;",
+                                detail = "double",
+                            },
+                        ],
+                    },
+                    {
+                        name = "Circle::area",
+                        kind = "Method",
+                        at = "double Circle::⟦area⟧() const {",
+                        detail = "virtual double () const",
+                    },
+                    {
+                        name = "Box",
+                        kind = "Struct",
+                        at = "struct ⟦Box⟧ {",
+                        detail = "template struct",
+                        children = [
+                            { name = "value", kind = "Field", at = "T ⟦value⟧;", detail = "T" },
+                            {
+                                name = "convert",
+                                kind = "Method",
+                                at = "U ⟦convert⟧() const;",
+                                detail = "template U () const",
+                            },
+                        ],
+                    },
+                    {
+                        name = "Box<T>::convert",
+                        kind = "Method",
+                        at = "U Box<T>::⟦convert⟧() const {",
+                        detail = "template U () const",
+                    },
+                    { name = "Box<void>", kind = "Struct", at = "struct ⟦Box⟧<void> {};", detail = "struct" },
+                    {
+                        name = "Box<T*>",
+                        kind = "Struct",
+                        at = "struct ⟦Box⟧<T*> {",
+                        detail = "template struct",
+                        children = [
+                            { name = "pointee", kind = "Field", at = "T* ⟦pointee⟧;", detail = "T *" },
+                        ],
+                    },
+                    { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;", detail = "struct" },
+                    {
+                        name = "<deduction guide for Box>",
+                        kind = "Function",
+                        at = "⟦Box⟧(T) -> Box<T>;",
+                        detail = "template Box<T> (T)",
+                    },
+                    {
+                        name = "Size",
+                        kind = "Struct",
+                        at = "} ⟦Size⟧;",
+                        detail = "struct",
+                        children = [
+                            { name = "width", kind = "Field", at = "int ⟦width⟧;", detail = "int" },
+                        ],
+                    },
+                    {
+                        name = "Color",
+                        kind = "Enum",
+                        at = "typedef enum { Red, Green } ⟦Color⟧;",
+                        detail = "enum",
+                        children = [
+                            {
+                                name = "Red",
+                                kind = "EnumMember",
+                                at = "typedef enum { ⟦Red⟧, Green } Color;",
+                                detail = "Color",
+                            },
+                            {
+                                name = "Green",
+                                kind = "EnumMember",
+                                at = "typedef enum { Red, ⟦Green⟧ } Color;",
+                                detail = "Color",
+                            },
+                        ],
+                    },
+                    { name = "alias", kind = "Namespace", at = "namespace ⟦alias⟧ = app;", detail = "namespace alias" },
+                    {
+                        name = 'operator""_km',
+                        kind = "Function",
+                        at = 'long double ⟦operator""_km⟧(long double);',
+                        detail = "long double (long double)",
+                    },
+                    { name = "OBJECT", kind = "Constant", at = '#define ⟦OBJECT⟧                     \' },
+                    {
+                        name = "Window",
+                        kind = "Class",
+                        at = "class ⟦Window⟧ {",
+                        detail = "class",
+                        children = [
+                            {
+                                name = "OBJECT",
+                                kind = "Constant",
+                                at = "⟦OBJECT⟧",
+                                children = [
+                                    { name = "meta", kind = "Variable", at = "⟦OBJECT⟧", detail = "static const int" },
+                                    {
+                                        name = "metacall",
+                                        kind = "Method",
+                                        at = "⟦OBJECT⟧",
+                                        detail = "virtual int (int)",
+                                    },
+                                ],
+                            },
+                            { name = "show", kind = "Method", at = "void ⟦show⟧();", detail = "void ()" },
+                        ],
+                    },
+                    {
+                        name = "HANDLER",
+                        kind = "Constant",
+                        at = "#define ⟦HANDLER⟧(name) void name()",
+                        detail = "(name)",
+                    },
+                    { name = "on_ready", kind = "Function", at = "HANDLER(⟦on_ready⟧);", detail = "void ()" },
+                    {
+                        name = "compute",
+                        kind = "Function",
+                        at = "int ⟦compute⟧() {",
+                        detail = "int ()",
+                        children = [
+                            { name = "local_sum", kind = "Variable", at = "int ⟦local_sum⟧ = 0;", detail = "int" },
+                            {
+                                name = "twice",
+                                kind = "Variable",
+                                at = "auto ⟦twice⟧ = [](int x) { return 2 * x; };",
+                                detail = "int (int x)",
+                            },
+                            {
+                                name = "Local",
+                                kind = "Struct",
+                                at = "struct ⟦Local⟧ {",
+                                detail = "struct",
+                                children = [
+                                    { name = "field", kind = "Field", at = "int ⟦field⟧;", detail = "int" },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    { name = "LIMIT", kind = "Constant", at = "#define ⟦LIMIT⟧ 8", range = "#define ⟦LIMIT 8⟧" },
+    {
+        name = "CHECK",
+        kind = "Constant",
+        at = "#define ⟦CHECK⟧(cond) ((cond) ? 0 : 1)",
+        range = "#define ⟦CHECK(cond) ((cond) ? 0 : 1)⟧",
+    },
+    {
+        name = "app",
+        kind = "Namespace",
+        at = "namespace ⟦app⟧::inline v1 {",
+        range = "⟦namespace app::inline v1 { … }⟧ (93 lines)",
+        children = [
+            {
+                name = "v1",
+                kind = "Namespace",
+                at = "namespace app::inline ⟦v1⟧ {",
+                range = "namespace app::⟦inline v1 { … }⟧ (93 lines)",
+                children = [
+                    {
+                        name = "Number",
+                        kind = "TypeParameter",
+                        at = "concept ⟦Number⟧ = requires(T value) { value + value; };",
+                        range = "⟦template <typename T> … concept Number = requires(T value) { value + value; }⟧ (2 lines)",
+                    },
+                    {
+                        name = "clamp",
+                        kind = "Function",
+                        at = "[[nodiscard]] T ⟦clamp⟧(T value, T low, T high);",
+                        range = "⟦template <Number T> … [[nodiscard]] T clamp(T value, T low, T high)⟧ (2 lines)",
+                    },
+                    {
+                        name = "Shape",
+                        kind = "Struct",
+                        at = "struct ⟦Shape⟧ {",
+                        range = "⟦struct Shape { … }⟧ (6 lines)",
+                        children = [
+                            {
+                                name = "~Shape",
+                                kind = "Method",
+                                at = "virtual ⟦~Shape⟧() = default;",
+                                range = "⟦virtual ~Shape() = default⟧;",
+                            },
+                            {
+                                name = "area",
+                                kind = "Method",
+                                at = "virtual double ⟦area⟧() const = 0;",
+                                range = "⟦virtual double area() const = 0⟧;",
+                            },
+                            {
+                                name = "range",
+                                kind = "Method",
+                                at = "template <typename U> int ⟦range⟧() const { return begin<U>(); }",
+                                range = "⟦template <typename U> int range() const { return begin<U>(); }⟧",
+                            },
+                            {
+                                name = "begin",
+                                kind = "Method",
+                                at = "template <typename U> int ⟦begin⟧() const { return 0; }",
+                                range = "⟦template <typename U> int begin() const { return 0; }⟧",
+                            },
+                        ],
+                    },
+                    {
+                        name = "Circle",
+                        kind = "Class",
+                        at = "class ⟦Circle⟧ final : public Shape {",
+                        range = "⟦class Circle final : public Shape { … }⟧ (11 lines)",
+                        children = [
+                            {
+                                name = "Circle",
+                                kind = "Method",
+                                at = "explicit ⟦Circle⟧(double radius);",
+                                range = "⟦explicit Circle(double radius)⟧;",
+                            },
+                            {
+                                name = "area",
+                                kind = "Method",
+                                at = "double ⟦area⟧() const override;",
+                                range = "⟦double area() const override⟧;",
+                            },
+                            {
+                                name = "unit",
+                                kind = "Method",
+                                at = "static Circle ⟦unit⟧();",
+                                range = "⟦static Circle unit()⟧;",
+                            },
+                            {
+                                name = "operator==",
+                                kind = "Operator",
+                                at = "friend bool ⟦operator==⟧(const Circle&, const Circle&) = default;",
+                                range = "⟦friend bool operator==(const Circle&, const Circle&) = default⟧;",
+                            },
+                            {
+                                name = "radius_",
+                                kind = "Field",
+                                at = "double ⟦radius_⟧, diameter_;",
+                                range = "⟦double radius_⟧, diameter_;",
+                            },
+                            {
+                                name = "diameter_",
+                                kind = "Field",
+                                at = "double radius_, ⟦diameter_⟧;",
+                                range = "⟦double radius_, diameter_⟧;",
+                            },
+                        ],
+                    },
+                    {
+                        name = "Circle::area",
+                        kind = "Method",
+                        at = "double Circle::⟦area⟧() const {",
+                        range = "⟦double Circle::area() const { … }⟧ (3 lines)",
+                    },
+                    {
+                        name = "Box",
+                        kind = "Struct",
+                        at = "struct ⟦Box⟧ {",
+                        range = "⟦template <typename T> … }⟧ (7 lines)",
+                        children = [
+                            { name = "value", kind = "Field", at = "T ⟦value⟧;", range = "⟦T value⟧;" },
+                            {
+                                name = "convert",
+                                kind = "Method",
+                                at = "U ⟦convert⟧() const;",
+                                range = "⟦template <typename U> … U convert() const⟧ (2 lines)",
+                            },
+                        ],
+                    },
+                    {
+                        name = "Box<T>::convert",
+                        kind = "Method",
+                        at = "U Box<T>::⟦convert⟧() const {",
+                        range = "⟦template <typename T> … }⟧ (5 lines)",
+                    },
+                    {
+                        name = "Box<void>",
+                        kind = "Struct",
+                        at = "struct ⟦Box⟧<void> {};",
+                        range = "⟦template <> … struct Box<void> {}⟧ (2 lines)",
+                    },
+                    {
+                        name = "Box<T*>",
+                        kind = "Struct",
+                        at = "struct ⟦Box⟧<T*> {",
+                        range = "⟦template <typename T> … }⟧ (4 lines)",
+                        children = [
+                            { name = "pointee", kind = "Field", at = "T* ⟦pointee⟧;", range = "⟦T* pointee⟧;" },
+                        ],
+                    },
+                    {
+                        name = "Box<int>",
+                        kind = "Struct",
+                        at = "template struct ⟦Box⟧<int>;",
+                        range = "⟦template struct Box<int>⟧;",
+                    },
+                    {
+                        name = "<deduction guide for Box>",
+                        kind = "Function",
+                        at = "⟦Box⟧(T) -> Box<T>;",
+                        range = "⟦template <typename T> … Box(T) -> Box<T>⟧ (2 lines)",
+                    },
+                    {
+                        name = "Size",
+                        kind = "Struct",
+                        at = "} ⟦Size⟧;",
+                        range = "⟦typedef struct { … } Size⟧ (3 lines)",
+                        children = [
+                            { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
+                        ],
+                    },
+                    {
+                        name = "Color",
+                        kind = "Enum",
+                        at = "typedef enum { Red, Green } ⟦Color⟧;",
+                        range = "⟦typedef enum { Red, Green } Color⟧;",
+                        children = [
+                            {
+                                name = "Red",
+                                kind = "EnumMember",
+                                at = "typedef enum { ⟦Red⟧, Green } Color;",
+                                range = "typedef enum { ⟦Red⟧, Green } Color;",
+                            },
+                            {
+                                name = "Green",
+                                kind = "EnumMember",
+                                at = "typedef enum { Red, ⟦Green⟧ } Color;",
+                                range = "typedef enum { Red, ⟦Green⟧ } Color;",
+                            },
+                        ],
+                    },
+                    {
+                        name = "alias",
+                        kind = "Namespace",
+                        at = "namespace ⟦alias⟧ = app;",
+                        range = "⟦namespace alias = app⟧;",
+                    },
+                    {
+                        name = 'operator""_km',
+                        kind = "Function",
+                        at = 'long double ⟦operator""_km⟧(long double);',
+                        range = '⟦long double operator""_km(long double)⟧;',
+                    },
+                    {
+                        name = "OBJECT",
+                        kind = "Constant",
+                        at = '#define ⟦OBJECT⟧                     \',
+                        range = '#define ⟦OBJECT                     \ … virtual int metacall(int);⟧ (4 lines)',
+                    },
+                    {
+                        name = "Window",
+                        kind = "Class",
+                        at = "class ⟦Window⟧ {",
+                        range = "⟦class Window { … }⟧ (5 lines)",
+                        children = [
+                            {
+                                name = "OBJECT",
+                                kind = "Constant",
+                                at = "⟦OBJECT⟧",
+                                range = "⟦OBJECT⟧",
+                                children = [
+                                    { name = "meta", kind = "Variable", at = "⟦OBJECT⟧", range = "⟦OBJECT⟧" },
+                                    { name = "metacall", kind = "Method", at = "⟦OBJECT⟧", range = "⟦OBJECT⟧" },
+                                ],
+                            },
+                            { name = "show", kind = "Method", at = "void ⟦show⟧();", range = "⟦void show()⟧;" },
+                        ],
+                    },
+                    {
+                        name = "HANDLER",
+                        kind = "Constant",
+                        at = "#define ⟦HANDLER⟧(name) void name()",
+                        range = "#define ⟦HANDLER(name) void name()⟧",
+                    },
+                    {
+                        name = "on_ready",
+                        kind = "Function",
+                        at = "HANDLER(⟦on_ready⟧);",
+                        range = "⟦HANDLER(on_ready)⟧;",
+                    },
+                    {
+                        name = "compute",
+                        kind = "Function",
+                        at = "int ⟦compute⟧() {",
+                        range = "⟦int compute() { … }⟧ (8 lines)",
+                        children = [
+                            {
+                                name = "local_sum",
+                                kind = "Variable",
+                                at = "int ⟦local_sum⟧ = 0;",
+                                range = "⟦int local_sum = 0⟧;",
+                            },
+                            {
+                                name = "twice",
+                                kind = "Variable",
+                                at = "auto ⟦twice⟧ = [](int x) { return 2 * x; };",
+                                range = "⟦auto twice = [](int x) { return 2 * x; }⟧;",
+                            },
+                            {
+                                name = "Local",
+                                kind = "Struct",
+                                at = "struct ⟦Local⟧ {",
+                                range = "⟦struct Local { … }⟧ (3 lines)",
+                                children = [
+                                    { name = "field", kind = "Field", at = "int ⟦field⟧;", range = "⟦int field⟧;" },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    },
+]

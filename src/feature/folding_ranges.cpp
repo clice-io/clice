@@ -2,7 +2,7 @@ module clice;
 
 import :compile.compilation;
 import :feature.folding_ranges;
-import :feature.index_entries;
+import :index.entries;
 import :index.query;
 import :semantic.decls;
 import :semantic.semantics;
@@ -209,14 +209,37 @@ private:
             return;
         }
 
-        // A deferred template body (-fdelayed-template-parsing) counts as a
-        // body but is not there.
         if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
-           function && function->doesThisDeclarationHaveABody() &&
-           !function->isLateTemplateParsed()) {
-            add_declaration_block(function->getBody()->getSourceRange(),
-                                  function->getLocation(),
-                                  *declaration_fold_kind(SymbolKind::from(function)));
+           function && function->doesThisDeclarationHaveABody()) {
+            auto kind = *declaration_fold_kind(SymbolKind::from(function));
+            if(function->isLateTemplateParsed()) {
+                add_deferred_body(function, std::move(kind));
+            } else {
+                add_declaration_block(function->getBody()->getSourceRange(),
+                                      function->getLocation(),
+                                      std::move(kind));
+            }
+        }
+    }
+
+    /// A body the command defers (-fdelayed-template-parsing) has no AST:
+    /// it folds at the braces closing its declaration.
+    void add_deferred_body(const clang::FunctionDecl* function, protocol::FoldingRangeKind kind) {
+        auto tokens = unit.focus_file().tokens().expanded(function->getSourceRange());
+        if(tokens.empty() || tokens.back().kind() != clang::tok::r_brace) {
+            return;
+        }
+        std::uint32_t depth = 0;
+        for(const auto& token: llvm::reverse(tokens)) {
+            if(token.kind() == clang::tok::r_brace) {
+                depth += 1;
+            } else if(token.kind() == clang::tok::l_brace && --depth == 0) {
+                add_declaration_block(
+                    clang::SourceRange(token.location(), tokens.back().location()),
+                    function->getLocation(),
+                    std::move(kind));
+                return;
+            }
         }
     }
 
@@ -952,8 +975,8 @@ auto to_protocol(llvm::ArrayRef<FoldingRange> ranges,
 }
 
 auto folding_ranges(SourceText& source,
-                    llvm::ArrayRef<IndexDecl> decls,
-                    IndexSymbolResolver resolve) -> std::vector<FoldingRange> {
+                    llvm::ArrayRef<index::DeclEntry> decls,
+                    index::SymbolResolver resolve) -> std::vector<FoldingRange> {
     // The braces outside comments, literals and directive lines, and the
     // conditional levels: a branch switch or #endif observing a brace depth
     // other than its #if's means the branches unbalance braces — any raw
@@ -1067,7 +1090,7 @@ auto folding_ranges(SourceText& source,
                     const index::IndexSource& index) -> std::vector<FoldingRange> {
     return folding_ranges(
         source,
-        extract_index_entries(*index.shard).decls,
+        index::extract_entries(*index.shard).decls,
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); });
 }
 

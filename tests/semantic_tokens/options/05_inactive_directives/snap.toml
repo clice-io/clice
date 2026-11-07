@@ -1,0 +1,23 @@
+[default."main.cpp"]
+semantic_tokens = [
+    { at = "⟦#if⟧ 0", type = "directive" },
+    { at = "#if ⟦0⟧", type = "number" },
+    { at = "⟦#ifdef⟧ NESTED", type = "directive", modifiers = ["inactive"] },
+    { at = "#ifdef ⟦NESTED⟧", type = "macro", modifiers = ["inactive"] },
+    { at = "⟦int⟧ hidden;", type = "primitive", modifiers = ["inactive"] },
+    { at = "int ⟦hidden;⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦#endif⟧ @4", type = "directive", modifiers = ["inactive"] },
+    { at = "⟦#endif⟧ @5", type = "directive" },
+    { at = "⟦int⟧ shown;", type = "primitive" },
+    { at = "int ⟦shown⟧;", type = "variable", modifiers = ["definition", "global"] },
+]
+
+["semantic only"."main.cpp"]
+semantic_tokens = [
+    { at = "⟦#ifdef⟧ NESTED", type = "plain", modifiers = ["inactive"] },
+    { at = "#ifdef ⟦NESTED⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦int⟧ hidden;", type = "plain", modifiers = ["inactive"] },
+    { at = "int ⟦hidden;⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦#endif⟧ @4", type = "plain", modifiers = ["inactive"] },
+    { at = "int ⟦shown⟧;", type = "variable", modifiers = ["definition", "global"] },
+]
