@@ -334,11 +334,20 @@ export function registerCompilationContext(
     }
 
     async function showOtherContexts(uri: string, show: boolean) {
+        let shown: SwitchContextResult;
         try {
-            await client.sendRequest<SwitchContextResult>("clice/showOtherContexts", { uri, show });
+            shown = await client.sendRequest<SwitchContextResult>("clice/showOtherContexts", {
+                uri,
+                show,
+            });
         } catch {
             vscode.window.showWarningMessage("clice: server not ready");
             return;
+        }
+        if (!shown.success) {
+            vscode.window.showWarningMessage(
+                "clice: this project never compiles; its answers come from the index, which merges every context",
+            );
         }
         await contextChanged();
     }

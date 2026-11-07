@@ -235,7 +235,8 @@ void ServedProject::adopt(std::shared_ptr<Session> session) {
     project.graph.add(ast_node(path_id));
     auto& document = documents[path_id];
     document = ServedDocument{.session = std::move(session), .serving = ServingMode::IndexOnly};
-    if(project.settings.project.readonly == ReadonlyMode::Off) {
+    if(project.settings.project.readonly == ReadonlyMode::Off ||
+       server.own_context_only.contains(path_id)) {
         escalate(path_id);
     }
     // What the disk holds under the buffer: a later save or outside

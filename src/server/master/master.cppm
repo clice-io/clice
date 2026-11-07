@@ -302,8 +302,8 @@ public:
 
     /// clice/showOtherContexts: show the code the file's other contexts
     /// compile in its answers, or its own context alone; the client asks
-    /// again for what it shows.
-    void show_other_contexts(Fid path_id, bool show);
+    /// again for what it shows. Refused in a project that never compiles.
+    ext::SwitchContextResult show_other_contexts(Fid path_id, bool show);
 
     // polling.cpp
 

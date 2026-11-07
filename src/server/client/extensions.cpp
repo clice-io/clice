@@ -217,8 +217,8 @@ void LSPClient::register_extensions() {
             if(!path) {
                 co_return to_raw(ext::SwitchContextResult{});
             }
-            this->server.show_other_contexts(this->server.files.intern(*path), params.show);
-            co_return to_raw(ext::SwitchContextResult{.success = true});
+            co_return to_raw(
+                this->server.show_other_contexts(this->server.files.intern(*path), params.show));
         });
 
     on_request<ext::ListConfigurationsParams>(

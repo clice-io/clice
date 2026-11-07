@@ -40,3 +40,23 @@ test("an edit until saved", async (t) => {
     expect(await s.serverRequests(REFRESH)).toBeGreaterThan(refreshes);
     await t.show("saved", s.hover(slow));
 });
+
+test("hidden while read only", async (t) => {
+    // Served from the index, which merges both contexts, the file compiles
+    // once its other contexts are hidden.
+    const s = await t.start({ config: { project: { readonly: "auto" } } });
+    await s.indexed();
+    s.open("shared.h", { pull: false });
+    await t.show("merged", s.documentSymbols("shared.h"));
+    expect((await s.showOtherContexts("shared.h", false)).success).toBe(true);
+    await t.show("hidden", s.documentSymbols("shared.h"));
+});
+
+test("hidden where nothing compiles", async (t) => {
+    // The index alone answers there: hiding is refused.
+    const s = await t.start({ config: { project: { readonly: "on" } } });
+    await s.indexed();
+    s.open("shared.h", { pull: false });
+    expect((await s.showOtherContexts("shared.h", false)).success).toBe(false);
+    await t.show("context", s.currentContext("shared.h"));
+});

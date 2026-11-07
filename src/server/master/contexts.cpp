@@ -6,6 +6,7 @@ import :project.project;
 import :server.client;
 import :server.master;
 import :server.served_project;
+import :settings.settings;
 import :support.logging;
 import :vfs.path;
 
@@ -298,11 +299,26 @@ ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
     return {.success = true};
 }
 
-void MasterServer::show_other_contexts(Fid path_id, bool show) {
+ext::SwitchContextResult MasterServer::show_other_contexts(Fid path_id, bool show) {
+    auto* document = find_document(path_id);
+    auto* owner = document ? document->owner : nullptr;
+    // A project that never compiles answers from its index alone, which
+    // merges every context.
+    if(!show && owner && owner->project.settings.project.readonly == ReadonlyMode::On) {
+        return {};
+    }
     bool changed = show ? own_context_only.erase(path_id) : own_context_only.insert(path_id).second;
-    if(changed && client) {
+    if(!changed) {
+        return {.success = true};
+    }
+    // The file's own context alone is its AST's, as a context choice is.
+    if(!show && owner) {
+        owner->escalate(path_id);
+    }
+    if(client) {
         client->refresh();
     }
+    return {.success = true};
 }
 
 }  // namespace clice
