@@ -64,6 +64,13 @@ codec::raw_value full_report(std::vector<protocol::Diagnostic> items) {
     return to_raw(protocol::RelatedFullDocumentDiagnosticReport{.items = std::move(items)});
 }
 
+codec::raw_value LSPClient::pull_report(const ServedProject& project,
+                                        const Session& session,
+                                        llvm::StringRef path) {
+    // Of the session's text (finished_diagnostics).
+    return full_report(to_client(project.finished_diagnostics(session), path, session.positions()));
+}
+
 std::vector<protocol::Diagnostic>
     LSPClient::to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
                          llvm::StringRef path,
@@ -124,13 +131,19 @@ void LSPClient::refresh() {
     }
 }
 
+void LSPClient::index_changed(llvm::ArrayRef<Fid> files) {
+    if(ranges::any_of(files, [&](Fid file) { return index_served.contains(file); })) {
+        refresh();
+    }
+}
+
 void LSPClient::publish_second_name(MasterServer::Document& document,
                                     MasterServer::SecondName& second) {
     if(!client_ready) {
         return;
     }
-    auto* first = document.session.get();
-    bool diverged = !first || first->text() != second.buffer.text();
+    auto& first = *document.session;
+    bool diverged = document.diverged(second);
     bool flipped = std::exchange(second.warned, diverged) != diverged;
     if(diverged && flipped) {
         peer.send_notification(protocol::ShowMessageParams{
@@ -148,13 +161,13 @@ void LSPClient::publish_second_name(MasterServer::Document& document,
     params.uri = feature::to_uri(second.spelling);
     params.version = second.buffer.version;
     auto* owner = document.owner;
-    auto compiled = !diverged && owner ? owner->latest_at(first->path_id, first->version) : nullptr;
+    auto compiled = !diverged && owner ? owner->latest_at(first.path_id, first.version) : nullptr;
     if(diverged) {
         params.diagnostics = to_client({feature::file_warning(divergence_message(second))},
                                        second.spelling,
                                        second.buffer.positions());
     } else if(compiled) {
-        params.diagnostics = to_client(owner->shown_diagnostics(*first, *compiled->output),
+        params.diagnostics = to_client(owner->shown_diagnostics(first, *compiled->output),
                                        second.spelling,
                                        compiled->output->text->positions());
     } else if(!flipped) {
@@ -246,10 +259,8 @@ void LSPClient::push_output(ServedProject& project, const Session& session, bool
         if(auto it = pulled.find(session.path_id);
            it != pulled.end() && it->second.version == session.version &&
            it->second.report !=
-               llvm::xxh3_64bits(full_report(to_client(project.finished_diagnostics(session),
-                                                       server.files.display(session.path_id),
-                                                       session.positions()))
-                                     .data)) {
+               llvm::xxh3_64bits(
+                   pull_report(project, session, server.files.display(session.path_id)).data)) {
             refresh_diagnostics();
         }
     } else {
@@ -273,8 +284,9 @@ void LSPClient::push_output(ServedProject& project, const Session& session, bool
     }
 
     // Two cases make the client re-pull whole-document results it already
-    // holds: results computed from the index served while this compile was pending
-    // (their answers just got better), and a compile of unchanged text from
+    // holds: results computed from the index served while this compile was
+    // pending (their answers just got better; once asked, the client's next
+    // pulls note what the index answers again), and a compile of unchanged text from
     // changed inputs — a context switch or a changed dependency reshapes
     // tokens (including their inactive regions), hints and folds with no
     // didChange to trigger the client's own re-pull. Edit-driven compiles
@@ -286,7 +298,7 @@ void LSPClient::push_output(ServedProject& project, const Session& session, bool
         bool reshaped = last.version == output.version && last.generation != latest->generation;
         last.version = output.version;
         last.generation = latest->generation;
-        if(index_served.contains(session.path_id) || reshaped) {
+        if(index_served.erase(session.path_id) || reshaped) {
             refresh();
         }
     }

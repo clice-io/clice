@@ -5,6 +5,7 @@ import :feature.diagnostics;
 import :feature.document_symbols;
 import :feature.folding_ranges;
 import :feature.semantic_tokens;
+import :index.query;
 import :project.project;
 import :server.extension;
 import :server.master;
@@ -65,6 +66,11 @@ public:
     /// refresh in LSP: the user reopens the file.
     void refresh();
 
+    /// The index changed under the open documents `files`, which read it
+    /// for want of a current file index: the client asks again for what it
+    /// took from the index of any of them.
+    void index_changed(llvm::ArrayRef<Fid> files);
+
     /// Ask a pulling client to pull every document's diagnostics again; a
     /// pull answered meanwhile is no report it holds any more.
     void refresh_diagnostics();
@@ -106,12 +112,6 @@ public:
     /// Follow a document's compile to `phase` with work-done progress (see
     /// CompileProgress); capability-gated.
     void report_compile_phase(Fid path_id, CompilePhase phase);
-
-    /// The open documents whose semantic tokens or folds the client pulled
-    /// from the index, or found empty while nothing served them: what the
-    /// document's compile, or a background index merge, improves on. A
-    /// commit of the document's compile clears it.
-    llvm::DenseSet<Fid> index_served;
 
 private:
     /// The last full or delta result sent for each open document, which
@@ -209,9 +209,10 @@ private:
     void register_document_requests();
 
     /// Shared front half of every document-addressed handler: URI → path →
-    /// interned path_id → open session (null when the document is not open)
-    /// → the project serving it, held for the request: a folder removed
-    /// while the request runs keeps its project alive until it completes.
+    /// interned path_id → a ticket on its open session (with none when the
+    /// document is not open) → the project serving it, held for the
+    /// request: a folder removed while the request runs keeps its project
+    /// alive until it completes.
     /// `version` is the document's as the request names it, a second name's
     /// own. The ticket is taken as the request is dispatched, ahead of the
     /// messages read with it: an edit among those arrives before the
@@ -219,7 +220,6 @@ private:
     struct ResolvedDoc {
         std::string path;
         Fid path_id;
-        std::shared_ptr<Session> session;
         std::shared_ptr<ServedProject> project;
         std::optional<int> version;
         Ticket ticket;
@@ -236,6 +236,13 @@ private:
     /// request unless it needs the document open and it is not.
     template <typename Params, typename Answer>
     void on_document(Answer answer, DocumentRequestOptions options = {});
+
+    /// What answers a request on the open document now
+    /// (ServedProject::pick_route); one the index answers, or nothing yet,
+    /// is noted in index_served.
+    async::task<Route> pick_route(const ResolvedDoc& document,
+                                  RouteOptions options,
+                                  std::optional<index::IndexSource>* source = nullptr);
 
     /// What a semantic tokens request asks for: the whole document, the
     /// edits from the result the client holds, or the tokens in a range.
@@ -287,6 +294,14 @@ private:
     std::vector<protocol::Diagnostic> to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics,
                                                 llvm::StringRef path,
                                                 const PositionMap& positions);
+
+    /// What a diagnostics pull of the open document answers now, placed at
+    /// `path`, the name it was pulled by: its finished diagnostics
+    /// (ServedProject::finished_diagnostics). The pull's answer, and what
+    /// push_output compares with the answer the client pulled.
+    codec::raw_value pull_report(const ServedProject& project,
+                                 const Session& session,
+                                 llvm::StringRef path);
 
     /// What a second name tells the user while its text differs from the
     /// first name's.
@@ -394,6 +409,13 @@ private:
 
     llvm::DenseMap<Fid, Pulled> pulled;
 
+    /// The open documents the client holds answers of that the index gave,
+    /// or that came empty while nothing served them (pick_route): what the
+    /// document's compile, or a change of the index, improves on. Cleared as
+    /// the client is asked to pull the document's answers again
+    /// (push_output) and as it closes.
+    llvm::DenseSet<Fid> index_served;
+
     /// The configuration files publish_settings_diagnostics published last.
     llvm::StringSet<> published_settings_files;
 
@@ -430,9 +452,6 @@ constexpr inline std::string_view configuration_action_kind = "source.clice.conf
 /// The build configurations a project's settings declare, the one active
 /// and the one selected for the next start (clice/listConfigurations).
 ext::ListConfigurationsResult list_configurations(const Project& project);
-
-/// The file a `file:` URI names; nullopt for any other URI.
-std::optional<Spelling> uri_to_path(llvm::StringRef uri);
 
 /// The answer to a diagnostics pull.
 codec::raw_value full_report(std::vector<protocol::Diagnostic> items);
@@ -476,7 +495,7 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
             }
         }();
         server.pool.used(document.path_id.raw);
-        if(!options.closed && !document.session) {
+        if(!options.closed && !document.ticket.session) {
             // A second name whose text parted from the first name's has no
             // answers until they agree again.
             if(second_name(document.path)) {

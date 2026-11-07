@@ -4,17 +4,10 @@ import :project.discovery;
 import :server.client;
 import :server.master;
 import :server.served_project;
-import :settings.settings;
 import :support.logging;
 import :vfs.path;
 
 namespace clice {
-
-/// Whether the project's root holds `path`; the rootless project's holds
-/// none.
-static bool holds_path(const ServedProject& project, CanonicalRef path) {
-    return !project.project.root.empty() && path::is_within(path, project.project.root);
-}
 
 /// The deepest of the projects `accept` takes whose root holds `path`.
 static ServedProject* deepest_holding(llvm::ArrayRef<std::shared_ptr<ServedProject>> projects,
@@ -22,7 +15,7 @@ static ServedProject* deepest_holding(llvm::ArrayRef<std::shared_ptr<ServedProje
                                       llvm::function_ref<bool(ServedProject&)> accept) {
     ServedProject* deepest = nullptr;
     for(auto& project: projects) {
-        if(holds_path(*project, path) && accept(*project) &&
+        if(project->holds(path) && accept(*project) &&
            (!deepest || project->project.root.size() > deepest->project.root.size())) {
             deepest = project.get();
         }
@@ -73,8 +66,8 @@ ServedProject* MasterServer::compiling_project(Fid path_id) {
     return borrowed != projects.end() ? borrowed->get() : nullptr;
 }
 
-ServedProject& MasterServer::route(Fid path_id) {
-    assert(!projects.empty() && "routing before the projects start");
+ServedProject& MasterServer::pick_owner(Fid path_id) {
+    assert(!projects.empty() && "picking an owner before the projects start");
     if(auto* compiling = compiling_project(path_id)) {
         return *compiling;
     }
@@ -87,7 +80,7 @@ ServedProject& MasterServer::owner_of(Fid path_id) {
     if(auto* document = find_document(path_id); document && document->owner) {
         return *document->owner;
     }
-    return route(path_id);
+    return pick_owner(path_id);
 }
 
 std::shared_ptr<ServedProject> MasterServer::make_project(CanonicalPath root) {
@@ -126,7 +119,7 @@ std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef successor
     return dirs;
 }
 
-void MasterServer::reroute() {
+void MasterServer::update_owners() {
     if(lifecycle != ServerLifecycle::Ready) {
         return;
     }
@@ -134,8 +127,9 @@ void MasterServer::reroute() {
         if(!document.owner) {
             continue;
         }
-        if(auto& to = route(path_id); &to != document.owner) {
+        if(auto& to = pick_owner(path_id); &to != document.owner) {
             change_owner(document, to);
+            replace_shown(document);
         }
     }
 }
@@ -148,11 +142,11 @@ void MasterServer::change_owner(Document& document, ServedProject& to) {
     session.changed(Session::Clock::now());
     document.owner->release(session.path_id);
     document.owner = &to;
-    to.adopt(document.session);
+    to.adopt(session.path_id);
     if(client) {
         client->moved(session.path_id);
     }
-    replace_shown(document);
+    watch_settings();
 }
 
 void MasterServer::replace_shown(Document& document) {
@@ -166,44 +160,28 @@ void MasterServer::replace_shown(Document& document) {
     }
     // A compile finishing on unchanged text has the client re-pull what it
     // holds.
-    if(owner.find_document(session->path_id)->serving == ServingMode::Escalated) {
+    if(owner.compiles(*session)) {
         owner.request_compile(session);
     } else if(client) {
         client->refresh();
     }
 }
 
-void MasterServer::ask_restart(RestartReason reason) {
-    if(!reason.topic.empty()) {
-        std::erase_if(restart_reasons,
-                      [&](const RestartReason& earlier) { return earlier.topic == reason.topic; });
-    }
-    if(ranges::contains(restart_reasons, reason.message, &RestartReason::message)) {
-        return;
-    }
-    LOG_INFO("Restart needed: {}", reason.message);
-    restart_reasons.push_back(std::move(reason));
-    if(client) {
-        client->ask_for_restart();
-    }
-}
-
-void MasterServer::withdraw_restart(llvm::StringRef topic) {
-    if(std::erase_if(restart_reasons,
-                     [&](const RestartReason& reason) { return reason.topic == topic; }) > 0) {
-        if(client) {
-            client->ask_for_restart();
-        }
-    }
-}
-
 void MasterServer::discover_around(Fid path_id) {
     auto path = files.resolve(path_id);
     for(auto& project: projects) {
-        if(holds_path(*project, path)) {
+        if(project->holds(path)) {
             project->discover_around(path_id);
         }
     }
+}
+
+std::size_t MasterServer::apply_disk_changes() {
+    auto changed = files.disk.take_changes();
+    for(auto& project: projects) {
+        project->disk_changed(changed);
+    }
+    return changed.size();
 }
 
 void MasterServer::change_folders(std::vector<Spelling> removed, std::vector<Spelling> added) {
@@ -329,13 +307,13 @@ void MasterServer::serve_folders() {
             }
         }
     }
-    // A stopped project's choices route nothing any more.
+    // A stopped project's choices give it nothing any more.
     for(auto& project: leaving) {
         forget_choices(*project);
     }
     // Documents may belong elsewhere now: a database under a new root
     // lists them, they sit inside it, or their project stopped serving.
-    reroute();
+    update_owners();
     for(auto& project: leaving) {
         LOG_INFO("No longer serving project {}", project->project.root);
         if(auto it = index_pass.find(project.get()); it != index_pass.end()) {
@@ -395,61 +373,6 @@ void MasterServer::fold_index_progress() {
     index_progress = all;
     if(client) {
         client->report_index_progress();
-    }
-}
-
-void MasterServer::watch_settings() {
-    std::vector<CanonicalPath> dirs(folders.begin(), folders.end());
-    for(auto& project: projects) {
-        auto more = project->configuration_dirs();
-        dirs.insert(dirs.end(),
-                    std::make_move_iterator(more.begin()),
-                    std::make_move_iterator(more.end()));
-    }
-    ranges::sort(dirs);
-    dirs.erase(ranges::unique(dirs).begin(), dirs.end());
-    std::vector<SettingsWatch> watches;
-    for(auto& dir: dirs) {
-        if(auto it = ranges::find(settings_watches, dir, &SettingsWatch::dir);
-           it != settings_watches.end()) {
-            watches.push_back(std::move(*it));
-            continue;
-        }
-        auto& watch = watches.emplace_back(SettingsWatch{
-            .dir = dir,
-            .file = {.path = path::join(dir, settings_file_names[0])},
-            .hidden = {.path = path::join(dir, settings_file_names[1])},
-        });
-        watch.file.look();
-        watch.hidden.look();
-    }
-    settings_watches = std::move(watches);
-}
-
-void MasterServer::look_at_settings() {
-    // Whether a configuration file is there and what it holds, unreadable
-    // or not: a save that keeps the content changes nothing.
-    auto content = [](const vfs::Flag& flag) {
-        return std::pair(flag.stamp.has_value(), flag.hash);
-    };
-    for(auto& watch: settings_watches) {
-        auto file = content(watch.file);
-        auto hidden = content(watch.hidden);
-        watch.file.look();
-        watch.hidden.look();
-        if(content(watch.file) == file && (watch.file.stamp || content(watch.hidden) == hidden)) {
-            continue;
-        }
-        auto& in_use = watch.file.stamp ? watch.file : watch.hidden;
-        if(!in_use.stamp) {
-            ask_restart({.message = std::format("The configuration file of {} was deleted",
-                                                files.display(watch.dir))});
-            continue;
-        }
-        ask_restart({
-            .file = in_use.path,
-            .message = std::format("{} changed", files.display_identity(in_use.path)),
-        });
     }
 }
 

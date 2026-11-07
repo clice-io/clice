@@ -112,7 +112,7 @@ void LSPClient::register_test_hooks() {
                 co_await async::fail(hooks_off());
             }
             auto kind = parse_build_kind(params.kind);
-            auto path = uri_to_path(params.uri);
+            auto path = feature::to_path(params.uri);
             if(!kind || !path) {
                 co_await async::fail(ipc::Error{
                     protocol::ErrorCode::InvalidParams,
@@ -132,7 +132,7 @@ void LSPClient::register_test_hooks() {
             if(!srv.test_hooks()) {
                 co_await async::fail(hooks_off());
             }
-            auto path = uri_to_path(params.uri);
+            auto path = feature::to_path(params.uri);
             if(params.request.empty() || !path) {
                 co_await async::fail(ipc::Error{protocol::ErrorCode::InvalidParams,
                                                 "a gate names a worker request and a file URI"});

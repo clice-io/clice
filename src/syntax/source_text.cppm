@@ -9,7 +9,8 @@ import :syntax.token;
 namespace clice {
 
 /// One text and what its readers derive from it, each made on first use
-/// and kept: its line tables, its comments, its lexical scan. Borrows the
+/// and kept: its hash, its line tables, its comments, its lexical scan.
+/// Borrows the
 /// text, which a NUL must follow as the lexer reads one, or owns it; borrows
 /// the dialect it is read in and that dialect's keywords (lexed_kind).
 class SourceText {
@@ -45,6 +46,10 @@ public:
         return *options;
     }
 
+    /// xxh3 of the text: what "a buffer holds these bytes" is compared by
+    /// against disk observations and index shards.
+    auto hash() -> std::uint64_t;
+
     auto positions() -> PositionMap;
 
     auto lexical() -> const LexicalInfo&;
@@ -68,6 +73,8 @@ private:
     const clang::LangOptions* options = nullptr;
 
     const clang::IdentifierTable* table = nullptr;
+
+    std::optional<std::uint64_t> text_hash;
 
     struct LineTables {
         std::vector<std::uint32_t> starts;

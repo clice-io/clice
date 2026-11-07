@@ -17,6 +17,13 @@ void SourceText::set_dialect(const clang::LangOptions& dialect) {
     comment_scan.reset();
 }
 
+auto SourceText::hash() -> std::uint64_t {
+    if(!text_hash) {
+        text_hash = llvm::xxh3_64bits(content);
+    }
+    return *text_hash;
+}
+
 auto SourceText::positions() -> PositionMap {
     if(!lines) {
         std::string_view text(content);

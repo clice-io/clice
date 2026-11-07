@@ -62,11 +62,7 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
     auto& document = it->second;
     // A second didOpen of an open document replaces its buffer.
     if(document.session) {
-        document.session->generation += 1;
-        document.session->closed = true;
-        if(document.owner) {
-            document.owner->release(path_id);
-        }
+        end_session(document);
     }
     document.session = std::make_shared<Session>(path_id, std::move(text), version);
     if(projects.empty()) {
@@ -85,8 +81,7 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
         auto above = find_project_root(Spelling(path.parent()));
         auto root = above.empty() ? CanonicalPath() : CanonicalPath(above);
         auto covered = [&](auto& project) {
-            if(!project->project.root.empty() && path::is_within(path, project->project.root) &&
-               path::is_within(project->project.root, root)) {
+            if(project->holds(path) && path::is_within(project->project.root, root)) {
                 return true;
             }
             auto& cdb = project->project.cdb;
@@ -98,10 +93,19 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
             serve_folders();
         }
     }
-    auto& owner = route(path_id);
+    auto& owner = pick_owner(path_id);
     document.owner = &owner;
-    owner.adopt(document.session);
+    owner.adopt(path_id);
     watch_settings();
+}
+
+void MasterServer::end_session(Document& document) {
+    auto& session = *document.session;
+    session.generation += 1;
+    session.closed = true;
+    if(document.owner) {
+        document.owner->release(session.path_id);
+    }
 }
 
 void MasterServer::change_document(Fid path_id,
@@ -167,13 +171,9 @@ void MasterServer::close_document(Fid path_id, llvm::StringRef spelling) {
     if(files.shown_as(path_id) != spelling) {
         return;
     }
+    end_session(it->second);
     auto document = std::move(it->second);
     documents.erase(it);
-    document.session->generation += 1;
-    document.session->closed = true;
-    if(document.owner) {
-        document.owner->release(path_id);
-    }
     // Taken down under the name being closed.
     if(client) {
         client->retract(path_id);

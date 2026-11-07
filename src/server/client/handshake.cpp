@@ -18,18 +18,6 @@ namespace clice {
 
 using ipc::RequestResult;
 
-std::optional<Spelling> uri_to_path(llvm::StringRef uri) {
-    auto parsed = lsp::URI::parse(uri.str());
-    if(!parsed) {
-        return std::nullopt;
-    }
-    auto path = parsed->file_path();
-    if(!path || !path::is_absolute(*path)) {
-        return std::nullopt;
-    }
-    return Spelling::absolute(*path);
-}
-
 LSPClient::LSPClient(MasterServer& server, ipc::JSONPeer& peer) : server(server), peer(peer) {
     held_conn = server.probe.on_held.connect([this](std::uint64_t id) {
         this->peer.send_notification("clice/internal/held", ext::HeldParams{id});
@@ -128,12 +116,12 @@ void LSPClient::register_lifecycle() {
         std::vector<Spelling> roots;
         if(folders.has_value() && folders->has_value() && !(*folders)->empty()) {
             for(auto& folder: **folders) {
-                if(auto root = uri_to_path(folder.uri)) {
+                if(auto root = feature::to_path(folder.uri)) {
                     roots.push_back(std::move(*root));
                 }
             }
         } else if(params.root_uri.has_value()) {
-            if(auto root = uri_to_path(*params.root_uri)) {
+            if(auto root = feature::to_path(*params.root_uri)) {
                 roots.push_back(std::move(*root));
             }
         }
@@ -366,7 +354,7 @@ void LSPClient::register_lifecycle() {
     });
 
     // Each folder is a project: an added one starts serving, a removed
-    // one hands its open documents to the projects routing picks now.
+    // one hands its open documents to the projects they belong to now.
     peer.on_notification([this](const protocol::DidChangeWorkspaceFoldersParams& params) {
         auto& srv = this->server;
         if(srv.shutting_down()) {
@@ -374,13 +362,13 @@ void LSPClient::register_lifecycle() {
         }
         std::vector<Spelling> removed;
         for(auto& folder: params.event.removed) {
-            if(auto root = uri_to_path(folder.uri)) {
+            if(auto root = feature::to_path(folder.uri)) {
                 removed.push_back(std::move(*root));
             }
         }
         std::vector<Spelling> added;
         for(auto& folder: params.event.added) {
-            if(auto root = uri_to_path(folder.uri)) {
+            if(auto root = feature::to_path(folder.uri)) {
                 added.push_back(std::move(*root));
             }
         }

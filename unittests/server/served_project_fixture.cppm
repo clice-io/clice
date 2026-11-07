@@ -46,12 +46,12 @@ struct ServedProjectFixture {
         return server.files.intern(Spelling::absolute(path));
     }
 
-    /// Open `path` holding `text`, routed to the project.
+    /// Open `path` holding `text`, owned by the project.
     std::shared_ptr<Session> open(llvm::StringRef path, std::string text, int version = 0) {
         auto path_id = intern(path);
         auto session = std::make_shared<Session>(path_id, std::move(text), version);
         server.documents[path_id] = {.session = session, .owner = served.get()};
-        served->adopt(session);
+        served->adopt(path_id);
         return session;
     }
 

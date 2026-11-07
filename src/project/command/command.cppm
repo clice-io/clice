@@ -236,6 +236,13 @@ struct ListedContext {
     /// The command as written (ContextChoice::base) when the item stands for
     /// one of several: one of the host's commands, or an own entry.
     std::optional<std::string> command_hash;
+
+    /// Whether `other` lists the same context: the same file, place and
+    /// command, however each shows it.
+    bool same_context(const ListedContext& other) const {
+        return file == other.file && occurrence == other.occurrence &&
+               command_hash == other.command_hash;
+    }
 };
 
 /// What one resolution asks for beyond the file itself. The editor fields
