@@ -1065,39 +1065,38 @@ auto folding_ranges(SourceText& source,
 
 auto folding_ranges(SourceText& source,
                     const index::IndexQuery& query,
-                    const index::IndexSource& index,
-                    std::optional<AstAnswer<std::vector<FoldingRange>>> ast)
-    -> std::vector<FoldingRange> {
-    auto folds =
-        folding_ranges(source,
-                       extract_index_entries(*index.shard).decls,
-                       [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); });
-    if(!ast) {
-        return folds;
-    }
-    auto& merged = ast->answer;
+                    const index::IndexSource& index) -> std::vector<FoldingRange> {
+    return folding_ranges(
+        source,
+        extract_index_entries(*index.shard).decls,
+        [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); });
+}
+
+auto merge(std::vector<FoldingRange> ast,
+           llvm::ArrayRef<FoldingRange> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<FoldingRange> {
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, std::size_t> known;
-    for(auto [position, fold]: views::enumerate(merged)) {
+    for(auto [position, fold]: views::enumerate(ast)) {
         known.try_emplace({fold.range.begin, fold.range.end}, position);
     }
-    auto count = merged.size();
-    for(const auto& fold: folds) {
-        if(!inactive_at(ast->skipped, fold.range.begin)) {
+    auto count = ast.size();
+    for(const auto& fold: index) {
+        if(!inactive_at(skipped, fold.range.begin)) {
             continue;
         }
         auto it = known.find({fold.range.begin, fold.range.end});
         if(it == known.end()) {
-            merged.push_back(fold);
-        } else if(!merged[it->second].kind) {
+            ast.push_back(fold);
+        } else if(!ast[it->second].kind) {
             // A block in inactive code folds by its braces alone; the
             // index knows the declaration owning it.
-            merged[it->second] = fold;
+            ast[it->second] = fold;
         }
     }
-    if(merged.size() != count) {
-        ranges::stable_sort(merged, {}, [](const FoldingRange& fold) { return fold.range.begin; });
+    if(ast.size() != count) {
+        ranges::stable_sort(ast, {}, [](const FoldingRange& fold) { return fold.range.begin; });
     }
-    return std::move(merged);
+    return ast;
 }
 
 }  // namespace clice::feature

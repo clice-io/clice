@@ -94,34 +94,32 @@ auto document_links(SourceText& source, llvm::ArrayRef<index::ResolvedInclude> i
     return links;
 }
 
-auto document_links(SourceText& source,
-                    const index::IndexQuery& query,
-                    Fid file,
-                    std::optional<AstAnswer<std::vector<index::DocumentLink>>> ast)
+auto document_links(SourceText& source, const index::IndexQuery& query, Fid file)
     -> std::vector<index::DocumentLink> {
-    std::vector<index::DocumentLink> links;
-    if(query.shard_matching(file, source.text())) {
-        links = document_links(source, query.project().resolved_includes(file));
+    if(!query.shard_matching(file, source.text())) {
+        return {};
     }
-    if(!ast) {
-        return links;
-    }
-    auto& merged = ast->answer;
-    auto count = merged.size();
-    for(const auto& link: links) {
-        if(inactive_at(ast->skipped, link.range.begin) &&
-           ranges::none_of(merged, [&](const index::DocumentLink& known) {
+    return document_links(source, query.project().resolved_includes(file));
+}
+
+auto merge(std::vector<index::DocumentLink> ast,
+           llvm::ArrayRef<index::DocumentLink> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<index::DocumentLink> {
+    auto count = ast.size();
+    for(const auto& link: index) {
+        if(inactive_at(skipped, link.range.begin) &&
+           ranges::none_of(ast, [&](const index::DocumentLink& known) {
                return known.range == link.range && known.target == link.target;
            })) {
-            merged.push_back(link);
+            ast.push_back(link);
         }
     }
-    if(merged.size() != count) {
-        ranges::stable_sort(merged, {}, [](const index::DocumentLink& link) {
+    if(ast.size() != count) {
+        ranges::stable_sort(ast, {}, [](const index::DocumentLink& link) {
             return link.range.begin;
         });
     }
-    return std::move(merged);
+    return ast;
 }
 
 auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,

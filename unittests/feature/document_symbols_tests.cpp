@@ -17,7 +17,7 @@ auto index_outline() -> std::vector<feature::DocumentSymbol> {
     return feature::document_symbols(text, entries, resolver(), {});
 }
 
-ZEST_CASE(ModuleOutlineMatchesAst) {
+ZEST_CASE(ModuleOutlineMatchesAST) {
     add_focus("main.cpp", R"cpp(
 export module demo.core;
 
@@ -39,7 +39,7 @@ export int entry();
     }
 }
 
-ZEST_CASE(OutlineMatchesAst) {
+ZEST_CASE(OutlineMatchesAST) {
     add_focus("main.cpp", R"cpp(
 #define LIMIT 10
 #define FIELDS int generated_a; int generated_b;

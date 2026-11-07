@@ -104,17 +104,17 @@ auto semantic_tokens(SourceText& source,
 auto semantic_tokens(SourceText& source,
                      const index::IndexQuery& query,
                      const index::IndexSource& index,
-                     const SemanticTokensOptions& options,
-                     std::optional<AstAnswer<std::vector<SemanticToken>>> ast)
-    -> std::vector<SemanticToken> {
-    auto tokens = semantic_tokens(
+                     const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
+    return semantic_tokens(
         source,
         extract_index_entries(*index.shard),
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },
         options);
-    if(!ast) {
-        return tokens;
-    }
+}
+
+auto merge(std::vector<SemanticToken> ast,
+           llvm::ArrayRef<SemanticToken> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<SemanticToken> {
     auto inactive = mask(SemanticTokenModifier::Inactive);
     auto end_of = [](const SemanticToken& token) {
         return token.range.end;
@@ -123,16 +123,16 @@ auto semantic_tokens(SourceText& source,
     // alike (`f()` one plain token) and the index a name of several tokens
     // (`~Widget`): each splits the other's.
     std::vector<SemanticToken> merged;
-    merged.reserve(ast->answer.size());
-    auto next = tokens.cbegin();
-    for(const auto& token: ast->answer) {
-        if(!inactive_at(ast->skipped, token.range.begin)) {
+    merged.reserve(ast.size());
+    auto next = index.begin();
+    for(const auto& token: ast) {
+        if(!inactive_at(skipped, token.range.begin)) {
             merged.push_back(token);
             continue;
         }
-        next = ranges::upper_bound(next, tokens.cend(), token.range.begin, {}, end_of);
+        next = ranges::upper_bound(next, index.end(), token.range.begin, {}, end_of);
         auto at = token.range.begin;
-        for(; next != tokens.cend() && next->range.begin < token.range.end; ++next) {
+        for(; next != index.end() && next->range.begin < token.range.end; ++next) {
             auto begin = std::max(next->range.begin, at);
             auto end = std::min(next->range.end, token.range.end);
             if(begin > at) {

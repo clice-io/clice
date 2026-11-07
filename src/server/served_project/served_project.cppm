@@ -268,7 +268,7 @@ enum class Route : std::uint8_t {
     Index,
     /// Ask the worker holding the AST (ServedProject::ast_request, which
     /// compiles as needed).
-    Ast,
+    AST,
     /// No source can serve and none is being invested in (IndexOnly with
     /// no matching shard): answer honestly empty.
     Empty,

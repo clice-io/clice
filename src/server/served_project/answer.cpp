@@ -1,7 +1,6 @@
 module clice;
 
 import :feature.document_links;
-import :feature.index_entries;
 import :index.project_index;
 import :index.query;
 import :index.shard;
@@ -41,7 +40,7 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
         }
         auto& session = *ticket.session;
         if(ast_answerable(session)) {
-            co_return Route::Ast;
+            co_return Route::AST;
         }
         auto serving = serving_of(session);
         // An oversized buffer is not worth a synchronous main-thread lex;
@@ -78,7 +77,7 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
             }
         }
         if(serving == ServingMode::Escalated) {
-            co_return Route::Ast;
+            co_return Route::AST;
         }
         if(options.await_cold_attempt && !waited) {
             waited = true;
@@ -97,7 +96,7 @@ async::task<std::optional<GateStop>> ServedProject::navigation_gate(const Ticket
         // no compile is owed.
         case Route::Index:
         case Route::Empty: co_return std::nullopt;
-        case Route::Ast: break;
+        case Route::AST: break;
     }
     // Same posture as every AST-backed request: the document's file index
     // is produced by the very compile awaited here, so once this finishes
@@ -288,10 +287,9 @@ async::task<std::vector<index::DocumentLink>, ipc::Error>
     if(skipped.empty() || session.text().size() > full_lex_cap) {
         co_return links;
     }
-    co_return feature::document_links(text_of(session),
-                                      query(),
-                                      session.path_id,
-                                      feature::AstAnswer{std::move(links), skipped});
+    co_return feature::merge(std::move(links),
+                             feature::document_links(text_of(session), query(), session.path_id),
+                             skipped);
 }
 
 bool ServedProject::admits(const Session& session,

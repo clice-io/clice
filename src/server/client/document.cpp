@@ -92,11 +92,18 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
                                             TokensRequest request) {
     auto& [path, path_id, session, served, version, ticket] = document;
     std::optional<index::IndexSource> source;
-    std::optional<feature::AstAnswer<std::vector<feature::SemanticToken>>> ast;
+    auto from_index = [&] {
+        return feature::semantic_tokens(served->text_of(*session),
+                                        served->query(),
+                                        *source,
+                                        served->project.settings.semantic_tokens);
+    };
+    std::vector<feature::SemanticToken> tokens;
     switch(co_await served->pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Outdated: co_await async::fail(content_modified());
         case Route::Index: {
             index_served.insert(path_id);
+            tokens = from_index();
             break;
         }
         case Route::Empty: {
@@ -108,29 +115,26 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
             index_served.insert(path_id);
             co_return codec::raw_value{"null"};
         }
-        case Route::Ast: {
-            auto tokens = co_await served
-                              ->ast_request(ticket,
-                                            feature::RequestKind::SemanticTokens,
-                                            "SemanticTokens",
-                                            worker::SemanticTokensParams{
-                                                .settings = served->project.settings,
-                                            },
-                                            std::move(token))
-                              .or_fail();
-            if(!tokens) {
+        case Route::AST: {
+            auto ast = co_await served
+                           ->ast_request(ticket,
+                                         feature::RequestKind::SemanticTokens,
+                                         "SemanticTokens",
+                                         worker::SemanticTokensParams{
+                                             .settings = served->project.settings,
+                                         },
+                                         std::move(token))
+                           .or_fail();
+            if(!ast) {
                 co_return codec::raw_value{"null"};
             }
-            ast.emplace(std::move(*tokens), other_contexts(*served, *session, source));
+            tokens = std::move(*ast);
+            if(auto skipped = other_contexts(*served, *session, source); !skipped.empty()) {
+                tokens = feature::merge(std::move(tokens), from_index(), skipped);
+            }
             break;
         }
     }
-    auto tokens = source ? feature::semantic_tokens(served->text_of(*session),
-                                                    served->query(),
-                                                    *source,
-                                                    served->project.settings.semantic_tokens,
-                                                    std::move(ast))
-                         : std::move(ast->answer);
     if(auto preamble = served->query().preamble_index(path_id)) {
         feature::merge_preamble_macros(*preamble, tokens);
     }
@@ -204,8 +208,7 @@ void LSPClient::register_document_requests() {
                     if(auto shown =
                            directive_card(feature::document_links(project.text_of(*session),
                                                                   project.query(),
-                                                                  path_id,
-                                                                  std::nullopt))) {
+                                                                  path_id))) {
                         index_served.insert(path_id);
                         co_return std::move(*shown);
                     }
@@ -227,7 +230,7 @@ void LSPClient::register_document_requests() {
                 co_return card(*info);
             }
             case Route::Empty: co_return codec::raw_value{"null"};
-            case Route::Ast: break;
+            case Route::AST: break;
         }
 
         // A module name's card names the unit defining the module, which the
@@ -355,12 +358,14 @@ void LSPClient::register_document_requests() {
                                                    folding_client));
             };
             std::optional<index::IndexSource> source;
-            std::optional<feature::AstAnswer<std::vector<feature::FoldingRange>>> ast;
+            auto from_index = [&] {
+                return feature::folding_ranges(served->text_of(*session), served->query(), *source);
+            };
             switch(co_await served->pick_route(ticket, {.full_lex = true}, &source)) {
                 case Route::Outdated: co_await async::fail(content_modified());
                 case Route::Index: {
                     index_served.insert(path_id);
-                    break;
+                    co_return convert(from_index());
                 }
                 case Route::Empty: {
                     // Same contract as the semantic-tokens Empty route: the
@@ -370,28 +375,22 @@ void LSPClient::register_document_requests() {
                     index_served.insert(path_id);
                     co_return codec::raw_value{"[]"};
                 }
-                case Route::Ast: {
-                    auto folds = co_await served
-                                     ->ast_request(ticket,
-                                                   feature::RequestKind::FoldingRange,
-                                                   "FoldingRange",
-                                                   worker::FoldingRangeParams{},
-                                                   ctx.cancellation)
-                                     .or_fail();
-                    if(!folds) {
-                        co_return codec::raw_value{"null"};
-                    }
-                    ast.emplace(std::move(*folds), other_contexts(*served, *session, source));
-                    break;
-                }
+                case Route::AST: break;
             }
-            if(!source) {
-                co_return convert(ast->answer);
+            auto folds = co_await served
+                             ->ast_request(ticket,
+                                           feature::RequestKind::FoldingRange,
+                                           "FoldingRange",
+                                           worker::FoldingRangeParams{},
+                                           ctx.cancellation)
+                             .or_fail();
+            if(!folds) {
+                co_return codec::raw_value{"null"};
             }
-            co_return convert(feature::folding_ranges(served->text_of(*session),
-                                                      served->query(),
-                                                      *source,
-                                                      std::move(ast)));
+            if(auto skipped = other_contexts(*served, *session, source); !skipped.empty()) {
+                co_return convert(feature::merge(std::move(*folds), from_index(), skipped));
+            }
+            co_return convert(*folds);
         });
 
     // One chain of selection ranges per position: from the AST, or for a
@@ -430,7 +429,7 @@ void LSPClient::register_document_requests() {
             case Route::Outdated: co_await async::fail(content_modified());
             case Route::Index:
             case Route::Empty: co_return lexical();
-            case Route::Ast: break;
+            case Route::AST: break;
         }
         auto chains = co_await served
                           ->ast_request(ticket,
@@ -464,41 +463,39 @@ void LSPClient::register_document_requests() {
                                                          params.text_document.uri));
         };
         std::optional<index::IndexSource> source;
-        std::optional<feature::AstAnswer<std::vector<feature::DocumentSymbol>>> ast;
+        auto from_index = [&] {
+            return feature::document_symbols(served->text_of(*session),
+                                             served->query(),
+                                             *source,
+                                             served->project.settings.document_symbols);
+        };
         switch(co_await served->pick_route(ticket,
                                            {.full_lex = true, .await_cold_attempt = true},
                                            &source)) {
             case Route::Outdated: co_await async::fail(content_modified());
             case Route::Index: {
                 index_served.insert(path_id);
-                break;
+                co_return convert(from_index());
             }
             case Route::Empty: co_return codec::raw_value{"[]"};
-            case Route::Ast: {
-                auto symbols = co_await served
-                                   ->ast_request(ticket,
-                                                 feature::RequestKind::DocumentSymbol,
-                                                 "DocumentSymbol",
-                                                 worker::DocumentSymbolParams{
-                                                     .settings = served->project.settings,
-                                                 },
-                                                 ctx.cancellation)
-                                   .or_fail();
-                if(!symbols) {
-                    co_return codec::raw_value{"null"};
-                }
-                ast.emplace(std::move(*symbols), other_contexts(*served, *session, source));
-                break;
-            }
+            case Route::AST: break;
         }
-        if(!source) {
-            co_return convert(ast->answer);
+        auto symbols = co_await served
+                           ->ast_request(ticket,
+                                         feature::RequestKind::DocumentSymbol,
+                                         "DocumentSymbol",
+                                         worker::DocumentSymbolParams{
+                                             .settings = served->project.settings,
+                                         },
+                                         ctx.cancellation)
+                           .or_fail();
+        if(!symbols) {
+            co_return codec::raw_value{"null"};
         }
-        co_return convert(feature::document_symbols(served->text_of(*session),
-                                                    served->query(),
-                                                    *source,
-                                                    served->project.settings.document_symbols,
-                                                    std::move(ast)));
+        if(auto skipped = other_contexts(*served, *session, source); !skipped.empty()) {
+            co_return convert(feature::merge(std::move(*symbols), from_index(), skipped));
+        }
+        co_return convert(*symbols);
     });
 
     // The worker's focus-file links merged behind the PCH's cached preamble
@@ -516,14 +513,13 @@ void LSPClient::register_document_requests() {
                     // __has_include/#embed have no edge and produce no link.
                     auto links = feature::document_links(served->text_of(*session),
                                                          served->query(),
-                                                         path_id,
-                                                         std::nullopt);
+                                                         path_id);
                     index_served.insert(path_id);
                     co_return to_raw(
                         feature::to_protocol(links, session->positions(), encoding, files));
                 }
                 case Route::Empty: co_return codec::raw_value{"[]"};
-                case Route::Ast: break;
+                case Route::AST: break;
             }
             auto links = co_await served->directive_links(ticket, ctx.cancellation).or_fail();
             co_return to_raw(feature::to_protocol(links, session->positions(), encoding, files));

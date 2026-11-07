@@ -1127,20 +1127,20 @@ auto document_symbols(SourceText& source,
 auto document_symbols(SourceText& source,
                       const index::IndexQuery& query,
                       const index::IndexSource& index,
-                      const DocumentSymbolsOptions& options,
-                      std::optional<AstAnswer<std::vector<DocumentSymbol>>> ast)
-    -> std::vector<DocumentSymbol> {
-    auto outline = document_symbols(
+                      const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
+    return document_symbols(
         source,
         extract_index_entries(*index.shard),
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },
         options);
-    if(!ast) {
-        return outline;
-    }
-    auto merge = [&](this auto& self,
-                     std::vector<DocumentSymbol>& into,
-                     llvm::ArrayRef<DocumentSymbol> from) -> void {
+}
+
+auto merge(std::vector<DocumentSymbol> ast,
+           llvm::ArrayRef<DocumentSymbol> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<DocumentSymbol> {
+    auto merge_level = [&](this auto& self,
+                           std::vector<DocumentSymbol>& into,
+                           llvm::ArrayRef<DocumentSymbol> from) -> void {
         using Key = std::tuple<std::uint32_t, std::uint32_t, std::string_view>;
         auto key = [](const DocumentSymbol& symbol) {
             return Key(symbol.selection_range.begin, symbol.selection_range.end, symbol.name);
@@ -1165,7 +1165,7 @@ auto document_symbols(SourceText& source,
                 for(const auto& child: symbol.children) {
                     level.push_back(&child);
                 }
-            } else if(inactive_at(ast->skipped, symbol.selection_range.begin)) {
+            } else if(inactive_at(skipped, symbol.selection_range.begin)) {
                 added.push_back(symbol);
             }
         }
@@ -1179,8 +1179,8 @@ auto document_symbols(SourceText& source,
             return symbol.range.begin;
         });
     };
-    merge(ast->answer, outline);
-    return std::move(ast->answer);
+    merge_level(ast, index);
+    return ast;
 }
 
 }  // namespace clice::feature

@@ -14,7 +14,7 @@ namespace {
 
 ZEST_SUITE(folding_ranges, IndexEntriesTester) {
 
-ZEST_CASE(FoldsSubsetOfAst) {
+ZEST_CASE(FoldsSubsetOfAST) {
     add_focus("main.cpp", R"cpp(
 namespace app {
 
@@ -58,7 +58,7 @@ int compute() {
     ZASSERT(anchored);
 }
 
-ZEST_CASE(FoldsMatchAstShape) {
+ZEST_CASE(FoldsMatchASTShape) {
     // A brace below its declaration's head folds from the head, a block
     // folds as its declaration's kind, and braces several decls share (the
     // struct's and the alias's) fold once — as the AST folds them.

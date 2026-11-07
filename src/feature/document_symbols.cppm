@@ -128,15 +128,18 @@ auto document_symbols(SourceText& source,
                       IndexSymbolResolver resolve,
                       const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
 
-/// The same from the index serving the file (see semantic_tokens). With
-/// the AST's answer, its outline, and the entries the index lists in the
-/// code its context skipped, where they nest: another context the file
-/// compiles in declares them.
+/// The same from the index serving the file (see semantic_tokens).
 auto document_symbols(SourceText& source,
                       const index::IndexQuery& query,
                       const index::IndexSource& index,
-                      const DocumentSymbolsOptions& options,
-                      std::optional<AstAnswer<std::vector<DocumentSymbol>>> ast)
-    -> std::vector<DocumentSymbol>;
+                      const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
+
+/// The outline the AST gives (`ast`) with the entries the index lists
+/// (`index`) in the code the AST's context skipped (`skipped`, flat
+/// begin/end offset pairs as InactiveScan's), where they nest: another
+/// context the file compiles in declares them.
+auto merge(std::vector<DocumentSymbol> ast,
+           llvm::ArrayRef<DocumentSymbol> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<DocumentSymbol>;
 
 }  // namespace clice::feature
