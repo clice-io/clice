@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}/exec",
+    "file": "src/main.cpp",
+    "arguments": ["clang++", "-std=c++20", "-fsyntax-only", "src/main.cpp"]
+  }
+]

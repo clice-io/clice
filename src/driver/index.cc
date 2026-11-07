@@ -1,6 +1,7 @@
 module clice;
 
 import :driver.driver;
+import :driver.run;
 import :feature.query;
 import :index.database;
 import :index.format;
@@ -11,7 +12,7 @@ import :index.search_index;
 import :index.shard;
 import :index.symbol_query;
 import :index.tu_manifest;
-import :project.indexer;
+import :project.background;
 import :project.project;
 import :server.control;
 import :support.logging;
@@ -183,10 +184,10 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
             }
         });
     }
-    background.start(/*errors=*/true);
+    background.start({.errors = true});
     Lifetime lifetime(run);
     lifetime.aux.spawn(progress_ticker(run, options));
-    co_await async::with_token(background.wait_idle(), lifetime.token());
+    co_await async::with_token(background.wait_idle(), lifetime.stop.token());
     // The counts read every shard and symbol record: taken before the final
     // save, damage they meet first is discarded there like any other.
     if(!lifetime.stop_requested) {
@@ -451,7 +452,7 @@ constexpr std::pair<index::BlobKind, llvm::StringLiteral> stored_kinds[] = {
     {index::BlobKind::Version,            "versions"            },
     {index::BlobKind::Header,             "header"              },
     {index::BlobKind::SearchSegment,      "search segments"     },
-    {index::BlobKind::Listings,           "cdb"                 },
+    {index::BlobKind::Members,            "cdb"                 },
     {index::BlobKind::PrecompiledRecords, "precompiled records" },
     {index::BlobKind::ContextChoices,     "contexts"            },
 };

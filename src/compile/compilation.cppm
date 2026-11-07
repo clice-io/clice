@@ -156,10 +156,13 @@ struct CompilationInput {
     void add_synthesized(const SynthesizedFiles& files) {
         for(auto& file: files) {
             add_remapped_file(file.path, file.content);
-            // Named the way CompilationUnit::file_path names it.
-            synthesized[CanonicalPath(Spelling::absolute(file.path)).str()] = file.origin;
+            // Named as the unit names a file (CompilationUnit::entry_path),
+            // the fragment and the file it was cut from alike.
+            auto& origin = synthesized[CanonicalPath(Spelling::absolute(file.path)).str()];
+            origin = file.origin;
+            origin.source = CanonicalPath(Spelling::absolute(file.origin.source)).str();
             if(file.entry == SynthesizedFile::Entry::Prefix) {
-                host = file.origin.source;
+                host = origin.source;
             } else if(file.entry == SynthesizedFile::Entry::Forced) {
                 forced_includes.push_back(file.path);
             }
@@ -279,6 +282,14 @@ struct FileOffset {
     friend bool operator==(const FileOffset&, const FileOffset&) = default;
 };
 
+/// Where a place in one of the files of a compile lies in the file it
+/// stands for, named as CompilationUnit::file_path names it.
+struct SourceOffset {
+    llvm::StringRef path;
+
+    std::uint32_t offset = 0;
+};
+
 /// A stretch of text in one of the files of a compile.
 struct FileRange {
     clang::FileID file;
@@ -373,8 +384,10 @@ public:
 
     /// The identity of the file entry (CanonicalPath), absolutized against
     /// the compile's working directory: symlinked spellings of a file
-    /// resolve to one path; hardlinked spellings each keep their own. The
-    /// result is guaranteed to be null-terminated.
+    /// resolve to one path; hardlinked spellings each keep their own. A
+    /// header context's fragment, which only memory holds, stands for the
+    /// file its text was cut from. The result is guaranteed to be
+    /// null-terminated.
     auto file_path(clang::FileEntryRef entry) -> llvm::StringRef;
 
     /// Same, for the file entry backing `fid`. The fid must be valid and
@@ -398,9 +411,6 @@ public:
     /// file_content, never falls back to a fake buffer.
     auto loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef>;
 
-    /// The positions of file_content(fid).
-    auto positions(clang::FileID fid) -> PositionMap;
-
     /// The comments of file_content(fid).
     auto comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment>;
 
@@ -410,23 +420,13 @@ public:
     /// Check if a file is a builtin file.
     bool is_builtin_file(clang::FileID fid);
 
-    /// Whether the request synthesized the file (a header context's
-    /// fragment, see CompilationInput::add_synthesized): no file on disk
-    /// carries its bytes, so nothing may depend on it.
-    bool synthesized(clang::FileID fid);
-
-    /// Whether the compile borrows an includer context: its focus file is
-    /// a header, compiled as its host sees it.
-    bool borrows_context();
-
-    /// The path of the file `fid` stands for: its own, or for a synthesized
-    /// file the one its text was cut from.
-    auto source_path(clang::FileID fid) -> llvm::StringRef;
-
-    /// Where `offset` in `fid` lies in source_path(fid): the same offset
-    /// but in a synthesized file, whose text runs copy the file at other
-    /// offsets.
-    std::uint32_t source_offset(clang::FileID fid, std::uint32_t offset);
+    /// Where `position` lies in the file it stands for: itself, but in a
+    /// header context's fragment where the text the fragment copies lies in
+    /// the file it was cut from. None in the text the context adds — its
+    /// #line markers, the conditionals it balances, its includes of the
+    /// next fragment. The end of a run of copied text maps too, so the ends
+    /// of a range do.
+    auto source_of(FileOffset position) -> std::optional<SourceOffset>;
 
     /// Whether the file is the compile's own source: the focus file, or
     /// under a borrowed includer context a fragment cut from the host.
@@ -581,8 +581,23 @@ private:
     /// the first `>` becomes a macro location over its half of the token.
     auto split_half(clang::SourceLocation location) -> std::optional<FileRange>;
 
-    /// What the synthesized file `fid` was cut from; null for any other.
+    /// The path of the file entry itself (see file_path), a fragment's
+    /// own.
+    auto entry_path(clang::FileEntryRef entry) -> llvm::StringRef;
+
+    /// Whether the compile borrows an includer context: its focus file is
+    /// a header, compiled as its host sees it.
+    bool borrows_context();
+
+    /// What the synthesized file was cut from; null for any other.
+    const SynthesizedOrigin* origin(clang::FileEntryRef entry);
+
     const SynthesizedOrigin* origin(clang::FileID fid);
+
+    /// Whether the request synthesized the file (a header context's
+    /// fragment, see CompilationInput::add_synthesized): no file on disk
+    /// carries its bytes, so nothing may depend on it.
+    bool synthesized(clang::FileID fid);
 
     /// Create the `clang::CompilerInvocation` of the compile: the command,
     /// with every flag clice needs set and every one it must not see reset.
@@ -643,6 +658,9 @@ private:
     /// CompilationUnit::absent.
     llvm::StringSet<> absent_paths;
 
+    /// Memo of CompilationUnit::origin, by file.
+    llvm::DenseMap<clang::FileID, const SynthesizedOrigin*> origins;
+
     /// Memo of CompilationUnit::from_context.
     llvm::DenseMap<clang::FileID, bool> context_files;
 
@@ -679,7 +697,7 @@ private:
     /// All directive information collected during the preprocessing.
     llvm::DenseMap<clang::FileID, Directive> collected_directives;
 
-    /// Cache for file path. It is used to avoid multiple file path lookup.
+    /// Each file entry's own path (entry_path), made on first use.
     llvm::DenseMap<clang::FileEntryRef, llvm::StringRef> path_cache;
 
     /// Each file's text (file_content), made on first use.

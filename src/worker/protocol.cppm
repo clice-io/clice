@@ -127,6 +127,26 @@ struct HoverParams {
     Settings settings;
 };
 
+/// How a compile builds the TU index it sends, and where an index too
+/// large for a message goes.
+struct IndexRequest {
+    /// Variant identities the master stores for the files this TU is
+    /// expected to include, sorted (see index::TUIndexOptions).
+    std::vector<std::uint64_t> known_variants;
+
+    /// The keys of the instantiations the master holds for those files,
+    /// sorted (see index::TUIndexOptions).
+    std::vector<std::uint64_t> known_instantiations;
+
+    /// Index the standard library's own instantiations and expansions (see
+    /// index::TUIndexOptions).
+    bool standard_library_instantiations = false;
+
+    /// Where the worker writes an index too large for an IPC message: a
+    /// transfer path of the master's store, empty when it has none.
+    std::string output_path;
+};
+
 /// Parameters for stateful compilation (builds AST, publishes diagnostics).
 struct CompileParams {
     std::string path;
@@ -153,14 +173,7 @@ struct CompileParams {
     /// scans past the bound, yet serves semantic tokens for the whole file.
     std::vector<std::uint32_t> preamble_inactive_regions;
 
-    /// See CompileUnitParams::index_output_path.
-    std::string index_output_path;
-
-    /// See CompileUnitParams::known_instantiations.
-    std::vector<std::uint64_t> known_instantiations;
-
-    /// See CompileUnitParams::standard_library_instantiations.
-    bool standard_library_instantiations = false;
+    IndexRequest indexing;
 
     /// Run clang-tidy over the parse with this frozen configuration.
     std::optional<tidy::TidyParams> tidy;
@@ -258,20 +271,9 @@ struct BuildPCHParams {
     /// always writes its own.
     bool index = false;
 
-    /// Where the build's index goes: a preamble's, with its feature state,
-    /// to the pch.idx the master commits with the PCH; a whole file's, too
-    /// large for a message, to a transfer file
-    /// (CompileUnitParams::index_output_path).
-    std::string index_output_path;
-
-    /// See CompileUnitParams::known_variants.
-    std::vector<std::uint64_t> known_variants;
-
-    /// See CompileUnitParams::known_instantiations.
-    std::vector<std::uint64_t> known_instantiations;
-
-    /// See CompileUnitParams::standard_library_instantiations.
-    bool standard_library_instantiations = false;
+    /// A preamble's index, with its feature state, goes to the pch.idx the
+    /// master commits with the PCH (`output_path`).
+    IndexRequest indexing;
 };
 
 /// Build the PCM of a unit providing a module: the unit's compile, under
@@ -298,17 +300,7 @@ struct BuildPCMParams {
     /// Tmp path allocated by the master's store (see BuildPCHParams).
     std::string output_path;
 
-    /// See CompileUnitParams::index_output_path.
-    std::string index_output_path;
-
-    /// See CompileUnitParams::known_variants.
-    std::vector<std::uint64_t> known_variants;
-
-    /// See CompileUnitParams::known_instantiations.
-    std::vector<std::uint64_t> known_instantiations;
-
-    /// See CompileUnitParams::standard_library_instantiations.
-    bool standard_library_instantiations = false;
+    IndexRequest indexing;
 };
 
 /// One unit's compile: a single parse serving the products the frozen plan
@@ -339,21 +331,7 @@ struct CompileUnitParams {
     bool unused_includes = false;
     std::optional<tidy::TidyParams> tidy;
 
-    /// Variant identities the master stores for the files this TU is
-    /// expected to include, sorted (see index::TUIndexOptions).
-    std::vector<std::uint64_t> known_variants;
-
-    /// The keys of the instantiations the master holds for those files,
-    /// sorted (see index::TUIndexOptions).
-    std::vector<std::uint64_t> known_instantiations;
-
-    /// Index the standard library's own instantiations and expansions (see
-    /// index::TUIndexOptions).
-    bool standard_library_instantiations = false;
-
-    /// Where the worker writes an index too large for an IPC message: a
-    /// transfer path of the master's store, empty when it has none.
-    std::string index_output_path;
+    IndexRequest indexing;
 };
 
 /// Code completion over unsaved buffer content.
@@ -505,7 +483,7 @@ struct CompileUnitResult {
     /// Serialized TUIndex, merged by the master (plan product `index`).
     std::vector<std::byte> tu_index_data;
 
-    /// The index went to index_output_path instead of tu_index_data.
+    /// The index went to IndexRequest::output_path instead of tu_index_data.
     bool index_in_file = false;
 
     /// Findings of the tidy pass (plan product `tidy`).

@@ -57,31 +57,6 @@ auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink> {
         }
     }
 
-    /// import lib.extra;
-    ///        ^~~~~~~~~ links to the unit declaring the module
-    /// The preprocessor reports an import before the module is loaded;
-    /// the AST's import declarations carry the loaded module.
-    llvm::StringMap<clang::SourceLocation> definitions;
-    for(auto* decl: unit.context().local_imports()) {
-        auto* module = decl->getImportedModule();
-        definitions.try_emplace(module->getFullModuleName(), module->DefinitionLoc);
-    }
-    for(const auto& import: directives.imports) {
-        auto definition = definitions.lookup(import.name);
-        if(definition.isInvalid() || import.name_locations.empty()) {
-            continue;
-        }
-        auto range = focus.produced_range(
-            clang::SourceRange(import.name_locations.front(), import.name_locations.back()));
-        if(!range) {
-            continue;
-        }
-        links.push_back(index::DocumentLink{
-            .range = *range,
-            .target = unit.file_path(unit.file_id(definition)).str(),
-        });
-    }
-
     // Directives are collected grouped by kind; the reply promises
     // document order.
     ranges::sort(links, {}, [](const index::DocumentLink& link) { return link.range.begin; });
@@ -89,13 +64,13 @@ auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink> {
     return links;
 }
 
-auto document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge> edges)
+auto document_links(SourceText& source, llvm::ArrayRef<index::ResolvedInclude> includes)
     -> std::vector<index::DocumentLink> {
     auto positions = source.positions();
 
     std::vector<index::DocumentLink> links;
-    for(const auto& edge: edges) {
-        auto line = edge.line == 0 ? std::nullopt : positions.line_bounds(edge.line - 1);
+    for(const auto& include: includes) {
+        auto line = include.line == 0 ? std::nullopt : positions.line_bounds(include.line - 1);
         if(!line) {
             continue;
         }
@@ -103,7 +78,7 @@ auto document_links(SourceText& source, llvm::ArrayRef<index::IncludeEdge> edges
         if(!range) {
             continue;
         }
-        links.push_back({.range = *range, .target = edge.target});
+        links.push_back({.range = *range, .target = include.target});
     }
 
     ranges::sort(links, [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
@@ -123,7 +98,7 @@ auto document_links(SourceText& source, const index::IndexQuery& query, Fid file
     if(!query.shard_matching(file, source.text())) {
         return {};
     }
-    return document_links(source, query.project().include_edges(file));
+    return document_links(source, query.project().resolved_includes(file));
 }
 
 auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,

@@ -89,11 +89,6 @@ public:
     /// declaration order, each rule once.
     Edits edits(llvm::ArrayRef<CanonicalRef> paths) const;
 
-    /// The identity of `edits` as a command identity records it
-    /// (Project::command_identity), the project root taken as
-    /// `${workspace}` so that a moved checkout keeps it; 0 for none.
-    std::uint64_t identity(const Edits& edits) const;
-
     /// The first matching active rule declaring a default command.
     const CompiledRule* default_rule(CanonicalRef path) const;
 

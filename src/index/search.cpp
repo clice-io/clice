@@ -175,26 +175,24 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
             });
         }
     }
-    if(index.live_sources()) {
-        index.live_sources()->for_each_session_index([&](const TUIndex& state) {
-            state.for_each_symbol(
-                [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t>) {
-                    // The index judged the symbols it holds already, under
-                    // the same name.
-                    if(!scan_records && !project.search_pending().contains(hash) &&
-                       project.find_symbol(hash)) {
-                        return true;
-                    }
-                    llvm::StringRef path;
-                    if(identity.file != no_file) {
-                        path = state.path(identity.file);
-                    }
-                    consider(hash, identity, path, references_of(hash), {});
+    index.for_each_session_index([&](const TUIndex& state) {
+        state.for_each_symbol(
+            [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t>) {
+                // The index judged the symbols it holds already, under
+                // the same name.
+                if(!scan_records && !project.search_pending().contains(hash) &&
+                   project.find_symbol(hash)) {
                     return true;
-                });
-            return true;
-        });
-    }
+                }
+                llvm::StringRef path;
+                if(identity.file != no_file) {
+                    path = state.path(identity.file);
+                }
+                consider(hash, identity, path, references_of(hash), {});
+                return true;
+            });
+        return true;
+    });
     // A file's own symbols — locals, parameters, internal-linkage
     // entities — are in no record but the file's shard, which holds every
     // such symbol it names: a query naming files looks for the ones each

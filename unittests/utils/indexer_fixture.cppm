@@ -2,16 +2,16 @@ module clice:unittests.utils.indexer_fixture;
 
 import :command.table;
 import :compile.compilation;
-import :feature.diagnostics;
 import :index.database;
 import :index.indexer;
 import :index.project_index;
 import :index.tu_index;
-import :project.indexer;
+import :project.background;
 import :project.project;
 import :settings.rules;
 import :support.bytes;
 import :support.prelude;
+import :support.signal;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -22,46 +22,6 @@ import :vfs.path;
 import :worker.pool;
 
 namespace clice::testing {
-
-/// The serving side of a test that plays the server: what its open
-/// documents' compiles serve, and the index changes it is told of.
-struct RecordingServing final : ServingSide {
-    /// Whether an open document's compile serves the file; none does when
-    /// unset.
-    std::function<bool(Fid)> served;
-
-    /// The files of every index change reported, in order.
-    llvm::SmallVector<Fid> changed;
-
-    std::size_t open_documents() const override {
-        return 0;
-    }
-
-    bool compiled_by_session(Fid file) const override {
-        return served && served(file);
-    }
-
-    void report_background_diagnostics(Fid,
-                                       std::uint64_t,
-                                       bool,
-                                       std::vector<feature::FileDiagnostic>) override {}
-
-    bool lacks_background_diagnostics(Fid) const override {
-        return false;
-    }
-
-    bool shows_unused_includes(Fid) const override {
-        return false;
-    }
-
-    void attempt_finished(Fid) override {}
-
-    void index_changed(llvm::ArrayRef<Fid> files) override {
-        changed.append(files.begin(), files.end());
-    }
-
-    void schedule_metadata_flush() override {}
-};
 
 /// Test fixture with friend access to the reindex queue's internals. The
 /// take wrappers (merge/save/load/drop_index) route each index report back
@@ -77,6 +37,12 @@ struct IndexerFixture {
     Project project{files, {}, &loop, &pool};
     BackgroundIndex& background = project.background_index;
     ReindexQueue& queue = project.background_index.reindexes;
+
+    /// The files of every index change the project told of, in order.
+    llvm::SmallVector<Fid> changed;
+
+    Signal<llvm::ArrayRef<Fid>>::Connection changed_conn = project.on_index_changed.connect(
+        [this](llvm::ArrayRef<Fid> files) { changed.append(files.begin(), files.end()); });
 
     IndexerFixture() {
         project.rules = Rules(project.settings, project.root, "");
@@ -125,7 +91,7 @@ struct IndexerFixture {
     /// (false = a header of another format, or corrupt).
     bool load() {
         if(project.database) {
-            project.listings.read(*project.database);
+            project.saved_members.read(*project.database);
         }
         index::IndexReport report;
         bool decoded =

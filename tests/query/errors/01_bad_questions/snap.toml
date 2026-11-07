@@ -8,6 +8,15 @@ stdout = '''
 stderr = "error: No index cache at ${WS}/.clice; run `clice index` first"
 exit = 1
 
+[test."$ clice query call-graph add --direction caller"]
+stdout = '''
+{
+  "error": "invalid enum value: caller (supported: callers, callees, both)",
+  "stale": []
+}
+'''
+exit = 2
+
 [test."$ clice index"]
 stdout = '''
 Indexed 1 translation unit in #s: 2 file shards (# KB), 6 symbols.
@@ -18,11 +27,29 @@ exit = 0
 [test."$ clice query call-graph add --direction sideways"]
 stdout = '''
 {
-  "error": "invalid direction 'sideways': expected callers, callees or both",
+  "error": "invalid enum value: sideways (supported: callers, callees, both)",
   "stale": []
 }
 '''
-exit = 1
+exit = 2
+
+[test."$ clice query project-files --filter sources"]
+stdout = '''
+{
+  "error": "invalid enum value: sources (supported: all, source, header, module)",
+  "stale": []
+}
+'''
+exit = 2
+
+[test."$ clice query type-hierarchy add --direction up"]
+stdout = '''
+{
+  "error": "invalid enum value: up (supported: supertypes, subtypes, both)",
+  "stale": []
+}
+'''
+exit = 2
 
 [test."$ clice query definition nope"]
 stdout = '''

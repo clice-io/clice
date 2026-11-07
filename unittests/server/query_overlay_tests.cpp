@@ -26,8 +26,12 @@ ZEST_SUITE(QueryOverlay, Tester) {
 
 ServedProjectFixture fx;
 Project& project = fx.served->project;
-index::IndexQuery& index_query = project.index_query;
-index::IndexQuery disk_query{project.index, project.file_table, &project.freshness, nullptr};
+index::IndexQuery disk_query{project.index, project.file_table, &project.freshness};
+
+/// The project's index over the documents open now.
+index::IndexQuery index_query() const {
+    return fx.served->query();
+}
 
 TempDir dir;
 index::TUIndex full_index;
@@ -55,7 +59,6 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     auto& st = project.pchs["key"];
     st.path = "unused.pch";
     st.index_path = blob_path;
-    st.index = nullptr;
 
     focus_path = std::string(full_index.path(full_index.focus_file()));
     auto it = sources.all_files.find(path::filename(focus_path));
@@ -67,6 +70,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     compiled->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit)))));
     compiled->pch_key = "key";
+    compiled->preamble_index = project.preamble_index("key");
     compiled->generation = fx.generation(session->path_id);
     entry.latest = std::move(compiled);
 }
@@ -131,7 +135,7 @@ void install_empty_index(std::source_location location = std::source_location::c
 index::IndexQuery::Cursor
     cursor_of(llvm::StringRef name,
               std::source_location location = std::source_location::current()) {
-    auto cursor = index_query.symbol_at(session->path_id, point(name));
+    auto cursor = index_query().symbol_at(session->path_id, point(name));
     ZEXPECT(cursor);
     return cursor.value_or(index::IndexQuery::Cursor{});
 }
@@ -139,7 +143,7 @@ index::IndexQuery::Cursor
 /// The sites carrying `kind` for the symbol under a marker.
 std::vector<index::Site> relations(llvm::StringRef name, RelationKind kind) {
     auto cursor = cursor_of(name);
-    return index_query.sites(cursor.symbols.front(), cursor.site.file, kind);
+    return index_query().sites(cursor.symbols.front(), cursor.site.file, kind);
 }
 
 /// The 0-based line a site starts on.
@@ -205,13 +209,13 @@ int main() { return 0; }
     install_empty_index();
 
     auto cursor = cursor_of("macro");
-    auto info = index_query.symbol_info(cursor.symbols.front());
+    auto info = index_query().symbol_info(cursor.symbols.front());
     ZASSERT(info);
     ZEXPECT(info->name == "FOO");
 
     // The definition text comes from the same preamble entries, sliced from
     // the buffer: the hover card for a `#define` above the PCH bound.
-    auto definition = index::declared_text(index_query,
+    auto definition = index::declared_text(index_query(),
                                            cursor.symbols.front(),
                                            cursor.site.file,
                                            RelationKind::Definition);
@@ -235,11 +239,11 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     // overlay's symbol table does.
     auto bar_hash = hash_of("bar");
 
-    auto info = index_query.symbol_info(bar_hash);
+    auto info = index_query().symbol_info(bar_hash);
     ZASSERT(info);
     ZEXPECT(info->name == "bar");
 
-    auto def = index_query.first_site(bar_hash, Fid{}, RelationKind::Definition);
+    auto def = index_query().first_site(bar_hash, Fid{}, RelationKind::Definition);
     ZASSERT(def);
     ZEXPECT(def->path.ends_with("foo.h"));
 }
@@ -280,7 +284,7 @@ int main() { §(mcall)⟦§(mcall)callee⟧(); return 0; }
     merge_disk_index();
 
     auto callers =
-        feature::call_graph(index_query, hash_of("callee"), Fid{}, {.callees = false}).callers;
+        feature::call_graph(index_query(), hash_of("callee"), Fid{}, {.callees = false}).callers;
     ZASSERT(callers.size() == 2);
     for(auto& edge: callers) {
         ZEXPECT(edge.sites.size() == 1);
@@ -303,7 +307,7 @@ Derived instance;
 
     auto derived = hash_of("Derived");
     auto supertypes =
-        feature::type_hierarchy(index_query, derived, Fid{}, {.subtypes = false}).supertypes;
+        feature::type_hierarchy(index_query(), derived, Fid{}, {.subtypes = false}).supertypes;
     ZASSERT(supertypes.size() == 1);
     ZEXPECT(supertypes[0].symbol.name == "Base");
 
@@ -311,7 +315,7 @@ Derived instance;
     // there; the overlay's disk-snapshot relations must stop contributing.
     fx.open(header_path("derived.h"), "");
     supertypes =
-        feature::type_hierarchy(index_query, derived, Fid{}, {.subtypes = false}).supertypes;
+        feature::type_hierarchy(index_query(), derived, Fid{}, {.subtypes = false}).supertypes;
     ZEXPECT(supertypes.size() == 0);
 }
 
@@ -325,7 +329,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 )");
     open_with_overlay();
 
-    ZASSERT(index_query.first_site(hash_of("foo"), Fid{}, RelationKind::Definition));
+    ZASSERT(index_query().first_site(hash_of("foo"), Fid{}, RelationKind::Definition));
 
     // The disk was seen holding other text for the header: its overlay
     // entries describe text that no longer exists (freshness contract,
@@ -333,7 +337,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     project.file_table.disk.observe(
         project.file_table.intern(Spelling::absolute(header_path("foo.h"))),
         DiskObservation{.hash = 1});
-    ZEXPECT(!index_query.first_site(hash_of("foo"), Fid{}, RelationKind::Definition).has_value());
+    ZEXPECT(!index_query().first_site(hash_of("foo"), Fid{}, RelationKind::Definition).has_value());
 }
 
 ZEST_CASE(MacroDefinitionText) {
@@ -481,6 +485,7 @@ int main() { return 0; }
     auto& other_entry = fx.entry(other->path_id);
     auto other_compiled = std::make_shared<DocumentCompile>();
     other_compiled->pch_key = "key";
+    other_compiled->preamble_index = project.preamble_index("key");
     other_compiled->generation = fx.generation(other->path_id);
     other_entry.latest = std::move(other_compiled);
 
@@ -501,7 +506,7 @@ int main() { return 0; }
     // entry keeps serving — the prefix comparison is the freshness check.
     fx.served->invalidate(session->path_id);
     session->set_text(session->text().str() + "int more;\n");
-    ZEXPECT(index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition));
+    ZEXPECT(index_query().first_site(hash_of("FOO"), Fid{}, RelationKind::Definition));
 }
 
 ZEST_CASE(PreambleDriftSkipped) {
@@ -515,7 +520,7 @@ int main() { return 0; }
     // preamble moved on; once the buffer no longer starts with the blob's
     // stored preamble text, its entries must not be served.
     session->set_text("// drift\n" + session->text().str());
-    ZEXPECT(!index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition).has_value());
+    ZEXPECT(!index_query().first_site(hash_of("FOO"), Fid{}, RelationKind::Definition).has_value());
 }
 
 ZEST_CASE(OverlayOutranksDisk) {
@@ -546,7 +551,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))));
     project.index.edit(foo).reference_files.add(header_id.raw);
 
-    auto def = index_query.first_site(foo, Fid{}, RelationKind::Definition);
+    auto def = index_query().first_site(foo, Fid{}, RelationKind::Definition);
     ZASSERT(def);
     ZEXPECT(line_of(*def) == 1u);
 }
@@ -555,6 +560,7 @@ ZEST_CASE(SynthesizedContextSkipped) {
     // A header context's synthesized files name nothing on disk, and what
     // they declare is the host's to index: no entries, no dependency.
     auto synthesized = TestVFS::path(".clice-context.h");
+    auto host = TestVFS::path("host.cpp");
     add_focus("main.cpp",
               std::format(R"(
 #include "{}"
@@ -563,7 +569,9 @@ int main() {{ gen(); return 0; }}
                           synthesized));
     prepare();
     params.input.add_synthesized({
-        {synthesized, "inline void gen() {}\n"}
+        {.path = synthesized,
+         .content = "inline void gen() {}\n",
+         .origin = {.source = host, .runs = {{.length = 21}}}},
     });
     ZASSERT(try_compile());
 
@@ -571,10 +579,10 @@ int main() {{ gen(); return 0; }}
         llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
     ZASSERT(index.loaded());
     for(std::uint32_t i = 0; i < index.path_count(); i += 1) {
-        ZEXPECT(index.path(i) != synthesized);
+        ZEXPECT(index.path(i) != host);
     }
-    ZEXPECT(!ranges::any_of(unit->deps(),
-                            [&](const ReportedInput& dep) { return dep.path == synthesized; }));
+    ZEXPECT(
+        !ranges::any_of(unit->deps(), [&](const ReportedInput& dep) { return dep.path == host; }));
 }
 
 ZEST_CASE(UnreadableBlobCleared) {

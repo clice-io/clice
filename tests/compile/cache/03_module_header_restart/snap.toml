@@ -1,7 +1,5 @@
 ["cache survives a restart".links]
-document_links = [
-    { at = "import ⟦circle⟧;", target = "circle.cppm" },
-]
+document_links = []
 
 ["offline edit reaches its importers".errors]
 errors = [

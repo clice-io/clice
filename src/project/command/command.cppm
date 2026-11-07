@@ -240,7 +240,7 @@ struct ListedContext {
 
 /// What one resolution asks for beyond the file itself. The editor fields
 /// are filled by the served project for editor-facing compiles of open
-/// files (ServedProject::resolve_command);
+/// files (ServedProject::command_request);
 /// a background resolution (indexing, batch runs, `clice inspect`) leaves
 /// them empty and so depends on nothing but the project on disk.
 struct CommandRequest {
@@ -257,12 +257,6 @@ struct CommandRequest {
 
     /// The file is open in the editor (see self_contained).
     bool open = false;
-
-    /// Take the include trees the host search misses with preprocess runs
-    /// in this process (take_tree): the command line's way, which runs no
-    /// workers; the server takes them through its pool
-    /// (ServedProject::take_include_tree).
-    bool preprocess = false;
 };
 
 /// What a file compiles under, before anything is rendered

@@ -5,6 +5,7 @@ import :compile.diagnostic;
 import :compile.tidy;
 import :feature.diagnostics;
 import :index.tu_index;
+import :project.background;
 import :project.command;
 import :project.graph.pch;
 import :project.graph.pcm;
@@ -196,8 +197,7 @@ void ServedProject::retry_after_save(Session& session) {
     // make a header lean on its includer: a save showing what an includer
     // would provide, or saving a buffer whose compile has not finished yet,
     // runs it again. A result that stands holds for the text saved.
-    auto selection =
-        project.select_command(path_id, {.choice = active_choice(path_id), .open = true});
+    auto selection = project.select_command(path_id, command_request(path_id));
     if(selection.self_containment) {
         auto compiled = latest_at(path_id, session.version);
         bool leans =
@@ -219,11 +219,7 @@ void ServedProject::retry_after_save(Session& session) {
     llvm::SmallVector<Fid> modules{session.path_id};
     llvm::DenseSet<Fid> seen{session.path_id};
     auto add_imports = [&](NodeId importer) {
-        for(auto dep: project.graph.dependencies(importer)) {
-            if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {
-                continue;
-            }
-            auto module = dep.file();
+        for(auto module: imported_modules(project.graph, importer)) {
             if(seen.insert(module).second) {
                 modules.push_back(module);
             }
@@ -231,15 +227,15 @@ void ServedProject::retry_after_save(Session& session) {
     };
     add_imports(ast_node(session.path_id));
     for(std::size_t i = 0; i < modules.size(); i += 1) {
-        retry |= project.forget_build_failure(modules[i]);
+        retry |= project.forget_module_failure(modules[i]);
         add_imports(module_node(modules[i]));
     }
     // A PCH that kept its preamble's errors misses the same lookups as a
     // failed build: a save rebuilds it.
     if(auto compiled = latest(path_id); compiled && compiled->pch_key) {
         if(compiled->pch_failed) {
-            retry |= project.forget_build_failure(*compiled->pch_key);
-        } else if(auto preamble = project.preamble_index(*compiled->pch_key);
+            retry |= project.forget_pch_failure(*compiled->pch_key);
+        } else if(auto& preamble = compiled->preamble_index;
                   preamble && ranges::any_of(preamble_diagnostics(*preamble),
                                              [](const feature::FileDiagnostic& diagnostic) {
                                                  return diagnostic.level >= DiagnosticLevel::Error;
@@ -256,42 +252,35 @@ void ServedProject::retry_after_save(Session& session) {
 std::vector<feature::FileDiagnostic>
     ServedProject::shown_background_diagnostics(const Session& session,
                                                 const CompileOutput& output) const {
-    auto it = background_diagnostics.find(session.path_id);
-    if(it == background_diagnostics.end() || it->second.text_hash != session.hash ||
+    auto* last = project.background_index.background_diagnostics(session.path_id);
+    if(!last || last->text_hash != session.hash ||
        output.diagnostics.source != CommandSource::Database || active_choice(session.path_id)) {
         return {};
     }
-    return feature::confirmed_background(it->second.diagnostics, output.diagnostics);
+    return feature::confirmed_background(last->diagnostics, output.diagnostics);
 }
 
-bool ServedProject::lacks_background_diagnostics(Fid path_id) const {
-    auto* document = find_document(path_id);
-    if(!document || document->serving != ServingMode::Escalated ||
+void ServedProject::book_background_diagnostics(const ServedDocument& document, bool first) {
+    auto& session = *document.session;
+    auto path_id = session.path_id;
+    if(!project.settings.background_diagnostics() || document.serving != ServingMode::Escalated ||
        project.entries(path_id).empty()) {
-        return false;
+        return;
     }
-    auto it = background_diagnostics.find(path_id);
-    return it == background_diagnostics.end() || it->second.text_hash != document->session->hash ||
-           (!it->second.unused_includes && shows_unused_includes(path_id));
+    auto& background = project.background_index;
+    if(auto* last = background.background_diagnostics(path_id);
+       last && last->text_hash == session.hash &&
+       (last->unused_includes || !shows_unused_includes(path_id))) {
+        return;
+    }
+    if(first) {
+        background.index_first(path_id, /*diagnostics=*/true);
+    } else {
+        background.enqueue(path_id, ReindexReason::DepsOnly, /*diagnostics=*/true);
+    }
 }
 
-bool ServedProject::shows_unused_includes(Fid path_id) const {
-    auto* document = find_document(path_id);
-    return document && document->serving == ServingMode::Escalated &&
-           project.settings.diagnostics.unused_includes &&
-           project.rules.lintable(project.file_table.resolve(path_id));
-}
-
-void
-    ServedProject::report_background_diagnostics(Fid path_id,
-                                                 std::uint64_t text_hash,
-                                                 bool unused_includes,
-                                                 std::vector<feature::FileDiagnostic> diagnostics) {
-    background_diagnostics[path_id] = {
-        .text_hash = text_hash,
-        .unused_includes = unused_includes,
-        .diagnostics = std::move(diagnostics),
-    };
+void ServedProject::show_background_diagnostics(Fid path_id) {
     // A compile owed shows them as it commits (CompileAttempt::commit).
     if(!current(path_id)) {
         return;
@@ -324,11 +313,8 @@ void ServedProject::each_input(Fid path_id, llvm::function_ref<void(const Inputs
             visit(pch->inputs);
         }
     }
-    for(auto dep: project.graph.dependencies(ast_node(path_id))) {
-        if(dep.kind != NodeKind::PCM || is_unresolved_import(dep)) {
-            continue;
-        }
-        if(auto* inputs = project.module_inputs(dep.file())) {
+    for(auto module: imported_modules(project.graph, ast_node(path_id))) {
+        if(auto* inputs = project.module_inputs(module)) {
             visit(*inputs);
         }
     }
@@ -369,6 +355,7 @@ void ServedProject::choice_changed(Session& session) {
             compiled.pch_key.reset();
             compiled.pch_failed = false;
             compiled.base_pch_key.reset();
+            compiled.preamble_index.reset();
             compiled.index.reset();
         });
     }
@@ -391,11 +378,20 @@ void ServedProject::escalate(Fid path_id) {
         return;
     }
     document.serving = ServingMode::Escalated;
-    // Its text as saved, the document shows what a background run of it
-    // brings from now on.
-    if(matching_shard(*document.session)) {
+    // Its compile serves the file's index, unless only a background run
+    // shows what the document is to show: what the bodies of the headers
+    // its compile skips hold, its unused includes. Its text as indexed,
+    // that run can go now.
+    if(!project.settings.background_diagnostics()) {
+        project.background_index.leave_to_document(path_id);
+    } else if(query().serving(path_id)) {
         decide_serving(document);
     }
+}
+
+bool ServedProject::shows_unused_includes(Fid path_id) const {
+    return project.settings.diagnostics.unused_includes &&
+           project.rules.lintable(project.file_table.resolve(path_id));
 }
 
 void ServedProject::request_compile(std::shared_ptr<Session> session) {
@@ -632,19 +628,6 @@ async::task<Result> ServedProject::CompileAttempt::run() {
     if(project.settings.diagnostics.clang_tidy &&
        project.rules.lintable(project.file_table.resolve(path_id))) {
         tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
-        auto slow_checks = project.settings.diagnostics.clang_tidy_slow_checks;
-        tidy_config->params.slow_checks = slow_checks.value_or(false);
-        if(!slow_checks && served.named_slow_checks.insert(tidy_config->params.checks).second) {
-            if(auto checks = tidy::slow_checks(tidy_config->params); !checks.empty()) {
-                LOG_GUIDANCE(
-                    "The clang-tidy configuration of {} enables checks too slow for an editor, or "
-                    "not measured for one, which do not run on open files: {}. Set "
-                    "`clang_tidy_slow_checks = true` under `[diagnostics]` to run them, or "
-                    "`false` to leave them out without this message; `clice lint` runs them.",
-                    file_path,
-                    llvm::join(checks, ", "));
-            }
-        }
         auto& suspects = session->suspects;
         if(tidy_config->error.empty() && !suspects.tidy && suspects.pch.empty() &&
            !session->crash_record(Compile) && !session->crash_stops(Tidy, Session::Clock::now())) {
@@ -705,8 +688,8 @@ async::task<Result> ServedProject::CompileAttempt::run() {
 
 async::task<std::optional<Result>> ServedProject::CompileAttempt::command(bool first) {
     params = {};
-    params.known_instantiations = known_instantiations;
-    params.standard_library_instantiations =
+    params.indexing.known_instantiations = known_instantiations;
+    params.indexing.standard_library_instantiations =
         project.settings.project.standard_library_instantiations;
     params.skip_bodies = project.settings.project.skip_header_bodies;
     params.path = file_path;
@@ -716,7 +699,10 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::command(bool f
     if(tidy_dispatch) {
         params.tidy = tidy_config->params;
     }
-    resolution = co_await served.document_command(path_id, nullptr, [&] { return ticket.fresh(); });
+    resolution = co_await project.resolve_with_trees(
+        path_id,
+        [&] { return served.command_request(path_id); },
+        [&] { return ticket.fresh(); });
     if(!ticket.fresh()) {
         co_return Result::Stale;
     }
@@ -756,7 +742,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::modules() {
         crashed = true;
     }
     for(auto module: imports.failed) {
-        if(auto* crash = project.build_crash(module)) {
+        if(auto* crash = project.module_build_crash(module)) {
             served.record_crash(session, kind, crash->death, crash->cause);
             crashed = true;
         }
@@ -788,7 +774,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::pch() {
     built = std::move(*waited);
     if(built.preamble) {
         auto* crash = built.refused                    ? &*built.refused
-                      : built.result == Result::Failed ? project.build_crash(*built.preamble)
+                      : built.result == Result::Failed ? project.pch_build_crash(*built.preamble)
                                                        : nullptr;
         if(crash) {
             served.record_crash(session, PCH, crash->death, crash->cause);
@@ -863,7 +849,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
     });
     if(project.store) {
         transfer = project.store->begin_transfer();
-        params.index_output_path = transfer->tmp_path;
+        params.indexing.output_path = transfer->tmp_path;
     }
     auto& pool = served.server.pool;
     auto result = co_await deliver(
@@ -1022,6 +1008,7 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     next->pch_key = pch_failed ? built.preamble : built.loaded;
     next->pch_failed = pch_failed;
     next->base_pch_key = built.base;
+    next->preamble_index = preamble_index;
     next->host = resolution.host;
     next->command = resolution.ref.command;
     // The AST and the file index commit together — that pairing is what lets
@@ -1082,8 +1069,8 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     // FIXME: released even while another open document still fails on that
     // preamble: its next compile runs the failing build once more.
     if(entry.latest && entry.latest->pch_failed && entry.latest->pch_key != next->pch_key &&
-       !project.build_crash(*entry.latest->pch_key)) {
-        project.forget_build_failure(*entry.latest->pch_key);
+       !project.pch_build_crash(*entry.latest->pch_key)) {
+        project.forget_pch_failure(*entry.latest->pch_key);
     }
     entry.latest = std::move(next);
     if(tidy_config) {
@@ -1147,7 +1134,7 @@ void ServedProject::adopt_pch(const Ticket& ticket,
         return;
     }
     if(built.preamble && built.result != Result::Success) {
-        if(auto* crash = project.build_crash(*built.preamble)) {
+        if(auto* crash = project.pch_build_crash(*built.preamble)) {
             record_crash(session, kind, crash->death, crash->cause);
         }
         return;
@@ -1158,10 +1145,12 @@ void ServedProject::adopt_pch(const Ticket& ticket,
        built.partial) {
         return;
     }
+    auto preamble = built.preamble ? project.preamble_index(*built.preamble) : nullptr;
     update_latest(path_id, [&](DocumentCompile& compiled) {
         compiled.pch_key = built.preamble ? built.preamble : built.base;
         compiled.pch_failed = false;
         compiled.base_pch_key = built.base;
+        compiled.preamble_index = std::move(preamble);
     });
     session->succeeded(kind, ticket.generation);
 }

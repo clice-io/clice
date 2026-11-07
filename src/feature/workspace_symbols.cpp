@@ -4,7 +4,7 @@ import :feature.document_symbols;
 import :feature.protocol;
 import :feature.workspace_symbols;
 import :index.site;
-import :index.peer_queries;
+import :index.query;
 import :index.search;
 import :index.symbol;
 import :index.symbol_query;
@@ -26,11 +26,10 @@ protocol::SymbolInformation symbol_information(const index::SymbolInfo& symbol,
     return info;
 }
 
-std::vector<WorkspaceSymbol> workspace_symbols(const index::PeerQueries& queries,
+std::vector<WorkspaceSymbol> workspace_symbols(const index::IndexQuery& query,
                                                llvm::StringRef text,
                                                const Spelling& root,
                                                PositionEncoding encoding) {
-    auto& query = queries.own;
     std::vector<WorkspaceSymbol> results;
     auto parsed = index::SymbolQuery::parse(text);
     if(!parsed) {
@@ -44,7 +43,7 @@ std::vector<WorkspaceSymbol> workspace_symbols(const index::PeerQueries& queries
     for(auto& located: index::search(query, *parsed, workspace_symbol_limit)) {
         // Every project answers workspace/symbol (MasterServer): an open
         // file only from the project serving its buffer.
-        if(auto* serving = queries.open_in(located.site.file); serving && serving != &query) {
+        if(auto* serving = query.owner_of(located.site.file); serving && serving != &query) {
             continue;
         }
         auto container = query.container_name(located.symbol.hash, located.site.file);

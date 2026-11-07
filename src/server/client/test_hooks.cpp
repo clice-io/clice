@@ -203,9 +203,9 @@ void LSPClient::register_test_hooks() {
             for(auto& served: this->server.projects) {
                 auto& project = served->project;
                 for(auto& [key, pch]: project.pchs) {
-                    if(pch.index) {
+                    if(auto index = pch.index.lock()) {
                         stats.pch_loaded_indexes += 1;
-                        stats.pch_index_bytes += pch.index->bytes().size();
+                        stats.pch_index_bytes += index->bytes().size();
                     }
                     stats.pch_cache_entries += pch.path.empty() ? 0 : 1;
                 }
@@ -224,7 +224,7 @@ void LSPClient::register_test_hooks() {
                     stats.synthesized_contexts += entry.result.synthesized != nullptr ? 1 : 0;
                 });
 
-                stats.import_scans += served->project.import_scans.runs;
+                stats.import_scans += served->project.import_scan_runs;
                 stats.index_idle = stats.index_idle && served->project.background_index.idle();
             }
             stats.sessions = static_cast<std::uint32_t>(this->server.documents.size());

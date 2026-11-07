@@ -229,7 +229,7 @@ struct NamespaceAlias {
     std::uint32_t file = 0;
 };
 
-struct IncludeTree {
+struct ScopedIncludeTree {
     /// The unit, `~0u` out of scope.
     std::uint32_t unit = 0;
 
@@ -267,7 +267,7 @@ struct Facts {
     /// Each unit's include tree, a node per file entry or guarded directive:
     /// a header's include edges merged over units report chains no single
     /// unit runs (<stdio.h> includes <stdarg.h> for its va_list type alone).
-    std::vector<IncludeTree> trees;
+    std::vector<ScopedIncludeTree> trees;
 };
 
 /// Read the facts of every indexed file whose path, relative to the project
