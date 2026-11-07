@@ -729,7 +729,9 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
         if(head.contains('='))
             continue;
 
-        auto tokens = split_command(line, sys::cmd::Quoting::POSIX);
+        // Quoted for the system's shell: Windows paths keep their
+        // backslashes.
+        auto tokens = split_command(line);
         if(tokens.empty())
             continue;
 
