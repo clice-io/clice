@@ -201,6 +201,41 @@ export const SCENARIOS: Scenario[] = [
         ],
         files: { "src/main.cpp": { recorded: [["-fmodules"]], excludes: ["-fmodules"] } },
     },
+    {
+        // CMake scans GCC's module units and hands each its own module
+        // mapper, a file of the unit that every command must leave out,
+        // with GCC's dependency format; clice builds the module itself.
+        name: "cmake ninja conda gcc modules",
+        platforms: ["linux"],
+        requires: [
+            "cmake",
+            "ninja",
+            `${CONDA}/x86_64-conda-linux-gnu-gcc`,
+            `${CONDA}/x86_64-conda-linux-gnu-g++`,
+        ],
+        build: cmake(
+            "Ninja",
+            `${CONDA}/x86_64-conda-linux-gnu-gcc`,
+            `${CONDA}/x86_64-conda-linux-gnu-g++`,
+            "-DCOMPAT_MODULES=ON",
+        ),
+        files: {
+            "src/greeting.cppm": {
+                recorded: [
+                    ["-fmodules-ts"],
+                    ["-fmodule-mapper=CMakeFiles/compat_modules.dir/src/greeting.cppm.o.modmap"],
+                    ["-fdeps-format=p1689r5"],
+                ],
+                excludes: ["-fmodules-ts", "-fdeps-format=p1689r5"],
+            },
+            "src/use_greeting.cpp": {
+                recorded: [
+                    ["-fmodule-mapper=CMakeFiles/compat_modules.dir/src/use_greeting.cpp.o.modmap"],
+                ],
+                excludes: ["-fmodules-ts", "-fdeps-format=p1689r5"],
+            },
+        },
+    },
     // GCC's two-core tuning form, a name clang does not know.
     cmakeCross(
         "cmake ninja aarch64 cross",

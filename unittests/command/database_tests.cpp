@@ -343,6 +343,31 @@ ZEST_CASE(FixtureLayouts) {
     }
 };
 
+ZEST_CASE(PerFileOption) {
+    /// An option naming a file of each unit gives every entry a command of
+    /// its own: the load names it. User content setting units apart is the
+    /// build's, and commands most entries share are no problem.
+    auto option = [](auto spell) {
+        FileTable file_table;
+        CommandTable commands;
+        CompilationDatabase database{file_table, commands};
+        for(int i = 0; i < 64; i += 1) {
+            auto file = std::format("{}.cpp", i);
+            database.add_command("/fake", file, llvm::StringRef(spell(i, file)));
+        }
+        return per_file_option(commands, database.entries());
+    };
+    ZEXPECT(option([](int i, llvm::StringRef file) {
+                return std::format("clang++ --clice-trace={}.json -DUNIT={} {}", i, i, file);
+            }) == "--clice-trace");
+    ZEXPECT(option([](int i, llvm::StringRef file) {
+                return std::format("clang++ -DUNIT={} {}", i, file);
+            }).empty());
+    ZEXPECT(option([](int, llvm::StringRef file) {
+                return std::format("clang++ --clice-trace=all.json {}", file);
+            }).empty());
+};
+
 };  // ZEST_SUITE(Database)
 
 /// path_id that `cdb` assigns to a file under the temp root.
@@ -485,8 +510,8 @@ ZEST_CASE(ReorderChangesSelection) {
 };
 
 ZEST_CASE(CodegenChangeIgnored) {
-    // Entry identity is the Frontend canonical hash, which drops codegen-only
-    // flags. Swapping one codegen flag for another therefore yields no change.
+    // Codegen-only flags leave the command, and with it the entry identity:
+    // swapping one for another therefore yields no change.
     // (Note: -O* is NOT codegen-only here — it defines __OPTIMIZE__ and is
     // kept, so an -O change does count; see OptLevelIsSemantic.)
     TempDir tmp;

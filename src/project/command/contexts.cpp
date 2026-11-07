@@ -13,15 +13,14 @@ namespace clice {
 
 namespace {
 
-/// The flags a context's label tells a command by: each -D, -O, -std and
-/// -g, a separate value joined to its -D or -O.
+/// The flags a context's label tells a command by: each -D, -O and -std, a
+/// separate value joined to its -D or -O.
 llvm::SmallVector<std::string> state_flags(Project& project, CommandID command) {
     auto argv = project.commands.render_full(command);
     llvm::SmallVector<std::string> flags;
     for(std::size_t j = 0; j < argv.size(); j += 1) {
         llvm::StringRef a(argv[j]);
-        if(a.starts_with("-D") || a.starts_with("-O") || a.starts_with("-std=") ||
-           a.starts_with("-g")) {
+        if(a.starts_with("-D") || a.starts_with("-O") || a.starts_with("-std=")) {
             flags.push_back(a.str());
             if((a == "-D" || a == "-O") && j + 1 < argv.size()) {
                 j += 1;

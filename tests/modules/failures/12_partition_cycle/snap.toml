@@ -1,0 +1,46 @@
+[test."p1.cppm"]
+wrong = "the range of a partition import ends at its semicolon, as a named import's does"
+errors = [
+    {
+        at = "import :⟦p2; … ⟧ (2 lines)",
+        severity = "error",
+        message = "cyclic dependency in module 'M:p2': M:p2 -> M:p1 -> M:p2",
+        source = "clang",
+        code = "err_module_cycle",
+    },
+]
+
+[test."p2.cppm"]
+wrong = "the range of a partition import ends at its semicolon, as a named import's does"
+errors = [
+    {
+        at = "import :⟦p1; … ⟧ (2 lines)",
+        severity = "error",
+        message = "cyclic dependency in module 'M:p1': M:p1 -> M:p2 -> M:p1",
+        source = "clang",
+        code = "err_module_cycle",
+    },
+]
+
+[test."m.cppm"]
+wrong = "the range of a partition import ends at its semicolon, as a named import's does"
+errors = [
+    {
+        at = "export import :⟦p1; … export⟧ (2 lines)",
+        severity = "error",
+        message = "cyclic dependency in module 'M:p1': M:p1 -> M:p2 -> M:p1",
+        source = "clang",
+        code = "err_module_cycle",
+    },
+]
+
+[test."main.cpp"]
+errors = [
+    {
+        at = "import ⟦M;⟧",
+        severity = "error",
+        message = "could not build module 'M': cyclic dependency in module 'M:p1': M:p1 -> M:p2 -> M:p1",
+        source = "clang",
+        code = "err_module_not_built",
+    },
+]

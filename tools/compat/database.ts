@@ -135,9 +135,10 @@ export async function nativeEntries(
 
 const OUTPUTS = new Set(["-c", "-MD", "-MMD", "-MP"]);
 const OUTPUTS_WITH_VALUE = new Set(["-o", "-MF", "-MT", "-MQ"]);
-/// An object file joined to `-o` (not an `-objc*` option), and the
-/// dependency file GCC's driver hands its preprocessor.
-const JOINED_OUTPUTS = /^(-o(?!bj)|-Wp,-M+D,)/;
+/// An object file joined to `-o` (not an `-objc*` option), the dependency
+/// file GCC's driver hands its preprocessor, and GCC's module dependency
+/// scan, which wants the -MD this leaves out.
+const JOINED_OUTPUTS = /^(-o(?!bj)|-Wp,-M+D,|-fdeps-)/;
 /// cl's options carry their values joined.
 const MSVC_OUTPUTS = /^[/-](c|FS|showIncludes|Fo.*|Fd.*)$/;
 

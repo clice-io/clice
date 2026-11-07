@@ -35,6 +35,10 @@ llvm::StringRef anchored(CommandTable& commands,
 /// the command starts with the compiler itself.
 std::size_t wrapper_prefix_len(kotatsu::string_list_ref argv);
 
+/// What the commands of entries a build compiles alike share
+/// (Normalizer::shared_key): a 128-bit hash.
+using SharedKey = std::pair<std::uint64_t, std::uint64_t>;
+
 /// Reads a raw compile command into the table, once: wrapper strip → driver
 /// info → @rsp expansion → nvcc translation → parse → classify → path
 /// normalize → dedup.
@@ -63,6 +67,21 @@ struct Normalizer {
     std::optional<CommandID> normalize(const Spelling& directory,
                                        Fid file,
                                        llvm::StringRef command);
+
+    /// The tokens of `command`, quoted as the database writes it, into
+    /// `tokens`, whose strings keep their storage for the next command.
+    void split(llvm::StringRef command, std::vector<std::string>& tokens) const;
+
+    /// What the commands of entries a build compiles alike share: a hash of
+    /// `command_line` run from `directory`, with the entry's `file` as the
+    /// database writes it and the values every command leaves out (its
+    /// output, its dependency files, `-frandom-seed`) masked, so a database
+    /// normalizes each such command once. None when the command names its
+    /// file other than once, or reads files of its own (a response file,
+    /// nvcc's options files), which a normalization records.
+    std::optional<SharedKey> shared_key(const Spelling& directory,
+                                        llvm::StringRef file,
+                                        kotatsu::string_list_ref command_line) const;
 
     /// `arguments` with their response files read, and an NVCC command's
     /// options files, driver-mode aware: CL commands tokenize with Windows

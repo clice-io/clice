@@ -1,0 +1,32 @@
+[answers.newer.hover]
+markdown = '''
+**variable** `standard`
+
+```cpp
+export constexpr long standard = __cplusplus
+```
+**Value:** `202302 (0x3163e)`
+'''
+range = "return ⟦standard⟧ + twice;"
+
+[answers.newer_twice.hover]
+markdown = '''
+**variable** `twice`
+
+```cpp
+export constexpr long twice = standard * 2
+```
+**Value:** `404604 (0x62c7c)`
+'''
+range = "return standard + ⟦twice⟧;"
+
+[answers.older.hover]
+markdown = '''
+**variable** `standard`
+
+```cpp
+export constexpr long standard = __cplusplus
+```
+**Value:** `202002 (0x31512)`
+'''
+range = "return ⟦standard⟧;"

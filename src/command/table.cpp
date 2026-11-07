@@ -39,6 +39,21 @@ llvm::StringRef language_state_at_slot(llvm::ArrayRef<Arg> args) {
     return cl_state.empty() ? x_state : cl_state;
 }
 
+/// Whether the command writes a precompiled header: it compiles its input
+/// as a header (`-x c++-header`) — as CMake builds a target's precompiled
+/// headers from `cmake_pch.hxx.cxx` — or emits a PCH, and does not only
+/// check its syntax (Bazel's header parsing).
+bool writes_pch(llvm::ArrayRef<Arg> args) {
+    namespace types = clang::driver::types;
+    auto has = [&](unsigned id) {
+        return ranges::any_of(args, [&](const Arg& arg) { return arg.opt_id == id; });
+    };
+    auto type = types::lookupTypeForTypeSpecifier(language_state_at_slot(args).str().c_str());
+    return ((type != types::TY_INVALID && types::onlyPrecompileType(type)) ||
+            has(clang_options::OPT_emit_pch)) &&
+           !has(clang_options::OPT_fsyntax_only);
+}
+
 /// Whether the driver compiles C inputs as C++, as `g++` and `clang++` do
 /// under any version or target affix (`x86_64-linux-gnu-g++-13`), and
 /// `zig c++` — unless a `--driver-mode=`, the last one winning, says
@@ -79,20 +94,33 @@ const Command& CommandTable::get(CommandID id) const {
     return *commands.get(static_cast<std::uint32_t>(id));
 }
 
-LocalArg CommandTable::local_arg(const std::expected<cli::ParsedArg, cli::Error>& parsed,
-                                 llvm::ArrayRef<std::string> tokens) {
+std::optional<LocalArg>
+    CommandTable::local_arg(const std::expected<cli::ParsedArg, cli::Error>& parsed,
+                            llvm::ArrayRef<std::string> tokens) {
     if(!parsed || parsed->id == clang_options::OPT_UNKNOWN ||
        parsed->id == clang_options::OPT_INPUT) {
         auto index = parsed ? parsed->index : parsed.error().begin;
-        return {.opt_id = clang_options::OPT_UNKNOWN,
-                .cls = ArgClass::Unknown,
-                .spelling = strings.save(tokens[index]).data()};
+        if(is_discarded_unknown(tokens[index])) {
+            return std::nullopt;
+        }
+        return LocalArg{.opt_id = clang_options::OPT_UNKNOWN,
+                        .cls = ArgClass::Unknown,
+                        .spelling = strings.save(tokens[index]).data()};
+    }
+    // Where a module unit writes its BMI is the build's business; whether
+    // it writes one decides the BMI a precompile writes (Toolchain::synthesize).
+    if(parsed->id == clang_options::OPT_fmodule_output_EQ) {
+        return LocalArg{.opt_id = clang_options::OPT_fmodule_output, .cls = ArgClass::Precompiled};
     }
     LocalArg local{.opt_id = parsed->id, .alias = written_alias(*parsed)};
     for(llvm::StringRef value: parsed->values) {
         local.values.push_back(strings.save(value).data());
     }
-    local.cls = classify_option(local.opt_id, local.values);
+    auto cls = classify_option(local.opt_id, local.values);
+    if(!cls) {
+        return std::nullopt;
+    }
+    local.cls = *cls;
     return local;
 }
 
@@ -101,22 +129,40 @@ CommandID CommandTable::save(Command command, llvm::ArrayRef<LocalArg> args) {
     for(auto& arg: args) {
         view.push_back(arg.view());
     }
+    // An output names a file of one unit: kept only to find the
+    // precompiled header a command writes, it would set every other
+    // command apart.
+    if(!writes_pch(view)) {
+        view.erase(
+            ranges::remove_if(view,
+                              [](const Arg& arg) { return arg.opt_id == clang_options::OPT_o; })
+                .begin(),
+            view.end());
+    }
     command.args = view;
     auto id = commands.get(command);
     auto stored = commands.get(id);
     if(stored->args.data() == view.data()) {
-        stored->args = persist(args);
+        stored->args = persist(view);
     }
     return CommandID(id);
 }
 
-llvm::ArrayRef<Arg> CommandTable::persist(llvm::ArrayRef<LocalArg> args) {
+llvm::ArrayRef<Arg> CommandTable::persist(llvm::ArrayRef<Arg> args) {
     auto* persisted = allocator->Allocate<Arg>(args.size());
     for(std::size_t i = 0; i < args.size(); i += 1) {
-        persisted[i] = args[i].view();
+        persisted[i] = args[i];
         persisted[i].values = persisted[i].values.copy(*allocator);
     }
     return {persisted, args.size()};
+}
+
+llvm::ArrayRef<Arg> CommandTable::persist(llvm::ArrayRef<LocalArg> args) {
+    llvm::SmallVector<Arg, 32> view;
+    for(auto& arg: args) {
+        view.push_back(arg.view());
+    }
+    return persist(view);
 }
 
 llvm::StringRef CommandTable::intern(llvm::StringRef text) {
@@ -156,17 +202,10 @@ void CommandTable::render_identity(CommandID id, std::string& out) {
         switch(arg.cls) {
             case ArgClass::Semantic:
             case ArgClass::UserContent:
-            case ArgClass::Diagnostics: render_portable(arg); break;
+            case ArgClass::Diagnostics:
+            case ArgClass::Precompiled: render_portable(arg); break;
             case ArgClass::Unknown: append(arg.spelling); break;
             case ArgClass::Input: append("\x01input"); break;
-            case ArgClass::Codegen: break;
-            // The precompiled header a command reads decides what it
-            // compiles, though no render passes it on.
-            case ArgClass::Discarded:
-                if(arg.opt_id == clang_options::OPT_include_pch) {
-                    render_portable(arg);
-                }
-                break;
         }
     }
     if(!command.query_toolchain) {
@@ -199,21 +238,12 @@ llvm::StringRef CommandTable::forced_language(CommandID id) const {
 }
 
 std::optional<Spelling> CommandTable::pch_output(CommandID id) const {
-    namespace types = clang::driver::types;
-    auto type = types::lookupTypeForTypeSpecifier(forced_language(id).str().c_str());
-    bool emits = type != types::TY_INVALID && types::onlyPrecompileType(type);
-    const char* output = nullptr;
-    for(auto& arg: get(id).args) {
-        if(arg.opt_id == clang_options::OPT_emit_pch) {
-            emits = true;
-        } else if(arg.opt_id == clang_options::OPT_o && arg.values.size() == 1) {
-            output = arg.values[0];
+    for(auto& arg: views::reverse(get(id).args)) {
+        if(arg.opt_id == clang_options::OPT_o && arg.values.size() == 1) {
+            return Spelling::absolute(arg.values[0]);
         }
     }
-    if(!emits || !output) {
-        return std::nullopt;
-    }
-    return Spelling::absolute(output);
+    return std::nullopt;
 }
 
 llvm::SmallVector<Spelling, 2> CommandTable::pch_inputs(CommandID id) const {
@@ -327,8 +357,7 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
                 argv.push_back(source.data());
                 break;
             }
-            case ArgClass::Codegen:
-            case ArgClass::Discarded:
+            case ArgClass::Precompiled:
             case ArgClass::Unknown: break;
         }
     }

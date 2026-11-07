@@ -1,0 +1,32 @@
+[test."ring_a.cppm"]
+errors = [
+    {
+        at = "import ⟦RingB;⟧",
+        severity = "error",
+        message = "cyclic dependency in module 'RingB': RingB -> RingC -> RingA -> RingB",
+        source = "clang",
+        code = "err_module_cycle",
+    },
+]
+
+[test."ring_b.cppm"]
+errors = [
+    {
+        at = "import ⟦RingC;⟧",
+        severity = "error",
+        message = "cyclic dependency in module 'RingC': RingC -> RingA -> RingB -> RingC",
+        source = "clang",
+        code = "err_module_cycle",
+    },
+]
+
+[test."ring_c.cppm"]
+errors = [
+    {
+        at = "import ⟦RingA;⟧",
+        severity = "error",
+        message = "cyclic dependency in module 'RingA': RingA -> RingB -> RingC -> RingA",
+        source = "clang",
+        code = "err_module_cycle",
+    },
+]

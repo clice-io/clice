@@ -45,3 +45,18 @@ test("dependency files", { errors: [MISSING, UNCONVERTED] }, async (t) => {
     await t.cli("command convert -- missing-g++ -Wp,-fclice-unknown main.cpp");
     await t.cli("command convert -- missing-g++ -Wp,-include -Wp,config.h main.cpp");
 });
+
+// What else a build writes beside the object leaves too: a compilation
+// database fragment, timings, intermediate files, serialized diagnostics,
+// an assembler listing, cl's listings, executable and module dependencies.
+test("other outputs", { errors: [MISSING, UNCONVERTED] }, async (t) => {
+    await t.cli(
+        "command convert -- missing-clang++ -std=c++20 -MJ main.o.json -ftime-trace=main.json -save-temps=obj --serialize-diagnostics main.dia main.cpp",
+    );
+    await t.cli(
+        "command convert -- missing-g++ -std=gnu++20 -Wa,-adhlns=main.lst -Xassembler --noexecstack main.cpp",
+    );
+    await t.cli(
+        "command convert -- cl-missing.exe /std:c++20 /c /Famain.asm /FRmain.sbr /Femain.exe /sourceDependencies main.json /showIncludes /showFilenames main.cpp",
+    );
+});

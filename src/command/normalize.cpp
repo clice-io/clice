@@ -34,6 +34,20 @@ bool is_assignment_token(llvm::StringRef token) {
                           [](char c) { return llvm::isAlnum(c) || c == '_'; });
 }
 
+/// `family` as the `--driver-mode=` options among `tokens` leave it, the
+/// last one winning.
+template <typename Tokens>
+CompilerFamily with_driver_mode(CompilerFamily family,
+                                llvm::StringRef driver,
+                                const Tokens& tokens) {
+    for(llvm::StringRef token: tokens) {
+        if(token.consume_front("--driver-mode=")) {
+            family = token == "cl" ? CompilerFamily::ClangCL : driver_family(driver);
+        }
+    }
+    return family;
+}
+
 }  // namespace
 
 Spelling spelled(llvm::StringRef text, const Spelling& base, const fs::cygwin::MountTable* mounts) {
@@ -119,18 +133,10 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     /// --driver-mode may also arrive from inside a response file (clang
     /// interprets it post-expansion); the pre-expansion scan only picks the
     /// response tokenization style.
-    auto scan_driver_mode = [&](const auto& argv) {
-        for(llvm::StringRef token: argv) {
-            if(token.consume_front("--driver-mode=")) {
-                command.family =
-                    token == "cl" ? CompilerFamily::ClangCL : driver_family(command.driver);
-            }
-        }
-    };
-    scan_driver_mode(arguments);
+    command.family = with_driver_mode(command.family, command.driver, arguments);
 
     auto parse_args = expand_response_files(arguments, directory, command.family);
-    scan_driver_mode(parse_args);
+    command.family = with_driver_mode(command.family, command.driver, parse_args);
 
     /// ccache's --ccache-skip guards the NEXT token from ccache's own
     /// processing; the token itself belongs to the compiler command.
@@ -254,7 +260,7 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
                 included_pch = false;
                 args.push_back({
                     .opt_id = clang_options::OPT_include_pch,
-                    .cls = ArgClass::Discarded,
+                    .cls = ArgClass::Precompiled,
                     .values =
                         {anchored(commands, clang_options::OPT_include_pch, value, anchor, mounts)
                              .data()},
@@ -266,26 +272,28 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
                 continue;
             }
             if(value == "-emit-pch") {
-                args.push_back({.opt_id = clang_options::OPT_emit_pch, .cls = ArgClass::Discarded});
+                args.push_back(
+                    {.opt_id = clang_options::OPT_emit_pch, .cls = ArgClass::Precompiled});
                 continue;
             }
             /// Bazel's module rules (xclang's) embed a module's sources in
             /// it: the flag goes as its driver spelling does
             /// (is_discarded_option).
             if(value == "-fmodules-embed-all-files") {
-                args.push_back({.opt_id = clang_options::OPT_fmodules_embed_all_files,
-                                .cls = ArgClass::Discarded});
                 continue;
             }
         }
 
         auto local = commands.local_arg(parsed, parse_args);
+        if(!local) {
+            continue;
+        }
 
         /// g++ knows warnings clang does not (-Wlogical-op, -Wuseless-cast),
         /// each of which clang would report as unknown on every file.
         if(command.family == CompilerFamily::GCC && id == clang_options::OPT_W_Joined &&
-           !clang_warning(local.values[0])) {
-            local.cls = ArgClass::Discarded;
+           !clang_warning(local->values[0])) {
+            continue;
         }
 
         /// Path values absolutize where the compile runs, so the command
@@ -293,11 +301,11 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
         /// runs elsewhere.
         // The working directory itself is relative to the entry's.
         bool working = id == clang_options::OPT_working_directory;
-        for(auto& value: local.values) {
+        for(auto& value: local->values) {
             value = anchored(commands, id, value, working ? directory : anchor, mounts).data();
         }
 
-        args.push_back(std::move(local));
+        args.push_back(std::move(*local));
     }
 
     if(!slot_placed) {
@@ -309,10 +317,85 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
 std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
                                                Fid file,
                                                llvm::StringRef command) {
+    std::vector<std::string> tokens;
+    split(command, tokens);
+    return normalize(directory, file, tokens);
+}
+
+void Normalizer::split(llvm::StringRef command, std::vector<std::string>& tokens) const {
     // A database written inside Cygwin or MSYS2 quotes its commands for sh.
-    return normalize(directory,
-                     file,
-                     split_command(command, mounts ? sys::cmd::Quoting::POSIX : host_quoting));
+    split_command(command, mounts ? sys::cmd::Quoting::POSIX : host_quoting, tokens);
+}
+
+std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
+                                                llvm::StringRef file,
+                                                kotatsu::string_list_ref command_line) const {
+    auto first = wrapper_prefix_len(command_line);
+    if(first >= command_line.size()) {
+        return std::nullopt;
+    }
+    llvm::StringRef driver = command_line[first];
+    auto family = with_driver_mode(driver_family(driver), driver, command_line);
+    if(family == CompilerFamily::NVCC) {
+        return std::nullopt;
+    }
+    // Only spellings no other option shares are masked: in a cl command
+    // `-MT` is the runtime library, not a dependency target.
+    std::array separate = {"-o",
+                           "-MF",
+                           "-MT",
+                           "-MQ",
+                           "-MJ",
+                           "--serialize-diagnostics",
+                           "-gen-cdb-fragment-path",
+                           "-aux-info",
+                           "-index-unit-output-path"};
+    std::array joined = {"-frandom-seed=",
+                         "-foptimization-record-file=",
+                         "-fmodule-mapper=",
+                         "-fdeps-file=",
+                         "-fdeps-target=",
+                         "-fdiagnostics-add-output=",
+                         "-fprofile-note="};
+    std::string text(directory.str());
+    // Paths read through a mount table normalize otherwise.
+    text += mounts ? '\1' : '\2';
+    std::size_t files = 0;
+    bool value_next = false;
+    for(llvm::StringRef token: command_line) {
+        text += '\0';
+        if(token.starts_with("@")) {
+            return std::nullopt;
+        }
+        if(value_next) {
+            value_next = false;
+            text += "\x01value";
+        } else if(token == file) {
+            files += 1;
+            text += "\x01file";
+        } else if(cl_mode(family)) {
+            text +=
+                token.starts_with("/Fo") || token.starts_with("-Fo") ? token.take_front(3) : token;
+        } else if(ranges::contains(separate, token)) {
+            value_next = true;
+            text += token;
+        } else if(auto prefix = ranges::find_if(
+                      joined,
+                      [&](llvm::StringRef prefix) { return token.starts_with(prefix); });
+                  prefix != joined.end()) {
+            text += *prefix;
+        } else if((token.starts_with("-Wp,-MD,") || token.starts_with("-Wp,-MMD,")) &&
+                  token.count(',') == 2) {
+            text += token.take_front(token.rfind(',') + 1);
+        } else {
+            text += token;
+        }
+    }
+    if(files != 1) {
+        return std::nullopt;
+    }
+    auto hash = llvm::xxh3_128bits(llvm::arrayRefFromStringRef(text));
+    return SharedKey{hash.high64, hash.low64};
 }
 
 std::vector<std::string> Normalizer::expand_response_files(kotatsu::string_list_ref arguments,

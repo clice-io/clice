@@ -401,7 +401,8 @@ std::expected<std::string, std::error_code> read_text(llvm::StringRef path) {
     return text;
 }
 
-std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path) {
+std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path,
+                                                           std::size_t padding) {
     auto file = fs::File::open(path);
     if(!file) {
         return std::unexpected(file.error());
@@ -413,6 +414,12 @@ std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path)
     // buffer would keep tracking the file after the post-fstat, unpairing
     // hash and stat.
     ObservedFile result;
+    if(before && padding > 0) {
+        // As far as the read takes a size on its word (/proc/kcore reports
+        // 128 TiB); a larger file grows as it is read.
+        result.text.reserve(std::min<std::uint64_t>(before->size, std::uint64_t{1} << 30) +
+                            padding);
+    }
     if(auto error = file->read_to_end(result.text)) {
         return std::unexpected(error);
     }

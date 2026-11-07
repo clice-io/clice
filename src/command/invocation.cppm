@@ -22,4 +22,25 @@ std::unique_ptr<clang::CompilerInvocation>
                                llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs,
                                llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine> diagnostics);
 
+/// What a compile and the build of a named module's PCM must agree on for
+/// the compile to read it: what clang checks when it loads a module file
+/// (ASTReader's checkLanguageOptions and checkTargetOptions), never the
+/// macros.
+struct ModuleCompatibility {
+    /// The language options clang requires to match, with the target triple
+    /// and ABI, hashed.
+    std::uint64_t language = 0;
+
+    /// The target features as written, sorted: an importer may add to the
+    /// module's.
+    std::vector<std::string> features;
+
+    /// Whether a compile with these reads a PCM built with `module`.
+    bool reads(const ModuleCompatibility& module) const {
+        return language == module.language && ranges::includes(features, module.features);
+    }
+};
+
+ModuleCompatibility module_compatibility(const clang::CompilerInvocation& invocation);
+
 }  // namespace clice

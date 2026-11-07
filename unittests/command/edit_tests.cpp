@@ -53,6 +53,24 @@ ZEST_CASE(SelectorHistoryRestored) {
     ZEXPECT(llvm::StringRef(commands.input_kind(applied, "a.c").value) == "cuda");
 };
 
+ZEST_CASE(RemoveModuleOutput) {
+    /// A rule takes a module output out by its written form, which the
+    /// command keeps without the path.
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    database.add_command("/fake", "a.cppm", "clang++ --precompile -fmodule-output=a.pcm a.cppm"sv);
+    database.add_command("/fake", "b.cppm", "clang++ --precompile b.cppm"sv);
+    auto base = database.candidate_entries(fake("a.cppm")).front().command;
+    auto bare = database.candidate_entries(fake("b.cppm")).front().command;
+    for(auto flag: {"-fmodule-output=*", "-fmodule-output=a.pcm"}) {
+        std::vector<CommandEdit> edits = {
+            {CommandEdit::Kind::Remove, {flag}}
+        };
+        ZEXPECT(apply_edits(commands, file_table, base, {.edits = edits}) == bare);
+    }
+};
+
 ZEST_CASE(RuleUnknownFlagIdentity) {
     /// A flag a rule appends that the option table does not know keeps its
     /// spelling, and the command hash covers that spelling.

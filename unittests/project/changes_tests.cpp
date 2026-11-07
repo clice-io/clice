@@ -430,7 +430,7 @@ ZEST_CASE(ModuleReadHeaderCascades) {
     auto mod = intern("/proj/m.cppm");
     auto user = list_unit(project.cdb, "/proj/user.cpp");
     project.graph.set_edges(NodeId{NodeKind::Unit, user.raw}, {module_node(mod)});
-    project.pcms[mod].inputs.push_back({.file = header});
+    project.pcms[module_node(mod)].inputs.push_back({.file = header});
 
     project.files_changed({header}, open_files);
 
@@ -446,7 +446,7 @@ ZEST_CASE(FailedModuleHeaderCascades) {
     project.graph.set_edges(NodeId{NodeKind::Unit, user.raw}, {module_node(mod)});
     FailureRecord error;
     error.cause = "use of undeclared identifier 'x'";
-    project.pcms[mod].failure = {{.record = error}, {{.file = header}}};
+    project.pcms[module_node(mod)].failure = {{.record = error}, {{.file = header}}};
 
     ZASSERT(ranges::contains(project.readers(header), mod));
     project.files_changed({header}, open_files);

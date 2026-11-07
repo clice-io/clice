@@ -238,9 +238,9 @@ async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id
         return owner->command_request(path_id);
     });
     command.directory = resolution.directory;
-    // The command line as its database or rule writes it, the rules
-    // applied, rather than the frontend's the compile gets: the one a user
-    // recognizes, and could run.
+    // The command line as its database or rule writes it, but for what
+    // only the build reads, the rules applied, rather than the frontend's
+    // the compile gets: the one a user recognizes.
     auto file = project.file_table.spelling(path_id).str();
     for(auto* argument: project.commands.render_full(resolution.ref.command, file)) {
         command.arguments.emplace_back(argument);

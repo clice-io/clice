@@ -1,0 +1,77 @@
+[text."$ clice index --jobs 2"]
+stdout = '''
+Indexed 4 translation units in #s: 4 file shards (# KB), 7 symbols.
+3 translation units compiled with errors; the index holds what parsed:
+  ${WS}/cycle_a.cppm
+    ${WS}/cycle_a.cppm:2:8: cyclic dependency in module 'CycB': CycB -> CycA -> CycB
+  ${WS}/cycle_b.cppm
+    ${WS}/cycle_b.cppm:2:8: cyclic dependency in module 'CycA': CycA -> CycB -> CycA
+  ${WS}/main.cpp
+    ${WS}/main.cpp:1:8: cyclic dependency in module 'CycA': CycA -> CycB -> CycA
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[json."$ clice index --jobs 2 --json"]
+stdout = '''
+{
+  "exitCode": 0,
+  "interrupted": false,
+  "completed": true,
+  "indexedTus": 4,
+  "shardCount": 4,
+  "shardBytes": "#",
+  "symbolCount": 7,
+  "failed": [],
+  "tooBig": [],
+  "compiledWithErrors": [
+    {
+      "unit": "${WS}/cycle_a.cppm",
+      "errors": [
+        {
+          "file": "${WS}/cycle_a.cppm",
+          "line": 2,
+          "column": 8,
+          "message": "cyclic dependency in module 'CycB': CycB -> CycA -> CycB"
+        }
+      ]
+    },
+    {
+      "unit": "${WS}/cycle_b.cppm",
+      "errors": [
+        {
+          "file": "${WS}/cycle_b.cppm",
+          "line": 2,
+          "column": 8,
+          "message": "cyclic dependency in module 'CycA': CycA -> CycB -> CycA"
+        }
+      ]
+    },
+    {
+      "unit": "${WS}/main.cpp",
+      "errors": [
+        {
+          "file": "${WS}/main.cpp",
+          "line": 1,
+          "column": 8,
+          "message": "cyclic dependency in module 'CycA': CycA -> CycB -> CycA"
+        }
+      ]
+    }
+  ],
+  "logDir": "${WS}/.clice/logs/${SESSION}",
+  "unsaved": false,
+  "damaged": false,
+  "seconds": "#"
+}
+'''
+exit = 0
+
+[lint."$ clice lint --jobs 2"]
+stdout = '''
+${WS}/cycle_a.cppm:2:8: error: cyclic dependency in module 'CycB': CycB -> CycA -> CycB [clang-diagnostic-error]
+${WS}/cycle_b.cppm:2:8: error: cyclic dependency in module 'CycA': CycA -> CycB -> CycA [clang-diagnostic-error]
+${WS}/main.cpp:1:8: error: cyclic dependency in module 'CycA': CycA -> CycB -> CycA [clang-diagnostic-error]
+Linted 4 translation units in #s: 3 findings.
+'''
+exit = 1

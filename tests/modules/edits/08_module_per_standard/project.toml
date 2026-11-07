@@ -1,0 +1,6 @@
+# The module is listed once per standard its importers compile in, as CMake
+# lists a module once per set of its importers' language flags.
+[units]
+"m.cppm" = [["-std=c++20"], ["-std=c++23"]]
+"older.cpp" = ["-std=c++20"]
+"newer.cpp" = ["-std=c++23"]
