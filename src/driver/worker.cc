@@ -26,11 +26,13 @@ struct Worker {
 
 /// Not through dispatch: a worker logs as the pool relays its stderr.
 int run_worker(Worker& worker) {
-    // Started through /proc/self/exe on Linux, which `top` shows as
-    // `exe`; elsewhere the name stays the program's. Threads take the name
+    // Started through /proc/self/exe on Linux, which `top` shows as `exe`:
+    // named after the program and the worker (`clice SF-0`), cut at 15
+    // bytes; elsewhere the name stays the program's. Threads take the name
     // they start with.
     if(auto& arguments = sys::arguments(); !arguments.empty()) {
-        sys::set_process_name(path::filename(arguments.front()));
+        sys::set_process_name(
+            std::format("{} {}", path::filename(arguments.front()), worker.worker_name));
     }
     if(!worker.stateful) {
         // Limit libuv thread pool to 1 thread so each stateless worker
