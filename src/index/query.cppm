@@ -390,8 +390,8 @@ public:
     /// re-read).
     std::optional<std::string> serving_text(Fid file) const;
 
-    /// A symbol together with its canonical site, and the whole
-    /// declaration there.
+    /// A symbol together with a site of it — its canonical site, or one of
+    /// its definitions — and the whole declaration there.
     struct Located {
         SymbolInfo symbol;
         Site site;

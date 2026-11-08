@@ -117,8 +117,10 @@ namespace clice::index {
 /// call's overload set the candidates it sees on its own; v58: a unit's
 /// command identity is its command as the rules edit it; v59: a C tag
 /// carries its file when a source file declares it, told by the file's
-/// name, and a header compiled alone names its typedefs as a system header
-/// when a system search directory of its command holds it.
+/// name, a header compiled alone names its typedefs as a system header when
+/// the search directory of its command nearest above it is a system one,
+/// and the access reaching a member of an anonymous struct or union records
+/// no reference.
 constexpr inline std::uint32_t index_format_version = 59;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less

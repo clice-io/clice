@@ -1066,7 +1066,7 @@ struct §(ctx)ctx { int x; };
     ZEXPECT(entity_at(context, "part.h", "part") == entity_at(*this, "part.h", "part"));
 }
 
-ZEST_CASE(CTagsInHeaderAlone) {
+ZEST_CASE(CTagsOpenedHeader) {
     llvm::StringRef header = "struct §(shared)shared { int x; };\n";
     add_file("common.h", header);
     add_focus("a.c", "#include \"common.h\"\n");
@@ -1079,7 +1079,7 @@ ZEST_CASE(CTagsInHeaderAlone) {
     ZEXPECT(entity_at(alone, "common.h", "shared") == entity_at(*this, "common.h", "shared"));
 }
 
-ZEST_CASE(CTagsInIncludedSource) {
+ZEST_CASE(CTagsIncludedSource) {
     llvm::StringRef source = "struct §(table)table { int x; };\n";
     add_file("table.c", source);
     add_focus("main.c", "#include \"table.c\"\n");
@@ -1092,7 +1092,7 @@ ZEST_CASE(CTagsInIncludedSource) {
     ZEXPECT(entity_at(alone, "table.c", "table") == entity_at(*this, "table.c", "table"));
 }
 
-ZEST_CASE(TypedefsInSystemHeaderAlone) {
+ZEST_CASE(TypedefsOpenedSystemHeader) {
     llvm::StringRef header = "typedef int §(handle)handle;\n";
     auto system = [](Tester& tester) {
         tester.prepare("-std=c17");
@@ -1104,8 +1104,8 @@ ZEST_CASE(TypedefsInSystemHeaderAlone) {
     add_focus("a.c", "#include <lib.h>\n");
     ZASSERT(system(*this));
 
-    /// Opened in the editor, the header is the focus file clang takes for
-    /// the user's own; its includers reach it as a system header.
+    // Opened in the editor, the header is the focus file clang takes for
+    // the user's own; its includers reach it as a system header.
     Tester alone;
     alone.add_focus("sys/lib.h", header);
     ZASSERT(system(alone));

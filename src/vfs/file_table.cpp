@@ -4,12 +4,32 @@ import :vfs.file_table;
 
 namespace clice {
 
+namespace {
+
 /// `path` with its `..` segments resolved as text.
-static Spelling fold(const Spelling& path) {
+Spelling fold(const Spelling& path) {
     llvm::SmallString<256> text(path);
     path::normalize(text);
     return Spelling::absolute(text);
 }
+
+/// `path` in the workspace folder holding it, spelled the way the folder
+/// shows; none outside every folder.
+std::optional<std::string> in_folder(llvm::ArrayRef<FileTable::Folder> folders,
+                                     llvm::StringRef path) {
+    for(auto& folder: folders) {
+        if(path::is_within(path, llvm::StringRef(folder.identity))) {
+            auto rest = path.drop_front(folder.identity.size()).ltrim('/');
+            return Spelling(rest, folder.shown).str();
+        }
+        if(path::is_within(path, llvm::StringRef(folder.shown))) {
+            return path.str();
+        }
+    }
+    return std::nullopt;
+}
+
+}  // namespace
 
 Fid FileTable::intern(const Spelling& path) {
     // FIXME: a spelling keeps the identity it first resolved to: a directory
@@ -66,22 +86,6 @@ Spelling FileTable::spelling(Fid fid) const {
 
 std::string FileTable::display_identity(llvm::StringRef identity) {
     return display(intern(Spelling::absolute(identity)));
-}
-
-/// `path` in the workspace folder holding it, spelled the way the folder
-/// shows; none outside every folder.
-static std::optional<std::string> in_folder(llvm::ArrayRef<FileTable::Folder> folders,
-                                            llvm::StringRef path) {
-    for(auto& folder: folders) {
-        if(path::is_within(path, llvm::StringRef(folder.identity))) {
-            auto rest = path.drop_front(folder.identity.size()).ltrim('/');
-            return Spelling(rest, folder.shown).str();
-        }
-        if(path::is_within(path, llvm::StringRef(folder.shown))) {
-            return path.str();
-        }
-    }
-    return std::nullopt;
 }
 
 std::string FileTable::display(Fid fid) const {

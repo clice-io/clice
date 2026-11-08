@@ -40,14 +40,10 @@ std::string spaced(llvm::StringRef file,
                                                       replacement.getReplacementText())));
         }
     }
-    auto formatted = clang::tooling::applyAllReplacements(joined, inner);
-    if(!formatted) {
-        llvm::consumeError(formatted.takeError());
-        return joined.str();
-    }
+    auto formatted = llvm::cantFail(clang::tooling::applyAllReplacements(joined, inner));
     std::string line;
     llvm::SmallVector<llvm::StringRef> lines;
-    llvm::StringRef(*formatted).split(lines, '\n', -1, /*KeepEmpty=*/false);
+    llvm::StringRef(formatted).split(lines, '\n', -1, /*KeepEmpty=*/false);
     for(auto each: lines) {
         if(each = each.trim(); !each.empty()) {
             if(!line.empty()) {
