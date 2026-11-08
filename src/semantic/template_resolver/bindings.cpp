@@ -162,7 +162,7 @@ bool PseudoInstantiator::fill_defaults(clang::TemplateDecl* TD,
             /// patterns it would choose between are then all possible
             /// (see lookup_through_any).
             if(!value) {
-                open_defaults.insert(expr);
+                open_default(expr);
             }
             out.emplace_back(value ? clang::TemplateArgument(context, *value, NTTPD->getType())
                                    : argument);

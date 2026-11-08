@@ -1676,15 +1676,21 @@ void stmt_references(const clang::Stmt* S,
     /// foo(...) / obj.foo(...) where foo names an overload set — clang
     /// already stores the candidates.
     if(auto* OE = llvm::dyn_cast<clang::OverloadExpr>(S)) {
-        /// As a callee, the candidate set shrinks to the overloads that can
-        /// accept the call's argument count.
-        if(!call || !resolver) {
+        if(!resolver) {
             refer_candidates(out, OE->decls(), OE->getNameInfo(), RelationKind::Candidate);
             return;
         }
-        // What the definition's lookup found is certain; what
-        // argument-dependent lookup adds for the arguments' resolved types
-        // is the resolver's guess.
+        if(!call) {
+            refer_candidates(out,
+                             resolver->overloads(OE),
+                             OE->getNameInfo(),
+                             RelationKind::Candidate);
+            return;
+        }
+        /// As a callee, the candidate set shrinks to the overloads that can
+        /// accept the call's argument count. What the definition's lookup
+        /// found is certain; what argument-dependent lookup adds for the
+        /// arguments' resolved types is the resolver's guess.
         llvm::SmallVector<const clang::NamedDecl*, 4> found;
         llvm::SmallVector<const clang::NamedDecl*, 4> guessed;
         for(const auto* callee: resolver->callees(call)) {

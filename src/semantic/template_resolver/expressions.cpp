@@ -48,6 +48,7 @@ std::optional<llvm::APSInt> PseudoInstantiator::evaluate(const clang::Expr* expr
     /// Initializers can refer back to each other (or a parameter be
     /// bound to itself); nesting is bounded instead of tracked.
     if(evaluating > 8) {
+        inconclusive = true;
         return std::nullopt;
     }
     evaluating += 1;
@@ -58,71 +59,74 @@ std::optional<llvm::APSInt> PseudoInstantiator::evaluate(const clang::Expr* expr
 }
 
 std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr) {
-    /// A trait asks of the type its operand names: `typename
-    /// allocator<T>::_From_primary` is an `allocator<T>`.
-    if(auto trait = type_trait(context, expr, [&](clang::QualType operand) {
-           return resolve(substitute(operand));
-       })) {
-        return llvm::APSInt(llvm::APInt(1, *trait ? 1 : 0), /*isUnsigned=*/true);
-    }
-    if(auto NTTP = referenced_nttp(expr)) {
-        auto* bound = bound_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
-        if(bound && bound->getKind() == clang::TemplateArgument::Integral) {
-            return bound->getAsIntegral();
+    return unbound_result(cache.values, expr, [&]() -> std::optional<llvm::APSInt> {
+        /// A trait asks of the type its operand names: `typename
+        /// allocator<T>::_From_primary` is an `allocator<T>`.
+        if(auto trait = type_trait(context, expr, [&](clang::QualType operand) {
+               return resolve(substitute(operand));
+           })) {
+            return llvm::APSInt(llvm::APInt(1, *trait ? 1 : 0), /*isUnsigned=*/true);
         }
-        if(bound && bound->getKind() == clang::TemplateArgument::Expression) {
-            return evaluate(bound->getAsExpr());
+        if(auto NTTP = referenced_nttp(expr)) {
+            auto* bound = bound_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
+            if(bound && bound->getKind() == clang::TemplateArgument::Integral) {
+                return bound->getAsIntegral();
+            }
+            if(bound && bound->getKind() == clang::TemplateArgument::Expression) {
+                return evaluate(bound->getAsExpr());
+            }
+            return std::nullopt;
         }
-        return std::nullopt;
-    }
 
-    if(auto* ULE = llvm::dyn_cast<clang::UnresolvedLookupExpr>(expr);
-       ULE && ULE->hasExplicitTemplateArgs() && ULE->getNumDecls() == 1) {
-        auto* VTD = llvm::dyn_cast<clang::VarTemplateDecl>(*ULE->decls_begin());
-        return VTD ? value_of(VTD, ULE->template_arguments()) : std::nullopt;
-    }
-
-    auto judged = own_conclusion();
-    auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(expr);
-    std::optional<std::pair<const void*, void*>> key;
-    clang::QualType scope;
-    if(DSDRE && DSDRE->getQualifier().getKind() == clang::NestedNameSpecifier::Kind::Type &&
-       pack_narrowing == 0) {
-        scope = resolve_object(substitute(clang::QualType(DSDRE->getQualifier().getAsType(), 0)));
-        key.emplace(scope.getCanonicalType().getAsOpaquePtr(),
-                    DSDRE->getDeclName().getAsOpaquePtr());
-        if(auto known = member_values.find(*key); known != member_values.end()) {
-            return known->second;
+        if(auto* ULE = llvm::dyn_cast<clang::UnresolvedLookupExpr>(expr);
+           ULE && ULE->hasExplicitTemplateArgs() && ULE->getNumDecls() == 1) {
+            auto* VTD = llvm::dyn_cast<clang::VarTemplateDecl>(*ULE->decls_begin());
+            return VTD ? value_of(VTD, ULE->template_arguments()) : std::nullopt;
         }
-    }
 
-    auto frames = stack.size();
-    const clang::Decl* decl = nullptr;
-    if(key) {
-        decl = preferred(lookup(scope, DSDRE->getDeclName()));
-    } else if(DSDRE) {
-        decl = preferred(lookup(DSDRE->getQualifier(), DSDRE->getDeclName()));
-    } else if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(expr)) {
-        decl = DRE->getDecl();
-    }
-
-    std::optional<llvm::APSInt> value;
-    if(auto* var = llvm::dyn_cast_or_null<clang::VarDecl>(decl)) {
-        value = initial_value(var);
-    } else if(auto* enumerator = llvm::dyn_cast_or_null<clang::EnumConstantDecl>(decl)) {
-        /// Sema leaves the enumerators of an enumeration inside a
-        /// template uncomputed.
-        if(!enumerator->getType()->isDependentType()) {
-            value = enumerator->getInitVal();
-        } else if(auto* init = enumerator->getInitExpr()) {
-            value = evaluate(init);
+        auto judged = own_conclusion();
+        auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(expr);
+        std::optional<std::pair<const void*, void*>> key;
+        clang::QualType scope;
+        if(DSDRE && DSDRE->getQualifier().getKind() == clang::NestedNameSpecifier::Kind::Type &&
+           pack_narrowing == 0) {
+            scope =
+                resolve_object(substitute(clang::QualType(DSDRE->getQualifier().getAsType(), 0)));
+            key.emplace(scope.getCanonicalType().getAsOpaquePtr(),
+                        DSDRE->getDeclName().getAsOpaquePtr());
+            if(auto known = member_values.find(*key); known != member_values.end()) {
+                return known->second;
+            }
         }
-    }
-    stack.truncate(frames);
-    if(key && !inconclusive) {
-        member_values.try_emplace(*key, value);
-    }
-    return value;
+
+        auto frames = stack.size();
+        const clang::Decl* decl = nullptr;
+        if(key) {
+            decl = preferred(lookup(scope, DSDRE->getDeclName()));
+        } else if(DSDRE) {
+            decl = preferred(lookup(DSDRE->getQualifier(), DSDRE->getDeclName()));
+        } else if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(expr)) {
+            decl = DRE->getDecl();
+        }
+
+        std::optional<llvm::APSInt> value;
+        if(auto* var = llvm::dyn_cast_or_null<clang::VarDecl>(decl)) {
+            value = initial_value(var);
+        } else if(auto* enumerator = llvm::dyn_cast_or_null<clang::EnumConstantDecl>(decl)) {
+            /// Sema leaves the enumerators of an enumeration inside a
+            /// template uncomputed.
+            if(!enumerator->getType()->isDependentType()) {
+                value = enumerator->getInitVal();
+            } else if(auto* init = enumerator->getInitExpr()) {
+                value = evaluate(init);
+            }
+        }
+        stack.truncate(frames);
+        if(key && !inconclusive) {
+            member_values.try_emplace(*key, value);
+        }
+        return value;
+    });
 }
 
 std::optional<llvm::APSInt> PseudoInstantiator::initial_value(const clang::VarDecl* var) {
@@ -180,9 +184,14 @@ std::optional<llvm::APSInt>
     if(ranges::none_of(arguments, &clang::TemplateArgument::isDependent)) {
         auto canonical = canonical_arguments(context, VTD->getTemplateParameters(), arguments);
         void* position = nullptr;
+        llvm::SmallVector<clang::VarTemplateSpecializationDecl*, 1> explicit_specialization;
         if(auto* specialization = VTD->findSpecialization(canonical, position);
            specialization && specialization->isExplicitSpecialization()) {
-            return initial_value(specialization);
+            explicit_specialization.push_back(specialization);
+        }
+        drop_unseen(explicit_specialization);
+        if(!explicit_specialization.empty()) {
+            return initial_value(explicit_specialization.front());
         }
     }
 
@@ -231,56 +240,58 @@ std::optional<llvm::APSInt>
 
 clang::QualType PseudoInstantiator::type_of(const clang::Expr* expr, bool through_object) {
     expr = expr->IgnoreParenImpCasts();
-    auto frames = stack.size();
-    clang::QualType type;
-    unsigned object_quals = 0;
-    if(auto* pointer = dereferenced(expr)) {
-        auto evaluated = operand(pointer);
-        type = deref_type(resolve_object(evaluated.type), evaluated.rvalue);
-    } else if(auto* call = llvm::dyn_cast<clang::CallExpr>(expr)) {
-        type = call_type(call);
-    } else if(auto* subscript = llvm::dyn_cast<clang::ArraySubscriptExpr>(expr)) {
-        type = subscript_type(subscript);
-    } else {
-        const clang::Decl* decl = nullptr;
-        if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(expr)) {
-            auto object = member_object(DSME);
-            if(through_object && !object.isNull()) {
-                object_quals = resolve_object(object).getCVRQualifiers();
-            }
-            decl = preferred(lookup_member(object, DSME->getMember()));
+    return unbound_result(cache.types, std::pair{expr, static_cast<unsigned>(through_object)}, [&] {
+        auto frames = stack.size();
+        clang::QualType type;
+        unsigned object_quals = 0;
+        if(auto* pointer = dereferenced(expr)) {
+            auto evaluated = operand(pointer);
+            type = deref_type(resolve_object(evaluated.type), evaluated.rvalue);
+        } else if(auto* call = llvm::dyn_cast<clang::CallExpr>(expr)) {
+            type = call_type(call);
+        } else if(auto* subscript = llvm::dyn_cast<clang::ArraySubscriptExpr>(expr)) {
+            type = subscript_type(subscript);
         } else {
-            decl = referenced_decl(expr);
-        }
+            const clang::Decl* decl = nullptr;
+            if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(expr)) {
+                auto object = member_object(DSME);
+                if(through_object && !object.isNull()) {
+                    object_quals = resolve_object(object).getCVRQualifiers();
+                }
+                decl = preferred(lookup_member(object, DSME->getMember()));
+            } else {
+                decl = referenced_decl(expr);
+            }
 
-        if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(decl)) {
-            type = value->getType();
-            /// A function parameter pack (`Box<Ts>... boxes`) is declared
-            /// with the expansion; a use of it has the pattern's type.
-            if(auto* PET = type->getAs<clang::PackExpansionType>()) {
-                type = PET->getPattern();
-            }
-            auto* var = llvm::dyn_cast<clang::VarDecl>(value);
-            type = var && (var->getInit() || var->isCXXForRangeDecl()) && undeduced(type)
-                       ? deduce_auto(var)
-                       : substitute(type);
-            if(auto* field = llvm::dyn_cast<clang::FieldDecl>(value); !field) {
-                object_quals = 0;
-            } else if(field->isMutable()) {
-                object_quals &= ~clang::Qualifiers::Const;
+            if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(decl)) {
+                type = value->getType();
+                /// A function parameter pack (`Box<Ts>... boxes`) is declared
+                /// with the expansion; a use of it has the pattern's type.
+                if(auto* PET = type->getAs<clang::PackExpansionType>()) {
+                    type = PET->getPattern();
+                }
+                auto* var = llvm::dyn_cast<clang::VarDecl>(value);
+                type = var && (var->getInit() || var->isCXXForRangeDecl()) && undeduced(type)
+                           ? deduce_auto(var)
+                           : substitute(type);
+                if(auto* field = llvm::dyn_cast<clang::FieldDecl>(value); !field) {
+                    object_quals = 0;
+                } else if(field->isMutable()) {
+                    object_quals &= ~clang::Qualifiers::Const;
+                }
             }
         }
-    }
-    stack.truncate(frames);
-    if(type.isNull()) {
-        return type;
-    }
-    /// FIXME: an `auto` member's deduced type is already in the caller's terms;
-    /// under a frame of the class's own specialization it binds twice
-    /// (`Holder<W<T>>::from_call` in `Holder<T>` reads `W<W<W<T>>>`). An empty
-    /// stack fixes that but loses what a deferred `decltype` return type needs.
-    type = resolve(type);
-    return type->isReferenceType() ? type : type.withCVRQualifiers(object_quals);
+        stack.truncate(frames);
+        if(type.isNull()) {
+            return type;
+        }
+        /// FIXME: an `auto` member's deduced type is already in the caller's terms;
+        /// under a frame of the class's own specialization it binds twice
+        /// (`Holder<W<T>>::from_call` in `Holder<T>` reads `W<W<W<T>>>`). An empty
+        /// stack fixes that but loses what a deferred `decltype` return type needs.
+        type = resolve(type);
+        return type->isReferenceType() ? type : type.withCVRQualifiers(object_quals);
+    });
 }
 
 clang::QualType PseudoInstantiator::expr_type(const clang::Expr* expr) {
@@ -293,6 +304,7 @@ clang::QualType PseudoInstantiator::deduce_auto(const clang::VarDecl* var) {
     /// specialization (`Depth<N>::value` initialized from
     /// `Depth<N - 1>::value`).
     if(!deducing.insert(var).second) {
+        inconclusive = true;
         return clang::QualType();
     }
 

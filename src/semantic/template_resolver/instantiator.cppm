@@ -23,6 +23,7 @@ module clice:semantic.template_resolver.instantiator;
 
 import :semantic.template_resolver;
 import :semantic.template_resolver.deduction;
+import :semantic.template_resolver.visibility;
 import :support.prelude;
 
 namespace clice::types {
@@ -220,13 +221,64 @@ struct Callees {
     std::optional<llvm::SmallVector<CallArgument, 4>> arguments;
 };
 
-/// The functions named `name` that argument-dependent lookup finds for a
-/// call with `arguments` and that may take them: those of the namespaces
-/// the arguments' types are associated with, and the friends their
-/// associated classes declare. None when one of the types is still
-/// dependent: its associated namespaces wait for instantiation.
-std::optional<llvm::SmallVector<const clang::NamedDecl*, 4>>
-    argument_dependent_lookup(clang::DeclarationName name, llvm::ArrayRef<CallArgument> arguments);
+/// A declaration the query judged the visibility of, and the judgement
+/// (Visibility::sees).
+struct VisibilityCheck {
+    const clang::NamedDecl* decl;
+
+    bool seen;
+};
+
+/// What a step read of its query beside its operands, and left in it for
+/// the steps after it, the frames of its lookups aside: the value defaults
+/// it found not to fold (deduce_arguments), the declarations whose
+/// visibility it judged (drop_unseen).
+struct StepEffects {
+    llvm::SmallVector<const clang::Expr*, 1> open_defaults;
+
+    llvm::SmallVector<VisibilityCheck, 0> checks;
+};
+
+/// A dependent name or specialization resolved, and the declarations whose
+/// visibility its resolution judged.
+struct ResolvedType {
+    clang::QualType type;
+
+    llvm::SmallVector<VisibilityCheck, 0> checks;
+};
+
+/// What a step gave with no template parameter bound, and what it left for
+/// the steps after it: the frames of the lookups it ended in, its effects.
+template <typename Result>
+struct UnboundResult {
+    Result result;
+
+    llvm::SmallVector<InstantiationStack::Frame, 1> frames;
+
+    StepEffects effects;
+};
+
+/// What the queries of one unit keep for each other.
+struct UnitCache {
+    /// Resolved dependent types, keyed by AST node pointer. This is safe
+    /// because a given AST node (DependentNameType*, etc.) has a unique
+    /// identity within the TU — the same pointer always refers to the same
+    /// syntactic occurrence. Different syntactic occurrences of the "same"
+    /// type have different AST node pointers.
+    llvm::DenseMap<const void*, ResolvedType> resolved;
+
+    /// The steps taken with nothing bound (PseudoInstantiator::unbound_result):
+    /// rewrites by the type and the policy, types of expressions by the
+    /// expression and whether it is read through its object (type_of), values
+    /// of expressions, candidates of calls.
+    llvm::DenseMap<std::pair<const void*, unsigned>, UnboundResult<clang::QualType>> rewrites;
+
+    llvm::DenseMap<std::pair<const clang::Expr*, unsigned>, UnboundResult<clang::QualType>> types;
+
+    llvm::DenseMap<const clang::Expr*, UnboundResult<std::optional<llvm::APSInt>>> values;
+
+    llvm::DenseMap<const clang::CallExpr*, UnboundResult<Callees>> calls;
+};
 
 /// The core pseudo-instantiation engine, one query's state. Resolves
 /// dependent names by looking up members in primary templates and partial
@@ -252,10 +304,16 @@ public:
 
     using lookup_result = clang::DeclContext::lookup_result;
 
+    /// Without `visibility`, the query sees the whole unit.
     PseudoInstantiator(clang::ASTContext& context,
-                       llvm::DenseMap<const void*, clang::QualType>& resolved,
-                       const ResolverOptions& options) :
-        context(context), resolved(resolved), options(options) {}
+                       UnitCache& cache,
+                       const ResolverOptions& options,
+                       Visibility* visibility) :
+        context(context), cache(cache), options(options), visibility(visibility) {}
+
+    /// The declarations the overload set `expr` names that the query sees
+    /// (TemplateResolver::overloads).
+    llvm::SmallVector<const clang::NamedDecl*, 4> overloads(const clang::OverloadExpr* expr);
 
     /// Rewrite policy. The two-phase split is the resolver's core invariant:
     /// typedef/alias expansion must never re-enter heuristic lookup, or
@@ -798,12 +856,135 @@ private:
             [this, outer = std::exchange(inconclusive, false)] { inconclusive |= outer; });
     }
 
+    /// Record the effects of the work up to the end of the scope in
+    /// `effects` too, for a step being kept.
+    auto record_effects(StepEffects& effects) {
+        return llvm::make_scope_exit([this, &effects, outer = std::exchange(recording, &effects)] {
+            recording = outer;
+            if(outer) {
+                outer->open_defaults.append(effects.open_defaults);
+                outer->checks.append(effects.checks);
+            }
+        });
+    }
+
+    /// What `compute` gives for `key`. With no template parameter bound, the
+    /// state every query starts in, a step reads of the query that asked it
+    /// only what the query found before it — the open defaults, the folded
+    /// member values — which bears on it rarely enough, and what the query
+    /// sees: what an earlier query concluded there is taken as it is when
+    /// this one judges every declaration it judged alike, the frames and the
+    /// effects it left restored.
+    template <typename Key, typename Result, typename Compute>
+    Result unbound_result(llvm::DenseMap<Key, UnboundResult<Result>>& results,
+                          const std::type_identity_t<Key>& key,
+                          Compute&& compute) {
+        if(!stack.empty()) {
+            return compute();
+        }
+        if(auto found = results.find(key);
+           found != results.end() && sees_alike(found->second.effects.checks)) {
+            auto& known = found->second;
+            stack.frames().append(known.frames.begin(), known.frames.end());
+            for(auto* expr: known.effects.open_defaults) {
+                open_default(expr);
+            }
+            judged_visibility(known.effects.checks);
+            return known.result;
+        }
+        auto judged = own_conclusion();
+        StepEffects effects;
+        Result result = [&] {
+            auto recorder = record_effects(effects);
+            return compute();
+        }();
+        if(!inconclusive) {
+            results.insert_or_assign(key,
+                                     UnboundResult<Result>{
+                                         .result = result,
+                                         .frames = {stack.frames().begin(), stack.frames().end()},
+                                         .effects = std::move(effects),
+            });
+        }
+        return result;
+    }
+
+    /// Whether the query judges the visibility of every declaration
+    /// `checks` judged alike.
+    bool sees_alike(llvm::ArrayRef<VisibilityCheck> checks) {
+        return ranges::all_of(checks, [&](const VisibilityCheck& check) {
+            return (!visibility || visibility->sees(check.decl)) == check.seen;
+        });
+    }
+
+    /// What an earlier query resolved `node`, a dependent name or
+    /// specialization, to, when this one judges alike what it saw; its
+    /// judgements noted again.
+    std::optional<clang::QualType> kept_resolution(const void* node) {
+        auto found = cache.resolved.find(node);
+        if(found == cache.resolved.end() || !sees_alike(found->second.checks)) {
+            return std::nullopt;
+        }
+        judged_visibility(found->second.checks);
+        return found->second.type;
+    }
+
+    /// Note that the default `expr` did not fold, for the step being kept
+    /// too (unbound_result).
+    void open_default(const clang::Expr* expr) {
+        open_defaults.insert(expr);
+        if(recording) {
+            recording->open_defaults.push_back(expr);
+        }
+    }
+
+    /// Note `checks`, judgements of visibility, for the step being kept
+    /// (unbound_result, the unit's resolved types).
+    void judged_visibility(llvm::ArrayRef<VisibilityCheck> checks) {
+        if(recording) {
+            recording->checks.append(checks.begin(), checks.end());
+        }
+    }
+
+    /// `found`, what an unqualified or namespace-qualified name finds or the
+    /// specializations of a template, without what the query does not see.
+    template <typename Decl>
+    void drop_unseen(llvm::SmallVectorImpl<Decl*>& found) {
+        if(!visibility) {
+            return;
+        }
+        llvm::SmallVector<VisibilityCheck, 4> checks;
+        llvm::erase_if(found, [&](const clang::NamedDecl* decl) {
+            bool seen = visibility->sees(decl);
+            checks.push_back({decl, seen});
+            return !seen;
+        });
+        judged_visibility(checks);
+    }
+
+    /// The partial specializations of a template the query sees.
+    llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*, 4>
+        seen_partials(clang::ClassTemplateDecl* CTD);
+
+    llvm::SmallVector<clang::VarTemplatePartialSpecializationDecl*, 4>
+        seen_partials(clang::VarTemplateDecl* VTD);
+
+    /// The functions named `name` that argument-dependent lookup finds for a
+    /// call with `arguments`, that may take them and that the query sees:
+    /// those of the namespaces the arguments' types are associated with,
+    /// and the friends their associated classes declare. None when one of
+    /// the types is still dependent: its associated namespaces wait for
+    /// instantiation.
+    std::optional<llvm::SmallVector<const clang::NamedDecl*, 4>>
+        argument_dependent_lookup(clang::DeclarationName name,
+                                  llvm::ArrayRef<CallArgument> arguments);
+
 private:
     clang::ASTContext& context;
 
     InstantiationStack stack;
 
-    llvm::DenseMap<const void*, clang::QualType>& resolved;
+    UnitCache& cache;
 
     const ResolverOptions& options;
 
@@ -827,6 +1008,12 @@ private:
     /// any value (deduce_arguments).
     llvm::SmallSetVector<const clang::Expr*, 4> open_defaults;
 
+    /// Where the step unbound_result is keeping records its effects.
+    StepEffects* recording = nullptr;
+
+    /// Where the query is answered from; the whole unit when null.
+    Visibility* visibility;
+
     unsigned depth = 0;
 
     unsigned steps = 0;
@@ -839,13 +1026,13 @@ private:
     /// one element; node-pointer-keyed caches are bypassed for the duration.
     unsigned pack_narrowing = 0;
 
-    /// Some answer came back empty or partial because a lookup was already
-    /// in progress (a recursive chain such as `callback_traits<F> :
-    /// callback_traits<decltype(&F::operator())>`) or a rewrite hit the
-    /// depth or step limit, not because what it looked for is absent. Such
-    /// an answer is not conclusive: it never enters the unit-wide cache — a
-    /// later query with a fresh budget could still resolve it — and never
-    /// proves a member absent. A resolution judges its own work
+    /// Some answer came back empty or partial because a lookup or the
+    /// deduction of a variable was already in progress (a recursive chain
+    /// such as `callback_traits<F> : callback_traits<decltype(&F::operator())>`)
+    /// or a rewrite or an evaluation hit its nesting or step limit, not
+    /// because what it looked for is absent. Such an answer is not conclusive: it never enters the
+    /// unit's cache — a later query with a fresh budget could still resolve
+    /// it — and never proves a member absent. A resolution judges its own work
     /// (own_conclusion), so one that came before it in the query does not
     /// keep it out of the cache.
     bool inconclusive = false;
