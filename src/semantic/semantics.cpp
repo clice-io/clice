@@ -477,6 +477,9 @@ private:
     using Base = RecursiveASTVisitor<SemanticsBuilder>;
 
     void traverse_instantiations() {
+        if(options.instantiations.empty()) {
+            return;
+        }
         for(const auto* decl: unit.instantiations()) {
             if(!llvm::isa<clang::CXXRecordDecl>(decl)) {
                 root_set.insert(decl);
@@ -486,10 +489,9 @@ private:
         instantiation_depth += 1;
         for(const auto* decl: options.instantiations) {
             visiting_root = decl;
-            auto begin = static_cast<std::uint32_t>(semantics.nodes.size());
+            options.enter(decl);
             TraverseDecl(const_cast<clang::Decl*>(decl));
-            semantics.roots.push_back(
-                {decl, begin, static_cast<std::uint32_t>(semantics.nodes.size())});
+            options.leave(decl);
         }
         instantiation_depth -= 1;
         visiting_root = nullptr;
@@ -534,21 +536,33 @@ private:
     // Pushes a node onto the ancestor stack. Pairs with pop().
     // Performs early taking for some nodes (on the earlySourceRange).
     void push(SemanticNode node) {
-        clang::SourceRange early = early_source_range(node);
         auto self = static_cast<std::uint32_t>(semantics.nodes.size());
         semantics.nodes.push_back({std::move(node), stack.back()});
         semantics.nodes.back().flags.in_instantiation = instantiation_depth > 0;
         stack.push_back(self);
-        take_range(early, self);
+        if(options.all_files) {
+            options.visit(semantics, self);
+            return;
+        }
+        take_range(early_source_range(semantics.nodes[self].node), self);
     }
 
     // Pops a node off the ancestor stack, takes its tokens and seals its
-    // subtree extent.
+    // subtree extent. The whole-TU shape drops the node instead, its subtree
+    // visited, and takes no tokens: it only feeds the index build, which
+    // never queries token ownership, and taking them would cost every PCH
+    // build, which runs a whole-TU pass over the preamble unit, its entire
+    // expanded stream.
     void pop() {
         std::uint32_t self = stack.back();
+        stack.pop_back();
+        if(options.all_files) {
+            assert(self + 1 == semantics.nodes.size() && "a visited node outlived its subtree");
+            semantics.nodes.pop_back();
+            return;
+        }
         take_tokens_for(semantics.nodes[self].node, self);
         semantics.nodes[self].subtree_end = static_cast<std::uint32_t>(semantics.nodes.size());
-        stack.pop_back();
     }
 
     // Returns the range of tokens that this node will take directly, and
@@ -686,16 +700,7 @@ private:
     }
 
     // Take all untaken expanded tokens in S for node `self`.
-    //
-    // The whole-TU shape only feeds the index build, which never queries
-    // token ownership — skip the take machinery entirely. This matters: the
-    // preamble-state build runs a whole-TU pass over the preamble unit, and
-    // taking its entire expanded stream would be paid on every PCH build.
     void take_range(clang::SourceRange S, std::uint32_t self) {
-        if(options.all_files) {
-            return;
-        }
-
         // An instantiation node's range points into the pattern (an explicit
         // class instantiation's still spans the directive) and it carries no
         // references; the written nodes own those tokens.

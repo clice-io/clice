@@ -677,6 +677,18 @@ ZEST_CASE(MethodCallerCallee) {
     ZASSERT(found_caller);
 }
 
+ZEST_CASE(WholeUnitSiblingCallers) {
+    kind = CompilationKind::Whole;
+    build_index(R"(
+            int §(helper)helper(int v) { return v; }
+            int §(alpha)alpha() { return helper(1); }
+            int §(beta)beta() { return helper(2) + helper(3); }
+        )");
+    ZEXPECT(has_pair("alpha", RelationKind::Callee, "helper"));
+    ZEXPECT(has_pair("beta", RelationKind::Callee, "helper"));
+    ZEXPECT(has_pair("helper", RelationKind::Caller, "beta"));
+}
+
 ZEST_CASE(UsingRelationKey) {
     build_index(R"(
             namespace ns { void §(target)foo(); }
@@ -2993,6 +3005,23 @@ ZEST_CASE(FocusCompileCallers) {
                               {"go", Reference, "go"},
                               {"go", Call, "go", "run"},
     });
+}
+
+ZEST_CASE(EachRootItsCaller) {
+    build(R"(
+        struct A { void go(); };
+        template <typename T>
+        void first(T t) { t.go(); }
+        template <typename T>
+        void second(T t) { t.go(); }
+        void use() {
+            first(A{});
+            second(A{});
+        }
+    )");
+    auto records = resolved();
+    ZEXPECT(ranges::contains(records, Resolved{"go", Call, "go", "first"}));
+    ZEXPECT(ranges::contains(records, Resolved{"go", Call, "go", "second"}));
 }
 
 ZEST_CASE(IncludedFragmentResolved) {

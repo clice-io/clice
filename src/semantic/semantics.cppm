@@ -251,19 +251,34 @@ clang::SourceLocation keyword_after_scope(const clang::ASTContext& context,
 clang::SourceRange written_name(const clang::DeclarationNameInfo& name,
                                 const clang::SourceManager& SM);
 
+class Semantics;
+
 struct SemanticsOptions {
-    /// Traverse everything the unit parsed, the transient shape the
-    /// whole-TU index build uses; it reads no tokens, so it builds on a
-    /// compile that collected none. Without it only the focus file's
-    /// top-level decls are traversed — the shape features consume, cached
-    /// on the unit, owning the focus file's spelled tokens.
+    /// Traverse everything the unit parsed, the whole-TU shape the index
+    /// build reads: each AST node goes to `visit` as the traversal reaches
+    /// it, readable with its ancestors through the Semantics handed along,
+    /// which holds that path alone — a whole unit's millions of nodes are
+    /// never held at once, and the Semantics built holds the directives
+    /// alone. It reads no tokens, so it builds on a compile that collected
+    /// none. Without it only the focus file's top-level decls are traversed
+    /// — the shape features consume, cached on the unit, owning the focus
+    /// file's spelled tokens.
     bool all_files = false;
+
+    /// With all_files, each AST node as the traversal reaches it.
+    llvm::function_ref<void(const Semantics& path, std::uint32_t index)> visit;
 
     /// With all_files, also traverse these function and variable
     /// definitions the unit instantiated (CompilationUnit::instantiations),
     /// each a root of its own after the written declarations, its nodes
-    /// flagged in_instantiation.
+    /// flagged in_instantiation and handed to `visit` between the root's
+    /// `enter` and `leave`. An implicit definition (a lambda's call
+    /// operator) has no node of its own: its children are its first nodes.
     llvm::ArrayRef<const clang::Decl*> instantiations;
+
+    llvm::function_ref<void(const clang::Decl* root)> enter;
+
+    llvm::function_ref<void(const clang::Decl* root)> leave;
 
     /// With all_files, the written declarations to traverse in place of
     /// everything the unit parsed: a Content compile's own have the shape
@@ -335,29 +350,14 @@ public:
 
     /// All recorded nodes in one index space: first the AST segment in DFS
     /// pre-order (a parent always precedes its children), then preprocessor
-    /// nodes in source order.
+    /// nodes in source order. The whole-TU shape keeps no AST segment: while
+    /// it is built, the nodes are the path to the one visited.
     llvm::ArrayRef<Node> node_entries() const {
         return nodes;
     }
 
     const Node& node(std::uint32_t index) const {
         return nodes[index];
-    }
-
-    /// One instantiated definition SemanticsOptions::instantiations
-    /// traversed, as the nodes [begin, end): every node of the definition
-    /// but those of the instantiations it contains, which are roots of their
-    /// own. An implicit definition (a lambda's call operator) has no node of
-    /// its own, its children are the segment's top-level nodes.
-    struct InstantiationRoot {
-        const clang::Decl* decl = nullptr;
-        std::uint32_t begin = 0;
-        std::uint32_t end = 0;
-    };
-
-    /// The roots in the order SemanticsOptions::instantiations lists them.
-    llvm::ArrayRef<InstantiationRoot> instantiation_roots() const {
-        return roots;
     }
 
     /// The spelled tokens of the focus file, its lexical scan's (a view,
@@ -393,8 +393,6 @@ private:
     friend class SemanticsBuilder;
 
     std::vector<Node> nodes;
-
-    std::vector<InstantiationRoot> roots;
 
     llvm::ArrayRef<Token> tokens;
 
