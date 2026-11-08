@@ -127,7 +127,7 @@ public:
 
     /// The master let go of what a document or a project held (a close, a
     /// move, a project stopped, a project's load done): the next tick of its
-    /// polling returns the freed memory to the system (release_pool_memory),
+    /// polling returns the freed memory to the system (release_free_memory_everywhere),
     /// with what else went meanwhile. The allocators keep freed pages until a
     /// collect asks for them, and the workers collect after each request; the
     /// master has no such point of its own.

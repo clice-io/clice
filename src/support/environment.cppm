@@ -18,7 +18,7 @@ inline std::optional<std::uint64_t> env_integer(llvm::StringRef name) {
 /// The threads of libuv's pool, which runs async::queue's work: as libuv
 /// sizes it from UV_THREADPOOL_SIZE when it is first used, clamped to
 /// [1, 1024], 4 without it.
-inline std::size_t pool_threads() {
+inline std::size_t thread_pool_size() {
     return std::clamp<std::uint64_t>(env_integer("UV_THREADPOOL_SIZE").value_or(4), 1, 1024);
 }
 

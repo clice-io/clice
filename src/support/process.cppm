@@ -43,8 +43,9 @@ void release_free_memory();
 /// freed stays committed while that pool thread is idle. The collects wait
 /// for each other so that each runs on a thread of its own; a thread still
 /// busy after a moment is left to its next collect. glibc's malloc_trim
-/// covers every thread's arena at once.
-async::task<> release_pool_memory();
+/// covers every thread's arena at once, on one pool thread: on a large heap
+/// it takes long enough to stall the loop.
+async::task<> release_free_memory_everywhere();
 
 /// Watch `signum` for good. The first delivery of any watched signal (the
 /// shared `requested` flag) calls `stop` for a graceful stop. A second

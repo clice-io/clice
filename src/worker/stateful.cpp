@@ -69,13 +69,27 @@ struct DocumentEntry {
     async::mutex strand;
 };
 
+/// Return the freed memory of every pool thread, holding every unit of
+/// `threads` (StatefulWorker::threads): the collects find the threads free,
+/// and no request's work waits behind them.
+static async::task<> release_memory(async::semaphore& threads) {
+    std::vector<async::semaphore::guard> all;
+    for(std::size_t i = 0; i < thread_pool_size(); i += 1) {
+        all.push_back(co_await threads.scoped_acquire());
+    }
+    co_await release_free_memory_everywhere();
+}
+
 /// A request's hold on a document entry: keeps it alive through an Evict.
 /// Taken as the request is dispatched, then moved into the task that
 /// serves it; a moved-from hold holds nothing.
 struct [[nodiscard]] EntryHold {
     std::shared_ptr<DocumentEntry> doc;
 
-    explicit EntryHold(std::shared_ptr<DocumentEntry> entry) : doc(std::move(entry)) {}
+    async::semaphore& threads;
+
+    EntryHold(std::shared_ptr<DocumentEntry> entry, async::semaphore& threads) :
+        doc(std::move(entry)), threads(threads) {}
 
     EntryHold(EntryHold&&) noexcept = default;
     EntryHold& operator=(EntryHold&&) = delete;
@@ -85,7 +99,7 @@ struct [[nodiscard]] EntryHold {
         // as the eviction would have.
         if(doc && doc.use_count() == 1) {
             doc.reset();
-            async::event_loop::current().schedule(release_pool_memory());
+            async::event_loop::current().schedule(release_memory(threads));
         }
     }
 };
@@ -98,7 +112,8 @@ struct [[nodiscard]] EntryHold {
 struct [[nodiscard]] CompileGuard {
     EntryHold hold;
 
-    explicit CompileGuard(std::shared_ptr<DocumentEntry> entry) : hold(std::move(entry)) {}
+    CompileGuard(std::shared_ptr<DocumentEntry> entry, async::semaphore& threads) :
+        hold(std::move(entry), threads) {}
 
     CompileGuard(CompileGuard&&) noexcept = default;
     CompileGuard& operator=(CompileGuard&&) = delete;
@@ -120,7 +135,7 @@ class StatefulWorker {
     /// A unit per thread of libuv's pool, which runs the requests' work: a
     /// request holding one finds a thread free, so its work starts as it
     /// reports it started (worker::StartedParams).
-    async::semaphore threads{static_cast<std::ptrdiff_t>(pool_threads())};
+    async::semaphore threads{static_cast<std::ptrdiff_t>(thread_pool_size())};
 
     /// The id the master gave the request it sends next
     /// (worker::NextRequestParams).
@@ -154,7 +169,7 @@ class StatefulWorker {
         auto it = documents.find(params.path);
         assert(it != documents.end() && "the pool queries only documents it holds resident here");
         return serve_ast(kind,
-                         EntryHold(it->second),
+                         EntryHold(it->second, threads),
                          next_request,
                          params,
                          std::move(missing),
@@ -352,7 +367,7 @@ RequestResult<worker::CompileParams>
     // The AST this compile replaced was freed on this thread, but built on
     // the pool thread that compiled it; the compile's own leftovers are on
     // its own.
-    async::event_loop::current().schedule(release_pool_memory());
+    async::event_loop::current().schedule(release_memory(threads));
     co_return compile_result;
 }
 
@@ -365,7 +380,7 @@ void StatefulWorker::register_handlers() {
         [this](RequestContext& ctx,
                const worker::CompileParams& params) -> RequestResult<worker::CompileParams> {
             LOG_INFO("Compile request: path={}, version={}", params.path, params.version);
-            CompileGuard guard(get_or_create(params.path));
+            CompileGuard guard(get_or_create(params.path), threads);
             return serve_compile(std::move(guard), next_request, params);
         });
 
@@ -455,7 +470,7 @@ void StatefulWorker::register_handlers() {
     peer.on_notification([this](const worker::EvictParams& params) {
         LOG_DEBUG("Evict notification: path={}", params.path);
         documents.erase(params.path);
-        async::event_loop::current().schedule(release_pool_memory());
+        async::event_loop::current().schedule(release_memory(threads));
     });
 
     // === Hover ===

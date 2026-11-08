@@ -74,15 +74,18 @@ void release_free_memory() {
     }
 }
 
-async::task<> release_pool_memory() {
+async::task<> release_free_memory_everywhere() {
     if(!clice_allocator_collect) {
-        release_free_memory();
+        co_await async::queue([] { release_free_memory(); });
         co_return;
     }
-    auto threads = pool_threads();
+    auto threads = thread_pool_size();
     std::mutex mutex;
     std::condition_variable arrived;
     std::size_t here = 0;
+    // Once one collect has waited in vain, the threads still busy will not
+    // come: the later collects, queued behind them, run without waiting.
+    bool waited = false;
     std::vector<async::task<>> collects;
     for(std::size_t i = 0; i < threads; i += 1) {
         collects.push_back(async::queue([&] {
@@ -90,7 +93,11 @@ async::task<> release_pool_memory() {
                 std::unique_lock lock(mutex);
                 here += 1;
                 arrived.notify_all();
-                arrived.wait_for(lock, chrono::milliseconds(100), [&] { return here == threads; });
+                if(!waited && !arrived.wait_for(lock, chrono::milliseconds(20), [&] {
+                       return here == threads;
+                   })) {
+                    waited = true;
+                }
             }
             release_free_memory();
         }));

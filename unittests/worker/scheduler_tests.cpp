@@ -663,44 +663,66 @@ ZEST_CASE(IdlePoolScalesDown) {
     ZEXPECT(core.all<scheduler::ScaleDown>().size() == 2u);
 }
 
-ZEST_CASE(IdleHeavyWorkerReplaced) {
+ZEST_CASE(HeavyIdleWorkerReplaced) {
+    constexpr auto heavy = WorkerScheduler::replace_above + MiB;
     Core core(1);
+    core.submit(1, Priority::Low);
+    core.finish(1);
     core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB,
                 {
-                    {.slot = 0, .memory = WorkerScheduler::replace_above + MiB}
+                    {.slot = 0, .memory = heavy}
+    });
+    // A fresh process first: the heavy one serves until it is ready.
+    ZEXPECT(core.all<scheduler::Spawn>().size() == 1u);
+    ZEXPECT(core.all<scheduler::ScaleDown>().empty());
+    core.scheduler.worker_ready(1, core.now);
+    core.processes = 2;
+    core.advance(WorkerScheduler::idle_scale_down);
+    core.sample(16 * GiB,
+                {
+                    {.slot = 0, .memory = heavy  },
+                    {.slot = 1, .memory = 3 * MiB}
     });
     auto scale_downs = core.all<scheduler::ScaleDown>();
     ZASSERT(scale_downs.size() == 1u);
     ZEXPECT(scale_downs[0].slot == 0u);
-    ZEXPECT(core.all<scheduler::Spawn>().empty());
-    core.scheduler.worker_gone(0, false, core.now);
-    core.take();
-    ZEXPECT(core.all<scheduler::Spawn>().size() == 1u);
 }
 
-ZEST_CASE(IdleLightWorkerKept) {
+ZEST_CASE(LightIdleWorkerKept) {
     Core core(1);
+    core.submit(1, Priority::Low);
+    core.finish(1);
     core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB,
                 {
                     {.slot = 0, .memory = WorkerScheduler::replace_above}
     });
-    ZEXPECT(core.all<scheduler::ScaleDown>().empty());
+    ZEXPECT(core.all<scheduler::Spawn>().empty());
 }
 
-ZEST_CASE(ScaledDownWorkerNotReplaced) {
-    Core core(2);
+ZEST_CASE(UnusedWorkerKept) {
+    Core core(1);
     core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB,
                 {
-                    {.slot = 0, .memory = 0                                 },
-                    {.slot = 1, .memory = 2 * WorkerScheduler::replace_above}
+                    {.slot = 0, .memory = 2 * WorkerScheduler::replace_above}
     });
-    ZASSERT(core.all<scheduler::ScaleDown>().size() == 1u);
-    core.scheduler.worker_gone(1, false, core.now);
-    core.take();
     ZEXPECT(core.all<scheduler::Spawn>().empty());
+}
+
+ZEST_CASE(ScaleDownTakesHeaviest) {
+    Core core(3);
+    core.advance(WorkerScheduler::idle_scale_down);
+    core.sample(16 * GiB,
+                {
+                    {.slot = 0, .memory = MiB    },
+                    {.slot = 1, .memory = 9 * MiB},
+                    {.slot = 2, .memory = MiB    }
+    });
+    auto scale_downs = core.all<scheduler::ScaleDown>();
+    ZASSERT(scale_downs.size() == 1u);
+    ZEXPECT(scale_downs[0].slot == 1u);
 }
 
 ZEST_CASE(StarvedForegroundSpawns) {
