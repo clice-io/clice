@@ -72,7 +72,7 @@ See [Dependency Scanning](dependency-scanning.md).
 
 Semantic analysis capabilities beyond Clang's native APIs, over the AST of a compilation unit.
 
-- `Semantics`: The unified semantic map — a single AST traversal per compilation records every interesting node and its token ownership; selection, features, and index production are pure queries over the map rather than separate AST walks
+- `Semantics`: The unified semantic map — a single AST traversal per compilation records every interesting node of the focus file and its token ownership; selection and features are pure queries over the map rather than separate AST walks, while indexing a whole unit runs the same traversal over everything the unit parsed and hands each node to the indexer as it is reached, holding only that node and its ancestors
 - `EntityTable`: The identity of a declaration, equal across translation units for the declarations the compiler would merge
 - `TemplateResolver`: Resolves dependent names through pseudo-instantiation, enabling semantic analysis to see through template contexts. See [Template Resolver](template-resolver.md).
 - `SymbolKind` / `RelationKind`: Fine-grained symbol kinds and relation types
@@ -81,7 +81,7 @@ Semantic analysis capabilities beyond Clang's native APIs, over the AST of a com
 
 Symbol indexing system with cross-translation-unit query support. Layered as:
 
-- `TUIndex`: Index entries produced from a single compilation, projected from the semantic map
+- `TUIndex`: Index entries produced from a single compilation, projected node by node from its AST traversal
 - `ProjectIndex`: The global layer — externally visible symbols, plus the record of which translation units contributed which files — in memory and on disk in one type: it merges translation units' indexes, judges their freshness, saves its changes to the index database and loads them back
 - `Shard`: The per-file storage unit. Each compilation context that preprocesses the file differently contributes a variant, deduplicated by the content identity of its encoded entries; names local to the file live in the shard itself, only external names enter the `ProjectIndex`
 - `BlobDatabase`: Persistence backend — all index blobs live in a single LMDB database

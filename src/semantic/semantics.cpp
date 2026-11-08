@@ -548,10 +548,11 @@ private:
     }
 
     // Pops a node off the ancestor stack, takes its tokens and seals its
-    // subtree extent. The whole-TU shape only feeds the index build, which
-    // never queries token ownership, and drops the node instead: taking
-    // tokens would cost every PCH build, which runs a whole-TU pass over the
-    // preamble unit, its entire expanded stream.
+    // subtree extent. The whole-TU shape drops the node instead, its subtree
+    // visited, and takes no tokens: it only feeds the index build, which
+    // never queries token ownership, and taking them would cost every PCH
+    // build, which runs a whole-TU pass over the preamble unit, its entire
+    // expanded stream.
     void pop() {
         std::uint32_t self = stack.back();
         stack.pop_back();

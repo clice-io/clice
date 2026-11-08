@@ -1823,9 +1823,9 @@ public:
         auto walked = walked_instantiations();
         // The focus-only shape is the one features share, cached on the
         // unit; the whole-TU shape is walked node by node, projected as it
-        // is reached. A focus compile walks the declarations of other files
-        // that expand its macros, and its instantiations, in walks of their
-        // own.
+        // is reached. A focus compile also walks the declarations of other
+        // files that expand its macros; the instantiations are a walk of
+        // their own in either shape.
         std::optional<Semantics> whole;
         if(!focus_only) {
             whole.emplace(Semantics::build(
