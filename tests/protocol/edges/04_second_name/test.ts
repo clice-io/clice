@@ -46,7 +46,7 @@ test("the second takes over", POSIX, async (t) => {
 // The file starts with a byte order mark: both buffers hold it, as the disk
 // does, and a save that drops it drops it from both.
 test("a marked second name", POSIX, async (t) => {
-    t.disk.write("real/main.cpp", `﻿${t.disk.read("main.cpp")}`);
+    t.disk.write("real/main.cpp", `\ufeff${t.disk.read("main.cpp")}`);
     t.disk.rm("main.cpp");
     const s = await t.start();
     t.disk.symlink("link", "real");
