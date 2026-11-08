@@ -163,7 +163,7 @@ public:
         protocol::Position end{.line = line, .character = UINT32_MAX};
         // Counting bytes as ASCII finds the line's end without reading it.
         auto stop = crlf ? lsp::to_offset_clamped(content_size - mark, starts, end, CRLF{*crlf})
-                         : lsp::to_offset_clamped(std::string_view(without_bom(content)),
+                         : lsp::to_offset_clamped(std::string_view(content.drop_front(mark)),
                                                   starts,
                                                   end,
                                                   PositionEncoding::UTF8,
@@ -240,7 +240,7 @@ private:
         if(crlf) {
             return convert(content_size - mark, CRLF{*crlf});
         }
-        std::string_view text(without_bom(content));
+        std::string_view text(content.drop_front(mark));
         if(non_ascii) {
             return convert(text, encoding, *non_ascii);
         }
