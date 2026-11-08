@@ -153,34 +153,6 @@ bool is_setter(const clang::FunctionDecl* callee,
     return name.substr(3).ltrim("_").equals_insensitive(names[0]);
 }
 
-// The std cast-like forms (addressof, as_const, forward, forward_like, move,
-// move_if_noexcept): so common and so obvious that a parameter hint on them is
-// pure noise.
-bool is_simple_builtin(const clang::FunctionDecl* callee) {
-    switch(callee->getBuiltinID()) {
-        case clang::Builtin::BIaddressof:
-        case clang::Builtin::BIas_const:
-        case clang::Builtin::BIforward:
-        case clang::Builtin::BIforward_like:
-        case clang::Builtin::BImove:
-        case clang::Builtin::BImove_if_noexcept: return true;
-        default: break;
-    }
-
-    // Freestanding compiles (-ffreestanding) strip library-builtin IDs, so
-    // match the same set by name; their arguments stay uninteresting either
-    // way. All of these are single-parameter cast-like forms — the check
-    // must not swallow e.g. the three-argument std::move algorithm, whose
-    // parameters are worth hinting.
-    if(callee->getNumParams() == 1 && callee->isInStdNamespace()) {
-        llvm::StringRef name = display::identifier_of(callee);
-        return name == "addressof" || name == "as_const" || name == "forward" ||
-               name == "forward_like" || name == "move" || name == "move_if_noexcept";
-    }
-
-    return false;
-}
-
 /// The length of `text` in characters.
 std::size_t characters(llvm::StringRef text) {
     return lsp::encoded_length(text, PositionEncoding::UTF32);
@@ -831,7 +803,8 @@ private:
         // Exclude setters (i.e. functions with one argument whose name begins with
         // "set"), and builtins like std::move/forward/... as their parameter name
         // is also not likely to be interesting.
-        if(callee.decl && (is_setter(callee.decl, param_names) || is_simple_builtin(callee.decl)))
+        if(callee.decl &&
+           (is_setter(callee.decl, param_names) || decls::std_cast_form(callee.decl)))
             return;
 
         for(size_t i = 0; i < param_names.size() && i < args.size(); ++i) {

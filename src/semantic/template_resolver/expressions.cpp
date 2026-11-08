@@ -184,9 +184,14 @@ std::optional<llvm::APSInt>
     if(ranges::none_of(arguments, &clang::TemplateArgument::isDependent)) {
         auto canonical = canonical_arguments(context, VTD->getTemplateParameters(), arguments);
         void* position = nullptr;
+        llvm::SmallVector<clang::VarTemplateSpecializationDecl*, 1> explicit_specialization;
         if(auto* specialization = VTD->findSpecialization(canonical, position);
            specialization && specialization->isExplicitSpecialization()) {
-            return initial_value(specialization);
+            explicit_specialization.push_back(specialization);
+        }
+        drop_unseen(explicit_specialization);
+        if(!explicit_specialization.empty()) {
+            return initial_value(explicit_specialization.front());
         }
     }
 

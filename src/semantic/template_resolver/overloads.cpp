@@ -214,15 +214,10 @@ struct Associated {
     }
 };
 
-/// Whether instantiating `specialization` may befriend a function named
-/// `name` or give it bases: any pattern it may instantiate from does.
-bool instantiation_adds(const clang::ClassTemplateSpecializationDecl* specialization,
+/// Whether instantiating a class from one of `patterns` may befriend a
+/// function named `name` or give it bases.
+bool instantiation_adds(llvm::ArrayRef<const clang::CXXRecordDecl*> patterns,
                         clang::DeclarationName name) {
-    auto* CTD = specialization->getSpecializedTemplate();
-    llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*, 4> partials;
-    CTD->getPartialSpecializations(partials);
-    llvm::SmallVector<const clang::CXXRecordDecl*, 4> patterns(partials.begin(), partials.end());
-    patterns.push_back(CTD->getTemplatedDecl());
     return ranges::any_of(patterns, [&](const clang::CXXRecordDecl* pattern) {
         const auto* definition = pattern->getDefinition();
         return definition &&
@@ -237,7 +232,8 @@ bool instantiation_adds(const clang::ClassTemplateSpecializationDecl* specializa
 }  // namespace
 
 std::optional<llvm::SmallVector<const clang::NamedDecl*, 4>>
-    argument_dependent_lookup(clang::DeclarationName name, llvm::ArrayRef<CallArgument> arguments) {
+    PseudoInstantiator::argument_dependent_lookup(clang::DeclarationName name,
+                                                  llvm::ArrayRef<CallArgument> arguments) {
     Associated associated;
     for(auto& argument: arguments) {
         if(argument.type.isNull() || argument.type->isDependentType()) {
@@ -246,7 +242,12 @@ std::optional<llvm::SmallVector<const clang::NamedDecl*, 4>>
         associated.add(argument.type);
     }
     if(ranges::any_of(associated.uninstantiated, [&](const auto* specialization) {
-           return instantiation_adds(specialization, name);
+           auto* CTD = specialization->getSpecializedTemplate();
+           auto partials = seen_partials(CTD);
+           llvm::SmallVector<const clang::CXXRecordDecl*, 4> patterns(partials.begin(),
+                                                                      partials.end());
+           patterns.push_back(CTD->getTemplatedDecl());
+           return instantiation_adds(patterns, name);
        })) {
         return std::nullopt;
     }
@@ -264,18 +265,19 @@ std::optional<llvm::SmallVector<const clang::NamedDecl*, 4>>
         });
     };
     llvm::SmallVector<const clang::NamedDecl*, 4> found;
-    llvm::SmallPtrSet<const clang::Decl*, 8> seen;
+    llvm::SmallPtrSet<const clang::Decl*, 8> listed;
     for(const auto* scope: associated.namespaces) {
         for(auto* decl: scope->lookup(name)) {
             const auto* function = as_function(decl);
             if(function && visible(function) &&
                arity_viable(function, arguments.size(), /*member_call=*/false) &&
                may_take(function, arguments, /*member_call=*/false) &&
-               seen.insert(decl->getCanonicalDecl()).second) {
+               listed.insert(decl->getCanonicalDecl()).second) {
                 found.push_back(decl);
             }
         }
     }
+    drop_unseen(found);
     return found;
 }
 
@@ -641,6 +643,25 @@ void
     candidates.assign(kept.begin(), kept.end());
 }
 
+bool PseudoInstantiator::seen(const clang::NamedDecl* decl,
+                              llvm::SmallVectorImpl<VisibilityCheck>& checks) {
+    if(decls::fixed_std_utility(decl)) {
+        return true;
+    }
+    bool sees = visibility->sees(decl);
+    checks.push_back({decl, sees});
+    return sees;
+}
+
+llvm::SmallVector<const clang::NamedDecl*, 4>
+    PseudoInstantiator::overloads(const clang::OverloadExpr* expr) {
+    llvm::SmallVector<const clang::NamedDecl*, 4> found(expr->decls_begin(), expr->decls_end());
+    if(llvm::isa<clang::UnresolvedLookupExpr>(expr)) {
+        drop_unseen(found);
+    }
+    return found;
+}
+
 Callees PseudoInstantiator::call_candidates(const clang::CallExpr* expr) {
     if(auto* callee = llvm::dyn_cast_or_null<clang::NamedDecl>(expr->getCalleeDecl())) {
         return {.candidates = {callee}};
@@ -710,6 +731,8 @@ Callees PseudoInstantiator::callee_candidates(
                     }
                 }
             }
+        } else {
+            drop_unseen(candidates);
         }
         /// Argument-dependent lookup adds what instantiation finds for the
         /// arguments' types; while one of them stays dependent the visible

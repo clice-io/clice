@@ -632,16 +632,18 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
 
     // Check cache.
     if(pack_narrowing == 0) {
-        if(auto iter = cache.resolved.find(DNT); iter != cache.resolved.end()) {
+        if(auto kept = kept_resolution(DNT)) {
             LOG_DEBUG(
                 "{}"
                 "→ '{}' (cached)",
                 pad(),
-                iter->second.getAsString());
+                kept->getAsString());
             indent -= 1;
-            return iter->second;
+            return *kept;
         }
     }
+    StepEffects effects;
+    auto recorder = record_effects(effects);
 
     // Cycle detection: if we're already resolving this DNT, bail out.
     if(!resolving.insert(DNT).second) {
@@ -710,7 +712,8 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
             result.getAsString());
         indent -= 1;
         if(pack_narrowing == 0 && !inconclusive) {
-            cache.resolved.try_emplace(DNT, result);
+            cache.resolved.insert_or_assign(DNT,
+                                            ResolvedType{.type = result, .checks = effects.checks});
         }
         return result;
     }
@@ -736,11 +739,13 @@ clang::QualType
     bool cacheable = pack_narrowing == 0;
 
     if(cacheable) {
-        if(auto iter = cache.resolved.find(TST); iter != cache.resolved.end()) {
+        if(auto kept = kept_resolution(TST)) {
             indent -= 1;
-            return iter->second;
+            return *kept;
         }
     }
+    StepEffects effects;
+    auto recorder = record_effects(effects);
 
     auto NNS = rewrite_specifier(template_name.getQualifier(), Policy::Resolve);
 
@@ -772,7 +777,9 @@ clang::QualType
                         type.getAsString());
                     indent -= 1;
                     if(cacheable && !inconclusive) {
-                        cache.resolved.try_emplace(TST, type);
+                        cache.resolved.insert_or_assign(
+                            TST,
+                            ResolvedType{.type = type, .checks = effects.checks});
                     }
                     return type;
                 }
@@ -791,7 +798,9 @@ clang::QualType
                 result.getAsString());
             indent -= 1;
             if(cacheable && !inconclusive) {
-                cache.resolved.try_emplace(TST, result);
+                cache.resolved.insert_or_assign(
+                    TST,
+                    ResolvedType{.type = result, .checks = effects.checks});
             }
             return result;
         }
@@ -806,7 +815,8 @@ clang::QualType
     /// TU-wide — a truncated query must not poison this node for later
     /// queries that could still resolve it.
     if(cacheable && !inconclusive) {
-        cache.resolved.try_emplace(TST, fallback);
+        cache.resolved.insert_or_assign(TST,
+                                        ResolvedType{.type = fallback, .checks = effects.checks});
     }
     return fallback;
 }

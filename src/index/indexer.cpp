@@ -262,23 +262,14 @@ bool is_completable(const clang::NamedDecl* decl) {
     return false;
 }
 
-/// What a file brings in itself: it, every file it includes with what those
-/// include in turn, and the modules they import.
-struct Reach {
-    llvm::DenseSet<clang::FileID> files;
-
-    llvm::StringSet<> modules;
-};
-
 /// Projects the unit's semantic map into TUIndex entries: occurrences and
 /// relations from the resolve facts, macros from the preprocessor directives.
 class Indexer {
 public:
     Indexer(CompilationUnit& unit, const TUIndexOptions& options) :
         unit(unit), focus_only(unit.kind() == CompilationKind::Content && !options.all_files),
-        known_variants(options.known_variants),
-        resolver(unit.context(), {.only_instantiation = false}), readable(unit.context(), {}),
-        known_instantiations(options.known_instantiations),
+        known_variants(options.known_variants), resolver(unit, {.only_instantiation = false}),
+        readable(unit.context(), {}), known_instantiations(options.known_instantiations),
         standard_library(options.standard_library_instantiations) {}
 
     /// The only gate through which entries enter `file_indices`. With
@@ -753,123 +744,6 @@ public:
         return location;
     }
 
-    /// Add the modules an import of `name` makes visible: it, and those it
-    /// re-exports, in turn.
-    void add_imported(llvm::StringRef name, llvm::StringSet<>& modules) {
-        if(name.empty()) {
-            return;
-        }
-        auto& map = unit.sema().getPreprocessor().getHeaderSearchInfo().getModuleMap();
-        auto* module = map.findModule(name);
-        if(!module) {
-            modules.insert(name);
-            return;
-        }
-        llvm::SmallVector<clang::Module*> pending{module};
-        while(!pending.empty()) {
-            auto* current = pending.pop_back_val();
-            if(modules.insert(current->getTopLevelModuleName()).second) {
-                current->getExportedModules(pending);
-            }
-        }
-    }
-
-    const Reach& reach(clang::FileID file) {
-        if(auto found = reached.find(file); found != reached.end()) {
-            return found->second;
-        }
-        Reach brought{.files = {file}};
-        llvm::SmallVector<clang::FileID> pending{file};
-        auto& directives = unit.directives();
-        while(!pending.empty()) {
-            auto current = pending.pop_back_val();
-            auto directive = directives.find(current);
-            if(directive == directives.end()) {
-                continue;
-            }
-            for(auto& import: directive->second.imports) {
-                add_imported(import.full_name, brought.modules);
-            }
-            for(auto& include: directive->second.includes) {
-                if(include.fid.isValid() && brought.files.insert(include.fid).second) {
-                    pending.push_back(include.fid);
-                }
-            }
-        }
-        return reached.try_emplace(file, std::move(brought)).first->second;
-    }
-
-    /// Whether the file holding `at`, a name in a dependent call's overload
-    /// set, sees `candidate` on its own: the focus file always, a header
-    /// when a declaration of it is in the header or in a module the header
-    /// imports before `at`, or what the header includes before `at` brings
-    /// in (reach). What its includers bring in before it differs from one
-    /// unit to the next, and recording it would split the header's index
-    /// into variants that differ by those alone; what instantiations call,
-    /// the instantiation shards hold.
-    bool sees_on_its_own(const clang::NamedDecl* candidate, clang::SourceLocation at) {
-        auto [file, offset] = unit.produced_at(at);
-        if(unit.focus_file().contains(file)) {
-            return true;
-        }
-        auto [found, added] = visible_from.try_emplace({file, candidate->getCanonicalDecl()}, 0);
-        if(added) {
-            found->second = first_visible(candidate, file);
-        }
-        return found->second <= offset;
-    }
-
-    /// The offset in `file` from which `candidate` is visible on its own
-    /// (sees_on_its_own): 0 when the file declares it, past the first
-    /// import or include bringing a declaration in, else none.
-    std::uint32_t first_visible(const clang::NamedDecl* candidate, clang::FileID file) {
-        llvm::SmallVector<std::pair<clang::FileID, const clang::Module*>, 2> declared;
-        for(const auto* redecl: candidate->redecls()) {
-            declared.emplace_back(unit.produced_at(redecl->getLocation()).file,
-                                  redecl->getOwningModule());
-        }
-        if(ranges::any_of(declared, [&](const auto& entry) { return entry.first == file; })) {
-            return 0;
-        }
-        auto declared_in = [&](const llvm::DenseSet<clang::FileID>& files,
-                               const llvm::StringSet<>& modules) {
-            return ranges::any_of(declared, [&](const auto& entry) {
-                auto [fid, module] = entry;
-                return files.contains(fid) ||
-                       (module && modules.contains(module->getTopLevelModuleName()));
-            });
-        };
-        constexpr auto none = std::numeric_limits<std::uint32_t>::max();
-        auto directive = unit.directives().find(file);
-        if(directive == unit.directives().end()) {
-            return none;
-        }
-        auto past = [&](clang::SourceLocation location) {
-            return unit.produced_at(location).offset + 1;
-        };
-        std::uint32_t first = none;
-        llvm::StringSet<> modules;
-        for(auto& import: directive->second.imports) {
-            add_imported(import.full_name, modules);
-            if(declared_in({}, modules)) {
-                first = past(import.location);
-                break;
-            }
-        }
-        for(auto& include: directive->second.includes) {
-            if(past(include.location) >= first) {
-                break;
-            }
-            if(include.fid.isValid()) {
-                auto& brought = reach(include.fid);
-                if(declared_in(brought.files, brought.modules)) {
-                    return past(include.location);
-                }
-            }
-        }
-        return first;
-    }
-
     /// Hierarchy ranges are positions in the caller's document: a call
     /// written in a fragment the caller's body pastes in is recorded at
     /// that include.
@@ -930,12 +804,8 @@ public:
             }
             // A dependent call reaches every candidate the resolver finds
             // for it, as its weak references do.
-            bool overload_set =
-                llvm::isa<clang::UnresolvedLookupExpr>(CE->getCallee()->IgnoreParenImpCasts());
             for(auto* candidate: resolver.callees(CE)) {
-                if(!overload_set || sees_on_its_own(candidate, range.getBegin())) {
-                    call(candidate->getUnderlyingDecl(), range);
-                }
+                call(candidate->getUnderlyingDecl(), range);
             }
             return;
         }
@@ -1271,6 +1141,9 @@ public:
         // it substitutes are no references.
         const auto* stmt = semantics.node(i).node.get<clang::Stmt>();
         written_location = stmt ? stmt->getBeginLoc() : clang::SourceLocation();
+        // A header's entries are what the header sees on its own, as every
+        // unit including it shares them.
+        resolver.see_from(semantics.node(i).node.source_range().getBegin());
         if(instantiation_entries && !stmt) {
             project_placeholder(semantics, i);
             if(const auto* value = semantics.node(i).node.get<clang::ValueDecl>()) {
@@ -1278,12 +1151,7 @@ public:
             }
             return;
         }
-        bool overload_set = semantics.node(i).node.get<clang::UnresolvedLookupExpr>() != nullptr;
         for(auto& occurrence: resolve_occurrences(semantics, i, &resolver)) {
-            if(overload_set && occurrence.kind.is_one_of(RelationKind::WeakReference) &&
-               !sees_on_its_own(occurrence.decl, occurrence.location)) {
-                continue;
-            }
             auto name = add_name(occurrence);
             if(instantiation_entries) {
                 continue;
@@ -2263,12 +2131,6 @@ private:
         pattern_locals;
 
     std::vector<BodyName> body_names;
-
-    /// What each file brings in itself (reach).
-    llvm::DenseMap<clang::FileID, Reach> reached;
-
-    /// Where in a file a candidate becomes visible on its own (first_visible).
-    llvm::DenseMap<std::pair<clang::FileID, const clang::Decl*>, std::uint32_t> visible_from;
 };
 
 }  // namespace

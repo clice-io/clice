@@ -104,11 +104,26 @@ std::optional<PartialMatch<Partial>> PseudoInstantiator::viable(Partial* partial
     return PartialMatch<Partial>{.partial = partial, .verified = deduction == Deduction::Matched};
 }
 
+llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*, 4>
+    PseudoInstantiator::seen_partials(clang::ClassTemplateDecl* CTD) {
+    llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*, 4> partials;
+    CTD->getPartialSpecializations(partials);
+    drop_unseen(partials);
+    return partials;
+}
+
+llvm::SmallVector<clang::VarTemplatePartialSpecializationDecl*, 4>
+    PseudoInstantiator::seen_partials(clang::VarTemplateDecl* VTD) {
+    llvm::SmallVector<clang::VarTemplatePartialSpecializationDecl*, 4> partials;
+    VTD->getPartialSpecializations(partials);
+    drop_unseen(partials);
+    return partials;
+}
+
 llvm::SmallVector<PartialMatch<clang::ClassTemplatePartialSpecializationDecl>, 4>
     PseudoInstantiator::viable_partials(clang::ClassTemplateDecl* CTD,
                                         TemplateArguments arguments) {
-    llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*> partials;
-    CTD->getPartialSpecializations(partials);
+    auto partials = seen_partials(CTD);
     llvm::SmallVector<PartialMatch<clang::ClassTemplatePartialSpecializationDecl>, 4> matched;
     for(auto* partial: partials) {
         if(auto match = viable(partial, arguments)) {
@@ -120,8 +135,7 @@ llvm::SmallVector<PartialMatch<clang::ClassTemplatePartialSpecializationDecl>, 4
 
 llvm::SmallVector<PartialMatch<clang::VarTemplatePartialSpecializationDecl>, 4>
     PseudoInstantiator::viable_partials(clang::VarTemplateDecl* VTD, TemplateArguments arguments) {
-    llvm::SmallVector<clang::VarTemplatePartialSpecializationDecl*> partials;
-    VTD->getPartialSpecializations(partials);
+    auto partials = seen_partials(VTD);
     llvm::SmallVector<PartialMatch<clang::VarTemplatePartialSpecializationDecl>, 4> matched;
     for(auto* partial: partials) {
         if(auto match = viable(partial, arguments)) {
@@ -154,21 +168,25 @@ PartialChoice<clang::VarTemplatePartialSpecializationDecl>
 llvm::SmallVector<clang::ClassTemplateSpecializationDecl*, 2>
     PseudoInstantiator::undecided_specializations(clang::ClassTemplateDecl* CTD,
                                                   TemplateArguments arguments) {
-    return undecided_among<clang::ClassTemplateSpecializationDecl>(
+    auto undecided = undecided_among<clang::ClassTemplateSpecializationDecl>(
         context,
         CTD->specializations(),
         arguments,
         {.open = open_defaults.getArrayRef()});
+    drop_unseen(undecided);
+    return undecided;
 }
 
 llvm::SmallVector<clang::VarTemplateSpecializationDecl*, 2>
     PseudoInstantiator::undecided_specializations(clang::VarTemplateDecl* VTD,
                                                   TemplateArguments arguments) {
-    return undecided_among<clang::VarTemplateSpecializationDecl>(
+    auto undecided = undecided_among<clang::VarTemplateSpecializationDecl>(
         context,
         VTD->specializations(),
         arguments,
         {.open = open_defaults.getArrayRef()});
+    drop_unseen(undecided);
+    return undecided;
 }
 
 clang::CXXRecordDecl* PseudoInstantiator::select_pattern(clang::ClassTemplateDecl* CTD,
@@ -327,9 +345,12 @@ bool PseudoInstantiator::any_specialization_declares(clang::ClassTemplateDecl* C
                (!definition->lookup(name).empty() || !lookup_in_bases(definition, name).empty());
     };
 
-    llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*, 4> partials;
-    CTD->getPartialSpecializations(partials);
-    return ranges::any_of(partials, declares) || ranges::any_of(CTD->specializations(), declares);
+    llvm::SmallVector<clang::ClassTemplateSpecializationDecl*, 4> specializations(
+        CTD->specializations().begin(),
+        CTD->specializations().end());
+    drop_unseen(specializations);
+    return ranges::any_of(seen_partials(CTD), declares) ||
+           ranges::any_of(specializations, declares);
 }
 
 bool PseudoInstantiator::scope_lacks(clang::NestedNameSpecifier scope,

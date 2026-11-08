@@ -331,6 +331,83 @@ ZEST_CASE(KeptOpenDefaults) {
     ZEXPECT(resolver.lookup(finder.member).empty());
 }
 
+ZEST_CASE(KeptPerView) {
+    /// main.cpp declares a second erase_if and a partial specialization of
+    /// traits before it includes util.h, which on its own sees lib.h's
+    /// declarations alone. What a query keeps holds only for the places that
+    /// see alike: from util.h the call names one candidate and `kind` is
+    /// `int`, from main.cpp two and `long`, whichever place asked first.
+    add_file("lib.h", R"code(
+        #pragma once
+        namespace ns {
+        template <class T> struct vec {};
+        template <class T> int erase_if(vec<T>& c) { return 0; }
+        template <class T> struct traits { using type = int; };
+        }
+    )code");
+    add_file("util.h", R"code(
+        #pragma once
+        #include "lib.h"
+        template <class C> int remove_bad(C& c) { return ns::erase_if(c); }
+        template <class C> using kind = typename ns::traits<C*>::type;
+    )code");
+    add_focus("main.cpp", R"code(
+        #include "lib.h"
+        namespace ns {
+        template <class T> struct list {};
+        template <class T> int erase_if(list<T>& c) { return 1; }
+        template <class T> struct traits<T*> { using type = long; };
+        }
+        #include "util.h"
+    )code");
+    ZASSERT(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CallExpr* call = nullptr;
+        const clang::TypeAliasDecl* kind = nullptr;
+        const clang::ClassTemplateDecl* list = nullptr;
+
+        bool VisitCallExpr(const clang::CallExpr* expr) {
+            if(llvm::isa<clang::UnresolvedLookupExpr>(expr->getCallee()->IgnoreParenImpCasts())) {
+                call = expr;
+            }
+            return true;
+        }
+
+        bool VisitTypeAliasDecl(const clang::TypeAliasDecl* decl) {
+            if(decl->getName() == "kind") {
+                kind = decl;
+            }
+            return true;
+        }
+
+        bool VisitClassTemplateDecl(const clang::ClassTemplateDecl* decl) {
+            if(decl->getName() == "list") {
+                list = decl;
+            }
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ZASSERT(finder.call);
+    ZASSERT(finder.kind);
+    ZASSERT(finder.list);
+
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto& context = unit->context();
+    auto kind = finder.kind->getUnderlyingType();
+    for(auto from:
+        {finder.list->getLocation(), finder.call->getBeginLoc(), finder.list->getLocation()}) {
+        resolver.see_from(from);
+        bool in_main = from == finder.list->getLocation();
+        ZEXPECT(resolver.callees(finder.call).size() == (in_main ? 2 : 1));
+        auto resolved = resolver.resolve(kind);
+        ZASSERT(!resolved.isNull());
+        ZEXPECT(resolved.getCanonicalType() == (in_main ? context.LongTy : context.IntTy));
+    }
+}
+
 };  // ZEST_SUITE(TemplateResolver)
 
 }  // namespace

@@ -16,6 +16,8 @@ struct ResolverOptions {
 
 struct UnitCache;
 
+class Visibility;
+
 /// This class is used to resolve dependent names in the unit.
 /// For dependent names, we cannot know the any information about the name until
 /// the template is instantiated. This can be frustrating, you cannot get
@@ -33,9 +35,17 @@ class TemplateResolver {
 public:
     explicit TemplateResolver(clang::ASTContext& context, ResolverOptions options = {});
 
-    explicit TemplateResolver(CompilationUnit& unit) : TemplateResolver(unit.context()) {}
+    explicit TemplateResolver(CompilationUnit& unit, ResolverOptions options = {});
 
     ~TemplateResolver();
+
+    /// Answer the queries from here on as the place `location` is in sees
+    /// the unit on its own (Visibility): a header the declarations of what
+    /// it includes or imports before it, the focus file the whole unit. What
+    /// a header's index records must not differ with what the units
+    /// including it declared before it. Before any call, a query sees the
+    /// whole unit.
+    void see_from(clang::SourceLocation location);
 
     clang::QualType resolve(clang::QualType type);
 
@@ -109,6 +119,11 @@ public:
     llvm::SmallVector<const clang::NamedDecl*, 4>
         callees(const clang::Expr* callee, llvm::ArrayRef<const clang::Expr*> written);
 
+    /// The declarations the overload set `expr` names outside a call: of an
+    /// unqualified or namespace-qualified name those the query sees
+    /// (see_from), of a member every one.
+    llvm::SmallVector<const clang::NamedDecl*, 4> overloads(const clang::OverloadExpr* expr);
+
     /// Resolve the base type through pseudo-instantiation, then look the
     /// member up in the resolved record (e.g. `this->foo()` inherited from
     /// `Base<T>`). A base that is itself a dependent member access, call,
@@ -127,9 +142,15 @@ public:
 private:
     clang::ASTContext& context;
 
+    /// The unit, for what its files see on their own (see_from).
+    CompilationUnit* unit = nullptr;
+
     ResolverOptions options;
 
     std::unique_ptr<UnitCache> cache;
+
+    /// Where the queries are answered from, once see_from is called.
+    std::unique_ptr<Visibility> visibility;
 };
 
 /// The pattern a specialization the unit names but never instantiated would
