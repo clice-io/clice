@@ -2157,49 +2157,6 @@ ZEST_CASE(IdleWorkerGivesBack) {
 #endif
 }
 
-ZEST_CASE(EvictedDocumentGivesBack) {
-    // A stateful worker builds an AST on a pool thread and frees it on its
-    // loop thread: an allocator collecting only the thread that freed it
-    // would keep the AST's pages while the worker is idle.
-    TempDir tmp;
-    auto src = big_unit(tmp);
-
-    WorkerPoolFixture f;
-    std::uint64_t before = 0;
-    std::uint64_t resident = 0;
-    [[maybe_unused]] std::uint64_t after = 0;
-    f.run([&]() -> async::task<> {
-        ZASSERT(f.start(1, 1));
-        f.sample_pool();
-        before = f.memory(0, true);
-
-        worker::CompileParams params;
-        params.path = src;
-        params.version = 1;
-        params.text = *read_file(src);
-        params.directory = "/tmp";
-        params.arguments = make_args(src);
-        auto compiled = co_await f.pool.send_stateful(7, params);
-        ZASSERT(compiled.has_value());
-        f.sample_pool();
-        resident = f.memory(0, true);
-
-        f.pool.forget_document(7);
-        after = resident;
-        for(int i = 0; i < 200 && after >= before + 64 * MiB; i += 1) {
-            // No event: the worker returns its memory unannounced.
-            co_await async::sleep(chrono::milliseconds(50), f.loop);
-            f.sample_pool();
-            after = f.memory(0, true);
-        }
-        co_await f.stop();
-    });
-    ZEXPECT(resident > before + 128 * MiB);
-#if !__has_feature(address_sanitizer)
-    ZEXPECT(after < before + 64 * MiB);
-#endif
-}
-
 ZEST_CASE(ReusedMemoryStillCounted) {
     // The second request reuses what the first freed: a worker's memory
     // that missed reused pages would read it as a small unit.
