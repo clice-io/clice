@@ -258,27 +258,19 @@ clang::QualType PseudoInstantiator::type_of(const clang::Expr* expr, bool throug
                 if(through_object && !object.isNull()) {
                     object_quals = resolve_object(object).getCVRQualifiers();
                 }
-                decl = preferred(lookup_member(object, DSME->getMember()));
+                auto member = member_of(object, DSME->getMember());
+                decl = member.decl;
+                type = member.type;
             } else {
                 decl = referenced_decl(expr);
+                if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(decl)) {
+                    type = value_type(value);
+                }
             }
-
-            if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(decl)) {
-                type = value->getType();
-                /// A function parameter pack (`Box<Ts>... boxes`) is declared
-                /// with the expansion; a use of it has the pattern's type.
-                if(auto* PET = type->getAs<clang::PackExpansionType>()) {
-                    type = PET->getPattern();
-                }
-                auto* var = llvm::dyn_cast<clang::VarDecl>(value);
-                type = var && (var->getInit() || var->isCXXForRangeDecl()) && undeduced(type)
-                           ? deduce_auto(var)
-                           : substitute(type);
-                if(auto* field = llvm::dyn_cast<clang::FieldDecl>(value); !field) {
-                    object_quals = 0;
-                } else if(field->isMutable()) {
-                    object_quals &= ~clang::Qualifiers::Const;
-                }
+            if(auto* field = llvm::dyn_cast_or_null<clang::FieldDecl>(decl); !field) {
+                object_quals = 0;
+            } else if(field->isMutable()) {
+                object_quals &= ~clang::Qualifiers::Const;
             }
         }
         stack.truncate(frames);
@@ -292,6 +284,39 @@ clang::QualType PseudoInstantiator::type_of(const clang::Expr* expr, bool throug
         type = resolve(type);
         return type->isReferenceType() ? type : type.withCVRQualifiers(object_quals);
     });
+}
+
+Member PseudoInstantiator::member_of(clang::QualType object, clang::DeclarationName name) {
+    auto resolved = object.isNull() ? object : resolve_object(object);
+    if(resolved.isNull()) {
+        return {};
+    }
+    /// What the object still names unbound stays so: under no bindings of
+    /// the caller's, the answer is the resolved object's alone.
+    return kept_result(cache.members,
+                       std::pair{resolved.getAsOpaquePtr(), name.getAsOpaquePtr()},
+                       [&] {
+                           auto outer = std::exchange(stack.frames(), {});
+                           Member member{.decl = preferred(lookup_member(resolved, name))};
+                           if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(member.decl)) {
+                               member.type = value_type(value);
+                           }
+                           stack.frames() = std::move(outer);
+                           return member;
+                       });
+}
+
+clang::QualType PseudoInstantiator::value_type(const clang::ValueDecl* value) {
+    auto type = value->getType();
+    /// A function parameter pack (`Box<Ts>... boxes`) is declared with the
+    /// expansion; a use of it has the pattern's type.
+    if(auto* PET = type->getAs<clang::PackExpansionType>()) {
+        type = PET->getPattern();
+    }
+    auto* var = llvm::dyn_cast<clang::VarDecl>(value);
+    return var && (var->getInit() || var->isCXXForRangeDecl()) && undeduced(type)
+               ? deduce_auto(var)
+               : substitute(type);
 }
 
 clang::QualType PseudoInstantiator::expr_type(const clang::Expr* expr) {

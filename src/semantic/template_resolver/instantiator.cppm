@@ -258,6 +258,14 @@ struct UnboundResult {
     StepEffects effects;
 };
 
+/// What `name` finds as a member of an object, and its type in the terms the
+/// object is written in (PseudoInstantiator::member_of).
+struct Member {
+    const clang::Decl* decl = nullptr;
+
+    clang::QualType type;
+};
+
 /// What the queries of one unit keep for each other.
 struct UnitCache {
     /// Resolved dependent types, keyed by AST node pointer. This is safe
@@ -278,6 +286,9 @@ struct UnitCache {
     llvm::DenseMap<const clang::Expr*, UnboundResult<std::optional<llvm::APSInt>>> values;
 
     llvm::DenseMap<const clang::CallExpr*, UnboundResult<Callees>> calls;
+
+    /// Members by the resolved object and the name (member_of).
+    llvm::DenseMap<std::pair<const void*, const void*>, UnboundResult<Member>> members;
 };
 
 /// The core pseudo-instantiation engine, one query's state. Resolves
@@ -743,6 +754,17 @@ private:
     /// the object it is accessed through. Null for forms that name nothing.
     clang::QualType type_of(const clang::Expr* expr, bool through_object = false);
 
+    /// What `name` finds as a member of `object`, with its type substituted
+    /// under the bindings of the lookup. A resolved object names one
+    /// specialization whatever bound the parameters it was written in, so
+    /// the answer is kept for the unit by it (kept_result): MSVC reaches its
+    /// containers' state through the same `_Mypair._Myval2` everywhere.
+    Member member_of(clang::QualType object, clang::DeclarationName name);
+
+    /// The type an expression naming `value` has, under the current
+    /// bindings: a variable's deduced, a pack's pattern.
+    clang::QualType value_type(const clang::ValueDecl* value);
+
     /// `declared` with its `auto` deduced from `init`.
     clang::QualType deduce(clang::QualType declared, const clang::Expr* init);
 
@@ -923,6 +945,18 @@ private:
         if(!stack.empty()) {
             return compute();
         }
+        return kept_result(results, key, std::forward<Compute>(compute));
+    }
+
+    /// What `compute` gives for `key`, kept for the unit as unbound_result
+    /// keeps it, whatever is bound: for a step whose key already holds what
+    /// the bindings bear on it (member_of). The frames it leaves are those
+    /// above where it started.
+    template <typename Key, typename Result, typename Compute>
+    Result kept_result(llvm::DenseMap<Key, UnboundResult<Result>>& results,
+                       const std::type_identity_t<Key>& key,
+                       Compute&& compute) {
+        auto base = stack.size();
         if(auto found = results.find(key);
            found != results.end() && sees_alike(found->second.effects.checks)) {
             auto& known = found->second;
@@ -940,11 +974,12 @@ private:
             return compute();
         }();
         if(!inconclusive) {
-            results.insert_or_assign(key,
-                                     UnboundResult<Result>{
-                                         .result = result,
-                                         .frames = {stack.frames().begin(), stack.frames().end()},
-                                         .effects = std::move(effects),
+            results.insert_or_assign(
+                key,
+                UnboundResult<Result>{
+                    .result = result,
+                    .frames = {stack.frames().begin() + base, stack.frames().end()},
+                    .effects = std::move(effects),
             });
         }
         return result;
