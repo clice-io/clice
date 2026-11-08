@@ -94,10 +94,13 @@ std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr
                 resolve_object(substitute(clang::QualType(DSDRE->getQualifier().getAsType(), 0)));
             key.emplace(scope.getCanonicalType().getAsOpaquePtr(),
                         DSDRE->getDeclName().getAsOpaquePtr());
-            if(auto known = member_values.find(*key); known != member_values.end()) {
-                return known->second;
+            if(auto known = member_values.find(*key);
+               known != member_values.end() && known->second.holds_at(evaluating, depth)) {
+                inconclusive |= known->second.cut;
+                return known->second.value;
             }
         }
+        auto cycles = troubles[static_cast<std::size_t>(Trouble::Cycle)];
 
         auto frames = stack.size();
         const clang::Decl* decl = nullptr;
@@ -122,8 +125,17 @@ std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr
             }
         }
         stack.truncate(frames);
-        if(key && !inconclusive) {
-            member_values.try_emplace(*key, value);
+        /// Where a cycle was cut, what is in progress decides, not the
+        /// nesting.
+        if(key && (!inconclusive ||
+                   (!value && troubles[static_cast<std::size_t>(Trouble::Cycle)] == cycles))) {
+            member_values.insert_or_assign(*key,
+                                           FoldedMember{
+                                               .value = value,
+                                               .cut = inconclusive,
+                                               .evaluating = evaluating,
+                                               .depth = depth,
+                                           });
         }
         return value;
     });

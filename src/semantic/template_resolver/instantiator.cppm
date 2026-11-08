@@ -318,6 +318,25 @@ struct UnitCache {
         explicit_specializations;
 };
 
+/// A dependent member's value as a query folded it
+/// (PseudoInstantiator::member_values).
+struct FoldedMember {
+    std::optional<llvm::APSInt> value;
+
+    /// Whether a nesting limit cut the folding short, and how deep the
+    /// evaluations and the rewrites nested where it was folded.
+    bool cut;
+
+    unsigned evaluating;
+
+    unsigned depth;
+
+    /// Whether folding it where the nesting is as given gives `value`.
+    bool holds_at(unsigned evaluating, unsigned depth) const {
+        return !cut || (evaluating >= this->evaluating && depth >= this->depth);
+    }
+};
+
 /// The core pseudo-instantiation engine, one query's state. Resolves
 /// dependent names by looking up members in primary templates and partial
 /// specializations — a capability clang's own instantiation machinery does
@@ -1144,8 +1163,11 @@ private:
     /// `allocator_traits<A>` reads `_Is_default_allocator<A>::value`. The
     /// class is keyed canonically, as the sugar of one `A` differs by the
     /// path that reached it; what parameters it still names are unbound
-    /// alike. Only a conclusive answer is kept.
-    llvm::DenseMap<std::pair<const void*, void*>, std::optional<llvm::APSInt>> member_values;
+    /// alike. A folding the nesting limits cut short is kept too: met again
+    /// no shallower, it is cut alike, and folding it again costs each path
+    /// through `<ratio>`'s values with their operands unknown the whole tree
+    /// below it.
+    llvm::DenseMap<std::pair<const void*, void*>, FoldedMember> member_values;
 
     /// The defaults of value parameters that did not fold, which may hold
     /// any value (deduce_arguments).
