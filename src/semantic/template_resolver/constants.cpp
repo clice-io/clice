@@ -111,13 +111,22 @@ struct Folder {
 
     std::optional<llvm::APSInt> fold_binary(const clang::BinaryOperator* binary) {
         auto op = binary->getOpcode();
-        auto lhs = fold(binary->getLHS());
-        auto rhs = fold(binary->getRHS());
-
         /// An operand that does not fold may stand for a substitution
         /// failure, which leaves the whole expression false: `false` decides
         /// `&&` regardless, `true` decides `||` only beside a known operand.
-        if(op == clang::BO_LAnd && ((lhs && lhs->isZero()) || (rhs && rhs->isZero()))) {
+        /// Any other operator is unknown past its first unknown operand,
+        /// and the second is not folded: recursive values (`<ratio>`'s
+        /// `__static_gcd<_Yp, _Xp % _Yp>`) would fold both down to the
+        /// nesting limit.
+        auto lhs = fold(binary->getLHS());
+        if(op == clang::BO_LAnd && lhs && lhs->isZero()) {
+            return typed(truth(false), binary->getType());
+        }
+        if(!lhs && op != clang::BO_LAnd) {
+            return std::nullopt;
+        }
+        auto rhs = fold(binary->getRHS());
+        if(op == clang::BO_LAnd && rhs && rhs->isZero()) {
             return typed(truth(false), binary->getType());
         }
         if(!lhs || !rhs) {
