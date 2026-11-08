@@ -294,10 +294,10 @@ public:
 
     /// What an idle stateless process may hold of its own before a fresh
     /// one, which holds a few MiB, replaces it. After a few requests an idle
-    /// worker held 75 to 104 MiB on macOS and Windows, 28 MiB on Linux: pages
+    /// worker held 58 to 104 MiB on macOS and Windows, 28 MiB on Linux: pages
     /// mimalloc keeps past every collect, which only the end of the process
     /// frees.
-    constexpr static std::uint64_t replace_above = 64ull << 20;
+    constexpr static std::uint64_t replace_above = 32ull << 20;
 
     /// A foreground request waiting this long with no idle worker grows the
     /// pool; a shorter wait is the cooperative cancel freeing a worker.
