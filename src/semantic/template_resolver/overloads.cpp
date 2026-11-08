@@ -648,23 +648,25 @@ Callees PseudoInstantiator::call_candidates(const clang::CallExpr* expr) {
     if(llvm::isa<clang::CXXOperatorCallExpr>(expr)) {
         return {};
     }
-    llvm::ArrayRef<const clang::Expr*> arguments(expr->getArgs(), expr->getNumArgs());
-    bool pack = expands_pack(arguments);
-    auto callees =
-        callee_candidates(expr->getCallee(),
-                          arguments,
-                          [&](const clang::FunctionDecl* FD, bool member) {
-                              return (pack || arity_viable(FD, arguments.size(), member)) &&
-                                     accepts(FD, arguments, member);
-                          });
-    /// Deduction here leaves explicit template arguments out.
-    auto* callee = expr->getCallee()->IgnoreParenImpCasts();
-    if(callees.arguments && decls::explicit_template_arguments(callee).empty()) {
-        bool member =
-            llvm::isa<clang::UnresolvedMemberExpr, clang::CXXDependentScopeMemberExpr>(callee);
-        prefer_exact(callees.candidates, *callees.arguments, member);
-    }
-    return callees;
+    return unbound_result(cache.calls, expr, [&] {
+        llvm::ArrayRef<const clang::Expr*> arguments(expr->getArgs(), expr->getNumArgs());
+        bool pack = expands_pack(arguments);
+        auto callees =
+            callee_candidates(expr->getCallee(),
+                              arguments,
+                              [&](const clang::FunctionDecl* FD, bool member) {
+                                  return (pack || arity_viable(FD, arguments.size(), member)) &&
+                                         accepts(FD, arguments, member);
+                              });
+        /// Deduction here leaves explicit template arguments out.
+        auto* callee = expr->getCallee()->IgnoreParenImpCasts();
+        if(callees.arguments && decls::explicit_template_arguments(callee).empty()) {
+            bool member =
+                llvm::isa<clang::UnresolvedMemberExpr, clang::CXXDependentScopeMemberExpr>(callee);
+            prefer_exact(callees.candidates, *callees.arguments, member);
+        }
+        return callees;
+    });
 }
 
 llvm::SmallVector<const clang::NamedDecl*, 4>

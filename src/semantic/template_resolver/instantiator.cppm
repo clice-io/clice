@@ -220,6 +220,40 @@ struct Callees {
     std::optional<llvm::SmallVector<CallArgument, 4>> arguments;
 };
 
+/// What a step gave with no template parameter bound, and what it left for
+/// the steps after it: the frames of the lookups it ended in, the value
+/// defaults it found not to fold (deduce_arguments).
+template <typename Result>
+struct UnboundResult {
+    Result result;
+
+    llvm::SmallVector<InstantiationStack::Frame, 1> frames;
+
+    llvm::SmallVector<const clang::Expr*, 1> open_defaults;
+};
+
+/// What the queries of one unit keep for each other.
+struct UnitCache {
+    /// Resolved dependent types, keyed by AST node pointer. This is safe
+    /// because a given AST node (DependentNameType*, etc.) has a unique
+    /// identity within the TU — the same pointer always refers to the same
+    /// syntactic occurrence. Different syntactic occurrences of the "same"
+    /// type have different AST node pointers.
+    llvm::DenseMap<const void*, clang::QualType> resolved;
+
+    /// The steps taken with nothing bound (PseudoInstantiator::unbound_result):
+    /// rewrites by the type and the policy, types of expressions by the
+    /// expression and whether it is read through its object (type_of), values
+    /// of expressions, candidates of calls.
+    llvm::DenseMap<std::pair<const void*, unsigned>, UnboundResult<clang::QualType>> rewrites;
+
+    llvm::DenseMap<std::pair<const clang::Expr*, unsigned>, UnboundResult<clang::QualType>> types;
+
+    llvm::DenseMap<const clang::Expr*, UnboundResult<std::optional<llvm::APSInt>>> values;
+
+    llvm::DenseMap<const clang::CallExpr*, UnboundResult<Callees>> calls;
+};
+
 /// The functions named `name` that argument-dependent lookup finds for a
 /// call with `arguments` and that may take them: those of the namespaces
 /// the arguments' types are associated with, and the friends their
@@ -253,9 +287,9 @@ public:
     using lookup_result = clang::DeclContext::lookup_result;
 
     PseudoInstantiator(clang::ASTContext& context,
-                       llvm::DenseMap<const void*, clang::QualType>& resolved,
+                       UnitCache& cache,
                        const ResolverOptions& options) :
-        context(context), resolved(resolved), options(options) {}
+        context(context), cache(cache), options(options) {}
 
     /// Rewrite policy. The two-phase split is the resolver's core invariant:
     /// typedef/alias expansion must never re-enter heuristic lookup, or
@@ -798,12 +832,45 @@ private:
             [this, outer = std::exchange(inconclusive, false)] { inconclusive |= outer; });
     }
 
+    /// What `compute` gives for `key`. With no template parameter bound, the
+    /// state every query starts in, a step reads nothing of the query that
+    /// asked it but what the unit's cache holds, so what an earlier query
+    /// concluded there holds for this one: it is taken as it is, the frames
+    /// and the open defaults it left restored.
+    template <typename Key, typename Result, typename Compute>
+    Result unbound_result(llvm::DenseMap<Key, UnboundResult<Result>>& results,
+                          const std::type_identity_t<Key>& key,
+                          Compute&& compute) {
+        if(!stack.empty()) {
+            return compute();
+        }
+        if(auto found = results.find(key); found != results.end()) {
+            auto& known = found->second;
+            stack.frames().append(known.frames.begin(), known.frames.end());
+            open_defaults.insert(known.open_defaults.begin(), known.open_defaults.end());
+            return known.result;
+        }
+        auto judged = own_conclusion();
+        auto open = open_defaults.size();
+        Result result = compute();
+        if(!inconclusive) {
+            results.try_emplace(
+                key,
+                UnboundResult<Result>{
+                    .result = result,
+                    .frames = {stack.frames().begin(),       stack.frames().end()},
+                    .open_defaults = {open_defaults.begin() + open, open_defaults.end() },
+            });
+        }
+        return result;
+    }
+
 private:
     clang::ASTContext& context;
 
     InstantiationStack stack;
 
-    llvm::DenseMap<const void*, clang::QualType>& resolved;
+    UnitCache& cache;
 
     const ResolverOptions& options;
 
@@ -839,13 +906,13 @@ private:
     /// one element; node-pointer-keyed caches are bypassed for the duration.
     unsigned pack_narrowing = 0;
 
-    /// Some answer came back empty or partial because a lookup was already
-    /// in progress (a recursive chain such as `callback_traits<F> :
-    /// callback_traits<decltype(&F::operator())>`) or a rewrite hit the
-    /// depth or step limit, not because what it looked for is absent. Such
-    /// an answer is not conclusive: it never enters the unit-wide cache — a
-    /// later query with a fresh budget could still resolve it — and never
-    /// proves a member absent. A resolution judges its own work
+    /// Some answer came back empty or partial because a lookup or the
+    /// deduction of a variable was already in progress (a recursive chain
+    /// such as `callback_traits<F> : callback_traits<decltype(&F::operator())>`)
+    /// or a rewrite hit the depth or step limit, not because what it looked
+    /// for is absent. Such an answer is not conclusive: it never enters the
+    /// unit's cache — a later query with a fresh budget could still resolve
+    /// it — and never proves a member absent. A resolution judges its own work
     /// (own_conclusion), so one that came before it in the query does not
     /// keep it out of the cache.
     bool inconclusive = false;

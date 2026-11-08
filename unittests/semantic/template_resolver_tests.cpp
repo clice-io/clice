@@ -227,6 +227,53 @@ ZEST_CASE(ScopedBindingStaysLocal) {
     ZEXPECT(input->isDependentType());
 }
 
+ZEST_CASE(KeptCallKeepsItsBindings) {
+    /// A later query takes a call's candidates as an earlier one found them,
+    /// with the bindings of the lookup that found them: the type of the
+    /// call reads `A` through them.
+    add_focus("main.cpp", R"code(
+        template <typename A, typename B>
+        struct Pair {
+            A first();
+        };
+
+        template <typename T>
+        void use(Pair<int, T> pair) {
+            auto value = pair.first();
+        }
+    )code");
+    ZASSERT(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CallExpr* call = nullptr;
+        const clang::VarDecl* value = nullptr;
+
+        bool VisitCallExpr(const clang::CallExpr* expr) {
+            if(llvm::isa<clang::CXXDependentScopeMemberExpr>(
+                   expr->getCallee()->IgnoreParenImpCasts())) {
+                call = expr;
+            }
+            return true;
+        }
+
+        bool VisitVarDecl(const clang::VarDecl* decl) {
+            if(decl->getName() == "value") {
+                value = decl;
+            }
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ZASSERT(finder.call && finder.value);
+
+    auto& resolver = unit->get<types::TemplateResolver>();
+    ZEXPECT(resolver.callees(finder.call).size() == 1);
+    auto deduced = resolver.deduce(finder.value);
+    ZASSERT(!deduced.isNull());
+    ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);
+}
+
 };  // ZEST_SUITE(TemplateResolver)
 
 }  // namespace

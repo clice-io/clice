@@ -101,9 +101,9 @@ const clang::NamedDecl* pattern_of(const Specialization& specialization) {
     auto* primary = specialization.getSpecializedTemplate();
     /// The choice must not depend on what the unit instantiates: the
     /// pattern names the specialization's entity in every unit naming it.
-    llvm::DenseMap<const void*, clang::QualType> resolved;
+    UnitCache cache;
     ResolverOptions options{.only_instantiation = false};
-    PseudoInstantiator instantiator(primary->getASTContext(), resolved, options);
+    PseudoInstantiator instantiator(primary->getASTContext(), cache, options);
     auto* pattern =
         instantiator.select_pattern(primary, specialization.getTemplateArgs().asArray());
     return pattern ? pattern : primary->getTemplatedDecl();
@@ -111,19 +111,24 @@ const clang::NamedDecl* pattern_of(const Specialization& specialization) {
 
 }  // namespace
 
+TemplateResolver::TemplateResolver(clang::ASTContext& context, ResolverOptions options) :
+    context(context), options(std::move(options)), cache(std::make_unique<UnitCache>()) {}
+
+TemplateResolver::~TemplateResolver() = default;
+
 clang::QualType TemplateResolver::resolve(clang::QualType type) {
-    PseudoInstantiator instantiator(context, resolved, options);
+    PseudoInstantiator instantiator(context, *cache, options);
     return instantiator.resolve(type);
 }
 
 TemplateResolver::lookup_result TemplateResolver::lookup(clang::NestedNameSpecifier NNS,
                                                          clang::DeclarationName name) {
-    PseudoInstantiator instantiator(context, resolved, options);
+    PseudoInstantiator instantiator(context, *cache, options);
     return instantiator.lookup(NNS, name);
 }
 
 clang::TagDecl* TemplateResolver::resolve_tag(clang::QualType type) {
-    PseudoInstantiator instantiator(context, resolved, options);
+    PseudoInstantiator instantiator(context, *cache, options);
     type = instantiator.resolve(type);
     if(auto* tag = type->getAsTagDecl()) {
         return tag;
@@ -143,7 +148,7 @@ clang::TagDecl* TemplateResolver::resolve_tag(clang::QualType type) {
 
 bool TemplateResolver::specializable(clang::QualType type) {
     auto* chosen = resolve_tag(type);
-    PseudoInstantiator instantiator(context, resolved, options);
+    PseudoInstantiator instantiator(context, *cache, options);
     type = instantiator.resolve(type);
     auto* TST = type.isNull() ? nullptr : type->getAs<clang::TemplateSpecializationType>();
     auto* CTD = TST ? llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
@@ -175,8 +180,8 @@ clang::QualType TemplateResolver::deduce(const clang::VarDecl* var) {
     if(options.only_instantiation) {
         bindings = only_instantiations(var);
     }
-    llvm::DenseMap<const void*, clang::QualType> scoped;
-    PseudoInstantiator instantiator(context, bindings.empty() ? resolved : scoped, options);
+    UnitCache scoped;
+    PseudoInstantiator instantiator(context, bindings.empty() ? *cache : scoped, options);
     for(auto& binding: bindings) {
         instantiator.assume(binding.owner,
                             binding.params,
@@ -187,19 +192,19 @@ clang::QualType TemplateResolver::deduce(const clang::VarDecl* var) {
 }
 
 clang::QualType TemplateResolver::member_object(const clang::Expr* base, bool arrow) {
-    PseudoInstantiator instantiator(context, resolved, options);
+    PseudoInstantiator instantiator(context, *cache, options);
     return instantiator.resolve_object(
         instantiator.member_object(instantiator.expr_type(base), arrow));
 }
 
 clang::QualType TemplateResolver::arrow_pointee(clang::QualType type) {
-    PseudoInstantiator instantiator(context, resolved, options);
+    PseudoInstantiator instantiator(context, *cache, options);
     return instantiator.resolve(instantiator.arrow_pointee(type));
 }
 
 TemplateResolver::lookup_result
     TemplateResolver::lookup(const clang::CXXDependentScopeMemberExpr* expr) {
-    PseudoInstantiator instantiator(context, resolved, options);
+    PseudoInstantiator instantiator(context, *cache, options);
     return instantiator.lookup_member(instantiator.member_object(expr), expr->getMember());
 }
 
@@ -220,14 +225,14 @@ TemplateResolver::lookup_result
 
 llvm::SmallVector<const clang::NamedDecl*, 4>
     TemplateResolver::callees(const clang::CallExpr* expr) {
-    PseudoInstantiator instantiator(context, resolved, options);
+    PseudoInstantiator instantiator(context, *cache, options);
     return std::move(instantiator.call_candidates(expr).candidates);
 }
 
 llvm::SmallVector<const clang::NamedDecl*, 4>
     TemplateResolver::callees(const clang::Expr* callee,
                               llvm::ArrayRef<const clang::Expr*> written) {
-    PseudoInstantiator instantiator(context, resolved, options);
+    PseudoInstantiator instantiator(context, *cache, options);
     return instantiator.written_call_candidates(callee, written);
 }
 

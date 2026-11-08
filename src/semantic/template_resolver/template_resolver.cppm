@@ -14,6 +14,8 @@ struct ResolverOptions {
     bool only_instantiation = true;
 };
 
+struct UnitCache;
+
 /// This class is used to resolve dependent names in the unit.
 /// For dependent names, we cannot know the any information about the name until
 /// the template is instantiated. This can be frustrating, you cannot get
@@ -26,13 +28,14 @@ struct ResolverOptions {
 /// mutate the unit's semantic state.
 ///
 /// Thread safety: NOT thread-safe. Each compilation unit should have its own resolver.
-/// The `resolved` cache persists across multiple resolve() calls on the same unit.
+/// Its cache persists across the queries of the unit.
 class TemplateResolver {
 public:
-    explicit TemplateResolver(clang::ASTContext& context, ResolverOptions options = {}) :
-        context(context), options(std::move(options)) {}
+    explicit TemplateResolver(clang::ASTContext& context, ResolverOptions options = {});
 
     explicit TemplateResolver(CompilationUnit& unit) : TemplateResolver(unit.context()) {}
+
+    ~TemplateResolver();
 
     clang::QualType resolve(clang::QualType type);
 
@@ -126,13 +129,7 @@ private:
 
     ResolverOptions options;
 
-    /// Cache of resolved dependent types, keyed by AST node pointer.
-    /// Shared across resolve() calls within the same TU for performance.
-    /// This is safe because a given AST node (DependentNameType*, etc.) has a
-    /// unique identity within the TU — the same pointer always refers to the same
-    /// syntactic occurrence. Different syntactic occurrences of the "same" type
-    /// have different AST node pointers.
-    llvm::DenseMap<const void*, clang::QualType> resolved;
+    std::unique_ptr<UnitCache> cache;
 };
 
 /// The pattern a specialization the unit names but never instantiated would

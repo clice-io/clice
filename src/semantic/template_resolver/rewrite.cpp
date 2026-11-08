@@ -18,15 +18,19 @@ clang::QualType PseudoInstantiator::rewrite(clang::QualType type, Policy policy)
     if(type.isNull() || !type->isDependentType()) {
         return type;
     }
-    steps += 1;
-    if(depth > depth_limit || steps > step_budget) {
-        inconclusive = true;
-        return type;
-    }
-    depth += 1;
-    auto result = rewrite_type(type, policy);
-    depth -= 1;
-    return result.isNull() ? type : result;
+    return unbound_result(cache.rewrites,
+                          std::pair{type.getAsOpaquePtr(), static_cast<unsigned>(policy)},
+                          [&] {
+                              steps += 1;
+                              if(depth > depth_limit || steps > step_budget) {
+                                  inconclusive = true;
+                                  return type;
+                              }
+                              depth += 1;
+                              auto result = rewrite_type(type, policy);
+                              depth -= 1;
+                              return result.isNull() ? type : result;
+                          });
 }
 
 clang::QualType PseudoInstantiator::rewrite_type(clang::QualType type, Policy policy) {
@@ -628,7 +632,7 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
 
     // Check cache.
     if(pack_narrowing == 0) {
-        if(auto iter = resolved.find(DNT); iter != resolved.end()) {
+        if(auto iter = cache.resolved.find(DNT); iter != cache.resolved.end()) {
             LOG_DEBUG(
                 "{}"
                 "→ '{}' (cached)",
@@ -706,13 +710,16 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
             result.getAsString());
         indent -= 1;
         if(pack_narrowing == 0 && !inconclusive) {
-            resolved.try_emplace(DNT, result);
+            cache.resolved.try_emplace(DNT, result);
         }
         return result;
     }
 
     LOG_DEBUG("{}→ <unresolved>", pad());
     indent -= 1;
+    if(pack_narrowing == 0 && !inconclusive) {
+        cache.resolved.try_emplace(DNT, clang::QualType(DNT, 0));
+    }
     return clang::QualType(DNT, 0);
 }
 
@@ -732,7 +739,7 @@ clang::QualType
     bool cacheable = pack_narrowing == 0;
 
     if(cacheable) {
-        if(auto iter = resolved.find(TST); iter != resolved.end()) {
+        if(auto iter = cache.resolved.find(TST); iter != cache.resolved.end()) {
             indent -= 1;
             return iter->second;
         }
@@ -768,7 +775,7 @@ clang::QualType
                         type.getAsString());
                     indent -= 1;
                     if(cacheable && !inconclusive) {
-                        resolved.try_emplace(TST, type);
+                        cache.resolved.try_emplace(TST, type);
                     }
                     return type;
                 }
@@ -787,7 +794,7 @@ clang::QualType
                 result.getAsString());
             indent -= 1;
             if(cacheable && !inconclusive) {
-                resolved.try_emplace(TST, result);
+                cache.resolved.try_emplace(TST, result);
             }
             return result;
         }
@@ -802,7 +809,7 @@ clang::QualType
     /// TU-wide — a truncated query must not poison this node for later
     /// queries that could still resolve it.
     if(cacheable && !inconclusive) {
-        resolved.try_emplace(TST, fallback);
+        cache.resolved.try_emplace(TST, fallback);
     }
     return fallback;
 }

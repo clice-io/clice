@@ -808,47 +808,67 @@ public:
     /// into variants that differ by those alone; what instantiations call,
     /// the instantiation shards hold.
     bool sees_on_its_own(const clang::NamedDecl* candidate, clang::SourceLocation at) {
-        auto& SM = unit.context().getSourceManager();
-        auto [file, offset] = SM.getDecomposedExpansionLoc(at);
+        auto [file, offset] = unit.context().getSourceManager().getDecomposedExpansionLoc(at);
         if(unit.focus_file().contains(file)) {
             return true;
         }
+        auto [found, added] = visible_from.try_emplace({file, candidate->getCanonicalDecl()}, 0);
+        if(added) {
+            found->second = first_visible(candidate, file);
+        }
+        return found->second <= offset;
+    }
+
+    /// The offset in `file` from which `candidate` is visible on its own
+    /// (sees_on_its_own): 0 when the file declares it, past the first
+    /// import or include bringing a declaration in, else none.
+    std::uint32_t first_visible(const clang::NamedDecl* candidate, clang::FileID file) {
+        auto& SM = unit.context().getSourceManager();
+        llvm::SmallVector<std::pair<clang::FileID, const clang::Module*>, 2> declared;
+        for(const auto* redecl: candidate->redecls()) {
+            declared.emplace_back(SM.getFileID(SM.getExpansionLoc(redecl->getLocation())),
+                                  redecl->getOwningModule());
+        }
+        if(ranges::any_of(declared, [&](const auto& entry) { return entry.first == file; })) {
+            return 0;
+        }
         auto declared_in = [&](const llvm::DenseSet<clang::FileID>& files,
                                const llvm::StringSet<>& modules) {
-            return ranges::any_of(candidate->redecls(), [&](const clang::Decl* redecl) {
-                auto* module = redecl->getOwningModule();
-                return files.contains(SM.getFileID(SM.getExpansionLoc(redecl->getLocation()))) ||
+            return ranges::any_of(declared, [&](const auto& entry) {
+                auto [fid, module] = entry;
+                return files.contains(fid) ||
                        (module && modules.contains(module->getTopLevelModuleName()));
             });
         };
+        constexpr auto none = std::numeric_limits<std::uint32_t>::max();
         auto directive = unit.directives().find(file);
         if(directive == unit.directives().end()) {
-            return declared_in({file}, {});
+            return none;
         }
-        auto before = [&](clang::SourceLocation location) {
-            return SM.getDecomposedExpansionLoc(location).second < offset;
+        auto past = [&](clang::SourceLocation location) {
+            return SM.getDecomposedExpansionLoc(location).second + 1;
         };
+        std::uint32_t first = none;
         llvm::StringSet<> modules;
         for(auto& import: directive->second.imports) {
-            if(before(import.location)) {
-                add_imported(import.full_name, modules);
+            add_imported(import.full_name, modules);
+            if(declared_in({}, modules)) {
+                first = past(import.location);
+                break;
             }
         }
-        if(declared_in({file}, modules)) {
-            return true;
-        }
         for(auto& include: directive->second.includes) {
-            if(!before(include.location)) {
+            if(past(include.location) >= first) {
                 break;
             }
             if(include.fid.isValid()) {
                 auto& brought = reach(include.fid);
                 if(declared_in(brought.files, brought.modules)) {
-                    return true;
+                    return past(include.location);
                 }
             }
         }
-        return false;
+        return first;
     }
 
     /// Hierarchy ranges are positions in the caller's document: a call
@@ -2247,6 +2267,9 @@ private:
 
     /// What each file brings in itself (reach).
     llvm::DenseMap<clang::FileID, Reach> reached;
+
+    /// Where in a file a candidate becomes visible on its own (first_visible).
+    llvm::DenseMap<std::pair<clang::FileID, const clang::Decl*>, std::uint32_t> visible_from;
 };
 
 }  // namespace
