@@ -6,6 +6,7 @@ import :feature.query;
 import :feature.rename;
 import :index.symbol_query;
 import :project.project;
+import :support.text;
 import :vfs.file_system;
 
 namespace clice::driver {
@@ -61,7 +62,7 @@ std::expected<std::vector<feature::query::RenameRequest>, std::string>
     parse_renames(llvm::StringRef text) {
     std::vector<feature::query::RenameRequest> requests;
     llvm::SmallVector<llvm::StringRef> lines;
-    text.split(lines, '\n');
+    without_bom(text).split(lines, '\n');
     for(std::size_t i = 0; i < lines.size(); i += 1) {
         auto line = lines[i].trim();
         if(line.empty() || line.starts_with("//")) {
