@@ -498,12 +498,15 @@ void LSPClient::register_editing() {
                 auto text = vfs::read_text(file);
                 return text ? std::optional(std::move(*text)) : std::nullopt;
             };
+            // An open unit's own compile indexes its buffer.
+            auto pending = project.units_pending(
+                [&](Fid unit) { return query.serving(unit).has_value(); });
             auto plan = feature::plan_rename(
                 query,
                 project.file_table,
                 at->target,
                 new_name,
-                {.editable = editable, .read = read, .units_pending = project.units_pending()});
+                {.editable = editable, .read = read, .units_pending = pending});
             if(plan.blocked()) {
                 co_await async::fail(request_failed(feature::refusal(plan)));
             }

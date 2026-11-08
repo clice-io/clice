@@ -350,9 +350,10 @@ CDBDiff Project::refresh_provisional() {
     return diff;
 }
 
-bool Project::units_pending() {
+bool Project::units_pending(llvm::function_ref<bool(Fid unit)> covered) {
     return ranges::any_of(members(), [&](Fid unit) {
-        return rules.indexable(file_table.resolve(unit)) && !index.indexed(unit);
+        return rules.indexable(file_table.resolve(unit)) && !index.indexed(unit) &&
+               !(covered && covered(unit));
     });
 }
 

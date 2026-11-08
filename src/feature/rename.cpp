@@ -152,8 +152,8 @@ std::expected<RenameTarget, std::string> macro_target(const index::IndexQuery& q
                     auto located = query.resolve(other, site.file);
                     if(!located) {
                         return std::unexpected(std::format(
-                            "`{}` at {} is also the one the compile command defines (-D{}), "
-                            "which a rename cannot change",
+                            "`{}` at {} is, in some units, the macro their compile command "
+                            "defines (-D{}), which a rename cannot change",
                             std::string_view(name),
                             where(site),
                             std::string_view(name)));
