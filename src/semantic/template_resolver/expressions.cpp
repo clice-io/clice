@@ -194,6 +194,29 @@ std::optional<llvm::APSInt>
             argument = clang::TemplateArgument(resolve(argument.getAsType()));
         }
     }
+    /// Types and templates, resolved, hold all the caller's bindings say of
+    /// them; a value written as an expression reads them still.
+    std::vector<const void*> key{VTD};
+    for(auto& argument: rewritten) {
+        if(argument.getKind() == clang::TemplateArgument::Type) {
+            key.push_back(argument.getAsType().getAsOpaquePtr());
+        } else if(argument.getKind() == clang::TemplateArgument::Template) {
+            key.push_back(argument.getAsTemplate().getAsVoidPointer());
+        } else {
+            return variable_value(VTD, rewritten);
+        }
+    }
+    return kept_result(cache.variable_values, key, [&] {
+        auto outer = std::exchange(stack.frames(), {});
+        auto value = variable_value(VTD, rewritten);
+        stack.frames() = std::move(outer);
+        return value;
+    });
+}
+
+std::optional<llvm::APSInt>
+    PseudoInstantiator::variable_value(clang::VarTemplateDecl* VTD,
+                                       llvm::ArrayRef<clang::TemplateArgument> rewritten) {
     llvm::SmallVector<clang::TemplateArgument, 4> arguments;
     if(!fill_defaults(VTD, rewritten, arguments)) {
         return std::nullopt;

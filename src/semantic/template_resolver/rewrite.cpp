@@ -650,8 +650,14 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
     auto judged = own_conclusion();
 
     bool cacheable = resolution_kept(DNT);
+    const auto* canonical = DNT->getCanonicalTypeInternal().getTypePtr();
     if(cacheable) {
-        if(auto kept = kept_resolution(DNT)) {
+        if(auto settled = kept_resolution(cache.settled, canonical)) {
+            LOG_DEBUG("{}→ settled", pad());
+            indent -= 1;
+            return settled->isNull() ? clang::QualType(DNT, 0) : *settled;
+        }
+        if(auto kept = kept_resolution(cache.resolved, DNT)) {
             LOG_DEBUG(
                 "{}"
                 "→ '{}' (cached)",
@@ -682,7 +688,7 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
         LOG_DEBUG("{}→ '{}' (standard rule)", pad(), by_rule->getAsString());
         indent -= 1;
         if(*by_rule != clang::QualType(DNT, 0) && cacheable && !inconclusive) {
-            keep_resolution(DNT, *by_rule, step);
+            keep_resolution(cache.resolved, DNT, *by_rule, step);
         }
         return *by_rule;
     }
@@ -746,13 +752,19 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
             result.getAsString());
         indent -= 1;
         if(cacheable && !inconclusive) {
-            keep_resolution(DNT, result, step);
+            keep_resolution(cache.resolved, DNT, result, step);
+            if(!result->isDependentType()) {
+                keep_resolution(cache.settled, canonical, result, step);
+            }
         }
         return result;
     }
 
     LOG_DEBUG("{}→ <unresolved>", pad());
     indent -= 1;
+    if(cacheable && !inconclusive) {
+        keep_resolution(cache.settled, canonical, clang::QualType(), step);
+    }
     return clang::QualType(DNT, 0);
 }
 
@@ -770,7 +782,7 @@ clang::QualType
     bool cacheable = resolution_kept(TST);
 
     if(cacheable) {
-        if(auto kept = kept_resolution(TST)) {
+        if(auto kept = kept_resolution(cache.resolved, TST)) {
             indent -= 1;
             return *kept;
         }
@@ -813,7 +825,7 @@ clang::QualType
                         type.getAsString());
                     indent -= 1;
                     if(cacheable && !inconclusive) {
-                        keep_resolution(TST, type, step);
+                        keep_resolution(cache.resolved, TST, type, step);
                     }
                     return type;
                 }
@@ -832,7 +844,7 @@ clang::QualType
                 result.getAsString());
             indent -= 1;
             if(cacheable && !inconclusive) {
-                keep_resolution(TST, result, step);
+                keep_resolution(cache.resolved, TST, result, step);
             }
             return result;
         }
@@ -847,7 +859,7 @@ clang::QualType
     /// TU-wide — a truncated query must not poison this node for later
     /// queries that could still resolve it.
     if(cacheable && !inconclusive) {
-        keep_resolution(TST, fallback, step);
+        keep_resolution(cache.resolved, TST, fallback, step);
     }
     return fallback;
 }

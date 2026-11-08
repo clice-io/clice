@@ -270,6 +270,8 @@ struct ResolvedType {
 /// the steps after it: the frames of the lookups it ended in, its effects.
 template <typename Result>
 struct UnboundResult {
+    using Value = Result;
+
     Result result;
 
     llvm::SmallVector<InstantiationStack::Frame, 1> frames;
@@ -297,6 +299,12 @@ struct UnitCache {
     /// type have different AST node pointers.
     llvm::DenseMap<const void*, ResolvedType> resolved;
 
+    /// Dependent names resolved to a type naming no template parameter, or
+    /// to nothing (a null type), by their canonical node: the sugar of one
+    /// name differs by the path that wrote it, and such an answer carries
+    /// none of it.
+    llvm::DenseMap<const void*, ResolvedType> settled;
+
     /// The steps taken with nothing bound (PseudoInstantiator::unbound_result):
     /// rewrites by the type and the policy, types of expressions by the
     /// expression and whether it is read through its object (type_of), values
@@ -323,6 +331,11 @@ struct UnitCache {
     /// (PseudoInstantiator::unformable): the overloads of a container take
     /// the same iterator types at every call.
     llvm::DenseMap<const void*, UnboundResult<bool>> unformable;
+
+    /// Values of variable templates by the template and its arguments, when
+    /// they are all types or templates (PseudoInstantiator::value_of):
+    /// `is_empty_v<_Alloc>` decides the layout of every MSVC container.
+    std::map<std::vector<const void*>, UnboundResult<std::optional<llvm::APSInt>>> variable_values;
 
     /// The explicit specializations of each class and variable template
     /// (PseudoInstantiator::explicit_specializations).
@@ -816,6 +829,10 @@ private:
     std::optional<llvm::APSInt> value_of(clang::VarTemplateDecl* VTD,
                                          llvm::ArrayRef<clang::TemplateArgumentLoc> written);
 
+    /// The value of `VTD<arguments>`, the arguments resolved.
+    std::optional<llvm::APSInt> variable_value(clang::VarTemplateDecl* VTD,
+                                               llvm::ArrayRef<clang::TemplateArgument> arguments);
+
     /// The value of the member `name` of `scope`, a class resolved, kept for
     /// the unit: folded with none of the caller's bindings, which the class
     /// already holds.
@@ -1045,10 +1062,10 @@ private:
     /// keeps it, whatever is bound: for a step whose key already holds what
     /// the bindings bear on it (member_of). The frames it leaves are those
     /// above where it started.
-    template <typename Key, typename Result, typename Compute>
-    Result kept_result(llvm::DenseMap<Key, UnboundResult<Result>>& results,
-                       const std::type_identity_t<Key>& key,
-                       Compute&& compute) {
+    template <typename Results, typename Compute>
+    auto kept_result(Results& results, const typename Results::key_type& key, Compute&& compute) ->
+        typename Results::mapped_type::Value {
+        using Result = typename Results::mapped_type::Value;
         auto base = stack.size();
         if(auto found = results.find(key);
            found != results.end() && sees_alike(found->second.effects.checks, found->second.view)) {
@@ -1104,8 +1121,11 @@ private:
 
     /// Keep what `node`, a dependent name or specialization, resolved to,
     /// with the judgements of `step` that resolved it.
-    void keep_resolution(const void* node, clang::QualType type, const StepRecording& step) {
-        cache.resolved.insert_or_assign(
+    void keep_resolution(llvm::DenseMap<const void*, ResolvedType>& kept,
+                         const void* node,
+                         clang::QualType type,
+                         const StepRecording& step) {
+        kept.insert_or_assign(
             node,
             ResolvedType{.type = type, .checks = step.effects.checks, .view = view()});
     }
@@ -1120,9 +1140,10 @@ private:
     /// What an earlier query resolved `node`, a dependent name or
     /// specialization, to, when this one judges alike what it saw; its
     /// judgements noted again.
-    std::optional<clang::QualType> kept_resolution(const void* node) {
-        auto found = cache.resolved.find(node);
-        if(found == cache.resolved.end() || !sees_alike(found->second.checks, found->second.view)) {
+    std::optional<clang::QualType> kept_resolution(llvm::DenseMap<const void*, ResolvedType>& kept,
+                                                   const void* node) {
+        auto found = kept.find(node);
+        if(found == kept.end() || !sees_alike(found->second.checks, found->second.view)) {
             return std::nullopt;
         }
         judged_visibility(found->second.checks);

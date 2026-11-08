@@ -87,7 +87,7 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::QualType typ
     if(auto dependent = !TD ? TST->getTemplateName().getAsDependentTemplateName() : nullptr) {
         // If this dependent specialization was already resolved (possibly to
         // itself when unresolvable), skip the redundant lookup.
-        if(resolution_kept(TST) && kept_resolution(TST)) {
+        if(resolution_kept(TST) && kept_resolution(cache.resolved, TST)) {
             return lookup_result();
         }
 
