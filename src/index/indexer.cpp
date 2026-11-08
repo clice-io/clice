@@ -1134,6 +1134,16 @@ public:
         }
     }
 
+    /// Answer the resolver's queries from node `i` on as its place sees the
+    /// unit. A header's entries are what the header sees on its own, as
+    /// every unit including it shares them; what a declaration holds, met
+    /// after it in the walk, sees what the declaration does.
+    void see_from(const Semantics& semantics, std::uint32_t i) {
+        if(const auto* decl = semantics.node(i).node.get<clang::Decl>()) {
+            resolver.see_from(decl->getLocation());
+        }
+    }
+
     void project_node(const Semantics& semantics, std::uint32_t i) {
         // What an instantiation resolves are the calls and member accesses
         // its body's expressions make and the types its placeholders
@@ -1141,12 +1151,7 @@ public:
         // it substitutes are no references.
         const auto* stmt = semantics.node(i).node.get<clang::Stmt>();
         written_location = stmt ? stmt->getBeginLoc() : clang::SourceLocation();
-        // A header's entries are what the header sees on its own, as every
-        // unit including it shares them; what a declaration holds sees what
-        // the declaration does.
-        if(const auto* decl = semantics.node(i).node.get<clang::Decl>()) {
-            resolver.see_from(decl->getLocation());
-        }
+        see_from(semantics, i);
         if(instantiation_entries && !stmt) {
             project_placeholder(semantics, i);
             if(const auto* value = semantics.node(i).node.get<clang::ValueDecl>()) {
@@ -1661,6 +1666,7 @@ public:
             if(!entries[i].node.is_ast()) {
                 continue;
             }
+            see_from(semantics, i);
             for(auto& occurrence: resolve_occurrences(semantics, i, &resolver)) {
                 if(occurrence.location.isMacroID() &&
                    unit.focus_file().contains(
