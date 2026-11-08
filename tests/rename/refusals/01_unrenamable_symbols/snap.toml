@@ -11,7 +11,7 @@ error = "what the name here refers to differs from one instantiation or macro ex
 error = "`printf` is declared in a system header"
 
 [answers.command_line.prepare_rename]
-error = "no #define of `FROM_BUILD` is indexed: the compile command or the compiler defines it, which a rename cannot change"
+error = "the compile command or the compiler defines `FROM_BUILD`, which a rename cannot change"
 
 [answers.system_macro.prepare_rename]
 error = "`EOF` is defined in a system header"

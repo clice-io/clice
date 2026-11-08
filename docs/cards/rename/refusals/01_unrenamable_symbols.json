@@ -94,7 +94,7 @@
           "marker": "command_line",
           "value": {
             "prepare_rename": {
-              "error": "no #define of `FROM_BUILD` is indexed: the compile command or the compiler defines it, which a rename cannot change"
+              "error": "the compile command or the compiler defines `FROM_BUILD`, which a rename cannot change"
             }
           }
         },

@@ -108,8 +108,7 @@ std::string unplaced_macro(const index::SymbolInfo& macro) {
         return std::format("the file defining `{}` changed since it was indexed", macro.name);
     }
     return std::format(
-        "no #define of `{}` is indexed: the compile command or the compiler "
-        "defines it, which a rename cannot change",
+        "the compile command or the compiler defines `{}`, which a rename cannot change",
         macro.name);
 }
 
