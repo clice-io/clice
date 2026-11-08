@@ -33,8 +33,7 @@ static async::task<std::uint32_t> poll_projects(MasterServer& srv, const ext::Po
     auto projects = srv.projects;
     for(auto& project: projects) {
         if(cdb) {
-            count +=
-                static_cast<std::uint32_t>(project->reload_databases(params.force.value_or(true)));
+            count += project->reload_databases(params.force.value_or(true)) ? 1 : 0;
             continue;
         }
         if(co_await project->poll_sources()) {

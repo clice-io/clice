@@ -249,8 +249,8 @@ std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Co
         result += line.opens_block ? line.text.ltrim(" \t")
                                    : line.text.drop_front(std::min(indent, line.text.size()));
     }
-    if(!llvm::json::isUTF8(result)) {
-        result = llvm::json::fixUTF8(result);
+    if(!kotatsu::is_utf8(result)) {
+        result = kotatsu::replace_invalid_utf8(result);
     }
     return result;
 }

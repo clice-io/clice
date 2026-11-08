@@ -6,8 +6,8 @@ import :index.instantiation_shard;
 import :index.shard;
 import :index.tu_index;
 import :semantic.token_class;
-import :support.bytes;
 import :support.logging;
+import :support.text;
 
 namespace clice::index {
 

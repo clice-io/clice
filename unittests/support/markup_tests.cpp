@@ -274,15 +274,6 @@ ZEST_CASE(DocumentRuler) {
     ZASSERT(d.as_plain_text() == "foo\n\nfoo");
 }
 
-ZEST_CASE(DocumentHeading) {
-    Document d;
-    d.add_heading(1).append_text("foo");
-    d.add_heading(2).append_text("bar");
-    d.add_paragraph().append_text("baz");
-    ZASSERT(d.as_markdown() == "# foo  \n## bar  \nbaz");
-    ZASSERT(d.as_plain_text() == "foo\nbar\nbaz");
-}
-
 ZEST_CASE(CodeBlockRender) {
     Document d;
     // Code blocks preserves any extra spaces.

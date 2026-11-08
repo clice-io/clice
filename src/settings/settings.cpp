@@ -1,9 +1,9 @@
 module clice;
 
-import :settings.settings;
+import :command.argument;
 import :settings.configuration;
+import :settings.settings;
 import :support.logging;
-import :support.shell;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -46,9 +46,7 @@ static std::optional<Spelling> setting_path(std::string value,
 /// hyper-thread adds little to a compile, while every worker costs a TU's
 /// memory.
 static std::uint32_t physical_parallelism() {
-    auto logical = sys::parallelism();
-    auto physical = llvm::get_physical_cores();
-    return physical > 0 ? std::min(static_cast<std::uint32_t>(physical), logical) : logical;
+    return std::min(sys::physical_cores(), sys::parallelism());
 }
 
 std::uint32_t default_stateless_worker_count() {

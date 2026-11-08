@@ -34,8 +34,7 @@ CLOutput parse_cl_output(llvm::StringRef out) {
 
 std::vector<std::string> cl_driver_mode(llvm::StringRef driver, CompilerFamily family) {
     std::vector<std::string> mode = {"--driver-mode=cl"};
-    std::string include;
-    if(family != CompilerFamily::MSVC || sys::get_env(include, "INCLUDE")) {
+    if(family != CompilerFamily::MSVC || env_string("INCLUDE")) {
         return mode;
     }
     auto host = path::parent(path::parent(driver));

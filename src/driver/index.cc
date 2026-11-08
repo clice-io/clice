@@ -16,9 +16,9 @@ import :project.background;
 import :project.project;
 import :server.control;
 import :support.logging;
+import :support.process;
 import :support.signal;
 import :support.text;
-import :support.timer;
 
 namespace clice::driver {
 
@@ -110,14 +110,14 @@ struct TestPause {
 };
 
 std::optional<TestPause> test_pause() {
-    std::string value;
-    if(!sys::get_env(value, "CLICE_TEST_PAUSE")) {
+    auto value = env_string("CLICE_TEST_PAUSE");
+    if(!value) {
         return std::nullopt;
     }
-    auto [count, file] = llvm::StringRef(value).split(' ');
+    auto [count, file] = llvm::StringRef(*value).split(' ');
     TestPause pause;
     if(count.getAsInteger(10, pause.units) || pause.units == 0 || file.empty()) {
-        LOG_WARN("CLICE_TEST_PAUSE is '<units> <file>', not '{}'", value);
+        LOG_WARN("CLICE_TEST_PAUSE is '<units> <file>', not '{}'", *value);
         return std::nullopt;
     }
     pause.file = file.str();
@@ -125,7 +125,7 @@ std::optional<TestPause> test_pause() {
 }
 
 async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResult& result) {
-    ScopedTimer timer;
+    Timer timer;
     auto& project = run.project;
     auto& background = project.background_index;
 
@@ -371,13 +371,8 @@ std::string format_hash(std::uint64_t hash) {
 
 /// Milliseconds since the epoch as a local wall-clock timestamp.
 std::string format_time(std::uint64_t epoch_ms) {
-    auto seconds = static_cast<std::time_t>(epoch_ms / 1000);
-    std::tm local{};
-#ifdef _WIN32
-    localtime_s(&local, &seconds);
-#else
-    localtime_r(&seconds, &local);
-#endif
+    auto time = chrono::system_clock::time_point(chrono::milliseconds(epoch_ms));
+    auto local = sys::local_time(time).value_or(std::tm{});
     char timestamp[32];
     std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &local);
     return timestamp;

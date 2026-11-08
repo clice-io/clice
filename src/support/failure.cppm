@@ -1,4 +1,4 @@
-module clice:support.failure_record;
+module clice:support.failure;
 
 import :support.prelude;
 

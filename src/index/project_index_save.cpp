@@ -7,9 +7,8 @@ import :index.project_records;
 import :index.search_index;
 import :index.shard;
 import :index.tu_manifest;
-import :support.bytes;
 import :support.logging;
-import :support.timer;
+import :support.text;
 
 namespace clice::index {
 
@@ -208,7 +207,7 @@ async::task<> ProjectIndex::update_search(SearchRebuild rebuild) {
     if(!search_update_due(rebuild)) {
         co_return;
     }
-    ScopedTimer timer;
+    Timer timer;
     auto runs = search.run_count();
     bool full = !search.loaded() || search.damaged();
     std::uint32_t folded = 0;

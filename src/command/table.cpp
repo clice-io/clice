@@ -91,7 +91,7 @@ void CommandTable::set_project_root(CanonicalRef path) {
 }
 
 const Command& CommandTable::get(CommandID id) const {
-    return *commands.get(static_cast<std::uint32_t>(id));
+    return commands[std::to_underlying(id)];
 }
 
 std::optional<LocalArg>
@@ -137,12 +137,14 @@ CommandID CommandTable::save(Command command, llvm::ArrayRef<LocalArg> args) {
             view.end());
     }
     command.args = view;
-    auto id = commands.get(command);
-    auto stored = commands.get(id);
-    if(stored->args.data() == view.data()) {
-        stored->args = persist(view);
+    if(auto it = ids.find(command); it != ids.end()) {
+        return it->second;
     }
-    return CommandID(id);
+    command.args = persist(view);
+    auto id = CommandID(commands.size());
+    commands.push_back(command);
+    ids.try_emplace(command, id);
+    return id;
 }
 
 llvm::ArrayRef<Arg> CommandTable::persist(llvm::ArrayRef<Arg> args) {

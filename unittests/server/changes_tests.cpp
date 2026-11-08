@@ -9,13 +9,13 @@ import :project.command;
 import :project.project;
 import :server.served_project;
 import :server.session;
-import :support.bytes;
+import :support.text;
 import :unittests.server.served_project_fixture;
-import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
+import :unittests.utils;
 import :vfs.ids;
 
 namespace clice::testing {

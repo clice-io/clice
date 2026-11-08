@@ -258,9 +258,8 @@ inline int usage_error(const cli::Error& error) {
         cli::report(error);
         return 2;
     }
-    auto message = error.suggestion.empty()
-                       ? error.message
-                       : std::format("{}; did you mean '{}'?", error.message, error.suggestion);
+    std::string message;
+    error.summary(message);
     print_json(Failure{.error = std::move(message)});
     return 2;
 }
@@ -293,7 +292,7 @@ int dispatch(T& options) {
             }
         }
         options.log.apply();
-        logging::stderr_logger("clice", logging::options);
+        logging::stderr_logger("clice");
         return run(options);
     }
 }

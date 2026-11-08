@@ -11,7 +11,6 @@ import :semantic.decls;
 import :semantic.display;
 import :semantic.type_lines;
 import :semantic.types;
-import :support.format;
 import :support.text;
 import :syntax.lexer;
 import :syntax.lexical_scan;
@@ -766,21 +765,17 @@ auto quoted(const clang::ASTContext& context,
         if(width == 8) {
             /// A UTF-8 sequence passes through as the bytes it is; any other
             /// byte past ASCII is escaped.
-            auto length = llvm::getNumBytesForUTF8(static_cast<llvm::UTF8>(c));
-            std::array<llvm::UTF8, 4> sequence{};
-            if(length > sequence.size() || index + length > characters.size()) {
+            std::string bytes;
+            for(auto at = index; at < characters.size() && at < index + 4; at += 1) {
+                bytes += static_cast<char>(characters[at]);
+            }
+            auto sequence = kotatsu::decode_utf8(bytes);
+            if(!sequence.valid) {
                 escape();
                 continue;
             }
-            for(unsigned offset = 0; offset < length; offset += 1) {
-                sequence[offset] = static_cast<llvm::UTF8>(characters[index + offset]);
-            }
-            if(!llvm::isLegalUTF8Sequence(sequence.data(), sequence.data() + length)) {
-                escape();
-                continue;
-            }
-            text.append(reinterpret_cast<const char*>(sequence.data()), length);
-            index += length - 1;
+            text.append(bytes, 0, sequence.length);
+            index += sequence.length - 1;
             continue;
         }
         if(width == 16 && c >= 0xD800 && c < 0xDC00 && index + 1 < characters.size() &&

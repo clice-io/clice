@@ -4,10 +4,8 @@ import :index.project_index;
 import :project.background;
 import :project.graph.unit;
 import :project.project;
-import :support.environment;
 import :support.logging;
 import :support.process;
-import :support.timer;
 import :worker.pool;
 
 namespace clice {
@@ -345,7 +343,7 @@ async::task<> BackgroundIndex::run_pass() {
 
     // Timed at the start of real work; the reporter's token handshake runs
     // off to the side and cannot inflate the reported indexing duration.
-    ScopedTimer timer;
+    Timer timer;
     // The dispatch loop runs as the first child of the group it fills, so a
     // shutdown cancel reaches the feeder and every in-flight task alike.
     co_await async::with_task_group(

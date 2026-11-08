@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """Symbolize a clice crash log against a released symbol file.
 
-Release binaries are stripped PIE executables, so the frame addresses in a
-crash log are ASLR-shifted. The crash handler records the executable's load
-address ("main executable base: 0x..."); this script subtracts it and feeds
-the resulting file offsets to llvm-symbolizer.
+Each frame of a crash names its module, where the module is loaded and the
+offset in it ("0x..., /usr/bin/clice(0x...) + 0x... byte(s)"): the offset is
+the address the symbols of an ELF or Mach-O file count, and for a Windows
+module (.exe, .dll) the address from the executable's preferred image base
+(--image-base). Every frame but the one a signal or an exception interrupted
+(its line ends with " (interrupted)") is a return address, whose call is the
+byte before it. Older logs number their frames and record the executable's
+load address ("main executable base: 0x...") instead, which this script
+subtracts.
 
 Usage:
     python symbolize.py crash.log --symbols clice.gsym
-
-Windows frames name the module, its load address and the offset in it
-("0x..., C:\\...\\clice.exe(0x...) + 0x... byte(s)"); the offset is added to
-the executable's preferred image base (--image-base), which the addresses in
-its symbols count from.
 
 Accepts either the released GSYM symbol file (resolved with llvm-gsymutil) or
 a full DWARF file / unstripped binary (resolved with llvm-symbolizer). For a
@@ -29,17 +29,20 @@ import shutil
 import subprocess
 import sys
 
-# "0  clice 0x00005ea84c157818" — the un-symbolized dump written when the
-# crashing machine has no llvm-symbolizer. Already-symbolized "#0 0x..."
-# frames do not match and pass through untouched.
-FRAME = re.compile(r"^\s*(\d+)\s+(\S+)\s+0x([0-9a-fA-F]+)")
-BASE = re.compile(r"main executable base: 0x([0-9a-fA-F]+)")
-# "0x00007FF6A1B2C3D4, C:\...\clice.exe(0x00007FF6A1B20000) + 0x2C3D4 byte(s)" —
-# LLVM's Windows trace when the crashing machine has no llvm-symbolizer.
-PE_FRAME = re.compile(
-    r"^\s*0x[0-9a-fA-F]+, (.+?)\(0x[0-9a-fA-F]+\) \+ 0x([0-9a-fA-F]+) byte\(s\)",
+# "0x00007FF6A1B2C3D4, C:\...\clice.exe(0x00007FF6A1B20000) + 0x2C3D4 byte(s)",
+# on every OS; " (interrupted)" after the frame a signal or an exception
+# interrupted. LLVM's Windows trace, which older Windows logs hold, has the
+# same lines without it.
+MODULE_FRAME = re.compile(
+    r"^\s*0x[0-9a-fA-F]+, (.+?)\(0x[0-9a-fA-F]+\) \+ 0x([0-9a-fA-F]+) byte\(s\)( \(interrupted\))?",
     re.MULTILINE,
 )
+# Older logs: "0  clice 0x00005ea84c157818", the un-symbolized dump LLVM
+# writes when the crashing machine has no llvm-symbolizer, rebased by the
+# "main executable base" line before it. Already-symbolized "#0 0x..." frames
+# do not match and pass through untouched.
+FRAME = re.compile(r"^\s*(\d+)\s+(\S+)\s+0x([0-9a-fA-F]+)")
+BASE = re.compile(r"main executable base: 0x([0-9a-fA-F]+)")
 
 
 def main() -> int:
@@ -59,7 +62,7 @@ def main() -> int:
         "--image-base",
         type=lambda value: int(value, 0),
         default=0x140000000,
-        help="preferred image base of a Windows executable (default: lld's for 64-bit EXEs)",
+        help="preferred image base of a Windows module (default: lld's for 64-bit EXEs)",
     )
     parser.add_argument("--symbolizer", default="llvm-symbolizer")
     parser.add_argument("--gsymutil", default="llvm-gsymutil")
@@ -81,10 +84,10 @@ def main() -> int:
         with open(args.log) as log_file:
             text = log_file.read()
 
-    if BASE.search(text) is None and PE_FRAME.search(text) is None:
+    if BASE.search(text) is None and MODULE_FRAME.search(text) is None:
         print(
-            "error: no 'main executable base' line in the log; the crash predates "
-            "base recording — addresses cannot be rebased",
+            "error: no frame naming its module and no 'main executable base' line "
+            "in the log; the crash predates base recording — addresses cannot be rebased",
             file=sys.stderr,
         )
         return 1
@@ -92,24 +95,32 @@ def main() -> int:
     # A log can hold several crash sections appended by respawned processes,
     # each with its own ASLR base — track the most recent one while scanning.
     base = None
-    # Windows frames carry no number; they are counted per crash section.
-    pe_frames = 0
+    # Module frames carry no number; they are counted per crash section.
+    module_frames = 0
     for line in text.splitlines():
+        if "=== CRASH STACK TRACE ===" in line:
+            module_frames = 0
         base_match = BASE.search(line)
         if base_match is not None:
             base = int(base_match.group(1), 16)
-            pe_frames = 0
+            module_frames = 0
             print(line)
             continue
-        pe_frame = PE_FRAME.match(line)
-        if pe_frame is not None:
-            number = str(pe_frames)
-            pe_frames += 1
-            name = ntpath.basename(pe_frame.group(1)).lower().removesuffix(".exe")
-            if name != args.module.lower():
+        module_frame = MODULE_FRAME.match(line)
+        if module_frame is not None:
+            number = str(module_frames)
+            module_frames += 1
+            module = ntpath.basename(module_frame.group(1)).lower()
+            stem, extension = os.path.splitext(module)
+            if stem != args.module.lower():
                 print(line)
                 continue
-            offset = args.image_base + int(pe_frame.group(2), 16)
+            offset = int(module_frame.group(2), 16)
+            if extension in (".exe", ".dll"):
+                offset += args.image_base
+            # A return address: its call is the byte before it.
+            if module_frame.group(3) is None:
+                offset -= 1
         else:
             frame = FRAME.match(line)
             if (

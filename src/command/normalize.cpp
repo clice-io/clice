@@ -7,7 +7,6 @@ import :command.toolchains.gcc;
 import :command.toolchains.nvcc;
 import :command.toolchains.own_options;
 import :support.logging;
-import :support.shell;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -160,7 +159,7 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     /// identity — `ccache clang++ X` and `clang++ X` dedupe to one command.
     std::size_t wrapper_len = wrapper_prefix_len(command_line);
     if(wrapper_len >= command_line.size()) {
-        LOG_WARN("Compiler launcher without a compiler: {}", print_argv(command_line));
+        LOG_WARN("Compiler launcher without a compiler: {}", join_command(command_line));
         return std::nullopt;
     }
     llvm::SmallVector<std::string_view, 32> written(command_line.begin() + wrapper_len,
@@ -339,14 +338,27 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
 std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
                                                Fid file,
                                                llvm::StringRef command) {
+    llvm::SmallVector<std::string_view> views;
     std::vector<std::string> tokens;
-    split(command, tokens);
-    return normalize(directory, file, tokens);
+    return normalize(directory, file, split(command, views, tokens));
 }
 
-void Normalizer::split(llvm::StringRef command, std::vector<std::string>& tokens) const {
+kotatsu::string_list_ref Normalizer::split(llvm::StringRef command,
+                                           llvm::SmallVectorImpl<std::string_view>& views,
+                                           std::vector<std::string>& tokens) const {
     // A database written inside Cygwin or MSYS2 quotes its commands for sh.
-    split_command(command, mounts ? sys::cmd::Quoting::POSIX : host_quoting, tokens);
+    auto quoting = mounts ? sys::cmd::Quoting::POSIX : sys::cmd::native_quoting;
+    views.clear();
+    // Blanks before the program are none of the command (split_command).
+    for(auto it = sys::cmd::split(command.ltrim(), quoting).begin(); it != std::default_sentinel;
+        ++it) {
+        if(!it.is_view()) {
+            split_command(command, quoting, tokens);
+            return tokens;
+        }
+        views.push_back(*it);
+    }
+    return views;
 }
 
 std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
@@ -492,7 +504,7 @@ std::optional<CommandID> WrittenCommands::intern(const Spelling& directory,
         if(auto normalized = normalizer.normalize(directory, Fid{}, arguments)) {
             it->second = *normalized;
         } else {
-            LOG_WARN("Not a compile command: {}", print_argv(arguments));
+            LOG_WARN("Not a compile command: {}", join_command(arguments));
         }
     }
     if(it->second == invalid_command) {

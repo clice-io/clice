@@ -4,7 +4,6 @@ import :command.argument;
 import :command.database;
 import :command.normalize;
 import :command.table;
-import :support.shell;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -177,7 +176,7 @@ ZEST_CASE(LeftOutOptionsShare) {
         return database.candidate_entries(fake(file)).front().command;
     };
     ZEXPECT(command("a.cpp") == command("b.cpp"));
-    ZEXPECT(print_argv(commands.render_full(command("b.cpp"))) == "clang++ -std=c++20 -fPIC");
+    ZEXPECT(join_command(commands.render_full(command("b.cpp"))) == "clang++ -std=c++20 -fPIC");
     ZEXPECT(command("c.cpp") == command("d.cpp"));
 };
 
@@ -211,7 +210,7 @@ ZEST_CASE(XclangReadByCC1) {
                          "a.cpp",
                          "clang++ -Xclang -fmodule-file=std=std.pcm -Xclang -include "
                          "-Xclang pch.hxx -Xclang -fno-pch-timestamp a.cpp"sv);
-    auto argv = print_argv(render_entry(database, fake("a.cpp")));
+    auto argv = join_command(render_entry(database, fake("a.cpp")));
     ZEXPECT(!llvm::StringRef(argv).contains("fmodule-file"));
     ZEXPECT(llvm::StringRef(argv).contains(
         "-Xclang -include -Xclang pch.hxx -Xclang -fno-pch-timestamp"));

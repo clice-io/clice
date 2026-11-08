@@ -25,8 +25,7 @@ static async::task<std::expected<fs::cygwin::MountTable, std::string>>
 
 async::task<std::expected<fs::cygwin::MountTable, std::string>>
     find_mount_table(std::string program, std::vector<std::string> written) {
-    std::string search;
-    sys::get_env(search, "PATH");
+    auto search = env_string("PATH").value_or("");
     std::vector<std::string> search_path;
     for(auto dir: sys::split_paths(search)) {
         search_path.emplace_back(dir);

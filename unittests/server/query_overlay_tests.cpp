@@ -6,10 +6,11 @@ import :index.query;
 import :index.shard;
 import :index.text;
 import :index.tu_index;
+import :project.graph.task_graph;
 import :project.project;
 import :server.served_project;
 import :server.session;
-import :support.bytes;
+import :support.text;
 import :unittests.server.served_project_fixture;
 import :unittests.utils.index_internals;
 import :unittests.utils.temp_dir;
@@ -506,7 +507,7 @@ int main() { return 0; }
     // Body edits dirty the document but never move preamble entries: as
     // long as the buffer still starts with the blob's preamble text, the
     // entry keeps serving — the prefix comparison is the freshness check.
-    fx.served->invalidate(session->path_id);
+    fx.served->project.graph.invalidate(ast_node(session->path_id));
     session->set_text(session->text().str() + "int more;\n");
     ZEXPECT(index_query().first_site(hash_of("FOO"), Fid{}, RelationKind::Definition));
 }

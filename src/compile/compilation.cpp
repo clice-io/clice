@@ -1,5 +1,6 @@
 module clice;
 
+import :command.argument;
 import :command.file_kind;
 import :command.invocation;
 import :compile.compilation;
@@ -7,7 +8,7 @@ import :compile.diagnostic;
 import :compile.tidy;
 import :compile.tokens;
 import :support.logging;
-import :support.shell;
+import :support.process;
 import :syntax.header_context;
 import :syntax.lexical_scan;
 import :syntax.position;
@@ -64,11 +65,11 @@ std::unique_ptr<clang::CompilerInvocation>
     for(auto& argument: input.arguments) {
         arguments.push_back(argument.c_str());
     }
-    LOG_DEBUG("Compile command: {}", print_argv(arguments));
+    LOG_DEBUG("Compile command: {}", join_command(arguments));
     auto invocation =
         create_compiler_invocation(arguments, input.directory, input.vfs, diagnostic_engine);
     if(!invocation) {
-        LOG_ERROR(" Fail to create invocation, arguments list is: {}", print_argv(arguments));
+        LOG_ERROR(" Fail to create invocation, arguments list is: {}", join_command(arguments));
         return nullptr;
     }
 
@@ -102,10 +103,7 @@ std::unique_ptr<clang::CompilerInvocation>
     auto& [pch, bound] = input.pch;
     // Tests stand in for a PCH damaged past clang's checks, which crashes
     // the parse reading it, by writing CLICE_TEST_DAMAGE into it.
-    const static auto damage = [] {
-        std::string value;
-        return sys::get_env(value, "CLICE_TEST_DAMAGE") ? std::optional(value) : std::nullopt;
-    }();
+    const static auto damage = env_string("CLICE_TEST_DAMAGE");
     if(damage && !pch.empty()) {
         if(std::string bytes; !fs::read_file(bytes, pch) && bytes.contains(*damage)) {
             LLVM_BUILTIN_TRAP;
@@ -122,10 +120,7 @@ std::unique_ptr<clang::CompilerInvocation>
 
     // `#pragma clang __debug crash` and its kin crash the compiler on
     // purpose. Tests keep them as a crash a file's content decides.
-    const static bool pragma_crash = [] {
-        std::string unused;
-        return sys::get_env(unused, "CLICE_TEST_PRAGMA_CRASH");
-    }();
+    const static bool pragma_crash = env_string("CLICE_TEST_PRAGMA_CRASH").has_value();
     pp_opts.DisablePragmaDebugCrash = !pragma_crash;
 
     auto& header_search_opts = invocation->getHeaderSearchOpts();
@@ -258,10 +253,7 @@ void CompilationUnit::run_tidy() {
     auto collected = std::move(collected_directives);
 
     // Tests crash the pass over a focus file holding CLICE_TEST_TIDY_CRASH.
-    const static auto crash = [] {
-        std::string value;
-        return sys::get_env(value, "CLICE_TEST_TIDY_CRASH") ? std::optional(value) : std::nullopt;
-    }();
+    const static auto crash = env_string("CLICE_TEST_TIDY_CRASH");
     if(crash && SM().getBufferData(SM().getMainFileID()).contains(*crash)) {
         LLVM_BUILTIN_TRAP;
     }

@@ -3,8 +3,7 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.tu_manifest;
-import :support.bitmap;
-import :support.bytes;
+import :support.text;
 import :unittests.utils;
 
 namespace clice::testing {

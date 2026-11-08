@@ -374,7 +374,7 @@ tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
     tidy::ClangTidyOptions opts = default_options();
 
     // clang::clangd::provideEnvironment
-    if(std::string user; sys::get_env(user, "USER")) {
+    if(std::string user; !sys::user_name(user)) {
         opts.User = std::move(user);
     }
     // A batch run is clang-tidy's: its default list, the compiler's

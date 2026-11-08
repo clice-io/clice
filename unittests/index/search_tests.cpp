@@ -7,7 +7,7 @@ import :index.symbol;
 import :index.symbol_query;
 import :index.tu_index;
 import :semantic.symbol;
-import :support.bytes;
+import :support.text;
 import :unittests.utils.index_query_tester;
 import :vfs.ids;
 import :vfs.path;

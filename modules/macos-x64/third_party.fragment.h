@@ -1,11 +1,8 @@
-#include <pthread.h>
 #include <signal.h>
 #include <strings.h>
 #include <sys/types.h>
-#include <time.h>
 #include <errno.h>
 #include <stdio.h>
-#include <stdlib.h>
 import std.compat;
 #include "std.macros.h"
 #include "libc.macros.h"
@@ -136,7 +133,6 @@ import std.compat;
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/JSON.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
@@ -147,17 +143,13 @@ import std.compat;
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/StringSaver.h"
-#include "llvm/Support/Threading.h"
 #include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/thread.h"
 #include "llvm/Support/xxhash.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/RISCVISAInfo.h"
 #include "llvm/TargetParser/Triple.h"
-#include "roaring/roaring.hh"
-#include "lmdb.h"
 #include "spdlog/details/log_msg.h"
 #include "spdlog/sinks/base_sink.h"
 #include "spdlog/sinks/ringbuffer_sink.h"
@@ -188,6 +180,7 @@ import std.compat;
 #include "kotatsu/fs/windows.h"
 #include "kotatsu/ipc/codec/bincode.h"
 #include "kotatsu/ipc/codec/json.h"
+#include "kotatsu/ipc/framing.h"
 #include "kotatsu/ipc/lsp/position.h"
 #include "kotatsu/ipc/lsp/progress.h"
 #include "kotatsu/ipc/lsp/protocol.h"
@@ -207,6 +200,7 @@ import std.compat;
 #include "kotatsu/support/small_string.h"
 #include "kotatsu/support/string_list_ref.h"
 #include "kotatsu/support/utf16.h"
+#include "kotatsu/support/utf8.h"
 #include "kotatsu/sys/cmd.h"
 #include "kotatsu/sys/console.h"
 #include "kotatsu/sys/dirs.h"
@@ -214,6 +208,10 @@ import std.compat;
 #include "kotatsu/sys/info.h"
 #include "kotatsu/sys/process.h"
 #include "kotatsu/sys/spawn.h"
+#include "kotatsu/sys/stacktrace.h"
+#include "kotatsu/sys/thread.h"
 #include "kotatsu/sys/windows.h"
 #include "kotatsu/zest/async.h"
 #include "kotatsu/zest/zest.h"
+#include "roaring/roaring.hh"
+#include "lmdb.h"

@@ -30,7 +30,7 @@ import :semantic.selection;
 import :semantic.symbol;
 import :semantic.template_resolver;
 import :settings.settings;
-import :support.bytes;
+import :support.text;
 import :syntax.source_text;
 import :syntax.token;
 import :vfs.file_system;

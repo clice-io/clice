@@ -4,14 +4,16 @@ import :support.prelude;
 
 namespace clice {
 
-/// A typed multi-subscriber signal for domain→transport notification.
+/// A typed multi-subscriber signal by which an object wakes those of the
+/// layers above it, which it may not call: the background index its served
+/// project, say.
 ///
-/// Design contract: signals only wake subscribers up — the data they react
-/// to must already live in server state (e.g. Session fields), so a missed
-/// signal is harmless and a subscriber that connects late simply reads the
-/// current state on the next emission. Handlers therefore carry identity
-/// arguments (which session?), never payloads that would be lost when no
-/// subscriber exists.
+/// Design contract: signals only wake subscribers up — what they react to
+/// already lives in the emitter's state (the background index's progress),
+/// so a missed signal is harmless and a subscriber that connects late
+/// simply reads the current state on the next emission. Handlers therefore
+/// carry identity arguments (which file?), never payloads that would be
+/// lost when no subscriber exists.
 ///
 /// Threading: event-loop thread only, no locks. emit() calls handlers
 /// synchronously in connect order. Connecting or disconnecting while an

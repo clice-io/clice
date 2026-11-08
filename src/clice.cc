@@ -2,12 +2,6 @@ module;
 
 #include "version.h"
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
-#endif
-
 module clice;
 
 import :driver.driver;
@@ -33,31 +27,23 @@ struct Clice {
 }  // namespace clice::driver
 
 extern "C++" int main(int argc, const char** argv) {
-#ifdef _WIN32
     // A process without a window is background work to Windows: it is
     // throttled (EcoQoS) onto the efficiency cores of a hybrid CPU, which
     // made every request about twice as slow as on Linux.
-    PROCESS_POWER_THROTTLING_STATE throttling{
-        .Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION,
-        .ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
-        .StateMask = 0,
-    };
-    ::SetProcessInformation(::GetCurrentProcess(),
-                            ProcessPowerThrottling,
-                            &throttling,
-                            sizeof(throttling));
+    clice::sys::set_power_throttling(false);
+    clice::sys::ignore_sigpipe();
 
     // The CRT's argv is in the ANSI code page, which holds few characters
-    // past ASCII: the arguments are read from the UTF-16 command line.
+    // past ASCII: the arguments are read from the UTF-16 command line. Linux
+    // without /proc gives none: main's stay.
     std::vector<const char*> arguments;
     for(auto& argument: clice::sys::arguments()) {
         arguments.push_back(argument.c_str());
     }
-    argc = static_cast<int>(arguments.size());
-    argv = arguments.data();
-#else
-    signal(SIGPIPE, SIG_IGN);
-#endif
+    if(!arguments.empty()) {
+        argc = static_cast<int>(arguments.size());
+        argv = arguments.data();
+    }
 
     namespace cli = kotatsu::cli;
     namespace driver = clice::driver;

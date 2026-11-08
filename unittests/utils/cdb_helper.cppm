@@ -79,9 +79,8 @@ inline Fid list_unit(CompilationDatabase& cdb, llvm::StringRef path) {
 }
 
 /// Whether one argument contains `needle` once its separators are
-/// normalized: include paths absolutize with the native separator, and
-/// print_argv escapes backslashes, so the printed line cannot be searched
-/// for a `/`-spelled path.
+/// normalized: include paths absolutize with the native separator, so the
+/// joined line cannot be searched for a `/`-spelled path.
 inline bool has_arg(llvm::ArrayRef<const char*> argv, llvm::StringRef needle) {
     return ranges::any_of(argv, [&](const char* arg) {
         std::string slashed(arg);

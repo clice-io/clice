@@ -1,6 +1,5 @@
 module clice:support.logging;
 
-import :support.format;
 import :support.prelude;
 
 /// # Logging & error-feedback design
@@ -11,8 +10,8 @@ import :support.prelude;
 ///
 ///   situation                                   → channel
 ///   ─────────────────────────────────────────────────────────────────────
-///   a clice invariant broke (a bug in clice)    → LOG_ANOMALY   (anomaly.macros.h)
-///   the user must fix their setup or config     → LOG_GUIDANCE  (anomaly.macros.h)
+///   a clice invariant broke (a bug in clice)    → LOG_ANOMALY
+///   the user must fix their setup or config     → LOG_GUIDANCE
 ///     ... and it is tied to a specific file     →   + a published diagnostic
 ///   a request cannot be served                  → LSP error response
 ///   an operation failed but is expected in       → LOG_WARN / LOG_ERROR
@@ -30,12 +29,9 @@ import :support.prelude;
 ///   classify them structurally (has_user_errors, dispatch_errc) and log
 ///   them as warn/error instead.
 ///
-/// The anomaly/guidance channels live in support/anomaly.cppm, deliberately
-/// NOT in this header: they are reporting policy (trap, per-id rate limit,
-/// client notify hook, test hooks) layered on top of this transport, and
-/// their AnomalyId enum evolves — this header is included by every TU, so
-/// keeping the enum out of it keeps "add an anomaly id" from recompiling
-/// the whole project.
+/// The macros are in support/logging.macros.h. Each decides whether its line
+/// is written before it evaluates its arguments: they must not carry side
+/// effects the caller needs.
 ///
 /// ## Levels — LOG_TRACE .. LOG_FATAL
 /// - trace: extremely verbose, per-token / per-payload detail.
@@ -82,7 +78,7 @@ import :support.prelude;
 /// stderr is reserved for unexpected third-party output — assertion
 /// failures, sanitizer reports — which the pool relays line-by-line into the
 /// master log. Crash backtraces are appended to the owning process's log
-/// file by install_crash_handler (error signals including SIGABRT, so
+/// file by file_logger (error signals including SIGABRT, so
 /// LOG_FATAL and Debug anomaly traps are covered); a worker's backtrace goes
 /// ONLY to its own log file, while the master's is also printed to stderr.
 /// Before file_logger runs, backtraces reach stderr only (master) or are
@@ -99,7 +95,6 @@ struct Options {
     /// what a terminal reader does not want to see.
     Level stderr_level = Level::info;
 
-    bool replay_console = true;
     /// stderr's reader is an editor, which must not be able to block the
     /// server: lines it does not take are buffered, then dropped (see
     /// StderrSink). Every other process writes stderr blocking, as any
@@ -110,7 +105,7 @@ struct Options {
 
 extern Options options;
 
-void stderr_logger(std::string_view name, const Options& options);
+void stderr_logger(std::string_view name);
 
 /// The per-session log directory under `logging_dir`: the local start
 /// time and the pid, so a run is found by the clock on the wall.
@@ -119,45 +114,14 @@ std::string session_log_directory(std::string_view logging_dir);
 /// Log to <dir>/<name>.log, replaying lines buffered by stderr_logger.
 /// With mirror_stderr, every line is also written to stderr through the
 /// sink stderr_logger chose — the master uses this so editors can show its
-/// log; workers must pass false (their stderr is reserved for crash
-/// output, relayed by the pool).
+/// log; workers must pass false (their stderr is reserved for crash output,
+/// relayed by the pool).
 /// Returns false when the log directory or file cannot be set up — logging
 /// then stays on the previously installed sinks.
-bool file_logger(std::string_view name,
-                 std::string_view dir,
-                 const Options& options,
-                 bool mirror_stderr = true);
-
-/// Install a signal handler that writes crash stacktraces to the given log
-/// file. With stderr_trace, LLVM's stderr stacktrace output is enabled too —
-/// the master wants it (editors capture its stderr), workers must not (their
-/// stderr pipe would relay the trace into the master log; a worker's crash
-/// trace belongs in its own log file only).
-/// Must be called after file_logger so the log file path is known.
-void install_crash_handler(std::string_view log_path, bool stderr_trace = true);
-
-/// Rebase value for crash-frame addresses (0 if unknown): the ELF load bias,
-/// Mach-O slide, or Windows image base. Crash traces record it so subtracting
-/// it from an ASLR-shifted frame address yields the address symbolizers
-/// expect against the released symbol file (scripts/symbolize.py).
-uintptr_t main_executable_base();
+bool file_logger(std::string_view name, std::string_view dir, bool mirror_stderr = true);
 
 template <typename... Args>
-struct logging_rformat {
-    template <std::convertible_to<std::string_view> StrLike>
-    consteval logging_rformat(const StrLike& str,
-                              std::source_location location = std::source_location::current()) :
-        str(str), location(location) {}
-
-    std::format_string<Args...> str;
-    std::source_location location;
-};
-
-template <typename... Args>
-using logging_format = logging_rformat<std::type_identity_t<Args>...>;
-
-template <typename... Args>
-void log(spdlog::level::level_enum level,
+void log(Level level,
          std::source_location location,
          std::format_string<Args...> fmt,
          Args&&... args) {
@@ -174,36 +138,115 @@ void log(spdlog::level::level_enum level,
     }
 }
 
+/// Log at critical level, flush the log and abort.
 template <typename... Args>
-void trace(logging_format<Args...> fmt, Args&&... args) {
-    logging::log(spdlog::level::trace, fmt.location, fmt.str, std::forward<Args>(args)...);
-}
-
-template <typename... Args>
-void debug(logging_format<Args...> fmt, Args&&... args) {
-    logging::log(spdlog::level::debug, fmt.location, fmt.str, std::forward<Args>(args)...);
-}
-
-template <typename... Args>
-void info(logging_format<Args...> fmt, Args&&... args) {
-    logging::log(spdlog::level::info, fmt.location, fmt.str, std::forward<Args>(args)...);
-}
-
-template <typename... Args>
-void warn(logging_format<Args...> fmt, Args&&... args) {
-    logging::log(spdlog::level::warn, fmt.location, fmt.str, std::forward<Args>(args)...);
-}
-
-template <typename... Args>
-void err(logging_format<Args...> fmt, Args&&... args) {
-    logging::log(spdlog::level::err, fmt.location, fmt.str, std::forward<Args>(args)...);
-}
-
-template <typename... Args>
-void critical [[noreturn]](logging_format<Args...> fmt, Args&&... args) {
-    logging::log(spdlog::level::critical, fmt.location, fmt.str, std::forward<Args>(args)...);
+[[noreturn]] void fatal(std::source_location location,
+                        std::format_string<Args...> fmt,
+                        Args&&... args) {
+    logging::log(Level::critical, location, fmt, std::forward<Args>(args)...);
     spdlog::shutdown();
     std::abort();
 }
 
+/// Stable identifiers for anomalies — internal states that should be
+/// unreachable when clice works correctly. Reaching one indicates a bug in
+/// clice itself, NOT a problem with user input or user code: those are
+/// reported as LSP errors, guidance messages or plain logs instead.
+///
+/// Debug builds abort on the first occurrence so the CI Debug matrix and
+/// local development show the bug as early as possible. Release builds
+/// log the occurrence with an `[anomaly:<id>]` marker (the enumerator name),
+/// forward it to the notify hook (master process: `window/logMessage`) and
+/// continue running.
+enum class AnomalyId : std::uint8_t {
+    /// PCH build failed without a user-code error to explain it.
+    PCHBuildFail,
+    /// PCM build failed without a user-code error to explain it.
+    PCMBuildFail,
+    /// AST compile request to a stateful worker failed at the IPC layer.
+    CompileFail,
+    /// Feature query/build forwarded to a worker failed at the IPC layer.
+    WorkerRequestFail,
+    /// A worker process died unexpectedly.
+    WorkerCrash,
+    /// Worker pool failed to spawn or respawn a worker process.
+    WorkerSpawnFail,
+    /// An internally-produced offset or range failed to map to a position.
+    PositionMapFail,
+    /// A freshness check answered from an earlier look at a file that the
+    /// disk contradicts (reported only while shadow checks run).
+    StaleTrust,
+
+    /// Number of ids, not a reportable anomaly — keep last.
+    Count,
+};
+
+constexpr inline std::size_t anomaly_id_count = static_cast<std::size_t>(AnomalyId::Count);
+
+/// Per-ID report cap per process; further occurrences are suppressed.
+constexpr inline std::uint32_t anomaly_report_limit = 8;
+
+/// Whether LOG_ANOMALY reports `id`: the log level and the per-ID cap, which
+/// this counts against. Logs a final suppression notice when the cap is
+/// reached.
+bool should_report(AnomalyId id);
+
+/// Log "[anomaly:<name>] <message>" at err level, forward it to the notify
+/// hook, then trap: Debug builds abort (after flushing the log) unless the
+/// trap is overridden for tests or CLICE_ANOMALY_NO_TRAP is set in the
+/// environment; Release builds continue.
+void report_anomaly(AnomalyId id, std::source_location location, std::string_view message);
+
+/// Log "[guidance] <message>" at warn level and forward the message to the
+/// notify hook (master process: `window/showMessage`). For user-actionable
+/// situations that are not clice bugs (missing CDB, invalid configuration,
+/// ...).
+void report_guidance(std::source_location location, std::string_view message);
+
+/// What a message forwarded to the notify hook reports.
+enum class NotifyKind : std::uint8_t {
+    /// A bug in clice, for its log.
+    Anomaly,
+    /// A situation the user must fix, for the user to see.
+    Guidance,
+};
+
+/// Process-wide hook observing anomaly/guidance messages. The master's
+/// composition root (MasterServer) owns it for the server's lifetime and
+/// materializes messages for transport delivery; workers never set it.
+/// Hook registration is internally synchronized, so reporting from any
+/// thread is safe — but the hook itself is invoked from the reporting
+/// thread, so what it DOES must be safe there (the master's hook touches
+/// event-loop state and is only ever invoked from the event-loop thread).
+void set_notify_hook(std::function<void(NotifyKind, std::string_view)> hook);
+
+/// Replace the debug trap so unit tests can observe anomalies (in any build
+/// type) without aborting the test process.
+void set_anomaly_trap_for_testing(std::function<void(AnomalyId)> trap);
+
+/// Clear rate-limit counters and the testing trap.
+void reset_anomaly_for_testing();
+
 }  // namespace clice::logging
+
+namespace clice {
+
+/// Wall-clock time since it was made, for perf log lines (LOG_PERF).
+struct Timer {
+    chrono::steady_clock::time_point start = chrono::steady_clock::now();
+
+    long long ms() const {
+        return chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - start)
+            .count();
+    }
+
+    /// Fractional milliseconds for sub-millisecond stages (feature compute,
+    /// IPC hops); perf lines keep the `_ms` suffix convention.
+    double precise_ms() const {
+        return chrono::duration_cast<chrono::microseconds>(chrono::steady_clock::now() - start)
+                   .count() /
+               1000.0;
+    }
+};
+
+}  // namespace clice

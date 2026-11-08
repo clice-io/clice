@@ -107,10 +107,11 @@ private:
 /// the first line that gets through again.
 class FileSink final : public spdlog::sinks::base_sink<std::mutex> {
 public:
-    /// Writes to `fd`, closing it on destruction when `owned`.
-    FileSink(int fd, bool owned);
+    /// Writes to the descriptor `fd`, which it leaves open.
+    explicit FileSink(int fd);
 
-    ~FileSink() override;
+    /// Appends to `file`, which it closes.
+    explicit FileSink(fs::File file);
 
     /// A sink appending to `path`, or why the file cannot be opened.
     static std::expected<std::shared_ptr<FileSink>, std::error_code> open(llvm::StringRef path);
@@ -134,8 +135,11 @@ private:
     /// Writes the pending gap report, if any; false when it failed too.
     bool report_gap();
 
-    int fd;
-    bool owned;
+    std::optional<fs::File> file;
+
+    /// Written when there is no file.
+    int fd = -1;
+
     std::atomic<std::size_t> dropped_total = 0;
     std::size_t dropped_unreported = 0;
     std::error_code last_error;

@@ -425,19 +425,6 @@ std::string indent_lines(llvm::StringRef input) {
     return indented;
 }
 
-class Heading : public Paragraph {
-public:
-    Heading(std::size_t level) : level(level) {}
-
-    void render_markdown(llvm::raw_ostream& os) const override {
-        os << std::string(level, '#') << ' ';
-        Paragraph::render_markdown(os);
-    }
-
-private:
-    std::size_t level;
-};
-
 /// Choose a marker to delimit \p text from a prioritized list of options.
 /// This is more readable than escaping for plain-text.
 llvm::StringRef choose_marker(llvm::ArrayRef<llvm::StringRef> options, llvm::StringRef text) {
@@ -616,12 +603,6 @@ void Document::add_spacing() {
 
 void Document::add_code_block(std::string code, std::string language) {
     children.emplace_back(std::make_unique<CodeBlock>(std::move(code), std::move(language)));
-}
-
-Paragraph& Document::add_heading(std::size_t level) {
-    assert(level > 0);
-    children.emplace_back(std::make_unique<Heading>(level));
-    return *static_cast<Paragraph*>(children.back().get());
 }
 
 void Document::add_markdown(std::string text) {

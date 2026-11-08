@@ -1,7 +1,3 @@
-module;
-
-#include "kotatsu/ipc/framing.h"
-
 module clice;
 
 import :compile.compilation;
@@ -15,10 +11,10 @@ import :feature.signature_help;
 import :index.include_tree;
 import :index.indexer;
 import :index.tu_index;
-import :support.bytes;
 import :support.json;
 import :support.logging;
 import :support.process;
+import :support.text;
 import :syntax.position;
 import :vfs.file_system;
 import :worker.common;
@@ -54,13 +50,13 @@ static void hold_recent(std::shared_ptr<const llvm::MemoryBuffer> mapping) {
 /// happens separately, after the PCH itself is flushed.
 static std::vector<std::byte> serialize_preamble_index(CompilationUnit& unit,
                                                        std::uint32_t preamble_bound) {
-    ScopedTimer links_timer;
+    Timer links_timer;
     auto links = feature::document_links(unit);
     auto inactive = inactive_regions(unit, {}, 0, preamble_bound);
-    auto links_ms = links_timer.ms_f();
+    auto links_ms = links_timer.precise_ms();
     auto diagnostics = to_client_json(feature::diagnostics(unit), "[]");
 
-    ScopedTimer blob_timer;
+    Timer blob_timer;
     auto blob = index::build_preamble_index(unit,
                                             links,
                                             inactive.regions,
@@ -69,7 +65,7 @@ static std::vector<std::byte> serialize_preamble_index(CompilationUnit& unit,
     LOG_PERF("index_detail",
              "op=preamble links_ms={:.2f} blob_ms={:.2f} bytes={}",
              links_ms,
-             blob_timer.ms_f(),
+             blob_timer.precise_ms(),
              blob.size());
     return blob;
 }
@@ -174,7 +170,7 @@ static std::vector<ReportedInput> precompiled_deps(CompilationUnit& unit, bool s
 static worker::PrecompiledBuildResult
     handle_build_pch(const worker::BuildPCHParams& params,
                      const std::shared_ptr<std::atomic_bool>& stop) {
-    ScopedTimer timer;
+    Timer timer;
 
     auto output = precompiled_output("PCH", params.output_path, "clice-pch", "pch");
     if(!output) {
@@ -198,7 +194,7 @@ static worker::PrecompiledBuildResult
     cp.input.add_synthesized(params.synthesized);
     hold_recent(use_precompiled(cp.input, {params.pch, 0}, params.pcms));
 
-    ScopedTimer compile_timer;
+    Timer compile_timer;
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
     // A cancelled parse has no output; the stop check catches a
@@ -215,7 +211,7 @@ static worker::PrecompiledBuildResult
     worker::PrecompiledBuildResult result;
     bool internal_error = false;
     std::vector<std::byte> blob;
-    ScopedTimer index_timer;
+    Timer index_timer;
     if(success && !params.whole_file) {
         blob = serialize_preamble_index(*unit, params.preamble_bound);
     } else if(success && params.index) {
@@ -229,7 +225,7 @@ static worker::PrecompiledBuildResult
     auto index_ms = index_timer.ms();
 
     // Destroying the unit writes the PCH to disk.
-    ScopedTimer flush_timer;
+    Timer flush_timer;
     unit.reset();
     auto flush_ms = flush_timer.ms();
 
@@ -238,7 +234,7 @@ static worker::PrecompiledBuildResult
     // (renames preserve mtimes), so the on-disk order must match the
     // logical one. The PCH is only served together with its blob, so a
     // blob write failure fails the whole build.
-    ScopedTimer state_write_timer;
+    Timer state_write_timer;
     if(success && !params.whole_file) {
         if(auto error = write_preamble_index(as_chars(blob), params.indexing.output_path)) {
             success = false;
@@ -278,7 +274,7 @@ static worker::PrecompiledBuildResult
 static worker::PrecompiledBuildResult
     handle_build_pcm(const worker::BuildPCMParams& params,
                      const std::shared_ptr<std::atomic_bool>& stop) {
-    ScopedTimer timer;
+    Timer timer;
 
     auto output = precompiled_output("PCM", params.output_path, "clice-pcm", "pcm");
     if(!output) {
@@ -296,7 +292,7 @@ static worker::PrecompiledBuildResult
     };
     hold_recent(use_precompiled(cp.input, {params.pch, 0}, params.pcms));
 
-    ScopedTimer compile_timer;
+    Timer compile_timer;
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
     bool success = unit->has_output() && !stop->load(std::memory_order_relaxed);
@@ -309,7 +305,7 @@ static worker::PrecompiledBuildResult
 
     worker::PrecompiledBuildResult result;
     std::size_t index_bytes = 0;
-    ScopedTimer index_timer;
+    Timer index_timer;
     if(success && params.index) {
         auto blob = index::build_tu_index(*unit, index_options(params.indexing));
         index_bytes = blob.size();
@@ -321,7 +317,7 @@ static worker::PrecompiledBuildResult
     auto index_ms = index_timer.ms();
 
     // Destroying the unit writes the PCM to disk.
-    ScopedTimer flush_timer;
+    Timer flush_timer;
     unit.reset();
     auto flush_ms = flush_timer.ms();
 
@@ -432,7 +428,7 @@ static worker::IncludeTreeResult
     handle_include_tree(const worker::IncludeTreeParams& params,
                         const std::shared_ptr<std::atomic_bool>& stop) {
     LOG_INFO("IncludeTree request: file={}", params.file);
-    ScopedTimer timer;
+    Timer timer;
     auto unit = compile({
         .kind = CompilationKind::Preprocess,
         .input = {.arguments = params.arguments,
@@ -463,7 +459,7 @@ static worker::CompileUnitResult
     handle_compile_unit(const worker::CompileUnitParams& params,
                         const std::shared_ptr<std::atomic_bool>& stop) {
     LOG_INFO("Unit compile request: file={}", params.file);
-    ScopedTimer timer;
+    Timer timer;
 
     // One parse serves every product of the plan. The command-affecting
     // extra args are already in params.arguments (applied at driver
@@ -480,7 +476,7 @@ static worker::CompileUnitResult
     };
     hold_recent(use_precompiled(cp.input, {params.pch, 0}, params.pcms));
 
-    ScopedTimer compile_timer;
+    Timer compile_timer;
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
     if(!unit->completed()) {
@@ -513,7 +509,7 @@ static worker::CompileUnitResult
     }
     worker::CompileUnitResult result;
     result.success = true;
-    ScopedTimer index_timer;
+    Timer index_timer;
     std::size_t index_bytes = 0;
     if(params.index) {
         auto blob = index::build_tu_index(*unit, index_options(params.indexing));
@@ -537,7 +533,7 @@ static worker::CompileUnitResult
     // AST teardown for a large TU is material work that belongs to this
     // task: sample the total only after the unit is gone, so the logged
     // span covers everything that blocks the worker.
-    ScopedTimer teardown_timer;
+    Timer teardown_timer;
     unit.reset();
     auto teardown_ms = teardown_timer.ms();
 
@@ -575,7 +571,7 @@ static CompilationParams cursor_compile(const Params& params,
 
 static worker::CompletionResult handle_completion(const worker::CompletionParams& params,
                                                   const std::shared_ptr<std::atomic_bool>& stop) {
-    ScopedTimer timer;
+    Timer timer;
     auto completion = feature::code_complete(cursor_compile(params, stop),
                                              params.settings.code_completion,
                                              params.settings.documentation,
@@ -589,7 +585,7 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
 
 static codec::raw_value handle_signature_help(const worker::SignatureHelpParams& params,
                                               const std::shared_ptr<std::atomic_bool>& stop) {
-    ScopedTimer timer;
+    Timer timer;
     auto help = feature::signature_help(cursor_compile(params, stop),
                                         params.settings.signature_help,
                                         params.settings.documentation,
@@ -600,7 +596,7 @@ static codec::raw_value handle_signature_help(const worker::SignatureHelpParams&
 }
 
 static worker::FormatResult handle_format(const worker::FormatParams& params) {
-    ScopedTimer timer;
+    Timer timer;
 
     std::optional<LocalSourceRange> range;
     if(params.range.valid()) {
@@ -630,14 +626,17 @@ template <typename Work>
 static auto run_lowered(Work& work) {
     std::optional<std::invoke_result_t<Work&>> result;
     // As much stack as libuv gives its pool threads; a deep parse needs it.
-    llvm::thread thread(std::optional<unsigned>(8u << 20), [&] {
+    auto thread = sys::Thread::start(8u << 20, [&] {
         // Not idle: under a machine kept busy by the user's own build it
         // starves a TU past the build deadline, which then charges the file
         // for a hang.
         sys::set_thread_priority(sys::Priority::BelowNormal);
         result.emplace(work());
     });
-    thread.join();
+    if(!thread) {
+        LOG_FATAL("Cannot start a compile thread: {}", thread.error());
+    }
+    thread->join();
     return std::move(*result);
 }
 
@@ -726,18 +725,7 @@ static void
         });
 }
 
-int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir) {
-    // Limit libuv thread pool to 1 thread so each stateless worker executes
-    // only one compilation at a time. Must be set before any async::queue call.
-    sys::set_env("UV_THREADPOOL_SIZE", "1");
-
-    logging::stderr_logger(worker_name, logging::options);
-    if(!log_dir.empty()) {
-        // File only: worker stderr is reserved for crash/unexpected output,
-        // which the master relays into its own log (see logging taxonomy).
-        logging::file_logger(worker_name, log_dir, logging::options, /*mirror_stderr=*/false);
-    }
-
+int run_stateless_worker_mode() {
     LOG_INFO("Starting stateless worker");
     install_crash_report();
     async::event_loop loop;

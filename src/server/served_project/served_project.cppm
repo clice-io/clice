@@ -14,11 +14,9 @@ import :project.graph.task_graph;
 import :project.project;
 import :server.session;
 import :settings.settings;
-import :support.anomaly;
 import :support.logging;
 import :support.prelude;
 import :support.signal;
-import :support.timer;
 import :syntax.position;
 import :syntax.scan;
 import :syntax.source_text;
@@ -455,13 +453,6 @@ public:
     /// check, since a different host can change the macro environment.
     void choice_changed(Session& session);
 
-    /// An invalidation that leaves the buffer (a dependency changed on disk,
-    /// a save retrying a crash): the latest compile is no longer current and
-    /// an in-flight attempt must not commit as such, but its parse keeps
-    /// running — the attempt publishes the product as bounded staleness
-    /// before reporting Stale.
-    void invalidate(Fid path_id);
-
     /// didSave: every crashed kind of the document retries on its next
     /// request, the PCH and PCMs it consumes included, and so do the ones
     /// whose build failed; a header found self-contained whose compile
@@ -548,11 +539,11 @@ public:
 
     /// Reload what the looks found changed of the project's databases
     /// (`force` skips the content gate and the two-tick debounce, the
-    /// half-written-file guard) and follow the reload; how many reloads
-    /// changed the build. None when the databases moved to another build's
-    /// index (databases_moved): only a new server opens that one, which is
-    /// asked for (MasterServer::ask_restart).
-    std::size_t reload_databases(bool force);
+    /// half-written-file guard) and follow the reload; whether it changed
+    /// the build. Not when the databases moved to another build's index
+    /// (databases_moved): only a new server opens that one, which is asked
+    /// for (MasterServer::ask_restart).
+    bool reload_databases(bool force);
 
     /// A file created under a default-command rule joins the build, as a
     /// database reload adds a command: whether one did. One deleted leaves
@@ -1076,14 +1067,14 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     // From before the compile until the query answers: another document's
     // compile finishing meanwhile evicts some other AST.
     DocumentHold hold(*project.pool, session.path_id.raw);
-    ScopedTimer timer;
+    Timer timer;
     if(auto stop = co_await await_compile(ticket)) {
         if(stop->error) {
             co_await async::fail(std::move(*stop->error));
         }
         co_return Result{};
     }
-    auto wait_ms = timer.ms_f();
+    auto wait_ms = timer.precise_ms();
     auto compile = latest(session.path_id);
 
     bool unanswered = false;
@@ -1106,7 +1097,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
                  label,
                  params.path,
                  wait_ms,
-                 timer.ms_f());
+                 timer.precise_ms());
     }
     co_return std::move(result);
 }
@@ -1174,7 +1165,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     // compiles, so an unsaved `import m;` builds its PCM before the parse
     // needs it. An import that did not build is the parse's to report; none
     // only when the graph shut down.
-    ScopedTimer timer;
+    Timer timer;
     auto imports = co_await project.build_imports(path_id, params.text, resolution, {});
     auto built = imports ? co_await project.build_pch(path_id,
                                                       params.text,
@@ -1190,7 +1181,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     adopt_pch(ticket, generation, *built);
     params.pch = std::move(built->pch);
     params.pcms = project.imported_pcms(imports->imports.resolved());
-    auto wait_ms = timer.ms_f();
+    auto wait_ms = timer.precise_ms();
 
     // A completion reply stays useful after edits at or past the cursor:
     // its ranges still hold, and the client filters it by what was typed
@@ -1228,7 +1219,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
                  label,
                  path,
                  wait_ms,
-                 timer.ms_f());
+                 timer.precise_ms());
     }
     co_return std::move(result);
 }

@@ -6,7 +6,7 @@ import :index.database;
 import :index.format;
 import :project.graph.pcm;
 import :project.project;
-import :support.bytes;
+import :support.text;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;

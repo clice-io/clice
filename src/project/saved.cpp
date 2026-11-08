@@ -12,11 +12,10 @@ import :project.graph.pch;
 import :project.graph.pcm;
 import :project.project;
 import :project.saved;
-import :support.bytes;
-import :support.environment;
 import :support.json;
 import :support.logging;
-import :support.timer;
+import :support.process;
+import :support.text;
 import :vfs.cache_store;
 import :vfs.file_table;
 import :vfs.path;
@@ -438,7 +437,7 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
         co_return report;
     }
     auto& db = *database;
-    ScopedTimer timer;
+    Timer timer;
 
     // A read since the last save met a damaged page or record: nothing more
     // goes into the database, which is discarded, whether or not anything
@@ -559,7 +558,7 @@ async::task<index::IndexReport> Project::shrink_database() {
     if(!before || !shrink_due(*before)) {
         co_return report;
     }
-    ScopedTimer timer;
+    Timer timer;
     using Database = index::BlobDatabase;
     auto copy = Database::Copy::Failed;
     co_await async::queue([&] { copy = db.write_compact_copy(); });
@@ -610,7 +609,7 @@ bool Project::load_saved(bool reconcile, index::IndexReport& report) {
     }
     auto& db = *database;
     bool read_only = db.read_only();
-    ScopedTimer timer;
+    Timer timer;
 
     // The precompiled records and context choices are index-independent: they
     // load (and self-validate) beside any index state.

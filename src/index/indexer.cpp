@@ -11,13 +11,12 @@ import :semantic.decls;
 import :semantic.display;
 import :semantic.documentation;
 import :semantic.identity;
-import :semantic.template_resolver;
 import :semantic.semantics;
+import :semantic.template_resolver;
 import :semantic.token_class;
 import :semantic.types;
-import :support.bytes;
 import :support.logging;
-import :support.timer;
+import :support.text;
 
 namespace clice::index {
 
@@ -1777,7 +1776,7 @@ public:
     /// The TU index, into `blob`, which arrives holding what a preamble's
     /// own index adds on top of an ordinary build when `preamble` is set.
     std::vector<std::byte> build(TUIndexBlob blob, bool preamble) {
-        ScopedTimer written_timer;
+        Timer written_timer;
         auto walked = walked_instantiations();
         // The focus-only shape is the one features share, cached on the
         // unit; the whole-TU shape is walked node by node, projected as it
@@ -1812,9 +1811,9 @@ public:
         project_macros();
         index_modules(whole ? *whole : unit.get<Semantics>());
         project_imported();
-        auto written_ms = written_timer.ms_f();
+        auto written_ms = written_timer.precise_ms();
 
-        ScopedTimer instantiations_timer;
+        Timer instantiations_timer;
         project_instantiations(walked);
         for(const auto* decl: unit.instantiations()) {
             if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
@@ -1826,9 +1825,9 @@ public:
         if(!preamble) {
             project_expansions();
         }
-        auto instantiations_ms = instantiations_timer.ms_f();
+        auto instantiations_ms = instantiations_timer.precise_ms();
 
-        ScopedTimer finish_timer;
+        Timer finish_timer;
         // Build the include graph from what the index actually recorded:
         // every fid keying `file_indices` gets its include chain resolved
         // through the SourceManager, so the lookups below cannot miss.
@@ -2001,9 +2000,9 @@ public:
                 }
             }
         }
-        auto finish_ms = finish_timer.ms_f();
+        auto finish_ms = finish_timer.precise_ms();
 
-        ScopedTimer encode_timer;
+        Timer encode_timer;
         auto resolve = [&](SymbolHash hash) -> std::optional<SymbolView> {
             auto it = symbols.find(hash);
             if(it == symbols.end()) {
@@ -2053,7 +2052,7 @@ public:
             section.skipped = std::move(file.skipped);
             instantiation_sections.push_back(std::move(section));
         }
-        auto encode_ms = encode_timer.ms_f();
+        auto encode_ms = encode_timer.precise_ms();
 
         blob.format_version = index_format_version;
         blob.built_at = unit.started_at().count();
@@ -2114,7 +2113,7 @@ public:
         }
         blob.sections = std::move(sections);
         blob.instantiations = std::move(instantiation_sections);
-        ScopedTimer pack_timer;
+        Timer pack_timer;
         auto bytes = encode(blob);
 
         LOG_PERF("index_detail",
@@ -2128,7 +2127,7 @@ public:
                  walked.size(),
                  finish_ms,
                  encode_ms,
-                 pack_timer.ms_f());
+                 pack_timer.precise_ms());
         return bytes;
     }
 

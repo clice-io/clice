@@ -1,6 +1,6 @@
 module clice;
 
-import :support.bytes;
+import :support.text;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :worker.common;

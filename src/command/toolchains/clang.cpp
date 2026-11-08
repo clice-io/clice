@@ -3,7 +3,6 @@ module clice;
 import :command.argument;
 import :command.toolchains.clang;
 import :support.logging;
-import :support.shell;
 import :vfs.file_system;
 
 namespace clice {

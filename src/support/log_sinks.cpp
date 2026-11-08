@@ -1,21 +1,6 @@
-module;
-
-#ifdef _WIN32
-#include <io.h>
-
-// See cache_store.cpp: windows.h must not spill min/max macros.
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
-#else
-#include <fcntl.h>
-#include <unistd.h>
-#endif
-
 module clice;
 
 import :support.log_sinks;
-import :support.process;
 
 namespace clice::logging {
 
@@ -28,49 +13,35 @@ struct Written {
     std::error_code error;
 };
 
-/// Writes until done or refused. A non-blocking pipe refuses when full
-/// (EAGAIN; under Windows' PIPE_NOWAIT a write that took nothing); a
-/// blocking descriptor only on a real error.
-Written write_fd(int fd, llvm::StringRef text) {
-    if(sys::is_console(fd) && !sys::write_console(fd, text)) {
-        return {.bytes = text.size()};
-    }
+/// Writes until done or refused, `write_some` taking what one write takes.
+/// A non-blocking pipe refuses when full; a blocking descriptor only on a
+/// real error.
+Written write_text(
+    llvm::StringRef text,
+    llvm::function_ref<std::expected<std::size_t, std::error_code>(std::string_view)> write_some) {
     Written result;
     while(result.bytes < text.size()) {
-        auto rest = text.drop_front(result.bytes);
-#ifdef _WIN32
-        int n = ::_write(fd, rest.data(), static_cast<unsigned int>(rest.size()));
-#else
-        ssize_t n = ::write(fd, rest.data(), rest.size());
-        if(n < 0 && errno == EINTR) {
-            continue;
-        }
-#endif
-        if(n <= 0) {
-            result.error = n < 0 ? std::error_code(errno, std::generic_category())
-                                 : std::make_error_code(std::errc::io_error);
+        auto written = write_some(text.drop_front(result.bytes));
+        if(!written) {
+            result.error = written.error();
             break;
         }
-        result.bytes += static_cast<std::size_t>(n);
+        result.bytes += *written;
     }
     return result;
 }
 
+Written write_fd(int fd, llvm::StringRef text) {
+    return write_text(text,
+                      [fd](std::string_view rest) { return sys::write_console_some(fd, rest); });
+}
+
 PipeSwitch set_pipe_nonblocking(int fd) {
-#ifdef _WIN32
-    HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
-    DWORD mode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
-    if(::SetNamedPipeHandleState(handle, &mode, nullptr, nullptr)) {
+    auto error = sys::set_nonblocking(fd);
+    if(!error) {
         return PipeSwitch::Done;
     }
-    return ::GetLastError() == ERROR_PIPE_BUSY ? PipeSwitch::Busy : PipeSwitch::Refused;
-#else
-    if(int flags = ::fcntl(fd, F_GETFL);
-       flags >= 0 && ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0) {
-        return PipeSwitch::Done;
-    }
-    return PipeSwitch::Refused;
-#endif
+    return error == std::errc::device_or_resource_busy ? PipeSwitch::Busy : PipeSwitch::Refused;
 }
 
 }  // namespace
@@ -187,30 +158,22 @@ void StderrSink::flush_() {
     pump();
 }
 
-FileSink::FileSink(int fd, bool owned) : fd(fd), owned(owned) {}
+FileSink::FileSink(int fd) : fd(fd) {}
 
-FileSink::~FileSink() {
-    if(owned) {
-#ifdef _WIN32
-        ::_close(fd);
-#else
-        ::close(fd);
-#endif
-    }
-}
+FileSink::FileSink(fs::File file) : file(std::move(file)) {}
 
 std::expected<std::shared_ptr<FileSink>, std::error_code> FileSink::open(llvm::StringRef path) {
-    auto fd = fs::File::open(path, {.append = true, .create = true}).and_then([](fs::File file) {
-        return std::move(file).into_descriptor();
-    });
-    if(!fd) {
-        return std::unexpected(fd.error());
+    auto file = fs::File::open(path, {.append = true, .create = true});
+    if(!file) {
+        return std::unexpected(file.error());
     }
-    return std::make_shared<FileSink>(*fd, /*owned=*/true);
+    return std::make_shared<FileSink>(std::move(*file));
 }
 
 bool FileSink::write_all(llvm::StringRef text) {
-    auto written = write_fd(fd, text);
+    auto written =
+        file ? write_text(text, [&](std::string_view rest) { return file->write_some(rest); })
+             : write_fd(fd, text);
     if(written.error) {
         last_error = written.error;
         torn = torn || written.bytes > 0;

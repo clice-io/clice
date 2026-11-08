@@ -5,8 +5,8 @@ import :index.columns;
 import :index.format;
 import :index.shard;
 import :semantic.token_class;
-import :support.bytes;
 import :support.logging;
+import :support.text;
 import :syntax.position;
 
 namespace clice::index {

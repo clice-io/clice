@@ -8,7 +8,7 @@ module;
 module clice:unittests.worker.helpers;
 
 import :command.table;
-import :support.anomaly;
+import :support.logging;
 import :support.prelude;
 import :support.process;
 import :unittests.utils.temp_dir;

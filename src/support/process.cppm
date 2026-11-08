@@ -4,6 +4,48 @@ import :support.prelude;
 
 namespace clice {
 
+/// The value of the environment variable `name`; nullopt when it is unset.
+inline std::optional<std::string> env_string(llvm::StringRef name) {
+    std::string value;
+    if(!sys::get_env(value, name)) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+/// The integer an environment variable holds: nullopt when it is unset or
+/// holds no integer.
+inline std::optional<std::uint64_t> env_integer(llvm::StringRef name) {
+    std::uint64_t parsed = 0;
+    auto value = env_string(name);
+    if(!value || llvm::StringRef(*value).getAsInteger(10, parsed)) {
+        return std::nullopt;
+    }
+    return parsed;
+}
+
+/// The threads of libuv's pool, which runs async::queue's work: as libuv
+/// sizes it from UV_THREADPOOL_SIZE when it is first used, clamped to
+/// [1, 1024], 4 without it.
+inline std::size_t thread_pool_size() {
+    return std::clamp<std::uint64_t>(env_integer("UV_THREADPOOL_SIZE").value_or(4), 1, 1024);
+}
+
+/// Test hook: CLICE_TEST_JITTER=<ms> makes this a random delay of up to that
+/// many milliseconds, zero while it is unset. The places that race with an
+/// editor's actions (a worker starting a request's work, a background index
+/// pass starting) wait it out, so a run of the cases under it meets the
+/// orders a loaded machine meets; a case whose answer changes left an order
+/// unpinned.
+inline chrono::milliseconds test_jitter() {
+    const static auto max = env_integer("CLICE_TEST_JITTER");
+    if(!max) {
+        return chrono::milliseconds(0);
+    }
+    thread_local std::minstd_rand random(std::random_device{}());
+    return chrono::milliseconds(std::uniform_int_distribution<std::uint64_t>(0, *max)(random));
+}
+
 /// What a finished program wrote, and how it ended.
 struct ProgramOutput {
     std::string out;
@@ -16,7 +58,8 @@ struct ProgramOutput {
 };
 
 /// Whether a child can be made to die with this process
-/// (CreationOptions::exit_with_parent): macOS has nothing to do it with.
+/// (CreationOptions::exit_with_parent): macOS has nothing to do it with, but
+/// a child calling sys::exit_with_parent itself.
 #ifdef __APPLE__
 constexpr inline bool can_exit_with_parent = false;
 #else
@@ -54,11 +97,5 @@ async::task<> release_free_memory_everywhere();
 /// send it more than once (GNU timeout signals the child, then its whole
 /// process group) and follow with SIGKILL themselves.
 async::task<> watch_termination(int signum, bool& requested, std::function<void()> stop);
-
-#ifdef __APPLE__
-/// End this process the moment its parent exits, or now when it already
-/// has: a child started with CreationOptions::exit_with_parent elsewhere.
-void exit_with_parent();
-#endif
 
 }  // namespace clice

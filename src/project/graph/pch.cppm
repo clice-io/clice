@@ -3,7 +3,7 @@ module clice:project.graph.pch;
 import :index.tu_index;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
-import :support.failure_record;
+import :support.failure;
 import :support.prelude;
 import :syntax.header_context;
 import :vfs.file_system;

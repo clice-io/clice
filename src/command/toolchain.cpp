@@ -8,8 +8,9 @@ import :command.toolchain;
 import :command.toolchain_query;
 import :command.toolchains.clang;
 import :command.toolchains.nvcc;
-import :support.failure_record;
+import :support.failure;
 import :support.logging;
+import :support.process;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -42,8 +43,8 @@ bool search_env_all_absolute() {
     const static bool result = [] {
 #ifdef _WIN32
         for(const char* name: {"INCLUDE", "LIB", "PATH"}) {
-            if(std::string value; sys::get_env(value, name)) {
-                if(!components_all_absolute(value))
+            if(auto value = env_string(name)) {
+                if(!components_all_absolute(*value))
                     return false;
             }
         }
@@ -55,14 +56,14 @@ bool search_env_all_absolute() {
                                "OBJC_INCLUDE_PATH",
                                "COMPILER_PATH",
                                "LIBRARY_PATH"}) {
-            if(std::string value; sys::get_env(value, name)) {
-                if(!components_all_absolute(value))
+            if(auto value = env_string(name)) {
+                if(!components_all_absolute(*value))
                     return false;
             }
         }
         /// A single path, not a list.
-        if(std::string prefix; sys::get_env(prefix, "GCC_EXEC_PREFIX")) {
-            if(!path::is_absolute(prefix))
+        if(auto prefix = env_string("GCC_EXEC_PREFIX")) {
+            if(!path::is_absolute(*prefix))
                 return false;
         }
 #endif

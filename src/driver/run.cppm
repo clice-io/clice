@@ -8,7 +8,6 @@ import :project.background;
 import :project.project;
 import :server.control;
 import :settings.settings;
-import :support.anomaly;
 import :support.logging;
 import :support.prelude;
 import :support.process;
@@ -274,7 +273,7 @@ inline bool start_batch(BatchRun& run,
 
     if(!cfg.logging_dir.empty()) {
         auto session_log_dir = logging::session_log_directory(cfg.logging_dir);
-        if(logging::file_logger(log_tag, session_log_dir, logging::options)) {
+        if(logging::file_logger(log_tag, session_log_dir)) {
             LOG_INFO("Session log directory: {}", session_log_dir);
             run.log_dir = std::move(session_log_dir);
         }
@@ -328,9 +327,7 @@ struct Lifetime {
         };
         aux.spawn(watch_termination(SIGINT, stop_requested, interrupt));
         aux.spawn(watch_termination(SIGTERM, stop_requested, interrupt));
-#ifndef _WIN32
-        aux.spawn(watch_termination(SIGHUP, stop_requested, interrupt));
-#endif
+        aux.spawn(watch_termination(sys::sighup, stop_requested, interrupt));
         aux.spawn(checkpoints(run));
         aux.spawn(run.files.disk.end_turns(run.loop));
     }

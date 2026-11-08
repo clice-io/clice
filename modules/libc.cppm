@@ -22,19 +22,12 @@ module;
 
 export module libc;
 
-export using ::abs;
 export using ::fileno;
 export using ::strcasecmp;
 
 #if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG))
 export using ::kill;
-export using ::localtime_r;
-export using ::off_t;
 export using ::pid_t;
-export using ::pthread_t;
-export using ::putenv;
-export using ::setenv;
-export using ::ssize_t;
 #endif
 
 #if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__x86_64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
@@ -57,6 +50,8 @@ export using ::uint8x8_t;
 #if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG))
 export using ::__errno_location;
 export using ::__sighandler_t;
+export using ::off_t;
+export using ::ssize_t;
 export using ::stderr;
 export using ::stdout;
 #endif
@@ -71,9 +66,8 @@ export using ::__stdoutp;
 export using ::__acrt_iob_func;
 export using ::__p_sig_fn_t;
 export using ::_errno;
-export using ::_putenv_s;
 export using ::_wfopen;
-export using ::localtime_s;
+export using ::abs;
 export using ::mode_t;
 #endif
 

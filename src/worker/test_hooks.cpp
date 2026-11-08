@@ -6,7 +6,7 @@ module;
 
 module clice;
 
-import :support.environment;
+import :support.process;
 import :vfs.file_system;
 import :worker.protocol;
 import :worker.test_hooks;
@@ -84,12 +84,6 @@ void park_at_gate(llvm::StringRef tag) {
     };
     gates.changed.wait(lock, [&] { return find()->released; });
     erase_gate(find());
-}
-
-/// The environment's value of `name`.
-std::optional<std::string> test_env(const char* name) {
-    std::string value;
-    return sys::get_env(value, name) ? std::optional(std::move(value)) : std::nullopt;
 }
 
 }  // namespace
@@ -253,7 +247,7 @@ void run_test_hooks(llvm::StringRef tag) {
 
     // The request whose tag contains CLICE_TEST_CRASH_REQUEST crashes its
     // worker right here — any kind of request, attributed like a real crash.
-    const static auto crash_request = test_env("CLICE_TEST_CRASH_REQUEST");
+    const static auto crash_request = env_string("CLICE_TEST_CRASH_REQUEST");
     if(crash_request && tag.contains(*crash_request)) {
         LLVM_BUILTIN_TRAP;
     }
@@ -263,7 +257,7 @@ void run_test_hooks(llvm::StringRef tag) {
     // would kill it: unannounced, the death names no request. Taking the
     // file away makes it the first — one rename of it succeeds, and a
     // respawned worker finds none.
-    const static auto kill_request = test_env("CLICE_TEST_KILL_REQUEST");
+    const static auto kill_request = env_string("CLICE_TEST_KILL_REQUEST");
     if(kill_request) {
         auto wanted = vfs::read_text(*kill_request);
         if(wanted && tag.contains(llvm::StringRef(*wanted).trim()) &&

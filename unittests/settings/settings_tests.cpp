@@ -1,15 +1,15 @@
 module clice;
 
+import :command.argument;
 import :command.database;
 import :command.edit;
 import :command.table;
 import :feature.code_completion;
 import :settings.rules;
 import :settings.settings;
-import :support.shell;
-import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
+import :unittests.utils;
 import :vfs.path;
 
 namespace clice::testing {
@@ -979,7 +979,7 @@ ZEST_CASE(RuleOrderLaterRemoveWins) {
     auto edits = rules.edits({CanonicalPath(Spelling::absolute("/src/a.cpp"))});
     ZASSERT(edits.edits.size() == 2u);
     ZEXPECT(edits.edits[1].kind == CommandEdit::Kind::Remove);
-    ZEXPECT(print_argv(render_entry(cdb, "/src/a.cpp", edits.options())) ==
+    ZEXPECT(join_command(render_entry(cdb, "/src/a.cpp", edits.options())) ==
             "clang++ -D BAR " + CanonicalPath(Spelling::absolute("/src/a.cpp")).str());
 }
 

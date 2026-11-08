@@ -9,9 +9,8 @@ import :project.graph.pch;
 import :project.graph.pcm;
 import :project.graph.unit;
 import :project.project;
-import :support.bytes;
 import :support.logging;
-import :support.timer;
+import :support.text;
 import :syntax.dependency_graph;
 import :vfs.file_table;
 import :worker.protocol;
@@ -174,7 +173,7 @@ async::task<UnitResult>
         cost.peak = manifest->peak;
     }
     std::uint64_t measured = 0;
-    ScopedTimer timer;
+    Timer timer;
     auto reply = co_await project.pool->send_stateless(params,
                                                        {.priority = worker::Priority::Low,
                                                         .cancel = attempt.token(),
@@ -234,7 +233,7 @@ async::task<UnitResult>
                 LOG_INFO("Discarding outdated index result for {}", file_path);
                 co_return UnitResult{.status = Status::Skipped};
             }
-            ScopedTimer merge_timer;
+            Timer merge_timer;
             // A worker that could not read its own memory measured nothing:
             // the earlier peak stands.
             auto merged = project.merge_index(path_id,

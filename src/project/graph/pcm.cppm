@@ -4,7 +4,7 @@ import :command.database;
 import :command.invocation;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
-import :support.failure_record;
+import :support.failure;
 import :support.prelude;
 import :vfs.ids;
 

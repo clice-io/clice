@@ -1,37 +1,27 @@
 module;
 
-#if defined(__linux__)
-#include <link.h>
-#elif defined(__APPLE__)
-#include <mach-o/dyld.h>
-#elif defined(_WIN32)
-// See cache_store.cpp: windows.h must not spill min/max macros.
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
-#endif
-
 #include "version.h"
 
 module clice;
 
 import :support.log_sinks;
 import :support.logging;
+import :support.process;
 
 namespace clice::logging {
 
 Options options;
 
-static std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> ringbuffer_sink;
+namespace {
+
+std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> ringbuffer_sink;
 
 /// The stderr sink stderr_logger chose, mirrored again by file_logger.
-static spdlog::sink_ptr console_sink;
+spdlog::sink_ptr console_sink;
 
-constexpr static auto pattern = "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [thread %t] [%s:%#] %v";
+constexpr auto pattern = "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [thread %t] [%s:%#] %v";
 
-static void install_logger(std::string_view name,
-                           llvm::ArrayRef<spdlog::sink_ptr> sinks,
-                           Level level) {
+void install_logger(std::string_view name, llvm::ArrayRef<spdlog::sink_ptr> sinks, Level level) {
     auto logger = std::make_shared<spdlog::logger>(std::string(name), sinks.begin(), sinks.end());
     logger->set_level(level);
     logger->set_pattern(pattern);
@@ -39,49 +29,56 @@ static void install_logger(std::string_view name,
     spdlog::set_default_logger(std::move(logger));
 }
 
-void stderr_logger(std::string_view name, const Options& options) {
-    std::shared_ptr<StderrSink> client_stderr;
-    if(options.never_block_stderr) {
-        client_stderr = std::make_shared<StderrSink>();
-        console_sink = client_stderr;
-    } else {
-        console_sink = std::make_shared<FileSink>(2, /*owned=*/false);
-    }
-    console_sink->set_level(options.stderr_level);
+/// The log file a crash's stack trace is appended to, as a descriptor,
+/// and the lines written before the trace: the handler may only write, and
+/// a crash while the process exits finds them still, as no destructor frees
+/// them.
+int crash_log = -1;
+std::array<char, 256> crash_header;
+std::size_t crash_header_size = 0;
 
-    llvm::SmallVector<spdlog::sink_ptr, 2> sinks = {console_sink};
-    if(options.replay_console) {
-        ringbuffer_sink = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(128);
-        sinks.push_back(ringbuffer_sink);
-    }
-    install_logger(name, sinks, options.level);
-
-    if(client_stderr && client_stderr->inoperative()) {
-        // The sink fails closed (drops everything) rather than risk the
-        // caller blocking on an unswitchable pipe; the line reaches the
-        // file log through the replay buffer.
-        LOG_WARN("stderr mirror disabled: pipe could not be switched to non-blocking");
+void crash_handler(void*) {
+    if(crash_log >= 0) {
+        sys::write_console(crash_log, {crash_header.data(), crash_header_size});
+        sys::write_stacktrace(crash_log);
     }
 }
 
-std::string session_log_directory(std::string_view logging_dir) {
-    auto now = chrono::system_clock::to_time_t(chrono::system_clock::now());
-    std::tm local{};
-#ifdef _WIN32
-    localtime_s(&local, &now);
-#else
-    localtime_r(&now, &local);
-#endif
-    char timestamp[32];
-    std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d_%H-%M-%S", &local);
-    std::string directory(logging_dir);
-    fs::path::push(directory, std::format("{}_{}", timestamp, sys::pid()));
-    return directory;
+/// Append a crash's stack trace to the log file `log_path`; with
+/// stderr_trace, LLVM's to stderr too — the master wants it (editors capture
+/// its stderr), workers must not (their stderr pipe would relay the trace
+/// into the master log; a worker's crash trace belongs in its own log file
+/// only).
+void install_crash_handler(std::string_view log_path, bool stderr_trace) {
+    auto fd =
+        fs::File::open(log_path, {.append = true, .create = true}).and_then([](fs::File file) {
+            return std::move(file).into_descriptor();
+        });
+    if(!fd) {
+        LOG_WARN("Failed to install crash handler for {}: {}", log_path, fd.error().message());
+        return;
+    }
+    // Names the exact build, so symbolization uses the matching symbol file.
+    auto header = std::format_to_n(crash_header.data(),
+                                   crash_header.size(),
+                                   "\n=== CRASH STACK TRACE ===\nclice {} {}\n",
+                                   version,
+                                   target);
+    crash_header_size = std::min(static_cast<std::size_t>(header.size), crash_header.size());
+    crash_log = *fd;
+    llvm::sys::AddSignalHandler(crash_handler, nullptr);
+    // Crash-only exception to the never-blocked-by-the-client rule: LLVM's
+    // raw_ostream spins on a full non-blocking pipe, so a crash trace to an
+    // undrained stderr can stall the dying process. The same trace already
+    // reached the log file above, unaffected by fd 2's state.
+    if(stderr_trace) {
+        llvm::sys::PrintStackTraceOnErrorSignal("clice");
+    }
 }
 
 /// Why `dir` could not be created: a file standing where one of its
 /// directories goes is named, which Windows reports as a missing path.
-static std::string creation_error(llvm::StringRef dir, std::error_code error) {
+std::string creation_error(llvm::StringRef dir, std::error_code error) {
     for(auto at: fs::path::ancestors(dir)) {
         if(fs::exists(at)) {
             if(!fs::is_directory(at)) {
@@ -93,10 +90,81 @@ static std::string creation_error(llvm::StringRef dir, std::error_code error) {
     return error.message();
 }
 
-bool file_logger(std::string_view name,
-                 std::string_view dir,
-                 const Options& options,
-                 bool mirror_stderr) {
+std::array<std::atomic<std::uint32_t>, anomaly_id_count> report_counts;
+
+/// Guards the two hooks below. Reporting sites copy the hook under the lock
+/// and invoke it outside, so a hook may safely re-enter this module (e.g. a
+/// testing trap calling reset_anomaly_for_testing).
+std::mutex hook_mutex;
+
+std::function<void(NotifyKind, std::string_view)> notify_hook;
+
+std::function<void(AnomalyId)> testing_trap;
+
+std::function<void(NotifyKind, std::string_view)> current_notify_hook() {
+    std::lock_guard lock(hook_mutex);
+    return notify_hook;
+}
+
+void trap(AnomalyId id) {
+    std::function<void(AnomalyId)> testing;
+    {
+        std::lock_guard lock(hook_mutex);
+        testing = testing_trap;
+    }
+    if(testing) {
+        testing(id);
+        return;
+    }
+#ifndef NDEBUG
+    // Debug builds treat anomalies as assertion failures: flush the log so
+    // the report survives, then abort. CLICE_ANOMALY_NO_TRAP exists for
+    // integration tests that intentionally trigger anomalies and verify the
+    // Release behavior (report and continue).
+    const static bool disabled = env_string("CLICE_ANOMALY_NO_TRAP").has_value();
+    if(!disabled) {
+        LOG_ERROR(
+            "Aborting on the anomaly above (Debug build); "
+            "set CLICE_ANOMALY_NO_TRAP=1 to report it and continue instead");
+        spdlog::shutdown();
+        std::abort();
+    }
+#endif
+}
+
+}  // namespace
+
+void stderr_logger(std::string_view name) {
+    std::shared_ptr<StderrSink> client_stderr;
+    if(options.never_block_stderr) {
+        client_stderr = std::make_shared<StderrSink>();
+        console_sink = client_stderr;
+    } else {
+        console_sink = std::make_shared<FileSink>(2);
+    }
+    console_sink->set_level(options.stderr_level);
+
+    ringbuffer_sink = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(128);
+    install_logger(name, {console_sink, ringbuffer_sink}, options.level);
+
+    if(client_stderr && client_stderr->inoperative()) {
+        // The sink fails closed (drops everything) rather than risk the
+        // caller blocking on an unswitchable pipe; the line reaches the
+        // file log through the replay buffer.
+        LOG_WARN("stderr mirror disabled: pipe could not be switched to non-blocking");
+    }
+}
+
+std::string session_log_directory(std::string_view logging_dir) {
+    auto local = sys::local_time(chrono::system_clock::now()).value_or(std::tm{});
+    char timestamp[32];
+    std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d_%H-%M-%S", &local);
+    std::string directory(logging_dir);
+    fs::path::push(directory, std::format("{}_{}", timestamp, sys::pid()));
+    return directory;
+}
+
+bool file_logger(std::string_view name, std::string_view dir, bool mirror_stderr) {
     if(auto made = fs::create_directories(dir); !made) {
         spdlog::error("Failed to create log directory {}: {}",
                       std::string(dir),
@@ -123,7 +191,7 @@ bool file_logger(std::string_view name,
 
     // Replay buffered logs after swapping the default logger, so no messages
     // emitted between the snapshot and the swap are lost.
-    if(options.replay_console && replay_buffer) {
+    if(replay_buffer) {
         file_sink->set_level(options.level);
         file_sink->set_pattern(pattern);
 
@@ -138,151 +206,56 @@ bool file_logger(std::string_view name,
     return true;
 }
 
-static std::unique_ptr<llvm::raw_fd_ostream> crash_log_stream;
+bool should_report(AnomalyId id) {
+    if(options.level > Level::err)
+        return false;
 
-// Captured at install time: querying the dynamic loader is not
-// async-signal-safe, so the handler may only print the cached value.
-static uintptr_t executable_base = 0;
+    auto& count = report_counts[static_cast<std::size_t>(id)];
+    auto previous = count.fetch_add(1, std::memory_order_relaxed);
+    if(previous < anomaly_report_limit)
+        return true;
 
-uintptr_t main_executable_base() {
-#if defined(__linux__)
-    uintptr_t base = 0;
-    dl_iterate_phdr(
-        [](dl_phdr_info* info, size_t, void* data) {
-            // The first entry is always the main executable.
-            *static_cast<uintptr_t*>(data) = info->dlpi_addr;
-            return 1;
-        },
-        &base);
-    return base;
-#elif defined(__APPLE__)
-    // The slide, not the header address: Mach-O executables have a nonzero
-    // preferred vmaddr, so only pc - slide yields the on-file address
-    // symbolizers expect — the same contract as the ELF load bias above.
-    return static_cast<uintptr_t>(_dyld_get_image_vmaddr_slide(0));
-#elif defined(_WIN32)
-    return reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
-#else
-    return 0;
-#endif
+    if(previous == anomaly_report_limit) {
+        auto text =
+            std::format("[anomaly:{}] report limit ({}) reached, suppressing further reports",
+                        id,
+                        anomaly_report_limit);
+        logging::log(Level::err, std::source_location::current(), "{}", text);
+        if(auto hook = current_notify_hook())
+            hook(NotifyKind::Anomaly, text);
+    }
+    return false;
 }
 
-#if defined(_WIN32)
-static void print_frame(llvm::raw_ostream& os, DWORD64 pc) {
-    os << llvm::format("0x%016llX", static_cast<unsigned long long>(pc));
-    HMODULE module = nullptr;
-    std::array<wchar_t, MAX_PATH> wide;
-    std::array<char, MAX_PATH * 3> path;
-    if(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                          reinterpret_cast<LPCWSTR>(pc),
-                          &module) &&
-       GetModuleFileNameW(module, wide.data(), wide.size()) != 0 &&
-       WideCharToMultiByte(CP_UTF8,
-                           0,
-                           wide.data(),
-                           -1,
-                           path.data(),
-                           static_cast<int>(path.size()),
-                           nullptr,
-                           nullptr) != 0) {
-        auto base = reinterpret_cast<DWORD64>(module);
-        os << llvm::format(", %s(0x%016llX) + 0x%llX byte(s)\n",
-                           path.data(),
-                           static_cast<unsigned long long>(base),
-                           static_cast<unsigned long long>(pc - base));
-    } else {
-        os << " <unknown module>\n";
-    }
+void report_anomaly(AnomalyId id, std::source_location location, std::string_view message) {
+    auto text = std::format("[anomaly:{}] {}", id, message);
+    logging::log(Level::err, location, "{}", text);
+    if(auto hook = current_notify_hook())
+        hook(NotifyKind::Anomaly, text);
+    trap(id);
 }
 
-/// LLVM's walk (dbghelp's StackWalk64) stops on arm64 at the exception
-/// dispatcher's return address, which the system DLL signed with pointer
-/// authentication, and RtlCaptureStackBackTrace follows the frame pointer
-/// chain, which ends there too; ntdll's unwinder follows the unwind data,
-/// strips the signatures and goes through the dispatcher to the crashing
-/// frames. The frames print as LLVM's do without a symbolizer, the format
-/// scripts/symbolize.py reads.
-static void print_stack_trace(llvm::raw_ostream& os) {
-    CONTEXT context;
-    RtlCaptureContext(&context);
-#if defined(__aarch64__)
-    auto& pc = context.Pc;
-#else
-    auto& pc = context.Rip;
-#endif
-    for(int depth = 0; depth < 256 && pc != 0; depth += 1) {
-        print_frame(os, pc);
-        DWORD64 image_base = 0;
-        auto* function = RtlLookupFunctionEntry(pc, &image_base, nullptr);
-        if(!function) {
-            // A leaf function, which returns through the link register on
-            // arm64 and through the address on top of the stack on x64.
-#if defined(__aarch64__)
-            pc = context.Lr;
-#else
-            pc = *reinterpret_cast<DWORD64*>(context.Rsp);
-            context.Rsp += 8;
-#endif
-            continue;
-        }
-        void* handler_data = nullptr;
-        DWORD64 establisher_frame = 0;
-        RtlVirtualUnwind(UNW_FLAG_NHANDLER,
-                         image_base,
-                         pc,
-                         function,
-                         &context,
-                         &handler_data,
-                         &establisher_frame,
-                         nullptr);
-    }
-}
-#endif
-
-static void crash_handler(void*) {
-    if(crash_log_stream) {
-        *crash_log_stream << "\n=== CRASH STACK TRACE ===\n";
-        // Identifies the exact build so symbolization uses the matching
-        // symbol file (all constexpr string_views: async-signal-safe).
-        *crash_log_stream << "clice " << version << " " << target << "\n";
-        // Release binaries are PIE and stripped: the frame addresses below are
-        // ASLR-shifted, so offline symbolization against the shipped symbol
-        // file needs this rebase value (see scripts/symbolize.py). Zero is a
-        // legitimate value (a zero macOS slide) and must still be recorded.
-        *crash_log_stream << "main executable base: 0x";
-        crash_log_stream->write_hex(executable_base);
-        *crash_log_stream << "\n";
-#if defined(_WIN32)
-        print_stack_trace(*crash_log_stream);
-#else
-        llvm::sys::PrintStackTrace(*crash_log_stream);
-#endif
-        crash_log_stream->flush();
-    }
+void report_guidance(std::source_location location, std::string_view message) {
+    logging::log(Level::warn, location, "[guidance] {}", message);
+    if(auto hook = current_notify_hook())
+        hook(NotifyKind::Guidance, message);
 }
 
-void install_crash_handler(std::string_view log_path, bool stderr_trace) {
-    executable_base = main_executable_base();
-    auto fd =
-        fs::File::open(log_path, {.append = true, .create = true}).and_then([](fs::File file) {
-            return std::move(file).into_descriptor();
-        });
-    if(!fd) {
-        LOG_WARN("Failed to install crash handler for {}: {}", log_path, fd.error().message());
-        return;
-    }
-    crash_log_stream = std::make_unique<llvm::raw_fd_ostream>(*fd, /*shouldClose=*/true);
-    llvm::sys::AddSignalHandler(crash_handler, nullptr);
-    // Workers skip the stderr backtrace: their crash traces belong in their
-    // own log file only, not relayed into the master log via the stderr pipe.
-    // Crash-only exception to the never-blocked-by-the-client rule: LLVM's
-    // raw_ostream spins on a full non-blocking pipe, so a crash trace to an
-    // undrained stderr can stall the dying process. The same trace already
-    // reached the log file above, unaffected by fd 2's state.
-    if(stderr_trace) {
-        llvm::sys::PrintStackTraceOnErrorSignal("clice");
-    }
+void set_notify_hook(std::function<void(NotifyKind, std::string_view)> hook) {
+    std::lock_guard lock(hook_mutex);
+    notify_hook = std::move(hook);
+}
+
+void set_anomaly_trap_for_testing(std::function<void(AnomalyId)> hook) {
+    std::lock_guard lock(hook_mutex);
+    testing_trap = std::move(hook);
+}
+
+void reset_anomaly_for_testing() {
+    for(auto& count: report_counts)
+        count.store(0, std::memory_order_relaxed);
+    std::lock_guard lock(hook_mutex);
+    testing_trap = nullptr;
 }
 
 }  // namespace clice::logging

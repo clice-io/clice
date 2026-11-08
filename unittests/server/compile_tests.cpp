@@ -12,21 +12,21 @@ import :project.graph.task_graph;
 import :server.master;
 import :server.served_project;
 import :server.session;
-import :support.anomaly;
+import :support.logging;
 import :syntax.dependency_graph;
 import :syntax.position;
 import :syntax.token;
 import :unittests.server.served_project_fixture;
-import :unittests.worker.helpers;
-import :unittests.utils;
 import :unittests.utils.async;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
+import :unittests.utils;
+import :unittests.worker.helpers;
 import :vfs.cache_store;
 import :vfs.file_table;
 import :worker.pool;
-import :worker.test_hooks;
 import :worker.protocol;
+import :worker.test_hooks;
 
 namespace clice::testing {
 
@@ -120,7 +120,7 @@ ZEST_CASE(InvalidateKeepsResult) {
     fixture.update_latest(pid, [](DocumentCompile& compiled) { compiled.pch_key = "key"; });
     fixture.compiled_now(pid);
 
-    served.invalidate(pid);
+    served.project.graph.invalidate(ast_node(pid));
 
     // Only the compile's currency goes; the products stay for the
     // bounded-staleness consumers (preamble links, hover gap).
@@ -1047,7 +1047,7 @@ ZEST_CASE(GenerationGuardsPCHWrite) {
     // An invalidation that leaves the buffer (a disk or CDB change behind
     // the in-flight request) arrives after takeoff: the node's generation
     // moves, the ticket's stays.
-    served.invalidate(pid);
+    served.project.graph.invalidate(ast_node(pid));
 
     std::string directory = "/proj";
     std::vector<std::string> arguments = {"clang++", "-fsyntax-only", "/proj/a.cpp"};
@@ -1555,7 +1555,7 @@ ZEST_CASE(GenerationGuardsPCHClear) {
         // Runs after the launch suspended on its dispatched build: an
         // invalidation arrives behind the in-flight request.
         auto invalidate = [&]() -> async::task<> {
-            served.invalidate(session->path_id);
+            served.project.graph.invalidate(ast_node(session->path_id));
             co_return;
         };
         co_await async::when_all(launch(), invalidate());

@@ -114,7 +114,7 @@ auto semantic_token_legend(const SemanticTokensOptions& options) -> SemanticToke
     };
 
     llvm::StringSet<> known;
-    for(auto kind: meta::reflection<SemanticTokenKind>::member_values) {
+    for(auto kind: meta::enum_values<SemanticTokenKind>) {
         auto name = legend_name(kind);
         known.insert(name);
         if(kind == SemanticTokenKind::None) {
@@ -131,7 +131,7 @@ auto semantic_token_legend(const SemanticTokensOptions& options) -> SemanticToke
     }
 
     known.clear();
-    for(auto modifier: meta::reflection<SemanticTokenModifier>::member_values) {
+    for(auto modifier: meta::enum_values<SemanticTokenModifier>) {
         auto name = legend_name(modifier);
         known.insert(name);
         if(auto sent = renamed(options.modifiers, name); !sent.empty()) {

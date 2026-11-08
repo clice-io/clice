@@ -106,9 +106,9 @@ void ServedProject::recheck_choices() {
     }
 }
 
-std::size_t ServedProject::reload_databases(bool force) {
+bool ServedProject::reload_databases(bool force) {
     if(!watches_build()) {
-        return 0;
+        return false;
     }
     // A reload would record the other build's commands as the ones this
     // index was built with.
@@ -118,17 +118,17 @@ std::size_t ServedProject::reload_databases(bool force) {
             .message = std::format("The compilation databases of {} now resolve to another build",
                                    project.file_table.display(project.root)),
         });
-        return 0;
+        return false;
     }
     auto delta = project.look_at_databases(
         force,
         ranges::to<llvm::SmallVector<Fid>>(
             views::transform(documents, [](auto& entry) { return entry.first; })));
     if(delta.empty()) {
-        return 0;
+        return false;
     }
     commands_changed(std::move(delta));
-    return 1;
+    return true;
 }
 
 async::task<bool> ServedProject::poll_sources() {

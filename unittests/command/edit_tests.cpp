@@ -4,7 +4,6 @@ import :command.argument;
 import :command.database;
 import :command.edit;
 import :command.table;
-import :support.shell;
 import :unittests.utils.cdb_helper;
 import :unittests.utils;
 import :vfs.path;
@@ -145,7 +144,7 @@ ZEST_CASE(PrependAfterBinary) {
     options.extra_prepend = prepend;
     // Prepends sit ahead of the command's own flags, so the command wins
     // on collision. (Defines render canonicalized, as two tokens.)
-    ZEXPECT(print_argv(render_entry(database, fake("main.cpp"), options)) ==
+    ZEXPECT(join_command(render_entry(database, fake("main.cpp"), options)) ==
             std::format("clang++ -std=c++17 -D B -D A {}", fake("main.cpp")));
 };
 
@@ -163,7 +162,7 @@ ZEST_CASE(RuleAnchorKeysMemo) {
     };
     auto render = [&](llvm::StringRef directory) {
         auto edits = edits_at(directory);
-        return print_argv(render_entry(database, fake("main.cpp"), {.edits = edits}));
+        return join_command(render_entry(database, fake("main.cpp"), {.edits = edits}));
     };
     ZEXPECT(llvm::StringRef(render("/one"))
                 .contains(Spelling("inc", Spelling::absolute("/one")).str()));

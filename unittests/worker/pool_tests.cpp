@@ -6,10 +6,10 @@ module;
 
 module clice;
 
-import :support.anomaly;
+import :support.logging;
 import :support.signal;
-import :unittests.worker.helpers;
 import :unittests.utils;
+import :unittests.worker.helpers;
 import :worker.pool;
 import :worker.protocol;
 import :worker.scheduler;

@@ -5,7 +5,7 @@ A C++ development toolkit built on LLVM/Clang
 usage: clice [OPTIONS] <command>
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   -v|--version                    Print the version and exit
 
 Subcommands:
@@ -30,7 +30,7 @@ A C++ development toolkit built on LLVM/Clang
 usage: clice [OPTIONS] <command>
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   -v|--version                    Print the version and exit
 
 Subcommands:
@@ -55,7 +55,7 @@ Start LSP server
 usage: clice serve [OPTIONS]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   --mode <pipe|socket>            Server mode: pipe, or socket (debug) [default: pipe]
   --host <value>                  Socket mode address [default: 127.0.0.1]
   --port <value>                  Socket mode TCP port [default: 0]
@@ -74,7 +74,7 @@ Ask the persisted index about the project
 usage: clice query [OPTIONS] <question>
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
 
 Subcommands:
   project-files     The build's files
@@ -99,7 +99,7 @@ Rewrite the project's sources through the persisted index
 usage: clice refactor [OPTIONS] <refactoring>
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
 
 Subcommands:
   rename  Rename symbols across the project
@@ -113,7 +113,7 @@ Index a project ahead of time
 usage: clice index [OPTIONS] [<operation>]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   -j|--jobs <value>               How many units or files to work on at once; 0 for project.stateless_worker_count, or for index and format the CPU count [default: 0]
@@ -136,7 +136,7 @@ Lint C++ source files
 usage: clice lint [OPTIONS]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   --index                         Also build and persist the project index from the same parses
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
@@ -154,7 +154,7 @@ Format C++ source files
 usage: clice format [<PATH>...] [OPTIONS]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   <PATH>...                       Files to format, or directories to format the build's own files under; relative to the current directory (default: the build's own files)
   --check                         Report the files that need formatting instead of rewriting them
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
@@ -172,7 +172,7 @@ Run a feature on a source file and print raw results as JSON
 usage: clice inspect [OPTIONS] <feature>
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
 
 Subcommands:
   code-action         The code actions on a selection
@@ -198,7 +198,7 @@ Show the commands a file compiles with, or convert compile commands
 usage: clice command [<PATH>] [OPTIONS] [<operation>]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   <PATH>                          The file, relative to the current directory or absolute
   --json                          Print the commands as JSON on stdout instead of text
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
@@ -218,7 +218,7 @@ Scan the project's include and module dependencies
 usage: clice scan [OPTIONS]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   --json                          Print every scanned file with what it includes, the includes no search found and the modules it provides
   --runs <value>                  Time this many scans, each from a fresh start (cold) and again over what it kept (warm, as after a database reload) [range: 1..]
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
@@ -235,7 +235,7 @@ Analyze the indexed project for refactoring
 usage: clice analyze [OPTIONS] <analysis>
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
 
 Subcommands:
   modules  Dependencies between directories, toward a module partition
@@ -249,7 +249,7 @@ Wrap a partition's libraries as modules over their headers, rewrite its program 
 usage: clice modularize [OPTIONS] [<operation>]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   --partition <value>             JSON file assigning modules by globs, first match wins; a module is wrapped, "textual": true stays headers, "external": true is std, "provides": "std.compat" names who exports its names, "rewrite": true rewrites a program module into module units, its primary interface at "primary"
   --scope <value>                 A glob over paths relative to the project root, absolute ones outside it: the files the partition and the program span (may be repeated)
   --std <value>                   libc++'s module sources (share/libc++/v1): the partition's std module is imported as std.compat
@@ -270,7 +270,7 @@ stdout = '''
 usage: clice worker [OPTIONS]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   --stateful                      Run as stateful worker (default: stateless)
   --worker-name <value>           Name the worker logs under [default: worker]
   --log-dir <value>               Directory of the worker's log file (default: no log file)
@@ -284,7 +284,7 @@ Every place naming a symbol
 usage: clice query references <LOCATOR> [OPTIONS]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   <LOCATOR>                       The symbol, as a locator: a name, an answer's symbol, or file:line[:column]
   --include-declaration           List the declarations and the definition too
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
@@ -302,7 +302,7 @@ What the persisted index holds: its sizes and how its records spread
 usage: clice index stats [OPTIONS]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   --limit <value>                 How many of the largest file shards to list [default: 20]
   --variants                      Then every file shard with its variant count, one tab-separated line each
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
@@ -319,7 +319,7 @@ Dependencies between directories, toward a module partition
 usage: clice analyze modules [OPTIONS] [<view>]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   --limit <value>                 Most hotspots, move and split candidates to list [default: 20]
   --scope <value>                 A glob over paths relative to the project root, absolute ones outside it: analyze only the files it matches (default: every indexed file under the project root outside a dot directory) (may be repeated)
   --dir-depth <value>             Directory segments naming a file's default module (0: its whole directory) [default: 0]
@@ -353,7 +353,7 @@ Every entity an edge between two modules carries, and its uses
 usage: clice analyze modules edge <FROM> <TO> [OPTIONS]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   <FROM> <TO>                     The module whose files name the other's entities, and the module named
   --scope <value>                 A glob over paths relative to the project root, absolute ones outside it: analyze only the files it matches (default: every indexed file under the project root outside a dot directory) (may be repeated)
   --dir-depth <value>             Directory segments naming a file's default module (0: its whole directory) [default: 0]
@@ -376,7 +376,7 @@ The hover card at a point
 usage: clice inspect hover <PATH> [OPTIONS]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   <PATH>                          The source file
   --markers <value>               JSON file of the markers in the inspected source file, at byte offsets: {"points": {"name": 12}, "ranges": {"name": {"begin": 3, "end": 7}}}; results are keyed by these names
   --config-overlay <value>        Configuration overlay as a JSON object of clice.toml sections, over the project's configuration
@@ -396,7 +396,7 @@ Convert a compilation database, or one command, to the commands clice compiles w
 usage: clice command convert (<DATABASE> | -- <COMMAND>...) [OPTIONS]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
@@ -418,7 +418,7 @@ Rename symbols across the project
 usage: clice refactor rename (<LOCATOR> <NEW-NAME> | --spec <FILE>) [OPTIONS]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   --dry-run                       Answer with the planned edits without writing them
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
@@ -496,7 +496,7 @@ Show the commands a file compiles with, or convert compile commands
 usage: clice command [<PATH>] [OPTIONS] [<operation>]
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
   <PATH>                          The file, relative to the current directory or absolute
   --json                          Print the commands as JSON on stdout instead of text
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)

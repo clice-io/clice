@@ -27,7 +27,7 @@ import :project.saved;
 import :semantic.symbol;
 import :settings.rules;
 import :settings.settings;
-import :support.failure_record;
+import :support.failure;
 import :support.prelude;
 import :support.signal;
 import :syntax.dependency_graph;

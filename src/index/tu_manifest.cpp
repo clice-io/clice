@@ -3,7 +3,6 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.tu_manifest;
-import :support.bitmap;
 
 namespace clice::index {
 

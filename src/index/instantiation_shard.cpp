@@ -3,8 +3,8 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.instantiation_shard;
-import :support.bytes;
 import :support.logging;
+import :support.text;
 
 namespace clice::index {
 

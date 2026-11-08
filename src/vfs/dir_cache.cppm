@@ -16,8 +16,12 @@ struct Listing {
     /// counts as what it points to).
     llvm::StringMap<bool> entries;
 
-    /// Each entry's name with ASCII letters lowered, where the filesystem
-    /// matches names case-insensitively (Windows, macOS); empty elsewhere.
+    /// Whether the directory matches names with their case
+    /// (fs::case_sensitive).
+    bool case_sensitive = true;
+
+    /// Each entry's name with ASCII letters lowered, where the directory
+    /// matches names case-insensitively; empty elsewhere.
     llvm::StringSet<> folded;
 
     /// The directory's mtime the listing provably describes, or 0: the
@@ -27,9 +31,9 @@ struct Listing {
     /// the operation that took it only.
     std::int64_t mtime_ns = 0;
 
-    /// Whether `name` opens an entry. Windows and macOS match names
-    /// case-insensitively, and macOS across Unicode normalizations as well,
-    /// but only the volume knows its rule (either can be case-sensitive):
+    /// Whether `name` opens an entry. A directory may match names
+    /// case-insensitively (Windows and macOS by default, a casefold
+    /// directory on Linux), and macOS across Unicode normalizations as well:
     /// a name the listing holds under another spelling is confirmed with
     /// one stat, as is any non-ASCII name the listing lacks.
     bool contains(llvm::StringRef name) const;

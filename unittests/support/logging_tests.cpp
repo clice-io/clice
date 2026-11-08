@@ -19,17 +19,6 @@ ZEST_CASE(VersionInfoSet) {
     ZEXPECT(!clice::target.empty());
 }
 
-ZEST_CASE(MainExecutableBase) {
-    // Linux relies on the binary being PIE — a non-PIE image has bias 0,
-    // which would silently void the crash-log rebase contract; Windows
-    // always maps the image at a nonzero base. The macOS slide may
-    // legitimately be zero, so only availability is exercised there.
-    [[maybe_unused]] auto base = logging::main_executable_base();
-#if !defined(__APPLE__)
-    ZEXPECT(base != 0u);
-#endif
-}
-
 };  // ZEST_SUITE(Logging)
 
 }  // namespace

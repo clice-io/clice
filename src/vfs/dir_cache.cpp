@@ -9,12 +9,6 @@ namespace clice::vfs {
 
 namespace {
 
-#if defined(_WIN32) || defined(__APPLE__)
-constexpr bool case_insensitive = true;
-#else
-constexpr bool case_insensitive = false;
-#endif
-
 llvm::SmallString<64> fold(llvm::StringRef name) {
     llvm::SmallString<64> folded;
     for(char c: name) {
@@ -29,10 +23,7 @@ std::optional<bool> entry_is_directory(const Listing& listing, llvm::StringRef n
     if(auto it = listing.entries.find(name); it != listing.entries.end()) {
         return it->second;
     }
-    if constexpr(!case_insensitive) {
-        return std::nullopt;
-    }
-    if(llvm::isASCII(name) && !listing.folded.contains(fold(name))) {
+    if(llvm::isASCII(name) && (listing.case_sensitive || !listing.folded.contains(fold(name)))) {
         return std::nullopt;
     }
     llvm::SmallString<256> entry(listing.dir);
@@ -64,6 +55,8 @@ std::shared_ptr<const Listing> list(llvm::StringRef dir) {
         LOG_DEBUG("readdir failed for '{}': {}", dir, entries.error().message());
         return listing;
     }
+    // Folding where the volume would match case anyway only costs a stat.
+    listing->case_sensitive = fs::case_sensitive(dir).value_or(false);
     for(auto& entry: *entries) {
         if(!entry) {
             LOG_DEBUG("readdir failed for '{}': {}", dir, entry.error().message());
@@ -74,7 +67,7 @@ std::shared_ptr<const Listing> list(llvm::StringRef dir) {
             directory = fs::is_directory(path::join(dir, entry->name));
         }
         listing->entries.try_emplace(entry->name, directory);
-        if constexpr(case_insensitive) {
+        if(!listing->case_sensitive) {
             listing->folded.insert(fold(entry->name));
         }
     }

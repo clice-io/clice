@@ -5,10 +5,10 @@ module;
 module clice:worker.common;
 
 import :compile.compilation;
-import :support.bytes;
-import :support.environment;
+import :support.logging;
 import :support.prelude;
-import :support.timer;
+import :support.process;
+import :support.text;
 import :vfs.file_system;
 import :worker.protocol;
 

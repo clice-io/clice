@@ -35,14 +35,10 @@ extern "C++" int main(int argc, const char** argv) {
     auto& opts = *parsed;
 
     opts.log.apply();
-    clice::logging::stderr_logger("test", clice::logging::options);
+    clice::logging::stderr_logger("test");
 
     // The workers tests spawn crash on `#pragma clang __debug crash`.
-#ifdef _WIN32
-    _putenv_s("CLICE_TEST_PRAGMA_CRASH", "1");
-#else
-    setenv("CLICE_TEST_PRAGMA_CRASH", "1", 1);
-#endif
+    kotatsu::sys::set_env("CLICE_TEST_PRAGMA_CRASH", "1");
 
     return kotatsu::zest::run_tests(std::move(opts.zest), argc, argv);
 }

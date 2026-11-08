@@ -8,7 +8,7 @@ import :index.symbol_query;
 import :project.background;
 import :project.graph.pcm;
 import :project.project;
-import :support.bytes;
+import :support.text;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;

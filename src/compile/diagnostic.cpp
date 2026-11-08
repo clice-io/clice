@@ -3,7 +3,6 @@ module clice;
 import :compile.compilation;
 import :compile.diagnostic;
 import :compile.tidy;
-import :support.format;
 
 namespace clice {
 

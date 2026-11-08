@@ -4,8 +4,8 @@ import :index.entries;
 import :index.indexer;
 import :index.symbol;
 import :index.tu_index;
-import :support.bytes;
 import :support.prelude;
+import :support.text;
 import :unittests.utils.tester;
 
 namespace clice::testing {

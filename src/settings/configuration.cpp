@@ -1,8 +1,7 @@
 module clice;
 
-import :settings.settings;
 import :settings.configuration;
-import :support.anomaly;
+import :settings.settings;
 import :support.logging;
 import :vfs.path;
 

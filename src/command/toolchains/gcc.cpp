@@ -6,7 +6,6 @@ import :command.toolchains.clang;
 import :command.toolchains.gcc;
 import :support.logging;
 import :support.process;
-import :support.shell;
 import :vfs.cygwin;
 import :vfs.path;
 

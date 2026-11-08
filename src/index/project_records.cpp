@@ -4,8 +4,8 @@ import :index.columns;
 import :index.format;
 import :index.project_records;
 import :semantic.token_class;
-import :support.bytes;
 import :support.logging;
+import :support.text;
 
 namespace clice::index {
 

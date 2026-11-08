@@ -1,7 +1,7 @@
 module clice:server.session;
 
 import :feature.diagnostics;
-import :support.failure_record;
+import :support.failure;
 import :support.prelude;
 import :syntax.position;
 import :syntax.source_text;

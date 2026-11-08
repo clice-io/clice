@@ -9,7 +9,7 @@ import :server.master;
 import :server.served_project;
 import :server.session;
 import :settings.settings;
-import :support.bytes;
+import :support.text;
 import :unittests.server.served_project_fixture;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.merge_unit;

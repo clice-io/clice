@@ -4,5 +4,4 @@
 /// module carries. The libraries' replays first, then clice's own.
 
 #include "modules/macros.h"
-#include "support/anomaly.macros.h"
 #include "support/logging.macros.h"

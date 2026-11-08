@@ -9,7 +9,6 @@ import :command.toolchains.gcc;
 import :command.toolchains.nvcc;
 import :command.toolchains.own_options;
 import :support.process;
-import :support.shell;
 import :vfs.path;
 
 namespace clice {
@@ -207,10 +206,9 @@ std::string cl_search_path(llvm::StringRef ccbin) {
                                           llvm::Triple(llvm::sys::getProcessTriple()).getArch());
         }
     }
-    std::string path;
-    if(!directory.empty() && sys::get_env(path, "PATH")) {
+    if(auto path = env_string("PATH"); !directory.empty() && path) {
         directory += ';';
-        directory += path;
+        directory += *path;
     }
     return directory;
 #else

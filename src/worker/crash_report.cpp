@@ -1,14 +1,9 @@
 module;
 
 #ifdef _WIN32
-#include <io.h>
-
-// See cache_store.cpp: windows.h must not spill min/max macros.
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
-#else
-#include <unistd.h>
 #endif
 
 #if defined(__has_feature)
@@ -39,28 +34,13 @@ namespace {
 thread_local const char* running_tag = nullptr;
 thread_local std::size_t running_size = 0;
 
-void write_stderr(const char* data, std::size_t size) {
-    while(size > 0) {
-#ifdef _WIN32
-        auto written = _write(2, data, static_cast<unsigned>(size));
-#else
-        auto written = ::write(2, data, size);
-#endif
-        if(written <= 0) {
-            return;
-        }
-        data += written;
-        size -= static_cast<std::size_t>(written);
-    }
-}
-
 void report_crash() {
     if(!running_tag) {
         return;
     }
-    write_stderr(worker::crashed_in_marker.data(), worker::crashed_in_marker.size());
-    write_stderr(running_tag, running_size);
-    write_stderr("\n", 1);
+    sys::write_console(2, worker::crashed_in_marker);
+    sys::write_console(2, std::string_view(running_tag, running_size));
+    sys::write_console(2, "\n");
 }
 
 }  // namespace

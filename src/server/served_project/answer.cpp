@@ -9,7 +9,6 @@ import :server.served_project;
 import :support.logging;
 import :syntax.scan;
 import :vfs.file_system;
-import :support.timer;
 import :worker.protocol;
 
 namespace clice {
@@ -320,7 +319,7 @@ async::task<std::optional<worker::FormatResult>, ipc::Error>
         params.range = session.positions().offset_range(*range, server.position_encoding);
     }
 
-    ScopedTimer timer;
+    Timer timer;
     bool refused = false;
     auto result = co_await send_stateless(ticket, kind, params, dispatch, false, token, refused);
     if(refused) {
@@ -334,7 +333,7 @@ async::task<std::optional<worker::FormatResult>, ipc::Error>
     if(!result.has_value()) {
         co_return kotatsu::outcome_error(std::move(result.error()));
     }
-    LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.ms_f());
+    LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.precise_ms());
     co_return std::move(*result);
 }
 

@@ -5,7 +5,7 @@ import :index.indexer;
 import :index.project_index;
 import :index.shard;
 import :index.tu_index;
-import :support.bytes;
+import :support.text;
 import :unittests.utils.index_internals;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;

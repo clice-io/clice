@@ -59,6 +59,7 @@
 #define PTHREAD_ONCE_INIT 0
 #  define __INT64_C(c)	c ## L
 #  define __UINT64_C(c)	c ## UL
+# define INT64_MIN		(-__INT64_C(9223372036854775807)-1)
 # define INT32_MAX		(2147483647)
 # define INT64_MAX		(__INT64_C(9223372036854775807))
 # define UINT32_MAX		(4294967295U)
@@ -66,7 +67,6 @@
 #  define SIZE_MAX		(18446744073709551615UL)
 #  define WCHAR_MAX		__WCHAR_MAX
 # define UINT8_C(c)	c
-#define SEEK_END	2	/* Seek from end of file.  */
 #define stdout stdout
 #define stderr stderr
 #define __STRING(x)	#x
