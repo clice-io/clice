@@ -28,8 +28,7 @@ index::IndexQuery query{project.index, project.file_table, &gate};
 
 Fid focus_id;
 
-/// The files the scan looks at, and those the rename may not edit.
-std::vector<std::string> scope;
+/// The files the rename may not edit.
 llvm::StringSet<> foreign;
 
 bool units_pending = false;
@@ -53,35 +52,22 @@ void merge() {
         auto path = entry.getKey().str();
         ZASSERT(!static_cast<bool>(fs::write_file(path, entry.second.content)));
         marked[path] = entry.second.nameless_offsets;
-        if(!ranges::contains(scope, path)) {
-            scope.push_back(path);
-        }
     }
     // The merge recorded what the unit read as the disk's first look: the
     // writes above change it, as a tick would notice.
     project.file_table.disk.look_all();
 }
 
-/// A workspace file no unit compiles.
-void write(llvm::StringRef name, llvm::StringRef content) {
-    auto path = file(name);
-    ZASSERT(!static_cast<bool>(fs::write_file(path, content)));
-    scope.push_back(path);
+/// Change a merged file on disk after its unit was indexed, as an editor
+/// saving it does; a tick of the disk watch notices.
+void change(llvm::StringRef name, llvm::StringRef content) {
+    ZASSERT(!static_cast<bool>(fs::write_file(file(name), content)));
+    project.file_table.disk.look_all();
 }
 
-/// The disk's files scanned for the names of the renames planned, each
-/// read once.
-llvm::StringSet<> names;
-llvm::StringMap<std::optional<feature::ScannedText>> scanned;
-
-const feature::ScannedText* read(llvm::StringRef path) {
-    auto [it, inserted] = scanned.try_emplace(path);
-    if(inserted) {
-        if(auto text = vfs::read_text(path)) {
-            it->second = feature::scan_text(std::move(*text), names);
-        }
-    }
-    return it->second ? &*it->second : nullptr;
+static std::optional<std::string> read(llvm::StringRef path) {
+    auto text = vfs::read_text(path);
+    return text ? std::optional(std::move(*text)) : std::nullopt;
 }
 
 bool editable(llvm::StringRef path) {
@@ -89,15 +75,12 @@ bool editable(llvm::StringRef path) {
 }
 
 RenamePlan plan(const feature::RenameTarget& target, llvm::StringRef new_name) {
-    names = {target.symbol.symbol.name, new_name};
-    scanned.clear();
     return feature::plan_rename(query,
                                 project.file_table,
                                 target,
                                 new_name,
-                                {.files = scope,
-                                 .editable = [&](llvm::StringRef path) { return editable(path); },
-                                 .read = [&](llvm::StringRef path) { return read(path); },
+                                {.editable = [&](llvm::StringRef path) { return editable(path); },
+                                 .read = read,
                                  .units_pending = units_pending});
 }
 
@@ -112,18 +95,11 @@ feature::RenameTarget target(llvm::StringRef name) {
 
 /// Plan the renames together, as a batch.
 feature::BatchPlan batch(std::vector<feature::Renaming> renamings) {
-    names.clear();
-    scanned.clear();
-    for(auto& [target, new_name]: renamings) {
-        names.insert(target.symbol.symbol.name);
-        names.insert(new_name);
-    }
     return feature::plan_renames(query,
                                  project.file_table,
                                  renamings,
-                                 {.files = scope,
-                                  .editable = [&](llvm::StringRef path) { return editable(path); },
-                                  .read = [&](llvm::StringRef path) { return read(path); },
+                                 {.editable = [&](llvm::StringRef path) { return editable(path); },
+                                  .read = read,
                                   .units_pending = units_pending});
 }
 
@@ -464,12 +440,10 @@ ZEST_CASE(ConceptAndLabel) {
 
 ZEST_CASE(RefusedSymbols) {
     add_focus(file("a.cpp"), R"(
-        #define §(macro)LIMIT 10
         struct Number {
             Number §(plus)operator+(const Number&) const;
             §(conversion)operator int() const;
         };
-        int value = LIMIT;
     )");
     merge();
 
@@ -480,10 +454,6 @@ ZEST_CASE(RefusedSymbols) {
     auto conversion = rename_at("conversion", "to_int");
     ZASSERT(!conversion.has_value());
     ZEXPECT(conversion.error().contains("named by the language"));
-
-    auto macro = rename_at("macro", "BOUND");
-    ZASSERT(!macro.has_value());
-    ZEXPECT(macro.error().contains("macro"));
 }
 
 ZEST_CASE(InvalidNewNames) {
@@ -683,7 +653,7 @@ ZEST_CASE(MacroSpellingsUnconfirmed) {
     ZEXPECT(edits(*renamed) == marks());
     ZEXPECT(!renamed->blocked());
     ZASSERT(renamed->unconfirmed.size() == 2U);
-    ZEXPECT(renamed->unconfirmed[0].reason.contains("preprocessor directive"));
+    ZEXPECT(renamed->unconfirmed[0].reason.contains("#define body"));
     ZEXPECT(renamed->unconfirmed[0].line == "#define CALL compute(1)");
     ZEXPECT(renamed->unconfirmed[1].reason.contains("written here as `CALL`"));
 }
@@ -768,9 +738,7 @@ ZEST_CASE(NewNameInChangedFile) {
     )");
     merge();
     // A declaration of the new name the index has not seen yet.
-    ZASSERT(!static_cast<bool>(fs::write_file(file("b.cpp"), R"(int other() { return 0; }
-int evaluate;
-)")));
+    change("b.cpp", "int other() { return 0; }\nint evaluate;\n");
 
     auto renamed = rename("compute", "evaluate");
     ZASSERT(renamed);
@@ -788,7 +756,6 @@ ZEST_CASE(ExtensionlessHeaderEdited) {
         int use() { return §compute(1); }
     )");
     merge();
-    std::erase(scope, file("config"));
 
     auto renamed = rename("compute", "evaluate");
     ZASSERT(renamed);
@@ -796,56 +763,45 @@ ZEST_CASE(ExtensionlessHeaderEdited) {
     ZEXPECT(clean(*renamed));
 }
 
-ZEST_CASE(FilesOutsideTheIndex) {
+ZEST_CASE(UnitsPendingWarn) {
     add_focus(file("a.cpp"), R"(
         int §compute(int x) { return x; }
     )");
     merge();
-    write("notes.cpp", "int other() { return compute(3); }\n");
+    units_pending = true;
 
+    // A unit the index has yet to reach may name it too.
     auto renamed = rename("compute", "evaluate");
     ZASSERT(renamed);
     ZEXPECT(edits(*renamed) == marks());
     ZEXPECT(!renamed->blocked());
-    ZASSERT(renamed->unconfirmed.size() == 1U);
-    ZEXPECT(renamed->unconfirmed.front().reason.contains("holds nothing"));
-
-    // A unit of the build the index has yet to reach may include it.
-    units_pending = true;
-    renamed = rename("compute", "evaluate");
-    ZASSERT(renamed);
-    ZEXPECT(renamed->blocked());
-    ZASSERT(renamed->stale.size() == 1U);
-    ZEXPECT(renamed->stale.front().ends_with("notes.cpp"));
+    ZASSERT(renamed->warnings.size() == 1U);
+    ZEXPECT(renamed->warnings.front().contains("not indexed yet"));
 }
 
 ZEST_CASE(LocalsStayHome) {
     add_file(file("b.h"), R"(
         #define ROWS rows
-        #if 0
-        int stale = rows;
-        #endif
+    )");
+    add_file(file("c.h"), R"(
+        int columns;
     )");
     add_focus(file("a.cpp"), R"(
         #include "b.h"
+        #include "c.h"
         int count(int §(cursor)§rows) { return §rows; }
     )");
     merge();
-    write("notes.cpp", "int rows = 3;\n");
-    units_pending = true;
 
-    // Another file reaches a parameter only through a macro it defines.
+    // Another file changed since it was indexed reaches a parameter only
+    // through a macro it defines.
+    change("c.h", "int columns = rows;\n");
     auto renamed = rename_at("cursor", "entries");
     ZASSERT(renamed);
     ZEXPECT(edits(*renamed) == marks());
-    ZEXPECT(!renamed->blocked());
-    ZASSERT(renamed->unconfirmed.size() == 1U);
-    ZEXPECT(renamed->unconfirmed.front().site.path.ends_with("b.h"));
-    ZEXPECT(renamed->unconfirmed.front().reason.contains("preprocessor directive"));
+    ZEXPECT(clean(*renamed));
 
-    // One changed since it was indexed may define the new name by now.
-    ZASSERT(
-        !static_cast<bool>(fs::write_file(file("b.h"), "#define entries 1\n#define ROWS rows\n")));
+    change("b.h", "#define entries 1\n#define ROWS rows\n");
     renamed = rename_at("cursor", "entries");
     ZASSERT(renamed);
     ZEXPECT(renamed->blocked());
@@ -863,13 +819,194 @@ ZEST_CASE(EditOutsideWorkspace) {
         int use() { return compute(1); }
     )");
     merge();
-    std::erase(scope, file("vendor/lib.h"));
     foreign.insert(file("vendor/lib.h"));
 
     auto renamed = rename("compute", "evaluate");
     ZASSERT(renamed);
     ZASSERT(renamed->conflicts.size() == 1U);
     ZEXPECT(renamed->conflicts.front().contains("not a source of the project"));
+}
+
+ZEST_CASE(MacroAcrossUnits) {
+    llvm::StringRef header = R"(
+        #ifndef §LIMIT
+        #define §LIMIT 10
+        #endif
+    )";
+    add_file(file("limits.h"), header);
+    add_focus(file("a.cpp"), R"(
+        #include "limits.h"
+        int a = §LIMIT;
+        #ifdef §LIMIT
+        int b = §LIMIT + 1;
+        #endif
+    )");
+    merge();
+    clear();
+    add_file(file("limits.h"), header);
+    add_focus(file("b.cpp"), R"(
+        #include "limits.h"
+        #if defined(§LIMIT) && §LIMIT > 5
+        int c = §(cursor)§LIMIT;
+        #endif
+        #undef §LIMIT
+    )");
+    merge();
+
+    auto renamed = rename_at("cursor", "BOUND");
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
+}
+
+ZEST_CASE(MacroBranchesOfOneFile) {
+    add_focus(file("a.cpp"), R"(
+        #ifdef BIG
+        #define §LIMIT 100
+        #elif defined(§LIMIT)
+        #endif
+        #ifndef BIG
+        #define §LIMIT 10
+        #endif
+        int a = §(cursor)§LIMIT;
+        #undef §LIMIT
+        #define §LIMIT 5
+        int b = §LIMIT;
+    )");
+    merge();
+
+    auto renamed = rename_at("cursor", "BOUND");
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
+}
+
+ZEST_CASE(MacroArguments) {
+    add_focus(file("a.cpp"), R"(
+        #define §F() 1
+        #define APPLY(f) f()
+        #define TWICE(f) f() + f()
+        int a = APPLY(§F);
+        int b = TWICE(§F);
+        int c = §(cursor)§F();
+    )");
+    merge();
+
+    auto renamed = rename_at("cursor", "G");
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
+}
+
+ZEST_CASE(MacroInOtherBodies) {
+    add_focus(file("a.cpp"), R"(
+        #define §LIMIT 10
+        #define WRAP (§LIMIT + 1)
+        #define UNUSED (LIMIT * 2)
+        int a = WRAP;
+        int b = §(cursor)§LIMIT;
+    )");
+    merge();
+
+    // A body no expansion runs names nothing the index knows.
+    auto renamed = rename_at("cursor", "BOUND");
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
+}
+
+ZEST_CASE(MacroPastedUse) {
+    add_focus(file("a.cpp"), R"(
+        #define CAT(a, b) a##b
+        #define §(cursor)§LIMIT 10
+        int a = CAT(LIM, IT);
+    )");
+    merge();
+
+    auto renamed = rename_at("cursor", "BOUND");
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(!renamed->blocked());
+    ZASSERT(renamed->unconfirmed.size() == 1U);
+    ZEXPECT(renamed->unconfirmed.front().reason.contains("written here as `CAT`"));
+}
+
+ZEST_CASE(MacroUnrelatedDefinitions) {
+    add_file(file("a.h"), R"(
+        #define CHECK 1
+    )");
+    add_focus(file("a.cpp"), R"(
+        #include "a.h"
+        int a = CHECK;
+    )");
+    merge();
+    clear();
+    add_file(file("b.h"), R"(
+        #define §CHECK 2
+    )");
+    add_focus(file("b.cpp"), R"(
+        #include "b.h"
+        int b = §(cursor)§CHECK;
+    )");
+    merge();
+
+    auto renamed = rename_at("cursor", "VERIFY");
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
+}
+
+ZEST_CASE(MacroLinkedThroughBody) {
+    llvm::StringRef header = R"(
+        int use(const char* name);
+        #define LOG() use(§DEBUG_TYPE)
+    )";
+    add_file(file("log.h"), header);
+    add_focus(file("a.cpp"), R"(
+        #include "log.h"
+        #define §DEBUG_TYPE "a"
+        int a = LOG();
+        #undef §DEBUG_TYPE
+    )");
+    merge();
+    clear();
+    add_file(file("log.h"), header);
+    add_focus(file("b.cpp"), R"(
+        #include "log.h"
+        #define §(cursor)§DEBUG_TYPE "b"
+        int b = LOG();
+    )");
+    merge();
+
+    // Each file's definition is what the one body names in it.
+    auto renamed = rename_at("cursor", "LOG_TYPE");
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
+}
+
+ZEST_CASE(MacroNewNameTaken) {
+    add_focus(file("a.cpp"), R"(
+        #define §(cursor)LIMIT 10
+        #define OTHER 1
+        #ifdef FEATURE
+        #endif
+        namespace ns { int count; }
+        int a = LIMIT;
+    )");
+    merge();
+
+    for(auto [name, conflict]: {
+            std::pair{"count",   "which the macro would replace"},
+            std::pair{"OTHER",   "is a macro already"           },
+            std::pair{"FEATURE", "a directive tests"            },
+            std::pair{"defined", "cannot name a macro"          }
+    }) {
+        auto renamed = rename_at("cursor", name);
+        ZASSERT(renamed);
+        ZASSERT(renamed->conflicts.size() == 1U);
+        ZEXPECT(renamed->conflicts.front().contains(conflict));
+    }
 }
 
 ZEST_CASE(ApplyRewritesTokens) {
@@ -1037,13 +1174,14 @@ ZEST_CASE(BatchSharedTokens) {
 ZEST_CASE(NonAsciiColumns) {
     add_focus(file("a.cpp"), R"(
         int compute(int x) { return x; }
-        #define NOTE "é" compute
+        #define NOTE(x) ("é", compute(x))
+        int use() { return NOTE(1); }
     )");
     merge();
 
     auto renamed = rename("compute", "evaluate");
     ZASSERT(renamed);
-    ZASSERT(renamed->unconfirmed.size() == 1U);
+    ZASSERT(renamed->unconfirmed.size() == 2U);
     auto& begin = renamed->unconfirmed.front().site.begin;
     ZEXPECT(begin.utf16_column + 1 == begin.column);
 }
@@ -1058,9 +1196,10 @@ ZEST_CASE(CursorOffTheName) {
     )");
     merge();
 
-    auto macro = rename_at("macro", "evaluate");
-    ZASSERT(!macro.has_value());
-    ZEXPECT(macro.error().contains("macro"));
+    // An invocation names the macro, not what its body calls.
+    auto macro = cursor("macro");
+    ZASSERT(macro);
+    ZEXPECT(macro->target.symbol.symbol.name == "CALL");
 
     auto paren = rename_at("paren", "Gadget");
     ZASSERT(!paren.has_value());

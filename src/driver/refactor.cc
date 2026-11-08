@@ -205,13 +205,14 @@ int run(Rename& opts) {
     auto editable = [&](llvm::StringRef path) {
         return editable_files.editable(path);
     };
-    auto planned = feature::query::rename(ctx,
-                                          *requests,
-                                          {
-                                              .files = editable_files.sources(),
-                                              .editable = editable,
-                                              .units_pending = project.units_pending(),
-                                          });
+    auto read = [](llvm::StringRef path) -> std::optional<std::string> {
+        auto text = vfs::read_text(path);
+        return text ? std::optional(std::move(*text)) : std::nullopt;
+    };
+    auto planned = feature::query::rename(
+        ctx,
+        *requests,
+        {.editable = editable, .read = read, .units_pending = project.units_pending()});
     if(project.index.damaged()) {
         return fail(project.damaged_index_error());
     }

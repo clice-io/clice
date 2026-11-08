@@ -35,6 +35,11 @@ public:
     /// it. A builtin or command-line macro has no file and is its name alone.
     std::uint64_t entity(const clang::MacroInfo* macro);
 
+    /// What stands for the macro `name` where a directive spells it and no
+    /// definition resolves it (Directive::unresolved_macros): one entity per
+    /// name, whatever defines it elsewhere.
+    static std::uint64_t unresolved_macro(llvm::StringRef name);
+
     /// The entity of a named module, from its full name.
     std::uint64_t module_entity(llvm::StringRef name);
 

@@ -276,6 +276,16 @@ void IndexQuery::for_each_overlay(llvm::function_ref<bool(const TUIndex&)> visit
     }
 }
 
+std::vector<Fid> IndexQuery::outdated_files() const {
+    std::vector<Fid> outdated;
+    index.for_each_indexed_file([&](Fid file, std::uint64_t content) {
+        if(buffer_of(file) ? !serving(file) : gate && gate->stale(file, content)) {
+            outdated.push_back(file);
+        }
+    });
+    return outdated;
+}
+
 std::optional<IndexSource> IndexQuery::serving(Fid file) const {
     if(auto* buffer = buffer_of(file)) {
         if(auto* shard = buffer_shard(*buffer)) {

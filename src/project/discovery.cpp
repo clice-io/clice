@@ -1,7 +1,6 @@
 module clice;
 
 import :command.database;
-import :command.file_kind;
 import :project.discovery;
 import :project.project;
 import :settings.settings;
@@ -451,33 +450,6 @@ bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) 
 
 EditableFiles Project::editable_files() const {
     return {.root = root, .cache_dir = settings.project.cache_identity};
-}
-
-std::vector<std::string> EditableFiles::sources() const {
-    CanonicalRef project_root = root;
-    std::vector<std::string> found;
-    auto entries = fs::walk(project_root);
-    for(auto& entry: entries) {
-        if(!entry) {
-            vfs::warn_unreadable(entry.error());
-            continue;
-        }
-        if(entry->type == fs::FileType::Directory) {
-            if(outside_sources(project_root.entry(entry->path), cache_dir)) {
-                entries.skip();
-            }
-            continue;
-        }
-        if(entry->type != fs::FileType::Regular) {
-            continue;
-        }
-        auto path = project_root.entry(entry->path);
-        if(clang::driver::types::isAcceptedByClang(suffix_type(path)) ||
-           is_context_header_path(path) || path.str().ends_with(".cuh")) {
-            found.push_back(std::move(path).str());
-        }
-    }
-    return found;
 }
 
 bool EditableFiles::editable(llvm::StringRef path) const {

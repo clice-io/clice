@@ -67,6 +67,7 @@ enum class Tag : std::uint8_t {
     TemplateHead,
     Name,
     Value,
+    UnresolvedMacro,
 };
 
 bool has_c_linkage(const clang::Decl* decl) {
@@ -301,6 +302,13 @@ std::uint64_t EntityTable::entity(const clang::MacroInfo* macro) {
             add_place(hasher, position);
         }
     }
+    return hasher.finish();
+}
+
+std::uint64_t EntityTable::unresolved_macro(llvm::StringRef name) {
+    Hasher hasher;
+    hasher.add(Tag::UnresolvedMacro);
+    hasher.add(name);
     return hasher.finish();
 }
 

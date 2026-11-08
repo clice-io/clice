@@ -98,7 +98,7 @@ ProjectFilesResult project_files(Project& project, FileFilter filter) {
         result.files.push_back(std::move(info));
     }
     if(filter == FileFilter::All || filter == FileFilter::Header) {
-        project.index.for_each_indexed_file([&](Fid path_id) {
+        project.index.for_each_indexed_file([&](Fid path_id, std::uint64_t) {
             auto path = project.file_table.resolve(path_id);
             if(!seen.contains(path_id) && is_header_path(path)) {
                 seen.insert(path_id);

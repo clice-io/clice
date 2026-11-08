@@ -2,9 +2,10 @@ module;
 
 /// Rename: the symbols one name change touches, the tokens spelling their
 /// name, and what keeps the change from being safe. The index answers all
-/// of it — no recompile: a rename is the entries of a symbol group, each
-/// checked against the text it indexed, plus a scan of the project for
-/// the tokens spelling the old name that the index ties to nothing.
+/// of it — no recompile, and no read of the project's other files: a
+/// rename is the entries of a symbol group, each checked against the text
+/// it indexed. What the index ties to no symbol — the code an `#if` leaves
+/// out, a `#define` body no expansion runs — is not renamed, nor listed.
 
 module clice:feature.rename;
 
@@ -21,16 +22,20 @@ std::optional<std::string> invalid_identifier(llvm::StringRef name);
 /// The symbols one rename changes: the symbol named, after a constructor,
 /// destructor, deduction guide or specialization resolved to its class or
 /// template, and every symbol spelling the same name with it — its
-/// constructors and destructor, its specializations and theirs, the
-/// overrides a virtual function is linked with. A class template's
-/// deduction guides join in plan_rename.
+/// constructors, destructor and deduction guides, its specializations and
+/// theirs, the overrides a virtual function is linked with. A macro's are
+/// the definitions of its name linked with it: those in a file defining
+/// one of them (the branches of an `#if`, a redefinition after `#undef`),
+/// and those a use of one resolves to as well (a shared header under
+/// other definitions, the expansions of a body naming it).
 struct RenameTarget {
     index::IndexQuery::Located symbol;
     std::vector<index::IndexQuery::Located> group;
 };
 
 /// The rename target of a located symbol; the error says why the symbol
-/// cannot be renamed (an operator, a macro, a name no source spells).
+/// cannot be renamed (an operator, a name no source spells, a macro the
+/// command line defines).
 std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& query,
                                                        const index::IndexQuery::Located& named);
 
@@ -48,77 +53,24 @@ struct CursorRename {
 std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& query,
                                                    const index::IndexQuery::Cursor& cursor);
 
-/// A file's current text as a rename's scan looks at it: the tokens
-/// spelling each name scanned — a rename's old and new name, or those of
-/// every rename of a batch.
-struct ScannedText {
-    std::string text;
-
-    struct Token {
-        std::uint32_t offset;
-        /// It stands in a preprocessor directive.
-        bool directive;
-    };
-
-    llvm::StringMap<std::vector<Token>> tokens;
-};
-
-/// Scan `text` for `names`; nullopt when it spells none of them as a
-/// token. Text work alone, safe on any thread: a server runs it off its
-/// event loop over the whole project.
-std::optional<ScannedText> scan_text(std::string text, const llvm::StringSet<>& names);
-
-/// The texts a rename reads (RenameScope::read): the project's files
-/// scanned for its names up front, and on first read the text of an open
-/// buffer or of an edited file the walk's suffixes left out.
-struct RenameTexts {
-    /// Read and scan `files`, the project's sources and headers by
-    /// suffix (RenameScope::files): file work alone, safe on any thread.
-    RenameTexts(std::vector<std::string> files, llvm::StringSet<> names);
-
-    /// A file's text scanned for the names: the open buffer `buffer`
-    /// gives, else the disk's; null when it spells none.
-    const ScannedText* read(
-        llvm::StringRef path,
-        llvm::function_ref<std::optional<llvm::StringRef>(llvm::StringRef path)> buffer = nullptr);
-
-    std::vector<std::string> files;
-
-private:
-    llvm::StringSet<> names;
-
-    llvm::StringSet<> walked;
-
-    /// The walked files spelling a name.
-    llvm::StringMap<ScannedText> scanned;
-
-    /// The texts read on demand: buffers, and files the walk left out.
-    llvm::StringMap<std::optional<ScannedText>> late;
-};
-
 /// Why no rename can be made in the project rooted at `root`: one
 /// without a folder has no sources to edit; nullopt when one can.
 std::optional<std::string> rename_refusal(llvm::StringRef root);
 
 /// Where a rename may change text, and how to read it.
 struct RenameScope {
-    /// The project's files the scan looks at, absolute: its sources and
-    /// headers by suffix, build trees, hidden directories and the cache
-    /// directory left out.
-    llvm::ArrayRef<std::string> files;
-
     /// Whether the rename may edit a file: one in the project outside
-    /// those directories, whatever its suffix. An edit elsewhere is a
-    /// conflict.
+    /// its build trees, hidden directories and cache directory, whatever
+    /// its suffix. An edit elsewhere is a conflict.
     llvm::function_ref<bool(llvm::StringRef path)> editable;
 
-    /// A file's current text — an open buffer's, else the disk's — scanned
-    /// for the names of the rename (scan_text); null when it spells none.
-    llvm::function_ref<const ScannedText*(llvm::StringRef path)> read;
+    /// A file's current text — an open buffer's, else the disk's; nullopt
+    /// when it cannot be read. Read only for the files the rename edits
+    /// and those the index holds whose text moved on since.
+    llvm::function_ref<std::optional<std::string>(llvm::StringRef path)> read;
 
     /// Whether some unit of the build the index is to hold has no record
-    /// in it yet: a file the index holds no shard of may then be one the
-    /// unit compiles or includes, unindexed rather than outside the index.
+    /// in it yet: what it names goes unrenamed, which a warning says.
     bool units_pending = false;
 };
 
@@ -156,8 +108,8 @@ struct RenamePlan {
     std::vector<std::string> warnings;
 
     /// Files the rename edits, or that spell its old or new name, whose
-    /// index is not current — their text moved on, or the build compiles
-    /// them but the index never did. Nothing is written while any stands.
+    /// text moved on since they were indexed. Nothing is written while any
+    /// stands.
     std::vector<std::string> stale;
 
     bool blocked() const {
@@ -211,9 +163,8 @@ struct BatchPlan {
     }
 };
 
-/// Plan `renamings` together. `scope.read` scans a file for the old and
-/// new names of all of them; each plan looks only at the files spelling
-/// its own two.
+/// Plan `renamings` together, each file whose index moved on read once
+/// for the old and new names of all of them.
 BatchPlan plan_renames(const index::IndexQuery& query,
                        FileTable& files,
                        llvm::ArrayRef<Renaming> renamings,

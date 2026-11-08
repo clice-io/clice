@@ -481,13 +481,14 @@ Result<ReferencesResult> references(Context& ctx,
     return result;
 }
 
-PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, RenameFiles files) {
+PlannedRename rename(Context& ctx,
+                     llvm::ArrayRef<RenameRequest> requests,
+                     const RenameScope& scope) {
     PlannedRename planned;
     auto& result = planned.result;
     std::vector<Renaming> renamings;
     // The answer's entry of each renaming.
     std::vector<std::size_t> entries;
-    llvm::StringSet<> names;
     for(auto& request: requests) {
         auto& entry = result.renames.emplace_back(RenameEntry{
             .line = request.line,
@@ -506,23 +507,11 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, Renam
         entry.name = symbol.display_name();
         entry.kind = kind_name(symbol.kind);
         entry.symbol = symbol_of(target->symbol);
-        names.insert(symbol.name);
-        names.insert(request.new_name);
         entries.push_back(result.renames.size() - 1);
         renamings.push_back({.target = std::move(*target), .new_name = request.new_name});
     }
 
-    RenameTexts texts(std::move(files.files), std::move(names));
-    auto read = [&](llvm::StringRef path) {
-        return texts.read(path);
-    };
-    planned.plan = plan_renames(ctx.query,
-                                ctx.query.file_table(),
-                                renamings,
-                                {.files = texts.files,
-                                 .editable = files.editable,
-                                 .read = read,
-                                 .units_pending = files.units_pending});
+    planned.plan = plan_renames(ctx.query, ctx.query.file_table(), renamings, scope);
 
     auto& plans = planned.plan.plans;
     std::set<std::string> stale;

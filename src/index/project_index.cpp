@@ -403,11 +403,12 @@ const Shard* ProjectIndex::shard(Fid file) const {
     return &slot;
 }
 
-void ProjectIndex::for_each_indexed_file(llvm::function_ref<void(Fid)> visit) const {
+void ProjectIndex::for_each_indexed_file(
+    llvm::function_ref<void(Fid, std::uint64_t content)> visit) const {
     scan(file_records, decode_file, [&](llvm::StringRef, const FileRecord& record) {
         if(record.generation != 0) {
             if(auto file = fid_of(record.path); file.valid()) {
-                visit(file);
+                visit(file, record.generation);
             }
         }
         return true;
@@ -416,13 +417,13 @@ void ProjectIndex::for_each_indexed_file(llvm::function_ref<void(Fid)> visit) co
 
 std::uint32_t ProjectIndex::shard_count() const {
     std::uint32_t count = 0;
-    for_each_indexed_file([&](Fid) { count += 1; });
+    for_each_indexed_file([&](Fid, std::uint64_t) { count += 1; });
     return count;
 }
 
 std::uint64_t ProjectIndex::shard_bytes() const {
     std::uint64_t bytes = 0;
-    for_each_indexed_file([&](Fid file) {
+    for_each_indexed_file([&](Fid file, std::uint64_t) {
         if(auto it = shards.find(file); it != shards.end() && it->second.loaded()) {
             bytes += it->second.bytes().size();
         } else if(auto blob = db ? db->read(BlobKind::Shard, file_key(file)) : ReadBlob{}) {

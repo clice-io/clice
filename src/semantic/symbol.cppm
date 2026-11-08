@@ -111,6 +111,9 @@ struct RelationKind {
         /// recorded next to the Reference of the same name: the call runs
         /// that function, never an override.
         Direct,
+        /// Keyed by a class template, the target a deduction guide of it;
+        /// the guide's TypeDefinition is the template.
+        Guide,
     };
 
     constexpr RelationKind() = default;
@@ -153,7 +156,8 @@ struct RelationKind {
                          Constructor,
                          Destructor,
                          Specialization,
-                         Primary);
+                         Primary,
+                         Guide);
     }
 
 private:

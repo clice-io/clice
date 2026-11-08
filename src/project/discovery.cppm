@@ -130,11 +130,6 @@ struct DiskWatch {
 /// What a refactoring may edit of the project at `root`, outside its cache
 /// directory (feature::RenameScope).
 struct EditableFiles {
-    /// The C-family sources and headers of the project, as absolute
-    /// paths: the files under `root` a rename's scan reads, outside the
-    /// directories project_file leaves out.
-    std::vector<std::string> sources() const;
-
     /// project_file of an absolute path.
     bool editable(llvm::StringRef path) const;
 

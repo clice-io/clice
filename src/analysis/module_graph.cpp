@@ -214,7 +214,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             paths.emplace_back(display(fid), fid);
         }
     };
-    index.for_each_indexed_file(list);
+    index.for_each_indexed_file([&](Fid fid, std::uint64_t) { list(fid); });
     for(auto& [tu, manifest]: manifests) {
         list(tu);
         for(auto& node: manifest.nodes) {
@@ -1362,7 +1362,7 @@ std::expected<LoadedFacts, LoadError> load_facts(Project& project,
     // leaves the files it edits) would give facts about text that is gone.
     LoadError stale{.message =
                         "some files changed since they were indexed; run `clice index` first"};
-    project.index.for_each_indexed_file([&](Fid file) {
+    project.index.for_each_indexed_file([&](Fid file, std::uint64_t) {
         if(auto* shard = project.index.shard(file);
            shard && project.freshness.stale(file, shard->content_hash())) {
             stale.dropped.emplace_back(files.display(file));

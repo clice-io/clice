@@ -78,7 +78,9 @@ struct MacroRef {
     /// Kind of the macro reference.
     Kind kind;
 
-    /// The location of the macro name.
+    /// The location of the macro name; for a name written as another
+    /// macro's argument and invoked by its body (`APPLY(F)` for `F()`), the
+    /// argument's.
     clang::SourceLocation loc;
 };
 
@@ -162,6 +164,12 @@ struct Directive {
     std::vector<HasInclude> has_includes;
     std::vector<Condition> conditions;
     std::vector<MacroRef> macros;
+    /// The macro names directives spell where no definition resolves
+    /// them: a condition testing a name nothing defines there (`#ifndef X`
+    /// before its `#define`), one the preprocessor does not evaluate (an
+    /// `#elif` past a taken branch), and every directive of a block it
+    /// skips (the other branch's `#define`).
+    std::vector<clang::SourceLocation> unresolved_macros;
     std::vector<DiagnosticPragma> diagnostic_pragmas;
     /// The `_Pragma` and `__pragma` operators the preprocessor executed,
     /// keyed by the file their expansion lies in: the `_Pragma` token,

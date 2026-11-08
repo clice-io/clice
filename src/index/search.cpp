@@ -201,7 +201,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
         // The indexed files the database names, and the ones this process
         // met (an open buffer's file among them).
         llvm::SetVector<Fid> candidates;
-        project.for_each_indexed_file([&](Fid file) { candidates.insert(file); });
+        project.for_each_indexed_file([&](Fid file, std::uint64_t) { candidates.insert(file); });
         for(std::uint32_t raw = 0; raw < files.spellings.size(); raw += 1) {
             candidates.insert(Fid{raw});
         }

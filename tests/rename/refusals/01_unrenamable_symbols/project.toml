@@ -1,0 +1,2 @@
+# A macro the compile command defines.
+flags = ["-DFROM_BUILD=1"]

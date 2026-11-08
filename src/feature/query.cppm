@@ -258,18 +258,6 @@ struct PlannedRename {
     }
 };
 
-/// The files a rename batch reads and edits, as the caller knows them: those
-/// its scan reads (RenameScope::files), the ones it may edit
-/// (RenameScope::editable), and whether the build has units the index holds
-/// no record of yet (RenameScope::units_pending).
-struct RenameFiles {
-    std::vector<std::string> files;
-
-    llvm::function_ref<bool(llvm::StringRef path)> editable;
-
-    bool units_pending = false;
-};
-
 /// The symbols a locator (index::SymbolQuery) matches, best first, at most
 /// `limit` of them.
 Result<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, std::size_t limit);
@@ -299,13 +287,14 @@ Result<CallGraphResult> call_graph(Context& ctx,
                                    index::SymbolQuery locator,
                                    CallGraphOptions options);
 
-/// Plan the renames together against `files` on disk (see
-/// plan_renames), each of its files read once: what would change, what the
-/// index cannot guarantee, and what keeps the change from being safe.
-/// Nothing is written. A rename names its symbol by its whole name, never
-/// a pattern; the overloads of one scope that name spells are renamed
-/// together.
-PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, RenameFiles files);
+/// Plan the renames together within `scope` (see plan_renames): what
+/// would change, what the index cannot guarantee, and what keeps the change
+/// from being safe. Nothing is written. A rename names its symbol by its
+/// whole name, never a pattern; the overloads of one scope that name spells
+/// are renamed together.
+PlannedRename rename(Context& ctx,
+                     llvm::ArrayRef<RenameRequest> requests,
+                     const RenameScope& scope);
 
 /// The symbols one declaration a locator names stands for: the symbol,
 /// or, for a name the overloads of one scope spell, all of them; macros

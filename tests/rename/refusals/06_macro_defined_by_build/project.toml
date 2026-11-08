@@ -1,0 +1,4 @@
+# One unit's command overrides the default the header defines.
+[units]
+"a.cpp" = ["-DBUFFER_SIZE=128"]
+"b.cpp" = []
