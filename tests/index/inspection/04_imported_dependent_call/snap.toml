@@ -10,7 +10,7 @@ stdout = '''
 file ${WS}/util.h
   blob=# B  content size=111  content hash=#e95b3c83f713268a
   variants=1
-    #23664d7d797d0a47  contributed by 1 unit
+    #6ae1c54d9d357b34  contributed by 1 unit
       ${WS}/main.cpp
   symbols=8  local symbols=4  occurrences=12  relations=16
     Callee=1
@@ -31,7 +31,7 @@ stdout = '''
 file ${WS}/wrap.h
   blob=# B  content size=121  content hash=#dbe19b955d3425f7
   variants=1
-    #945fb83b599ca6a8  contributed by 1 unit
+    #04a98a4318780768  contributed by 1 unit
       ${WS}/main.cpp
   symbols=7  local symbols=4  occurrences=11  relations=15
     Callee=1
@@ -52,7 +52,7 @@ stdout = '''
 file ${WS}/relay.h
   blob=# B  content size=89  content hash=#2aeef4eb0422525e
   variants=1
-    #32f0a9551ca6ca08  contributed by 1 unit
+    #2f0239bfb8d8fcc6  contributed by 1 unit
       ${WS}/main.cpp
   symbols=6  local symbols=2  occurrences=8  relations=11
     Callee=1
