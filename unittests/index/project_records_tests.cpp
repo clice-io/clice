@@ -225,6 +225,7 @@ ZEST_CASE(SymbolRoundTrip) {
         .file = 2,
     };
     symbol.reference_files = ids({2, 5, 9, 400});
+    symbol.other_definition_files = ids({9, 400});
     symbol.instantiation_files = ids({5});
     auto buffer = aligned(index::encode_record(symbol));
     auto read = index::decode_symbol(buffer->getBuffer());
@@ -240,6 +241,7 @@ ZEST_CASE(SymbolRoundTrip) {
 
     // A symbol no file declares and no instantiation names.
     symbol.file = index::no_file;
+    symbol.other_definition_files = {};
     symbol.instantiation_files = {};
     auto bare = aligned(index::encode_record(symbol));
     read = index::decode_symbol(bare->getBuffer());
@@ -280,6 +282,8 @@ ZEST_CASE(SymbolBytesChecked) {
     ZASSERT(with(15, index::no_file));
     ZEXPECT(!with(15, std::uint64_t(index::no_file) + 1));
     ZEXPECT(!with(16, std::uint64_t(1) << 32));
+    ZEXPECT(!with(17, 0x20000));
+    // Other definition files said to follow, and none there.
     ZEXPECT(!with(17, 0x10000));
 
     // Cut inside the parent, before the token kind, or before the reference

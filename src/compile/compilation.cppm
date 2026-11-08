@@ -130,10 +130,6 @@ struct CompilationInput {
     /// compile but a preamble's (SynthesizedFile::Entry::Forced).
     std::vector<std::string> forced_includes;
 
-    /// The file a header context's prefix was cut from, the host (see
-    /// add_synthesized and CompilationUnit::host_source).
-    std::string host;
-
     /// The PCH to load, and how many bytes of the focus file it stands for:
     /// a preamble's, or with no bytes a precompiled header the build
     /// declares, which a preamble's PCH built over it chains onto.
@@ -157,9 +153,7 @@ struct CompilationInput {
             auto& origin = synthesized[CanonicalPath(Spelling::absolute(file.path)).str()];
             origin = file.origin;
             origin.source = CanonicalPath(Spelling::absolute(file.origin.source)).str();
-            if(file.entry == SynthesizedFile::Entry::Prefix) {
-                host = origin.source;
-            } else if(file.entry == SynthesizedFile::Entry::Forced) {
+            if(file.entry == SynthesizedFile::Entry::Forced) {
                 forced_includes.push_back(file.path);
             }
         }
@@ -424,9 +418,11 @@ public:
     /// of a range do.
     auto source_of(FileOffset position) -> std::optional<SourceOffset>;
 
-    /// Whether the file is the compile's own source: the focus file, or
-    /// under a borrowed includer context a fragment cut from the host.
-    bool host_source(clang::FileID fid);
+    /// Whether the location lies in a system header as the files including
+    /// it see it: clang enters a header compiled as the focus file as the
+    /// user's own, and it is a system header when the search directory of
+    /// the command nearest above it is a system one.
+    bool in_system_header(clang::SourceLocation location);
 
     /// Whether the file belongs to a borrowed includer context: synthesized
     /// itself, or entered through a synthesized file. Such files are the
@@ -659,6 +655,9 @@ private:
 
     /// Memo of CompilationUnit::from_context.
     llvm::DenseMap<clang::FileID, bool> context_files;
+
+    /// Memo of CompilationUnit::in_system_header for the focus file.
+    std::optional<bool> focus_in_system_directory;
 
     /// Memo of CompilationUnit::in_preamble.
     llvm::DenseMap<clang::FileID, bool> preamble_files;

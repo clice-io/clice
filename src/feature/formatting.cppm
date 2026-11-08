@@ -31,4 +31,8 @@ auto cleanup_edits(llvm::StringRef file,
 /// for `file`; unchanged without one.
 auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string;
 
+/// The clang-format style a configuration file above `file` sets; none
+/// without one, or with one that disables formatting or fails to load.
+auto configured_style(llvm::StringRef file) -> std::optional<clang::format::FormatStyle>;
+
 }  // namespace clice::feature

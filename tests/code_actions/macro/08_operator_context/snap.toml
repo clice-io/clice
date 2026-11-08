@@ -1,0 +1,43 @@
+[[answers.binary.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'MINUS_ONE'"
+compiles = true
+
+[answers.binary.code_actions.edits]
+"main.cpp" = '''
+
+ int g(int x) {
+-    int y = x MINUS_ONE;
++    int y = x - 1;
+     SHOW(R"(first
+    second)");
+'''
+
+[[answers.raw.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'SHOW'"
+compiles = true
+
+[answers.raw.code_actions.edits]
+"main.cpp" = '''
+ int g(int x) {
+     int y = x MINUS_ONE;
+-    SHOW(R"(first
++    show(R"(first
+    second)");
+     return f(ADDRESS(y)) + y;
+'''
+
+[[answers.unary.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'ADDRESS'"
+compiles = true
+
+[answers.unary.code_actions.edits]
+"main.cpp" = '''
+     SHOW(R"(first
+    second)");
+-    return f(ADDRESS(y)) + y;
++    return f(&y) + y;
+ }
+'''

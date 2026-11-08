@@ -93,13 +93,13 @@ range = 'static_assert(sizeof(int) == 4, ⟦"int is four bytes"⟧);'
 
 [answers.long_text.hover]
 markdown = '''
-**literal** `"中文中文中文中文中文中文中...`
+**literal** `"中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中...`
 
-**Type:** `const char[49]`
-**Length:** 48
-**Size:** 49 bytes
+**Type:** `const char[145]`
+**Length:** 144
+**Size:** 145 bytes
 '''
-range = 'auto long_text = ⟦"中文中文中文中文中文中文中文中文"⟧;'
+range = 'auto long_text = ⟦"中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文"⟧;'
 
 [answers.negative_imaginary.hover]
 markdown = '''

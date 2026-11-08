@@ -4,12 +4,32 @@ import :vfs.file_table;
 
 namespace clice {
 
+namespace {
+
 /// `path` with its `..` segments resolved as text.
-static Spelling fold(const Spelling& path) {
+Spelling fold(const Spelling& path) {
     llvm::SmallString<256> text(path);
     path::normalize(text);
     return Spelling::absolute(text);
 }
+
+/// `path` in the workspace folder holding it, spelled the way the folder
+/// shows; none outside every folder.
+std::optional<std::string> in_folder(llvm::ArrayRef<FileTable::Folder> folders,
+                                     llvm::StringRef path) {
+    for(auto& folder: folders) {
+        if(path::is_within(path, llvm::StringRef(folder.identity))) {
+            auto rest = path.drop_front(folder.identity.size()).ltrim('/');
+            return Spelling(rest, folder.shown).str();
+        }
+        if(path::is_within(path, llvm::StringRef(folder.shown))) {
+            return path.str();
+        }
+    }
+    return std::nullopt;
+}
+
+}  // namespace
 
 Fid FileTable::intern(const Spelling& path) {
     // FIXME: a spelling keeps the identity it first resolved to: a directory
@@ -72,33 +92,39 @@ std::string FileTable::display(Fid fid) const {
     if(auto it = shown.find(fid); it != shown.end()) {
         return it->second;
     }
-    return display(resolve(fid));
-}
-
-std::string FileTable::display(CanonicalRef identity) const {
-    for(auto& [real, root]: spelled_roots) {
-        if(path::is_within(identity, real)) {
-            auto rest = llvm::StringRef(identity).drop_front(real.size()).ltrim('/');
-            return Spelling(rest, root).str();
+    auto identity = resolve(fid);
+    if(auto inside = in_folder(folders, identity)) {
+        return std::move(*inside);
+    }
+    // Folding `..` right after a link lands elsewhere than the build does.
+    if(auto it = spelled.find(fid); it != spelled.end()) {
+        auto build = fold(Spelling::absolute(it->second));
+        if(build.str() == it->second || CanonicalPath(build) == identity) {
+            if(auto inside = in_folder(folders, build)) {
+                return std::move(*inside);
+            }
         }
     }
     return identity.str();
 }
 
+std::string FileTable::display(CanonicalRef identity) const {
+    return in_folder(folders, identity).value_or(identity.str());
+}
+
 void FileTable::spell_root(const Spelling& root) {
-    CanonicalPath real(root);
-    auto folded = fold(root);
-    if(folded.str() != real.str() && CanonicalPath(folded) == real) {
-        spelled_roots.emplace_back(std::move(real), std::move(folded));
-    }
+    CanonicalPath identity(root);
+    auto opened = fold(root);
+    auto shown = CanonicalPath(opened) == identity ? opened : Spelling(identity);
+    folders.push_back({std::move(identity), std::move(opened), std::move(shown)});
 }
 
 void FileTable::unspell_root(const Spelling& root) {
-    auto folded = fold(root);
-    spelled_roots.erase(
-        ranges::remove_if(spelled_roots, [&](auto& entry) { return entry.second == folded; })
+    auto opened = fold(root);
+    folders.erase(
+        ranges::remove_if(folders, [&](const Folder& folder) { return folder.opened == opened; })
             .begin(),
-        spelled_roots.end());
+        folders.end());
 }
 
 VersionID FileTable::intern_version(Fid fid, std::uint64_t content_hash) {

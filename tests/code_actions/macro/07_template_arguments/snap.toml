@@ -1,0 +1,13 @@
+[[answers.nested.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'WRAP'"
+compiles = true
+
+[answers.nested.code_actions.edits]
+"main.cpp" = '''
+
+ void f() {
+-    WRAP(auto c = Box<Box<int>>{};)
++    auto c = Box<Box<int>>{};
+ }
+'''

@@ -421,6 +421,8 @@ ZEST_CASE(PreviewFromDisk) {
     ZASSERT(project.index.shard(path_id)->positions().text().empty());
     auto& symbol = project.index.edit(symbol_hash);
     symbol.name = "value";
+    symbol.flags = index::SymbolFlags::HasDefinition;
+    symbol.file = path_id.raw;
     symbol.reference_files.add(path_id.raw);
 
     auto definition =

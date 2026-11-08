@@ -1,0 +1,37 @@
+[answers.header_command]
+definition = ["struct command* ⟦command⟧;"]
+declaration = ["struct command* ⟦command⟧;"]
+references = [
+    "struct command* ⟦command⟧;",
+    "main.c │ current.⟦command⟧->io.compare.nlb = 1;",
+    "main.c │ current.⟦command⟧->read.lba = 0;",
+]
+
+[answers.command]
+definition = ["command.h │ struct command* ⟦command⟧;"]
+declaration = ["command.h │ struct command* ⟦command⟧;"]
+references = [
+    "command.h │ struct command* ⟦command⟧;",
+    "current.⟦command⟧->io.compare.nlb = 1;",
+    "current.⟦command⟧->read.lba = 0;",
+]
+
+[answers.io]
+definition = ["command.h │ } ⟦io⟧;"]
+declaration = ["command.h │ } ⟦io⟧;"]
+references = ["command.h │ } ⟦io⟧;", "current.command->⟦io⟧.compare.nlb = 1;"]
+
+[answers.compare]
+definition = ["command.h │ } ⟦compare⟧;"]
+declaration = ["command.h │ } ⟦compare⟧;"]
+references = ["command.h │ } ⟦compare⟧;", "current.command->io.⟦compare⟧.nlb = 1;"]
+
+[answers.nlb]
+definition = ["command.h │ unsigned ⟦nlb⟧ : 16;"]
+declaration = ["command.h │ unsigned ⟦nlb⟧ : 16;"]
+references = ["command.h │ unsigned ⟦nlb⟧ : 16;", "current.command->io.compare.⟦nlb⟧ = 1;"]
+
+[answers.read]
+definition = ["command.h │ } ⟦read⟧;"]
+declaration = ["command.h │ } ⟦read⟧;"]
+references = ["command.h │ } ⟦read⟧;", "current.command->⟦read⟧.lba = 0;"]
