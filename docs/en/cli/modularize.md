@@ -171,7 +171,7 @@ tests/modularize/libraries/01_one_library
 
 ### Rewriting a Program Module
 
-A module of the program marked for rewriting becomes a named module, its files rewritten in place.
+A module of the program marked for rewriting becomes a named module, its files rewritten in place, each keeping its byte order mark.
 
 <!-- BEGIN GENERATED ITEMS: modularize/program -->
 
