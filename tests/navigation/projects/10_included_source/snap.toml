@@ -1,0 +1,9 @@
+[answers.use]
+definition = ["table.c │ int ⟦value⟧;"]
+declaration = ["table.c │ int ⟦value⟧;"]
+references = ["return e.⟦value⟧ + read(&e);", "table.c │ int ⟦value⟧;", "table.c │ return e->⟦value⟧;"]
+
+[answers.declared]
+definition = ["int ⟦value⟧;"]
+declaration = ["int ⟦value⟧;"]
+references = ["main.c │ return e.⟦value⟧ + read(&e);", "int ⟦value⟧;", "return e->⟦value⟧;"]

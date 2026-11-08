@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "${WS}/ws",
+    "file": "${WS}/ws/main.c",
+    "arguments": ["clang", "-std=c11", "-fsyntax-only", "${WS}/ws/main.c"]
+  },
+  {
+    "directory": "${WS}/ws",
+    "file": "${WS}/ws/shared/app.c",
+    "arguments": ["clang", "-std=c11", "-fsyntax-only", "${WS}/ws/shared/app.c"]
+  }
+]

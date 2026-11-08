@@ -1,0 +1,16 @@
+[answers.read]
+references = ["} ⟦read⟧;", "command.⟦read⟧.lba = 1;", "return command.compare.nlb + copy.⟦read⟧.lba;"]
+
+[answers.designated]
+references = [
+    "} ⟦compare⟧;",
+    "Command copy = {.opcode = 0, .⟦compare⟧ = {.nlb = 2}};",
+    "return command.⟦compare⟧.nlb + copy.read.lba;",
+]
+
+[answers.compare]
+references = [
+    "} ⟦compare⟧;",
+    "Command copy = {.opcode = 0, .⟦compare⟧ = {.nlb = 2}};",
+    "return command.⟦compare⟧.nlb + copy.read.lba;",
+]
