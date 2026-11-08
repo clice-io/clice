@@ -1,0 +1,115 @@
+[test."$ clice index --jobs 2"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 7 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename LIMIT CAPACITY"]
+stdout = '''
+{
+  "result": {
+    "applied": true,
+    "renames": [
+      {
+        "line": null,
+        "locator": "LIMIT",
+        "name": "LIMIT",
+        "kind": "Macro",
+        "symbol": "#3565fc03a0b2345b",
+        "newName": "CAPACITY",
+        "edits": 6,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/config.h",
+        "edits": [
+          {
+            "line": 4,
+            "column": 9,
+            "name": "LIMIT",
+            "newName": "CAPACITY",
+            "heuristic": false
+          },
+          {
+            "line": 6,
+            "column": 9,
+            "name": "LIMIT",
+            "newName": "CAPACITY",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 22,
+            "name": "LIMIT",
+            "newName": "CAPACITY",
+            "heuristic": false
+          },
+          {
+            "line": 5,
+            "column": 8,
+            "name": "LIMIT",
+            "newName": "CAPACITY",
+            "heuristic": false
+          },
+          {
+            "line": 6,
+            "column": 9,
+            "name": "LIMIT",
+            "newName": "CAPACITY",
+            "heuristic": false
+          },
+          {
+            "line": 8,
+            "column": 22,
+            "name": "LIMIT",
+            "newName": "CAPACITY",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename LIMIT CAPACITY".files]
+"config.h" = '''
+
+ #ifdef SMALL_BUFFERS
+-#define LIMIT 16
++#define CAPACITY 16
+ #else
+-#define LIMIT 256
++#define CAPACITY 256
+ #endif
+'''
+"main.cpp" = '''
+ #include "config.h"
+
+-int limit() { return LIMIT; }
++int limit() { return CAPACITY; }
+
+-#undef LIMIT
+-#define LIMIT 8
++#undef CAPACITY
++#define CAPACITY 8
+
+-int small() { return LIMIT; }
++int small() { return CAPACITY; }
+'''
