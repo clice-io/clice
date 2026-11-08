@@ -663,6 +663,102 @@ ZEST_CASE(IdlePoolScalesDown) {
     ZEXPECT(core.all<scheduler::ScaleDown>().size() == 2u);
 }
 
+ZEST_CASE(HeavyIdleWorkerReplaced) {
+    constexpr auto heavy = WorkerScheduler::replace_above + MiB;
+    Core core(1);
+    core.submit(1, Priority::Low);
+    core.finish(1);
+    core.advance(WorkerScheduler::idle_scale_down);
+    core.sample(16 * GiB,
+                {
+                    {.slot = 0, .memory = heavy}
+    });
+    // A fresh process first: the heavy one serves until it is ready.
+    ZEXPECT(core.all<scheduler::Spawn>().size() == 1u);
+    ZEXPECT(core.all<scheduler::ScaleDown>().empty());
+    core.processes = 2;
+    core.advance(seconds(3));
+    core.sample(16 * GiB,
+                {
+                    {.slot = 0, .memory = heavy}
+    });
+    // One still starting is the replacement.
+    ZEXPECT(core.all<scheduler::Spawn>().size() == 1u);
+    core.scheduler.worker_ready(1, core.now);
+    core.advance(WorkerScheduler::idle_scale_down);
+    core.sample(16 * GiB,
+                {
+                    {.slot = 0, .memory = heavy  },
+                    {.slot = 1, .memory = 3 * MiB}
+    });
+    auto scale_downs = core.all<scheduler::ScaleDown>();
+    ZASSERT(scale_downs.size() == 1u);
+    ZEXPECT(scale_downs[0].slot == 0u);
+}
+
+ZEST_CASE(LightIdleWorkerKept) {
+    Core core(1);
+    core.submit(1, Priority::Low);
+    core.finish(1);
+    core.advance(WorkerScheduler::idle_scale_down);
+    core.sample(16 * GiB,
+                {
+                    {.slot = 0, .memory = WorkerScheduler::replace_above}
+    });
+    ZEXPECT(core.all<scheduler::Spawn>().empty());
+}
+
+ZEST_CASE(UnusedWorkerKept) {
+    Core core(1);
+    core.advance(WorkerScheduler::idle_scale_down);
+    core.sample(16 * GiB,
+                {
+                    {.slot = 0, .memory = 2 * WorkerScheduler::replace_above}
+    });
+    ZEXPECT(core.all<scheduler::Spawn>().empty());
+}
+
+ZEST_CASE(ScaleDownTakesHeaviest) {
+    Core core(3);
+    core.advance(WorkerScheduler::idle_scale_down);
+    core.sample(16 * GiB,
+                {
+                    {.slot = 0, .memory = MiB    },
+                    {.slot = 1, .memory = 9 * MiB},
+                    {.slot = 2, .memory = MiB    }
+    });
+    auto scale_downs = core.all<scheduler::ScaleDown>();
+    ZASSERT(scale_downs.size() == 1u);
+    ZEXPECT(scale_downs[0].slot == 1u);
+}
+
+ZEST_CASE(ShortMemoryTakesHeavy) {
+    constexpr auto heavy = WorkerScheduler::replace_above + MiB;
+    Core core(1);
+    core.submit(1, Priority::Low);
+    core.finish(1);
+    core.advance(WorkerScheduler::idle_scale_down);
+    core.sample(16 * GiB,
+                {
+                    {.slot = 0, .memory = heavy}
+    });
+    ZASSERT(core.all<scheduler::Spawn>().size() == 1u);
+    core.scheduler.worker_ready(1, core.now);
+    core.processes = 2;
+    // Short of memory as the idle time is up: the heavy one goes, not its
+    // fresh replacement, and none comes in its place.
+    core.advance(WorkerScheduler::idle_scale_down);
+    core.sample(100 * MiB,
+                {
+                    {.slot = 0, .memory = heavy  },
+                    {.slot = 1, .memory = 3 * MiB}
+    });
+    auto scale_downs = core.all<scheduler::ScaleDown>();
+    ZASSERT(scale_downs.size() == 1u);
+    ZEXPECT(scale_downs[0].slot == 0u);
+    ZEXPECT(core.all<scheduler::Spawn>().size() == 1u);
+}
+
 ZEST_CASE(StarvedForegroundSpawns) {
     Core core(1);
     core.submit(1, Priority::High);

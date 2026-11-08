@@ -288,8 +288,16 @@ public:
     constexpr static chrono::seconds cancel_grace{10};
 
     /// No stateless request for this long scales one idle process down, to
-    /// no fewer than min_workers.
+    /// no fewer than min_workers; at min_workers, it starts a fresh process
+    /// beside one that ran requests and holds more than replace_above.
     constexpr static chrono::seconds idle_scale_down{30};
+
+    /// What an idle stateless process may hold of its own before a fresh
+    /// one, which holds a few MiB, replaces it. After a few requests an idle
+    /// worker held 58 to 104 MiB on macOS and Windows, in pages mimalloc keeps
+    /// past every collect and only the end of the process frees, and 28 MiB
+    /// on Linux.
+    constexpr static std::uint64_t replace_above = 32ull << 20;
 
     /// A foreground request waiting this long with no idle worker grows the
     /// pool; a shorter wait is the cooperative cancel freeing a worker.
@@ -377,6 +385,9 @@ private:
         /// A scale-down was asked: it takes no work until it is gone.
         bool scaling_down = false;
 
+        /// It ran a request since its process started.
+        bool ran = false;
+
         /// The request it runs.
         std::optional<RequestId> request;
 
@@ -409,6 +420,10 @@ private:
     bool memory_admits(const Request& request, const Slot& slot) const;
 
     Slot* idle_slot();
+
+    /// The idle process holding the most, the newest of equals: the one a
+    /// scale-down takes.
+    Slot* heaviest_idle();
 
     /// Stateless requests queued or running.
     bool busy() const;

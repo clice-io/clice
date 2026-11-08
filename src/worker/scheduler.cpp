@@ -340,6 +340,7 @@ void WorkerScheduler::start(Request& request, Slot& slot, SchedulerTime now) {
     next_order += 1;
     request.memory = slot.memory;
     slot.request = request.id;
+    slot.ran = true;
     last_busy = now;
     actions.push_back(scheduler::Dispatch{.request = request.id, .slot = slot.slot});
 }
@@ -455,20 +456,29 @@ void WorkerScheduler::dispatch(SchedulerTime now) {
     }
 }
 
+WorkerScheduler::Slot* WorkerScheduler::heaviest_idle() {
+    Slot* heaviest = nullptr;
+    for(auto& [_, slot]: slots | views::reverse) {
+        if(!slot.scaling_down && !slot.request && (!heaviest || slot.memory > heaviest->memory)) {
+            heaviest = &slot;
+        }
+    }
+    return heaviest;
+}
+
 bool WorkerScheduler::scale_down_idle() {
     auto serving =
         ranges::count_if(slots, [](const auto& entry) { return !entry.second.scaling_down; });
     bool scaled_down = false;
-    for(auto& [index, slot]: slots | views::reverse) {
-        if(static_cast<std::size_t>(serving) <= options.min_workers) {
+    while(static_cast<std::size_t>(serving) > options.min_workers) {
+        auto* slot = heaviest_idle();
+        if(!slot) {
             break;
         }
-        if(!slot.scaling_down && !slot.request) {
-            slot.scaling_down = true;
-            serving -= 1;
-            scaled_down = true;
-            actions.push_back(scheduler::ScaleDown{.slot = index});
-        }
+        slot->scaling_down = true;
+        serving -= 1;
+        scaled_down = true;
+        actions.push_back(scheduler::ScaleDown{.slot = slot->slot});
     }
     return scaled_down;
 }
@@ -577,14 +587,23 @@ void WorkerScheduler::scale(SchedulerTime now) {
     }
     auto serving =
         ranges::count_if(slots, [](const auto& entry) { return !entry.second.scaling_down; });
-    if(static_cast<std::size_t>(serving) <= options.min_workers) {
+    if(static_cast<std::size_t>(serving) > options.min_workers) {
+        auto* heaviest = heaviest_idle();
+        heaviest->scaling_down = true;
+        last_busy = now;
+        actions.push_back(scheduler::ScaleDown{.slot = heaviest->slot});
         return;
     }
-    auto newest = ranges::find_if(slots | views::reverse,
-                                  [](const auto& entry) { return !entry.second.scaling_down; });
-    newest->second.scaling_down = true;
-    last_busy = now;
-    actions.push_back(scheduler::ScaleDown{.slot = newest->first});
+    // At the floor, a fresh process joins one past replace_above; the next
+    // scale-down takes the heavy one, which serves until then.
+    bool heavy = ranges::any_of(slots, [](const auto& entry) {
+        auto& slot = entry.second;
+        return !slot.scaling_down && slot.ran && slot.memory > replace_above;
+    });
+    if(heavy && processes < options.max_workers) {
+        last_busy = now;
+        actions.push_back(scheduler::Spawn{});
+    }
 }
 
 }  // namespace clice

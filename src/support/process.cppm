@@ -36,6 +36,18 @@ async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::
 /// after they were freed (src/mimalloc.cc), or at this collect.
 void release_free_memory();
 
+/// release_free_memory on every thread of libuv's pool, then on this one.
+/// mimalloc (src/mimalloc.cc) collects only the calling thread's heap, and a
+/// block freed on another thread waits in its owner's page until the owner
+/// allocates or collects: an AST a pool thread built and the loop thread
+/// freed stays committed while that pool thread is idle. The collects wait
+/// for each other so that each runs on a thread of its own; a thread still
+/// busy after a moment is left to its next collect. glibc's malloc_trim
+/// covers every thread's arena at once, on one pool thread: on a large heap
+/// it takes long enough to stall the loop. A call while one runs returns at
+/// once and has it run again, for what was freed meanwhile.
+async::task<> release_free_memory_everywhere();
+
 /// Watch `signum` for good. The first delivery of any watched signal (the
 /// shared `requested` flag) calls `stop` for a graceful stop. A second
 /// Ctrl-C exits at once; a repeated SIGTERM or SIGHUP does not: supervisors
