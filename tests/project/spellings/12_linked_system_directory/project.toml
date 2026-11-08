@@ -1,0 +1,4 @@
+# third/fmt links to cellar/fmt, made by the test, as a package manager links
+# a package's headers into a shared include directory.
+[units]
+"main.cpp" = ["-isystem", "third"]

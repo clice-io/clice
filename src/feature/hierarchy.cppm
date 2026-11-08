@@ -27,6 +27,9 @@ std::vector<std::string> enclosing_functions(const index::IndexQuery& index,
 struct CallEdge {
     index::IndexQuery::Located symbol;
     std::vector<index::Site> sites;
+
+    /// `symbol` stands at one of its several definitions.
+    bool one_of_several = false;
 };
 
 /// The functions calling `root` and the ones it calls, with the call

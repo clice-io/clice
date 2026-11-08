@@ -105,7 +105,11 @@ std::vector<CallEdge>
         }
         for(auto&& [place, written]: views::zip(places, calls)) {
             if(!written.empty()) {
-                result.push_back({.symbol = std::move(place), .sites = std::move(written)});
+                result.push_back({
+                    .symbol = std::move(place),
+                    .sites = std::move(written),
+                    .one_of_several = places.size() > 1,
+                });
             }
         }
     }
@@ -120,8 +124,13 @@ std::vector<CallEdge>
     std::vector<CallEdge> result;
     for(auto& [callee, sites]: by_callee) {
         index::dedup_sites(sites);
-        for(auto& place: placements(index, callee, sites.front().file)) {
-            result.push_back({.symbol = std::move(place), .sites = sites});
+        auto places = placements(index, callee, sites.front().file);
+        for(auto& place: places) {
+            result.push_back({
+                .symbol = std::move(place),
+                .sites = sites,
+                .one_of_several = places.size() > 1,
+            });
         }
     }
     return result;
@@ -342,9 +351,13 @@ std::vector<CallEdge> call_edges(const index::IndexQuery& query,
             if(edge.sites.empty()) {
                 continue;
             }
+            // Another project may place a neighbour at a declaration where
+            // this one knows its definition; only two of several
+            // definitions stay apart.
             auto known = ranges::find_if(into, [&](const CallEdge& other) {
                 return same_entity(other.symbol, edge.symbol) &&
-                       index::site_key(other.symbol.site) == index::site_key(edge.symbol.site);
+                       (!other.one_of_several || !edge.one_of_several ||
+                        index::site_key(other.symbol.site) == index::site_key(edge.symbol.site));
             });
             if(known == into.end()) {
                 into.push_back(std::move(edge));

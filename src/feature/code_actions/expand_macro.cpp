@@ -25,31 +25,22 @@ std::string spaced(llvm::StringRef content, LocalSourceRange invocation, llvm::S
                     .str();
     auto begin = invocation.begin + 1;
     auto end = begin + static_cast<std::uint32_t>(joined.size());
+    // A line break clang-format puts between two tokens is a space here; a
+    // token's own (a raw string's) stays.
     clang::tooling::Replacements inner;
     for(const auto& replacement:
         clang::format::reformat(style, code, {clang::tooling::Range(begin, joined.size())})) {
         auto offset = replacement.getOffset();
         if(offset > begin && offset + replacement.getLength() < end) {
+            auto text = replacement.getReplacementText();
             llvm::cantFail(
                 inner.add(clang::tooling::Replacement(replacement.getFilePath(),
                                                       offset - begin,
                                                       replacement.getLength(),
-                                                      replacement.getReplacementText())));
+                                                      text.contains('\n') ? " " : text)));
         }
     }
-    auto formatted = llvm::cantFail(clang::tooling::applyAllReplacements(joined, inner));
-    std::string line;
-    llvm::SmallVector<llvm::StringRef> lines;
-    llvm::StringRef(formatted).split(lines, '\n', -1, /*KeepEmpty=*/false);
-    for(auto each: lines) {
-        if(each = each.trim(); !each.empty()) {
-            if(!line.empty()) {
-                line += ' ';
-            }
-            line += each;
-        }
-    }
-    return line;
+    return llvm::cantFail(clang::tooling::applyAllReplacements(joined, inner));
 }
 
 /// Whether `left` written right before `right` lexes as other tokens:

@@ -1113,6 +1113,26 @@ ZEST_CASE(TypedefsOpenedSystemHeader) {
     ZEXPECT(entity_at(alone, "sys/lib.h", "handle") == entity_at(*this, "sys/lib.h", "handle"));
 }
 
+ZEST_CASE(TypedefsInSystemFramework) {
+    llvm::StringRef header = "typedef int §(handle)handle;\n";
+    auto frameworks = [](Tester& tester) {
+        tester.prepare("-std=c17");
+        tester.params.input.arguments.insert(tester.params.input.arguments.end() - 1,
+                                             {"-iframework", TestVFS::path("Frameworks")});
+        return tester.try_compile();
+    };
+    add_file("Frameworks/Kit.framework/Headers/kit.h", header);
+    add_focus("a.c", "#include <Kit/kit.h>\n");
+    ZASSERT(frameworks(*this));
+
+    Tester alone;
+    alone.add_focus("Frameworks/Kit.framework/Headers/kit.h", header);
+    ZASSERT(frameworks(alone));
+
+    ZEXPECT(entity_at(alone, "Frameworks/Kit.framework/Headers/kit.h", "handle") ==
+            entity_at(*this, "Frameworks/Kit.framework/Headers/kit.h", "handle"));
+}
+
 ZEST_CASE(TypedefsNearestDirectory) {
     // The nearest search directory above a header decides: a subdirectory
     // of a system one is too, a user directory inside a system one is not.
