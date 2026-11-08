@@ -309,6 +309,46 @@ auto named_parameters(const clang::ParmVarDecl& param)
     return {};
 }
 
+bool std_cast_form(const clang::FunctionDecl* function) {
+    switch(function->getBuiltinID()) {
+        case clang::Builtin::BIaddressof:
+        case clang::Builtin::BIas_const:
+        case clang::Builtin::BIforward:
+        case clang::Builtin::BIforward_like:
+        case clang::Builtin::BImove:
+        case clang::Builtin::BImove_if_noexcept: return true;
+        default: break;
+    }
+
+    // Freestanding compiles (-ffreestanding) strip library-builtin IDs, so
+    // match the same set by name. All of these are single-parameter
+    // cast-like forms — the check must not take in e.g. the three-argument
+    // std::move algorithm.
+    auto* name = function->getIdentifier();
+    if(name && function->getNumParams() == 1 && function->isInStdNamespace()) {
+        return ranges::contains(std::array<llvm::StringRef, 6>{"addressof",
+                                                               "as_const",
+                                                               "forward",
+                                                               "forward_like",
+                                                               "move",
+                                                               "move_if_noexcept"},
+                                name->getName());
+    }
+    return false;
+}
+
+bool fixed_std_utility(const clang::NamedDecl* decl) {
+    auto* function = decl->getAsFunction();
+    if(!function) {
+        return false;
+    }
+    if(std_cast_form(function)) {
+        return true;
+    }
+    auto* name = function->getIdentifier();
+    return name && name->isStr("declval") && function->isInStdNamespace();
+}
+
 auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
     assert(decl);
     if(auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {

@@ -8,31 +8,90 @@ namespace clice::testing {
 
 namespace {
 
-struct InputFinder : clang::RecursiveASTVisitor<InputFinder> {
-    CompilationUnit& unit;
-    clang::QualType input;
+/// The nodes of a unit the cases ask the resolver about, gathered in one
+/// traversal. Every RecursiveASTVisitor a file instantiates adds seconds to
+/// its compile: the file has this one.
+struct Nodes : clang::RecursiveASTVisitor<Nodes> {
+    llvm::SmallVector<const clang::NamedDecl*> decls;
 
-    using Base = clang::RecursiveASTVisitor<InputFinder>;
+    llvm::SmallVector<const clang::CallExpr*> calls;
 
-    InputFinder(CompilationUnit& unit) : unit(unit) {}
+    llvm::SmallVector<const clang::CXXDependentScopeMemberExpr*> members;
 
-    bool TraverseDecl(clang::Decl* decl) {
-        if(decl && (llvm::isa<clang::TranslationUnitDecl>(decl) ||
-                    unit.file_id(decl->getLocation()) == unit.focus_file().file())) {
-            Base::TraverseDecl(decl);
-        }
+    llvm::SmallVector<const clang::DependentScopeDeclRefExpr*> qualified;
 
+    explicit Nodes(clang::ASTContext& context) {
+        TraverseAST(context);
+    }
+
+    bool VisitNamedDecl(const clang::NamedDecl* decl) {
+        decls.push_back(decl);
         return true;
     }
 
-    bool VisitTypedefNameDecl(const clang::TypedefNameDecl* decl) {
-        if(decl->getName() == "input") {
-            input = decl->getUnderlyingType();
-        }
-
+    bool VisitCallExpr(const clang::CallExpr* expr) {
+        calls.push_back(expr);
         return true;
+    }
+
+    bool VisitCXXDependentScopeMemberExpr(const clang::CXXDependentScopeMemberExpr* expr) {
+        members.push_back(expr);
+        return true;
+    }
+
+    bool VisitDependentScopeDeclRefExpr(const clang::DependentScopeDeclRefExpr* expr) {
+        qualified.push_back(expr);
+        return true;
+    }
+
+    /// The last declaration of kind `Decl` named `name`.
+    template <typename Decl>
+    const Decl* named(llvm::StringRef name) const {
+        for(auto* decl: llvm::reverse(decls)) {
+            auto* found = llvm::dyn_cast<Decl>(decl);
+            if(found && found->getIdentifier() && found->getName() == name) {
+                return found;
+            }
+        }
+        return nullptr;
+    }
+
+    /// The last call whose callee is a `Callee`.
+    template <typename Callee>
+    const clang::CallExpr* call_through() const {
+        for(auto* call: llvm::reverse(calls)) {
+            if(llvm::isa<Callee>(call->getCallee()->IgnoreParenImpCasts())) {
+                return call;
+            }
+        }
+        return nullptr;
     }
 };
+
+/// Feed every dependent typedef and dependent name of the unit to its
+/// resolver; how many there were.
+unsigned scan(CompilationUnit& unit) {
+    Nodes nodes(unit.context());
+    auto& resolver = unit.get<types::TemplateResolver>();
+    unsigned visited = 0;
+    for(auto* decl: nodes.decls) {
+        auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(decl);
+        auto type = alias ? alias->getUnderlyingType() : clang::QualType();
+        if(!type.isNull() && type->isDependentType()) {
+            resolver.resolve(type);
+            visited += 1;
+        }
+    }
+    for(auto* member: nodes.members) {
+        resolver.lookup(member);
+        visited += 1;
+    }
+    for(auto* name: nodes.qualified) {
+        resolver.lookup(name);
+        visited += 1;
+    }
+    return visited;
+}
 
 ZEST_SUITE(TemplateResolver, Tester) {
 
@@ -102,36 +161,7 @@ ZEST_CASE(BrokenCodeScan) {
     prepare();
     ZASSERT(try_compile());
 
-    struct Scanner : clang::RecursiveASTVisitor<Scanner> {
-        types::TemplateResolver& resolver;
-        unsigned visited = 0;
-
-        Scanner(types::TemplateResolver& resolver) : resolver(resolver) {}
-
-        bool VisitTypedefNameDecl(clang::TypedefNameDecl* decl) {
-            auto type = decl->getUnderlyingType();
-            if(!type.isNull() && type->isDependentType()) {
-                resolver.resolve(type);
-                visited += 1;
-            }
-            return true;
-        }
-
-        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* expr) {
-            resolver.lookup(expr);
-            visited += 1;
-            return true;
-        }
-
-        bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* expr) {
-            resolver.lookup(expr);
-            visited += 1;
-            return true;
-        }
-    } scanner(unit->get<types::TemplateResolver>());
-
-    scanner.TraverseAST(unit->context());
-    ZEXPECT(scanner.visited > 0);
+    ZEXPECT(scan(*unit) > 0);
 }
 
 ZEST_CASE(StandardScan) {
@@ -147,36 +177,7 @@ ZEST_CASE(StandardScan) {
     )code");
     ZASSERT(compile_driver());
 
-    struct Scanner : clang::RecursiveASTVisitor<Scanner> {
-        types::TemplateResolver& resolver;
-        unsigned visited = 0;
-
-        Scanner(types::TemplateResolver& resolver) : resolver(resolver) {}
-
-        bool VisitTypedefNameDecl(clang::TypedefNameDecl* decl) {
-            auto type = decl->getUnderlyingType();
-            if(!type.isNull() && type->isDependentType()) {
-                resolver.resolve(type);
-                visited += 1;
-            }
-            return true;
-        }
-
-        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* expr) {
-            resolver.lookup(expr);
-            visited += 1;
-            return true;
-        }
-
-        bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* expr) {
-            resolver.lookup(expr);
-            visited += 1;
-            return true;
-        }
-    } scanner(unit->get<types::TemplateResolver>());
-
-    scanner.TraverseAST(unit->context());
-    ZEXPECT(scanner.visited > 0);
+    ZEXPECT(scan(*unit) > 0);
 }
 
 ZEST_CASE(ScopedBindingStaysLocal) {
@@ -199,32 +200,178 @@ ZEST_CASE(ScopedBindingStaysLocal) {
     )code");
     ZASSERT(compile());
 
-    struct VariableFinder : clang::RecursiveASTVisitor<VariableFinder> {
-        const clang::VarDecl* first = nullptr;
-
-        bool VisitVarDecl(const clang::VarDecl* decl) {
-            if(decl->getName() == "first") {
-                first = decl;
-            }
-            return true;
-        }
-    } variables;
-
-    variables.TraverseAST(unit->context());
-    ZASSERT(variables.first);
-
-    InputFinder finder(*unit);
-    finder.TraverseAST(unit->context());
-    ZASSERT(!finder.input.isNull());
+    Nodes nodes(unit->context());
+    auto* first = nodes.named<clang::VarDecl>("first");
+    ZASSERT(first);
+    auto* input = nodes.named<clang::TypedefNameDecl>("input");
+    ZASSERT(input);
 
     auto& resolver = unit->get<types::TemplateResolver>();
-    auto deduced = resolver.deduce(variables.first);
+    auto deduced = resolver.deduce(first);
     ZASSERT(!deduced.isNull());
     ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);
 
-    auto input = resolver.resolve(finder.input);
-    ZASSERT(!input.isNull());
-    ZEXPECT(input->isDependentType());
+    auto resolved = resolver.resolve(input->getUnderlyingType());
+    ZASSERT(!resolved.isNull());
+    ZEXPECT(resolved->isDependentType());
+}
+
+ZEST_CASE(KeptCallBindings) {
+    /// A later query takes a call's candidates as an earlier one found them,
+    /// with the bindings of the lookup that found them: the type of the
+    /// call reads `A` through them.
+    add_focus("main.cpp", R"code(
+        template <typename A, typename B>
+        struct Pair {
+            A first();
+        };
+
+        template <typename T>
+        void use(Pair<int, T> pair) {
+            auto value = pair.first();
+        }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* call = nodes.call_through<clang::CXXDependentScopeMemberExpr>();
+    ZASSERT(call);
+    auto* value = nodes.named<clang::VarDecl>("value");
+    ZASSERT(value);
+
+    auto& resolver = unit->get<types::TemplateResolver>();
+    ZEXPECT(resolver.callees(call).size() == 1);
+    auto deduced = resolver.deduce(value);
+    ZASSERT(!deduced.isNull());
+    ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);
+}
+
+ZEST_CASE(KeptOpenDefaults) {
+    /// The first query opens `N = T::value` for the first `make()`, then
+    /// again for the second, which a later query takes as kept: it opens
+    /// the default too, so `Bar<0>` may apply and the two `x` disagree.
+    add_focus("main.cpp", R"code(
+        template <int N>
+        struct Bar {
+            int x;
+        };
+
+        template <>
+        struct Bar<0> {
+            double x;
+        };
+
+        template <typename T, int N = T::value>
+        struct Foo {
+            static Bar<N> make();
+        };
+
+        template <typename A, typename B>
+        void g(A, B);
+
+        template <typename T>
+        void use() {
+            g(Foo<T>::make(), Foo<T>::make().x);
+        }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* call = nodes.call_through<clang::UnresolvedLookupExpr>();
+    ZASSERT(call);
+    ZASSERT(!nodes.members.empty());
+
+    auto& resolver = unit->get<types::TemplateResolver>();
+    resolver.callees(call);
+    ZEXPECT(resolver.lookup(nodes.members.back()).empty());
+}
+
+ZEST_CASE(KeptPerView) {
+    /// main.cpp declares a second erase_if and a partial specialization of
+    /// traits before it includes util.h, which on its own sees lib.h's
+    /// declarations alone. What a query keeps holds only for the places that
+    /// see alike: from util.h the call names one candidate and `kind` is
+    /// `int`, from main.cpp two and `long`, whichever place asked first.
+    add_file("lib.h", R"code(
+        #pragma once
+        namespace ns {
+        template <class T> struct vec {};
+        template <class T> int erase_if(vec<T>& c) { return 0; }
+        template <class T> struct traits { using type = int; };
+        }
+    )code");
+    add_file("util.h", R"code(
+        #pragma once
+        #include "lib.h"
+        template <class C> int remove_bad(C& c) { return ns::erase_if(c); }
+        template <class C> using kind = typename ns::traits<C*>::type;
+    )code");
+    add_focus("main.cpp", R"code(
+        #include "lib.h"
+        namespace ns {
+        template <class T> struct list {};
+        template <class T> int erase_if(list<T>& c) { return 1; }
+        template <class T> struct traits<T*> { using type = long; };
+        }
+        #include "util.h"
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* call = nodes.call_through<clang::UnresolvedLookupExpr>();
+    ZASSERT(call);
+    auto* kind = nodes.named<clang::TypeAliasDecl>("kind");
+    ZASSERT(kind);
+    auto* list = nodes.named<clang::ClassTemplateDecl>("list");
+    ZASSERT(list);
+
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto& context = unit->context();
+    for(auto from: {list->getLocation(), call->getBeginLoc(), list->getLocation()}) {
+        resolver.see_from(from);
+        bool in_main = from == list->getLocation();
+        ZEXPECT(resolver.callees(call).size() == (in_main ? 2 : 1));
+        auto resolved = resolver.resolve(kind->getUnderlyingType());
+        ZASSERT(!resolved.isNull());
+        ZEXPECT(resolved.getCanonicalType() == (in_main ? context.LongTy : context.IntTy));
+    }
+}
+
+ZEST_CASE(UsingDeclarationPerView) {
+    /// util.h's using-declaration names both erase_if overloads the unit
+    /// declared before it; util.h on its own sees lib.h's alone.
+    add_file("lib.h", R"code(
+        #pragma once
+        namespace ns {
+        template <class T> struct vec {};
+        template <class T> int erase_if(vec<T>& c) { return 0; }
+        }
+    )code");
+    add_file("util.h", R"code(
+        #pragma once
+        #include "lib.h"
+        namespace app {
+        using ns::erase_if;
+        template <class C> int remove_bad(C& c) { return erase_if(c); }
+        }
+    )code");
+    add_focus("main.cpp", R"code(
+        #include "lib.h"
+        namespace ns {
+        template <class T> struct list {};
+        template <class T> int erase_if(list<T>& c) { return 1; }
+        }
+        #include "util.h"
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* call = nodes.call_through<clang::UnresolvedLookupExpr>();
+    ZASSERT(call);
+
+    auto& resolver = unit->get<types::TemplateResolver>();
+    resolver.see_from(call->getBeginLoc());
+    ZEXPECT(resolver.callees(call).size() == 1);
 }
 
 };  // ZEST_SUITE(TemplateResolver)
