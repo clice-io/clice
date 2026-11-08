@@ -275,6 +275,62 @@ ZEST_CASE(KeptCallBindings) {
     ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);
 }
 
+ZEST_CASE(KeptOpenDefaults) {
+    /// The first query opens `N = T::value` for the first `make()`, then
+    /// again for the second, which a later query takes as kept: it opens
+    /// the default too, so `Bar<0>` may apply and the two `x` disagree.
+    add_focus("main.cpp", R"code(
+        template <int N>
+        struct Bar {
+            int x;
+        };
+
+        template <>
+        struct Bar<0> {
+            double x;
+        };
+
+        template <typename T, int N = T::value>
+        struct Foo {
+            static Bar<N> make();
+        };
+
+        template <typename A, typename B>
+        void g(A, B);
+
+        template <typename T>
+        void use() {
+            g(Foo<T>::make(), Foo<T>::make().x);
+        }
+    )code");
+    ZASSERT(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CallExpr* call = nullptr;
+        const clang::CXXDependentScopeMemberExpr* member = nullptr;
+
+        bool VisitCallExpr(const clang::CallExpr* expr) {
+            if(llvm::isa<clang::UnresolvedLookupExpr>(expr->getCallee()->IgnoreParenImpCasts())) {
+                call = expr;
+            }
+            return true;
+        }
+
+        bool VisitCXXDependentScopeMemberExpr(const clang::CXXDependentScopeMemberExpr* expr) {
+            member = expr;
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ZASSERT(finder.call);
+    ZASSERT(finder.member);
+
+    auto& resolver = unit->get<types::TemplateResolver>();
+    resolver.callees(finder.call);
+    ZEXPECT(resolver.lookup(finder.member).empty());
+}
+
 };  // ZEST_SUITE(TemplateResolver)
 
 }  // namespace

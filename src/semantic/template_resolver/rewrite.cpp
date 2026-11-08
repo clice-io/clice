@@ -717,9 +717,6 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
 
     LOG_DEBUG("{}→ <unresolved>", pad());
     indent -= 1;
-    if(pack_narrowing == 0 && !inconclusive) {
-        cache.resolved.try_emplace(DNT, clang::QualType(DNT, 0));
-    }
     return clang::QualType(DNT, 0);
 }
 

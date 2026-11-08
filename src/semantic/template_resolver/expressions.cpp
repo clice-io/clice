@@ -48,6 +48,7 @@ std::optional<llvm::APSInt> PseudoInstantiator::evaluate(const clang::Expr* expr
     /// Initializers can refer back to each other (or a parameter be
     /// bound to itself); nesting is bounded instead of tracked.
     if(evaluating > 8) {
+        inconclusive = true;
         return std::nullopt;
     }
     evaluating += 1;

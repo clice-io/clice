@@ -929,8 +929,8 @@ private:
     /// Some answer came back empty or partial because a lookup or the
     /// deduction of a variable was already in progress (a recursive chain
     /// such as `callback_traits<F> : callback_traits<decltype(&F::operator())>`)
-    /// or a rewrite hit the depth or step limit, not because what it looked
-    /// for is absent. Such an answer is not conclusive: it never enters the
+    /// or a rewrite or an evaluation hit its nesting or step limit, not
+    /// because what it looked for is absent. Such an answer is not conclusive: it never enters the
     /// unit's cache — a later query with a fresh budget could still resolve
     /// it — and never proves a member absent. A resolution judges its own work
     /// (own_conclusion), so one that came before it in the query does not
