@@ -833,10 +833,11 @@ private:
     }
 
     /// What `compute` gives for `key`. With no template parameter bound, the
-    /// state every query starts in, a step reads nothing of the query that
-    /// asked it but what the unit's cache holds, so what an earlier query
-    /// concluded there holds for this one: it is taken as it is, the frames
-    /// and the open defaults it left restored.
+    /// state every query starts in, a step reads of the query that asked it
+    /// only what the query found before it — the open defaults, the folded
+    /// member values — which bears on it rarely enough that what an earlier
+    /// query concluded there is taken as it is, the frames and the open
+    /// defaults it left restored.
     template <typename Key, typename Result, typename Compute>
     Result unbound_result(llvm::DenseMap<Key, UnboundResult<Result>>& results,
                           const std::type_identity_t<Key>& key,
@@ -847,22 +848,37 @@ private:
         if(auto found = results.find(key); found != results.end()) {
             auto& known = found->second;
             stack.frames().append(known.frames.begin(), known.frames.end());
-            open_defaults.insert(known.open_defaults.begin(), known.open_defaults.end());
+            for(auto* expr: known.open_defaults) {
+                open_default(expr);
+            }
             return known.result;
         }
         auto judged = own_conclusion();
-        auto open = open_defaults.size();
+        llvm::SmallVector<const clang::Expr*, 1> opened;
+        auto* outer = std::exchange(opening, &opened);
         Result result = compute();
+        opening = outer;
+        if(outer) {
+            outer->append(opened.begin(), opened.end());
+        }
         if(!inconclusive) {
-            results.try_emplace(
-                key,
-                UnboundResult<Result>{
-                    .result = result,
-                    .frames = {stack.frames().begin(),       stack.frames().end()},
-                    .open_defaults = {open_defaults.begin() + open, open_defaults.end() },
+            results.try_emplace(key,
+                                UnboundResult<Result>{
+                                    .result = result,
+                                    .frames = {stack.frames().begin(), stack.frames().end()},
+                                    .open_defaults = std::move(opened),
             });
         }
         return result;
+    }
+
+    /// Note that the default `expr` did not fold, for the step being kept
+    /// too (unbound_result).
+    void open_default(const clang::Expr* expr) {
+        open_defaults.insert(expr);
+        if(opening) {
+            opening->push_back(expr);
+        }
     }
 
 private:
@@ -893,6 +909,10 @@ private:
     /// The defaults of value parameters that did not fold, which may hold
     /// any value (deduce_arguments).
     llvm::SmallSetVector<const clang::Expr*, 4> open_defaults;
+
+    /// Where the step unbound_result is keeping records the defaults it
+    /// opens.
+    llvm::SmallVectorImpl<const clang::Expr*>* opening = nullptr;
 
     unsigned depth = 0;
 

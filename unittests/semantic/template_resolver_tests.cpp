@@ -227,7 +227,7 @@ ZEST_CASE(ScopedBindingStaysLocal) {
     ZEXPECT(input->isDependentType());
 }
 
-ZEST_CASE(KeptCallKeepsItsBindings) {
+ZEST_CASE(KeptCallBindings) {
     /// A later query takes a call's candidates as an earlier one found them,
     /// with the bindings of the lookup that found them: the type of the
     /// call reads `A` through them.
