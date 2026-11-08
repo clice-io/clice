@@ -17,15 +17,16 @@ import :feature.selection_ranges;
 import :feature.semantic_tokens;
 import :index.indexer;
 import :index.tu_index;
+import :support.environment;
 import :support.json;
 import :support.logging;
 import :support.process;
 import :vfs.file_system;
 import :worker.common;
 import :worker.crash_report;
-import :worker.gate;
 import :worker.protocol;
 import :worker.stateful;
+import :worker.test_hooks;
 
 namespace clice {
 
@@ -116,6 +117,25 @@ class StatefulWorker {
 
     llvm::StringMap<std::shared_ptr<DocumentEntry>> documents;
 
+    /// A unit per thread of libuv's pool, which runs the requests' work
+    /// (UV_THREADPOOL_SIZE, clamped as libuv clamps it, 4 without it): a
+    /// request holding one finds a thread free, so its work starts as it
+    /// reports it started (worker::StartedParams).
+    async::semaphore threads{static_cast<std::ptrdiff_t>(
+        std::clamp<std::uint64_t>(env_integer("UV_THREADPOOL_SIZE").value_or(4), 1, 1024))};
+
+    /// The id the master gave the request it sends next
+    /// (worker::NextRequestParams).
+    std::uint64_t next_request = 0;
+
+    /// Take a thread for the request the master knows by `id` and tell it
+    /// the request's work starts.
+    async::task<async::semaphore::guard> start_work(std::uint64_t id) {
+        auto thread = co_await threads.scoped_acquire();
+        peer.send_notification(worker::StartedParams{id});
+        co_return std::move(thread);
+    }
+
     std::shared_ptr<DocumentEntry> get_or_create(llvm::StringRef path) {
         auto [it, inserted] = documents.try_emplace(path, nullptr);
         if(inserted) {
@@ -135,16 +155,26 @@ class StatefulWorker {
         with_ast_or(llvm::StringRef kind, const Params& params, R missing, F fn) {
         auto it = documents.find(params.path);
         assert(it != documents.end() && "the pool queries only documents it holds resident here");
-        return serve_ast(kind, EntryHold(it->second), params, std::move(missing), std::move(fn));
+        return serve_ast(kind,
+                         EntryHold(it->second),
+                         next_request,
+                         params,
+                         std::move(missing),
+                         std::move(fn));
     }
 
     template <typename Params, typename R, typename F>
-    async::task<R, ipc::Error>
-        serve_ast(llvm::StringRef kind, EntryHold hold, const Params& params, R missing, F fn) {
+    async::task<R, ipc::Error> serve_ast(llvm::StringRef kind,
+                                         EntryHold hold,
+                                         std::uint64_t id,
+                                         const Params& params,
+                                         R missing,
+                                         F fn) {
         auto& doc = *hold.doc;
         ScopedTimer timer;
         co_await doc.ast_ready.wait();
         auto strand = co_await doc.strand.scoped_lock();
+        auto thread = co_await start_work(id);
         auto acquire_ms = timer.ms_f();
         double compute_ms = 0;
 
@@ -179,6 +209,7 @@ class StatefulWorker {
     }
 
     RequestResult<worker::CompileParams> serve_compile(CompileGuard guard,
+                                                       std::uint64_t id,
                                                        const worker::CompileParams& params);
 
 public:
@@ -188,7 +219,9 @@ public:
 };
 
 RequestResult<worker::CompileParams>
-    StatefulWorker::serve_compile(CompileGuard guard, const worker::CompileParams& params) {
+    StatefulWorker::serve_compile(CompileGuard guard,
+                                  std::uint64_t id,
+                                  const worker::CompileParams& params) {
     auto doc = guard.hold.doc;
     auto strand = co_await doc->strand.scoped_lock();
 
@@ -207,6 +240,7 @@ RequestResult<worker::CompileParams>
     // waiting for it to finish; an interrupted unit reports
     // !completed() and the phases after it are skipped like any other
     // incomplete compile.
+    auto thread = co_await start_work(id);
     auto stop = std::make_shared<std::atomic_bool>(false);
     auto compile_result = co_await async::queue(
         [&]() -> worker::CompileResult {
@@ -322,13 +356,16 @@ RequestResult<worker::CompileParams>
 }
 
 void StatefulWorker::register_handlers() {
+    peer.on_notification(
+        [this](const worker::NextRequestParams& params) { next_request = params.id; });
+
     // === Compile ===
     peer.on_request(
         [this](RequestContext& ctx,
                const worker::CompileParams& params) -> RequestResult<worker::CompileParams> {
             LOG_INFO("Compile request: path={}, version={}", params.path, params.version);
             CompileGuard guard(get_or_create(params.path));
-            return serve_compile(std::move(guard), params);
+            return serve_compile(std::move(guard), next_request, params);
         });
 
     // === DocumentLink ===
@@ -457,7 +494,7 @@ int run_stateful_worker_mode(const std::string& worker_name, const std::string& 
     (*transport_result)->set_remote_max_payload(ipc::default_max_payload);
 
     ipc::BincodePeer peer(loop, std::move(*transport_result));
-    install_test_gates(peer, loop);
+    install_test_hooks(peer, loop);
 
     StatefulWorker worker(peer);
     worker.register_handlers();

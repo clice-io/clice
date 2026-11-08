@@ -39,6 +39,10 @@ bool Attempt::foreground() const {
     return graph.nodes.find(self)->second.foreground;
 }
 
+Signal<>& Attempt::on_foreground() const {
+    return graph.nodes.find(self)->second.attempt->on_foreground;
+}
+
 void TaskGraph::acquire(NodeId id) {
     nodes[id].refcount += 1;
 }
@@ -110,6 +114,7 @@ void TaskGraph::mark_foreground(NodeId id) {
     // foreground class. Edges the attempt waits on later inherit through
     // depend().
     if(node.compiling()) {
+        node.attempt->on_foreground.emit();
         for(auto dep: node.attempt->waits) {
             mark_foreground(dep);
         }

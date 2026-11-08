@@ -228,7 +228,7 @@ ZEST_CASE(LoneUnitGetsIdleMemory) {
                 {
                     {.slot = 0, .memory = 6 * GiB}
     });
-    ZEXPECT(core.all<scheduler::Retire>().size() == 1u);
+    ZEXPECT(core.all<scheduler::ScaleDown>().size() == 1u);
     ZEXPECT(core.all<scheduler::Kill>().empty());
     core.sample(100 * MiB,
                 {
@@ -306,7 +306,7 @@ ZEST_CASE(DocumentCompileNotLone) {
     Core core(1);
     core.submit(1, Priority::Low);
     // An open document's compile takes the memory: the unit is not alone.
-    core.scheduler.stateful_begin(10, 0, 7, true, core.now);
+    core.scheduler.stateful_begin(10, 0, true, core.now);
     core.take();
     core.sample(300 * MiB,
                 {
@@ -421,11 +421,11 @@ ZEST_CASE(IdleUserJobsCap) {
     ZEXPECT(!core.slot_of(3));
 }
 
-ZEST_CASE(RetiringSlotTakesNothing) {
+ZEST_CASE(ScalingDownTakesNothing) {
     Core core(3);
-    core.advance(WorkerScheduler::idle_retire);
+    core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB);
-    ZASSERT(core.all<scheduler::Retire>().size() == 1u);
+    ZASSERT(core.all<scheduler::ScaleDown>().size() == 1u);
     for(RequestId id = 1; id <= 3; id += 1) {
         core.submit(id, Priority::Low);
     }
@@ -459,14 +459,78 @@ ZEST_CASE(QueuedBackgroundSpawns) {
 }
 
 ZEST_CASE(StarvedMachineHoldsAll) {
+    // Below where a request alone would be killed, nothing starts.
     Core core(2);
-    core.sample(256 * MiB);
-    core.submit(1, Priority::Low, {.peak = 200 * MiB});
+    core.sample(128 * MiB);
+    core.submit(1, Priority::Low, {.peak = 100 * MiB});
     core.advance(minutes(10));
-    core.sample(256 * MiB);
+    core.sample(128 * MiB);
     ZEXPECT(!core.slot_of(1));
     core.sample(2 * GiB);
     ZEXPECT(core.slot_of(1).has_value());
+}
+
+ZEST_CASE(LoneStartsInsideReserve) {
+    // A limit the master takes half of leaves the headroom under the reserve
+    // for good: a request alone still starts, given room to grow above the
+    // line where it is found too big.
+    Core core(1);
+    core.sample(300 * MiB);
+    core.submit(1, Priority::Low);
+    ZEXPECT(!core.slot_of(1));
+    core.sample(504 * MiB);
+    ZEXPECT(core.slot_of(1).has_value());
+}
+
+ZEST_CASE(CompanyKeepsReserve) {
+    // Beside an open document's compile a lone request is killed below the
+    // reserve, so it does not start there.
+    Core core(1);
+    core.scheduler.stateful_begin(10, 0, true, core.now);
+    core.take();
+    core.sample(504 * MiB);
+    core.submit(1, Priority::Low);
+    ZEXPECT(!core.slot_of(1));
+    core.scheduler.stateful_end(10, core.now);
+    core.take();
+    core.sample(504 * MiB);
+    ZEXPECT(core.slot_of(1).has_value());
+}
+
+ZEST_CASE(RaisedRequestJumpsQueue) {
+    // The user comes to wait for a queued background request: it runs as
+    // foreground work, ahead of the background queue and of the cap an
+    // active user puts on it.
+    Core core(1);
+    core.submit(1, Priority::Low);
+    core.submit(2, Priority::Low);
+    core.submit(3, Priority::Low);
+    ZEXPECT(core.slot_of(1).has_value());
+    core.scheduler.raise(3, core.now);
+    core.take();
+    core.finish(1);
+    ZEXPECT(core.slot_of(3).has_value());
+    ZEXPECT(!core.slot_of(2));
+}
+
+ZEST_CASE(RaisedRequestKeepsWorker) {
+    // A running background request the user came to wait for is no longer
+    // the one a foreground request stops.
+    Core core(1);
+    core.submit(1, Priority::Low);
+    core.scheduler.raise(1, core.now);
+    core.take();
+    core.submit(2, Priority::High);
+    ZEXPECT(core.all<scheduler::Cancel>().empty());
+}
+
+ZEST_CASE(ReportedPeakCounts) {
+    // A request shorter than the sample interval reports its peak itself.
+    Core core(1);
+    core.submit(1, Priority::Low);
+    ZASSERT(core.slot_of(1).has_value());
+    core.scheduler.reported_peak(0, 700 * MiB);
+    ZEXPECT(core.scheduler.finish(1, core.now) == 700 * MiB);
 }
 
 ZEST_CASE(BuildDeadlineIsCpu) {
@@ -507,58 +571,51 @@ ZEST_CASE(StalledCpuIsHung) {
     ZEXPECT(kills[0].reason == scheduler::KillReason::Stalled);
 }
 
-ZEST_CASE(QueryWaitsBehindBuild) {
+ZEST_CASE(UnstartedRequestUntimed) {
     Core core(1);
-    core.scheduler.stateful_begin(10, 0, 1, true, core.now);
-    core.scheduler.stateful_begin(11, 0, 2, false, core.now);
+    core.scheduler.stateful_begin(10, 0, true, core.now);
+    core.scheduler.stateful_started(10, core.now);
+    // The query waits for its worker to begin it, behind the build.
+    core.scheduler.stateful_begin(11, 0, false, core.now);
     core.advance(minutes(3));
     core.sample(16 * GiB);
     ZEXPECT(core.all<scheduler::Kill>().empty());
-    // Past the build deadline the query is overdue too: one kill names both.
     core.advance(minutes(8));
     core.sample(16 * GiB);
     auto kills = core.all<scheduler::Kill>();
     ZASSERT(kills.size() == 1u);
     ZEXPECT(kills[0].stateful);
-    ZEXPECT(kills[0].requests == std::vector<RequestId>{10, 11});
+    ZEXPECT(kills[0].requests == std::vector<RequestId>{10});
 }
 
-ZEST_CASE(OverlappingBuildsBoundQuery) {
+ZEST_CASE(BuildTimedFromStart) {
+    // A build that waited for a thread of its worker behind other builds
+    // is timed from when the worker began it, not from its send.
     Core core(1);
-    core.scheduler.stateful_begin(10, 0, 1, true, core.now);
-    core.scheduler.stateful_begin(11, 0, 2, false, core.now);
+    core.scheduler.stateful_begin(10, 0, true, core.now);
+    core.scheduler.stateful_started(10, core.now);
+    core.scheduler.stateful_begin(11, 0, true, core.now);
     core.advance(minutes(9));
     core.scheduler.stateful_end(10, core.now);
-    core.scheduler.stateful_begin(12, 0, 3, true, core.now);
+    core.scheduler.stateful_started(11, core.now);
     core.advance(minutes(2));
+    core.sample(16 * GiB);
+    ZEXPECT(core.all<scheduler::Kill>().empty());
+    core.advance(minutes(9));
     core.sample(16 * GiB);
     auto kills = core.all<scheduler::Kill>();
     ZASSERT(kills.size() == 1u);
     ZEXPECT(kills[0].requests == std::vector<RequestId>{11});
 }
 
-ZEST_CASE(WaitingEndKeepsLine) {
+ZEST_CASE(StartedQueryTimed) {
+    // A query begun is timed by its own deadline, whatever builds its
+    // worker runs beside it.
     Core core(1);
-    core.scheduler.stateful_begin(10, 0, 7, false, core.now);
-    core.scheduler.stateful_begin(11, 0, 7, false, core.now);
-    core.scheduler.stateful_begin(12, 0, 7, false, core.now);
-    // The first one waiting is answered at once, cancelled: the last still
-    // waits behind the one running.
-    core.scheduler.stateful_end(11, core.now);
-    core.advance(seconds(150));
-    core.sample(16 * GiB);
-    auto kills = core.all<scheduler::Kill>();
-    ZASSERT(kills.size() == 1u);
-    ZEXPECT(kills[0].requests == std::vector<RequestId>{10});
-}
-
-ZEST_CASE(DocumentLineUntimed) {
-    Core core(1);
-    core.scheduler.stateful_begin(10, 0, 7, true, core.now);
-    core.scheduler.stateful_begin(11, 0, 7, false, core.now);
-    core.advance(minutes(9));
-    core.scheduler.stateful_end(10, core.now);
-    // The query runs since the compile of its document ended.
+    core.scheduler.stateful_begin(10, 0, true, core.now);
+    core.scheduler.stateful_started(10, core.now);
+    core.scheduler.stateful_begin(11, 0, false, core.now);
+    core.scheduler.stateful_started(11, core.now);
     core.advance(seconds(90));
     core.sample(16 * GiB);
     ZEXPECT(core.all<scheduler::Kill>().empty());
@@ -591,19 +648,19 @@ ZEST_CASE(QueuedCancelDrops) {
     ZEXPECT(!core.slot_of(2));
 }
 
-ZEST_CASE(IdlePoolRetires) {
+ZEST_CASE(IdlePoolScalesDown) {
     Core core(3);
-    core.advance(WorkerScheduler::idle_retire);
+    core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB);
-    auto retires = core.all<scheduler::Retire>();
-    ZASSERT(retires.size() == 1u);
-    ZEXPECT(retires[0].slot == 2u);
-    core.advance(WorkerScheduler::idle_retire);
+    auto scale_downs = core.all<scheduler::ScaleDown>();
+    ZASSERT(scale_downs.size() == 1u);
+    ZEXPECT(scale_downs[0].slot == 2u);
+    core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB);
-    core.advance(WorkerScheduler::idle_retire);
+    core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB);
     // Down to min_workers, one.
-    ZEXPECT(core.all<scheduler::Retire>().size() == 2u);
+    ZEXPECT(core.all<scheduler::ScaleDown>().size() == 2u);
 }
 
 ZEST_CASE(StarvedForegroundSpawns) {

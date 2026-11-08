@@ -2,7 +2,7 @@ module clice;
 
 import :project.project;
 import :syntax.preamble;
-import :unittests.server.worker_test_helpers;
+import :unittests.worker.helpers;
 import :unittests.utils;
 import :worker.protocol;
 

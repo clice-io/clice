@@ -149,7 +149,7 @@ async::task<> run_tree(Project& project, TreeRequest request, std::shared_ptr<as
     params.directory = std::move(rendered.directory);
     params.arguments = std::move(rendered.arguments);
     params.hidden = std::move(rendered.hidden);
-    auto result = co_await project.pool->send_stateless(params, worker::Priority::High);
+    auto result = co_await project.pool->send_stateless(params);
     if(!result.has_value()) {
         LOG_INFO("No include tree for {}: {}", params.file, result.error().message);
         // A run that kills its worker would kill one per resolution; any

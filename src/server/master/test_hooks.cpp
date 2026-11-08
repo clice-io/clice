@@ -3,7 +3,7 @@ module clice;
 import :project.graph.task_graph;
 import :server.master;
 import :server.served_project;
-import :worker.probe;
+import :worker.test_hooks;
 
 namespace clice {
 
@@ -61,7 +61,7 @@ std::vector<std::string> MasterServer::pending_work(const ipc::JSONPeer& editor)
         lines.push_back(
             std::format("project {} waiting for its previous one to go", project->project.root));
     }
-    for(auto& hold: probe.holds()) {
+    for(auto& hold: hooks.holds()) {
         if(hold.parked) {
             lines.push_back(std::format("{} {}: reply parked by hold {}",
                                         build_kind_name(hold.kind),
@@ -69,7 +69,7 @@ std::vector<std::string> MasterServer::pending_work(const ipc::JSONPeer& editor)
                                         hold.id));
         }
     }
-    for(auto& gate: probe.gates()) {
+    for(auto& gate: hooks.gates()) {
         if(gate.parked && !gate.worker.expired()) {
             lines.push_back(
                 std::format("{}: work parked in its worker by gate {}", gate.tag, gate.id));

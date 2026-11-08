@@ -1128,10 +1128,7 @@ RequestResult<Params> ServedProject::send_stateless(const Ticket& ticket,
     co_return co_await deliver(
         pool,
         false,
-        [&] {
-            return pool
-                .send_stateless(params, worker::Priority::High, token, {}, nullptr, admitted);
-        },
+        [&] { return pool.send_stateless(params, {.cancel = token, .admitted = admitted}); },
         [&](const ipc::Error& error) {
             record_crash(ticket.session, kind, worker::death_of(error), error.message);
         });

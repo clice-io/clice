@@ -1,10 +1,10 @@
 import { expect } from "vitest";
 import { generate, test, type Park, type Serve } from "@clice/tools/testing";
 
-// With the only indexing worker past its crash budget, the pass parks
-// until the pool revives the slot instead of spinning the lost files
-// through instant failures, the server answers meanwhile, and the pass
-// then indexes every file (#611).
+// With the only indexing worker past its crash budget, the user is told,
+// the pass parks until the pool revives the slot instead of spinning the
+// lost files through instant failures, the server answers meanwhile, and
+// the pass then indexes every file (#611).
 
 const UNITS = 8;
 
@@ -64,4 +64,5 @@ test({ errors: ["exceeded crash budget"] }, async (t) => {
     }
     await t.show("sync", { failed: (await s.sync()).failed });
     await t.show("symbols after the revival", s.workspaceSymbols("unit_"));
+    await t.show("told", await s.guidance());
 });

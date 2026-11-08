@@ -176,7 +176,7 @@ void LSPClient::register_extensions() {
     on_request<ext::QueryContextParams>(
         "clice/queryContext",
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.pool.user_activity();
             auto path = feature::to_path(params.uri);
             if(!path) {
                 co_return to_raw(ext::QueryContextResult{});
@@ -187,7 +187,7 @@ void LSPClient::register_extensions() {
     on_request<ext::CurrentContextParams>(
         "clice/currentContext",
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.pool.user_activity();
             auto document = resolve_uri(params.uri);
             if(document.project->broken()) {
                 co_return to_raw(ext::CurrentContextResult{});
@@ -199,14 +199,14 @@ void LSPClient::register_extensions() {
     on_request<ext::SwitchContextParams>(
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.pool.user_activity();
             co_return to_raw(co_await switch_context(params));
         });
 
     on_request<ext::ResetContextParams>(
         "clice/resetContext",
         [this](RequestContext& ctx, const ext::ResetContextParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.pool.user_activity();
             co_return to_raw(reset_context(params));
         });
 
@@ -235,14 +235,14 @@ void LSPClient::register_extensions() {
 
     on_request<protocol::ExecuteCommandParams>(
         [this](RequestContext& ctx, const protocol::ExecuteCommandParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.pool.user_activity();
             co_return co_await execute_command(params).or_fail();
         });
 
     on_request<ext::CounterpartsParams>(
         "clice/counterparts",
         [this](RequestContext& ctx, const ext::CounterpartsParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
+            this->server.pool.user_activity();
             auto resolved = resolve_uri(params.uri);
             ext::CounterpartsResult result;
             if(resolved.path.empty()) {

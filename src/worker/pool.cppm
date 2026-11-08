@@ -2,11 +2,12 @@ module clice:worker.pool;
 
 import :support.logging;
 import :support.prelude;
-import :worker.probe;
+import :support.signal;
 import :worker.protocol;
 import :worker.residency;
 import :worker.resources;
 import :worker.scheduler;
+import :worker.test_hooks;
 
 namespace clice {
 
@@ -17,24 +18,6 @@ struct WorkerPoolFixture;
 }
 
 using ipc::RequestResult;
-
-/// Information about a worker crash, delivered via WorkerPool::on_crash.
-struct WorkerCrashInfo {
-    std::size_t worker_index;
-    bool stateful;
-    std::int64_t exit_code = 0;
-
-    /// Non-zero when the worker was killed by a signal (e.g. 9 = SIGKILL).
-    int exit_signal = 0;
-
-    /// Consecutive fast deaths of this slot that count against its budget
-    /// (see WorkerPool), this one included when it does. Resets after a
-    /// healthy uptime, so only genuine crash loops accumulate.
-    unsigned crash_streak = 0;
-
-    /// Whether the pool will attempt to respawn this worker.
-    bool will_restart = false;
-};
 
 /// How one worker incarnation died, shared with every request in flight on
 /// it. A sender whose link broke waits for the monitor to mark the record
@@ -47,17 +30,17 @@ struct WorkerDeath {
     /// its last words, or of the ones that outlived the pool's deadline;
     /// empty when nothing names one — an outside kill, a crash outside any
     /// request.
-    llvm::SmallVector<std::string, 1> culprits;
+    llvm::SmallVector<std::string, 1> named;
 
     /// How it died, worded for the user ("signal 11 (SIGSEGV)").
     std::string cause;
 
     /// The worker's memory ran out: the pool killed it to free memory, or
-    /// an allocation failed in it. Its requests are not to blame.
+    /// an allocation failed in it. None of its requests is charged with it.
     bool out_of_memory = false;
 
     /// The pool killed the worker because its request ignored a cancel past
-    /// the grace period. The request is not to blame, but the run counts as
+    /// the grace period. The request is not charged with it, but the run counts as
     /// lost: a free requeue would repeat it for as long as the user keeps
     /// preempting it.
     bool ignored_cancel = false;
@@ -138,15 +121,15 @@ struct WorkerPoolOptions {
     /// Cooldown before a slot that gave up is revived with a fresh crash
     /// budget. The pool must never stay at zero workers forever: the
     /// documents' failure records stop the poison, and this bounds how long
-    /// a fully burnt pool stays dark. 0 disables revival.
+    /// a fully burnt pool stays dark.
     chrono::milliseconds revive_after{30'000};
 
     /// A request running past its deadline is taken for a hung worker: the
-    /// worker is killed and every request of it past its deadline blamed,
+    /// worker is killed and every request of it past its deadline charged,
     /// like a crash. A build may take long on a big translation unit (see
     /// worker::is_build); a query never should. A stateless request is
     /// timed by its worker's CPU time, a stateful one by the time since its
-    /// document's earlier requests ended (see SchedulerOptions).
+    /// worker began its work (see SchedulerOptions).
     chrono::milliseconds build_deadline{chrono::minutes(10)};
 
     chrono::milliseconds query_deadline{chrono::minutes(2)};
@@ -160,17 +143,39 @@ struct WorkerPoolOptions {
     std::optional<std::size_t> max_resident;
 
     /// Dynamic scaling bounds for stateless workers.
-    /// min_stateless: floor — never retire below this count.
+    /// min_stateless: floor — never scale down below this count.
     /// max_stateless: ceiling — never spawn above this count (0 = auto = the
     /// physical cores, see default_max_stateless_worker_count).
     std::uint32_t min_stateless = 1;
     std::uint32_t max_stateless = 0;
 };
 
-/// What a finished stateless request measured.
-struct StatelessReport {
-    /// The peak of its worker's own memory while it ran.
-    std::uint64_t peak = 0;
+/// How a stateless request is sent (WorkerPool::send_stateless).
+struct StatelessOptions {
+    worker::Priority priority = worker::Priority::High;
+
+    /// Emitted when the user comes to wait for a Low request: it becomes
+    /// High, queued or running.
+    Signal<>* raised = nullptr;
+
+    /// An advisory cancellation: when it fires, the request is cancelled
+    /// over IPC and the send KEEPS awaiting the worker's real answer — the
+    /// slot frees only when the process is actually idle, and crash
+    /// accounting keeps observing the real reply. A cancelled result is
+    /// reported as dispatch_errc::cancelled.
+    async::cancellation_token cancel = {};
+
+    /// What the request is expected to take.
+    RequestCost cost = {};
+
+    /// Where a finished request puts the most of its worker's own memory
+    /// while it ran.
+    std::uint64_t* reached = nullptr;
+
+    /// Asked once the request has its slot, right before it reaches the
+    /// worker: a request that waited in the queue while a request like it
+    /// crashed is not sent, and reports dispatch_errc::cancelled.
+    llvm::function_ref<bool()> admitted = {};
 };
 
 class WorkerPool;
@@ -210,7 +215,8 @@ private:
 ///     backoff, per-slot crash budget (streak, healthy-uptime reset),
 ///     give-up -> cooldown revival, and the scheduler's actions: dispatch,
 ///     cooperative cancels, kills for memory and deadlines, scaling. Its
-///     guarantee: capacity is never permanently zero.
+///     guarantee: capacity is never permanently zero, and the user is told
+///     when every worker of a kind is given up for its cooldown.
 ///   - The pool ATTRIBUTES every death. A dying worker names the request it
 ///     was running (see worker/crash_report.cppm), or the deadline watchdog
 ///     names every one past its deadline it killed the worker for; each
@@ -223,13 +229,13 @@ private:
 ///     slots do. Retry policy is semantic and lives with the caller —
 ///     deliver() is the shared form of it.
 ///   - The dispatch_errc taxonomy is the contract language. worker_crashed:
-///     this request killed its worker — the caller blames its content
+///     this request killed its worker — the caller charges its content
 ///     (Error::data carries the dead incarnation's identity so one death is
-///     never blamed twice, the message how it died). worker_lost: another
+///     never charged twice, the message how it died). worker_lost: another
 ///     request's crash took it along, or the death named none among several
-///     requests in flight — blameless. worker_died: the death named no
+///     requests in flight — not its doing. worker_died: the death named no
 ///     request and this one ran alone. out_of_memory: the worker's memory
-///     ran out — blameless, Error::data says how much it reached and
+///     ran out — not its doing, Error::data says how much it reached and
 ///     whether it ran the only request running.
 ///     worker_unavailable: never dispatched, a capacity window —
 ///     await_capacity() tells when it closes. cancelled: deliberate
@@ -244,11 +250,6 @@ public:
     /// Gracefully stop all workers.
     async::task<> stop();
 
-    /// Whether a stateful request is dispatched and unanswered.
-    bool stateful_busy() const {
-        return stateful_inflight > 0;
-    }
-
     /// Send a request to the stateful worker the document is assigned to,
     /// holding the document while it flies. A compile assigns it if it is
     /// not; a query of a document whose AST no worker holds — gone with its
@@ -259,24 +260,8 @@ public:
                                         ipc::request_options opts = {});
 
     /// Send a request to a stateless worker, placed by the scheduler.
-    ///
-    /// `cancel` is an advisory cancellation: when it fires, the request is
-    /// cancelled over IPC and this call KEEPS awaiting the worker's real
-    /// answer — the slot frees only when the process is actually idle, and
-    /// crash accounting keeps observing the real reply. A cancelled
-    /// result is reported as dispatch_errc::cancelled. `cost` is what the
-    /// request is expected to take; a finished request reports what it took
-    /// into `report`. `admitted` is asked once the request has its slot,
-    /// right before it reaches the worker: a request that waited in the
-    /// queue while a request like it crashed is not sent, and reports
-    /// dispatch_errc::cancelled.
     template <typename Params>
-    RequestResult<Params> send_stateless(const Params& params,
-                                         worker::Priority priority,
-                                         async::cancellation_token cancel = {},
-                                         RequestCost cost = {},
-                                         StatelessReport* report = nullptr,
-                                         llvm::function_ref<bool()> admitted = {});
+    RequestResult<Params> send_stateless(const Params& params, StatelessOptions options = {});
 
     /// Whether a stateful worker holds the document's AST.
     bool resident(std::uint32_t path_id) const {
@@ -293,26 +278,21 @@ public:
     /// its AST, and a compile of it still running leaves none behind.
     void forget_document(std::uint32_t path_id);
 
+    /// Whether a worker of the kind serves or will with no request asking:
+    /// one alive and staying, dying, respawning, or given up until its
+    /// revival. None will in a pool with no slot of the kind — the command
+    /// line's has no stateful worker.
+    bool will_serve(bool stateful) const;
+
     /// Wait until a worker of the kind can take a request. False when none
-    /// ever will again: the pool is stopping, or every slot gave up with
-    /// revival off.
+    /// ever will again: the pool is stopping, or none will serve.
     /// FIXME: takes no cancellation: a request its client cancels while every
     /// worker of the kind is down still waits here until one returns, up to
     /// revive_after.
     async::task<bool> await_capacity(bool stateful);
 
-    /// True when a Dead slot is not final: the running pool revives dead
-    /// slots after a cooldown, so "no capacity" is a window, not a decision.
-    /// Callers (the indexer's requeue) may retry work that failed with
-    /// worker_unavailable instead of dropping it. Unit fixtures drive slot
-    /// state without an event loop and never start the pool, so revival
-    /// stays off for them.
-    bool revives_slots() const {
-        return started && options.revive_after.count() > 0;
-    }
-
-    /// Alive stateless slots that also accept new work: a retiring slot
-    /// stays alive to finish its request but is skipped by dispatch.
+    /// Alive stateless slots that also accept new work: a slot scaling
+    /// down stays alive to finish its request but is skipped by dispatch.
     std::size_t schedulable_stateless() const;
 
     /// The process ids of the workers of the kind in service.
@@ -324,23 +304,19 @@ public:
         return scheduler.background_limit(chrono::steady_clock::now());
     }
 
-    /// Foreground evidence from outside the pool: didOpen/didChange/didSave
-    /// and friends. Requests need no call of their own — every stateful
-    /// dispatch and every High stateless dispatch counts.
-    void foreground_pulse();
+    /// The user did something the pool does not see: didOpen, didChange,
+    /// didSave and friends. Requests need no call of their own — every
+    /// stateful dispatch and every High stateless dispatch counts.
+    void user_activity();
 
     /// The death `error` reports, which named no request, was its request's
     /// doing after all (see deliver): like a death that names its request,
     /// it spends none of its slot's budget.
     void exempt_death(const ipc::Error& error);
 
-    /// Callback invoked when a worker process crashes.
-    std::function<void(const WorkerCrashInfo&)> on_crash;
-
-    /// The server's test instrumentation while test hooks are on, null
-    /// otherwise: it counts the builds sent and parks the replies a test
-    /// holds (see BuildProbe).
-    BuildProbe* probe = nullptr;
+    /// The server's test hooks while project.test_hooks is on, null
+    /// otherwise.
+    TestHooks* hooks = nullptr;
 
 private:
     friend class DocumentHold;
@@ -355,18 +331,25 @@ private:
         /// Process declared dead (transport failure, a kill, or an observed
         /// exit); monitor_worker has not delivered its result yet.
         Dying,
-        /// A respawn is scheduled, possibly sleeping out a backoff delay.
+        /// A process is on its way: a respawn, possibly sleeping out a
+        /// backoff delay, a revival or a scale-up.
         Respawning,
-        /// Intentionally scaled down; vacant until scale-up refills it.
-        Retired,
-        /// Crash budget exhausted; vacant until revival or scale-up.
-        Dead,
+        /// Intentionally scaled down; vacant until a scale-up refills it.
+        ScaledDown,
+        /// Crash budget exhausted; vacant until its revival, a cooldown
+        /// later, and nothing else brings it back.
+        GivenUp,
     };
 
     struct WorkerProcess {
         void fresh_budget() {
             crash_streak = 0;
             counted_deaths.clear();
+        }
+
+        /// Alive and staying: it takes requests.
+        bool serves() const {
+            return state == SlotState::Alive && !scaling_down;
         }
 
         async::process proc;
@@ -377,24 +360,25 @@ private:
         std::shared_ptr<ipc::BincodePeer> peer;
 
         /// Written by the stderr drain, read by the crash report.
-        std::shared_ptr<StderrTail> stderr_tail;
+        std::shared_ptr<StderrTail> stderr_tail = std::make_shared<StderrTail>();
 
-        /// Display name for logging, e.g. "SL-0" or "SF-1".
+        /// Display name for logging, e.g. "SL-0" or "SF-1"; its log file is
+        /// named after it.
         std::string name;
 
-        SlotState state = SlotState::Alive;
+        SlotState state = SlotState::Respawning;
 
         /// Bumped on every death; see SlotState.
         unsigned generation = 0;
 
         /// True when this worker is being intentionally shut down (scale-down),
         /// as opposed to an unexpected crash.
-        bool retiring = false;
+        bool scaling_down = false;
 
         /// True when the pool killed this worker on purpose — for memory, or
         /// past an ignored cancel: respawn immediately, without crash
         /// accounting.
-        bool preempted = false;
+        bool killed_on_purpose = false;
 
         /// Consecutive fast deaths that count against the slot's budget
         /// (see process_crash); resets after healthy uptime.
@@ -411,11 +395,18 @@ private:
 
         chrono::steady_clock::time_point spawn_time{};
 
+        /// Where the current incarnation's lines start in the slot's log
+        /// file, which every incarnation appends to.
+        std::uint64_t log_offset = 0;
+
         /// The process's own memory as last sampled.
         std::uint64_t memory = 0;
 
         /// The part of it in swap.
         std::uint64_t swapped = 0;
+
+        /// Given up: when its cooldown ends.
+        chrono::steady_clock::time_point revive_at{};
     };
 
     /// A stateless request between its submission and its end: what the
@@ -483,8 +474,16 @@ private:
         }
     };
 
+    llvm::SmallVector<WorkerProcess>& workers(bool stateful) {
+        return stateful ? stateful_workers : stateless_workers;
+    }
+
+    const llvm::SmallVector<WorkerProcess>& workers(bool stateful) const {
+        return stateful ? stateful_workers : stateless_workers;
+    }
+
     WorkerProcess& slot(std::size_t index, bool stateful) {
-        return stateful ? stateful_workers[index] : stateless_workers[index];
+        return workers(stateful)[index];
     }
 
     /// The error a request that died with its worker reports: worker_crashed
@@ -496,6 +495,11 @@ private:
                                   llvm::StringRef tag,
                                   codec::dyn::Value identity);
 
+    /// What of a crashed worker's log the master's log quotes: the lines the
+    /// dead incarnation wrote from `from` on, its last few kilobytes, up to
+    /// the crash's stack trace.
+    static llvm::StringRef crash_output(llvm::StringRef log, std::size_t from);
+
     static SchedulerTime now() {
         return chrono::steady_clock::now();
     }
@@ -506,8 +510,8 @@ private:
     void kill_worker(const scheduler::Kill& kill);
 
     /// Close the idle stateless worker's pipe and terminate it; its exit
-    /// retires the slot.
-    void retire_worker(std::size_t index);
+    /// scales the slot down.
+    void scale_down_worker(std::size_t index);
 
     /// The document's assignment, or a new one to the live worker holding
     /// the fewest documents. None when no stateful worker is alive. An
@@ -520,18 +524,14 @@ private:
 
     void send_evict(Residency::Eviction eviction);
 
-    /// Stateless slots that are not permanently vacant (Dead/Retired):
-    /// alive ones plus those dying or awaiting respawn.
-    std::size_t stateless_capacity() const;
+    /// The slots of the kind that serve or are about to: alive and staying,
+    /// dying, or respawning. A given-up slot serves only after its
+    /// cooldown.
+    std::size_t capacity(bool stateful) const;
 
-    /// Stateless slots still holding a process: stateless_capacity() plus
-    /// retiring workers, which keep theirs until the monitor reaps them.
-    std::size_t stateless_footprint() const;
-
-    /// True while at least one stateless slot can still (eventually) serve.
-    bool has_future_capacity() const {
-        return stateless_capacity() > 0;
-    }
+    /// Stateless slots holding a process or owed one: all but the scaled
+    /// down. A given-up slot counts, as its revival brings it back.
+    std::size_t stateless_processes() const;
 
     /// Wake every queued stateless request: it observes that it can never run.
     void fail_pending_requests();
@@ -547,13 +547,14 @@ private:
     /// unrelated process.
     void mark_worker_dead(std::size_t index, bool stateful, bool kill_process);
 
-    /// Handle a crash result: log/relay, update crash accounting, fire
-    /// on_crash. Returns true if the worker should be respawned; on false the
-    /// slot has been given up.
+    /// Handle a crash result: crash accounting, then the log and the
+    /// relay of the dead incarnation's last output. Returns true if the
+    /// worker should be respawned; on false the slot has been given up.
     bool process_crash(std::size_t index, bool stateful, std::int64_t exit_code, int exit_signal);
 
-    /// Respawn a slot after `delay`, retrying with growing backoff if the
-    /// spawn itself fails; gives the slot up once the streak is exhausted.
+    /// Bring a slot that is Respawning back after `delay`, retrying with
+    /// growing backoff if the spawn itself fails; gives the slot up once the
+    /// streak is exhausted.
     async::task<> respawn_after(std::size_t index, bool stateful, chrono::milliseconds delay);
 
     /// Backoff before the respawn for the given crash streak: immediate for
@@ -566,10 +567,17 @@ private:
     /// stale streak past the healthy interval that would have cleared it.
     void reset_streak_if_healthy(WorkerProcess& w);
 
-    /// Permanently vacate a slot and fail waiters if it was the last one.
+    /// Vacate a slot for the cooldown, after which its revival brings it
+    /// back; fail the stateless waiters, and tell the user, when no slot
+    /// of the kind is left to serve.
     void give_up_slot(std::size_t index, bool stateful);
 
-    /// The pool's pace: samples memory and the workers for the scheduler.
+    /// Grant the given-up slots whose cooldown is over a fresh crash budget
+    /// and respawn them: the pool never stays at zero workers forever.
+    void revive_due();
+
+    /// The pool's pace: samples memory and the workers for the scheduler,
+    /// and revives the slots due.
     async::task<> monitor_loop();
 
     /// Take a sample and hand it to the scheduler.
@@ -592,24 +600,18 @@ private:
     /// next sample.
     void set_oom_score(const WorkerProcess& w, bool holds);
 
-    /// Start another stateless process, in a vacant slot when there is one.
-    bool scale_up_worker();
+    /// Start another stateless process, in a scaled-down slot when there
+    /// is one.
+    void scale_up_worker();
 
     /// SIGKILL any worker still alive after the SIGTERM grace period, so a
     /// wedged worker can't block stop()'s join forever.
     async::task<> kill_stragglers();
 
-    struct SpawnedProcess {
-        async::process proc;
-        std::shared_ptr<ipc::BincodePeer> peer;
-        std::shared_ptr<StderrTail> stderr_tail;
-    };
-
-    /// Launch the process of a slot's incarnation and start its IO pumps.
-    /// Shared by initial spawn, scale-up, and respawn.
-    std::optional<SpawnedProcess> spawn_process(std::size_t index,
-                                                bool stateful,
-                                                unsigned generation);
+    /// Start the process of a slot's next incarnation: its IO pumps, its
+    /// monitor, and its entry into service. The one way a slot gets a
+    /// process; false when the spawn failed.
+    bool launch(std::size_t index, bool stateful);
 
     /// The IO pump, owning a peer reference so the peer outlives its own
     /// run() no matter when the slot drops its copy. The incarnation dies
@@ -619,42 +621,29 @@ private:
                            bool stateful,
                            unsigned generation);
 
-    /// Append a new slot (initial start and scale-up).
-    bool spawn_worker(bool stateful);
-
-    /// Refill an existing slot with a fresh process.
-    bool respawn_worker(std::size_t index, bool stateful);
-
-    /// The slot entered service: tell the scheduler and the waiters.
-    void serving(std::size_t index, bool stateful);
-
-    /// After `revive_after`, grant a given-up slot a fresh crash budget
-    /// and respawn it: the pool never stays at zero workers forever.
-    async::task<> revive_slot(std::size_t index, bool stateful);
-
-    /// Hand the worker's gate parks (a test gate, see BuildProbe::gate) to
-    /// the probe.
-    void install_gate_handler(WorkerProcess& worker);
-
     async::task<> monitor_worker(std::size_t index, bool stateful);
 
-    /// The sends without the probe, which parks a reply only once its
-    /// dispatch released the slot. `sent` tells whether the request reached
-    /// a worker: one that failed before has no build to count or hold.
+    /// Send a request to the current incarnation of the slot, registered as
+    /// in flight while it is; a stateful worker is told the id its start
+    /// report names it by first. When the link breaks under it, the
+    /// incarnation is declared dead at once, so follow-up requests fail
+    /// fast instead of piling onto a corpse.
+    template <typename Params>
+    RequestResult<Params> send_to(RequestId id,
+                                  std::size_t index,
+                                  bool stateful,
+                                  const Params& params,
+                                  ipc::request_options opts);
+
+    /// The sends without the test hooks, which hold a reply only once its
+    /// dispatch released the worker.
     template <typename Params>
     RequestResult<Params> dispatch_stateful(std::uint32_t path_id,
                                             const Params& params,
-                                            ipc::request_options opts,
-                                            bool& sent);
+                                            ipc::request_options opts);
 
     template <typename Params>
-    RequestResult<Params> dispatch_stateless(const Params& params,
-                                             worker::Priority priority,
-                                             async::cancellation_token cancel,
-                                             RequestCost cost,
-                                             StatelessReport* report,
-                                             llvm::function_ref<bool()> admitted,
-                                             bool& sent);
+    RequestResult<Params> dispatch_stateless(const Params& params, StatelessOptions options);
 
     friend struct testing::WorkerPoolFixture;
 
@@ -693,8 +682,6 @@ private:
     /// start.
     Residency residency{default_max_resident(0)};
 
-    std::size_t stateful_inflight = 0;
-
     /// Cancelled by stop(). Unwinds monitor_loop() and respawn backoff sleeps
     /// at their poll points, and lets monitor_worker() attribute the
     /// SIGTERM-induced exits that follow to intentional shutdown (no anomaly,
@@ -710,12 +697,6 @@ private:
 
     WorkerPoolOptions options;
 
-    /// Set once start() succeeded: gates background concerns (slot
-    /// revival) that need a running event loop.
-    bool started = false;
-
-    std::string log_dir;
-
     /// The master's own oom_score_adj, which workers inherit; unset where
     /// there is none to adjust (not Linux).
     std::optional<int> oom_base;
@@ -725,63 +706,46 @@ private:
     int oom_holding = 1000;
 };
 
-/// The build a worker ran to its end, as the probe counts it: its kind and
-/// file. The request reached the worker, and it answered or died running
-/// it; a build the master withdrew — preempted, outdated — comes back
-/// cancelled whatever the worker had done, or as a compile the worker
-/// stopped. None for the other requests.
-template <typename Params, typename Result>
-std::optional<std::pair<BuildKind, llvm::StringRef>> ran_build(const Params& params,
-                                                               const Result& result,
-                                                               bool sent) {
-    if(!sent || (!result.has_value() && result.error().code == worker::dispatch_errc::cancelled)) {
-        return std::nullopt;
-    }
-    if constexpr(std::same_as<Params, worker::CompileParams>) {
-        if(result.has_value() && result->status == worker::CompileStatus::Cancelled) {
-            return std::nullopt;
-        }
-        return std::pair{BuildKind::Compile, llvm::StringRef(params.path)};
-    } else if constexpr(std::same_as<Params, worker::BuildPCHParams>) {
-        return std::pair{BuildKind::PCH, llvm::StringRef(params.file)};
-    } else if constexpr(std::same_as<Params, worker::BuildPCMParams>) {
-        return std::pair{BuildKind::PCM, llvm::StringRef(params.file)};
-    } else if constexpr(std::same_as<Params, worker::CompileUnitParams>) {
-        return std::pair{BuildKind::Index, llvm::StringRef(params.file)};
-    } else {
-        return std::nullopt;
-    }
-}
-
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
                                                 const Params& params,
                                                 ipc::request_options opts) {
-    bool sent = false;
-    auto result = co_await dispatch_stateful(path_id, params, std::move(opts), sent);
-    if(auto build = ran_build(params, result, sent); build && probe) {
-        co_await probe->returned(build->first, build->second);
+    auto result = co_await dispatch_stateful(path_id, params, std::move(opts));
+    if(hooks) {
+        co_await hooks->replied(params, result);
     }
     co_return std::move(result);
 }
 
 template <typename Params>
-RequestResult<Params> WorkerPool::send_stateless(const Params& params,
-                                                 worker::Priority priority,
-                                                 async::cancellation_token cancel,
-                                                 RequestCost cost,
-                                                 StatelessReport* report,
-                                                 llvm::function_ref<bool()> admitted) {
-    bool sent = false;
-    auto result = co_await dispatch_stateless(params,
-                                              priority,
-                                              std::move(cancel),
-                                              cost,
-                                              report,
-                                              admitted,
-                                              sent);
-    if(auto build = ran_build(params, result, sent); build && probe) {
-        co_await probe->returned(build->first, build->second);
+RequestResult<Params> WorkerPool::send_stateless(const Params& params, StatelessOptions options) {
+    auto result = co_await dispatch_stateless(params, std::move(options));
+    if(hooks) {
+        co_await hooks->replied(params, result);
+    }
+    co_return std::move(result);
+}
+
+template <typename Params>
+RequestResult<Params> WorkerPool::send_to(RequestId id,
+                                          std::size_t index,
+                                          bool stateful,
+                                          const Params& params,
+                                          ipc::request_options opts) {
+    // Own a peer reference across the await: the slot drops its copy the
+    // moment the worker dies.
+    auto& w = slot(index, stateful);
+    auto peer = w.peer;
+    auto generation = w.generation;
+    Inflight inflight(*this, id, worker::crash_tag(params), worker::is_build<Params>);
+    if(stateful) {
+        peer->send_notification(worker::NextRequestParams{id});
+    }
+    auto result = hooks ? co_await hooks->send(peer, params, std::move(opts))
+                        : co_await peer->send_request(params, std::move(opts));
+    if(!result.has_value() && worker::is_transport_error(result.error()) &&
+       slot(index, stateful).generation == generation) {
+        mark_worker_dead(index, stateful, true);
     }
     co_return std::move(result);
 }
@@ -789,21 +753,10 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
 template <typename Params>
 RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
                                                     const Params& params,
-                                                    ipc::request_options opts,
-                                                    bool& sent) {
-    stateful_inflight += 1;
-
-    struct InflightGuard {
-        std::size_t& count;
-
-        ~InflightGuard() {
-            count -= 1;
-        }
-    } inflight_guard{stateful_inflight};
-
+                                                    ipc::request_options opts) {
     // Once the pool stops its workers are still Alive, but their links are
     // closed: a request failing on one would read as a nameless death and
-    // be blamed.
+    // be charged with it.
     constexpr bool compile = std::same_as<Params, worker::CompileParams>;
     std::optional<Residency::Assignment> assignment;
     if(!stop_scope.cancelled()) {
@@ -817,28 +770,21 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
         }
     }
     if(!assignment) {
-        scheduler.user_activity(now());
-        execute();
+        user_activity();
         co_await async::fail(
             ipc::Error{worker::dispatch_errc::worker_unavailable, "No stateful workers available"});
     }
     DocumentHold flight(*this, path_id);
     residency.used(path_id);
 
-    // Own a peer reference across the await: the slot drops its copy the
-    // moment the worker dies.
-    auto idx = assignment->worker;
-    auto& assigned = stateful_workers[idx];
-    auto peer = assigned.peer;
-    auto gen = assigned.generation;
-    auto death = assigned.death;
-    sent = true;
+    auto index = assignment->worker;
+    auto generation = stateful_workers[index].generation;
+    auto death = stateful_workers[index].death;
     auto id = next_request;
     next_request += 1;
-    Inflight inflight(*this, id, worker::crash_tag(params), worker::is_build<Params>);
     // Every stateful request is user-facing: it counts as activity, and is
-    // timed while it flies.
-    scheduler.stateful_begin(id, idx, path_id, worker::is_build<Params>, now());
+    // timed while it runs.
+    scheduler.stateful_begin(id, index, worker::is_build<Params>, now());
     execute();
 
     struct Timed {
@@ -851,42 +797,31 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
         }
     } timed{*this, id};
 
-    auto gate = probe ? probe->sending(inflight.tag, peer) : std::nullopt;
-    auto result = co_await peer->send_request(params, opts);
-    if(gate) {
-        probe->answered(*gate);
-    }
+    auto result = co_await send_to(id, index, true, params, std::move(opts));
     if constexpr(compile) {
         residency.compiled(path_id,
                            assignment->id,
                            result.has_value() && result->status == worker::CompileStatus::Done);
     }
-    if(result.has_value() || !worker::is_transport_error(result.error()))
+    if(result.has_value() || !worker::is_transport_error(result.error())) {
         co_return std::move(result);
-
-    // The worker link broke mid-request. Declare the slot dead now so
-    // follow-up requests fail fast instead of piling onto a corpse;
-    // monitor_worker reconciles with the real exit status.
-    if(stateful_workers[idx].generation == gen)
-        mark_worker_dead(idx, true, true);
+    }
     co_await death->done.wait();
-    co_await async::fail(death_error(*death, inflight.tag, worker::death_identity(idx, gen, true)));
+    co_await async::fail(death_error(*death,
+                                     worker::crash_tag(params),
+                                     worker::death_identity(index, generation, true)));
 }
 
 template <typename Params>
 RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
-                                                     worker::Priority priority,
-                                                     async::cancellation_token cancel,
-                                                     RequestCost cost,
-                                                     StatelessReport* report,
-                                                     llvm::function_ref<bool()> admitted,
-                                                     bool& sent) {
+                                                     StatelessOptions options) {
     using worker::dispatch_errc::cancelled;
     using worker::dispatch_errc::worker_unavailable;
+    auto priority = options.priority;
     while(true) {
-        if(stop_scope.cancelled() || !has_future_capacity() || cancel.cancelled()) {
+        if(stop_scope.cancelled() || capacity(false) == 0 || options.cancel.cancelled()) {
             co_await async::fail(
-                cancel.cancelled()
+                options.cancel.cancelled()
                     ? ipc::Error{cancelled, "Request cancelled by its attempt"}
                     : ipc::Error{worker_unavailable, "No stateless workers available"});
         }
@@ -897,14 +832,24 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // The caller's cancel: a queued request is dropped and its waiter
         // woken, a running one cancelled over IPC and killed past the grace
         // period.
-        auto relay = cancel.on_cancel([this, &request] {
+        auto relay = options.cancel.on_cancel([this, &request] {
             scheduler.cancel(request.id, now());
             execute();
             if(!request.slot) {
                 request.ready.set();
             }
         });
-        scheduler.submit(id, priority, cost, worker::is_build<Params>, now());
+        // The user came to wait for it: it runs as foreground work, and so
+        // does a resubmission.
+        Signal<>::Connection raise;
+        if(options.raised) {
+            raise = options.raised->connect([this, &request, &priority] {
+                priority = worker::Priority::High;
+                scheduler.raise(request.id, now());
+                execute();
+            });
+        }
+        scheduler.submit(id, priority, options.cost, worker::is_build<Params>, now());
         execute();
         if(!request.slot) {
             co_await request.ready.wait();
@@ -912,10 +857,10 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         if(!request.slot) {
             continue;
         }
-        auto idx = *request.slot;
+        auto index = *request.slot;
         // The worker died between the dispatch and this resumption; the
         // scheduler forgot the request with it — go around again.
-        if(stateless_workers[idx].generation != request.generation) {
+        if(stateless_workers[index].generation != request.generation) {
             continue;
         }
         // Asked to stop before it reached the worker: giving the slot back
@@ -923,28 +868,13 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         if(request.preempt.cancelled()) {
             co_await async::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
         }
-        if(admitted && !admitted()) {
+        if(options.admitted && !options.admitted()) {
             co_await async::fail(ipc::Error{cancelled, "Request stopped by a crash"});
         }
 
-        auto peer = stateless_workers[idx].peer;
-        auto gen = stateless_workers[idx].generation;
-        auto death = stateless_workers[idx].death;
-        sent = true;
-        Inflight inflight(*this, id, worker::crash_tag(params), worker::is_build<Params>);
-        auto gate = probe ? probe->sending(inflight.tag, peer) : std::nullopt;
-        auto result = co_await peer->send_request(params, {.token = request.preempt.token()});
-        if(gate) {
-            probe->answered(*gate);
-        }
-        // The worker link broke mid-request: declare the slot dead now so a
-        // caller-side retry cannot arrive at the same corpse before the
-        // monitor observed the exit.
-        bool transport_dead = !result.has_value() && worker::is_transport_error(result.error());
-        if(transport_dead && stateless_workers[idx].generation == gen) {
-            mark_worker_dead(idx, false, true);
-            execute();
-        }
+        auto death = stateless_workers[index].death;
+        auto result =
+            co_await send_to(id, index, false, params, {.token = request.preempt.token()});
 
         // A cancel comes back as whatever the worker answered —
         // RequestCancelled, the result it had already, or the killed
@@ -954,24 +884,25 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // recording a failure — unless the worker's memory ran out before it
         // stopped, or it never stopped, which its sender learns of.
         // FIXME: a request whose own crash meets a cancel reads as cancelled too:
-        // its death record is not done yet, so it is requeued unblamed and crashes
+        // its death record is not done yet, so it is requeued uncharged and crashes
         // its worker once more.
         if(request.preempt.cancelled() && !death->out_of_memory && !death->ignored_cancel) {
             co_await async::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
         }
         // An error returned by the worker's handler leaves the worker
         // healthy; pass it through untouched.
-        if(result.has_value() || !transport_dead) {
+        if(result.has_value() || !worker::is_transport_error(result.error())) {
             auto peak = request.finish();
-            if(report) {
-                report->peak = peak;
+            if(options.reached) {
+                *options.reached = peak;
             }
             co_return std::move(result);
         }
 
         co_await death->done.wait();
-        co_await async::fail(
-            death_error(*death, inflight.tag, worker::death_identity(idx, gen, false)));
+        co_await async::fail(death_error(*death,
+                                         worker::crash_tag(params),
+                                         worker::death_identity(index, request.generation, false)));
     }
 }
 
@@ -981,7 +912,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
 /// took the attempt along (worker_lost), the death named no request
 /// (worker_died) or the worker's memory ran out (out_of_memory), and waits
 /// out capacity windows (worker_unavailable). One resend suffices: the
-/// culprit of the first death is stopped from running again by then. A
+/// request the first death named is stopped from running again by then. A
 /// request that dies naming no request twice, alone on its worker both
 /// times, is taken for the killer — an OOM kill, a stack overflow the
 /// crash report cannot run on.

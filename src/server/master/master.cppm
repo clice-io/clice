@@ -12,7 +12,7 @@ import :support.prelude;
 import :syntax.position;
 import :vfs.disk_state;
 import :worker.pool;
-import :worker.probe;
+import :worker.test_hooks;
 
 namespace clice {
 
@@ -118,7 +118,7 @@ public:
 
     /// Whether the test hooks are on: project.test_hooks of the first
     /// project at initialize, kept whatever folders come and go — the
-    /// pool's probe is attached then.
+    /// pool's test hooks are attached then.
     bool test_hooks() const;
 
     async::cancellation_token shutdown_token() const {
@@ -337,8 +337,8 @@ public:
     /// The process's fid space, shared by every project.
     FileTable files;
 
-    /// Fed by the pool while test hooks are on (see WorkerPool::probe).
-    BuildProbe probe;
+    /// Fed by the pool while test hooks are on (see WorkerPool::hooks).
+    TestHooks hooks;
 
     /// The master's ticks look at the files (vfs::DiskState::tick), each
     /// followed by the projects' look at their databases

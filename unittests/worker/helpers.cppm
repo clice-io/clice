@@ -5,15 +5,16 @@ module;
 #include <unistd.h>
 #endif
 
-module clice:unittests.server.worker_test_helpers;
+module clice:unittests.worker.helpers;
 
 import :command.table;
+import :support.anomaly;
 import :support.prelude;
 import :support.process;
 import :unittests.utils.temp_dir;
 import :vfs.path;
-import :worker.probe;
 import :worker.protocol;
+import :worker.test_hooks;
 
 namespace clice::testing {
 
@@ -41,17 +42,24 @@ inline std::vector<std::string> make_args(const std::string& file_path,
     return args;
 }
 
-/// Returns once a worker parked the work behind `probe`'s gate `id`.
-inline async::task<> parked(BuildProbe& probe, std::uint64_t id) {
+/// Count into `crashes` the worker crashes the pool reports (WorkerCrash
+/// anomalies) until the anomaly trap is reset.
+inline void count_crashes(std::size_t& crashes) {
+    logging::set_anomaly_trap_for_testing([&crashes](logging::AnomalyId id) {
+        crashes += id == logging::AnomalyId::WorkerCrash ? 1 : 0;
+    });
+}
+
+/// Returns once a worker parked the work behind `hooks`' gate `id`.
+inline async::task<> parked(TestHooks& hooks, std::uint64_t id) {
     async::event held;
-    auto connection = probe.on_held.connect([&](std::uint64_t each) {
+    auto connection = hooks.on_held.connect([&](std::uint64_t each) {
         if(each == id) {
             held.set();
         }
     });
-    if(ranges::none_of(probe.gates(), [&](const BuildProbe::Gate& gate) {
-           return gate.id == id && gate.parked;
-       })) {
+    if(ranges::none_of(hooks.gates(),
+                       [&](const TestHooks::Gate& gate) { return gate.id == id && gate.parked; })) {
         co_await held.wait();
     }
 }
@@ -70,6 +78,12 @@ struct WorkerHandle : zest::LoopFixture {
     std::uint64_t gates = 0;
     llvm::DenseSet<std::uint64_t> parked_gates;
     async::event gate_parked{false};
+
+    /// What the worker reported of its requests: a stateful one the ids of
+    /// the work it began, a stateless one the peak of its memory before
+    /// each reply.
+    std::vector<std::uint64_t> started;
+    std::vector<std::uint64_t> peaks;
 
     WorkerHandle() {
         // Hang detection: outlasts the 30s bound the cancellation tests put
@@ -119,6 +133,10 @@ struct WorkerHandle : zest::LoopFixture {
             parked_gates.insert(params.id);
             gate_parked.set();
         });
+        peer->on_notification(
+            [this](const worker::StartedParams& params) { started.push_back(params.id); });
+        peer->on_notification(
+            [this](const worker::PeakParams& params) { peaks.push_back(params.memory); });
         proc = std::move(spawn.proc);
 #ifndef _WIN32
         if(stderr_fd >= 0)
@@ -128,7 +146,7 @@ struct WorkerHandle : zest::LoopFixture {
     }
 
     /// Park the work of the next request like `params` where it starts in
-    /// the worker, as the master's BuildProbe does; returns the gate's id.
+    /// the worker, as the master's TestHooks do; returns the gate's id.
     template <typename Params>
     std::uint64_t gate(const Params& params) {
         gates += 1;

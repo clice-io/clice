@@ -23,3 +23,8 @@ workspace_symbols = [
     { name = "unit_6()", kind = "Function", at = "unit_6.cpp │ int ⟦unit_6⟧() { return 6; }" },
     { name = "unit_7()", kind = "Function", at = "unit_7.cpp │ int ⟦unit_7⟧() { return 7; }" },
 ]
+
+[test.told]
+value = [
+    "clice's background workers keep crashing and are stopped for 30 seconds: completion, signature help, formatting and indexing wait until then. The server log has the crash reports",
+]

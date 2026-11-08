@@ -27,7 +27,7 @@ namespace clice::worker {
 ///
 /// A death fails every request in flight on the worker; the pool tells them
 /// apart by the request the dying worker named (see crash_tag), so only the
-/// request that crashed it is blamed.
+/// request that crashed it is charged with it.
 namespace dispatch_errc {
 
 /// The request was deliberately cancelled: by its caller, or by the pool
@@ -43,18 +43,18 @@ constexpr inline protocol::integer worker_unavailable = -33000;
 constexpr inline protocol::integer worker_crashed = -33001;
 
 /// The worker died of another request's crash, or died naming no request
-/// while several were in flight: this one is blameless and safe to resend.
+/// while several were in flight: this one is not charged and safe to resend.
 /// So is a query whose document's AST died with its worker before the query
 /// was sent.
 constexpr inline protocol::integer worker_lost = -33003;
 
 /// The worker died naming no request while this one ran alone on it —
 /// killed from outside (the OOM killer, a user), or crashed where it could
-/// not report. Resend once; a request that dies this way twice is blamed.
+/// not report. Resend once; a request that dies this way twice is charged.
 constexpr inline protocol::integer worker_died = -33004;
 
 /// The worker's memory ran out: the pool killed it to free memory, or an
-/// allocation failed in it. The request is blameless; Error::data holds
+/// allocation failed in it. The request is not charged; Error::data holds
 /// "memory", the bytes the worker had reached, and "alone", whether no
 /// other request ran beside it — then it does not fit this machine.
 constexpr inline protocol::integer out_of_memory = -33006;
@@ -205,7 +205,7 @@ struct CompileResult {
     /// name the blob's path, or they are AST-deserialization errors naming
     /// no other prebuilt input. Holds whether the reader rejected the blob
     /// at setup or hit a fatal error past it (a Done status with real,
-    /// publishable diagnostics). Either way the PCH is the culprit:
+    /// publishable diagnostics). Either way the PCH is at fault:
     /// the master should retract the pair and rebuild instead of trusting
     /// the corrupt bytes until the preamble changes.
     bool pch_suspect = false;
@@ -601,21 +601,24 @@ struct EvictParams {
     std::string path;
 };
 
-/// Test hook (see BuildProbe::gate): park the work of the next request
-/// whose crash_tag is `tag` where it starts, until released.
-struct GateParams {
-    std::uint64_t id = 0;
-    std::string tag;
-};
-
-/// Test hook: the gate parked a request's work.
-struct GateParkedParams {
+/// The id the request sent next to a stateful worker goes by in its start
+/// report (StartedParams).
+struct NextRequestParams {
     std::uint64_t id = 0;
 };
 
-/// Test hook: let the work the gate parked go on, or drop the gate.
-struct GateReleaseParams {
+/// A stateful worker began the work of a request, on a thread of its own:
+/// the master times it from here, not from its send, as it may wait behind
+/// the work of other documents.
+struct StartedParams {
     std::uint64_t id = 0;
+};
+
+/// The most of its own memory a stateless worker held while its request
+/// ran, sent right before the reply: the master samples it a second
+/// apart, too seldom for a shorter request.
+struct PeakParams {
+    std::uint64_t memory = 0;
 };
 
 /// Whether a request builds — a compile, a PCH or PCM, an indexing run:
@@ -738,18 +741,18 @@ struct NotificationTraits<clice::worker::EvictParams> {
 };
 
 template <>
-struct NotificationTraits<clice::worker::GateParams> {
-    constexpr inline static std::string_view method = "clice/worker/gate";
+struct NotificationTraits<clice::worker::NextRequestParams> {
+    constexpr inline static std::string_view method = "clice/worker/nextRequest";
 };
 
 template <>
-struct NotificationTraits<clice::worker::GateParkedParams> {
-    constexpr inline static std::string_view method = "clice/worker/gateParked";
+struct NotificationTraits<clice::worker::StartedParams> {
+    constexpr inline static std::string_view method = "clice/worker/started";
 };
 
 template <>
-struct NotificationTraits<clice::worker::GateReleaseParams> {
-    constexpr inline static std::string_view method = "clice/worker/gateRelease";
+struct NotificationTraits<clice::worker::PeakParams> {
+    constexpr inline static std::string_view method = "clice/worker/peak";
 };
 
 }  // namespace kotatsu::ipc::protocol

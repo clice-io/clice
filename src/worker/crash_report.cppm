@@ -7,7 +7,7 @@ namespace clice {
 /// Names the request the calling thread runs in the worker's last words.
 /// A synchronous crash — a fault, an abort, a sanitizer report — is handled
 /// on the thread that raised it, so a thread-local mark singles out the
-/// culprit among the requests a stateful worker runs side by side; the
+/// request among those a stateful worker runs side by side; the
 /// handler writes worker::crashed_in_marker and the tag to stderr, where
 /// the master's drain picks it up.
 class CrashScope {

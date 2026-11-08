@@ -8,7 +8,6 @@ module;
 #define NOMINMAX
 #include <windows.h>
 #else
-#include <signal.h>
 #include <unistd.h>
 #endif
 
@@ -27,11 +26,9 @@ module;
 
 module clice;
 
-import :support.environment;
-import :vfs.file_system;
 import :worker.crash_report;
-import :worker.gate;
 import :worker.protocol;
+import :worker.test_hooks;
 
 namespace clice {
 
@@ -72,40 +69,7 @@ CrashScope::CrashScope(std::string tag) : tag(std::move(tag)) {
     running_tag = this->tag.data();
     running_size = this->tag.size();
 
-    park_at_test_gate(this->tag);
-    this_thread::sleep_for(test_jitter());
-
-    // Tests crash the request whose tag contains CLICE_TEST_CRASH_REQUEST
-    // right here — any kind of request, attributed like a real crash.
-    const static auto crash_request = [] {
-        std::string value;
-        return sys::get_env(value, "CLICE_TEST_CRASH_REQUEST") ? std::optional(value)
-                                                               : std::nullopt;
-    }();
-    if(crash_request && llvm::StringRef(this->tag).contains(*crash_request)) {
-        LLVM_BUILTIN_TRAP;
-    }
-
-    // Tests kill the worker running the first request whose tag contains
-    // the text of the file CLICE_TEST_KILL_REQUEST names, as a kill from
-    // outside would: unannounced, the death names no request. Taking the
-    // file away makes it the first — one rename of it succeeds, and a
-    // respawned worker finds none.
-    const static auto kill_request = [] {
-        std::string value;
-        return sys::get_env(value, "CLICE_TEST_KILL_REQUEST") ? std::optional(value) : std::nullopt;
-    }();
-    if(kill_request) {
-        auto wanted = vfs::read_text(*kill_request);
-        if(wanted && llvm::StringRef(this->tag).contains(llvm::StringRef(*wanted).trim()) &&
-           !fs::rename(*kill_request, *kill_request + ".taken")) {
-#ifdef _WIN32
-            std::_Exit(1);
-#else
-            ::raise(SIGKILL);
-#endif
-        }
-    }
+    run_test_hooks(this->tag);
 }
 
 CrashScope::~CrashScope() {

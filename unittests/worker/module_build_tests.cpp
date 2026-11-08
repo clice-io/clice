@@ -1,6 +1,6 @@
 module clice;
 
-import :unittests.server.worker_test_helpers;
+import :unittests.worker.helpers;
 import :unittests.utils;
 import :worker.protocol;
 

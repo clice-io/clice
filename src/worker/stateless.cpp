@@ -23,9 +23,9 @@ import :syntax.position;
 import :vfs.file_system;
 import :worker.common;
 import :worker.crash_report;
-import :worker.gate;
 import :worker.protocol;
 import :worker.stateless;
+import :worker.test_hooks;
 
 namespace clice {
 
@@ -554,10 +554,11 @@ static worker::CompileUnitResult
     return result;
 }
 
-static worker::CompletionResult handle_completion(const worker::CompletionParams& params,
-                                                  const std::shared_ptr<std::atomic_bool>& stop) {
-    ScopedTimer timer;
-
+/// The compile of a completion or a signature help: the buffer's text with
+/// its cursor, under the document's command and precompiled inputs.
+template <typename Params>
+static CompilationParams cursor_compile(const Params& params,
+                                        const std::shared_ptr<std::atomic_bool>& stop) {
     CompilationParams cp{
         .kind = CompilationKind::Completion,
         .input = {.arguments = params.arguments,
@@ -569,8 +570,13 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
     hold_recent(use_precompiled(cp.input, params.pch, params.pcms));
     cp.input.add_focus(params.file, params.text);
     cp.input.add_synthesized(params.synthesized);
+    return cp;
+}
 
-    auto completion = feature::code_complete(std::move(cp),
+static worker::CompletionResult handle_completion(const worker::CompletionParams& params,
+                                                  const std::shared_ptr<std::atomic_bool>& stop) {
+    ScopedTimer timer;
+    auto completion = feature::code_complete(cursor_compile(params, stop),
                                              params.settings.code_completion,
                                              params.settings.documentation,
                                              params.client,
@@ -584,20 +590,7 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
 static codec::raw_value handle_signature_help(const worker::SignatureHelpParams& params,
                                               const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
-
-    CompilationParams cp{
-        .kind = CompilationKind::Completion,
-        .input = {.arguments = params.arguments,
-                  .directory = params.directory,
-                  .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
-        .completion = {.offset = params.offset},
-        .stop = stop,
-    };
-    hold_recent(use_precompiled(cp.input, params.pch, params.pcms));
-    cp.input.add_focus(params.file, params.text);
-    cp.input.add_synthesized(params.synthesized);
-
-    auto help = feature::signature_help(std::move(cp),
+    auto help = feature::signature_help(cursor_compile(params, stop),
                                         params.settings.signature_help,
                                         params.settings.documentation,
                                         params.selected);
@@ -639,7 +632,7 @@ static auto run_lowered(Work& work) {
     // As much stack as libuv gives its pool threads; a deep parse needs it.
     llvm::thread thread(std::optional<unsigned>(8u << 20), [&] {
         // Not idle: under a machine kept busy by the user's own build it
-        // starves a TU past the build deadline, which then blames the file
+        // starves a TU past the build deadline, which then charges the file
         // for a hang.
         sys::set_thread_priority(sys::Priority::BelowNormal);
         result.emplace(work());
@@ -648,46 +641,95 @@ static auto run_lowered(Work& work) {
     return std::move(*result);
 }
 
+namespace {
+
+/// The most of the worker's own memory while a request's work runs: sampled
+/// on a thread of its own through the work's first two seconds, which the
+/// master's samples, a second apart, can miss; and once at its end. It
+/// stops sampling then, as its own CPU time would keep the master from
+/// seeing a request whose work stopped moving (SchedulerOptions::
+/// stall_deadline).
+class OwnMemoryPeak {
+public:
+    OwnMemoryPeak() :
+        sampler([this](std::stop_token stop) {
+            std::mutex mutex;
+            std::condition_variable_any wake;
+            std::unique_lock lock(mutex);
+            for(int sample = 0; sample < 20 && !stop.stop_requested(); sample += 1) {
+                take();
+                // Time is the feature: the pace of the samples.
+                wake.wait_for(lock, stop, chrono::milliseconds(100), [] { return false; });
+            }
+        }) {}
+
+    /// Stop sampling; the most sampled, a last sample included.
+    std::uint64_t finish() {
+        sampler.request_stop();
+        sampler.join();
+        take();
+        return peak;
+    }
+
+private:
+    void take() {
+        if(auto stats = sys::process_stats()) {
+            peak = std::max(peak, stats->memory);
+        }
+    }
+
+private:
+    std::uint64_t peak = 0;
+
+    std::jthread sampler;
+};
+
+}  // namespace
+
 /// Register the handler of one request type, which runs on the pool
 /// thread, or on a lowered thread it joins (ServeOptions::lowered). A
 /// cancellation (peer close, $/cancelRequest) dequeues work that
 /// has not started; work already on the pool thread learns through the
 /// hook's stop flag, which doubles as CompilationParams::stop: clang polls
 /// it after every top-level declaration, so even the parse itself stops
-/// instead of running to completion for a result nobody will read.
+/// instead of running to completion for a result nobody will read. The
+/// reply follows the peak of the worker's own memory while the work ran
+/// (worker::PeakParams).
 template <typename Params, typename Result, typename Handler>
 static void
     serve(ipc::BincodePeer& peer, Result cancelled, Handler handler, ServeOptions options = {}) {
-    peer.on_request([cancelled, handler, options](RequestContext&,
-                                                  const Params& params) -> RequestResult<Params> {
-        auto stop = std::make_shared<std::atomic_bool>(false);
-        co_return co_await async::queue(
-            [&]() -> Result {
-                if(stop->load(std::memory_order_relaxed)) {
-                    return cancelled;
-                }
-                // The crash report reads the scope of the thread that
-                // faults, so it opens on the thread that runs the work.
-                auto work = [&] {
-                    CrashScope crash_scope(worker::crash_tag(params));
-                    return handler(params, stop);
-                };
-                auto result = options.lowered ? run_lowered(work) : work();
-                release_free_memory();
-                return result;
-            },
-            [stop] { stop->store(true, std::memory_order_relaxed); });
-    });
+    peer.on_request(
+        [&peer, cancelled, handler, options](RequestContext&,
+                                             const Params& params) -> RequestResult<Params> {
+            auto stop = std::make_shared<std::atomic_bool>(false);
+            std::uint64_t peak = 0;
+            auto result = co_await async::queue(
+                [&]() -> Result {
+                    if(stop->load(std::memory_order_relaxed)) {
+                        return cancelled;
+                    }
+                    // The crash report reads the scope of the thread that
+                    // faults, so it opens on the thread that runs the work.
+                    auto work = [&] {
+                        CrashScope crash_scope(worker::crash_tag(params));
+                        return handler(params, stop);
+                    };
+                    OwnMemoryPeak memory;
+                    auto result = options.lowered ? run_lowered(work) : work();
+                    peak = memory.finish();
+                    release_free_memory();
+                    return result;
+                },
+                [stop] { stop->store(true, std::memory_order_relaxed); });
+            peer.send_notification(worker::PeakParams{peak});
+            co_return std::move(result);
+        });
 }
 
 int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir) {
     // Limit libuv thread pool to 1 thread so each stateless worker executes
     // only one compilation at a time. Must be set before any async::queue call.
-#ifdef _WIN32
-    _putenv_s("UV_THREADPOOL_SIZE", "1");
-#else
-    ::setenv("UV_THREADPOOL_SIZE", "1", 1);
-#endif
+    sys::set_env("UV_THREADPOOL_SIZE", "1");
 
     logging::stderr_logger(worker_name, logging::options);
     if(!log_dir.empty()) {
@@ -708,7 +750,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
     (*transport_result)->set_remote_max_payload(ipc::default_max_payload);
 
     ipc::BincodePeer peer(loop, std::move(*transport_result));
-    install_test_gates(peer, loop);
+    install_test_hooks(peer, loop);
 
     const worker::PrecompiledBuildResult cancelled_build{.success = false,
                                                          .error = "Build cancelled"};

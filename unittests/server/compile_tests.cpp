@@ -17,7 +17,7 @@ import :syntax.dependency_graph;
 import :syntax.position;
 import :syntax.token;
 import :unittests.server.served_project_fixture;
-import :unittests.server.worker_test_helpers;
+import :unittests.worker.helpers;
 import :unittests.utils;
 import :unittests.utils.async;
 import :unittests.utils.cdb_helper;
@@ -25,21 +25,23 @@ import :unittests.utils.temp_dir;
 import :vfs.cache_store;
 import :vfs.file_table;
 import :worker.pool;
-import :worker.probe;
+import :worker.test_hooks;
 import :worker.protocol;
 
 namespace clice::testing {
 
 namespace {
 
-/// Park the work of the next compile of `path_id` where it starts in the
-/// worker (see BuildProbe::gate); returns the gate's id.
-std::uint64_t gate_compile(ServedProjectFixture& fixture, Fid path_id) {
+/// Park the work of the next request of kind `Params` about `path_id`
+/// where it starts in its worker (see TestHooks::gate); returns the gate's
+/// id.
+template <typename Params>
+std::uint64_t gate_request(ServedProjectFixture& fixture, Fid path_id) {
     auto& server = fixture.server;
-    server.pool.probe = &server.probe;
-    worker::CompileParams params;
+    server.pool.hooks = &server.hooks;
+    Params params;
     params.path = std::string(server.files.resolve(path_id));
-    return server.probe.gate(worker::crash_tag(params));
+    return server.hooks.gate(worker::crash_tag(params));
 }
 
 void register_pch_store(ServedProjectFixture& fixture, TempDir& tmp) {
@@ -315,14 +317,14 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
             waiter_ok = co_await served.ensure_compiled(session);
             waiter_done = true;
         };
-        auto gate = gate_compile(fixture, session->path_id);
+        auto gate = gate_request<worker::CompileParams>(fixture, session->path_id);
         group.spawn(waiter());
-        co_await parked(fixture.server.probe, gate);
+        co_await parked(fixture.server.hooks, gate);
         ZASSERT(fixture.compiling(session->path_id));
         ZASSERT(!waiter_done);
 
         co_await served.stop_compiles();
-        fixture.server.probe.release(gate);
+        fixture.server.hooks.release(gate);
         co_await group.join();
 
         ZEXPECT(waiter_done);
@@ -376,16 +378,16 @@ ZEST_CASE(EditInterruptsStaleCompile) {
             waiter_ok = co_await served.ensure_compiled(session);
             waiter_done = true;
         };
-        auto gate = gate_compile(fixture, session->path_id);
+        auto gate = gate_request<worker::CompileParams>(fixture, session->path_id);
         group.spawn(waiter());
-        co_await parked(fixture.server.probe, gate);
+        co_await parked(fixture.server.hooks, gate);
         ZASSERT(fixture.compiling(session->path_id));
 
         // What didChange does: fold the edit in, then tell the project.
         session->set_text("int fixed;\n");
         session->generation += 1;
         served.edited(*session);
-        fixture.server.probe.release(gate);
+        fixture.server.hooks.release(gate);
         co_await group.join();
 
         ZASSERT(waiter_done);
@@ -440,9 +442,9 @@ ZEST_CASE(OutdatedCompileCancelled) {
             [[maybe_unused]] bool ok = co_await served.ensure_compiled(session);
             first_done = true;
         };
-        auto gate = gate_compile(fixture, session->path_id);
+        auto gate = gate_request<worker::CompileParams>(fixture, session->path_id);
         group.spawn(first());
-        co_await parked(fixture.server.probe, gate);
+        co_await parked(fixture.server.hooks, gate);
         ZASSERT(fixture.compiling(session->path_id));
 
         // The edit arrives while the slow compile is in flight.
@@ -454,7 +456,7 @@ ZEST_CASE(OutdatedCompileCancelled) {
             second_ok = co_await served.ensure_compiled(session);
         };
         group.spawn(second());
-        fixture.server.probe.release(gate);
+        fixture.server.hooks.release(gate);
         co_await group.join();
 
         ZEXPECT(first_done);
@@ -569,11 +571,11 @@ ZEST_CASE(RefusedModuleForgotten) {
     };
     auto session =
         fixture.open(src, "import crashed;\nimport slow;\nint main() { return sv(); }\n");
-    auto& probe = fixture.server.probe;
-    fixture.server.pool.probe = &probe;
+    auto& hooks = fixture.server.hooks;
+    fixture.server.pool.hooks = &hooks;
     async::event held;
     std::uint64_t hold = 0;
-    auto connection = probe.on_held.connect([&](std::uint64_t id) {
+    auto connection = hooks.on_held.connect([&](std::uint64_t id) {
         hold = id;
         held.set();
     });
@@ -586,7 +588,7 @@ ZEST_CASE(RefusedModuleForgotten) {
         opts.stateful_count = 1;
         ZASSERT(fixture.server.pool.start(opts));
 
-        probe.hold(BuildKind::PCM,
+        hooks.hold(BuildKind::PCM,
                    std::string(project.file_table.resolve(fixture.intern(tmp.path("slow.cppm")))));
         auto compile = [&]() -> async::task<> {
             co_await served.ensure_compiled(session);
@@ -595,7 +597,7 @@ ZEST_CASE(RefusedModuleForgotten) {
         group.spawn(compile());
         co_await held.wait();
         ZEXPECT(project.forget_module_failure(module_node(crashed)));
-        probe.release(hold);
+        hooks.release(hold);
         co_await group.join();
 
         co_await served.shutdown();
@@ -1161,7 +1163,8 @@ ZEST_CASE(QueuedRequestStops) {
     // while the second waits in the queue for that only worker. The second
     // is checked where it would reach the worker, after its wait, and the
     // crash of its kind on its content stops it there: no second death.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    std::size_t deaths = 0;
+    count_crashes(deaths);
 
     TempDir tmp;
     tmp.touch("a.cpp", "");
@@ -1171,11 +1174,6 @@ ZEST_CASE(QueuedRequestStops) {
     auto& served = *fixture.served;
     register_pch_store(fixture, tmp);
     auto session = fixture.open(src, "int value;\n#pragma clang __debug crash\nint other;\n");
-
-    int deaths = 0;
-    fixture.server.pool.on_crash = [&](const WorkerCrashInfo&) {
-        deaths += 1;
-    };
 
     bool done = false;
     auto body = [&]() -> async::task<> {
@@ -1193,7 +1191,7 @@ ZEST_CASE(QueuedRequestStops) {
             ZEXPECT(result.value().list.data == "null");
         };
         co_await async::when_all(complete(), complete());
-        ZEXPECT(deaths == 1);
+        ZEXPECT(deaths == 1u);
         auto notes = session->crash_notes();
         ZASSERT(notes.size() == 1u);
         ZEXPECT(notes[0].kind == feature::RequestKind::Completion);
@@ -1252,13 +1250,13 @@ ZEST_CASE(ClientCancelSparesCompile) {
                 co_await ask_hover(served, Ticket::take(session), protocol::Position{0, 4});
             other_answered = result.has_value();
         };
-        auto gate = gate_compile(fixture, session->path_id);
+        auto gate = gate_request<worker::CompileParams>(fixture, session->path_id);
         group.spawn(cancelled_waiter());
         group.spawn(other_waiter());
-        co_await parked(fixture.server.probe, gate);
+        co_await parked(fixture.server.hooks, gate);
         ZASSERT(fixture.compiling(session->path_id));
         source.cancel();
-        fixture.server.probe.release(gate);
+        fixture.server.hooks.release(gate);
         co_await group.join();
 
         ZEXPECT(cancelled_returned);
@@ -1318,12 +1316,13 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
                                                       {});
             stale = !result.has_value() && result.error().code == content_modified().code;
         };
+        auto gate = gate_request<worker::SemanticTokensParams>(fixture, session->path_id);
         group.spawn(tokens());
-        // spawn runs the query inline to that suspension, so the pool
-        // already reports it in flight: the bump arrives provably between
-        // dispatch and reply.
-        ZASSERT(fixture.server.pool.stateful_busy());
+        // The query's work waits in its worker: the bump arrives provably
+        // between dispatch and reply.
+        co_await parked(fixture.server.hooks, gate);
         session->generation += 1;
+        fixture.server.hooks.release(gate);
         co_await group.join();
         ZEXPECT(stale);
 
@@ -1385,7 +1384,8 @@ ZEST_CASE(PoisonPreambleShared) {
     // re-trigger the build and burn a worker of its own. After one crashed
     // build the key is refused before any dispatch, and every other
     // document books the same death instead of a fresh one.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    std::size_t deaths = 0;
+    count_crashes(deaths);
 
     TempDir tmp;
     ServedProjectFixture fixture(tmp.root);
@@ -1401,11 +1401,6 @@ ZEST_CASE(PoisonPreambleShared) {
 
     std::string directory = tmp.path(".");
     auto arguments = make_args(tmp.path("a.cpp"));
-
-    int deaths = 0;
-    fixture.server.pool.on_crash = [&](const WorkerCrashInfo&) {
-        deaths += 1;
-    };
 
     bool done = false;
     auto body = [&]() -> async::task<> {
@@ -1427,7 +1422,7 @@ ZEST_CASE(PoisonPreambleShared) {
         };
         ZASSERT(!co_await build(first));
         ZASSERT(crashed(first));
-        ZEXPECT(deaths == 1);
+        ZEXPECT(deaths == 1u);
 
         // Refused without touching a worker, each document stopped by the
         // same death.
@@ -1435,7 +1430,7 @@ ZEST_CASE(PoisonPreambleShared) {
         ZEXPECT(crashed(second));
         ZASSERT(!co_await build(third));
         ZEXPECT(crashed(third));
-        ZEXPECT(deaths == 1);
+        ZEXPECT(deaths == 1u);
 
         co_await fixture.server.pool.stop();
         done = true;
@@ -1462,11 +1457,11 @@ ZEST_CASE(AbandonedPCHKeepsNoIndex) {
     auto& project = fixture.served->project;
     register_pch_store(fixture, tmp);
     auto session = fixture.open(src, "#define X 1\nint x;\n");
-    auto& probe = fixture.server.probe;
-    fixture.server.pool.probe = &probe;
+    auto& hooks = fixture.server.hooks;
+    fixture.server.pool.hooks = &hooks;
     async::event held;
     std::uint64_t hold = 0;
-    auto connection = probe.on_held.connect([&](std::uint64_t id) {
+    auto connection = hooks.on_held.connect([&](std::uint64_t id) {
         hold = id;
         held.set();
     });
@@ -1486,7 +1481,7 @@ ZEST_CASE(AbandonedPCHKeepsNoIndex) {
         opts.stateful_count = 0;
         ZASSERT(fixture.server.pool.start(opts));
 
-        probe.hold(BuildKind::PCH, std::string(project.file_table.resolve(session->path_id)));
+        hooks.hold(BuildKind::PCH, std::string(project.file_table.resolve(session->path_id)));
         async::cancellation_source source;
         async::task_group<> group;
         auto parse = [&]() -> async::task<> {
@@ -1501,7 +1496,7 @@ ZEST_CASE(AbandonedPCHKeepsNoIndex) {
         co_await held.wait();
         source.cancel();
         co_await group.join();
-        probe.release(hold);
+        hooks.release(hold);
         co_await wait_until(published);
 
         for(auto& entry: project.pchs) {
@@ -1730,10 +1725,10 @@ ZEST_CASE(EvictedDocumentKeptAnswers) {
                      "int add(int left, int right);\nint x = add(1, 2);\nint y = add(3, 4);\n");
     auto b = fixture.open(tmp.path("b.cpp"), "int beta = 2;\n");
     auto path = std::string(served.project.file_table.resolve(a->path_id));
-    auto& probe = fixture.server.probe;
-    fixture.server.pool.probe = &probe;
+    auto& hooks = fixture.server.hooks;
+    fixture.server.pool.hooks = &hooks;
     auto compiles = [&] {
-        return probe.builds[path][std::to_underlying(BuildKind::Compile)];
+        return hooks.builds[path][std::to_underlying(BuildKind::Compile)];
     };
     auto tokens =
         [&]() -> async::task<std::optional<std::vector<feature::SemanticToken>>, ipc::Error> {
@@ -1815,11 +1810,11 @@ ZEST_CASE(QueryHoldsItsDocument) {
     auto a = fixture.open(tmp.path("a.cpp"), "int alpha = 1;\n");
     auto b = fixture.open(tmp.path("b.cpp"), "int beta = 2;\n");
     auto path = std::string(served.project.file_table.resolve(a->path_id));
-    auto& probe = fixture.server.probe;
-    fixture.server.pool.probe = &probe;
+    auto& hooks = fixture.server.hooks;
+    fixture.server.pool.hooks = &hooks;
     async::event held;
     std::uint64_t hold = 0;
-    auto connection = probe.on_held.connect([&](std::uint64_t id) {
+    auto connection = hooks.on_held.connect([&](std::uint64_t id) {
         hold = id;
         held.set();
     });
@@ -1833,7 +1828,7 @@ ZEST_CASE(QueryHoldsItsDocument) {
         opts.max_resident = 1;
         ZASSERT(fixture.server.pool.start(opts));
 
-        probe.hold(BuildKind::Compile, path);
+        hooks.hold(BuildKind::Compile, path);
         std::optional<feature::HoverInfo> hover;
         auto ask = [&]() -> async::task<> {
             auto result = co_await ask_hover(served, Ticket::take(a), protocol::Position{0, 5});
@@ -1844,11 +1839,11 @@ ZEST_CASE(QueryHoldsItsDocument) {
         group.spawn(ask());
         co_await held.wait();
         ZASSERT(co_await served.ensure_compiled(b));
-        probe.release(hold);
+        hooks.release(hold);
         co_await group.join();
 
         ZEXPECT(hover.has_value());
-        ZEXPECT(probe.builds[path][std::to_underlying(BuildKind::Compile)] == 1u);
+        ZEXPECT(hooks.builds[path][std::to_underlying(BuildKind::Compile)] == 1u);
         ZEXPECT(served.resident(a->path_id));
         ZEXPECT(!served.resident(b->path_id));
 
@@ -1889,15 +1884,15 @@ ZEST_CASE(RecompileKeepsItsAST) {
         a->set_text("int alpha = 3;\n");
         a->generation += 1;
         served.edited(*a);
-        auto gate = gate_compile(fixture, a->path_id);
+        auto gate = gate_request<worker::CompileParams>(fixture, a->path_id);
         auto recompile = [&]() -> async::task<> {
             recompiled = co_await served.ensure_compiled(a);
         };
         async::task_group<> group;
         group.spawn(recompile());
-        co_await parked(fixture.server.probe, gate);
+        co_await parked(fixture.server.hooks, gate);
         ZASSERT(co_await served.ensure_compiled(b));
-        fixture.server.probe.release(gate);
+        fixture.server.hooks.release(gate);
         co_await group.join();
 
         ZEXPECT(recompiled);
@@ -2022,9 +2017,11 @@ ZEST_CASE(CloseDuringQueryEnds) {
             auto result = co_await ask_hover(served, ticket, protocol::Position{0, 5});
             modified = !result.has_value() && result.error().code == content_modified().code;
         };
+        auto gate = gate_request<worker::HoverParams>(fixture, path_id);
         group.spawn(hover());
-        ZASSERT(fixture.server.pool.stateful_busy());
+        co_await parked(fixture.server.hooks, gate);
         close_document(fixture, path_id);
+        fixture.server.hooks.release(gate);
         co_await group.join();
         ZEXPECT(modified);
 
