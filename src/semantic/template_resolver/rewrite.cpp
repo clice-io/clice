@@ -23,7 +23,7 @@ clang::QualType PseudoInstantiator::rewrite(clang::QualType type, Policy policy)
                           [&] {
                               steps += 1;
                               if(depth > depth_limit || steps > step_budget) {
-                                  inconclusive = true;
+                                  give_up(depth > depth_limit ? Trouble::Depth : Trouble::Steps);
                                   return type;
                               }
                               depth += 1;
@@ -647,7 +647,7 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
     // Cycle detection: if we're already resolving this DNT, bail out.
     if(!resolving.insert(DNT).second) {
         LOG_DEBUG("{}→ <cycle detected, returning original>", pad());
-        inconclusive = true;
+        give_up(Trouble::Cycle);
         indent -= 1;
         return clang::QualType(DNT, 0);
     }

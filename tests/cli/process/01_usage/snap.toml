@@ -175,19 +175,20 @@ Options:
   -h|--help                       Print this help and exit.
 
 Subcommands:
-  code-action         The code actions on a selection
-  code-completion     The completions at a point
-  config-schema       The JSON schema of the clice configuration
-  document-highlight  The places naming the symbol at a point
-  document-links      The file's links
-  document-symbols    The file's outline
-  folding-range       The file's folding ranges
-  hover               The hover card at a point
-  inlay-hint          The inlay hints over a range, else the file
-  selection-range     The selection ranges at a point
-  semantic-tokens     The file's semantic tokens
-  signature-help      The signature help at a point
-  template-resolver   What the template resolver answers at a point
+  code-action              The code actions on a selection
+  code-completion          The completions at a point
+  config-schema            The JSON schema of the clice configuration
+  document-highlight       The places naming the symbol at a point
+  document-links           The file's links
+  document-symbols         The file's outline
+  folding-range            The file's folding ranges
+  hover                    The hover card at a point
+  inlay-hint               The inlay hints over a range, else the file
+  selection-range          The selection ranges at a point
+  semantic-tokens          The file's semantic tokens
+  signature-help           The signature help at a point
+  template-resolver        What the template resolver answers at a point
+  template-resolver-audit  Where the template resolver spends its work in the file
 '''
 exit = 0
 

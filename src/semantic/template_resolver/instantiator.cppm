@@ -305,11 +305,22 @@ public:
     using lookup_result = clang::DeclContext::lookup_result;
 
     /// Without `visibility`, the query sees the whole unit.
+    /// What the query cost goes to `records` when it ends; nowhere when null.
     PseudoInstantiator(clang::ASTContext& context,
                        UnitCache& cache,
                        const ResolverOptions& options,
-                       Visibility* visibility) :
-        context(context), cache(cache), options(options), visibility(visibility) {}
+                       Visibility* visibility,
+                       std::vector<QueryRecord>* records = nullptr) :
+        context(context), cache(cache), options(options), visibility(visibility), records(records) {
+    }
+
+    PseudoInstantiator(const PseudoInstantiator&) = delete;
+
+    ~PseudoInstantiator() {
+        if(records) {
+            records->push_back({.steps = steps, .troubles = troubles});
+        }
+    }
 
     /// The declarations the overload set `expr` names that the query sees
     /// (TemplateResolver::overloads).
@@ -868,6 +879,17 @@ private:
         return std::string(indent * 2, ' ');
     }
 
+    /// Cut the work short for `trouble`: what it answers is not conclusive.
+    void give_up(Trouble trouble) {
+        inconclusive = true;
+        note(trouble);
+    }
+
+    /// Count `trouble` for the query's record.
+    void note(Trouble trouble) {
+        troubles[static_cast<std::size_t>(trouble)] += 1;
+    }
+
     /// Clear `inconclusive` for the work up to the end of the scope, and
     /// merge it back with what came before then.
     auto own_conclusion() {
@@ -1035,7 +1057,13 @@ private:
 
     unsigned depth = 0;
 
-    unsigned steps = 0;
+    std::uint32_t steps = 0;
+
+    /// How often each Trouble struck the query (give_up, note).
+    std::array<std::uint32_t, 6> troubles = {};
+
+    /// Where the query's cost goes when it ends.
+    std::vector<QueryRecord>* records;
 
     unsigned probing = 0;
 

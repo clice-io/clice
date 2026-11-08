@@ -12,6 +12,37 @@ struct ResolverOptions {
     /// index stored for other units to share leaves it off: the index of a
     /// header would differ with what each unit including it instantiates.
     bool only_instantiation = true;
+
+    /// Keep what each query cost and where its work was cut short
+    /// (TemplateResolver::records), for finding the code the resolver
+    /// struggles with (`clice inspect template-resolver-audit`).
+    bool record = false;
+};
+
+/// Where a query's work was cut short, or a choice was left open.
+enum class Trouble : std::uint8_t {
+    /// Rewrites nested past the depth limit.
+    Depth,
+    /// The query ran out of steps.
+    Steps,
+    /// Evaluations nested past their limit.
+    Evaluation,
+    /// A lookup, a dependent name or a variable's deduction met itself.
+    Cycle,
+    /// The partial specializations that may apply find a member
+    /// differently.
+    Undecided,
+    /// Bases find a member differently.
+    AmbiguousBase,
+};
+
+/// What one query cost (TemplateResolver::records).
+struct QueryRecord {
+    /// The rewrites it took.
+    std::uint32_t steps = 0;
+
+    /// How often each Trouble struck it.
+    std::array<std::uint32_t, 6> troubles = {};
 };
 
 struct UnitCache;
@@ -46,6 +77,12 @@ public:
     /// including it declared before it. Before any call, a query sees the
     /// whole unit.
     void see_from(clang::SourceLocation location);
+
+    /// What each query cost, in the order they were asked, with
+    /// ResolverOptions::record; empty without.
+    llvm::ArrayRef<QueryRecord> records() const {
+        return recorded;
+    }
 
     clang::QualType resolve(clang::QualType type);
 
@@ -140,6 +177,10 @@ public:
     }
 
 private:
+    /// Where a query's cost goes, with ResolverOptions::record.
+    std::vector<QueryRecord>* recording();
+
+private:
     clang::ASTContext& context;
 
     /// The unit, for what its files see on their own (see_from).
@@ -151,6 +192,9 @@ private:
 
     /// Where the queries are answered from, once see_from is called.
     std::unique_ptr<Visibility> visibility;
+
+    /// What each query cost, with ResolverOptions::record.
+    std::vector<QueryRecord> recorded;
 };
 
 /// The pattern a specialization the unit names but never instantiated would

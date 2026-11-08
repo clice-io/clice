@@ -122,6 +122,10 @@ TemplateResolver::TemplateResolver(CompilationUnit& unit, ResolverOptions option
 
 TemplateResolver::~TemplateResolver() = default;
 
+std::vector<QueryRecord>* TemplateResolver::recording() {
+    return options.record ? &recorded : nullptr;
+}
+
 void TemplateResolver::see_from(clang::SourceLocation location) {
     assert(unit && "a resolver built from an ASTContext sees the whole unit");
     if(!visibility) {
@@ -133,18 +137,18 @@ void TemplateResolver::see_from(clang::SourceLocation location) {
 }
 
 clang::QualType TemplateResolver::resolve(clang::QualType type) {
-    PseudoInstantiator instantiator(context, *cache, options, visibility.get());
+    PseudoInstantiator instantiator(context, *cache, options, visibility.get(), recording());
     return instantiator.resolve(type);
 }
 
 TemplateResolver::lookup_result TemplateResolver::lookup(clang::NestedNameSpecifier NNS,
                                                          clang::DeclarationName name) {
-    PseudoInstantiator instantiator(context, *cache, options, visibility.get());
+    PseudoInstantiator instantiator(context, *cache, options, visibility.get(), recording());
     return instantiator.lookup(NNS, name);
 }
 
 clang::TagDecl* TemplateResolver::resolve_tag(clang::QualType type) {
-    PseudoInstantiator instantiator(context, *cache, options, visibility.get());
+    PseudoInstantiator instantiator(context, *cache, options, visibility.get(), recording());
     type = instantiator.resolve(type);
     if(auto* tag = type->getAsTagDecl()) {
         return tag;
@@ -164,7 +168,7 @@ clang::TagDecl* TemplateResolver::resolve_tag(clang::QualType type) {
 
 bool TemplateResolver::specializable(clang::QualType type) {
     auto* chosen = resolve_tag(type);
-    PseudoInstantiator instantiator(context, *cache, options, visibility.get());
+    PseudoInstantiator instantiator(context, *cache, options, visibility.get(), recording());
     type = instantiator.resolve(type);
     auto* TST = type.isNull() ? nullptr : type->getAs<clang::TemplateSpecializationType>();
     auto* CTD = TST ? llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
@@ -200,7 +204,8 @@ clang::QualType TemplateResolver::deduce(const clang::VarDecl* var) {
     PseudoInstantiator instantiator(context,
                                     bindings.empty() ? *cache : scoped,
                                     options,
-                                    visibility.get());
+                                    visibility.get(),
+                                    recording());
     for(auto& binding: bindings) {
         instantiator.assume(binding.owner,
                             binding.params,
@@ -211,19 +216,19 @@ clang::QualType TemplateResolver::deduce(const clang::VarDecl* var) {
 }
 
 clang::QualType TemplateResolver::member_object(const clang::Expr* base, bool arrow) {
-    PseudoInstantiator instantiator(context, *cache, options, visibility.get());
+    PseudoInstantiator instantiator(context, *cache, options, visibility.get(), recording());
     return instantiator.resolve_object(
         instantiator.member_object(instantiator.expr_type(base), arrow));
 }
 
 clang::QualType TemplateResolver::arrow_pointee(clang::QualType type) {
-    PseudoInstantiator instantiator(context, *cache, options, visibility.get());
+    PseudoInstantiator instantiator(context, *cache, options, visibility.get(), recording());
     return instantiator.resolve(instantiator.arrow_pointee(type));
 }
 
 TemplateResolver::lookup_result
     TemplateResolver::lookup(const clang::CXXDependentScopeMemberExpr* expr) {
-    PseudoInstantiator instantiator(context, *cache, options, visibility.get());
+    PseudoInstantiator instantiator(context, *cache, options, visibility.get(), recording());
     return instantiator.lookup_member(instantiator.member_object(expr), expr->getMember());
 }
 
@@ -244,20 +249,20 @@ TemplateResolver::lookup_result
 
 llvm::SmallVector<const clang::NamedDecl*, 4>
     TemplateResolver::callees(const clang::CallExpr* expr) {
-    PseudoInstantiator instantiator(context, *cache, options, visibility.get());
+    PseudoInstantiator instantiator(context, *cache, options, visibility.get(), recording());
     return std::move(instantiator.call_candidates(expr).candidates);
 }
 
 llvm::SmallVector<const clang::NamedDecl*, 4>
     TemplateResolver::callees(const clang::Expr* callee,
                               llvm::ArrayRef<const clang::Expr*> written) {
-    PseudoInstantiator instantiator(context, *cache, options, visibility.get());
+    PseudoInstantiator instantiator(context, *cache, options, visibility.get(), recording());
     return instantiator.written_call_candidates(callee, written);
 }
 
 llvm::SmallVector<const clang::NamedDecl*, 4>
     TemplateResolver::overloads(const clang::OverloadExpr* expr) {
-    PseudoInstantiator instantiator(context, *cache, options, visibility.get());
+    PseudoInstantiator instantiator(context, *cache, options, visibility.get(), recording());
     return instantiator.overloads(expr);
 }
 

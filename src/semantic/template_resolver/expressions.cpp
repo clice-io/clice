@@ -48,7 +48,7 @@ std::optional<llvm::APSInt> PseudoInstantiator::evaluate(const clang::Expr* expr
     /// Initializers can refer back to each other (or a parameter be
     /// bound to itself); nesting is bounded instead of tracked.
     if(evaluating > 8) {
-        inconclusive = true;
+        give_up(Trouble::Evaluation);
         return std::nullopt;
     }
     evaluating += 1;
@@ -304,7 +304,7 @@ clang::QualType PseudoInstantiator::deduce_auto(const clang::VarDecl* var) {
     /// specialization (`Depth<N>::value` initialized from
     /// `Depth<N - 1>::value`).
     if(!deducing.insert(var).second) {
-        inconclusive = true;
+        give_up(Trouble::Cycle);
         return clang::QualType();
     }
 
