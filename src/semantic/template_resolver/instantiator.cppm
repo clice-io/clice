@@ -239,6 +239,22 @@ struct StepEffects {
     llvm::SmallVector<VisibilityCheck, 0> checks;
 };
 
+/// A step's effects while it runs (PseudoInstantiator::record_effects): a
+/// query judges a declaration alike each time, so it is noted once.
+struct StepRecording {
+    StepEffects effects;
+
+    llvm::SmallPtrSet<const clang::NamedDecl*, 8> judged;
+
+    void judge(llvm::ArrayRef<VisibilityCheck> checks) {
+        for(auto& check: checks) {
+            if(judged.insert(check.decl).second) {
+                effects.checks.push_back(check);
+            }
+        }
+    }
+};
+
 /// A dependent name or specialization resolved, and the declarations whose
 /// visibility its resolution judged.
 struct ResolvedType {
@@ -920,13 +936,13 @@ private:
     }
 
     /// Record the effects of the work up to the end of the scope in
-    /// `effects` too, for a step being kept.
-    auto record_effects(StepEffects& effects) {
-        return llvm::make_scope_exit([this, &effects, outer = std::exchange(recording, &effects)] {
+    /// `step` too, for a step being kept.
+    auto record_effects(StepRecording& step) {
+        return llvm::make_scope_exit([this, &step, outer = std::exchange(recording, &step)] {
             recording = outer;
             if(outer) {
-                outer->open_defaults.append(effects.open_defaults);
-                outer->checks.append(effects.checks);
+                outer->effects.open_defaults.append(step.effects.open_defaults);
+                outer->judge(step.effects.checks);
             }
         });
     }
@@ -968,9 +984,9 @@ private:
             return known.result;
         }
         auto judged = own_conclusion();
-        StepEffects effects;
+        StepRecording step;
         Result result = [&] {
-            auto recorder = record_effects(effects);
+            auto recorder = record_effects(step);
             return compute();
         }();
         if(!inconclusive) {
@@ -979,7 +995,7 @@ private:
                 UnboundResult<Result>{
                     .result = result,
                     .frames = {stack.frames().begin() + base, stack.frames().end()},
-                    .effects = std::move(effects),
+                    .effects = std::move(step.effects),
             });
         }
         return result;
@@ -1010,7 +1026,7 @@ private:
     void open_default(const clang::Expr* expr) {
         open_defaults.insert(expr);
         if(recording) {
-            recording->open_defaults.push_back(expr);
+            recording->effects.open_defaults.push_back(expr);
         }
     }
 
@@ -1018,7 +1034,7 @@ private:
     /// (unbound_result, the unit's resolved types).
     void judged_visibility(llvm::ArrayRef<VisibilityCheck> checks) {
         if(recording) {
-            recording->checks.append(checks.begin(), checks.end());
+            recording->judge(checks);
         }
     }
 
@@ -1085,7 +1101,7 @@ private:
     llvm::SmallSetVector<const clang::Expr*, 4> open_defaults;
 
     /// Where the step unbound_result is keeping records its effects.
-    StepEffects* recording = nullptr;
+    StepRecording* recording = nullptr;
 
     /// Where the query is answered from; the whole unit when null.
     Visibility* visibility;
