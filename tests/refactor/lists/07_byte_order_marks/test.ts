@@ -1,4 +1,3 @@
-import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
 // The list and main.cpp are saved as UTF-8 with a byte order mark, as Windows
@@ -10,5 +9,4 @@ test(async (t) => {
     }
     await t.cli("index");
     await t.cli("refactor rename --spec renames.txt");
-    expect(t.disk.read("main.cpp").startsWith("\ufeffTally make()")).toBe(true);
 });

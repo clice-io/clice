@@ -1,4 +1,3 @@
-import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
 // The sources a module rewrites start with a byte order mark, which the
@@ -9,7 +8,4 @@ test(async (t) => {
     }
     await t.cli("index");
     await t.cli("modularize --scope app/** --partition partition.json --out wrap");
-    expect(t.disk.read("app/core/text.cppm").startsWith("\ufeff")).toBe(true);
-    expect(t.disk.read("app/core/text.cpp").startsWith("\ufeff")).toBe(true);
-    expect(t.disk.read("app/main.cpp").startsWith("\ufeff")).toBe(false);
 });

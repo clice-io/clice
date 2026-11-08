@@ -38,7 +38,7 @@ test("embedded data keeps the mark", async (t) => {
     // __has_embed looked the file up too.
     const s = await t.start();
     expect(await s.errors("embed.cpp")).toEqual([]);
-    expect(await s.errors("probed.cpp")).toEqual([]);
+    expect(await s.errors("checked.cpp")).toEqual([]);
 });
 
 // The open buffer holds the mark of the file on disk, which the editor's text

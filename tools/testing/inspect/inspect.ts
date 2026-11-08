@@ -427,8 +427,8 @@ export class Inspect extends Client {
         for (const [rel, list] of edits) {
             const original = this.read(rel);
             originals.set(rel, original);
-            const mark = original.slice(0, original.length - withoutBom(original).length);
-            fs.writeFileSync(path.join(this.root, rel), mark + applyEdits(context.file(rel), list));
+            const bom = original.slice(0, original.length - withoutBom(original).length);
+            fs.writeFileSync(path.join(this.root, rel), bom + applyEdits(context.file(rel), list));
         }
         try {
             return [...((await this.run("folding-range", file)).diagnostics ?? [])].sort();

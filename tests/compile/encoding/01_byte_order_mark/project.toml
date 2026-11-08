@@ -4,4 +4,4 @@
 "first.cpp" = []
 # #embed comes with C++26.
 "embed.cpp" = ["-std=c++26"]
-"probed.cpp" = ["-std=c++26"]
+"checked.cpp" = ["-std=c++26"]
