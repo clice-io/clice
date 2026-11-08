@@ -74,7 +74,8 @@ void release_free_memory() {
     }
 }
 
-async::task<> release_free_memory_everywhere() {
+/// release_free_memory on every pool thread, then on this one.
+static async::task<> collect_everywhere() {
     if(!clice_allocator_collect) {
         co_await async::queue([] { release_free_memory(); });
         co_return;
@@ -93,7 +94,7 @@ async::task<> release_free_memory_everywhere() {
                 std::unique_lock lock(mutex);
                 here += 1;
                 arrived.notify_all();
-                if(!waited && !arrived.wait_for(lock, chrono::milliseconds(100), [&] {
+                if(!waited && !arrived.wait_for(lock, chrono::milliseconds(50), [&] {
                        return here == threads;
                    })) {
                     waited = true;
@@ -104,6 +105,22 @@ async::task<> release_free_memory_everywhere() {
     }
     co_await async::when_all(std::move(collects));
     release_free_memory();
+}
+
+async::task<> release_free_memory_everywhere() {
+    // Every call comes from the loop thread.
+    static bool running = false;
+    static bool again = false;
+    if(running) {
+        again = true;
+        co_return;
+    }
+    running = true;
+    auto done = llvm::make_scope_exit([] { running = false; });
+    do {
+        again = false;
+        co_await collect_everywhere();
+    } while(again);
 }
 
 async::task<> watch_termination(int signum, bool& requested, std::function<void()> stop) {
