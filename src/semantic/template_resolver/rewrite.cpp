@@ -657,9 +657,7 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
         LOG_DEBUG("{}→ '{}' (standard rule)", pad(), by_rule->getAsString());
         indent -= 1;
         if(*by_rule != clang::QualType(DNT, 0) && pack_narrowing == 0 && !inconclusive) {
-            cache.resolved.insert_or_assign(
-                DNT,
-                ResolvedType{.type = *by_rule, .checks = step.effects.checks});
+            keep_resolution(DNT, *by_rule, step);
         }
         return *by_rule;
     }
@@ -723,9 +721,7 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
             result.getAsString());
         indent -= 1;
         if(pack_narrowing == 0 && !inconclusive) {
-            cache.resolved.insert_or_assign(
-                DNT,
-                ResolvedType{.type = result, .checks = step.effects.checks});
+            keep_resolution(DNT, result, step);
         }
         return result;
     }
@@ -789,9 +785,7 @@ clang::QualType
                         type.getAsString());
                     indent -= 1;
                     if(cacheable && !inconclusive) {
-                        cache.resolved.insert_or_assign(
-                            TST,
-                            ResolvedType{.type = type, .checks = step.effects.checks});
+                        keep_resolution(TST, type, step);
                     }
                     return type;
                 }
@@ -810,9 +804,7 @@ clang::QualType
                 result.getAsString());
             indent -= 1;
             if(cacheable && !inconclusive) {
-                cache.resolved.insert_or_assign(
-                    TST,
-                    ResolvedType{.type = result, .checks = step.effects.checks});
+                keep_resolution(TST, result, step);
             }
             return result;
         }
@@ -827,9 +819,7 @@ clang::QualType
     /// TU-wide — a truncated query must not poison this node for later
     /// queries that could still resolve it.
     if(cacheable && !inconclusive) {
-        cache.resolved.insert_or_assign(
-            TST,
-            ResolvedType{.type = fallback, .checks = step.effects.checks});
+        keep_resolution(TST, fallback, step);
     }
     return fallback;
 }

@@ -10,6 +10,12 @@ void Visibility::look_from(clang::SourceLocation location) {
     file = place.file.isValid() && !unit.focus_file().contains(place.file) ? place.file
                                                                            : clang::FileID();
     offset = place.offset;
+    unsigned passed = 0;
+    if(file.isValid()) {
+        auto bounds = boundaries(file);
+        passed = ranges::upper_bound(bounds, offset) - bounds.begin();
+    }
+    current = views.try_emplace({file, passed}, views.size() + 1).first->second;
 }
 
 bool Visibility::sees(const clang::NamedDecl* decl) {
@@ -71,6 +77,28 @@ const Visibility::Reach& Visibility::reach(clang::FileID file) {
     return reached.try_emplace(file, std::move(brought)).first->second;
 }
 
+llvm::ArrayRef<std::uint32_t> Visibility::boundaries(clang::FileID file) {
+    auto [found, added] = file_boundaries.try_emplace(file);
+    auto& bounds = found->second;
+    if(!added) {
+        return bounds;
+    }
+    if(auto directive = unit.directives().find(file); directive != unit.directives().end()) {
+        for(auto& import: directive->second.imports) {
+            bounds.push_back(past(import.location));
+        }
+        for(auto& include: directive->second.includes) {
+            bounds.push_back(past(include.location));
+        }
+    }
+    ranges::sort(bounds);
+    return bounds;
+}
+
+std::uint32_t Visibility::past(clang::SourceLocation location) {
+    return unit.produced_at(location).offset + 1;
+}
+
 std::uint32_t Visibility::first_visible(const clang::NamedDecl* decl, clang::FileID file) {
     if(decls::fixed_std_utility(decl)) {
         return 0;
@@ -100,9 +128,6 @@ std::uint32_t Visibility::first_visible(const clang::NamedDecl* decl, clang::Fil
     if(directive == unit.directives().end()) {
         return none;
     }
-    auto past = [&](clang::SourceLocation location) {
-        return unit.produced_at(location).offset + 1;
-    };
     std::uint32_t first = none;
     llvm::StringSet<> modules;
     for(auto& import: directive->second.imports) {

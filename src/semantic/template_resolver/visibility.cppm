@@ -23,6 +23,13 @@ public:
     /// `using std::swap;` brings only the overloads the file sees.
     bool sees(const clang::NamedDecl* decl);
 
+    /// The places that see alike as the one looked from, numbered from 1:
+    /// those of its file between the same two of the file's imports and
+    /// includes, or with the whole unit.
+    std::uint32_t view() const {
+        return current;
+    }
+
 private:
     /// What a file brings in itself: it, every file it includes with what
     /// those include in turn, and the modules they import.
@@ -38,6 +45,13 @@ private:
 
     const Reach& reach(clang::FileID file);
 
+    /// Where in `file` its imports and includes start bringing declarations
+    /// in, in order: past each of them.
+    llvm::ArrayRef<std::uint32_t> boundaries(clang::FileID file);
+
+    /// The offset past a directive at `location` in its file.
+    std::uint32_t past(clang::SourceLocation location);
+
     /// The offset in `file` from which `decl` is visible on its own: 0 when
     /// the file or a forced include declares it or it is a function of the
     /// standard library whose meaning is fixed (decls::fixed_std_utility),
@@ -52,6 +66,15 @@ private:
     clang::FileID file;
 
     std::uint32_t offset = 0;
+
+    /// The view of the place looked from (view).
+    std::uint32_t current = 0;
+
+    /// The views by their file and the boundaries before their places.
+    llvm::DenseMap<std::pair<clang::FileID, unsigned>, std::uint32_t> views;
+
+    /// The boundaries of each file (boundaries).
+    llvm::DenseMap<clang::FileID, llvm::SmallVector<std::uint32_t, 0>> file_boundaries;
 
     /// What each file brings in itself (reach).
     llvm::DenseMap<clang::FileID, Reach> reached;

@@ -261,6 +261,9 @@ struct ResolvedType {
     clang::QualType type;
 
     llvm::SmallVector<VisibilityCheck, 0> checks;
+
+    /// The view (Visibility::view) a query last judged the checks alike in.
+    std::uint32_t view;
 };
 
 /// What a step gave with no template parameter bound, and what it left for
@@ -272,6 +275,9 @@ struct UnboundResult {
     llvm::SmallVector<InstantiationStack::Frame, 1> frames;
 
     StepEffects effects;
+
+    /// The view (Visibility::view) a query last judged its checks alike in.
+    std::uint32_t view;
 };
 
 /// What `name` finds as a member of an object, and its type in the terms the
@@ -995,7 +1001,7 @@ private:
                        Compute&& compute) {
         auto base = stack.size();
         if(auto found = results.find(key);
-           found != results.end() && sees_alike(found->second.effects.checks)) {
+           found != results.end() && sees_alike(found->second.effects.checks, found->second.view)) {
             auto& known = found->second;
             stack.frames().append(known.frames.begin(), known.frames.end());
             for(auto* expr: known.effects.open_defaults) {
@@ -1017,17 +1023,41 @@ private:
                     .result = result,
                     .frames = {stack.frames().begin() + base, stack.frames().end()},
                     .effects = std::move(step.effects),
+                    .view = view(),
             });
         }
         return result;
     }
 
+    /// Where the query is answered from (Visibility::view); 0 for the whole
+    /// unit.
+    std::uint32_t view() const {
+        return visibility ? visibility->view() : 0;
+    }
+
     /// Whether the query judges the visibility of every declaration
-    /// `checks` judged alike.
-    bool sees_alike(llvm::ArrayRef<VisibilityCheck> checks) {
-        return ranges::all_of(checks, [&](const VisibilityCheck& check) {
-            return (!visibility || visibility->sees(check.decl)) == check.seen;
-        });
+    /// `checks` judged alike, as one from `judged_in` did; the view it
+    /// last did so in, kept beside them, updated.
+    bool sees_alike(llvm::ArrayRef<VisibilityCheck> checks, std::uint32_t& judged_in) {
+        auto current = view();
+        if(judged_in == current) {
+            return true;
+        }
+        if(!ranges::all_of(checks, [&](const VisibilityCheck& check) {
+               return (!visibility || visibility->sees(check.decl)) == check.seen;
+           })) {
+            return false;
+        }
+        judged_in = current;
+        return true;
+    }
+
+    /// Keep what `node`, a dependent name or specialization, resolved to,
+    /// with the judgements of `step` that resolved it.
+    void keep_resolution(const void* node, clang::QualType type, const StepRecording& step) {
+        cache.resolved.insert_or_assign(
+            node,
+            ResolvedType{.type = type, .checks = step.effects.checks, .view = view()});
     }
 
     /// What an earlier query resolved `node`, a dependent name or
@@ -1035,7 +1065,7 @@ private:
     /// judgements noted again.
     std::optional<clang::QualType> kept_resolution(const void* node) {
         auto found = cache.resolved.find(node);
-        if(found == cache.resolved.end() || !sees_alike(found->second.checks)) {
+        if(found == cache.resolved.end() || !sees_alike(found->second.checks, found->second.view)) {
             return std::nullopt;
         }
         judged_visibility(found->second.checks);
