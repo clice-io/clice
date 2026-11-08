@@ -58,6 +58,9 @@ public:
         return source->positions();
     }
 
+    /// Replace the text, and with it everything derived from it.
+    void set_text(std::string text);
+
     /// Give the buffer the byte order mark the file on disk starts with, or
     /// take it away: the editor's text leaves the mark out, and the buffer
     /// stands for the file in every compile. Returns whether the text
@@ -178,9 +181,6 @@ public:
     Suspects suspects;
 
 private:
-    /// Replace the text, and with it everything derived from it.
-    void set_text(std::string text);
-
     struct Record {
         FailureRecord failure;
 
