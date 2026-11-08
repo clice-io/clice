@@ -615,6 +615,25 @@ private:
                                      TemplateArguments arguments,
                                      clang::DeclarationName name);
 
+    /// `DNT`, the `type` of a standard library class template's
+    /// specialization, answered by the standard's rule for it (std.cpp)
+    /// rather than by reading the library's definition: the type; `DNT`
+    /// itself when the rule tells the answer waits for what is not known
+    /// (`remove_reference<T>` of a parameter); none where no rule applies.
+    std::optional<clang::QualType> std_type(const clang::DependentNameType* DNT);
+
+    /// What `DNT`, a `conditional<B, T, F>::type` whose condition is not
+    /// known, may be: `T` and `F`; none for any other type.
+    llvm::SmallVector<clang::QualType, 2> std_alternatives(const clang::DependentNameType* DNT);
+
+    /// The condition a standard library template takes as its argument.
+    std::optional<bool> std_condition(const clang::TemplateArgument& argument);
+
+    /// `name` in each of `alternatives`, when every one finds it alike. The
+    /// frames of the last lookup stay.
+    lookup_result lookup_through_alternatives(llvm::ArrayRef<clang::QualType> alternatives,
+                                              clang::DeclarationName name);
+
     /// The partial specializations whose pattern deduces against
     /// `arguments` and survives the pseudo-SFINAE probe (see member_absent).
     llvm::SmallVector<PartialMatch<clang::ClassTemplatePartialSpecializationDecl>, 4>

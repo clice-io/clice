@@ -652,6 +652,18 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
         return clang::QualType(DNT, 0);
     }
 
+    if(auto by_rule = std_type(DNT)) {
+        resolving.erase(DNT);
+        LOG_DEBUG("{}→ '{}' (standard rule)", pad(), by_rule->getAsString());
+        indent -= 1;
+        if(*by_rule != clang::QualType(DNT, 0) && pack_narrowing == 0 && !inconclusive) {
+            cache.resolved.insert_or_assign(
+                DNT,
+                ResolvedType{.type = *by_rule, .checks = effects.checks});
+        }
+        return *by_rule;
+    }
+
     auto stack_size = stack.size();
     auto* decl = preferred(lookup(DNT->getQualifier(), DNT->getIdentifier()));
     clang::QualType type;

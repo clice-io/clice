@@ -33,6 +33,11 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::QualType typ
                                                              clang::DeclarationName name) {
     auto written = type;
     type = resolve_object(type);
+    if(auto* DNT = type->getAs<clang::DependentNameType>()) {
+        if(auto alternatives = std_alternatives(DNT); !alternatives.empty()) {
+            return lookup_through_alternatives(alternatives, name);
+        }
+    }
 
     if(auto* record = type->getAsCXXRecordDecl()) {
         /// A member class reached through a dependent name

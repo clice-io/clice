@@ -409,6 +409,74 @@ ZEST_CASE(InjectedClassKeepsParameters) {
     ZEXPECT(parameter->getDecl() != nullptr);
 }
 
+ZEST_CASE(StandardConditionalBase) {
+    /// A base chosen by `conditional` whose condition is not known (MSVC's
+    /// variant) has a member both choices give alike.
+    add_focus("main.cpp", R"code(
+        namespace std {
+        template <bool B, class T, class F> struct conditional { using type = T; };
+        template <class T, class F> struct conditional<false, T, F> { using type = F; };
+        template <class T> constexpr bool trivial = __is_trivially_destructible(T);
+        template <class... Ts> struct base { void reset(); };
+        template <class... Ts> struct layer : base<Ts...> {};
+        template <class... Ts>
+        struct variant : conditional<(trivial<Ts> && ...), base<Ts...>, layer<Ts...>>::type {
+            void f() { this->reset(); }
+        };
+        }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    ZASSERT(!nodes.members.empty());
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto found = resolver.lookup(nodes.members.back());
+    ZEXPECT(found.isSingleResult());
+}
+
+ZEST_CASE(StandardTypeRules) {
+    /// The standard's traits answer by rule. One of a parameter that may be
+    /// anything waits for it.
+    add_focus("main.cpp", R"code(
+        namespace std {
+        template <class T> struct remove_reference { using type = T; };
+        template <class T> struct decay { using type = T; };
+        template <bool B, class T, class F> struct conditional { using type = T; };
+        template <bool B, class T = void> struct enable_if {};
+        template <class T> struct enable_if<true, T> { using type = T; };
+        }
+        template <class T> struct uses {
+            using stripped = typename std::remove_reference<T&>::type;
+            using decayed = typename std::decay<const T[3]>::type;
+            using chosen = typename std::conditional<true, T, int>::type;
+            using enabled = typename std::enable_if<sizeof(T) == 4, T*>::type;
+            using waiting = typename std::remove_reference<T>::type;
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* T = nodes.named<clang::TemplateTypeParmDecl>("T");
+    ZASSERT(T);
+    auto& context = unit->context();
+    auto parameter = context.getTypeDeclType(T);
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto resolve = [&](llvm::StringRef name) {
+        auto* alias = nodes.named<clang::TypedefNameDecl>(name);
+        return alias ? resolver.resolve(alias->getUnderlyingType()) : clang::QualType();
+    };
+    auto same = [&](clang::QualType lhs, clang::QualType rhs) {
+        return !lhs.isNull() && context.hasSameType(lhs, rhs);
+    };
+    ZEXPECT(same(resolve("stripped"), parameter));
+    ZEXPECT(same(resolve("decayed"), context.getPointerType(parameter.withConst())));
+    ZEXPECT(same(resolve("chosen"), parameter));
+    ZEXPECT(same(resolve("enabled"), context.getPointerType(parameter)));
+    auto waiting = resolve("waiting");
+    ZASSERT(!waiting.isNull());
+    ZEXPECT(waiting->getAs<clang::DependentNameType>() != nullptr);
+}
+
 };  // ZEST_SUITE(TemplateResolver)
 
 }  // namespace
