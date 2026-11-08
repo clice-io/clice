@@ -16,6 +16,10 @@ bool Visibility::sees(const clang::NamedDecl* decl) {
     if(file.isInvalid()) {
         return true;
     }
+    if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(decl);
+       shadow && !sees(shadow->getTargetDecl())) {
+        return false;
+    }
     auto [found, added] = visible_from.try_emplace({file, decl->getCanonicalDecl()}, 0);
     if(added) {
         found->second = first_visible(decl, file);

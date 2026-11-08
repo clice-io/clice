@@ -18,7 +18,9 @@ public:
     /// See from `location` on; from a place in no file, the whole unit.
     void look_from(clang::SourceLocation location);
 
-    /// Whether the place looked from sees `decl`.
+    /// Whether the place looked from sees `decl`. What a using-declaration
+    /// brings in is seen where its target is too: compiled alone, the file's
+    /// `using std::swap;` brings only the overloads the file sees.
     bool sees(const clang::NamedDecl* decl);
 
 private:

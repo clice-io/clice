@@ -337,6 +337,43 @@ ZEST_CASE(KeptPerView) {
     }
 }
 
+ZEST_CASE(UsingDeclarationPerView) {
+    /// util.h's using-declaration names both erase_if overloads the unit
+    /// declared before it; util.h on its own sees lib.h's alone.
+    add_file("lib.h", R"code(
+        #pragma once
+        namespace ns {
+        template <class T> struct vec {};
+        template <class T> int erase_if(vec<T>& c) { return 0; }
+        }
+    )code");
+    add_file("util.h", R"code(
+        #pragma once
+        #include "lib.h"
+        namespace app {
+        using ns::erase_if;
+        template <class C> int remove_bad(C& c) { return erase_if(c); }
+        }
+    )code");
+    add_focus("main.cpp", R"code(
+        #include "lib.h"
+        namespace ns {
+        template <class T> struct list {};
+        template <class T> int erase_if(list<T>& c) { return 1; }
+        }
+        #include "util.h"
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* call = nodes.call_through<clang::UnresolvedLookupExpr>();
+    ZASSERT(call);
+
+    auto& resolver = unit->get<types::TemplateResolver>();
+    resolver.see_from(call->getBeginLoc());
+    ZEXPECT(resolver.callees(call).size() == 1);
+}
+
 };  // ZEST_SUITE(TemplateResolver)
 
 }  // namespace
