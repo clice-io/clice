@@ -1,6 +1,7 @@
 [units]
 "main.cpp" = []
 "c.cpp" = []
+"codes.cpp" = []
 "first.cpp" = []
 # #embed comes with C++26.
 "embed.cpp" = ["-std=c++26"]

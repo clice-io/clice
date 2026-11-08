@@ -1,5 +1,5 @@
 #include "core/text.h"
 
 int main() {
-    return core::Text{}.size();
+    return core::Text{}.size() - CORE_ONE;
 }

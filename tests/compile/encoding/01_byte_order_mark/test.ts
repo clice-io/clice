@@ -1,8 +1,8 @@
 import { expect } from "vitest";
 import { answers, test } from "@clice/tools/testing";
 
-// a.h, c.cpp, first.cpp and main.cpp start with a UTF-8 byte order mark, as
-// files saved "with BOM" do; data.bin starts with the same bytes.
+// a.h, c.cpp, codes.cpp, first.cpp and main.cpp start with a UTF-8 byte order
+// mark, as files saved "with BOM" do; data.bin starts with the same bytes.
 
 answers("first line", async (a) => {
     await a.show("user3", a.hover(a.at("c.cpp", "int |user3")));
@@ -27,9 +27,12 @@ answers(
 );
 
 test("marked host keeps the context", async (t) => {
+    // codes.cpp opens a brace before anything else, so errors.def's context
+    // is cut from its very start.
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);
     expect(await s.errors("utils.h")).toEqual([]);
+    expect(await s.errors("errors.def")).toEqual([]);
     await t.show("utils.h", s.contexts("utils.h"));
 });
 
