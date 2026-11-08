@@ -808,7 +808,7 @@ public:
     /// into variants that differ by those alone; what instantiations call,
     /// the instantiation shards hold.
     bool sees_on_its_own(const clang::NamedDecl* candidate, clang::SourceLocation at) {
-        auto [file, offset] = unit.context().getSourceManager().getDecomposedExpansionLoc(at);
+        auto [file, offset] = unit.produced_at(at);
         if(unit.focus_file().contains(file)) {
             return true;
         }
@@ -823,10 +823,9 @@ public:
     /// (sees_on_its_own): 0 when the file declares it, past the first
     /// import or include bringing a declaration in, else none.
     std::uint32_t first_visible(const clang::NamedDecl* candidate, clang::FileID file) {
-        auto& SM = unit.context().getSourceManager();
         llvm::SmallVector<std::pair<clang::FileID, const clang::Module*>, 2> declared;
         for(const auto* redecl: candidate->redecls()) {
-            declared.emplace_back(SM.getFileID(SM.getExpansionLoc(redecl->getLocation())),
+            declared.emplace_back(unit.produced_at(redecl->getLocation()).file,
                                   redecl->getOwningModule());
         }
         if(ranges::any_of(declared, [&](const auto& entry) { return entry.first == file; })) {
@@ -846,7 +845,7 @@ public:
             return none;
         }
         auto past = [&](clang::SourceLocation location) {
-            return SM.getDecomposedExpansionLoc(location).second + 1;
+            return unit.produced_at(location).offset + 1;
         };
         std::uint32_t first = none;
         llvm::StringSet<> modules;
