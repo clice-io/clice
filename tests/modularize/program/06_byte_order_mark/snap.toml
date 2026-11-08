@@ -1,6 +1,6 @@
 [test."$ clice index"]
 stdout = '''
-Indexed 2 translation units in #s: 3 file shards (# KB), 4 symbols.
+Indexed 2 translation units in #s: 3 file shards (# KB), 5 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
@@ -34,7 +34,9 @@ stdout = '''
     "importers": [
       "app/main.cpp"
     ],
-    "macros": [],
+    "macros": [
+      "app/core/text.macros.h"
+    ],
     "removed": [
       "app/core/text.h"
     ],
@@ -58,7 +60,13 @@ exit = 0
  int core::Text::size() const {
 '''
 "app/core/text.cppm" = '''
-+﻿export module app.core:text;
++﻿module;
++
++#include "wrap/prelude.h"
++
++#define CORE_ONE 1
++
++export module app.core:text;
 +
 +export {
 +
@@ -72,9 +80,15 @@ exit = 0
 +}
 '''
 "app/core/text.h" = "(removed)"
+"app/core/text.macros.h" = '''
++﻿#pragma once
++
++#define CORE_ONE 1
+'''
 "app/main.cpp" = '''
 -#include "core/text.h"
 +#include "wrap/prelude.h"
++#include "core/text.macros.h"
 +import app.core;
 
  int main() {

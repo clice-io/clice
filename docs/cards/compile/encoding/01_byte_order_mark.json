@@ -19,6 +19,16 @@
       "markers": []
     },
     {
+      "path": "checked.cpp",
+      "text": "#if !__has_embed(\"data.bin\")\n#error data.bin cannot be embedded\n#endif\n\nconstexpr unsigned char checked[] = {\n#embed \"data.bin\"\n};\n\nstatic_assert(sizeof(checked) == 5);\n",
+      "markers": []
+    },
+    {
+      "path": "codes.cpp",
+      "text": "﻿enum class Code {\n#define ERROR(name, value) name = value,\n#include \"errors.def\"\n#undef ERROR\n};\n",
+      "markers": []
+    },
+    {
       "path": "data.bin",
       "text": "﻿AB",
       "markers": []
@@ -29,6 +39,11 @@
       "markers": []
     },
     {
+      "path": "errors.def",
+      "text": "ERROR(NotFound, 404)\nERROR(Forbidden, 403)\n",
+      "markers": []
+    },
+    {
       "path": "first.cpp",
       "text": "﻿auto answer = []{\n    return 42;\n}();\n",
       "markers": []
@@ -36,11 +51,6 @@
     {
       "path": "main.cpp",
       "text": "﻿#include \"types.h\"\n#include \"utils.h\"\n#include \"a.h\"\n\nint main() {\n    return get_x({1, 2}) + shared_fn();\n}\n",
-      "markers": []
-    },
-    {
-      "path": "probed.cpp",
-      "text": "#if !__has_embed(\"data.bin\")\n#error data.bin cannot be embedded\n#endif\n\nconstexpr unsigned char probed[] = {\n#embed \"data.bin\"\n};\n\nstatic_assert(sizeof(probed) == 5);\n",
       "markers": []
     },
     {
