@@ -131,7 +131,7 @@ void ServedProject::retry_after_save(Session& session) {
     // runs it again. A result that stands holds for the text saved.
     auto selection = project.select_command(path_id, command_request(path_id));
     if(selection.self_containment) {
-        auto compiled = latest_at(path_id, session.version);
+        auto compiled = latest_at(session);
         bool leans =
             !compiled || feature::missing_context_diagnostics(compiled->output->diagnostics.own,
                                                               session.text()) > 0;

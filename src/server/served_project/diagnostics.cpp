@@ -81,7 +81,7 @@ std::vector<feature::FileDiagnostic>
     }
     // A compile that failed or is stopped left an output of an older
     // buffer, whose ranges a versionless report would place on this one.
-    if(auto compiled = latest_at(session.path_id, session.version)) {
+    if(auto compiled = latest_at(session)) {
         return shown_diagnostics(session, *compiled->output);
     }
     return shown_diagnostics(session, {});
@@ -131,7 +131,7 @@ void ServedProject::show_skipped_diagnostics(Fid path_id) {
         return;
     }
     auto& session = *server.find_session(path_id);
-    auto compiled = latest_at(path_id, session.version);
+    auto compiled = latest_at(session);
     if(!compiled) {
         return;
     }

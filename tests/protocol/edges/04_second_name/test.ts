@@ -43,8 +43,9 @@ test("the second takes over", POSIX, async (t) => {
     await t.show("second", s.diagnostics("link/main.cpp"));
 });
 
-// The file starts with a byte order mark: both buffers hold it, as the disk
-// does, and a save that drops it drops it from both.
+// The file starts with a byte order mark, which the first document's buffer
+// holds and the second's does not: their texts agree, before and after a
+// save that drops the mark.
 test("a marked second name", POSIX, async (t) => {
     t.disk.write("real/main.cpp", `\ufeff${t.disk.read("main.cpp")}`);
     t.disk.rm("main.cpp");
