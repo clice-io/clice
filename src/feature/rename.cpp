@@ -7,6 +7,7 @@ import :index.search;
 import :index.site;
 import :index.symbol_query;
 import :semantic.identity;
+import :support.text;
 import :syntax.lexer;
 import :syntax.source_text;
 
@@ -19,10 +20,11 @@ namespace {
 llvm::SmallVector<std::uint32_t, 1>
     spellings(llvm::StringRef text, std::uint32_t begin, std::uint32_t end, llvm::StringRef name) {
     llvm::SmallVector<std::uint32_t, 1> found;
+    auto text_begin = leading_bom(text).size();
     for(auto at = text.find(name, begin); at != llvm::StringRef::npos && at + name.size() <= end;
         at = text.find(name, at + 1)) {
         auto after = at + name.size();
-        if((at == 0 || !is_identifier_char(text[at - 1])) &&
+        if((at == text_begin || !is_identifier_char(text[at - 1])) &&
            (after == text.size() || !is_identifier_char(text[after]))) {
             found.push_back(static_cast<std::uint32_t>(at));
         }

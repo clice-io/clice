@@ -4,7 +4,7 @@
   "subtopic": "encoding",
   "title": "Byte order marks",
   "summary": "Files saved as UTF-8 with a byte order mark work like any other",
-  "prose": "Positions on the first line skip the mark, as the editor shows it, and data a file embeds keeps its bytes.",
+  "prose": "Positions on the first line skip the mark, as the editor shows it, and data a file embeds keeps its bytes. Saving an open file with the mark or without it changes nothing the editor shows.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -29,8 +29,18 @@
       "markers": []
     },
     {
+      "path": "first.cpp",
+      "text": "﻿auto answer = []{\n    return 42;\n}();\n",
+      "markers": []
+    },
+    {
       "path": "main.cpp",
       "text": "﻿#include \"types.h\"\n#include \"utils.h\"\n#include \"a.h\"\n\nint main() {\n    return get_x({1, 2}) + shared_fn();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "probed.cpp",
+      "text": "#if !__has_embed(\"data.bin\")\n#error data.bin cannot be embedded\n#endif\n\nconstexpr unsigned char probed[] = {\n#embed \"data.bin\"\n};\n\nstatic_assert(sizeof(probed) == 5);\n",
       "markers": []
     },
     {
@@ -68,6 +78,65 @@
                 }
               }
             }
+          }
+        },
+        {
+          "label": "folds",
+          "value": {
+            "folding_ranges": [
+              {
+                "kind": "compoundStmt",
+                "at": {
+                  "$place": "auto answer = []⟦{ … }⟧ (3 lines)",
+                  "path": "first.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              }
+            ]
+          }
+        },
+        {
+          "label": "auto",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'auto' with 'int'",
+                "compiles": true,
+                "edits": {
+                  "first.cpp": "-auto answer = []{\n+int answer = []{\n     return 42;\n }();"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "completion",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "formatting",
+      "blocks": [
+        {
+          "label": "first.cpp",
+          "value": {
+            "formatting": "-auto answer = []{\n-    return 42;\n-}();\n+auto answer = [] { return 42; }();"
           }
         }
       ]
@@ -143,6 +212,86 @@
     {
       "name": "embedded data keeps the mark",
       "blocks": []
+    },
+    {
+      "name": "saves move the mark",
+      "blocks": [
+        {
+          "label": "marked",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "user3",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦user3⟧() {",
+                  "path": "c.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 9
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "unmarked",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "user3",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦user3⟧() {",
+                  "path": "c.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 9
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "marked again",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "user3",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦user3⟧() {",
+                  "path": "c.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 9
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
     }
   ]
 }

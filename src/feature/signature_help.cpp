@@ -9,6 +9,7 @@ import :semantic.display;
 import :semantic.template_resolver;
 import :semantic.types;
 import :support.markup;
+import :support.text;
 import :syntax.completion;
 import :syntax.documentation;
 import :syntax.lexer;
@@ -1188,7 +1189,7 @@ auto dependent_call_at(CompilationUnit& unit, std::uint32_t offset)
     auto focus = unit.focus_file();
     auto content = focus.content();
     auto typed = offset;
-    while(typed > 0 && is_identifier_char(content[typed - 1])) {
+    while(typed > leading_bom(content).size() && is_identifier_char(content[typed - 1])) {
         typed -= 1;
     }
     auto stop = focus.location(typed < offset && llvm::isDigit(content[typed]) ? offset : typed);

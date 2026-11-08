@@ -1,0 +1,2 @@
+# The first token of main.cpp names a type, which a forced include declares.
+flags = ["-include", "types.h"]
