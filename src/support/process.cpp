@@ -74,39 +74,6 @@ void release_free_memory() {
     }
 }
 
-/// release_free_memory on every pool thread, then on this one.
-static async::task<> collect_everywhere() {
-    if(!clice_allocator_collect) {
-        co_await async::queue([] { release_free_memory(); });
-        co_return;
-    }
-    auto threads = thread_pool_size();
-    std::mutex mutex;
-    std::condition_variable arrived;
-    std::size_t here = 0;
-    // Once one collect has waited in vain, the threads still busy will not
-    // come: the later collects, queued behind them, run without waiting.
-    bool waited = false;
-    std::vector<async::task<>> collects;
-    for(std::size_t i = 0; i < threads; i += 1) {
-        collects.push_back(async::queue([&] {
-            {
-                std::unique_lock lock(mutex);
-                here += 1;
-                arrived.notify_all();
-                if(!waited && !arrived.wait_for(lock, chrono::milliseconds(50), [&] {
-                       return here == threads;
-                   })) {
-                    waited = true;
-                }
-            }
-            release_free_memory();
-        }));
-    }
-    co_await async::when_all(std::move(collects));
-    release_free_memory();
-}
-
 async::task<> release_free_memory_everywhere() {
     // Every call comes from the loop thread.
     static bool running = false;
@@ -119,7 +86,35 @@ async::task<> release_free_memory_everywhere() {
     auto done = llvm::make_scope_exit([] { running = false; });
     do {
         again = false;
-        co_await collect_everywhere();
+        if(!clice_allocator_collect) {
+            co_await async::queue([] { release_free_memory(); });
+            continue;
+        }
+        auto threads = thread_pool_size();
+        std::mutex mutex;
+        std::condition_variable arrived;
+        std::size_t here = 0;
+        // Once one collect has waited in vain, the threads still busy will not
+        // come: the later collects, queued behind them, run without waiting.
+        bool waited = false;
+        std::vector<async::task<>> collects;
+        for(std::size_t i = 0; i < threads; i += 1) {
+            collects.push_back(async::queue([&] {
+                {
+                    std::unique_lock lock(mutex);
+                    here += 1;
+                    arrived.notify_all();
+                    if(!waited && !arrived.wait_for(lock, chrono::milliseconds(50), [&] {
+                           return here == threads;
+                       })) {
+                        waited = true;
+                    }
+                }
+                release_free_memory();
+            }));
+        }
+        co_await async::when_all(std::move(collects));
+        release_free_memory();
     } while(again);
 }
 

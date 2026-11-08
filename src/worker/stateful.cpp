@@ -350,9 +350,6 @@ RequestResult<worker::CompileParams>
         },
         [stop] { stop->store(true, std::memory_order_relaxed); });
 
-    // The AST this compile replaced was freed on this thread, but built on
-    // the pool thread that compiled it; the compile's own leftovers are on
-    // its own.
     async::event_loop::current().schedule(release_free_memory_everywhere());
     co_return compile_result;
 }
