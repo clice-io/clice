@@ -165,10 +165,10 @@ struct Directive {
     std::vector<Condition> conditions;
     std::vector<MacroRef> macros;
     /// The macro names directives spell where no definition resolves
-    /// them: a condition testing a name nothing defines there (`#ifndef X`
-    /// before its `#define`), one the preprocessor does not evaluate (an
-    /// `#elif` past a taken branch), and every directive of a block it
-    /// skips (the other branch's `#define`).
+    /// them: a condition testing, or an `#undef` naming, a name nothing
+    /// defines there (`#ifndef X` before its `#define`), a condition the
+    /// preprocessor does not evaluate (an `#elif` past a taken branch), and
+    /// every directive of a block it skips (the other branch's `#define`).
     std::vector<clang::SourceLocation> unresolved_macros;
     std::vector<DiagnosticPragma> diagnostic_pragmas;
     /// The `_Pragma` and `__pragma` operators the preprocessor executed,

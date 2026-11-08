@@ -109,8 +109,9 @@ public:
 
     bool stale(Fid file, std::uint64_t content_hash) const;
 
-    /// stale() without withholding: whether the file moved on, for a
-    /// reader that serves nothing from it.
+    /// Whether the file's content moved on from `content_hash`, an index
+    /// that keeps serving (FreshnessOptions::withhold off) included,
+    /// withholding nothing: for a reader that serves nothing from it.
     bool moved_on(Fid file, std::uint64_t content_hash) const;
 
     /// The files whose indexes were withheld, in no particular order.
@@ -295,10 +296,9 @@ public:
         return index.shard(file) != nullptr;
     }
 
-    /// The files the index holds whose text it no longer describes: an
-    /// open buffer edited since both its compile and its shard, a file
-    /// changed on disk since it was indexed — which its file record tells,
-    /// no shard read.
+    /// The files whose text the index no longer describes: an open buffer
+    /// edited since both its compile and its shard, a file changed on disk
+    /// since it was indexed — which its file record tells, no shard read.
     std::vector<Fid> outdated_files() const;
 
     /// The file's shard when `text` is byte-identical to the content it

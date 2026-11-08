@@ -257,6 +257,9 @@ ZEST_CASE(ClassTemplateFamily) {
 
         §(guide)§Box(const char*) -> §Box<int>;
 
+        template <typename T>
+        §Box(T*, int) -> §Box<T*>;
+
         §Box<int> boxed(1);
         §Box<double*> pointer;
     )");
@@ -803,7 +806,7 @@ ZEST_CASE(LocalsStayHome) {
     ZEXPECT(edits(*renamed) == marks());
     ZEXPECT(clean(*renamed));
 
-    change("b.h", "#define entries 1\n#define ROWS rows\n");
+    change("b.h", "#define entries 1\n");
     renamed = rename_at("cursor", "entries");
     ZASSERT(renamed);
     ZEXPECT(renamed->blocked());
@@ -854,15 +857,26 @@ ZEST_CASE(MacroAcrossUnits) {
         #undef §LIMIT
     )");
     merge();
+    clear();
+    // A file neither defining nor using it tests the name for its own.
+    add_focus(file("c.cpp"), R"(
+        #ifdef LIMIT
+        #endif
+    )");
+    merge();
 
-    auto renamed = rename_at("cursor", "BOUND");
+    auto renamed = rename("LIMIT", "BOUND");
     ZASSERT(renamed);
     ZEXPECT(edits(*renamed) == marks());
-    ZEXPECT(clean(*renamed));
+    ZEXPECT(!renamed->blocked());
+    ZASSERT(renamed->unconfirmed.size() == 1U);
+    ZEXPECT(renamed->unconfirmed.front().site.path.ends_with("c.cpp"));
+    ZEXPECT(renamed->unconfirmed.front().reason.contains("no #define of it reaches"));
 }
 
 ZEST_CASE(MacroBranches) {
     add_focus(file("a.cpp"), R"(
+        #undef §LIMIT
         #ifdef BIG
         #define §LIMIT 100
         #elif defined(§LIMIT)

@@ -25,9 +25,9 @@ std::optional<std::string> invalid_identifier(llvm::StringRef name);
 /// constructors, destructor and deduction guides, its specializations and
 /// theirs, the overrides a virtual function is linked with. A macro's are
 /// the definitions of its name linked with it: those in a file defining
-/// one of them (the branches of an `#if`, a redefinition after `#undef`),
-/// and those a use of one resolves to as well (a shared header under
-/// other definitions, the expansions of a body naming it).
+/// or using one of them (the branches of an `#if`, a redefinition after
+/// `#undef`), and those a use of one resolves to as well (a shared header
+/// under other definitions, the expansions of a body naming it).
 struct RenameTarget {
     index::IndexQuery::Located symbol;
     std::vector<index::IndexQuery::Located> group;

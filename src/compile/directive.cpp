@@ -492,9 +492,9 @@ public:
                  clang::SourceRange) override {
         if(auto def = definition.getMacroInfo()) {
             add_macro(def, MacroRef::Ref, name.getLocation());
-        } else if(name.getLocation().isFileID()) {
+        } else if(auto written = argument_spelling(name.getLocation()); written.isFileID()) {
             // One a body spells (`#define HAS_X defined(X)`) is the body's.
-            add_unresolved(name.getLocation());
+            add_unresolved(written);
         }
     }
 
@@ -503,6 +503,8 @@ public:
                         const clang::MacroDirective* undef) override {
         if(auto def = md.getMacroInfo()) {
             add_macro(def, MacroRef::Undef, name.getLocation());
+        } else {
+            add_unresolved(name.getLocation());
         }
     }
 

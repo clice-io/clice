@@ -100,13 +100,17 @@ const clang::LangOptions& c() {
     return raw_dialect(clang::Language::C, clang::LangStandard::lang_c23);
 }
 
-/// Why a rename leaves a macro the compile command or the compiler
-/// defines (`-DNAME`, `__GNUC__`): no indexed `#define` is its.
-std::string command_line_macro(llvm::StringRef name) {
+/// Why a rename cannot reach a macro whose `#define` the index does not
+/// serve: the compile command or the compiler defines it (`-DNAME`,
+/// `__GNUC__`), or the file defining it moved on since it was indexed.
+std::string unplaced_macro(const index::SymbolInfo& macro) {
+    if(index::has_flag(macro.flags, index::SymbolFlags::HasDefinition)) {
+        return std::format("the file defining `{}` changed since it was indexed", macro.name);
+    }
     return std::format(
         "no #define of `{}` is indexed: the compile command or the compiler "
         "defines it, which a rename cannot change",
-        std::string_view(name));
+        macro.name);
 }
 
 /// The rename target of a macro: the definitions of its name a rename of
@@ -129,16 +133,15 @@ std::expected<RenameTarget, std::string> macro_target(const index::IndexQuery& q
 
     RenameTarget target{.symbol = named};
     llvm::DenseSet<index::SymbolHash> seen{named.symbol.hash};
-    llvm::DenseSet<Fid> defining;
+    // The files defining or using one of them.
+    llvm::DenseSet<Fid> tied;
     std::vector<index::IndexQuery::Located> pending{named};
     while(!pending.empty()) {
         auto next = std::move(pending.back());
         pending.pop_back();
         for(auto kind: {RelationKind::Definition, RelationKind::Reference}) {
             for(auto& site: query.sites(next.symbol.hash, next.site.file, kind)) {
-                if(kind == RelationKind::Definition) {
-                    defining.insert(site.file);
-                }
+                tied.insert(site.file);
                 auto cursor = query.symbol_at(site.file, site.range.begin);
                 if(!cursor) {
                     continue;
@@ -151,12 +154,11 @@ std::expected<RenameTarget, std::string> macro_target(const index::IndexQuery& q
                     }
                     auto located = query.resolve(other, site.file);
                     if(!located) {
-                        return std::unexpected(std::format(
-                            "`{}` at {} is, in some units, the macro their compile command "
-                            "defines (-D{}), which a rename cannot change",
-                            std::string_view(name),
-                            where(site),
-                            std::string_view(name)));
+                        return std::unexpected(
+                            std::format("`{}` at {} is, in some units, another macro: {}",
+                                        std::string_view(name),
+                                        where(site),
+                                        unplaced_macro(*info)));
                     }
                     if(in_system_header(*located)) {
                         return std::unexpected(
@@ -170,8 +172,7 @@ std::expected<RenameTarget, std::string> macro_target(const index::IndexQuery& q
         }
         target.group.push_back(std::move(next));
         for(auto& definition: definitions) {
-            if(defining.contains(definition.site.file) &&
-               seen.insert(definition.symbol.hash).second) {
+            if(tied.contains(definition.site.file) && seen.insert(definition.symbol.hash).second) {
                 pending.push_back(definition);
             }
         }
@@ -303,9 +304,17 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
             refused = std::move(target.error());
             continue;
         }
-        if(found && found->symbol.symbol.hash != target->symbol.symbol.hash) {
-            return std::unexpected(
-                "the name here resolves to several symbols; rename from one of their declarations");
+        if(found) {
+            // A macro's definitions linked together are one rename.
+            if(!ranges::contains(
+                   found->group,
+                   target->symbol.symbol.hash,
+                   [](const index::IndexQuery::Located& member) { return member.symbol.hash; })) {
+                return std::unexpected(
+                    "the name here resolves to several symbols; rename from "
+                    "one of their declarations");
+            }
+            continue;
         }
         found = std::move(*target);
     }
@@ -313,7 +322,7 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
         for(auto symbol: cursor->symbols) {
             if(auto info = query.symbol_info(symbol, cursor->site.file);
                info && info->kind == SymbolKind::Macro) {
-                return std::unexpected(command_line_macro(info->name));
+                return std::unexpected(unplaced_macro(*info));
             }
         }
     }
@@ -692,10 +701,11 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
                                   target.symbol.site.file,
                                   RelationKind::Reference);
         if(!tested.empty()) {
-            plan.conflicts.push_back(std::format("a directive tests `{}` ({}), which the macro "
-                                                 "would define",
-                                                 std::string_view(new_name),
-                                                 where(tested.front())));
+            plan.conflicts.push_back(
+                std::format("a directive tests `{}` ({}), which the macro "
+                            "would define",
+                            std::string_view(new_name),
+                            where(tested.front())));
         }
     } else {
         // The scope a name is looked up in: an unscoped enumerator's is its

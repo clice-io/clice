@@ -167,7 +167,7 @@ void add_resolved(const InstantiationShard& shard,
 }
 
 bool FreshnessGate::stale(Fid file, std::uint64_t content_hash) const {
-    if(!moved_on(file, content_hash)) {
+    if(!options.withhold || !moved_on(file, content_hash)) {
         return false;
     }
     withheld_files.insert(file);
@@ -175,9 +175,6 @@ bool FreshnessGate::stale(Fid file, std::uint64_t content_hash) const {
 }
 
 bool FreshnessGate::moved_on(Fid file, std::uint64_t content_hash) const {
-    if(!options.withhold) {
-        return false;
-    }
     if(options.check_disk && checked.insert(file).second) {
         files.disk.current(file);
     }
@@ -283,11 +280,20 @@ void IndexQuery::for_each_overlay(llvm::function_ref<bool(const TUIndex&)> visit
 
 std::vector<Fid> IndexQuery::outdated_files() const {
     std::vector<Fid> outdated;
+    llvm::DenseSet<Fid> recorded;
     index.for_each_indexed_file([&](Fid file, std::uint64_t content) {
+        recorded.insert(file);
         if(buffer_of(file) ? !serving(file) : gate && gate->moved_on(file, content)) {
             outdated.push_back(file);
         }
     });
+    // A buffer of a file the disk index never held, edited since its
+    // compile indexed it.
+    for(auto& buffer: open) {
+        if(!recorded.contains(buffer.file) && buffer.index && !serving(buffer.file)) {
+            outdated.push_back(buffer.file);
+        }
+    }
     return outdated;
 }
 

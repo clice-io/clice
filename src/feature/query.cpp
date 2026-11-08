@@ -238,6 +238,16 @@ Result<RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
     }
     std::vector<RenameTarget> targets;
     for(auto& candidate: *candidates) {
+        // A constructor of a class found, a macro's linked definition: the
+        // target found renames it already.
+        if(ranges::any_of(targets, [&](const RenameTarget& known) {
+               return ranges::contains(
+                   known.group,
+                   candidate.symbol.hash,
+                   [](const index::IndexQuery::Located& member) { return member.symbol.hash; });
+           })) {
+            continue;
+        }
         auto target = rename_target(ctx.query, candidate);
         if(!target) {
             if(candidates->size() == 1) {
@@ -245,12 +255,7 @@ Result<RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
             }
             return ambiguous(ctx, *candidates);
         }
-        auto root = target->symbol.symbol.hash;
-        if(ranges::none_of(targets, [&](const RenameTarget& known) {
-               return known.symbol.symbol.hash == root;
-           })) {
-            targets.push_back(std::move(*target));
-        }
+        targets.push_back(std::move(*target));
     }
     if(targets.size() > 1) {
         llvm::SmallVector<const index::IndexQuery::Located*> roots;
