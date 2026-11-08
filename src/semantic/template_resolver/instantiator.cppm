@@ -954,14 +954,13 @@ private:
             return;
         }
         llvm::SmallVector<VisibilityCheck, 4> checks;
-        llvm::erase_if(found, [&](const clang::NamedDecl* decl) { return !seen(decl, checks); });
+        llvm::erase_if(found, [&](const clang::NamedDecl* decl) {
+            bool seen = visibility->sees(decl);
+            checks.push_back({decl, seen});
+            return !seen;
+        });
         judged_visibility(checks);
     }
-
-    /// Whether the query sees `decl`, the judgement added to `checks`. A
-    /// function of the standard library whose meaning is fixed
-    /// (decls::fixed_std_utility) is seen wherever it is declared, unjudged.
-    bool seen(const clang::NamedDecl* decl, llvm::SmallVectorImpl<VisibilityCheck>& checks);
 
     /// The partial specializations of a template the query sees.
     llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*, 4>

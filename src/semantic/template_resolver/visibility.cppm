@@ -36,8 +36,9 @@ private:
     const Reach& reach(clang::FileID file);
 
     /// The offset in `file` from which `decl` is visible on its own: 0 when
-    /// the file declares it, past the first import or include bringing a
-    /// declaration in, else none.
+    /// the file declares it or it is a function of the standard library
+    /// whose meaning is fixed (decls::fixed_std_utility), past the first
+    /// import or include bringing a declaration in, else none.
     std::uint32_t first_visible(const clang::NamedDecl* decl, clang::FileID file);
 
 private:

@@ -1,5 +1,6 @@
 module clice;
 
+import :semantic.decls;
 import :semantic.template_resolver.visibility;
 
 namespace clice::types {
@@ -67,6 +68,9 @@ const Visibility::Reach& Visibility::reach(clang::FileID file) {
 }
 
 std::uint32_t Visibility::first_visible(const clang::NamedDecl* decl, clang::FileID file) {
+    if(decls::fixed_std_utility(decl)) {
+        return 0;
+    }
     llvm::SmallVector<std::pair<clang::FileID, const clang::Module*>, 2> declared;
     for(const auto* redecl: decl->redecls()) {
         declared.emplace_back(unit.produced_at(redecl->getLocation()).file,

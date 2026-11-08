@@ -643,16 +643,6 @@ void
     candidates.assign(kept.begin(), kept.end());
 }
 
-bool PseudoInstantiator::seen(const clang::NamedDecl* decl,
-                              llvm::SmallVectorImpl<VisibilityCheck>& checks) {
-    if(decls::fixed_std_utility(decl)) {
-        return true;
-    }
-    bool sees = visibility->sees(decl);
-    checks.push_back({decl, sees});
-    return sees;
-}
-
 llvm::SmallVector<const clang::NamedDecl*, 4>
     PseudoInstantiator::overloads(const clang::OverloadExpr* expr) {
     llvm::SmallVector<const clang::NamedDecl*, 4> found(expr->decls_begin(), expr->decls_end());

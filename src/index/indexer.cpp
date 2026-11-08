@@ -1142,8 +1142,11 @@ public:
         const auto* stmt = semantics.node(i).node.get<clang::Stmt>();
         written_location = stmt ? stmt->getBeginLoc() : clang::SourceLocation();
         // A header's entries are what the header sees on its own, as every
-        // unit including it shares them.
-        resolver.see_from(semantics.node(i).node.source_range().getBegin());
+        // unit including it shares them; what a declaration holds sees what
+        // the declaration does.
+        if(const auto* decl = semantics.node(i).node.get<clang::Decl>()) {
+            resolver.see_from(decl->getLocation());
+        }
         if(instantiation_entries && !stmt) {
             project_placeholder(semantics, i);
             if(const auto* value = semantics.node(i).node.get<clang::ValueDecl>()) {
