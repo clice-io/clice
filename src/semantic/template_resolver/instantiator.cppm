@@ -305,6 +305,11 @@ struct UnitCache {
 
     /// Members by the resolved object and the name (member_of).
     llvm::DenseMap<std::pair<const void*, const void*>, UnboundResult<Member>> members;
+
+    /// The explicit specializations of each class and variable template
+    /// (PseudoInstantiator::explicit_specializations).
+    llvm::DenseMap<const clang::Decl*, llvm::SmallVector<clang::NamedDecl*, 0>>
+        explicit_specializations;
 };
 
 /// The core pseudo-instantiation engine, one query's state. Resolves
@@ -703,6 +708,22 @@ private:
 
     llvm::SmallVector<clang::VarTemplateSpecializationDecl*, 2>
         undecided_specializations(clang::VarTemplateDecl* VTD, TemplateArguments arguments);
+
+    /// The explicit specializations of `TD`, kept for the unit: what it
+    /// instantiated beside them, which a match would walk through each
+    /// time, runs to hundreds.
+    template <typename Template>
+    llvm::SmallVector<clang::NamedDecl*, 2> explicit_specializations(Template* TD) {
+        auto [found, added] = cache.explicit_specializations.try_emplace(TD);
+        if(added) {
+            for(auto* specialization: TD->specializations()) {
+                if(specialization->isExplicitSpecialization()) {
+                    found->second.push_back(specialization);
+                }
+            }
+        }
+        return {found->second.begin(), found->second.end()};
+    }
 
     /// Pseudo-SFINAE: decide whether a partial specialization's dependent
     /// pattern constraints (e.g. the `void_t<typename A::rebind<U>::other>`
