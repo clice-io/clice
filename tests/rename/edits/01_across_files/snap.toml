@@ -5,7 +5,7 @@ placeholder = "compute"
 [answers.rename.rename]
 notice = '''
 Spellings of `compute` left alone:
-  ${WS}/a.h:4: #define CALL compute(1) (inside a preprocessor directive, which the index does not resolve)
+  ${WS}/a.h:4: #define CALL compute(1) (inside a #define body, which names something else in another expansion)
   ${WS}/main.cpp:4: int use() { return compute(2) + CALL; } (the name is written here as `CALL`)
 '''
 

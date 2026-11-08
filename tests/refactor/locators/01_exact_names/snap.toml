@@ -123,8 +123,7 @@ stdout = '''
             "line": 3,
             "column": 5,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       },
@@ -135,15 +134,13 @@ stdout = '''
             "line": 3,
             "column": 5,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           },
           {
             "line": 7,
             "column": 20,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       },
@@ -154,8 +151,7 @@ stdout = '''
             "line": 3,
             "column": 22,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       }
@@ -166,7 +162,7 @@ stdout = '''
         "line": 10,
         "column": 14,
         "name": "compute",
-        "reason": "inside a preprocessor directive, which the index does not resolve",
+        "reason": "inside a #define body, which names something else in another expansion",
         "text": "#define CALL compute(1)"
       },
       {

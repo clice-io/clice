@@ -214,7 +214,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             paths.emplace_back(display(fid), fid);
         }
     };
-    index.for_each_indexed_file(list);
+    index.for_each_indexed_file([&](Fid fid, std::uint64_t) { list(fid); });
     for(auto& [tu, manifest]: manifests) {
         list(tu);
         for(auto& node: manifest.nodes) {
@@ -429,9 +429,10 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
 
     // What each scoped file names, from its reference relations: a spelled name
     // mirrors its occurrence there, and a name a macro expansion produces
-    // has only the relation. A weak relation is one candidate of a dependent call's
-    // overload set, kept apart: the candidates an operator finds where a
-    // template is defined are not what its instantiations call.
+    // has only the relation. A weak one, a candidate or a guess, may be one
+    // overload a dependent call does not run, kept apart: the candidates an
+    // operator finds where a template is defined are not what its
+    // instantiations call.
     llvm::DenseMap<index::SymbolHash, llvm::SmallVector<Site, 2>> sites;
     std::vector<llvm::DenseMap<index::SymbolHash, RawUse>> raw(facts.files.size());
     std::vector<llvm::DenseSet<std::uint32_t>> pasted_lines(facts.files.size());
@@ -464,13 +465,14 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         auto use_of = [](const index::Relation& relation) {
             return RelationKind(relation.kind)
                 .is_one_of(RelationKind::Reference,
-                           RelationKind::WeakReference,
+                           RelationKind::Candidate,
+                           RelationKind::Guess,
                            RelationKind::Read,
                            RelationKind::Write,
                            RelationKind::Pasted);
         };
         auto declaration_of = [](const index::Relation& relation) {
-            return RelationKind(relation.kind).isDeclOrDef();
+            return RelationKind(relation.kind).declares();
         };
 
         // A file the index holds several variants of carries, in only some
@@ -539,9 +541,11 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                     pasted_lines[id].insert(line_of(shard, relation.range.begin));
                 }
                 use.count += 1;
-                use.strong |= relation.kind != RelationKind::WeakReference;
+                bool weak = RelationKind(relation.kind)
+                                .is_one_of(RelationKind::Candidate, RelationKind::Guess);
+                use.strong |= !weak;
                 use_sites[id].emplace_back(relation.range.begin, hash);
-                if(relation.kind == RelationKind::WeakReference) {
+                if(weak) {
                     weak_sites[id].emplace_back(relation.range.begin, hash);
                 }
             }
@@ -678,7 +682,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     };
 
     // A using-declaration at namespace scope (`namespace hlsl { using
-    // dxil::ResourceClass; }`) re-declares a name there: a weak relation of the
+    // dxil::ResourceClass; }`) re-declares a name there: a candidate of the
     // target on a `using` line in a namespace.
     for(std::uint32_t id = 0; id < facts.files.size(); id += 1) {
         auto* shard = index.shard(fids[id]);
@@ -1362,7 +1366,7 @@ std::expected<LoadedFacts, LoadError> load_facts(Project& project,
     // leaves the files it edits) would give facts about text that is gone.
     LoadError stale{.message =
                         "some files changed since they were indexed; run `clice index` first"};
-    project.index.for_each_indexed_file([&](Fid file) {
+    project.index.for_each_indexed_file([&](Fid file, std::uint64_t) {
         if(auto* shard = project.index.shard(file);
            shard && project.freshness.stale(file, shard->content_hash())) {
             stale.dropped.emplace_back(files.display(file));

@@ -231,6 +231,23 @@ Result<RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
     if(!hold_to_whole_name(locator)) {
         return std::unexpected("a rename names its symbol by its whole name, not by a pattern");
     }
+    // A place renames what the editor's rename there would.
+    if(locator.position && locator.position->column) {
+        auto anchored = anchor_paths(ctx, locator);
+        if(!anchored) {
+            return std::unexpected(anchored.error());
+        }
+        auto cursor = *anchored ? index::cursor_at(ctx.query, *locator.position)
+                                : std::optional<index::IndexQuery::Cursor>();
+        if(!cursor) {
+            return std::unexpected("symbol not found");
+        }
+        auto renamed = rename_at(ctx.query, *cursor);
+        if(!renamed) {
+            return std::unexpected(renamed.error());
+        }
+        return std::move(renamed->target);
+    }
     bool by_pattern = locator.by_pattern();
     auto candidates = resolve(ctx, std::move(locator));
     if(!candidates) {
@@ -238,6 +255,16 @@ Result<RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
     }
     std::vector<RenameTarget> targets;
     for(auto& candidate: *candidates) {
+        // A constructor of a class found, a macro's linked definition: the
+        // target found renames it already.
+        if(ranges::any_of(targets, [&](const RenameTarget& known) {
+               return ranges::contains(
+                   known.group,
+                   candidate.symbol.hash,
+                   [](const index::IndexQuery::Located& member) { return member.symbol.hash; });
+           })) {
+            continue;
+        }
         auto target = rename_target(ctx.query, candidate);
         if(!target) {
             if(candidates->size() == 1) {
@@ -245,12 +272,7 @@ Result<RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
             }
             return ambiguous(ctx, *candidates);
         }
-        auto root = target->symbol.symbol.hash;
-        if(ranges::none_of(targets, [&](const RenameTarget& known) {
-               return known.symbol.symbol.hash == root;
-           })) {
-            targets.push_back(std::move(*target));
-        }
+        targets.push_back(std::move(*target));
     }
     if(targets.size() > 1) {
         llvm::SmallVector<const index::IndexQuery::Located*> roots;
@@ -481,13 +503,14 @@ Result<ReferencesResult> references(Context& ctx,
     return result;
 }
 
-PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, RenameFiles files) {
+PlannedRename rename(Context& ctx,
+                     llvm::ArrayRef<RenameRequest> requests,
+                     const RenameScope& scope) {
     PlannedRename planned;
     auto& result = planned.result;
     std::vector<Renaming> renamings;
     // The answer's entry of each renaming.
     std::vector<std::size_t> entries;
-    llvm::StringSet<> names;
     for(auto& request: requests) {
         auto& entry = result.renames.emplace_back(RenameEntry{
             .line = request.line,
@@ -506,23 +529,11 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, Renam
         entry.name = symbol.display_name();
         entry.kind = kind_name(symbol.kind);
         entry.symbol = symbol_of(target->symbol);
-        names.insert(symbol.name);
-        names.insert(request.new_name);
         entries.push_back(result.renames.size() - 1);
         renamings.push_back({.target = std::move(*target), .new_name = request.new_name});
     }
 
-    RenameTexts texts(std::move(files.files), std::move(names));
-    auto read = [&](llvm::StringRef path) {
-        return texts.read(path);
-    };
-    planned.plan = plan_renames(ctx.query,
-                                ctx.query.file_table(),
-                                renamings,
-                                {.files = texts.files,
-                                 .editable = files.editable,
-                                 .read = read,
-                                 .units_pending = files.units_pending});
+    planned.plan = plan_renames(ctx.query, ctx.query.file_table(), renamings, scope);
 
     auto& plans = planned.plan.plans;
     std::set<std::string> stale;
@@ -562,7 +573,6 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests, Renam
             .column = static_cast<int>(site.begin.column) + 1,
             .name = plans[owner].old_name,
             .new_name = plans[owner].new_name,
-            .heuristic = edit.heuristic,
         });
     }
     result.conflicts = planned.plan.conflicts;

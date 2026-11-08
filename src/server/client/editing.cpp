@@ -478,59 +478,35 @@ void LSPClient::register_editing() {
             if(!cursor) {
                 co_return codec::raw_value{"null"};
             }
-            auto at = feature::rename_at(served->editing_query(), *cursor);
-            if(!at) {
-                co_await async::fail(request_failed(std::move(at.error())));
-            }
-
-            // The walk, the reads and the scan run off the loop; only the
-            // files spelling a name come back with their text.
-            auto editable_files = project.editable_files();
-            auto texts = co_await async::queue(
-                [editable_files,
-                 names = llvm::StringSet<>{at->target.symbol.symbol.name, new_name}] {
-                    return feature::RenameTexts(editable_files.sources(), names);
-                });
-            if(session && !ticket.fresh()) {
-                co_await async::fail(content_modified());
-            }
-            // Entries indexed during the scan may link the symbol to more:
-            // plan with the group they give now.
-            cursor = served->cursor_at(path_id, position);
-            if(!cursor) {
-                co_await async::fail(content_modified());
-            }
-            auto old_name = std::move(at->target.symbol.symbol.name);
             auto query = served->editing_query();
-            at = feature::rename_at(query, *cursor);
+            auto at = feature::rename_at(query, *cursor);
             if(!at) {
                 co_await async::fail(request_failed(std::move(at.error())));
             }
-            if(at->target.symbol.symbol.name != old_name) {
-                co_await async::fail(content_modified());
-            }
 
+            auto editable_files = project.editable_files();
             auto editable = [&](llvm::StringRef file) {
                 return editable_files.editable(file);
             };
             // Open buffers are read as the editor holds them, whichever
             // project serves them.
-            auto buffer = [&](llvm::StringRef file) -> std::optional<llvm::StringRef> {
+            auto read = [&](llvm::StringRef file) -> std::optional<std::string> {
                 auto id = project.file_table.find(Spelling::absolute(file));
-                auto open = id ? server.find_session(*id) : nullptr;
-                return open ? std::optional(open->text()) : std::nullopt;
+                if(auto open = id ? server.find_session(*id) : nullptr) {
+                    return open->text().str();
+                }
+                auto text = vfs::read_text(file);
+                return text ? std::optional(std::move(*text)) : std::nullopt;
             };
-            auto read = [&](llvm::StringRef file) {
-                return texts.read(file, buffer);
-            };
-            auto plan = feature::plan_rename(query,
-                                             project.file_table,
-                                             at->target,
-                                             new_name,
-                                             {.files = texts.files,
-                                              .editable = editable,
-                                              .read = read,
-                                              .units_pending = project.units_pending()});
+            // An open unit's own compile indexes its buffer.
+            auto pending =
+                project.units_pending([&](Fid unit) { return query.serving(unit).has_value(); });
+            auto plan = feature::plan_rename(
+                query,
+                project.file_table,
+                at->target,
+                new_name,
+                {.editable = editable, .read = read, .units_pending = pending});
             if(plan.blocked()) {
                 co_await async::fail(request_failed(feature::refusal(plan)));
             }

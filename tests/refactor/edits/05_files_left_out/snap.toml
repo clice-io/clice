@@ -33,8 +33,7 @@ stdout = '''
             "line": 3,
             "column": 5,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       },
@@ -45,22 +44,12 @@ stdout = '''
             "line": 3,
             "column": 5,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       }
     ],
-    "unconfirmed": [
-      {
-        "file": "${WS}/extra.cpp",
-        "line": 3,
-        "column": 22,
-        "name": "compute",
-        "reason": "the index holds nothing of this file: no unit it indexes compiles or includes it",
-        "text": "int extra() { return compute(2); }"
-      }
-    ],
+    "unconfirmed": [],
     "conflicts": [],
     "stale": []
   },

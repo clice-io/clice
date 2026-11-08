@@ -66,7 +66,7 @@
                 "main.cpp": " #include \"a.h\"\n-int compute(int x) { return x; }\n+int evaluate(int x) { return x; }\n Widget::Widget() : value(0) {}\n-int use() { return compute(2) + CALL; }\n+int use() { return evaluate(2) + CALL; }\n int main() { Widget w; return use() + w.value; }",
                 "other.cpp": " #include \"a.h\"\n-int again() { return compute(3); }\n+int again() { return evaluate(3); }"
               },
-              "notice": "Spellings of `compute` left alone:\n  ${WS}/a.h:4: #define CALL compute(1) (inside a preprocessor directive, which the index does not resolve)\n  ${WS}/main.cpp:4: int use() { return compute(2) + CALL; } (the name is written here as `CALL`)"
+              "notice": "Spellings of `compute` left alone:\n  ${WS}/a.h:4: #define CALL compute(1) (inside a #define body, which names something else in another expansion)\n  ${WS}/main.cpp:4: int use() { return compute(2) + CALL; } (the name is written here as `CALL`)"
             }
           }
         }

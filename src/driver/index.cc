@@ -506,7 +506,7 @@ StatsResult collect_stats(Project& project) {
     StatsResult stats;
     auto& project_index = project.index;
 
-    project_index.for_each_indexed_file([&](Fid path_id) {
+    project_index.for_each_indexed_file([&](Fid path_id, std::uint64_t) {
         auto* shard = project_index.shard(path_id);
         if(!shard) {
             return;
@@ -884,7 +884,7 @@ int run_show_symbol(Project& project, llvm::StringRef text) {
         // Straight from every shard: the query's fan-out follows the symbol
         // records' reference files, which a file-local symbol has none of.
         std::map<std::string, Counts> per_file;
-        project.index.for_each_indexed_file([&](Fid path_id) {
+        project.index.for_each_indexed_file([&](Fid path_id, std::uint64_t) {
             auto* indexed = project.index.shard(path_id);
             if(!indexed) {
                 return;

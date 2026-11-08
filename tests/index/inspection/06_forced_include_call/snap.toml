@@ -10,15 +10,15 @@ stdout = '''
 file ${WS}/util.h
   blob=# B  content size=82  content hash=#bd785b7e65624dac
   variants=1
-    #e598dfb861b11e91  contributed by 1 unit
+    #3c92198480d9919b  contributed by 1 unit
       ${WS}/main.cpp
   symbols=5  local symbols=2  occurrences=7  relations=10
     Callee=1
     Caller=1
+    Candidate=1
     Definition=3
     Reference=3
     TypeDefinition=1
-    WeakReference=1
     local #0589047a4d3941f9  kind=Parameter  name=c
     local #7ac60ce5ee6b508a  kind=Type  name=C
 '''

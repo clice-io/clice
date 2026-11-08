@@ -17,7 +17,7 @@ std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
 }
 
 std::optional<Site> extent_of(const IndexSource& source, const Relation& relation) {
-    assert(RelationKind(relation.kind).isDeclOrDef());
+    assert(RelationKind(relation.kind).declares());
     auto extent = relation.extent();
     if(extent.begin >= extent.end) {
         return std::nullopt;
@@ -149,10 +149,11 @@ std::optional<Named> named_at(const Shard& shard,
 
 void add_resolved(const InstantiationShard& shard,
                   std::uint32_t offset,
+                  bool expansions,
                   std::optional<Named>& named) {
     shard.records_at(offset, [&](const InstantiationRecord& record) {
         if(record.kind == InstantiationKind::Call ||
-           record.kind == InstantiationKind::TypeDefinition ||
+           record.kind == InstantiationKind::TypeDefinition || (record.expansion && !expansions) ||
            (named && !(named->range == record.range))) {
             return true;
         }
@@ -167,20 +168,22 @@ void add_resolved(const InstantiationShard& shard,
 }
 
 bool FreshnessGate::stale(Fid file, std::uint64_t content_hash) const {
-    if(!options.withhold) {
+    if(!options.withhold || !moved_on(file, content_hash)) {
         return false;
-    }
-    if(options.check_disk && checked.insert(file).second) {
-        files.disk.current(file);
-    }
-    if(!files.disk.seen_missing(file)) {
-        auto seen = files.disk.seen_hash(file);
-        if(!seen || *seen == content_hash) {
-            return false;
-        }
     }
     withheld_files.insert(file);
     return true;
+}
+
+bool FreshnessGate::moved_on(Fid file, std::uint64_t content_hash) const {
+    if(options.check_disk && checked.insert(file).second) {
+        files.disk.current(file);
+    }
+    if(files.disk.seen_missing(file)) {
+        return true;
+    }
+    auto seen = files.disk.seen_hash(file);
+    return seen && *seen != content_hash;
 }
 
 IndexQuery::IndexQuery(const ProjectIndex& index, FileTable& files, const FreshnessGate* gate) :
@@ -274,6 +277,25 @@ void IndexQuery::for_each_overlay(llvm::function_ref<bool(const TUIndex&)> visit
             return;
         }
     }
+}
+
+std::vector<Fid> IndexQuery::outdated_files() const {
+    std::vector<Fid> outdated;
+    llvm::DenseSet<Fid> recorded;
+    index.for_each_indexed_file([&](Fid file, std::uint64_t content) {
+        recorded.insert(file);
+        if(buffer_of(file) ? !serving(file) : gate && gate->moved_on(file, content)) {
+            outdated.push_back(file);
+        }
+    });
+    // A buffer of a file the disk index never held, edited since its
+    // compile indexed it.
+    for(auto& buffer: open) {
+        if(!recorded.contains(buffer.file) && buffer.index && !serving(buffer.file)) {
+            outdated.push_back(buffer.file);
+        }
+    }
+    return outdated;
 }
 
 std::optional<IndexSource> IndexQuery::serving(Fid file) const {
@@ -634,7 +656,7 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
         auto named = named_at(shard, offset, is_macro);
         if(with_instantiations && &shard == source->shard) {
             for(auto* instantiations: source->instantiations) {
-                add_resolved(*instantiations, offset, named);
+                add_resolved(*instantiations, offset, true, named);
             }
         }
         if(!named) {
@@ -666,6 +688,48 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     // shared-PCH identity).
     with_preamble(*source, [&](const Shard& preamble) { hit(preamble); });
     return cursor;
+}
+
+std::optional<IndexQuery::Cursor> IndexQuery::instantiated_at(Fid file,
+                                                              std::uint32_t offset) const {
+    auto source = serving(file);
+    if(!source || !with_instantiations) {
+        return std::nullopt;
+    }
+    std::optional<Named> named;
+    for(auto* instantiations: source->instantiations) {
+        add_resolved(*instantiations, offset, false, named);
+    }
+    if(!named) {
+        return std::nullopt;
+    }
+    auto site = source->site(named->range);
+    if(!site) {
+        return std::nullopt;
+    }
+    return Cursor{.symbols = std::move(named->symbols), .site = *site};
+}
+
+bool IndexQuery::relates_at(Fid file,
+                            LocalSourceRange range,
+                            SymbolHash symbol,
+                            RelationKind kind) const {
+    auto source = serving(file);
+    if(!source) {
+        return false;
+    }
+    bool found = false;
+    auto hit = [&](const Shard& shard) {
+        shard.relations_of(symbol, kind, [&](const Relation& relation) {
+            found = relation.range == range;
+            return !found;
+        });
+        return found;
+    };
+    if(!hit(*source->shard)) {
+        with_preamble(*source, [&](const Shard& preamble) { hit(preamble); });
+    }
+    return found;
 }
 
 std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file,

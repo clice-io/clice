@@ -6,9 +6,9 @@ import :feature.rename;
 import :index.search;
 import :index.site;
 import :index.symbol_query;
+import :semantic.identity;
 import :syntax.lexer;
 import :syntax.source_text;
-import :vfs.file_system;
 
 namespace clice::feature {
 
@@ -100,23 +100,83 @@ const clang::LangOptions& c() {
     return raw_dialect(clang::Language::C, clang::LangStandard::lang_c23);
 }
 
-/// The class template a deduction guide deduces: the one template in the
-/// guide's scope of the name its declaration spells (the symbol is listed
-/// under a label).
-std::optional<index::IndexQuery::Located> guided_template(const index::IndexQuery& query,
-                                                          const index::IndexQuery::Located& guide) {
-    auto text = query.serving_text(guide.site.file);
-    if(!text) {
-        return std::nullopt;
+/// Why a rename cannot reach a macro whose `#define` the index does not
+/// serve: the compile command or the compiler defines it (`-DNAME`,
+/// `__GNUC__`), or the file defining it moved on since it was indexed.
+std::string unplaced_macro(const index::SymbolInfo& macro) {
+    if(index::has_flag(macro.flags, index::SymbolFlags::HasDefinition)) {
+        return std::format("the file defining `{}` changed since it was indexed", macro.name);
     }
-    auto spelled = llvm::StringRef(*text).slice(guide.site.range.begin, guide.site.range.end);
-    for(auto& hit: all_named(query, spelled)) {
-        if(class_like(hit.symbol.kind) && hit.symbol.parent == guide.symbol.parent &&
-           index::has_flag(hit.symbol.flags, index::SymbolFlags::Template)) {
-            return hit;
+    return std::format(
+        "the compile command or the compiler defines `{}`, which a rename cannot change",
+        macro.name);
+}
+
+/// The rename target of a macro: the definitions of its name a rename of
+/// it changes too (RenameTarget). A use resolving to one the command line
+/// gives as well, which no rename can change, refuses it.
+std::expected<RenameTarget, std::string> macro_target(const index::IndexQuery& query,
+                                                      const index::IndexQuery::Located& named) {
+    llvm::StringRef name = named.symbol.name;
+    auto in_system_header = [&](const index::IndexQuery::Located& macro) {
+        return index::has_flag(macro.symbol.flags, index::SymbolFlags::SystemHeader);
+    };
+    if(in_system_header(named)) {
+        return std::unexpected(
+            std::format("`{}` is defined in a system header", std::string_view(name)));
+    }
+    auto definitions = all_named(query, name);
+    std::erase_if(definitions, [](const index::IndexQuery::Located& hit) {
+        return hit.symbol.kind != SymbolKind::Macro;
+    });
+
+    RenameTarget target{.symbol = named};
+    llvm::DenseSet<index::SymbolHash> seen{named.symbol.hash};
+    // The files defining or using one of them.
+    llvm::DenseSet<Fid> tied;
+    std::vector<index::IndexQuery::Located> pending{named};
+    while(!pending.empty()) {
+        auto next = std::move(pending.back());
+        pending.pop_back();
+        for(auto kind: {RelationKind::Definition, RelationKind::Reference}) {
+            for(auto& site: query.sites(next.symbol.hash, next.site.file, kind)) {
+                tied.insert(site.file);
+                auto cursor = query.symbol_at(site.file, site.range.begin);
+                if(!cursor) {
+                    continue;
+                }
+                for(auto other: cursor->symbols) {
+                    auto info = query.symbol_info(other, site.file);
+                    if(!info || info->kind != SymbolKind::Macro || info->name != name ||
+                       !seen.insert(other).second) {
+                        continue;
+                    }
+                    auto located = query.resolve(other, site.file);
+                    if(!located) {
+                        return std::unexpected(
+                            std::format("`{}` at {} is, in some units, another macro: {}",
+                                        std::string_view(name),
+                                        where(site),
+                                        unplaced_macro(*info)));
+                    }
+                    if(in_system_header(*located)) {
+                        return std::unexpected(
+                            std::format("`{}` at {} is also defined in a system header",
+                                        std::string_view(name),
+                                        where(site)));
+                    }
+                    pending.push_back(std::move(*located));
+                }
+            }
+        }
+        target.group.push_back(std::move(next));
+        for(auto& definition: definitions) {
+            if(tied.contains(definition.site.file) && seen.insert(definition.symbol.hash).second) {
+                pending.push_back(definition);
+            }
         }
     }
-    return std::nullopt;
+    return target;
 }
 
 }  // namespace
@@ -137,53 +197,13 @@ std::optional<std::string> invalid_identifier(llvm::StringRef name) {
     return std::nullopt;
 }
 
-std::optional<ScannedText> scan_text(std::string text, const llvm::StringSet<>& names) {
-    // Most files spell no name: a scan of the identifier-like runs, a
-    // comment's words among them, rules them out before any lexing.
-    llvm::StringRef rest = text;
-    bool spelled = false;
-    while(!spelled && !rest.empty()) {
-        auto run = rest.take_while(is_identifier_char);
-        if(run.empty()) {
-            rest = rest.drop_front();
-            continue;
-        }
-        spelled = !llvm::isDigit(run.front()) && names.contains(run);
-        rest = rest.drop_front(run.size());
-    }
-    if(!spelled) {
-        return std::nullopt;
-    }
-    ScannedText scanned;
-    {
-        SourceText source(text, cxx());
-        bool directive = false;
-        for(auto& token: source.lexical().tokens) {
-            if(token.is_directive_hash()) {
-                directive = true;
-            } else if(token.is_eod()) {
-                directive = false;
-            }
-            if(auto name = token.text(text); token.is_identifier() && names.contains(name)) {
-                scanned.tokens[name].push_back(
-                    {.offset = token.range.begin, .directive = directive});
-            }
-        }
-    }
-    if(scanned.tokens.empty()) {
-        return std::nullopt;
-    }
-    scanned.text = std::move(text);
-    return scanned;
-}
-
 std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& serving,
                                                        const index::IndexQuery::Located& named) {
-    auto query = serving.written_only();
     auto& symbol = named.symbol;
     if(symbol.kind == SymbolKind::Macro) {
-        return std::unexpected("renaming a macro is not supported yet");
+        return macro_target(serving, named);
     }
+    auto query = serving.written_only();
     if(!renamable(symbol.kind)) {
         return std::unexpected(std::format("`{}` cannot be renamed", symbol.name));
     }
@@ -205,11 +225,12 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
             break;
         }
         case index::NameForm::Other: {
-            auto deduced = guided_template(query, named);
-            if(!deduced) {
+            auto deduced =
+                query.located_targets(symbol.hash, named.site.file, RelationKind::TypeDefinition);
+            if(deduced.empty()) {
                 return std::unexpected(std::format("`{}` cannot be renamed", symbol.name));
             }
-            root = std::move(*deduced);
+            root = std::move(deduced.front());
             break;
         }
         case index::NameForm::Conversion:
@@ -251,6 +272,7 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
         if(class_like(next.symbol.kind)) {
             follow(RelationKind::Constructor);
             follow(RelationKind::Destructor);
+            follow(RelationKind::Guide);
         } else if(next.symbol.kind == SymbolKind::Method &&
                   index::name_form(next.symbol.flags) == index::NameForm::Identifier) {
             // A destructor overriding another names its own class.
@@ -265,27 +287,57 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
 std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serving,
                                                    const index::IndexQuery::Cursor& resolved) {
     auto query = serving.written_only();
-    // A name only instantiations resolve (`value.print()` in a template)
-    // spells no symbol of its own.
-    auto cursor = query.symbol_at(resolved.site.file, resolved.site.range.begin);
-    if(!cursor) {
-        return std::unexpected(
-            "what the name here refers to differs from one instantiation or macro expansion to "
-            "the next; rename from a declaration");
+    auto file = resolved.site.file;
+    auto offset = resolved.site.range.begin;
+    // A dependent name in a template (`value.print()`) is what its
+    // instantiations resolve it to, whatever the resolver guesses.
+    auto cursor = query.symbol_at(file, offset);
+    bool guessed =
+        cursor && ranges::all_of(cursor->symbols, [&](index::SymbolHash symbol) {
+            return query.relates_at(file, cursor->site.range, symbol, RelationKind::Guess);
+        });
+    if(!cursor || guessed) {
+        cursor = serving.instantiated_at(file, offset);
+        if(!cursor) {
+            return std::unexpected(
+                guessed ? "no instantiation the index saw resolves the name here; rename from a "
+                          "declaration"
+                        : "what the name here refers to differs from one instantiation or macro "
+                          "expansion to the next; rename from a declaration");
+        }
     }
     std::optional<RenameTarget> found;
     std::string refused;
     for(auto& named: query.resolve_at(*cursor)) {
-        auto target = rename_target(query, named);
+        auto target = rename_target(serving, named);
         if(!target) {
             refused = std::move(target.error());
             continue;
         }
-        if(found && found->symbol.symbol.hash != target->symbol.symbol.hash) {
-            return std::unexpected(
-                "the name here resolves to several symbols; rename from one of their declarations");
+        if(found) {
+            // Linked symbols — a macro's definitions, overrides, a
+            // template's specializations — are one rename.
+            if(!ranges::contains(
+                   found->group,
+                   target->symbol.symbol.hash,
+                   [](const index::IndexQuery::Located& member) { return member.symbol.hash; })) {
+                return std::unexpected(std::format(
+                    "the name here resolves to `{}` and `{}`; rename them to one name in one "
+                    "list of renames, or one of them from its declaration",
+                    query.qualified_name(found->symbol.symbol.hash, file),
+                    query.qualified_name(target->symbol.symbol.hash, file)));
+            }
+            continue;
         }
         found = std::move(*target);
+    }
+    if(!found && refused.empty()) {
+        for(auto symbol: cursor->symbols) {
+            if(auto info = query.symbol_info(symbol, cursor->site.file);
+               info && info->kind == SymbolKind::Macro) {
+                return std::unexpected(unplaced_macro(*info));
+            }
+        }
     }
     if(!found) {
         return std::unexpected(refused.empty() ? "no symbol here to rename" : refused);
@@ -307,14 +359,67 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
     return CursorRename{.target = std::move(*found), .token = std::move(token)};
 }
 
+namespace {
+
+/// A file the index holds whose text moved on since it was indexed, and
+/// the names of a rename, or of a batch, its text spells now, each with
+/// whether some spelling stands in a preprocessor directive.
+struct Outdated {
+    Fid file;
+    std::string path;
+    llvm::StringMap<bool> spelled;
+};
+
+/// The outdated files (IndexQuery::outdated_files) a rename may edit that
+/// spell any of `names` as an identifier now.
+std::vector<Outdated> outdated_files(const index::IndexQuery& query,
+                                     FileTable& files,
+                                     const RenameScope& scope,
+                                     const llvm::StringSet<>& names) {
+    std::vector<Outdated> outdated;
+    for(auto file: query.outdated_files()) {
+        auto path = files.resolve(file);
+        if(!scope.editable(path)) {
+            continue;
+        }
+        auto text = scope.read(path);
+        if(!text || ranges::none_of(names.keys(), [&](llvm::StringRef name) {
+               return llvm::StringRef(*text).contains(name);
+           })) {
+            continue;
+        }
+        Outdated entry{.file = file, .path = files.display(file)};
+        SourceText source(*text, cxx());
+        bool directive = false;
+        for(auto& token: source.lexical().tokens) {
+            if(token.is_directive_hash()) {
+                directive = true;
+            } else if(token.is_eod()) {
+                directive = false;
+            }
+            if(auto name = token.text(*text); token.is_identifier() && names.contains(name)) {
+                entry.spelled[name] |= directive;
+            }
+        }
+        if(!entry.spelled.empty()) {
+            outdated.push_back(std::move(entry));
+        }
+    }
+    return outdated;
+}
+
 RenamePlan plan_rename(const index::IndexQuery& serving,
                        FileTable& files,
                        const RenameTarget& target,
                        llvm::StringRef new_name,
                        const RenameScope& scope,
-                       const RenameBatch& batch) {
-    auto query = serving.written_only();
+                       const RenameBatch& batch,
+                       llvm::ArrayRef<Outdated> outdated) {
     auto& root = target.symbol.symbol;
+    bool macro = root.kind == SymbolKind::Macro;
+    // A rename edits names as the text spells them: a macro's also where
+    // the expansions of a body resolve one to it.
+    auto query = macro ? serving : serving.written_only();
     RenamePlan plan{.old_name = root.name, .new_name = new_name.str()};
     llvm::StringRef old_name = plan.old_name;
     if(new_name == old_name) {
@@ -324,25 +429,14 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         plan.conflicts.push_back(std::move(*invalid));
         return plan;
     }
+    if(macro && new_name == "defined") {
+        plan.conflicts.push_back("`defined` cannot name a macro");
+        return plan;
+    }
     llvm::DenseSet<index::SymbolHash> group;
     for(auto& member: target.group) {
         group.insert(member.symbol.hash);
     }
-    // A deduction guide relates to nothing and has no definition to find
-    // it by: the scan meets each one where it spells the template's name.
-    bool guided =
-        class_like(root.kind) && index::has_flag(root.flags, index::SymbolFlags::Template);
-    auto renames = [&](index::SymbolHash symbol, Fid file) {
-        if(group.contains(symbol)) {
-            return true;
-        }
-        if(!guided) {
-            return false;
-        }
-        auto info = query.symbol_info(symbol, file);
-        return info && index::name_form(info->flags) == index::NameForm::Other &&
-               info->parent == root.parent;
-    };
     // Another rename of the batch giving a symbol the same name changes its
     // tokens alike: a token it shares with this rename's is no obstacle.
     auto renamed_alike = [&](index::SymbolHash symbol) {
@@ -369,96 +463,187 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         return *slot;
     };
 
-    // Another renamable symbol of the old name the token names too: a
-    // variant of a shared header compiled under other definitions, or an
-    // overload a dependent call leaves open. Changing the token changes
-    // its use as well.
-    auto shared_with = [&](Fid file, std::uint32_t offset) -> std::optional<index::SymbolHash> {
+    // Another renamable symbol of the old name the token names too, and
+    // how: an instantiation or a variant of a shared header compiled under
+    // other definitions names it for certain, and the token can neither
+    // change nor stay; an overload a dependent call leaves open may be the
+    // one it calls. A guess names nothing.
+    struct Shared {
+        index::SymbolHash symbol;
+        bool certain;
+    };
+    auto other_of_old_name = [&](index::SymbolHash symbol, Fid file) {
+        if(group.contains(symbol) || renamed_alike(symbol)) {
+            return false;
+        }
+        auto info = query.symbol_info(symbol, file);
+        return info && info->name == old_name && renamable(info->kind);
+    };
+    auto shared_with = [&](const index::Site& site, std::uint32_t offset) -> std::optional<Shared> {
+        auto file = site.file;
+        if(auto instantiated = serving.instantiated_at(file, offset)) {
+            for(auto symbol: instantiated->symbols) {
+                if(other_of_old_name(symbol, file)) {
+                    return Shared{.symbol = symbol, .certain = true};
+                }
+            }
+        }
+        if(site.origin != index::SiteOrigin::Written) {
+            return std::nullopt;
+        }
         auto cursor = query.symbol_at(file, offset);
         if(!cursor) {
             return std::nullopt;
         }
+        std::optional<Shared> candidate;
         for(auto symbol: cursor->symbols) {
-            if(renames(symbol, file) || renamed_alike(symbol)) {
+            if(!other_of_old_name(symbol, file)) {
                 continue;
             }
-            if(auto info = query.symbol_info(symbol, file);
-               info && info->name == old_name && renamable(info->kind)) {
-                return symbol;
+            auto range = cursor->site.range;
+            if(query.relates_at(file, range, symbol, RelationKind::Candidate)) {
+                candidate = candidate.value_or(Shared{.symbol = symbol, .certain = false});
+            } else if(!query.relates_at(file, range, symbol, RelationKind::Guess)) {
+                return Shared{.symbol = symbol, .certain = true};
             }
         }
-        return std::nullopt;
+        return candidate;
     };
 
     llvm::StringSet<> stale;
     std::map<std::pair<Fid, std::uint32_t>, RenameEdit> edits;
     std::set<std::pair<Fid, std::uint32_t>> held;
-    auto add_edit = [&](Fid file, const index::Site& near, std::uint32_t offset, bool heuristic) {
+    auto note = [&](const index::Site& site, std::uint32_t offset, std::string reason) {
+        if(!held.insert({site.file, offset}).second) {
+            return;
+        }
+        auto& text = text_of(site.file);
+        plan.unconfirmed.push_back({
+            .site = token_site(*text.source, site.file, site.path, offset, old_name.size()),
+            .reason = std::move(reason),
+            .line = preview_line(*text.source, offset),
+        });
+    };
+    auto add_edit = [&](const index::Site& site, std::uint32_t offset) {
+        auto file = site.file;
         auto& text = text_of(file);
-        if(auto other = shared_with(file, offset)) {
+        if(auto shared = shared_with(site, offset)) {
+            auto name = query.qualified_name(shared->symbol, file);
+            auto renamed = batch.renamed.find(shared->symbol);
+            if(renamed == batch.renamed.end() && !shared->certain) {
+                note(site,
+                     offset,
+                     std::format("the name here also refers to `{}`, another candidate of a "
+                                 "dependent call",
+                                 name));
+                return;
+            }
             if(!held.insert({file, offset}).second) {
                 return;
             }
-            auto site = token_site(*text.source, file, near.path, offset, old_name.size());
-            auto name = query.qualified_name(*other, file);
-            if(auto renamed = batch.renamed.find(*other); renamed != batch.renamed.end()) {
-                plan.conflicts.push_back(
-                    std::format("the name at {} also refers to `{}`, which another rename makes "
-                                "`{}`",
-                                where(site),
-                                name,
-                                renamed->second));
-                return;
-            }
-            plan.unconfirmed.push_back({
-                .site = std::move(site),
-                .reason = std::format("the name here also refers to `{}`, under another build "
-                                      "configuration or as another candidate of a dependent call",
-                                      name),
-                .line = preview_line(*text.source, offset),
-            });
+            auto token = token_site(*text.source, file, site.path, offset, old_name.size());
+            plan.conflicts.push_back(
+                renamed != batch.renamed.end()
+                    ? std::format("the name at {} also refers to `{}`, which another rename "
+                                  "makes `{}`",
+                                  where(token),
+                                  name,
+                                  renamed->second)
+                    : std::format("the name at {} also refers to `{}` in another instantiation "
+                                  "or build configuration: rename both to `{}` in one list of "
+                                  "renames",
+                                  where(token),
+                                  name,
+                                  new_name));
             return;
         }
-        auto [it, inserted] = edits.try_emplace(
+        edits.try_emplace(
             {file, offset},
-            RenameEdit{.site = token_site(*text.source, file, near.path, offset, old_name.size()),
-                       .heuristic = heuristic});
-        if(!inserted) {
-            it->second.heuristic &= heuristic;
+            RenameEdit{.site = token_site(*text.source, file, site.path, offset, old_name.size())});
+    };
+    // The offsets of the old name a site spells; none when the file's index
+    // is not current, or the site spells another name — punctuation (a
+    // construction's paren), a keyword (the destructor `delete` runs), or
+    // a macro's invocation, which a note lists.
+    const auto& cxx_keywords = keywords(cxx());
+    auto spelled_at = [&](const index::Site& site) -> llvm::SmallVector<std::uint32_t, 1> {
+        auto& text = text_of(site.file);
+        if(!text.text) {
+            stale.insert(site.path);
+            return {};
         }
+        auto offsets = spellings(*text.text, site.range.begin, site.range.end, old_name);
+        auto written = llvm::StringRef(*text.text).slice(site.range.begin, site.range.end);
+        if(offsets.empty() && ranges::any_of(written, is_identifier_char) &&
+           keyword_kind(written, cxx_keywords) == clang::tok::identifier) {
+            note(site,
+                 site.range.begin,
+                 std::format("the name is written here as `{}`", std::string_view(written)));
+        }
+        return offsets;
     };
 
-    const auto& cxx_keywords = keywords(cxx());
+    // The files the rename's own entries lie in.
+    llvm::DenseSet<Fid> tied;
     for(auto& member: target.group) {
         for(auto kind: {RelationKind::Definition,
                         RelationKind::Declaration,
                         RelationKind::Reference,
-                        RelationKind::WeakReference}) {
+                        RelationKind::Candidate}) {
             for(auto& site: query.sites(member.symbol.hash, member.site.file, kind)) {
-                auto& text = text_of(site.file);
-                if(!text.text) {
-                    stale.insert(site.path);
-                    continue;
+                tied.insert(site.file);
+                for(auto offset: spelled_at(site)) {
+                    add_edit(site, offset);
                 }
-                auto offsets = spellings(*text.text, site.range.begin, site.range.end, old_name);
-                if(offsets.empty()) {
-                    // A relation on punctuation (a construction's paren) or a
-                    // keyword (the destructor `delete` runs) spells no name;
-                    // one on another name is a macro's invocation.
-                    auto written =
-                        llvm::StringRef(*text.text).slice(site.range.begin, site.range.end);
-                    if(ranges::any_of(written, is_identifier_char) &&
-                       keyword_kind(written, cxx_keywords) == clang::tok::identifier) {
-                        plan.unconfirmed.push_back(
-                            {.site = site,
-                             .reason = std::format("the name is written here as `{}`",
-                                                   std::string_view(written)),
-                             .line = preview_line(*text.source, site.range.begin)});
+            }
+        }
+    }
+    if(macro) {
+        // The macro's name where no definition resolves it: one the files
+        // defining or using the macro spell is the macro's.
+        auto unresolved = EntityTable::unresolved_macro(old_name);
+        for(auto& site: query.sites(unresolved, target.symbol.site.file, RelationKind::Reference)) {
+            if(!tied.contains(site.file)) {
+                if(text_of(site.file).text) {
+                    note(site,
+                         site.range.begin,
+                         "a directive names it where no #define of it reaches, or in a block "
+                         "the preprocessor skips");
+                }
+                continue;
+            }
+            for(auto offset: spelled_at(site)) {
+                add_edit(site, offset);
+            }
+        }
+    } else {
+        // A name in a template is the symbol's where its instantiations
+        // resolve it so; one in a #define body names something else in
+        // another expansion; the resolver's guesses confirm nothing.
+        for(auto& member: target.group) {
+            auto hash = member.symbol.hash;
+            for(auto& site: serving.sites(hash, member.site.file, RelationKind::Reference)) {
+                if(site.origin == index::SiteOrigin::Instantiation) {
+                    for(auto offset: spelled_at(site)) {
+                        add_edit(site, offset);
                     }
-                    continue;
+                } else if(site.origin == index::SiteOrigin::Expansion && text_of(site.file).text &&
+                          !edits.contains({site.file, site.range.begin})) {
+                    note(site,
+                         site.range.begin,
+                         "inside a #define body, which names something else in another "
+                         "expansion");
                 }
-                for(auto offset: offsets) {
-                    add_edit(site.file, site, offset, kind == RelationKind::WeakReference);
+            }
+        }
+        for(auto& member: target.group) {
+            for(auto& site:
+                query.sites(member.symbol.hash, member.site.file, RelationKind::Guess)) {
+                if(text_of(site.file).text && !edits.contains({site.file, site.range.begin})) {
+                    note(site,
+                         site.range.begin,
+                         "in a template, where no instantiation the index saw resolves the name "
+                         "to it");
                 }
             }
         }
@@ -478,87 +663,32 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
                             edit.site.path));
             continue;
         }
-        // The edits are offsets into the text the index was built from; the scan
-        // below compares only the files that still spell a name.
-        auto* current = scope.read(path);
-        if(!current || current->text != *text_of(file).text) {
+        // The edits are offsets into the text the index was built from.
+        auto current = scope.read(path);
+        if(!current || *current != *text_of(file).text) {
             stale.insert(edit.site.path);
         }
     }
-
-    // Tokens spelling the old name that no edit covers — another symbol's,
-    // or names the index cannot see — and the files whose collisions with
-    // the new name the index must see current.
-    for(auto& path: scope.files) {
-        auto* current = scope.read(path);
-        if(!current) {
-            continue;
-        }
-        auto file = files.intern(Spelling::absolute(path));
-        auto display = files.display(file);
-        auto& served = text_of(file);
-        bool indexed = served.text.has_value();
-        // A local or a parameter is out of another file's reach but through
-        // a macro it defines, and a file no indexed unit includes defines
-        // none for it.
-        bool foreign =
-            root.scope == index::SymbolScope::FunctionLocal && file != target.symbol.site.file;
-        if(indexed ? *served.text != current->text
-                   : query.indexes(file) || (!foreign && scope.units_pending)) {
-            stale.insert(display);
-            continue;
-        }
-        if(foreign && !indexed) {
-            continue;
-        }
-        auto spelled = current->tokens.find(old_name);
-        if(spelled == current->tokens.end()) {
-            continue;
-        }
-        SourceText source(current->text, cxx());
-        for(auto [offset, directive]: spelled->second) {
-            if(foreign && !directive) {
-                continue;
+    // A local or a parameter is out of another file's reach but through a
+    // macro it defines.
+    bool function_local = root.scope == index::SymbolScope::FunctionLocal;
+    for(auto& entry: outdated) {
+        bool foreign = function_local && entry.file != target.symbol.site.file;
+        for(auto name: {old_name, new_name}) {
+            if(auto it = entry.spelled.find(name);
+               it != entry.spelled.end() && (!foreign || it->second)) {
+                stale.insert(entry.path);
             }
-            if(!indexed) {
-                plan.unconfirmed.push_back(
-                    {.site = token_site(source, file, display, offset, old_name.size()),
-                     .reason = "the index holds nothing of this file: no unit it indexes "
-                               "compiles or includes it",
-                     .line = preview_line(source, offset)});
-                continue;
-            }
-            if(edits.contains({file, offset})) {
-                continue;
-            }
-            if(auto cursor = query.symbol_at(file, offset);
-               cursor && cursor->site.range.contains(offset)) {
-                if(ranges::any_of(cursor->symbols, [&](index::SymbolHash symbol) {
-                       return renames(symbol, file);
-                   })) {
-                    add_edit(file, cursor->site, offset, false);
-                }
-                continue;
-            }
-            plan.unconfirmed.push_back(
-                {.site = token_site(source, file, display, offset, old_name.size()),
-                 .reason = directive ? "inside a preprocessor directive, which the index does not "
-                                       "resolve"
-                                     : "the index ties no symbol to it: a dependent name it "
-                                       "could not resolve, an inactive #if branch, or code no "
-                                       "unit compiles",
-                 .line = preview_line(source, offset)});
         }
     }
-
-    for(auto& key: views::keys(edits)) {
-        edited.insert(key.first);
+    if(scope.units_pending) {
+        plan.warnings.push_back(
+            "some units of the build are not indexed yet: what they name is not renamed");
     }
 
-    // What the new name would collide with: a macro anywhere, a
-    // declaration in the same scope, a member of a class above or below —
-    // among the symbols bearing it once the batch is done: those named so
-    // that no rename of the batch renames, and those its renames name so.
+    // What the new name would collide with — among the symbols bearing it
+    // once the batch is done: those named so that no rename of the batch
+    // renames, and those its renames name so.
     std::vector<index::IndexQuery::Located> named;
     llvm::DenseSet<index::SymbolHash> listed;
     auto list = [&](index::IndexQuery::Located hit) {
@@ -595,145 +725,178 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
             }
         }
     }
-
-    // The scope a name is looked up in: an unscoped enumerator's is its
-    // enum's.
-    auto scope_of = [&](const index::SymbolInfo& symbol, Fid anchor) {
-        if(symbol.kind == SymbolKind::EnumMember &&
-           index::has_flag(symbol.flags, index::SymbolFlags::Completable)) {
-            if(auto owner = query.symbol_info(symbol.parent, anchor)) {
-                return owner->parent;
-            }
+    auto reserved = [&](bool global) {
+        // Both languages reserve `__x` and `_X` everywhere, and `_x` at
+        // file and global namespace scope.
+        if(new_name.contains("__") ||
+           (new_name.starts_with("_") &&
+            (global || (new_name.size() > 1 && clang::isUppercase(new_name[1]))))) {
+            plan.warnings.push_back(
+                std::format("`{}` is reserved for the implementation", std::string_view(new_name)));
         }
-        return symbol.parent;
     };
-    auto anchor = target.symbol.site.file;
-    auto home = scope_of(root, anchor);
 
-    // The classes above and below the scope: a member of one hides or is
-    // hidden by the renamed member, where a sibling's never meets it.
-    llvm::DenseSet<index::SymbolHash> hierarchy;
-    auto parent = query.symbol_info(home, anchor);
-    if(parent && class_like(parent->kind)) {
-        auto renamed = batch.renamed.find(home);
-        if((renamed == batch.renamed.end() ? parent->name : renamed->second) == new_name) {
-            plan.conflicts.push_back(std::format("`{}` names the class the member belongs to",
-                                                 std::string_view(new_name)));
+    if(macro) {
+        reserved(true);
+        // A macro has no scope: it replaces every name it is spelled as.
+        for(auto& other: named) {
+            if(group.contains(other.symbol.hash)) {
+                continue;
+            }
+            plan.conflicts.push_back(
+                other.symbol.kind == SymbolKind::Macro
+                    ? std::format("`{}` is a macro already ({})",
+                                  std::string_view(new_name),
+                                  where(other.site))
+                    : std::format("`{}` names `{}` ({}), which the macro would replace",
+                                  std::string_view(new_name),
+                                  query.qualified_name(other.symbol.hash, other.site.file),
+                                  where(other.site)));
         }
-        if(auto located = query.resolve(home, anchor)) {
-            hierarchy.insert(located->symbol.hash);
-            for(bool up: {true, false}) {
-                std::vector<index::IndexQuery::Located> pending{*located};
-                while(!pending.empty()) {
-                    auto next = std::move(pending.back());
-                    pending.pop_back();
-                    auto types = type_hierarchy(query, next.symbol.hash, next.site.file, {});
-                    for(auto& type: up ? types.supertypes : types.subtypes) {
-                        if(hierarchy.insert(type.symbol.hash).second) {
-                            pending.push_back(std::move(type));
+        auto tested = query.sites(EntityTable::unresolved_macro(new_name),
+                                  target.symbol.site.file,
+                                  RelationKind::Reference);
+        if(!tested.empty()) {
+            plan.conflicts.push_back(
+                std::format("a directive tests `{}` ({}), which the macro "
+                            "would define",
+                            std::string_view(new_name),
+                            where(tested.front())));
+        }
+    } else {
+        // The scope a name is looked up in: an unscoped enumerator's is its
+        // enum's.
+        auto scope_of = [&](const index::SymbolInfo& symbol, Fid anchor) {
+            if(symbol.kind == SymbolKind::EnumMember &&
+               index::has_flag(symbol.flags, index::SymbolFlags::Completable)) {
+                if(auto owner = query.symbol_info(symbol.parent, anchor)) {
+                    return owner->parent;
+                }
+            }
+            return symbol.parent;
+        };
+        auto anchor = target.symbol.site.file;
+        auto home = scope_of(root, anchor);
+
+        // The classes above and below the scope: a member of one hides or is
+        // hidden by the renamed member, where a sibling's never meets it.
+        llvm::DenseSet<index::SymbolHash> hierarchy;
+        auto parent = query.symbol_info(home, anchor);
+        if(parent && class_like(parent->kind)) {
+            auto renamed = batch.renamed.find(home);
+            if((renamed == batch.renamed.end() ? parent->name : renamed->second) == new_name) {
+                plan.conflicts.push_back(std::format("`{}` names the class the member belongs to",
+                                                     std::string_view(new_name)));
+            }
+            if(auto located = query.resolve(home, anchor)) {
+                hierarchy.insert(located->symbol.hash);
+                for(bool up: {true, false}) {
+                    std::vector<index::IndexQuery::Located> pending{*located};
+                    while(!pending.empty()) {
+                        auto next = std::move(pending.back());
+                        pending.pop_back();
+                        auto types = type_hierarchy(query, next.symbol.hash, next.site.file, {});
+                        for(auto& type: up ? types.supertypes : types.subtypes) {
+                            if(hierarchy.insert(type.symbol.hash).second) {
+                                pending.push_back(std::move(type));
+                            }
                         }
                     }
                 }
             }
         }
-    }
-    bool local = parent && function_like(parent->kind);
-    // A function's parameters and locals belong to the declaration whose
-    // name precedes them most closely in their file: another declaration's
-    // never meet the renamed symbol.
-    auto declaration_of = [&](const index::Site& site) {
-        std::optional<std::uint32_t> nearest;
-        for(auto kind: {RelationKind::Definition, RelationKind::Declaration}) {
-            for(auto& declared: query.sites(home, site.file, kind)) {
-                if(declared.file == site.file && declared.range.begin < site.range.begin &&
-                   (!nearest || declared.range.begin > *nearest)) {
-                    nearest = declared.range.begin;
+        bool local = parent && function_like(parent->kind);
+        // A function's parameters and locals belong to the declaration whose
+        // name precedes them most closely in their file: another declaration's
+        // never meet the renamed symbol.
+        auto declaration_of = [&](const index::Site& site) {
+            std::optional<std::uint32_t> nearest;
+            for(auto kind: {RelationKind::Definition, RelationKind::Declaration}) {
+                for(auto& declared: query.sites(home, site.file, kind)) {
+                    if(declared.file == site.file && declared.range.begin < site.range.begin &&
+                       (!nearest || declared.range.begin > *nearest)) {
+                        nearest = declared.range.begin;
+                    }
                 }
             }
+            return std::pair(site.file, nearest);
+        };
+        std::pair<Fid, std::optional<std::uint32_t>> declaration;
+        if(local) {
+            declaration = declaration_of(target.symbol.site);
         }
-        return std::pair(site.file, nearest);
-    };
-    std::pair<Fid, std::optional<std::uint32_t>> declaration;
-    if(local) {
-        declaration = declaration_of(target.symbol.site);
-    }
-    // Both languages reserve `__x` and `_X` everywhere, and `_x` at file
-    // and global namespace scope.
-    if(new_name.contains("__") ||
-       (new_name.starts_with("_") &&
-        (home == 0 || (new_name.size() > 1 && clang::isUppercase(new_name[1]))))) {
-        plan.warnings.push_back(
-            std::format("`{}` is reserved for the implementation", std::string_view(new_name)));
-    }
+        reserved(home == 0);
 
-    for(auto& other: named) {
-        auto& symbol = other.symbol;
-        if(group.contains(symbol.hash)) {
-            continue;
-        }
-        if(symbol.kind == SymbolKind::Macro) {
-            plan.conflicts.push_back(
-                std::format("`{}` is a macro ({}): it would expand in place of the new name",
-                            std::string_view(new_name),
-                            where(other.site)));
-            continue;
-        }
-        auto other_home = scope_of(symbol, other.site.file);
-        if(other_home == home) {
-            if(local && declaration_of(other.site) != declaration) {
+        for(auto& other: named) {
+            auto& symbol = other.symbol;
+            if(group.contains(symbol.hash)) {
                 continue;
             }
-            if(function_like(symbol.kind) && function_like(root.kind)) {
-                // Overloads of the old name renamed alike stay overloads.
-                if(symbol.name == old_name) {
+            if(symbol.kind == SymbolKind::Macro) {
+                plan.conflicts.push_back(
+                    std::format("`{}` is a macro ({}): it would expand in place of the new name",
+                                std::string_view(new_name),
+                                where(other.site)));
+                continue;
+            }
+            auto other_home = scope_of(symbol, other.site.file);
+            if(other_home == home) {
+                if(local && declaration_of(other.site) != declaration) {
                     continue;
                 }
-                plan.warnings.push_back(
-                    std::format("`{}` already names a function in the same scope ({}): the "
-                                "renamed function overloads it, which fails to build in C or "
-                                "when their parameters are the same",
-                                std::string_view(new_name),
-                                where(other.site)));
-            } else if(local) {
-                // Other locals clash only within one block, and the index
-                // records no blocks.
-                if(symbol.kind == root.kind &&
-                   (root.kind == SymbolKind::Parameter || root.kind == SymbolKind::Label)) {
-                    plan.conflicts.push_back(
-                        std::format("`{}` already names a {} of the same function ({})",
+                if(function_like(symbol.kind) && function_like(root.kind)) {
+                    // Overloads of the old name renamed alike stay overloads.
+                    if(symbol.name == old_name) {
+                        continue;
+                    }
+                    plan.warnings.push_back(
+                        std::format("`{}` already names a function in the same scope ({}): the "
+                                    "renamed function overloads it, which fails to build in C or "
+                                    "when their parameters are the same",
                                     std::string_view(new_name),
-                                    root.kind == SymbolKind::Label ? "label" : "parameter",
+                                    where(other.site)));
+                } else if(local) {
+                    // Other locals clash only within one block, and the index
+                    // records no blocks.
+                    if(symbol.kind == root.kind &&
+                       (root.kind == SymbolKind::Parameter || root.kind == SymbolKind::Label)) {
+                        plan.conflicts.push_back(
+                            std::format("`{}` already names a {} of the same function ({})",
+                                        std::string_view(new_name),
+                                        root.kind == SymbolKind::Label ? "label" : "parameter",
+                                        where(other.site)));
+                    }
+                } else if(symbol.kind == SymbolKind::Namespace &&
+                          root.kind == SymbolKind::Namespace) {
+                    plan.conflicts.push_back(std::format(
+                        "a namespace `{}` already exists in the same scope ({}); merging namespaces "
+                        "is not supported",
+                        std::string_view(new_name),
+                        where(other.site)));
+                } else {
+                    plan.conflicts.push_back(
+                        std::format("`{}` is already declared in the same scope ({})",
+                                    std::string_view(new_name),
                                     where(other.site)));
                 }
-            } else if(symbol.kind == SymbolKind::Namespace && root.kind == SymbolKind::Namespace) {
+                continue;
+            }
+            if(class_like(root.kind) && group.contains(other_home)) {
                 plan.conflicts.push_back(std::format(
-                    "a namespace `{}` already exists in the same scope ({}); merging namespaces "
-                    "is not supported",
+                    "`{}` is a member of the renamed class ({}), which may not share its "
+                    "name",
                     std::string_view(new_name),
                     where(other.site)));
-            } else {
-                plan.conflicts.push_back(
-                    std::format("`{}` is already declared in the same scope ({})",
-                                std::string_view(new_name),
-                                where(other.site)));
+                continue;
             }
-            continue;
-        }
-        if(class_like(root.kind) && group.contains(other_home)) {
-            plan.conflicts.push_back(
-                std::format("`{}` is a member of the renamed class ({}), which may not share its "
-                            "name",
-                            std::string_view(new_name),
-                            where(other.site)));
-            continue;
-        }
-        if(hierarchy.contains(other_home)) {
-            plan.conflicts.push_back(
-                std::format("`{}` is a member of {} ({}), which the renamed member would hide or "
-                            "be hidden by",
-                            std::string_view(new_name),
-                            query.qualified_name(other_home, other.site.file),
-                            where(other.site)));
+            if(hierarchy.contains(other_home)) {
+                plan.conflicts.push_back(std::format(
+                    "`{}` is a member of {} ({}), which the renamed member would hide or "
+                    "be hidden by",
+                    std::string_view(new_name),
+                    query.qualified_name(other_home, other.site.file),
+                    where(other.site)));
+            }
         }
     }
 
@@ -753,6 +916,24 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     }
     ranges::sort(plan.stale);
     return plan;
+}
+
+}  // namespace
+
+RenamePlan plan_rename(const index::IndexQuery& query,
+                       FileTable& files,
+                       const RenameTarget& target,
+                       llvm::StringRef new_name,
+                       const RenameScope& scope,
+                       const RenameBatch& batch) {
+    llvm::StringSet<> names{target.symbol.symbol.name, new_name};
+    return plan_rename(query,
+                       files,
+                       target,
+                       new_name,
+                       scope,
+                       batch,
+                       outdated_files(query, files, scope, names));
 }
 
 BatchPlan plan_renames(const index::IndexQuery& query,
@@ -776,14 +957,12 @@ BatchPlan plan_renames(const index::IndexQuery& query,
         }
     }
 
-    llvm::StringMap<std::vector<std::string>> spelled;
-    for(auto& path: scope.files) {
-        if(auto* scanned = scope.read(path)) {
-            for(auto& name: scanned->tokens) {
-                spelled[name.getKey()].push_back(path);
-            }
-        }
+    llvm::StringSet<> names;
+    for(auto& [target, new_name]: renamings) {
+        names.insert(target.symbol.symbol.name);
+        names.insert(new_name);
     }
+    auto outdated = outdated_files(query, files, scope, names);
 
     BatchPlan result;
     for(std::uint32_t i = 0; i < renamings.size(); i += 1) {
@@ -803,17 +982,7 @@ BatchPlan plan_renames(const index::IndexQuery& query,
             }
             continue;
         }
-        std::vector<std::string> own;
-        for(auto name: {llvm::StringRef(old_name), llvm::StringRef(new_name)}) {
-            if(auto found = spelled.find(name); found != spelled.end()) {
-                own.append_range(found->second);
-            }
-        }
-        ranges::sort(own);
-        own.erase(ranges::unique(own).begin(), own.end());
-        auto narrowed = scope;
-        narrowed.files = own;
-        result.plans.push_back(plan_rename(query, files, target, new_name, narrowed, batch));
+        result.plans.push_back(plan_rename(query, files, target, new_name, scope, batch, outdated));
     }
 
     std::map<std::pair<std::string, std::uint32_t>, BatchEdit> edits;
@@ -832,7 +1001,6 @@ BatchPlan plan_renames(const index::IndexQuery& query,
                                 earlier,
                                 result.plans[i].new_name));
             }
-            it->second.edit.heuristic &= edit.heuristic;
         }
     }
     for(auto& edit: views::values(edits)) {
@@ -862,41 +1030,6 @@ std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& 
     return result;
 }
 
-RenameTexts::RenameTexts(std::vector<std::string> files, llvm::StringSet<> names) :
-    files(std::move(files)), names(std::move(names)) {
-    for(auto& path: this->files) {
-        walked.insert(path);
-        if(auto text = vfs::read_text(path)) {
-            if(auto spelled = scan_text(std::move(*text), this->names)) {
-                scanned.try_emplace(path, std::move(*spelled));
-            }
-        }
-    }
-}
-
-const ScannedText* RenameTexts::read(
-    llvm::StringRef path,
-    llvm::function_ref<std::optional<llvm::StringRef>(llvm::StringRef path)> buffer) {
-    auto open = buffer ? buffer(path) : std::nullopt;
-    if(!open) {
-        if(auto it = scanned.find(path); it != scanned.end()) {
-            return &it->second;
-        }
-        if(walked.contains(path)) {
-            return nullptr;
-        }
-    }
-    auto [it, inserted] = late.try_emplace(path);
-    if(inserted) {
-        if(open) {
-            it->second = scan_text(open->str(), names);
-        } else if(auto text = vfs::read_text(path)) {
-            it->second = scan_text(std::move(*text), names);
-        }
-    }
-    return it->second ? &*it->second : nullptr;
-}
-
 std::optional<std::string> rename_refusal(llvm::StringRef root) {
     if(root.empty()) {
         return "a rename edits the sources of a workspace folder; open one";
@@ -907,9 +1040,8 @@ std::optional<std::string> rename_refusal(llvm::StringRef root) {
 std::string refusal(const RenamePlan& plan) {
     auto reasons = plan.conflicts;
     if(!plan.stale.empty()) {
-        reasons.push_back(
-            std::format("these files changed since they were indexed, or were never indexed: {}",
-                        llvm::join(plan.stale, ", ")));
+        reasons.push_back(std::format("these files changed since they were indexed: {}",
+                                      llvm::join(plan.stale, ", ")));
     }
     return std::format("cannot rename `{}`: {}", plan.old_name, llvm::join(reasons, "; "));
 }
@@ -942,7 +1074,6 @@ Renamed to_protocol(const RenamePlan& plan,
                                              protocol::DeleteFile>;
     std::vector<DocumentChange> changes;
     protocol::TextDocumentEdit* change = nullptr;
-    std::vector<std::string> heuristic;
     for(auto& edit: plan.edits) {
         if(!change || change->text_document.uri != to_uri(edit.site.path)) {
             protocol::TextDocumentEdit next{
@@ -955,9 +1086,6 @@ Renamed to_protocol(const RenamePlan& plan,
             .range = to_range(edit.site, encoding),
             .new_text = new_name.str(),
         });
-        if(edit.heuristic) {
-            heuristic.push_back(std::format("{}:{}", edit.site.path, edit.site.begin.line + 1));
-        }
     }
     renamed.edit.document_changes = std::move(changes);
 
@@ -971,7 +1099,6 @@ Renamed to_protocol(const RenamePlan& plan,
                                    note.reason));
     }
     list_notice(renamed.notice, std::format("Spellings of `{}` left alone", plan.old_name), left);
-    list_notice(renamed.notice, "Renamed through a heuristic resolution", heuristic);
     return renamed;
 }
 

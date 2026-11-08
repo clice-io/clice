@@ -63,15 +63,13 @@ stdout = '''
             "line": 1,
             "column": 22,
             "name": "length",
-            "newName": "size",
-            "heuristic": false
+            "newName": "size"
           },
           {
             "line": 2,
             "column": 21,
             "name": "length",
-            "newName": "size",
-            "heuristic": false
+            "newName": "size"
           }
         ]
       }

@@ -247,7 +247,7 @@ std::vector<Dependency> dependencies(CompilationUnit& unit, llvm::ArrayRef<Slot>
             }
         }
         for(const auto& occurrence: resolve_occurrences(semantics, i)) {
-            if(occurrence.kind.isDeclOrDef()) {
+            if(occurrence.kind.declares()) {
                 continue;
             }
             for(const auto* required: requirements(unit.context(), occurrence.decl)) {

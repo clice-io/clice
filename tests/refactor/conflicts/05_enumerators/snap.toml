@@ -35,15 +35,13 @@ stdout = '''
             "line": 1,
             "column": 13,
             "name": "fast",
-            "newName": "compute",
-            "heuristic": false
+            "newName": "compute"
           },
           {
             "line": 4,
             "column": 24,
             "name": "fast",
-            "newName": "compute",
-            "heuristic": false
+            "newName": "compute"
           }
         ]
       }
@@ -87,15 +85,13 @@ stdout = '''
             "line": 1,
             "column": 13,
             "name": "fast",
-            "newName": "slow",
-            "heuristic": false
+            "newName": "slow"
           },
           {
             "line": 4,
             "column": 24,
             "name": "fast",
-            "newName": "slow",
-            "heuristic": false
+            "newName": "slow"
           }
         ]
       }
@@ -137,15 +133,13 @@ stdout = '''
             "line": 2,
             "column": 20,
             "name": "red",
-            "newName": "compute",
-            "heuristic": false
+            "newName": "compute"
           },
           {
             "line": 4,
             "column": 55,
             "name": "red",
-            "newName": "compute",
-            "heuristic": false
+            "newName": "compute"
           }
         ]
       }
@@ -189,15 +183,13 @@ stdout = '''
             "line": 2,
             "column": 20,
             "name": "red",
-            "newName": "green",
-            "heuristic": false
+            "newName": "green"
           },
           {
             "line": 4,
             "column": 55,
             "name": "red",
-            "newName": "green",
-            "heuristic": false
+            "newName": "green"
           }
         ]
       }

@@ -33,15 +33,13 @@ stdout = '''
             "line": 6,
             "column": 20,
             "name": "Shape",
-            "newName": "Figure",
-            "heuristic": false
+            "newName": "Figure"
           },
           {
             "line": 10,
             "column": 5,
             "name": "Shape",
-            "newName": "Figure",
-            "heuristic": false
+            "newName": "Figure"
           }
         ]
       },
@@ -52,36 +50,31 @@ stdout = '''
             "line": 3,
             "column": 1,
             "name": "Shape",
-            "newName": "Figure",
-            "heuristic": false
+            "newName": "Figure"
           },
           {
             "line": 3,
             "column": 8,
             "name": "Shape",
-            "newName": "Figure",
-            "heuristic": false
+            "newName": "Figure"
           },
           {
             "line": 4,
             "column": 1,
             "name": "Shape",
-            "newName": "Figure",
-            "heuristic": false
+            "newName": "Figure"
           },
           {
             "line": 4,
             "column": 9,
             "name": "Shape",
-            "newName": "Figure",
-            "heuristic": false
+            "newName": "Figure"
           },
           {
             "line": 5,
             "column": 8,
             "name": "Shape",
-            "newName": "Figure",
-            "heuristic": false
+            "newName": "Figure"
           }
         ]
       },
@@ -92,29 +85,25 @@ stdout = '''
             "line": 3,
             "column": 8,
             "name": "Shape",
-            "newName": "Figure",
-            "heuristic": false
+            "newName": "Figure"
           },
           {
             "line": 4,
             "column": 5,
             "name": "Shape",
-            "newName": "Figure",
-            "heuristic": false
+            "newName": "Figure"
           },
           {
             "line": 5,
             "column": 14,
             "name": "Shape",
-            "newName": "Figure",
-            "heuristic": false
+            "newName": "Figure"
           },
           {
             "line": 9,
             "column": 17,
             "name": "Shape",
-            "newName": "Figure",
-            "heuristic": false
+            "newName": "Figure"
           }
         ]
       }
@@ -163,15 +152,13 @@ stdout = '''
             "line": 6,
             "column": 58,
             "name": "Circle",
-            "newName": "Disk",
-            "heuristic": false
+            "newName": "Disk"
           },
           {
             "line": 9,
             "column": 5,
             "name": "Circle",
-            "newName": "Disk",
-            "heuristic": false
+            "newName": "Disk"
           }
         ]
       },
@@ -182,36 +169,31 @@ stdout = '''
             "line": 7,
             "column": 1,
             "name": "Circle",
-            "newName": "Disk",
-            "heuristic": false
+            "newName": "Disk"
           },
           {
             "line": 7,
             "column": 9,
             "name": "Circle",
-            "newName": "Disk",
-            "heuristic": false
+            "newName": "Disk"
           },
           {
             "line": 8,
             "column": 1,
             "name": "Circle",
-            "newName": "Disk",
-            "heuristic": false
+            "newName": "Disk"
           },
           {
             "line": 8,
             "column": 10,
             "name": "Circle",
-            "newName": "Disk",
-            "heuristic": false
+            "newName": "Disk"
           },
           {
             "line": 9,
             "column": 8,
             "name": "Circle",
-            "newName": "Disk",
-            "heuristic": false
+            "newName": "Disk"
           }
         ]
       },
@@ -222,22 +204,19 @@ stdout = '''
             "line": 9,
             "column": 8,
             "name": "Circle",
-            "newName": "Disk",
-            "heuristic": false
+            "newName": "Disk"
           },
           {
             "line": 10,
             "column": 5,
             "name": "Circle",
-            "newName": "Disk",
-            "heuristic": false
+            "newName": "Disk"
           },
           {
             "line": 11,
             "column": 6,
             "name": "Circle",
-            "newName": "Disk",
-            "heuristic": false
+            "newName": "Disk"
           }
         ]
       }
@@ -271,7 +250,7 @@ stdout = '''
         "kind": "Method",
         "symbol": "#f020286f8fd97f75",
         "newName": "size",
-        "edits": 6,
+        "edits": 7,
         "conflicts": [],
         "warnings": [],
         "error": null,
@@ -283,18 +262,22 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "edits": [
           {
+            "line": 4,
+            "column": 47,
+            "name": "area",
+            "newName": "size"
+          },
+          {
             "line": 6,
             "column": 41,
             "name": "area",
-            "newName": "size",
-            "heuristic": false
+            "newName": "size"
           },
           {
             "line": 11,
             "column": 32,
             "name": "area",
-            "newName": "size",
-            "heuristic": false
+            "newName": "size"
           }
         ]
       },
@@ -305,15 +288,13 @@ stdout = '''
             "line": 5,
             "column": 15,
             "name": "area",
-            "newName": "size",
-            "heuristic": false
+            "newName": "size"
           },
           {
             "line": 9,
             "column": 16,
             "name": "area",
-            "newName": "size",
-            "heuristic": false
+            "newName": "size"
           }
         ]
       },
@@ -324,29 +305,18 @@ stdout = '''
             "line": 6,
             "column": 20,
             "name": "area",
-            "newName": "size",
-            "heuristic": false
+            "newName": "size"
           },
           {
             "line": 12,
             "column": 12,
             "name": "area",
-            "newName": "size",
-            "heuristic": false
+            "newName": "size"
           }
         ]
       }
     ],
-    "unconfirmed": [
-      {
-        "file": "${WS}/main.cpp",
-        "line": 4,
-        "column": 47,
-        "name": "area",
-        "reason": "the index ties no symbol to it: a dependent name it could not resolve, an inactive #if branch, or code no unit compiles",
-        "text": "double measure(const T& shape) { return shape.area(); }"
-      }
-    ],
+    "unconfirmed": [],
     "conflicts": [],
     "stale": []
   },

@@ -109,6 +109,11 @@ public:
 
     bool stale(Fid file, std::uint64_t content_hash) const;
 
+    /// Whether the file's content moved on from `content_hash`, an index
+    /// that keeps serving (FreshnessOptions::withhold off) included,
+    /// withholding nothing: for a reader that serves nothing from it.
+    bool moved_on(Fid file, std::uint64_t content_hash) const;
+
     /// The files whose indexes were withheld, in no particular order.
     llvm::SmallVector<Fid> withheld() const {
         return ranges::to<llvm::SmallVector<Fid>>(withheld_files);
@@ -158,11 +163,12 @@ std::optional<Named> named_at(const Shard& shard,
                               std::uint32_t offset,
                               llvm::function_ref<bool(SymbolHash)> is_macro);
 
-/// Adds to `named` what an instantiation or a macro expansion resolves at
-/// `offset`: a name its template leaves open (a member of a dependent
-/// object), or more of what the name means.
+/// Adds to `named` what an instantiation, or with `expansions` a macro
+/// expansion, resolves at `offset`: a name its template leaves open (a
+/// member of a dependent object), or more of what the name means.
 void add_resolved(const InstantiationShard& shard,
                   std::uint32_t offset,
+                  bool expansions,
                   std::optional<Named>& named);
 
 /// The disk bytes of a shard's file, served only while their
@@ -291,6 +297,11 @@ public:
         return index.shard(file) != nullptr;
     }
 
+    /// The files whose text the index no longer describes: an open buffer
+    /// edited since both its compile and its shard, a file changed on disk
+    /// since it was indexed — which its file record tells, no shard read.
+    std::vector<Fid> outdated_files() const;
+
     /// The file's shard when `text` is byte-identical to the content it
     /// indexed (clause 4's content gate alone): disk-truth products such as
     /// manifest edges are only meaningful against text the index described.
@@ -321,6 +332,15 @@ public:
     };
 
     std::optional<Cursor> symbol_at(Fid file, std::uint32_t offset) const;
+
+    /// What the instantiations of the template the name at `offset` lies
+    /// in resolve it to, in the file's serving source: no guess of the
+    /// written code.
+    std::optional<Cursor> instantiated_at(Fid file, std::uint32_t offset) const;
+
+    /// Whether the file's serving source relates `symbol` by `kind` at
+    /// `range`, in its preamble region too.
+    bool relates_at(Fid file, LocalSourceRange range, SymbolHash symbol, RelationKind kind) const;
 
     /// The same for a position as the editor spells it, counted in
     /// `encoding` in the serving source's text.

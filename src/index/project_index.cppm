@@ -240,8 +240,9 @@ public:
     /// so a query keeps the shards it read while its fan-out reads others.
     const Shard* shard(Fid file) const;
 
-    /// Every file with a shard — a scan of every file record.
-    void for_each_indexed_file(llvm::function_ref<void(Fid)> visit) const;
+    /// Every file with a shard, with the content hash of the text the shard
+    /// indexed — a scan of every file record.
+    void for_each_indexed_file(llvm::function_ref<void(Fid, std::uint64_t content)> visit) const;
 
     /// How many files have a shard, and the shards' size.
     std::uint32_t shard_count() const;

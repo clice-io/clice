@@ -27,12 +27,15 @@ FileEntries extract_entries(const Shard& shard) {
         RelationKind kind(relation.kind);
         if(kind.carries_extent()) {
             auto copy = relation;
-            auto& into = kind.isDeclOrDef() ? entries.decls : entries.instantiations;
+            auto& into = kind.declares() ? entries.decls : entries.instantiations;
             into.push_back({.range = relation.range,
                             .extent = copy.extent(),
                             .symbol = hash,
                             .definition = kind.is_one_of(RelationKind::Definition)});
-        } else if(kind.isReference() && nested(relation.range)) {
+        } else if(kind.is_one_of(RelationKind::Reference,
+                                 RelationKind::Candidate,
+                                 RelationKind::Guess) &&
+                  nested(relation.range)) {
             names.push_back({.range = relation.range, .target = hash});
         }
         if(kind.is_one_of(RelationKind::Write)) {

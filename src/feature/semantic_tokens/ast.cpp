@@ -274,7 +274,9 @@ private:
             if(occurrence.kind.is_one_of(RelationKind::Implied)) {
                 continue;
             }
-            if(occurrence.kind.isReference() &&
+            if(occurrence.kind.is_one_of(RelationKind::Reference,
+                                         RelationKind::Candidate,
+                                         RelationKind::Guess) &&
                !can_highlight_name(occurrence.decl->getDeclName())) {
                 continue;
             }
@@ -282,7 +284,7 @@ private:
             auto classified = token_class(decl);
             auto end = occurrence.owns_whole_name() ? occurrence.name_end : clang::SourceLocation();
             auto token = spelled_index(occurrence.location);
-            if(occurrence.kind.isDeclOrDef()) {
+            if(occurrence.kind.declares()) {
                 classified.modifiers |= mask(occurrence.kind.is_one_of(RelationKind::Definition)
                                                  ? Modifier::Definition
                                                  : Modifier::Declaration);
@@ -291,11 +293,11 @@ private:
                     declared.insert({*token, decl->getCanonicalDecl()});
                 }
             } else if(token) {
-                // A using-declaration's targets are weak references too,
-                // and depend on nothing. The instantiations resolving a
+                // A using-declaration's targets are candidates too, and
+                // depend on nothing. The instantiations resolving a
                 // dependent name keep it dependent.
-                if(occurrence.kind.is_one_of(RelationKind::WeakReference) && !index_known &&
-                   !entry.node.get<clang::UsingDecl>()) {
+                if(occurrence.kind.is_one_of(RelationKind::Candidate, RelationKind::Guess) &&
+                   !index_known && !entry.node.get<clang::UsingDecl>()) {
                     usage[semantics.spelled_tokens()[*token].range.begin] |=
                         mask(Modifier::Dependent);
                 }

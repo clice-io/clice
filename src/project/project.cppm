@@ -484,8 +484,9 @@ struct Project {
     llvm::SmallVector<Fid> refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked);
 
     /// Whether some unit of the build the index is to hold has no record in
-    /// it yet (see feature::RenameScope::units_pending).
-    bool units_pending();
+    /// it yet, but those `covered` says another index answers for (an open
+    /// buffer's own compile's) (see feature::RenameScope::units_pending).
+    bool units_pending(llvm::function_ref<bool(Fid unit)> covered = nullptr);
 
     // changes.cpp
 

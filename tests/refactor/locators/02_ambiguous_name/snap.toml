@@ -82,15 +82,13 @@ stdout = '''
             "line": 2,
             "column": 5,
             "name": "value",
-            "newName": "amount",
-            "heuristic": false
+            "newName": "amount"
           },
           {
             "line": 9,
             "column": 23,
             "name": "value",
-            "newName": "amount",
-            "heuristic": false
+            "newName": "amount"
           }
         ]
       }
@@ -132,15 +130,13 @@ stdout = '''
             "line": 2,
             "column": 5,
             "name": "value",
-            "newName": "amount",
-            "heuristic": false
+            "newName": "amount"
           },
           {
             "line": 9,
             "column": 23,
             "name": "value",
-            "newName": "amount",
-            "heuristic": false
+            "newName": "amount"
           }
         ]
       }

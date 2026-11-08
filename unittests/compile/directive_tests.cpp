@@ -14,6 +14,7 @@ std::vector<Include> includes;
 std::vector<HasInclude> has_includes;
 std::vector<Condition> conditions;
 std::vector<MacroRef> macros;
+std::vector<clang::SourceLocation> unresolved;
 std::vector<DiagnosticPragma> diagnostic_pragmas;
 std::vector<Embed> embeds;
 std::vector<HasEmbed> has_embeds;
@@ -28,6 +29,7 @@ void run(llvm::StringRef code) {
     has_includes = unit->directives()[fid].has_includes;
     conditions = unit->directives()[fid].conditions;
     macros = unit->directives()[fid].macros;
+    unresolved = unit->directives()[fid].unresolved_macros;
     diagnostic_pragmas = unit->directives()[fid].diagnostic_pragmas;
     embeds = unit->directives()[fid].embeds;
     has_embeds = unit->directives()[fid].has_embeds;
@@ -218,6 +220,80 @@ int y = §(6)expr(§(7)expr(1));
     EXPECT_MACRO(6, MacroRef::Kind::Ref, "6");
     EXPECT_MACRO(7, MacroRef::Kind::Ref, "7");
     EXPECT_MACRO(8, MacroRef::Kind::Undef, "8");
+};
+
+ZEST_CASE(MacroArgument) {
+    run(R"cpp(
+#[main.cpp]
+#define F() 1
+#define APPLY(f) f()
+#define TWICE(f) f() + f()
+int a = APPLY(§(0)F);
+int b = TWICE(§(1)F);
+)cpp");
+
+    // The name an argument spells, once however often the body uses it.
+    std::vector<std::uint32_t> written;
+    for(auto& macro: macros) {
+        if(macro.kind == MacroRef::Ref && unit->token_spelling(macro.loc) == "F") {
+            written.push_back(unit->written_at(macro.loc).offset);
+        }
+    }
+    ZEXPECT(written == std::vector{point("0"), point("1")});
+};
+
+ZEST_CASE(UnresolvedMacros) {
+    run(R"cpp(
+#[main.cpp]
+#ifndef §(guard)GUARD
+#define GUARD
+#endif
+#undef §(never)NEVER
+#if §(plain)PLAIN > 1 && defined(§(paren)PAREN) && defined §(bare)BARE
+#elif §(later)LATER
+#endif
+#ifdef GUARD
+#elif §(unevaluated)UNEVALUATED
+#elifdef §(skipped_elifdef)SKIPPED_ELIFDEF
+#endif
+#if 0
+#define §(skipped)SKIPPED 1
+#undef §(skipped_undef)SKIPPED_UNDEF
+#ifdef §(nested)NESTED
+#elif §(nested_elif)NESTED_ELIF > 1
+#endif
+#endif
+#if __has_include(<limits.h>) && __has_cpp_attribute(nodiscard) && GUARD + 0
+#endif
+#define HAS_X defined(X)
+#if HAS_X
+#endif
+)cpp");
+
+    // The defined names, the builtins with their arguments and the names
+    // a body spells are left out.
+    std::vector<std::uint32_t> offsets;
+    for(auto location: unresolved) {
+        offsets.push_back(unit->written_at(location).offset);
+    }
+    ranges::sort(offsets);
+    std::vector<std::uint32_t> expected;
+    for(auto name: {"guard",
+                    "never",
+                    "plain",
+                    "paren",
+                    "bare",
+                    "later",
+                    "unevaluated",
+                    "skipped_elifdef",
+                    "skipped",
+                    "skipped_undef",
+                    "nested",
+                    "nested_elif"}) {
+        expected.push_back(point(name));
+    }
+    ranges::sort(expected);
+    ZEXPECT(offsets == expected);
 };
 
 ZEST_CASE(DiagnosticPragma) {

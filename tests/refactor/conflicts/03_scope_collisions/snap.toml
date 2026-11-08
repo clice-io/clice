@@ -35,15 +35,13 @@ stdout = '''
             "line": 12,
             "column": 9,
             "name": "size",
-            "newName": "capacity",
-            "heuristic": false
+            "newName": "capacity"
           },
           {
             "line": 20,
             "column": 31,
             "name": "size",
-            "newName": "capacity",
-            "heuristic": false
+            "newName": "capacity"
           }
         ]
       }
@@ -87,15 +85,13 @@ stdout = '''
             "line": 17,
             "column": 9,
             "name": "capacity",
-            "newName": "size",
-            "heuristic": false
+            "newName": "size"
           },
           {
             "line": 34,
             "column": 39,
             "name": "capacity",
-            "newName": "size",
-            "heuristic": false
+            "newName": "size"
           }
         ]
       }
@@ -139,22 +135,19 @@ stdout = '''
             "line": 13,
             "column": 10,
             "name": "grow",
-            "newName": "Base",
-            "heuristic": false
+            "newName": "Base"
           },
           {
             "line": 20,
             "column": 12,
             "name": "grow",
-            "newName": "Base",
-            "heuristic": false
+            "newName": "Base"
           },
           {
             "line": 33,
             "column": 7,
             "name": "grow",
-            "newName": "Base",
-            "heuristic": false
+            "newName": "Base"
           }
         ]
       }
@@ -198,15 +191,13 @@ stdout = '''
             "line": 16,
             "column": 8,
             "name": "Derived",
-            "newName": "capacity",
-            "heuristic": false
+            "newName": "capacity"
           },
           {
             "line": 32,
             "column": 5,
             "name": "Derived",
-            "newName": "capacity",
-            "heuristic": false
+            "newName": "capacity"
           }
         ]
       }
@@ -257,15 +248,13 @@ stdout = '''
             "line": 3,
             "column": 11,
             "name": "alpha",
-            "newName": "beta",
-            "heuristic": false
+            "newName": "beta"
           },
           {
             "line": 34,
             "column": 12,
             "name": "alpha",
-            "newName": "beta",
-            "heuristic": false
+            "newName": "beta"
           }
         ]
       }
@@ -309,15 +298,13 @@ stdout = '''
             "line": 23,
             "column": 5,
             "name": "volume",
-            "newName": "LIMIT",
-            "heuristic": false
+            "newName": "LIMIT"
           },
           {
             "line": 24,
             "column": 30,
             "name": "volume",
-            "newName": "LIMIT",
-            "heuristic": false
+            "newName": "LIMIT"
           }
         ]
       }
@@ -362,22 +349,19 @@ stdout = '''
             "line": 22,
             "column": 5,
             "name": "area",
-            "newName": "volume",
-            "heuristic": false
+            "newName": "volume"
           },
           {
             "line": 24,
             "column": 5,
             "name": "area",
-            "newName": "volume",
-            "heuristic": false
+            "newName": "volume"
           },
           {
             "line": 34,
             "column": 50,
             "name": "area",
-            "newName": "volume",
-            "heuristic": false
+            "newName": "volume"
           }
         ]
       }
@@ -428,15 +412,13 @@ stdout = '''
             "line": 26,
             "column": 34,
             "name": "factor",
-            "newName": "length",
-            "heuristic": false
+            "newName": "length"
           },
           {
             "line": 27,
             "column": 30,
             "name": "factor",
-            "newName": "length",
-            "heuristic": false
+            "newName": "length"
           }
         ]
       }
@@ -479,15 +461,13 @@ stdout = '''
             "line": 27,
             "column": 12,
             "name": "result",
-            "newName": "length",
-            "heuristic": false
+            "newName": "length"
           },
           {
             "line": 28,
             "column": 12,
             "name": "result",
-            "newName": "length",
-            "heuristic": false
+            "newName": "length"
           }
         ]
       }

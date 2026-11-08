@@ -1,6 +1,6 @@
 ["rewrites program modules"."$ clice index --jobs 1"]
 stdout = '''
-Indexed 8 translation units in #s: 32 file shards (# KB), 69 symbols.
+Indexed 8 translation units in #s: 32 file shards (# KB), 75 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
@@ -434,7 +434,7 @@ exit = 0
 
 ["rejected partitions"."$ clice index --jobs 1"]
 stdout = '''
-Indexed 8 translation units in #s: 32 file shards (# KB), 69 symbols.
+Indexed 8 translation units in #s: 32 file shards (# KB), 75 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0

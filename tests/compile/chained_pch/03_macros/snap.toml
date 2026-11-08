@@ -492,7 +492,7 @@ range = "return guarded.g + once.⟦o⟧ + value + counter_now + LIMIT;"
 
 [index."$ clice index"]
 stdout = '''
-Indexed 2 translation units in #s: 6 file shards (# KB), 22 symbols.
+Indexed 2 translation units in #s: 6 file shards (# KB), 24 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
@@ -691,7 +691,7 @@ exit = 0
 
 [index."$ clice index #2"]
 stdout = '''
-Indexed 2 translation units in #s: 6 file shards (# KB), 22 symbols.
+Indexed 2 translation units in #s: 6 file shards (# KB), 24 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0

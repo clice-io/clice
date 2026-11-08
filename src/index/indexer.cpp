@@ -409,11 +409,57 @@ public:
         index->occurrences.emplace_back(range, ensure_symbol(decls::normalize(decl)));
     }
 
+    /// The symbol of the macro `hash` names, its symbol-table entry made on
+    /// first sight: like a declaration's, without it build() would
+    /// default-construct a nameless entry when recording reference files,
+    /// and every name lookup for the macro would come back empty. `def` is
+    /// null for a name no definition resolves.
+    SymbolHash ensure_macro(SymbolHash hash,
+                            clang::SourceLocation name,
+                            const clang::MacroInfo* def) {
+        auto [it, inserted] = symbols.try_emplace(hash);
+        if(!inserted) {
+            return hash;
+        }
+        auto& symbol = it->second;
+        auto& SM = unit.context().getSourceManager();
+        symbol.name = unit.token_spelling(name);
+        symbol.kind = SymbolKind::Macro;
+        symbol.scope = SymbolScope::External;
+        // An include guard is no name to complete, nor is a macro its
+        // header undefines.
+        auto flags = def && !def->isUsedForHeaderGuard() && !undefined.contains(def)
+                         ? SymbolFlags::Completable
+                         : SymbolFlags::None;
+        if(def && SM.isInSystemHeader(def->getDefinitionLoc())) {
+            flags |= SymbolFlags::SystemHeader;
+        }
+        symbol.flags = flags;
+        symbol.token_class =
+            def ? token_class(*def, SM) : TokenClass{.kind = SemanticTokenKind::Macro};
+        return hash;
+    }
+
     void add_macro(const clang::MacroInfo* def, RelationKind kind, clang::SourceLocation location) {
-        // FIXME: A macro location is a name a macro body spells, which
-        // project_expansions records, or a macro name passed as an argument and
-        // invoked by the body (`APPLY(F)` for `F()`), which nothing records.
+        auto& SM = unit.context().getSourceManager();
+        // A name a macro body spells is the expansions' to resolve
+        // (project_expansions). One pasted together (`CAT(BUF, SIZE)`) is
+        // spelled by no text: a reference at the expansion producing it,
+        // beside no occurrence, as no token there is the macro's.
         if(location.isMacroID()) {
+            if(!SM.isWrittenInScratchSpace(SM.getSpellingLoc(location))) {
+                return;
+            }
+            auto expansion = SM.getExpansionLoc(location);
+            auto [fid, offset] = unit.produced_at(expansion);
+            if(auto* index = file_index(fid)) {
+                auto hash = ensure_macro(unit.get<EntityTable>().entity(def), location, def);
+                index->relations[hash].push_back({
+                    .kind = kind,
+                    .range = {offset, offset + unit.token_length(expansion)},
+                    .target = 0,
+                });
+            }
             return;
         }
 
@@ -423,25 +469,7 @@ public:
             return;
         }
 
-        auto hash = unit.get<EntityTable>().entity(def);
-        // Macros get a symbol-table entry like declarations do; without it
-        // build() would default-construct a nameless entry when recording
-        // reference files, and every name lookup for the macro would come
-        // back empty.
-        auto [it, success] = symbols.try_emplace(hash);
-        if(success) {
-            auto& symbol = it->second;
-            symbol.name = unit.token_spelling(location);
-            symbol.kind = SymbolKind::Macro;
-            symbol.scope = SymbolScope::External;
-            // An include guard is no name to complete, nor is a macro its
-            // header undefines.
-            symbol.flags = def && (def->isUsedForHeaderGuard() || undefined.contains(def))
-                               ? SymbolFlags::None
-                               : SymbolFlags::Completable;
-            symbol.token_class = def ? token_class(*def, unit.context().getSourceManager())
-                                     : TokenClass{.kind = SemanticTokenKind::Macro};
-        }
+        auto hash = ensure_macro(unit.get<EntityTable>().entity(def), location, def);
         index->occurrences.emplace_back(range, hash);
 
         Relation relation{
@@ -453,7 +481,7 @@ public:
         // Definition relations carry the macro's full extent (name through
         // last body token), like declarations do — definition-text
         // consumers decode it out of target.
-        if(kind.isDeclOrDef() && def) {
+        if(kind.declares()) {
             auto [def_fid, def_range] = *unit.written_range(
                 clang::SourceRange(def->getDefinitionLoc(), def->getDefinitionEndLoc()));
             if(def_fid == fid) {
@@ -462,6 +490,22 @@ public:
         }
 
         index->relations[hash].emplace_back(relation);
+    }
+
+    /// A macro name a directive spells where no definition resolves it: a
+    /// reference of the name's own symbol, beside no occurrence — the
+    /// cursor there stands on no macro.
+    void add_unresolved_macro(clang::SourceLocation location) {
+        auto [fid, range] = *unit.written_range(location);
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
+        auto hash = ensure_macro(EntityTable::unresolved_macro(unit.token_spelling(location)),
+                                 location,
+                                 nullptr);
+        index->relations[hash].push_back(
+            {.kind = RelationKind::Reference, .range = range, .target = 0});
     }
 
     /// Record a relation of `decl` in the index of `fid`, `target` naming
@@ -490,7 +534,7 @@ public:
         auto [fid, range] = *unit.written_range(name);
         Relation relation{.kind = kind, .range = range, .target = 0};
 
-        if(kind.isDeclOrDef()) {
+        if(kind.declares()) {
             auto source_range = decls::written_range(decl);
             if(source_range.isValid()) {
                 auto [def_fid, extent] = unit.produced_range(source_range);
@@ -608,7 +652,7 @@ public:
             // Decl/def consumers read the definition range out of
             // target; without it, module symbols would report their
             // definition as missing.
-            if(kind.isDeclOrDef()) {
+            if(kind.declares()) {
                 relation.set_extent(range);
             }
             index->relations[hash].emplace_back(relation);
@@ -809,7 +853,7 @@ public:
                 return;
             }
             // A dependent call reaches every candidate the resolver finds
-            // for it, as its weak references do.
+            // for it, as its candidate and guess references do.
             for(auto* candidate: resolver.callees(CE)) {
                 call(candidate->getUnderlyingDecl(), range);
             }
@@ -975,6 +1019,13 @@ public:
                                       FD->getLocation());
                 }
             }
+
+            if(auto* guide = llvm::dyn_cast<clang::CXXDeductionGuideDecl>(FD)) {
+                add_pair_relation(guide->getDeducedTemplate(),
+                                  RelationKind::Guide,
+                                  guide,
+                                  FD->getLocation());
+            }
             return;
         }
     }
@@ -1125,7 +1176,7 @@ public:
                     continue;
                 }
                 for(auto& reference: resolve_references(SemanticNode(redecl))) {
-                    if(reference.location.isValid() && reference.kind.isDeclOrDef()) {
+                    if(reference.location.isValid() && reference.kind.declares()) {
                         declarations.push_back({reference.decl,
                                                 reference.kind,
                                                 reference.location,
@@ -1181,7 +1232,9 @@ public:
                 }
                 add_specialized_type(occurrence.decl, name);
             }
-            if(occurrence.kind.is_one_of(RelationKind::Reference, RelationKind::WeakReference) &&
+            if(occurrence.kind.is_one_of(RelationKind::Reference,
+                                         RelationKind::Candidate,
+                                         RelationKind::Guess) &&
                names_member_qualified(semantics.node(i).node)) {
                 if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(occurrence.decl);
                    method && method->isVirtual()) {
@@ -1191,7 +1244,8 @@ public:
 
             if(!occurrence.kind.is_one_of(RelationKind::Declaration,
                                           RelationKind::Definition,
-                                          RelationKind::WeakReference)) {
+                                          RelationKind::Candidate,
+                                          RelationKind::Guess)) {
                 add_pasted_relation(occurrence.decl,
                                     enclosing_top_level(semantics, i),
                                     name.getBegin());
@@ -1410,9 +1464,12 @@ public:
         std::tuple<SymbolHash, std::uint32_t, std::uint32_t, std::uint32_t, SymbolHash>;
 
     static WrittenKey written_key(SymbolHash symbol, const Relation& relation) {
-        // A weak reference already names what the reference would.
+        // A candidate already names what an instantiation's reference
+        // would; a guess does not, and the instantiation confirming it is
+        // recorded.
         RelationKind kind = relation.kind;
-        auto kind_class = kind.isReference() ? RelationKind::Reference : kind.value();
+        auto kind_class =
+            kind.is_one_of(RelationKind::Candidate) ? RelationKind::Reference : kind.value();
         return {symbol,
                 kind_class,
                 relation.range.begin,
@@ -1443,7 +1500,7 @@ public:
             for(auto& relation: relations) {
                 RelationKind kind = relation.kind;
                 InstantiationRecord record{.range = relation.range, .target = symbol};
-                if(kind.isReference()) {
+                if(kind.is_one_of(RelationKind::Reference, RelationKind::Candidate)) {
                     record.kind = InstantiationKind::Reference;
                 } else if(kind.is_one_of(RelationKind::Deduced)) {
                     record.kind = InstantiationKind::Deduced;
@@ -1654,7 +1711,9 @@ public:
         // What a body declares is each expansion's own: its uses alone.
         for(auto& name: body_names) {
             std::optional<InstantiationKind> kind;
-            if(name.kind.isReference()) {
+            if(name.kind.is_one_of(RelationKind::Reference,
+                                   RelationKind::Candidate,
+                                   RelationKind::Guess)) {
                 kind = InstantiationKind::Reference;
             } else if(name.kind.is_one_of(RelationKind::Deduced)) {
                 kind = InstantiationKind::Deduced;
@@ -1708,6 +1767,9 @@ public:
                         break;
                     }
                 }
+            }
+            for(auto location: directive.unresolved_macros) {
+                add_unresolved_macro(location);
             }
         }
     }
@@ -1927,7 +1989,7 @@ public:
                         adopt(symbol, path_id, true);
                     } else if(relation.kind == RelationKind::Declaration) {
                         adopt(symbol, path_id, false);
-                    } else if(RelationKind(relation.kind).isBetweenSymbol()) {
+                    } else if(RelationKind(relation.kind).between_symbols()) {
                         // A query anchors a relation's target at the file
                         // holding the relation; an internal one reaches its
                         // own entries from there only through this file.

@@ -1,0 +1,29 @@
+[answers.definition]
+definition = ["#define ⟦LIMIT⟧() 10"]
+references = [
+    "#define ⟦LIMIT⟧() 10",
+    "int a = APPLY(⟦LIMIT⟧);",
+    "int b = TWICE(⟦LIMIT⟧);",
+    "int c = ⟦LIMIT⟧();",
+    "int d = ⟦CAT⟧(LIM, IT)();",
+]
+
+[answers.argument]
+definition = ["#define ⟦LIMIT⟧() 10"]
+references = [
+    "#define ⟦LIMIT⟧() 10",
+    "int a = APPLY(⟦LIMIT⟧);",
+    "int b = TWICE(⟦LIMIT⟧);",
+    "int c = ⟦LIMIT⟧();",
+    "int d = ⟦CAT⟧(LIM, IT)();",
+]
+
+[answers.call]
+definition = ["#define ⟦LIMIT⟧() 10"]
+references = [
+    "#define ⟦LIMIT⟧() 10",
+    "int a = APPLY(⟦LIMIT⟧);",
+    "int b = TWICE(⟦LIMIT⟧);",
+    "int c = ⟦LIMIT⟧();",
+    "int d = ⟦CAT⟧(LIM, IT)();",
+]

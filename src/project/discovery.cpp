@@ -1,7 +1,6 @@
 module clice;
 
 import :command.database;
-import :command.file_kind;
 import :project.discovery;
 import :project.project;
 import :settings.settings;
@@ -31,15 +30,6 @@ llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
         ranges::remove_if(places, [](const Spelling& place) { return !fs::exists(place); }).begin(),
         places.end());
     return places;
-}
-
-/// Whether a project directory holds no sources a refactoring edits:
-/// hidden, a package cache, the cache directory or a build tree.
-bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
-    auto name = path::filename(dir);
-    return name.starts_with(".") || name == "node_modules" || dir == cache_dir ||
-           fs::exists(path::join(dir, "CMakeCache.txt")) ||
-           fs::exists(path::join(dir, "build.ninja"));
 }
 
 /// The git directory of the checkout `root` lies in, if any: `.git`
@@ -443,7 +433,12 @@ bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) 
         if(dir == root) {
             return false;
         }
-        inside = !outside_sources(dir, cache_dir);
+        // A hidden directory, a package cache, the cache directory or a
+        // build tree holds no sources a refactoring edits.
+        auto name = path::filename(dir);
+        inside = !name.starts_with(".") && name != "node_modules" && dir != cache_dir &&
+                 !fs::exists(path::join(dir, "CMakeCache.txt")) &&
+                 !fs::exists(path::join(dir, "build.ninja"));
         return inside;
     });
     return inside;
@@ -451,33 +446,6 @@ bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) 
 
 EditableFiles Project::editable_files() const {
     return {.root = root, .cache_dir = settings.project.cache_identity};
-}
-
-std::vector<std::string> EditableFiles::sources() const {
-    CanonicalRef project_root = root;
-    std::vector<std::string> found;
-    auto entries = fs::walk(project_root);
-    for(auto& entry: entries) {
-        if(!entry) {
-            vfs::warn_unreadable(entry.error());
-            continue;
-        }
-        if(entry->type == fs::FileType::Directory) {
-            if(outside_sources(project_root.entry(entry->path), cache_dir)) {
-                entries.skip();
-            }
-            continue;
-        }
-        if(entry->type != fs::FileType::Regular) {
-            continue;
-        }
-        auto path = project_root.entry(entry->path);
-        if(clang::driver::types::isAcceptedByClang(suffix_type(path)) ||
-           is_context_header_path(path) || path.str().ends_with(".cuh")) {
-            found.push_back(std::move(path).str());
-        }
-    }
-    return found;
 }
 
 bool EditableFiles::editable(llvm::StringRef path) const {

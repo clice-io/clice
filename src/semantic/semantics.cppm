@@ -225,9 +225,11 @@ struct NameOccurrence {
 /// SemanticVisitor visit methods). Semantic tokens, the indexer
 /// and hover consume the spelled subset through resolve_occurrences.
 ///
-/// Dependent names (typename T::type, unresolved lookups, dependent using
-/// declarations) resolve through the template resolver into WeakReference
-/// references; without a resolver they produce nothing. Instantiation
+/// Dependent names (typename T::type, dependent members, dependent using
+/// declarations) resolve through the template resolver into Guess
+/// references; without a resolver they produce nothing. An unresolved
+/// lookup refers to the overloads it found as Candidates, and to what the
+/// resolver adds through argument-dependent lookup as Guesses. Instantiation
 /// decl heads produce no declaration reference (their locations repeat
 /// the pattern), but nodes inside instantiated bodies deliberately do:
 /// each instantiation acts as an implementation of the duck-typed

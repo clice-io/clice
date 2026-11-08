@@ -709,7 +709,7 @@ ZEST_CASE(UsingRelationKey) {
 
     bool found_use = false;
     for(auto& r: it->second) {
-        if(r.kind == RelationKind::WeakReference && r.range == range("use")) {
+        if(r.kind == RelationKind::Candidate && r.range == range("use")) {
             found_use = true;
             break;
         }
@@ -767,7 +767,7 @@ ZEST_CASE(RewrittenOperatorRef) {
     GO_TO_DEFINITION("use", "def");
 }
 
-ZEST_CASE(DependentWeakReference) {
+ZEST_CASE(DependentGuess) {
     build_index(R"(
             template <typename T>
             struct Base {
@@ -791,14 +791,14 @@ ZEST_CASE(DependentWeakReference) {
     auto it = index.relations.find(use_occurrences.front().target);
     ZASSERT(it != index.relations.end());
 
-    bool found_weak = false;
+    bool found_guess = false;
     for(auto& r: it->second) {
-        if(r.kind == RelationKind::WeakReference && r.range == range("use")) {
-            found_weak = true;
+        if(r.kind == RelationKind::Guess && r.range == range("use")) {
+            found_guess = true;
             break;
         }
     }
-    ZASSERT(found_weak);
+    ZASSERT(found_guess);
 }
 
 ZEST_CASE(TypeDefinitionRelations) {
@@ -2404,10 +2404,10 @@ ZEST_CASE(OccurrenceCoverage) {
     });
     ZEXPECT(spelled_in("delegating") ==
             std::vector<Spelled>{
-                {"Delegating", SymbolKind::Method, {RelationKind::Definition}   },
-                {"Delegating", SymbolKind::Struct, {RelationKind::Reference}    },
-                {"(",          SymbolKind::Method, {RelationKind::WeakReference}},
-                {"T",          SymbolKind::Type,   {RelationKind::Reference}    },
+                {"Delegating", SymbolKind::Method, {RelationKind::Definition}},
+                {"Delegating", SymbolKind::Struct, {RelationKind::Reference} },
+                {"(",          SymbolKind::Method, {RelationKind::Candidate} },
+                {"T",          SymbolKind::Type,   {RelationKind::Reference} },
     });
 }
 
@@ -3128,6 +3128,21 @@ ZEST_CASE(EachInstantiationItsResolution) {
     ZEXPECT(keys().size() == 2u);
     // Both `go`s are named at the one place, each by its own resolution.
     ZEXPECT(resolved().size() == 4u);
+}
+
+ZEST_CASE(ConfirmedGuessRecorded) {
+    // The written code only guesses the dependent name; the instantiation
+    // resolving it alike is recorded all the same.
+    build(R"(
+        template <typename T>
+        struct Box { static constexpr int value = 1; };
+        template <typename T>
+        int read() { return Box<T>::value; }
+        int use() { return read<int>(); }
+    )");
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"value", Reference, "value"},
+    });
 }
 
 ZEST_CASE(NothingResolvedKeepsTheKey) {

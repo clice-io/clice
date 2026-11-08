@@ -1,0 +1,33 @@
+[answers.instantiated.rename.edits]
+"main.cpp" = '''
+ struct Circle {
+-    double area() const { return 3.0; }
++    double perimeter() const { return 3.0; }
+ };
+
+…
+
+ template <typename T>
+-double measure(const T& shape) { return shape.area(); }
++double measure(const T& shape) { return shape.perimeter(); }
+
+ template <typename T>
+'''
+
+[answers.shared.rename]
+error = "cannot rename `area`: the name at ${WS}/main.cpp:17 also refers to `Triangle::area` in another instantiation or build configuration: rename both to `side` in one list of renames"
+
+[answers.uninstantiated.rename]
+notice = '''
+Spellings of `area` left alone:
+  ${WS}/main.cpp:25: double size_of(const Box<T>& box) { return box.area(); } (in a template, where no instantiation the index saw resolves the name to it)
+'''
+
+[answers.uninstantiated.rename.edits]
+"main.cpp" = '''
+ template <typename T>
+ struct Box {
+-    double area() const { return 1.0; }
++    double volume() const { return 1.0; }
+ };
+'''

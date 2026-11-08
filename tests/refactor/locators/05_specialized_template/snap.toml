@@ -67,85 +67,73 @@ stdout = '''
             "line": 4,
             "column": 8,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 5,
             "column": 5,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 10,
             "column": 8,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 11,
             "column": 5,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 16,
             "column": 8,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 17,
             "column": 5,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 21,
             "column": 1,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 21,
             "column": 24,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 23,
             "column": 1,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 24,
             "column": 1,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 26,
             "column": 1,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 27,
             "column": 1,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           }
         ]
       }
@@ -187,85 +175,73 @@ stdout = '''
             "line": 4,
             "column": 8,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 5,
             "column": 5,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 10,
             "column": 8,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 11,
             "column": 5,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 16,
             "column": 8,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 17,
             "column": 5,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 21,
             "column": 1,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 21,
             "column": 24,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 23,
             "column": 1,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 24,
             "column": 1,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 26,
             "column": 1,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           },
           {
             "line": 27,
             "column": 1,
             "name": "Holder",
-            "newName": "Box",
-            "heuristic": false
+            "newName": "Box"
           }
         ]
       }
