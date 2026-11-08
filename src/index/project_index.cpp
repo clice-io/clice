@@ -183,6 +183,30 @@ void ProjectIndex::for_each_reference_file(SymbolHash hash,
     }
 }
 
+void ProjectIndex::for_each_definition_file(SymbolHash hash,
+                                            llvm::function_ref<void(Fid)> visit) const {
+    auto* found = symbol(hash);
+    if(!found) {
+        return;
+    }
+    if(found->kind == SymbolKind::Namespace) {
+        for_each_reference_file(hash, visit);
+        return;
+    }
+    if(!has_flag(found->flags, SymbolFlags::HasDefinition)) {
+        return;
+    }
+    auto visit_path = [&](std::uint32_t path) {
+        if(auto file = fid_of(path); file.valid()) {
+            visit(file);
+        }
+    };
+    visit_path(found->file);
+    for(auto path: found->other_definition_files) {
+        visit_path(path);
+    }
+}
+
 void ProjectIndex::for_each_instantiation_file(SymbolHash hash,
                                                llvm::function_ref<void(Fid)> visit) const {
     if(auto* found = symbol(hash)) {
@@ -559,9 +583,17 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
             // A unit that defines the symbol always places it: the record never
             // retracts a unit's earlier report, so an old definition bit must
             // not pin the file after the definition moved. Declarations only
-            // fill an empty slot.
+            // fill an empty slot. The file an earlier unit defined it in stays
+            // one of its definition files, which readers check against the
+            // shards like every reported file.
             if(identity.file != no_file && (target.file == no_file || defines)) {
                 auto file = path_of(identity.file);
+                if(defines && target.file != file &&
+                   has_flag(target.flags, SymbolFlags::HasDefinition) &&
+                   target.kind != SymbolKind::Namespace) {
+                    target.other_definition_files.add(target.file);
+                }
+                target.other_definition_files.remove(file);
                 symbol_changed = symbol_changed || target.file != file;
                 target.file = file;
             }
@@ -589,6 +621,13 @@ void ProjectIndex::merge_symbols(const TUIndex& index,
             }
             return true;
         });
+    index.for_each_other_definition([&](SymbolHash hash, std::uint32_t path_id) {
+        auto file = path_of(path_id);
+        auto& stored = *symbol(hash);
+        if(stored.file != file && !stored.other_definition_files.contains(file)) {
+            edit(hash).other_definition_files.add(file);
+        }
+    });
     index.for_each_instantiation_file([&](SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
         auto* stored = symbol(hash);
         if(stored && ranges::all_of(files, [&](std::uint32_t file) {

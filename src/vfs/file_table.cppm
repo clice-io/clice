@@ -97,9 +97,11 @@ struct FileTable {
     Spelling spelling(Fid fid) const;
 
     /// The path a user knows a file by: the one its open document was
-    /// opened under, else its identity under the workspace folder it lies
-    /// in. Everything the user is shown — URIs, query output — names files
-    /// this way; a lookup spelling (spelling()) never does.
+    /// opened under, else a path in a workspace folder — its identity under
+    /// the folder it lies in, or the path the build reaches it by when only
+    /// that lies in one (a link in the folder to shared sources outside) —
+    /// else its identity. Everything the user is shown — URIs, query
+    /// output — names files this way.
     std::string display(Fid fid) const;
 
     /// display() of the file a worker or an index names by its identity,
@@ -136,7 +138,17 @@ struct FileTable {
 
     llvm::DenseMap<Fid, std::string> shown;
     llvm::DenseMap<Fid, std::string> spelled;
-    llvm::SmallVector<std::pair<CanonicalPath, Spelling>> spelled_roots;
+
+    /// A workspace folder spell_root recorded: its identity, the spelling
+    /// it was opened under, `..` folded, and the one files under it show
+    /// under — the opened one while it names the folder.
+    struct Folder {
+        CanonicalPath identity;
+        Spelling opened;
+        Spelling shown;
+    };
+
+    llvm::SmallVector<Folder> folders;
 
     /// What the disk held at each file's last look, and the changes those
     /// looks saw.

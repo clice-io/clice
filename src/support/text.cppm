@@ -4,6 +4,14 @@ import :support.prelude;
 
 namespace clice {
 
+/// The first `count` characters of `text`, the whole of it when shorter; a
+/// byte outside UTF-8 is a character of its own.
+inline llvm::StringRef take_characters(llvm::StringRef text, std::size_t count) {
+    auto end =
+        lsp::encoded_offset(text, static_cast<std::uint32_t>(count), lsp::PositionEncoding::UTF32);
+    return end ? text.take_front(*end) : text;
+}
+
 /// The first byte of the line containing `offset`.
 inline std::uint32_t line_begin(llvm::StringRef content, std::uint32_t offset) {
     auto newline = content.rfind('\n', offset);

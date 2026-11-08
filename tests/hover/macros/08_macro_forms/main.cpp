@@ -46,8 +46,8 @@ int joined_name = 8;
 int continued = §(continued_arg)ECHO(joined_\
 name);
 
-// Doubling pastes grow one identifier token past the 1 KiB preview
-// limit, so the expansion preview must truncate mid-token.
+// Doubling pastes grow one identifier token past the 4 KiB the preview
+// shows, so the expansion preview must truncate mid-token.
 #define CAT_(a, b) a##b
 #define CAT(a, b) CAT_(a, b)
 #define A16 aaaaaaaaaaaaaaaa
@@ -58,8 +58,10 @@ name);
 #define A512 CAT(A256, A256)
 #define A1024 CAT(A512, A512)
 #define A2048 CAT(A1024, A1024)
+#define A4096 CAT(A2048, A2048)
+#define A8192 CAT(A4096, A4096)
 
-int §(oversized_use)A2048 = 1;
+int §(oversized_use)A8192 = 1;
 
 // An expansion longer than a line wraps as clang-format lays it out.
 int combine(int, int, int, int, int, int, int);

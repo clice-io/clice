@@ -1020,4 +1020,18 @@ tests/hover/presentation/04_long_type_lines
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**The file's style**
+
+The code a card shows, a declaration or what a macro expands to, is laid out in the style of the `.clang-format` above the file
+
+Without one, it is laid out in the LLVM style with `*` and `&` beside the type.
+
+```case
+tests/hover/presentation/05_configured_style
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->

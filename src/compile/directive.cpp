@@ -90,12 +90,8 @@ private:
 
     /// A system header's directives test what its platform and the user
     /// configure: none is a name of the project.
-    bool in_system_header(clang::SourceLocation location) {
-        return unit.SM().isInSystemHeader(location);
-    }
-
     void add_unresolved(clang::SourceLocation location) {
-        if(!in_system_header(location)) {
+        if(!unit.in_system_header(location)) {
             unit.collected_directives[unit.file_id(location)].unresolved_macros.push_back(location);
         }
     }
@@ -165,7 +161,7 @@ private:
     }
 
     void add_unresolved(clang::SourceRange condition, bool evaluated) {
-        if(condition.isInvalid() || in_system_header(condition.getBegin())) {
+        if(condition.isInvalid() || unit.in_system_header(condition.getBegin())) {
             return;
         }
         auto [fid, range] = unit.produced_range(condition);
@@ -423,7 +419,7 @@ public:
     /// callback reported: the block's own opening and closing lines and an
     /// `#elif` the preprocessor evaluated in it are reported as conditions.
     void SourceRangeSkipped(clang::SourceRange range, clang::SourceLocation) override {
-        if(in_system_header(range.getBegin())) {
+        if(unit.in_system_header(range.getBegin())) {
             return;
         }
         auto [fid, begin] = unit.decompose(range.getBegin());

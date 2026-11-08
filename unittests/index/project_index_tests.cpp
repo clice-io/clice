@@ -12,6 +12,7 @@ import :unittests.utils.tester;
 import :unittests.utils.tu_index_blob;
 import :unittests.utils;
 import :vfs.cache_store;
+import :vfs.path;
 
 namespace clice::testing {
 namespace {
@@ -280,6 +281,91 @@ ZEST_CASE(DefinitionDecidesTokenKind) {
         project.merge_symbols(second_view, intern_paths(second_view, pool));
         ZASSERT(project.find_symbol(42)->token_class.kind == SemanticTokenKind::Class);
     }
+}
+
+ZEST_CASE(DefinitionFilesFromUnits) {
+    // A weak and a strong definition, each a unit's: both files define the
+    // symbol, whichever merges first.
+    auto unit_defining = [](llvm::StringRef path) {
+        auto blob = tu_index_blob();
+        blob.paths = {path.str()};
+        add_symbol(blob,
+                   42,
+                   {
+                       .name = "father",
+                       .kind = SymbolKind::Function,
+                       .flags = index::SymbolFlags::HasDefinition,
+                       .file = 0,
+                   },
+                   {0});
+        return tu_index_bytes(blob);
+    };
+    auto weak = unit_defining("/proj/weak.c");
+    auto strong = unit_defining("/proj/main.c");
+    clice::FileTable pool;
+    auto names = [&](index::ProjectIndex& project, index::SymbolHash hash) {
+        std::vector<std::string> files;
+        project.for_each_definition_file(hash, [&](Fid file) {
+            files.push_back(std::string(path::filename(pool.resolve(file))));
+        });
+        ranges::sort(files);
+        return files;
+    };
+    for(auto [first, second]: {
+            std::pair{&weak,   &strong},
+            std::pair{&strong, &weak  }
+    }) {
+        index::ProjectIndex project{pool};
+        auto first_view = index::TUIndex::from_bytes(*first);
+        auto second_view = index::TUIndex::from_bytes(*second);
+        project.merge_symbols(first_view, intern_paths(first_view, pool));
+        project.merge_symbols(second_view, intern_paths(second_view, pool));
+        project.merge_symbols(first_view, intern_paths(first_view, pool));
+        ZEXPECT(names(project, 42) == std::vector<std::string>{"main.c", "weak.c"});
+    }
+
+    // One unit defining it in two of its files.
+    auto both = tu_index_blob();
+    both.paths = {"/proj/a.c", "/proj/a.h"};
+    add_symbol(both,
+               43,
+               {
+                   .name = "counter",
+                   .kind = SymbolKind::Variable,
+                   .flags = index::SymbolFlags::HasDefinition,
+                   .file = 0,
+               },
+               {0, 1});
+    both.other_definition_entries = {0};
+    both.other_definition_files = {1};
+    auto both_bytes = tu_index_bytes(both);
+    index::ProjectIndex project{pool};
+    auto view = index::TUIndex::from_bytes(both_bytes);
+    project.merge_symbols(view, intern_paths(view, pool));
+    ZEXPECT(names(project, 43) == std::vector<std::string>{"a.c", "a.h"});
+}
+
+ZEST_CASE(TentativeDefinitionsBothFiles) {
+    // A C header's tentative definition and the source's own both define
+    // the variable in the one unit.
+    add_file("counter.h", "int counter;\n");
+    add_focus("main.c", "#include \"counter.h\"\nint counter = 1;\n");
+    kind = CompilationKind::Whole;
+    ZASSERT(compile("-std=c17"));
+
+    clice::FileTable pool;
+    index::ProjectIndex project{pool};
+    auto view = build_view();
+    ZASSERT(view.loaded());
+    project.merge_symbols(view, intern_paths(view, pool));
+    auto counter = find_symbol(project, "counter");
+    ZASSERT(counter != 0);
+    std::vector<std::string> files;
+    project.for_each_definition_file(counter, [&](Fid file) {
+        files.push_back(std::string(path::filename(pool.resolve(file))));
+    });
+    ranges::sort(files);
+    ZEXPECT(files == std::vector<std::string>{"counter.h", "main.c"});
 }
 
 ZEST_CASE(FileVersionInterning) {

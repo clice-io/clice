@@ -442,9 +442,14 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
 
 void IndexQuery::for_each_disk_file(SymbolHash hash,
                                     Fid anchor,
+                                    RelationKind kind,
                                     llvm::function_ref<void(Fid)> visit) const {
     if(index.find_symbol(hash)) {
-        index.for_each_reference_file(hash, visit);
+        if(kind.is_one_of(RelationKind::Definition)) {
+            index.for_each_definition_file(hash, visit);
+        } else {
+            index.for_each_reference_file(hash, visit);
+        }
         return;
     }
     if(!anchor.valid()) {
@@ -520,7 +525,7 @@ void IndexQuery::for_each_relation(SymbolHash hash,
             }
             completed = emit(*source);
         };
-        for_each_disk_file(hash, anchor, visit);
+        for_each_disk_file(hash, anchor, kind, visit);
         if(with_instantiations) {
             index.for_each_instantiation_file(hash, visit);
         }
@@ -829,6 +834,32 @@ std::optional<Site> IndexQuery::first_site(SymbolHash hash, Fid anchor, Relation
     return placed ? std::optional(placed->site) : std::nullopt;
 }
 
+std::vector<IndexQuery::Placed> IndexQuery::definitions(SymbolHash hash, Fid anchor) const {
+    std::vector<Placed> result;
+    for_each_relation(
+        hash,
+        anchor,
+        RelationKind::Definition,
+        Order::DiskFirst,
+        {},
+        [&](const IndexSource& source, const Relation& relation) {
+            if(auto site = source.site(relation.range)) {
+                result.push_back(
+                    {.site = *site, .extent = extent_of(source, relation).value_or(*site)});
+            }
+            return true;
+        });
+    ranges::sort(result, [](const Placed& lhs, const Placed& rhs) {
+        return std::tuple(site_key(lhs.site), lhs.site.origin) <
+               std::tuple(site_key(rhs.site), rhs.site.origin);
+    });
+    auto [first, last] = ranges::unique(result, [](const Placed& lhs, const Placed& rhs) {
+        return site_key(lhs.site) == site_key(rhs.site);
+    });
+    result.erase(first, last);
+    return result;
+}
+
 std::optional<IndexQuery::Placed> IndexQuery::canonical_placed(SymbolHash hash, Fid anchor) const {
     if(auto placed = first_placed(hash, anchor, RelationKind::Definition)) {
         return placed;
@@ -841,7 +872,7 @@ std::optional<IndexQuery::Placed> IndexQuery::canonical_placed(SymbolHash hash, 
     // deleted since its report leaves no such relation behind.
     if(reported_defined(hash, anchor)) {
         bool unavailable = false;
-        for_each_disk_file(hash, anchor, [&](Fid file) {
+        for_each_disk_file(hash, anchor, RelationKind::Definition, [&](Fid file) {
             auto* shard = index.shard(file);
             if(unavailable || !shard || serving(file) || files.disk.seen_missing(file)) {
                 return;

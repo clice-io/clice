@@ -1,0 +1,30 @@
+[answers.statement.hover]
+markdown = '''
+**macro** `STORE_ONCE`
+
+```cpp
+#define STORE_ONCE(x, value)                                                                   \
+    do {                                                                                       \
+        BUILD_CHECK(sizeof(x) == sizeof(char) || sizeof(x) == sizeof(short) ||                 \
+                        sizeof(x) == sizeof(int) || sizeof(x) == sizeof(long),                 \
+                    "unsupported access size");                                                \
+        *(volatile __typeof__(x)*)&(x) = (value);                                              \
+    } while(0)
+```
+**Expands to:**
+```cpp
+do {
+  do {
+    extern void build_check_failed(void)
+        __attribute__((__error__("unsupported access size")));
+    if (!(sizeof(node->head) == sizeof(char) ||
+          sizeof(node->head) == sizeof(short) ||
+          sizeof(node->head) == sizeof(int) ||
+          sizeof(node->head) == sizeof(long)))
+      build_check_failed();
+  } while (0);
+  *(volatile __typeof__(node->head)*)&(node->head) = (head);
+} while (0)
+```
+'''
+range = "⟦STORE_ONCE⟧(node->head, head);"

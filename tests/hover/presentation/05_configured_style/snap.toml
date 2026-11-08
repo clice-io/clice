@@ -1,0 +1,32 @@
+[answers.declaration.hover]
+markdown = '''
+**function** `find`
+
+```cpp
+int *find(int *first, int *last, int value)
+```
+'''
+range = "int *⟦find⟧(int *first, int *last, int value);"
+
+[answers.expansion.hover]
+markdown = '''
+**macro** `SWAP`
+
+```cpp
+#define SWAP(a, b)                                                                                 \
+    do {                                                                                           \
+        int *t = a;                                                                                \
+        a = b;                                                                                     \
+        b = t;                                                                                     \
+    } while(0)
+```
+**Expands to:**
+```cpp
+do {
+    int *t = x;
+    x = y;
+    y = t;
+} while (0)
+```
+'''
+range = "⟦SWAP⟧(x, y);"

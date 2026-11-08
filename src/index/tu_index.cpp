@@ -114,6 +114,21 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
         LOG_DEBUG("Rejecting TU index: reference file past the path table");
         return {};
     }
+    // The merge adds them to the records its pass over the external
+    // symbols left.
+    auto& other_entries = root.other_definition_entries;
+    if(other_entries.size() != root.other_definition_files.size() ||
+       !ranges::is_sorted(other_entries) ||
+       ranges::any_of(other_entries,
+                      [&](std::uint32_t entry) {
+                          return entry >= symbol_count ||
+                                 static_cast<SymbolScope>(root.symbol_scopes[entry]) !=
+                                     SymbolScope::External;
+                      }) ||
+       ranges::any_of(root.other_definition_files, past_paths)) {
+        LOG_DEBUG("Rejecting TU index: malformed other definition files");
+        return {};
+    }
     // section_of binary-searches the section table by path id and shard_of
     // trusts the result, so the ids must ascend strictly — a repeated or
     // out-of-order id would attribute one file's index to another.
@@ -309,6 +324,18 @@ void TUIndex::for_each_instantiation_file(
         if(!files.empty() && !callback(hashes[entry], files)) {
             return;
         }
+    }
+}
+
+void TUIndex::for_each_other_definition(
+    llvm::function_ref<void(SymbolHash, std::uint32_t path_id)> callback) const {
+    if(!loaded()) {
+        return;
+    }
+    auto& root = view_of(data);
+    for(auto&& [entry, path_id]:
+        views::zip(root.other_definition_entries, root.other_definition_files)) {
+        callback(root.symbol_hashes[entry], path_id);
     }
 }
 

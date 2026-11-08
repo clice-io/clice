@@ -1,5 +1,6 @@
 module clice;
 
+import :command.file_kind;
 import :semantic.decls;
 import :semantic.expr_hash;
 import :semantic.hasher;
@@ -80,6 +81,13 @@ bool has_c_linkage(const clang::Decl* decl) {
     return false;
 }
 
+/// Whether the location lies in a source file rather than a header, told
+/// by the file's name: the same in every compile reading the file.
+bool in_source_file(clang::SourceLocation location, CompilationUnit& unit) {
+    auto file = unit.produced_at(location).file;
+    return file.isValid() && !unit.is_builtin_file(file) && !is_header_path(unit.file_path(file));
+}
+
 /// Internal and unique-external linkage are per translation unit by the
 /// language; so is everything an anonymous namespace encloses. An
 /// unnamed type is defined once, and a typedef name has no linkage of
@@ -90,15 +98,17 @@ bool has_c_linkage(const clang::Decl* decl) {
 /// only renames a namespace and stays shared. A C tag has no linkage
 /// either, though clang reports one: `struct state` defined in two
 /// source files is two types. One first declared in a header stays one
-/// entity per name, whichever header forward-declares it first; the
-/// focus file of a header compiled in its host's context is no source
-/// file.
+/// entity per name, whichever header forward-declares it first.
+///
+/// Every compile reading a declaration must reach the same answer, or its
+/// uses in one file miss its definition in another: what decides is the
+/// file the declaration lies in, never the compile's focus file.
 bool needs_path(const clang::NamedDecl* decl, CompilationUnit& unit) {
     if(!decl->getDeclContext()->getRedeclContext()->isFileContext()) {
         return false;
     }
     if(llvm::isa<clang::TagDecl>(decl) && !unit.context().getLangOpts().CPlusPlus &&
-       unit.host_source(unit.produced_at(decl->getLocation()).file)) {
+       in_source_file(decl->getLocation(), unit)) {
         return true;
     }
     auto linkage = decl->getLinkageInternal();
@@ -118,7 +128,7 @@ bool needs_path(const clang::NamedDecl* decl, CompilationUnit& unit) {
         return false;
     }
     return (linkage == clang::Linkage::None || llvm::isa<clang::TypedefNameDecl>(decl)) &&
-           !unit.context().getSourceManager().isInSystemHeader(decl->getLocation());
+           !unit.in_system_header(decl->getLocation());
 }
 
 bool is_template_parameter(const clang::Decl* decl) {

@@ -1,0 +1,101 @@
+[answers.strong]
+definition = ["weak.c │ __attribute__((weak)) void ⟦father⟧(void) {"]
+call_hierarchy = [
+    { name = "father", kind = "Function", at = "void ⟦father⟧(void) {", detail = "father()" },
+]
+incoming_calls = [
+    { name = "main", kind = "Function", at = "int ⟦main⟧(void) {", detail = "main()", sites = ["⟦father⟧();"] },
+]
+outgoing_calls = [
+    {
+        name = "child",
+        kind = "Function",
+        at = "weak.c │ void ⟦child⟧(void) {}",
+        detail = "child()",
+        sites = ["⟦child⟧();"],
+    },
+]
+
+[answers.child_call]
+definition = ["weak.c │ void ⟦child⟧(void) {}"]
+call_hierarchy = [
+    { name = "child", kind = "Function", at = "weak.c │ void ⟦child⟧(void) {}", detail = "child()" },
+]
+incoming_calls = [
+    { name = "father", kind = "Function", at = "void ⟦father⟧(void) {", detail = "father()", sites = ["⟦child⟧();"] },
+    {
+        name = "father",
+        kind = "Function",
+        at = "weak.c │ __attribute__((weak)) void ⟦father⟧(void) {",
+        detail = "father()",
+        sites = ["weak.c │ ⟦child⟧();"],
+    },
+]
+outgoing_calls = []
+
+[answers.caller]
+definition = ["int ⟦main⟧(void) {"]
+call_hierarchy = [
+    { name = "main", kind = "Function", at = "int ⟦main⟧(void) {", detail = "main()" },
+]
+incoming_calls = []
+outgoing_calls = [
+    { name = "father", kind = "Function", at = "void ⟦father⟧(void) {", detail = "father()", sites = ["⟦father⟧();"] },
+    {
+        name = "father",
+        kind = "Function",
+        at = "weak.c │ __attribute__((weak)) void ⟦father⟧(void) {",
+        detail = "father()",
+        sites = ["⟦father⟧();"],
+    },
+]
+
+[answers.father_call]
+definition = ["void ⟦father⟧(void) {", "weak.c │ __attribute__((weak)) void ⟦father⟧(void) {"]
+call_hierarchy = [
+    { name = "father", kind = "Function", at = "void ⟦father⟧(void) {", detail = "father()" },
+    {
+        name = "father",
+        kind = "Function",
+        at = "weak.c │ __attribute__((weak)) void ⟦father⟧(void) {",
+        detail = "father()",
+    },
+]
+incoming_calls = [
+    { name = "main", kind = "Function", at = "int ⟦main⟧(void) {", detail = "main()", sites = ["⟦father⟧();"] },
+    { name = "main", kind = "Function", at = "int ⟦main⟧(void) {", detail = "main()", sites = ["⟦father⟧();"] },
+]
+outgoing_calls = [
+    {
+        name = "child",
+        kind = "Function",
+        at = "weak.c │ void ⟦child⟧(void) {}",
+        detail = "child()",
+        sites = ["⟦child⟧();"],
+    },
+    {
+        name = "child",
+        kind = "Function",
+        at = "weak.c │ void ⟦child⟧(void) {}",
+        detail = "child()",
+        sites = ["weak.c │ ⟦child⟧();"],
+    },
+]
+
+[answers.weak]
+definition = ["main.c │ void ⟦father⟧(void) {"]
+call_hierarchy = [
+    { name = "father", kind = "Function", at = "__attribute__((weak)) void ⟦father⟧(void) {", detail = "father()" },
+]
+incoming_calls = [
+    {
+        name = "main",
+        kind = "Function",
+        at = "main.c │ int ⟦main⟧(void) {",
+        detail = "main()",
+        sites = ["main.c │ ⟦father⟧();"],
+    },
+]
+outgoing_calls = [
+    { name = "child", kind = "Function", at = "void ⟦child⟧(void) {}", detail = "child()", sites = ["⟦child⟧();"] },
+]
