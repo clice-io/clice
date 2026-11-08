@@ -87,6 +87,10 @@ std::uint32_t Visibility::first_visible(const clang::NamedDecl* decl, clang::Fil
                    (module && modules.contains(module->getTopLevelModuleName()));
         });
     };
+    auto& forced = reach(unit.sema().getPreprocessor().getPredefinesFileID());
+    if(declared_in(forced.files, forced.modules)) {
+        return 0;
+    }
     constexpr auto none = std::numeric_limits<std::uint32_t>::max();
     auto directive = unit.directives().find(file);
     if(directive == unit.directives().end()) {

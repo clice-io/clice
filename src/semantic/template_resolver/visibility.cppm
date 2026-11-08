@@ -6,8 +6,9 @@ import :support.prelude;
 namespace clice::types {
 
 /// What a place in a file of the unit sees on its own: the declarations of
-/// its file and of what the file includes or imports before the place, as
-/// if the file were compiled alone. What the units including a header
+/// its file, of what the command includes ahead of every file (`-include`)
+/// and of what the file includes or imports before the place, as if the
+/// file were compiled alone. What the units including a header
 /// declare before it differs from one unit to the next; the focus file is
 /// compiled alone and sees the whole unit.
 class Visibility {
@@ -36,9 +37,10 @@ private:
     const Reach& reach(clang::FileID file);
 
     /// The offset in `file` from which `decl` is visible on its own: 0 when
-    /// the file declares it or it is a function of the standard library
-    /// whose meaning is fixed (decls::fixed_std_utility), past the first
-    /// import or include bringing a declaration in, else none.
+    /// the file or a forced include declares it or it is a function of the
+    /// standard library whose meaning is fixed (decls::fixed_std_utility),
+    /// past the first import or include bringing a declaration in, else
+    /// none.
     std::uint32_t first_visible(const clang::NamedDecl* decl, clang::FileID file);
 
 private:
