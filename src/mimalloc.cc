@@ -64,6 +64,14 @@ const bool purge = [] {
 
 #endif
 
+/// A page a thread left when it ended goes to the thread that frees into it,
+/// whose collects return it: otherwise it waits for an allocation of its
+/// size, and an idle process keeps it for good.
+const bool reclaim = [] {
+    mi_option_set(mi_option_page_reclaim_on_free, 1);
+    return true;
+}();
+
 void collect() {
     mi_collect(true);
 }

@@ -139,8 +139,11 @@ void WorkerScheduler::worker_gone(std::size_t slot, bool stateful, SchedulerTime
         auto& request = entry.second;
         return request.stateful == stateful && request.slot == slot;
     });
-    if(!stateful) {
-        slots.erase(slot);
+    if(auto it = slots.find(slot); !stateful && it != slots.end()) {
+        if(it->second.replace) {
+            actions.push_back(scheduler::Spawn{});
+        }
+        slots.erase(it);
     }
     decide(now);
 }
@@ -577,14 +580,24 @@ void WorkerScheduler::scale(SchedulerTime now) {
     }
     auto serving =
         ranges::count_if(slots, [](const auto& entry) { return !entry.second.scaling_down; });
-    if(static_cast<std::size_t>(serving) <= options.min_workers) {
+    if(static_cast<std::size_t>(serving) > options.min_workers) {
+        auto newest = ranges::find_if(slots | views::reverse,
+                                      [](const auto& entry) { return !entry.second.scaling_down; });
+        newest->second.scaling_down = true;
+        last_busy = now;
+        actions.push_back(scheduler::ScaleDown{.slot = newest->first});
         return;
     }
-    auto newest = ranges::find_if(slots | views::reverse,
-                                  [](const auto& entry) { return !entry.second.scaling_down; });
-    newest->second.scaling_down = true;
+    auto heavy = ranges::find_if(slots, [](const auto& entry) {
+        return !entry.second.scaling_down && entry.second.memory > replace_above;
+    });
+    if(heavy == slots.end()) {
+        return;
+    }
+    heavy->second.scaling_down = true;
+    heavy->second.replace = true;
     last_busy = now;
-    actions.push_back(scheduler::ScaleDown{.slot = newest->first});
+    actions.push_back(scheduler::ScaleDown{.slot = heavy->first});
 }
 
 }  // namespace clice

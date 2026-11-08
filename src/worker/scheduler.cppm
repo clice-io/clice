@@ -288,8 +288,16 @@ public:
     constexpr static chrono::seconds cancel_grace{10};
 
     /// No stateless request for this long scales one idle process down, to
-    /// no fewer than min_workers.
+    /// no fewer than min_workers; at min_workers, it replaces one holding
+    /// more than replace_above by a fresh process.
     constexpr static chrono::seconds idle_scale_down{30};
+
+    /// What an idle stateless process may hold of its own before a fresh
+    /// one, which holds a few MiB, replaces it. On macOS and Windows the
+    /// allocator keeps the pages a block that outlived its request still
+    /// pins, which only the end of the process frees: an idle worker held
+    /// 75 to 104 MiB there after a few requests, 28 MiB on Linux.
+    constexpr static std::uint64_t replace_above = 64ull << 20;
 
     /// A foreground request waiting this long with no idle worker grows the
     /// pool; a shorter wait is the cooperative cancel freeing a worker.
@@ -376,6 +384,10 @@ private:
 
         /// A scale-down was asked: it takes no work until it is gone.
         bool scaling_down = false;
+
+        /// The scale-down replaces it: a fresh process takes the slot once
+        /// it is gone.
+        bool replace = false;
 
         /// The request it runs.
         std::optional<RequestId> request;

@@ -194,9 +194,7 @@ async::task<> MasterServer::poll_task() {
         }
         look_at_settings();
         if(std::exchange(memory_freed, false)) {
-            // On this thread, whose heap held the documents: mimalloc
-            // collects only the calling thread's heap.
-            release_free_memory();
+            co_await release_pool_memory();
         }
     }
 }

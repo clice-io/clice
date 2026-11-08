@@ -85,7 +85,7 @@ struct [[nodiscard]] EntryHold {
         // as the eviction would have.
         if(doc && doc.use_count() == 1) {
             doc.reset();
-            release_free_memory();
+            async::event_loop::current().schedule(release_pool_memory());
         }
     }
 };
@@ -117,12 +117,10 @@ class StatefulWorker {
 
     llvm::StringMap<std::shared_ptr<DocumentEntry>> documents;
 
-    /// A unit per thread of libuv's pool, which runs the requests' work
-    /// (UV_THREADPOOL_SIZE, clamped as libuv clamps it, 4 without it): a
+    /// A unit per thread of libuv's pool, which runs the requests' work: a
     /// request holding one finds a thread free, so its work starts as it
     /// reports it started (worker::StartedParams).
-    async::semaphore threads{static_cast<std::ptrdiff_t>(
-        std::clamp<std::uint64_t>(env_integer("UV_THREADPOOL_SIZE").value_or(4), 1, 1024))};
+    async::semaphore threads{static_cast<std::ptrdiff_t>(pool_threads())};
 
     /// The id the master gave the request it sends next
     /// (worker::NextRequestParams).
@@ -347,11 +345,14 @@ RequestResult<worker::CompileParams>
                 unit.reset();
                 doc->pch_mapping.reset();
             }
-            release_free_memory();
             return result;
         },
         [stop] { stop->store(true, std::memory_order_relaxed); });
 
+    // The AST this compile replaced was freed on this thread, but built on
+    // the pool thread that compiled it; the compile's own leftovers are on
+    // its own.
+    async::event_loop::current().schedule(release_pool_memory());
     co_return compile_result;
 }
 
@@ -454,7 +455,7 @@ void StatefulWorker::register_handlers() {
     peer.on_notification([this](const worker::EvictParams& params) {
         LOG_DEBUG("Evict notification: path={}", params.path);
         documents.erase(params.path);
-        release_free_memory();
+        async::event_loop::current().schedule(release_pool_memory());
     });
 
     // === Hover ===

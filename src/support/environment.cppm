@@ -15,6 +15,13 @@ inline std::optional<std::uint64_t> env_integer(llvm::StringRef name) {
     return parsed;
 }
 
+/// The threads of libuv's pool, which runs async::queue's work: as libuv
+/// sizes it from UV_THREADPOOL_SIZE when it is first used, clamped to
+/// [1, 1024], 4 without it.
+inline std::size_t pool_threads() {
+    return std::clamp<std::uint64_t>(env_integer("UV_THREADPOOL_SIZE").value_or(4), 1, 1024);
+}
+
 /// Test hook: CLICE_TEST_JITTER=<ms> makes this a random delay of up to that
 /// many milliseconds, zero while it is unset. The places that race with an
 /// editor's actions (a worker starting a request's work, a background index

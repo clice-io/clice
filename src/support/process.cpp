@@ -13,6 +13,7 @@ module;
 
 module clice;
 
+import :support.environment;
 import :support.logging;
 import :support.process;
 
@@ -71,6 +72,31 @@ void release_free_memory() {
     if(clice_allocator_collect) {
         clice_allocator_collect();
     }
+}
+
+async::task<> release_pool_memory() {
+    if(!clice_allocator_collect) {
+        release_free_memory();
+        co_return;
+    }
+    auto threads = pool_threads();
+    std::mutex mutex;
+    std::condition_variable arrived;
+    std::size_t here = 0;
+    std::vector<async::task<>> collects;
+    for(std::size_t i = 0; i < threads; i += 1) {
+        collects.push_back(async::queue([&] {
+            {
+                std::unique_lock lock(mutex);
+                here += 1;
+                arrived.notify_all();
+                arrived.wait_for(lock, chrono::milliseconds(100), [&] { return here == threads; });
+            }
+            release_free_memory();
+        }));
+    }
+    co_await async::when_all(std::move(collects));
+    release_free_memory();
 }
 
 async::task<> watch_termination(int signum, bool& requested, std::function<void()> stop) {

@@ -146,6 +146,8 @@ void ServedProject::start() {
         commands_missing =
             ranges::none_of(opened.members, [&](Fid member) { return project.declared(member); }) &&
             !project.rules.declares_sources() && !project.found_unreadable_database();
+        // What the load read the databases and the saved index with.
+        server.return_freed_memory();
     }
     if(project.settings.project.enable_indexing) {
         project.background_index.start(
