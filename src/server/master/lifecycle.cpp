@@ -194,7 +194,7 @@ async::task<> MasterServer::poll_task() {
         }
         look_at_settings();
         if(std::exchange(memory_freed, false)) {
-            co_await release_free_memory_everywhere();
+            polling.spawn(release_free_memory_everywhere());
         }
     }
 }
