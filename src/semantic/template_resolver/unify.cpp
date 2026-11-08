@@ -1112,6 +1112,13 @@ bool Unifier::unify(TemplateArguments patterns, TemplateArguments arguments) {
         if(i >= flat.size()) {
             return false;
         }
+        /// An expansion whose length is not known (`conjunction<is_empty<_Types>...>`
+        /// against `conjunction<_First, _Rest...>`) may be as long as the
+        /// patterns need or shorter: taken as one element, the match holds
+        /// for some lengths only.
+        if(flat[i].isPackExpansion() && !ordering) {
+            undecided_match = true;
+        }
         if(!unify(pattern, flat[i])) {
             return false;
         }
