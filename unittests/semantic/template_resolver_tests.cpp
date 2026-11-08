@@ -8,31 +8,90 @@ namespace clice::testing {
 
 namespace {
 
-struct InputFinder : clang::RecursiveASTVisitor<InputFinder> {
-    CompilationUnit& unit;
-    clang::QualType input;
+/// The nodes of a unit the cases ask the resolver about, gathered in one
+/// traversal. Every RecursiveASTVisitor a file instantiates adds seconds to
+/// its compile: the file has this one.
+struct Nodes : clang::RecursiveASTVisitor<Nodes> {
+    llvm::SmallVector<const clang::NamedDecl*> decls;
 
-    using Base = clang::RecursiveASTVisitor<InputFinder>;
+    llvm::SmallVector<const clang::CallExpr*> calls;
 
-    InputFinder(CompilationUnit& unit) : unit(unit) {}
+    llvm::SmallVector<const clang::CXXDependentScopeMemberExpr*> members;
 
-    bool TraverseDecl(clang::Decl* decl) {
-        if(decl && (llvm::isa<clang::TranslationUnitDecl>(decl) ||
-                    unit.file_id(decl->getLocation()) == unit.focus_file().file())) {
-            Base::TraverseDecl(decl);
-        }
+    llvm::SmallVector<const clang::DependentScopeDeclRefExpr*> qualified;
 
+    explicit Nodes(clang::ASTContext& context) {
+        TraverseAST(context);
+    }
+
+    bool VisitNamedDecl(const clang::NamedDecl* decl) {
+        decls.push_back(decl);
         return true;
     }
 
-    bool VisitTypedefNameDecl(const clang::TypedefNameDecl* decl) {
-        if(decl->getName() == "input") {
-            input = decl->getUnderlyingType();
-        }
-
+    bool VisitCallExpr(const clang::CallExpr* expr) {
+        calls.push_back(expr);
         return true;
+    }
+
+    bool VisitCXXDependentScopeMemberExpr(const clang::CXXDependentScopeMemberExpr* expr) {
+        members.push_back(expr);
+        return true;
+    }
+
+    bool VisitDependentScopeDeclRefExpr(const clang::DependentScopeDeclRefExpr* expr) {
+        qualified.push_back(expr);
+        return true;
+    }
+
+    /// The last declaration of kind `Decl` named `name`.
+    template <typename Decl>
+    const Decl* named(llvm::StringRef name) const {
+        for(auto* decl: llvm::reverse(decls)) {
+            auto* found = llvm::dyn_cast<Decl>(decl);
+            if(found && found->getIdentifier() && found->getName() == name) {
+                return found;
+            }
+        }
+        return nullptr;
+    }
+
+    /// The last call whose callee is a `Callee`.
+    template <typename Callee>
+    const clang::CallExpr* call_through() const {
+        for(auto* call: llvm::reverse(calls)) {
+            if(llvm::isa<Callee>(call->getCallee()->IgnoreParenImpCasts())) {
+                return call;
+            }
+        }
+        return nullptr;
     }
 };
+
+/// Feed every dependent typedef and dependent name of the unit to its
+/// resolver; how many there were.
+unsigned scan(CompilationUnit& unit) {
+    Nodes nodes(unit.context());
+    auto& resolver = unit.get<types::TemplateResolver>();
+    unsigned visited = 0;
+    for(auto* decl: nodes.decls) {
+        auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(decl);
+        auto type = alias ? alias->getUnderlyingType() : clang::QualType();
+        if(!type.isNull() && type->isDependentType()) {
+            resolver.resolve(type);
+            visited += 1;
+        }
+    }
+    for(auto* member: nodes.members) {
+        resolver.lookup(member);
+        visited += 1;
+    }
+    for(auto* name: nodes.qualified) {
+        resolver.lookup(name);
+        visited += 1;
+    }
+    return visited;
+}
 
 ZEST_SUITE(TemplateResolver, Tester) {
 
@@ -102,36 +161,7 @@ ZEST_CASE(BrokenCodeScan) {
     prepare();
     ZASSERT(try_compile());
 
-    struct Scanner : clang::RecursiveASTVisitor<Scanner> {
-        types::TemplateResolver& resolver;
-        unsigned visited = 0;
-
-        Scanner(types::TemplateResolver& resolver) : resolver(resolver) {}
-
-        bool VisitTypedefNameDecl(clang::TypedefNameDecl* decl) {
-            auto type = decl->getUnderlyingType();
-            if(!type.isNull() && type->isDependentType()) {
-                resolver.resolve(type);
-                visited += 1;
-            }
-            return true;
-        }
-
-        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* expr) {
-            resolver.lookup(expr);
-            visited += 1;
-            return true;
-        }
-
-        bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* expr) {
-            resolver.lookup(expr);
-            visited += 1;
-            return true;
-        }
-    } scanner(unit->get<types::TemplateResolver>());
-
-    scanner.TraverseAST(unit->context());
-    ZEXPECT(scanner.visited > 0);
+    ZEXPECT(scan(*unit) > 0);
 }
 
 ZEST_CASE(StandardScan) {
@@ -147,36 +177,7 @@ ZEST_CASE(StandardScan) {
     )code");
     ZASSERT(compile_driver());
 
-    struct Scanner : clang::RecursiveASTVisitor<Scanner> {
-        types::TemplateResolver& resolver;
-        unsigned visited = 0;
-
-        Scanner(types::TemplateResolver& resolver) : resolver(resolver) {}
-
-        bool VisitTypedefNameDecl(clang::TypedefNameDecl* decl) {
-            auto type = decl->getUnderlyingType();
-            if(!type.isNull() && type->isDependentType()) {
-                resolver.resolve(type);
-                visited += 1;
-            }
-            return true;
-        }
-
-        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* expr) {
-            resolver.lookup(expr);
-            visited += 1;
-            return true;
-        }
-
-        bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* expr) {
-            resolver.lookup(expr);
-            visited += 1;
-            return true;
-        }
-    } scanner(unit->get<types::TemplateResolver>());
-
-    scanner.TraverseAST(unit->context());
-    ZEXPECT(scanner.visited > 0);
+    ZEXPECT(scan(*unit) > 0);
 }
 
 ZEST_CASE(ScopedBindingStaysLocal) {
@@ -199,32 +200,20 @@ ZEST_CASE(ScopedBindingStaysLocal) {
     )code");
     ZASSERT(compile());
 
-    struct VariableFinder : clang::RecursiveASTVisitor<VariableFinder> {
-        const clang::VarDecl* first = nullptr;
-
-        bool VisitVarDecl(const clang::VarDecl* decl) {
-            if(decl->getName() == "first") {
-                first = decl;
-            }
-            return true;
-        }
-    } variables;
-
-    variables.TraverseAST(unit->context());
-    ZASSERT(variables.first);
-
-    InputFinder finder(*unit);
-    finder.TraverseAST(unit->context());
-    ZASSERT(!finder.input.isNull());
+    Nodes nodes(unit->context());
+    auto* first = nodes.named<clang::VarDecl>("first");
+    ZASSERT(first);
+    auto* input = nodes.named<clang::TypedefNameDecl>("input");
+    ZASSERT(input);
 
     auto& resolver = unit->get<types::TemplateResolver>();
-    auto deduced = resolver.deduce(variables.first);
+    auto deduced = resolver.deduce(first);
     ZASSERT(!deduced.isNull());
     ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);
 
-    auto input = resolver.resolve(finder.input);
-    ZASSERT(!input.isNull());
-    ZEXPECT(input->isDependentType());
+    auto resolved = resolver.resolve(input->getUnderlyingType());
+    ZASSERT(!resolved.isNull());
+    ZEXPECT(resolved->isDependentType());
 }
 
 ZEST_CASE(KeptCallBindings) {
@@ -244,33 +233,15 @@ ZEST_CASE(KeptCallBindings) {
     )code");
     ZASSERT(compile());
 
-    struct Finder : clang::RecursiveASTVisitor<Finder> {
-        const clang::CallExpr* call = nullptr;
-        const clang::VarDecl* value = nullptr;
-
-        bool VisitCallExpr(const clang::CallExpr* expr) {
-            if(llvm::isa<clang::CXXDependentScopeMemberExpr>(
-                   expr->getCallee()->IgnoreParenImpCasts())) {
-                call = expr;
-            }
-            return true;
-        }
-
-        bool VisitVarDecl(const clang::VarDecl* decl) {
-            if(decl->getName() == "value") {
-                value = decl;
-            }
-            return true;
-        }
-    } finder;
-
-    finder.TraverseAST(unit->context());
-    ZASSERT(finder.call);
-    ZASSERT(finder.value);
+    Nodes nodes(unit->context());
+    auto* call = nodes.call_through<clang::CXXDependentScopeMemberExpr>();
+    ZASSERT(call);
+    auto* value = nodes.named<clang::VarDecl>("value");
+    ZASSERT(value);
 
     auto& resolver = unit->get<types::TemplateResolver>();
-    ZEXPECT(resolver.callees(finder.call).size() == 1);
-    auto deduced = resolver.deduce(finder.value);
+    ZEXPECT(resolver.callees(call).size() == 1);
+    auto deduced = resolver.deduce(value);
     ZASSERT(!deduced.isNull());
     ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);
 }
@@ -305,30 +276,14 @@ ZEST_CASE(KeptOpenDefaults) {
     )code");
     ZASSERT(compile());
 
-    struct Finder : clang::RecursiveASTVisitor<Finder> {
-        const clang::CallExpr* call = nullptr;
-        const clang::CXXDependentScopeMemberExpr* member = nullptr;
-
-        bool VisitCallExpr(const clang::CallExpr* expr) {
-            if(llvm::isa<clang::UnresolvedLookupExpr>(expr->getCallee()->IgnoreParenImpCasts())) {
-                call = expr;
-            }
-            return true;
-        }
-
-        bool VisitCXXDependentScopeMemberExpr(const clang::CXXDependentScopeMemberExpr* expr) {
-            member = expr;
-            return true;
-        }
-    } finder;
-
-    finder.TraverseAST(unit->context());
-    ZASSERT(finder.call);
-    ZASSERT(finder.member);
+    Nodes nodes(unit->context());
+    auto* call = nodes.call_through<clang::UnresolvedLookupExpr>();
+    ZASSERT(call);
+    ZASSERT(!nodes.members.empty());
 
     auto& resolver = unit->get<types::TemplateResolver>();
-    resolver.callees(finder.call);
-    ZEXPECT(resolver.lookup(finder.member).empty());
+    resolver.callees(call);
+    ZEXPECT(resolver.lookup(nodes.members.back()).empty());
 }
 
 ZEST_CASE(KeptPerView) {
@@ -362,47 +317,21 @@ ZEST_CASE(KeptPerView) {
     )code");
     ZASSERT(compile());
 
-    struct Finder : clang::RecursiveASTVisitor<Finder> {
-        const clang::CallExpr* call = nullptr;
-        const clang::TypeAliasDecl* kind = nullptr;
-        const clang::ClassTemplateDecl* list = nullptr;
-
-        bool VisitCallExpr(const clang::CallExpr* expr) {
-            if(llvm::isa<clang::UnresolvedLookupExpr>(expr->getCallee()->IgnoreParenImpCasts())) {
-                call = expr;
-            }
-            return true;
-        }
-
-        bool VisitTypeAliasDecl(const clang::TypeAliasDecl* decl) {
-            if(decl->getName() == "kind") {
-                kind = decl;
-            }
-            return true;
-        }
-
-        bool VisitClassTemplateDecl(const clang::ClassTemplateDecl* decl) {
-            if(decl->getName() == "list") {
-                list = decl;
-            }
-            return true;
-        }
-    } finder;
-
-    finder.TraverseAST(unit->context());
-    ZASSERT(finder.call);
-    ZASSERT(finder.kind);
-    ZASSERT(finder.list);
+    Nodes nodes(unit->context());
+    auto* call = nodes.call_through<clang::UnresolvedLookupExpr>();
+    ZASSERT(call);
+    auto* kind = nodes.named<clang::TypeAliasDecl>("kind");
+    ZASSERT(kind);
+    auto* list = nodes.named<clang::ClassTemplateDecl>("list");
+    ZASSERT(list);
 
     auto& resolver = unit->get<types::TemplateResolver>();
     auto& context = unit->context();
-    auto kind = finder.kind->getUnderlyingType();
-    for(auto from:
-        {finder.list->getLocation(), finder.call->getBeginLoc(), finder.list->getLocation()}) {
+    for(auto from: {list->getLocation(), call->getBeginLoc(), list->getLocation()}) {
         resolver.see_from(from);
-        bool in_main = from == finder.list->getLocation();
-        ZEXPECT(resolver.callees(finder.call).size() == (in_main ? 2 : 1));
-        auto resolved = resolver.resolve(kind);
+        bool in_main = from == list->getLocation();
+        ZEXPECT(resolver.callees(call).size() == (in_main ? 2 : 1));
+        auto resolved = resolver.resolve(kind->getUnderlyingType());
         ZASSERT(!resolved.isNull());
         ZEXPECT(resolved.getCanonicalType() == (in_main ? context.LongTy : context.IntTy));
     }
