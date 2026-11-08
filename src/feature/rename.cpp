@@ -688,14 +688,14 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
                                   query.qualified_name(other.symbol.hash, other.site.file),
                                   where(other.site)));
         }
-        if(auto tested = query.first_site(EntityTable::unresolved_macro(new_name),
-                                          target.symbol.site.file,
-                                          RelationKind::Reference)) {
-            plan.conflicts.push_back(
-                std::format("a directive tests `{}` ({}), which the macro "
-                            "would define",
-                            std::string_view(new_name),
-                            where(*tested)));
+        auto tested = query.sites(EntityTable::unresolved_macro(new_name),
+                                  target.symbol.site.file,
+                                  RelationKind::Reference);
+        if(!tested.empty()) {
+            plan.conflicts.push_back(std::format("a directive tests `{}` ({}), which the macro "
+                                                 "would define",
+                                                 std::string_view(new_name),
+                                                 where(tested.front())));
         }
     } else {
         // The scope a name is looked up in: an unscoped enumerator's is its
