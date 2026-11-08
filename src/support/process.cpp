@@ -93,7 +93,7 @@ async::task<> release_free_memory_everywhere() {
                 std::unique_lock lock(mutex);
                 here += 1;
                 arrived.notify_all();
-                if(!waited && !arrived.wait_for(lock, chrono::milliseconds(20), [&] {
+                if(!waited && !arrived.wait_for(lock, chrono::milliseconds(100), [&] {
                        return here == threads;
                    })) {
                     waited = true;
