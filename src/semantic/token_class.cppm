@@ -1,5 +1,6 @@
 module clice:semantic.token_class;
 
+import :compile.compilation;
 import :support.prelude;
 
 namespace clice {
@@ -202,8 +203,8 @@ inline bool leaves_enclosing(clang::tok::TokenKind kind) {
 /// from the symbols the index stores both come from here.
 TokenClass token_class(const clang::NamedDecl* decl);
 
-/// The same of the macro defined by `macro`.
-TokenClass token_class(const clang::MacroInfo& macro, const clang::SourceManager& sources);
+/// The same of the macro defined by `macro`, which `unit` read.
+TokenClass token_class(const clang::MacroInfo& macro, CompilationUnit& unit);
 
 /// The classification of a keyword token: a built-in type, an operator
 /// spelled as a word (`sizeof`, `new`, `and`), a keyword transferring

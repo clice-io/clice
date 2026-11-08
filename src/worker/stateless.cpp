@@ -353,32 +353,21 @@ static worker::PrecompiledBuildResult
 /// line's, the configuration's) has neither.
 static void collect_tidy_diagnostics(CompilationUnit& unit,
                                      std::vector<worker::TidyDiagnostic>& out) {
-    struct File {
-        llvm::StringRef path;
-        llvm::StringRef content;
-        std::vector<std::uint32_t> lines;
-    };
-
     // By the name clang-tidy reports a file by: the one its lookup reached
     // it by.
-    llvm::StringMap<File> files;
+    llvm::StringMap<clang::FileID> files;
     auto locate = [&](const clang::tooling::DiagnosticMessage& message) {
         worker::LocatedMessage located{.message = message.Message};
         if(message.FilePath.empty()) {
             return located;
         }
         auto [it, inserted] = files.try_emplace(message.FilePath);
-        auto& file = it->second;
         if(inserted) {
-            auto& sm = unit.context().getSourceManager();
-            auto entry = sm.getFileManager().getOptionalFileRef(message.FilePath);
-            file.path = unit.file_path(*entry);
-            file.content = sm.getMemoryBufferForFileOrNone(*entry)->getBuffer();
-            file.lines = lsp::line_starts(file.content);
+            it->second = unit.file_id(message.FilePath);
         }
-        auto position = PositionMap(file.content, file.lines)
-                            .position(message.FileOffset, PositionEncoding::UTF8);
-        located.file = file.path.str();
+        auto fid = it->second;
+        auto position = unit.positions(fid).position(message.FileOffset, PositionEncoding::UTF8);
+        located.file = unit.file_path(fid).str();
         located.line = position->line + 1;
         located.column = position->character + 1;
         return located;
@@ -408,7 +397,6 @@ static void collect_tidy_diagnostics(CompilationUnit& unit,
 /// marks. One no file on disk holds (the command line's, the built-in
 /// buffer's) has no place.
 static std::vector<worker::LocatedMessage> located_errors(CompilationUnit& unit) {
-    auto& sm = unit.context().getSourceManager();
     std::vector<worker::LocatedMessage> errors;
     for(auto& diag: unit.diagnostics()) {
         if(diag.id.level < DiagnosticLevel::Error) {
@@ -416,9 +404,11 @@ static std::vector<worker::LocatedMessage> located_errors(CompilationUnit& unit)
         }
         auto& error = errors.emplace_back(worker::LocatedMessage{.message = diag.message});
         if(diag.fid.isValid() && !unit.is_builtin_file(diag.fid)) {
+            auto position =
+                unit.positions(diag.fid).position(diag.range.begin, PositionEncoding::UTF8);
             error.file = unit.file_path(diag.fid).str();
-            error.line = sm.getLineNumber(diag.fid, diag.range.begin);
-            error.column = sm.getColumnNumber(diag.fid, diag.range.begin);
+            error.line = position->line + 1;
+            error.column = position->character + 1;
         }
     }
     return errors;

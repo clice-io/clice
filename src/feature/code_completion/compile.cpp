@@ -966,7 +966,7 @@ public:
     bool complete_instantiated(const clang::NamedDecl* templated,
                                bool loop,
                                clang::QualType preferred) {
-        auto found = whole_buffer->instantiated(templated, loop, unit.sema().getPreprocessor());
+        auto found = whole_buffer->instantiated(templated, loop, unit);
         if(!found) {
             return false;
         }
@@ -1188,7 +1188,6 @@ public:
             return;
         }
 
-        auto& source_manager = sema.getSourceManager();
         auto content = text;
         auto prefix = Prefix::from(content, offset);
         FuzzyMatcher matcher(prefix.spelling);
@@ -1365,9 +1364,8 @@ public:
             [&](const clang::Decl* decl) {
                 return !decl->isImplicit() && !llvm::isa<clang::ImportDecl>(decl) &&
                        (named_module ? decl->isInNamedModule()
-                                     : source_manager.isWrittenInMainFile(decl->getLocation())) &&
-                       source_manager.isBeforeInTranslationUnit(decl->getLocation(),
-                                                                completion_loc);
+                                     : focus.written_offset(decl->getLocation()).has_value()) &&
+                       unit.before(decl->getLocation(), completion_loc);
             });
         bool imports = named_module
                            ? !declared
@@ -1711,23 +1709,16 @@ public:
                 priority /= clang::CCF_ExactTypeMatch;
             }
             item.relevance = relevance * priority_weight(priority);
-            if(unqualified && source_manager.isInSystemHeader(declaration->getLocation())) {
+            if(unqualified && unit.in_library(declaration->getLocation())) {
                 item.relevance *= 0.5F;
             }
             if(member_access && static_member(declaration)) {
                 item.relevance *= 0.5F;
             }
             for(const auto& fix: candidate.FixIts) {
-                auto range = clang::Lexer::makeFileCharRange(fix.RemoveRange,
-                                                             source_manager,
-                                                             sema.getLangOpts());
-                auto begin = focus.offset(range.getBegin());
-                auto end = focus.offset(range.getEnd());
-                if(begin && end) {
-                    item.edits.push_back({
-                        .range = {*begin, *end},
-                        .text = fix.CodeToInsert
-                    });
+                if(auto removed = unit.written_range(fix.RemoveRange);
+                   removed && focus.contains(removed->file)) {
+                    item.edits.push_back({.range = removed->range, .text = fix.CodeToInsert});
                 }
             }
             if(!item.edits.empty()) {
@@ -1812,8 +1803,7 @@ public:
                         .macro = true,
                         .relevance = priority_weight(candidate.Priority),
                     };
-                    if(unqualified && info &&
-                       source_manager.isInSystemHeader(info->getDefinitionLoc())) {
+                    if(unqualified && info && unit.in_library(info->getDefinitionLoc())) {
                         item.relevance *= 0.5F;
                     }
                     if(auto* ccs =

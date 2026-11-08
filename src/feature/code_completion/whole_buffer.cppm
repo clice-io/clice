@@ -37,9 +37,9 @@ public:
     /// it, and stops at the call that does (CompilationParams::Instantiating).
     /// For the variable of a range-based `for`, `loop`, the statement there
     /// alone tells. None when nothing after the point calls the template, as
-    /// `pp` has the macros before it, when the compile did not complete and
-    /// when nothing dependent stands at the point.
-    auto instantiated(const clang::NamedDecl* templated, bool loop, clang::Preprocessor& pp)
+    /// `completion` has the macros before it, when the compile did not
+    /// complete and when nothing dependent stands at the point.
+    auto instantiated(const clang::NamedDecl* templated, bool loop, CompilationUnit& completion)
         -> std::optional<AtPoint>;
 
     /// The compile once it completed; null before.

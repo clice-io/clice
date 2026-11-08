@@ -75,7 +75,6 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
     // range.
     auto& token_map = focus.tokens();
     auto tokens = token_map.spelled();
-    auto& SM = unit.context().getSourceManager();
     std::size_t first = token_map.spelled_at_or_after(begin);
     while(auto previous = code_before(tokens, first)) {
         if(auto second = code_before(tokens, *previous);
@@ -105,7 +104,7 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
         std::optional<clang::SourceLocation> invocation;
         for(const auto* attr: definition->attrs()) {
             if(attr->getLocation().isMacroID()) {
-                auto expansion = SM.getExpansionRange(attr->getLocation());
+                auto expansion = unit.produced_bounds(attr->getLocation());
                 if(focus.offset(expansion.getEnd()) == tokens[*previous].range.begin) {
                     invocation = expansion.getBegin();
                 }

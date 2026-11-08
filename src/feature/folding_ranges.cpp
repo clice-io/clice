@@ -603,9 +603,8 @@ private:
 
         // What macro arguments spell folds where it is written; what a
         // macro body produces folds at the invocation.
-        auto& SM = unit.context().getSourceManager();
-        auto begin = SM.getFileLoc(range.getBegin());
-        auto end = SM.getFileLoc(range.getEnd());
+        auto begin = unit.seen_location(range.getBegin());
+        auto end = unit.seen_location(range.getEnd());
         if(begin == end) {
             return nullptr;
         }

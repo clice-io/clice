@@ -624,10 +624,9 @@ const clang::CXXRecordDecl* outermost_record(const clang::CXXRecordDecl* record)
 /// macro's expansion included (`} __attribute__((packed));`); nullopt when
 /// something else follows.
 std::optional<std::uint32_t> semicolon_after(CompilationUnit& unit, clang::SourceLocation end) {
-    auto& sm = unit.context().getSourceManager();
     auto tokens = unit.focus_file().tokens().expanded();
     auto token = ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
-        return !sm.isBeforeInTranslationUnit(end, token.location());
+        return !unit.before(end, token.location());
     });
     while(token != tokens.end() && token->kind() == clang::tok::kw___attribute) {
         std::uint32_t depth = 0;
@@ -666,7 +665,6 @@ std::optional<Placement> placement_after(CompilationUnit& unit, const clang::Dec
        tag && tag->getBraceRange().getEnd().isInvalid()) {
         return std::nullopt;
     }
-    auto& sm = unit.context().getSourceManager();
     auto end = anchor->getEndLoc();
     for(auto* next = anchor->getNextDeclInContext(); next; next = next->getNextDeclInContext()) {
         // The global `operator new` and kin are declared on first use, in
@@ -674,7 +672,7 @@ std::optional<Placement> placement_after(CompilationUnit& unit, const clang::Dec
         if(next->isImplicit()) {
             continue;
         }
-        if(sm.isBeforeInTranslationUnit(anchor->getBeginLoc(), next->getBeginLoc())) {
+        if(unit.before(anchor->getBeginLoc(), next->getBeginLoc())) {
             break;
         }
         end = next->getEndLoc();
@@ -725,8 +723,8 @@ std::optional<Placement> placement_of(CompilationUnit& unit, const clang::Functi
 /// primary template and its partial specializations, any of which the
 /// first use may choose (`std::function` defines only a partial one).
 const clang::TagDecl*
-    pattern_definition(const clang::ClassTemplateSpecializationDecl* specialization,
-                       const clang::SourceManager& sm) {
+    pattern_definition(CompilationUnit& unit,
+                       const clang::ClassTemplateSpecializationDecl* specialization) {
     auto pattern = specialization->getSpecializedTemplateOrPartial();
     if(auto* partial = llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl*>(pattern)) {
         return partial->getDefinition();
@@ -740,8 +738,7 @@ const clang::TagDecl*
     primary->getPartialSpecializations(partials);
     for(const auto* partial: partials) {
         const auto* defined = partial->getDefinition();
-        if(defined &&
-           (!last || sm.isBeforeInTranslationUnit(last->getEndLoc(), defined->getEndLoc()))) {
+        if(defined && (!last || unit.before(last->getEndLoc(), defined->getEndLoc()))) {
             last = defined;
         }
     }
@@ -756,7 +753,6 @@ const clang::TagDecl*
 /// itself, such as AArch64's `va_list`, is complete everywhere.
 std::optional<const clang::TagDecl*> last_needed_definition(CompilationUnit& unit,
                                                             const clang::FunctionDecl* decl) {
-    auto& sm = unit.context().getSourceManager();
     const clang::TagDecl* last = nullptr;
     auto need = [&](clang::QualType type) {
         auto* record = type->isDependentType() ? nullptr : type->getAsCXXRecordDecl();
@@ -766,13 +762,13 @@ std::optional<const clang::TagDecl*> last_needed_definition(CompilationUnit& uni
         const clang::TagDecl* definition = record->getDefinition();
         if(auto* specialization = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record);
            specialization && !specialization->isExplicitSpecialization()) {
-            definition = pattern_definition(specialization, sm);
+            definition = pattern_definition(unit, specialization);
         }
         if(!definition) {
             return false;
         }
         if(definition->getEndLoc().isValid() &&
-           (!last || sm.isBeforeInTranslationUnit(last->getEndLoc(), definition->getEndLoc()))) {
+           (!last || unit.before(last->getEndLoc(), definition->getEndLoc()))) {
             last = definition;
         }
         return true;
@@ -819,8 +815,7 @@ std::optional<Placement> placement_past(CompilationUnit& unit,
                                         Placement placement,
                                         const clang::TagDecl* definition,
                                         const clang::FunctionDecl* decl) {
-    auto& sm = unit.context().getSourceManager();
-    if(!sm.isBeforeInTranslationUnit(placement.after, definition->getEndLoc())) {
+    if(!unit.before(placement.after, definition->getEndLoc())) {
         return placement;
     }
     auto moved = placement_after(unit, file_scope_anchor(definition));
@@ -865,11 +860,9 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
     // A body written in the class is compiled at the end of the outermost
     // class, where the types it needs must be complete.
     auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(decl);
-    auto& sm = unit.context().getSourceManager();
     if(method && needed &&
        (!*needed ||
-        !sm.isBeforeInTranslationUnit(outermost_record(method->getParent())->getEndLoc(),
-                                      (*needed)->getEndLoc()))) {
+        !unit.before(outermost_record(method->getParent())->getEndLoc(), (*needed)->getEndLoc()))) {
         auto written = written_declaration(decl)->getSourceRange();
         if(auto semicolon = editable_range(unit, written) ? semicolon_after(unit, written.getEnd())
                                                           : std::nullopt) {

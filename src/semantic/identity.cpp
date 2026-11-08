@@ -1062,7 +1062,6 @@ void EntityTable::add_location(Hasher& hasher, clang::SourceLocation location) {
 /// pass (a `MAP` under an `EVAL`) reaches the same levels along
 /// exponentially many paths, and its chains run as deep as its passes.
 std::uint64_t EntityTable::macro_history(clang::SourceLocation location) {
-    auto& SM = unit.context().getSourceManager();
     llvm::SmallVector<clang::SourceLocation> pending{location};
     while(!pending.empty()) {
         auto level = pending.back();
@@ -1070,8 +1069,9 @@ std::uint64_t EntityTable::macro_history(clang::SourceLocation location) {
             pending.pop_back();
             continue;
         }
-        auto spelling = SM.getImmediateSpellingLoc(level);
-        auto parent = SM.getImmediateExpansionRange(level).getBegin();
+        auto expansion = unit.expansion_level(level);
+        auto spelling = expansion.spelling;
+        auto parent = expansion.start;
         auto waiting = pending.size();
         for(auto next: {spelling, parent}) {
             if(next.isMacroID() && !histories.contains(next)) {

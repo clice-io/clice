@@ -148,7 +148,7 @@ void drop_nested(std::vector<Occurrence>& occurrences) {
 /// The name a call is written through, where call hierarchy points at it:
 /// `f` of `ns::f(x)`, `operator==` of `a.operator==(b)`, the operator token
 /// of `a == b`, the pointer of `(*fp)(x)` or `(obj.*pmf)(x)`.
-clang::SourceRange callee_name(const clang::CallExpr* call, const clang::SourceManager& SM) {
+clang::SourceRange callee_name(const clang::CallExpr* call, const clang::ASTContext& context) {
     // `12_km` names its operator with a suffix no token of its own spells.
     if(auto* UDL = llvm::dyn_cast<clang::UserDefinedLiteral>(call)) {
         return UDL->getBeginLoc();
@@ -163,19 +163,19 @@ clang::SourceRange callee_name(const clang::CallExpr* call, const clang::SourceM
     }
 
     if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(callee)) {
-        return written_name(DRE->getNameInfo(), SM);
+        return written_name(DRE->getNameInfo(), context);
     }
     if(auto* ME = llvm::dyn_cast<clang::MemberExpr>(callee)) {
-        return written_name(ME->getMemberNameInfo(), SM);
+        return written_name(ME->getMemberNameInfo(), context);
     }
     if(auto* OE = llvm::dyn_cast<clang::OverloadExpr>(callee)) {
-        return written_name(OE->getNameInfo(), SM);
+        return written_name(OE->getNameInfo(), context);
     }
     if(auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(callee)) {
-        return written_name(DSDRE->getNameInfo(), SM);
+        return written_name(DSDRE->getNameInfo(), context);
     }
     if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(callee)) {
-        return written_name(DSME->getMemberNameInfo(), SM);
+        return written_name(DSME->getMemberNameInfo(), context);
     }
     return callee->getExprLoc();
 }
@@ -384,7 +384,7 @@ public:
            })) {
             flags |= SymbolFlags::SpelledInMacro;
         }
-        if(unit.context().getSourceManager().isInSystemHeader(decl->getLocation())) {
+        if(unit.in_library(decl->getLocation())) {
             flags |= SymbolFlags::SystemHeader;
         }
         if(is_completable(decl)) {
@@ -421,7 +421,6 @@ public:
             return hash;
         }
         auto& symbol = it->second;
-        auto& SM = unit.context().getSourceManager();
         symbol.name = unit.token_spelling(name);
         symbol.kind = SymbolKind::Macro;
         symbol.scope = SymbolScope::External;
@@ -430,32 +429,30 @@ public:
         auto flags = def && !def->isUsedForHeaderGuard() && !undefined.contains(def)
                          ? SymbolFlags::Completable
                          : SymbolFlags::None;
-        if(def && SM.isInSystemHeader(def->getDefinitionLoc())) {
+        if(def && unit.in_library(def->getDefinitionLoc())) {
             flags |= SymbolFlags::SystemHeader;
         }
         symbol.flags = flags;
         symbol.token_class =
-            def ? token_class(*def, SM) : TokenClass{.kind = SemanticTokenKind::Macro};
+            def ? token_class(*def, unit) : TokenClass{.kind = SemanticTokenKind::Macro};
         return hash;
     }
 
     void add_macro(const clang::MacroInfo* def, RelationKind kind, clang::SourceLocation location) {
-        auto& SM = unit.context().getSourceManager();
         // A name a macro body spells is the expansions' to resolve
         // (project_expansions). One pasted together (`CAT(BUF, SIZE)`) is
         // spelled by no text: a reference at the expansion producing it,
         // beside no occurrence, as no token there is the macro's.
         if(location.isMacroID()) {
-            if(!SM.isWrittenInScratchSpace(SM.getSpellingLoc(location))) {
+            if(!unit.concatenated(location)) {
                 return;
             }
-            auto expansion = SM.getExpansionLoc(location);
-            auto [fid, offset] = unit.produced_at(expansion);
+            auto [fid, offset] = unit.produced_at(location);
             if(auto* index = file_index(fid)) {
                 auto hash = ensure_macro(unit.get<EntityTable>().entity(def), location, def);
                 index->relations[hash].push_back({
                     .kind = kind,
-                    .range = {offset, offset + unit.token_length(expansion)},
+                    .range = {offset, offset + unit.token_length(location)},
                     .target = 0,
                 });
             }
@@ -552,8 +549,7 @@ public:
     /// The Instantiation relation of an explicit instantiation, at its name
     /// (a macro's invocation that writes none), with the directive's extent.
     void add_instantiation(const clang::ExplicitInstantiationDecl& directive) {
-        auto location = unit.context().getSourceManager().getFileLoc(directive.getNameLoc());
-        auto [fid, range] = *unit.written_range(location);
+        auto [fid, range] = *unit.written_range(unit.seen_location(directive.getNameLoc()));
         Relation relation{.kind = RelationKind::Instantiation, .range = range, .target = 0};
         if(auto [extent_fid, extent] = unit.produced_range(directive.getSourceRange());
            extent_fid == fid) {
@@ -775,19 +771,18 @@ public:
     /// `location` lies in `host`'s file itself or nothing inside `host`
     /// includes it.
     clang::SourceLocation pasted_into(const clang::Decl* host, clang::SourceLocation location) {
-        auto& SM = unit.context().getSourceManager();
-        auto host_file = SM.getFileID(SM.getExpansionLoc(host->getLocation()));
-        if(SM.getFileID(location) == host_file) {
+        auto host_file = unit.produced_at(host->getLocation()).file;
+        if(unit.produced_at(location).file == host_file) {
             return {};
         }
-        while(location.isValid() && SM.getFileID(location) != host_file) {
-            location = SM.getIncludeLoc(SM.getFileID(location));
+        while(location.isValid() && unit.produced_at(location).file != host_file) {
+            location = unit.include_location(unit.produced_at(location).file);
         }
         // Reaching the file is not enough: a redeclaration shares the default
         // arguments its header's declaration wrote.
-        auto extent = SM.getExpansionRange(host->getSourceRange());
-        if(location.isInvalid() ||
-           !SM.isPointWithin(location, extent.getBegin(), extent.getEnd())) {
+        auto extent = unit.produced_bounds(host->getSourceRange());
+        if(location.isInvalid() || unit.before(location, extent.getBegin()) ||
+           unit.before(extent.getEnd(), location)) {
             return {};
         }
         return location;
@@ -797,9 +792,7 @@ public:
     /// written in a fragment the caller's body pastes in is recorded at
     /// that include.
     clang::SourceRange in_caller_file(const clang::NamedDecl* caller, clang::SourceRange range) {
-        auto include =
-            pasted_into(caller,
-                        unit.context().getSourceManager().getExpansionLoc(range.getBegin()));
+        auto include = pasted_into(caller, unit.produced_bounds(range).getBegin());
         return include.isValid() ? clang::SourceRange(include) : range;
     }
 
@@ -840,7 +833,7 @@ public:
         if(auto* CE = node.get<clang::CallExpr>()) {
             // A call no name is written for — the conversion `int i = c`
             // makes — is recorded at the expression it converts.
-            auto range = callee_name(CE, context.getSourceManager());
+            auto range = callee_name(CE, context);
             if(range.isInvalid()) {
                 range = CE->getExprLoc();
                 if(range.isInvalid()) {
@@ -1064,13 +1057,12 @@ public:
         if(keyword.isInvalid() || (entry.flags.in_instantiation && !instantiation_entries)) {
             return;
         }
-        auto& SM = unit.context().getSourceManager();
-        auto location = SM.getFileLoc(keyword.getBegin());
-        if(location != SM.getSpellingLoc(keyword.getBegin())) {
+        auto name = unit.seen_name(keyword);
+        if(!name.written) {
             return;
         }
         // An init-capture's `auto` is implicit, at the captured name.
-        auto spelling = unit.token_spelling(location);
+        auto spelling = unit.token_spelling(name.range.getBegin());
         if(spelling != "auto" && spelling != "decltype") {
             return;
         }
@@ -1098,7 +1090,6 @@ public:
             }
         }
 
-        clang::SourceRange name(location, SM.getFileLoc(keyword.getEnd()));
         for(const auto* target:
             types::decls_of(types::unwrap(readable.readable(type, decl->getDeclContext())),
                             &resolver)) {
@@ -1107,8 +1098,8 @@ public:
                record && record->isLambda()) {
                 continue;
             }
-            add_occurrence(target, name);
-            add_self_relation(target, RelationKind::Deduced, name);
+            add_occurrence(target, name.range);
+            add_self_relation(target, RelationKind::Deduced, name.range);
         }
     }
 
@@ -1123,24 +1114,12 @@ public:
         // `#define` body — those tokens have no meaning of their own,
         // each expansion assigns one: what a body names is a resolution of
         // its expansion (project_expansions).
-        auto& SM = unit.context().getSourceManager();
-        auto location = SM.getFileLoc(occurrence.location);
-        auto spelled = location == SM.getSpellingLoc(occurrence.location);
+        auto [name, spelled] = unit.seen_name(
+            {occurrence.location,
+             occurrence.name_end.isValid() ? occurrence.name_end : occurrence.location});
+        auto location = name.getBegin();
         if(!instantiation_entries && occurrence.location.isMacroID()) {
             body_names.push_back({occurrence.decl, occurrence.kind, occurrence.location});
-        }
-
-        // A name of several tokens spans them all where they are
-        // written in one file; a macro that spells part of it
-        // leaves the first token alone.
-        clang::SourceRange name(location);
-        if(occurrence.name_end.isValid()) {
-            auto end = SM.getFileLoc(occurrence.name_end);
-            if(spelled && end == SM.getSpellingLoc(occurrence.name_end) &&
-               SM.getFileID(end) == SM.getFileID(location) &&
-               SM.getFileOffset(location) <= SM.getFileOffset(end)) {
-                name.setEnd(end);
-            }
         }
 
         // An occurrence says "this range spells the name", so it
@@ -1208,7 +1187,7 @@ public:
         // deduce; it declares nothing its template does not, and the types
         // it substitutes are no references.
         const auto* stmt = semantics.node(i).node.get<clang::Stmt>();
-        written_location = stmt ? stmt->getBeginLoc() : clang::SourceLocation();
+        expression_begin = stmt ? stmt->getBeginLoc() : clang::SourceLocation();
         see_from(semantics, i);
         if(instantiation_entries && !stmt) {
             project_placeholder(semantics, i);
@@ -1347,12 +1326,11 @@ public:
         const auto* definition = pattern->getDefinition();
         if(const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(found->second);
            param && definition && param->getDeclContext() != definition &&
-           written_location.isValid()) {
-            auto& SM = unit.context().getSourceManager();
+           expression_begin.isValid()) {
+            auto at = unit.seen_location(expression_begin);
             auto range = definition->getSourceRange();
-            if(SM.isPointWithin(SM.getFileLoc(written_location),
-                                SM.getFileLoc(range.getBegin()),
-                                SM.getFileLoc(range.getEnd()))) {
+            if(!unit.before(at, unit.seen_location(range.getBegin())) &&
+               !unit.before(unit.seen_location(range.getEnd()), at)) {
                 return definition->getParamDecl(param->getFunctionScopeIndex());
             }
         }
@@ -1417,24 +1395,13 @@ public:
     /// function. What the body names there is a resolution of the focus
     /// file, which a walk of its own declarations does not reach.
     std::vector<const clang::Decl*> expanding_decls() {
-        auto& SM = unit.context().getSourceManager();
-        auto focus = unit.focus_file();
-        std::vector<clang::SourceLocation> expansions;
-        for(unsigned i = 0; i < SM.local_sloc_entry_size(); i += 1) {
-            const auto& entry = SM.getLocalSLocEntry(i);
-            if(!entry.isExpansion() || entry.getExpansion().isMacroArgExpansion() ||
-               !focus.contains(SM.getFileID(entry.getExpansion().getSpellingLoc()))) {
-                continue;
-            }
-            expansions.push_back(SM.getExpansionLoc(entry.getExpansion().getExpansionLocStart()));
-        }
+        auto expansions = unit.focus_file().macro_invocations();
         if(expansions.empty()) {
             return {};
         }
         auto before = [&](clang::SourceLocation left, clang::SourceLocation right) {
-            return SM.isBeforeInTranslationUnit(left, right);
+            return unit.before(left, right);
         };
-        ranges::sort(expansions, before);
         llvm::DenseSet<const clang::Decl*> own(unit.top_level_decls().begin(),
                                                unit.top_level_decls().end());
         std::vector<const clang::Decl*> decls;
@@ -1443,7 +1410,7 @@ public:
                 continue;
             }
             // The declarations clang makes for itself are written nowhere.
-            auto range = SM.getExpansionRange(decl->getSourceRange());
+            auto range = unit.produced_bounds(decl->getSourceRange());
             if(range.isInvalid()) {
                 continue;
             }
@@ -1656,16 +1623,15 @@ public:
     /// from one expansion to the next (`LLVM_DEBUG` and each file's
     /// `DEBUG_TYPE`).
     void project_expansions() {
-        auto& SM = unit.context().getSourceManager();
         auto& entities = unit.get<EntityTable>();
 
         // The standard library's own macros: a system header's, by a name
         // reserved for the implementation (`__glibcxx_assert`).
-        auto library_macro = [&](clang::SourceLocation expansion, clang::SourceLocation body) {
-            if(!SM.isInSystemHeader(body)) {
+        auto library_macro = [&](clang::SourceLocation invocation, clang::SourceLocation body) {
+            if(!unit.in_library(body)) {
                 return false;
             }
-            auto name = clang::Lexer::getImmediateMacroName(expansion, SM, unit.lang_options());
+            auto name = unit.token_spelling(invocation);
             return clang::isReservedInAllContexts(
                 unit.context().Idents.get(name).isReserved(unit.lang_options()));
         };
@@ -1678,19 +1644,19 @@ public:
             auto expansion = location;
             while(location.isMacroID()) {
                 expansion = location;
-                location = SM.getImmediateSpellingLoc(location);
+                location = unit.expansion_level(location).spelling;
             }
-            auto& info = SM.getSLocEntry(SM.getFileID(expansion)).getExpansion();
-            if(info.isMacroArgExpansion() || SM.isWrittenInScratchSpace(location) ||
-               (!standard_library && library_macro(expansion, location))) {
+            auto level = unit.expansion_level(expansion);
+            if(level.argument || unit.concatenated(location) ||
+               (!standard_library && library_macro(level.start, location))) {
                 return;
             }
             auto [fid, offset] = unit.written_at(location);
             if(!resolves_in(fid)) {
                 return;
             }
-            auto length = clang::Lexer::MeasureTokenLength(location, SM, unit.lang_options());
-            auto& [home, records] = expansions[SM.getFileID(expansion)];
+            auto length = unit.token_length(location);
+            auto& [home, records] = expansions[unit.file_id(expansion)];
             home = fid;
             records.push_back({
                 .range = {offset, offset + length},
@@ -1732,22 +1698,20 @@ public:
     /// declarations names through the focus file's `#define` bodies; their
     /// own entries are their files' to index.
     void collect_body_names(const Semantics& path, std::uint32_t index) {
-        auto& SM = unit.context().getSourceManager();
         see_from(path, index);
         for(auto& occurrence: resolve_occurrences(path, index, &resolver)) {
             if(occurrence.location.isMacroID() &&
-               unit.focus_file().contains(SM.getFileID(SM.getSpellingLoc(occurrence.location)))) {
+               unit.focus_file().written_offset(occurrence.location)) {
                 body_names.push_back({occurrence.decl, occurrence.kind, occurrence.location});
             }
         }
     }
 
     void project_macros() {
-        auto& sm = unit.context().getSourceManager();
         for(auto& [fid, directive]: unit.directives()) {
             for(auto& macro: directive.macros) {
                 if(macro.kind == MacroRef::Kind::Undef &&
-                   sm.getFileID(macro.macro->getDefinitionLoc()) == fid) {
+                   unit.file_id(macro.macro->getDefinitionLoc()) == fid) {
                     undefined.insert(macro.macro);
                 }
             }
@@ -2212,8 +2176,8 @@ private:
     /// its calls.
     const clang::FunctionDecl* instantiated_function = nullptr;
 
-    /// Where the expression being projected is written (in_pattern).
-    clang::SourceLocation written_location;
+    /// Where the expression being projected begins (in_pattern).
+    clang::SourceLocation expression_begin;
 
     /// Per pattern function, its parameters and locals by location and kind.
     llvm::DenseMap<

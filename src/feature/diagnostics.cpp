@@ -232,14 +232,11 @@ private:
             } else if(auto include = include_range(main.fid)) {
                 // A module unit's files are entered at the import that
                 // loaded its module.
-                auto& sources = unit.context().getSourceManager();
-                bool imported = sources.getModuleImportLoc(sources.getLocForStartOfFile(main.fid))
-                                    .first.isValid();
                 return relocate(main,
                                 diagnostic,
                                 *include,
-                                imported ? DiagnosticOrigin::ImportedModule
-                                         : DiagnosticOrigin::IncludedFile);
+                                unit.imported(main.fid) ? DiagnosticOrigin::ImportedModule
+                                                        : DiagnosticOrigin::IncludedFile);
             } else {
                 // What the command line brought in (-include, -D) sits on
                 // no #include: it stays at the top of the file, like the
