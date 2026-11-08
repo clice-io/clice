@@ -13,6 +13,7 @@ import :semantic.selection;
 import :semantic.semantics;
 import :semantic.symbol;
 import :semantic.types;
+import :support.text;
 import :syntax.documentation;
 import :syntax.lexical_scan;
 
@@ -1211,15 +1212,8 @@ auto literal_text(CompilationUnit& unit, const clang::Expr& literal) -> std::str
     }
     auto text = unit.file_content(range->file)
                     .substr(range->range.begin, range->range.end - range->range.begin);
-    if(text.size() <= limit) {
-        return text.str();
-    }
-    /// Not inside a UTF-8 sequence.
-    auto cut = limit;
-    while(cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0) == 0x80) {
-        cut -= 1;
-    }
-    return text.take_front(cut).str() + "...";
+    auto kept = take_characters(text, limit);
+    return kept.size() == text.size() ? text.str() : kept.str() + "...";
 }
 
 /// The card of a literal: its type and value, a string's length and size.
@@ -1452,12 +1446,12 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
     };
 
     /// Joined until it holds `joined_limit` bytes, laid out, and shown up to
-    /// `shown_lines` lines and `shown_bytes` bytes. Cut while joining, the
+    /// `shown_lines` lines and `shown_characters` characters. Cut while joining, the
     /// text has its open brackets closed past a mark for the layout to reach
     /// its end, and is shown up to the mark.
     constexpr std::size_t joined_limit = 16 * 1024;
     constexpr std::size_t shown_lines = 40;
-    constexpr std::size_t shown_bytes = 4 * 1024;
+    constexpr std::size_t shown_characters = 4096;
     constexpr llvm::StringLiteral cut_mark = "/*...*/";
     std::string text;
     std::string closers;
@@ -1517,18 +1511,10 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
     laid.split(lines, '\n');
     bool truncated = cut || lines.size() > shown_lines;
     auto shown = llvm::join(llvm::ArrayRef(lines).take_front(shown_lines), "\n");
-    if(shown.size() > shown_bytes) {
-        /// A line longer than the rest of the bytes is cut inside it, at a
-        /// character's start, at most three continuation bytes back; text
-        /// not in UTF-8 is cut where it is.
-        auto end = llvm::StringRef(shown).rfind('\n', shown_bytes);
-        if(end == llvm::StringRef::npos) {
-            end = shown_bytes;
-            for(auto back = 0; back < 3 && (shown[end] & 0xC0) == 0x80; back += 1) {
-                end -= 1;
-            }
-        }
-        shown.resize(end);
+    if(auto kept = take_characters(shown, shown_characters); kept.size() < shown.size()) {
+        /// A line longer than the rest of the characters is cut inside it.
+        auto end = kept.rfind('\n');
+        shown.resize(end == llvm::StringRef::npos ? kept.size() : end);
         truncated = true;
     }
     if(truncated) {

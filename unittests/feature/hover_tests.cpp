@@ -776,8 +776,8 @@ ZEST_CASE(HoverDefinitionShape) {
 }
 
 ZEST_CASE(expansion_cut_outside_utf8) {
-    // Past 4 KiB of one line of bytes no UTF-8 character starts at, the cut
-    // steps back no further than a character's length.
+    // A byte outside UTF-8 counts as a character: a line of them is cut
+    // past 4096.
     auto code =
         "#define TEXT R\"(" + std::string(5000, '\xA0') + ")\"\nconst char* text = §TEXT;\n";
     run_info(code);

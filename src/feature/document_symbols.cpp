@@ -269,14 +269,8 @@ std::pair<std::string, LocalSourceRange> invocation(llvm::StringRef content,
     range.end = token->range.end;
     constexpr std::size_t limit = 80;
     auto written = joined(content, arguments);
-    if(written.size() > limit) {
-        // At a character's first byte, not inside a UTF-8 sequence.
-        auto cut = limit;
-        while(cut > 0 && (static_cast<unsigned char>(written[cut]) & 0xC0) == 0x80) {
-            cut -= 1;
-        }
-        written.resize(cut);
-        written += "...)";
+    if(auto kept = take_characters(written, limit); kept.size() < written.size()) {
+        written = kept.str() + "...)";
     }
     return {text + written, range};
 }

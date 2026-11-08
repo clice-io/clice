@@ -23,6 +23,6 @@ auto integer = §(int_literal)99;
 
 static_assert(sizeof(int) == 4, §(unevaluated_string)"int is four bytes");
 
-auto long_text = §(long_text)"中文中文中文中文中文中文中文中文";
+auto long_text = §(long_text)"中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文";
 
 constexpr _Complex double §(negative_imaginary)conjugate = 1.0 - 2.0i;
