@@ -499,8 +499,8 @@ void LSPClient::register_editing() {
                 return text ? std::optional(std::move(*text)) : std::nullopt;
             };
             // An open unit's own compile indexes its buffer.
-            auto pending = project.units_pending(
-                [&](Fid unit) { return query.serving(unit).has_value(); });
+            auto pending =
+                project.units_pending([&](Fid unit) { return query.serving(unit).has_value(); });
             auto plan = feature::plan_rename(
                 query,
                 project.file_table,

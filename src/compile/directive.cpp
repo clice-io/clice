@@ -492,7 +492,8 @@ public:
                  clang::SourceRange) override {
         if(auto def = definition.getMacroInfo()) {
             add_macro(def, MacroRef::Ref, name.getLocation());
-        } else {
+        } else if(name.getLocation().isFileID()) {
+            // One a body spells (`#define HAS_X defined(X)`) is the body's.
             add_unresolved(name.getLocation());
         }
     }

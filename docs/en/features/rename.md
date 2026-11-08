@@ -37,6 +37,18 @@ tests/rename/edits/03_followers
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Rename a macro**
+
+Renaming a macro edits its `#define` in each branch of the `#if` it is defined in, the `#ifndef` guarding a default, and every use, written as another macro's argument or in another macro's body; a use pasted together with `##` is left alone and named in a message
+
+```case
+tests/rename/edits/12_macros
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Refused Renames
@@ -49,7 +61,7 @@ A symbol that cannot be renamed, or a new name that does not fit, is refused wit
 
 **Names a rename refuses**
 
-Pressing rename on a macro, an operator, a symbol of the system headers or a name only instantiations resolve says why it cannot be renamed; off any name, nothing happens
+Pressing rename on an operator, a symbol or a macro of the system headers, a macro the compile command defines or a name only instantiations resolve says why it cannot be renamed; off any name, nothing happens
 
 ```case
 tests/rename/refusals/01_unrenamable_symbols
@@ -65,6 +77,18 @@ A new name that is no identifier, a keyword, taken in the same scope or a macro 
 
 ```case
 tests/rename/refusals/02_rejected_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**New macro names refused**
+
+A macro has no scope: a new name some symbol, macro or `#ifdef` of the project already spells is refused, as is `defined`; a reserved name is done with a warning
+
+```case
+tests/rename/refusals/05_macro_names
 ```
 
 <!-- END CAPABILITY -->

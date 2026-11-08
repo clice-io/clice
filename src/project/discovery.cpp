@@ -32,15 +32,6 @@ llvm::SmallVector<Spelling> existing(llvm::SmallVector<Spelling> places) {
     return places;
 }
 
-/// Whether a project directory holds no sources a refactoring edits:
-/// hidden, a package cache, the cache directory or a build tree.
-bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
-    auto name = path::filename(dir);
-    return name.starts_with(".") || name == "node_modules" || dir == cache_dir ||
-           fs::exists(path::join(dir, "CMakeCache.txt")) ||
-           fs::exists(path::join(dir, "build.ninja"));
-}
-
 /// The git directory of the checkout `root` lies in, if any: `.git`
 /// itself, or the directory a linked worktree's `.git` file names.
 std::optional<std::string> git_dir(llvm::StringRef root) {
@@ -442,7 +433,12 @@ bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) 
         if(dir == root) {
             return false;
         }
-        inside = !outside_sources(dir, cache_dir);
+        // A hidden directory, a package cache, the cache directory or a
+        // build tree holds no sources a refactoring edits.
+        auto name = path::filename(dir);
+        inside = !name.starts_with(".") && name != "node_modules" && dir != cache_dir &&
+                 !fs::exists(path::join(dir, "CMakeCache.txt")) &&
+                 !fs::exists(path::join(dir, "build.ninja"));
         return inside;
     });
     return inside;

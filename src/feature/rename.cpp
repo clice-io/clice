@@ -943,6 +943,7 @@ BatchPlan plan_renames(const index::IndexQuery& query,
     }
     return result;
 }
+
 std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& batch, Fid file) {
     std::string result;
     std::uint32_t copied = 0;
@@ -974,9 +975,8 @@ std::optional<std::string> rename_refusal(llvm::StringRef root) {
 std::string refusal(const RenamePlan& plan) {
     auto reasons = plan.conflicts;
     if(!plan.stale.empty()) {
-        reasons.push_back(
-            std::format("these files changed since they were indexed, or were never indexed: {}",
-                        llvm::join(plan.stale, ", ")));
+        reasons.push_back(std::format("these files changed since they were indexed: {}",
+                                      llvm::join(plan.stale, ", ")));
     }
     return std::format("cannot rename `{}`: {}", plan.old_name, llvm::join(reasons, "; "));
 }

@@ -297,8 +297,8 @@ public:
 
     /// The files the index holds whose text it no longer describes: an
     /// open buffer edited since both its compile and its shard, a file
-    /// changed on disk since it was indexed. The file records tell, no
-    /// shard is read.
+    /// changed on disk since it was indexed — which its file record tells,
+    /// no shard read.
     std::vector<Fid> outdated_files() const;
 
     /// The file's shard when `text` is byte-identical to the content it

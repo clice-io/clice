@@ -37,6 +37,18 @@ tests/rename/edits/03_followers
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**重命名宏**
+
+重命名宏会修改它在所定义的 `#if` 各个分支中的 `#define`、保护默认定义的 `#ifndef`，以及它的每一处使用——无论是作为另一个宏的实参写出，还是写在另一个宏的宏体中；用 `##` 拼接而成的使用保持不变，并会在消息中指出
+
+```case
+tests/rename/edits/12_macros
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 拒绝重命名的情况
@@ -49,7 +61,7 @@ tests/rename/edits/03_followers
 
 **不允许重命名的名称**
 
-在宏、运算符、系统头文件中的符号或只有实例化才能解析的名称上触发重命名时，会提示无法重命名的原因；光标不在任何名称上时，不会执行任何操作
+在运算符、系统头文件中的符号或宏、编译命令定义的宏，或只有实例化才能解析的名称上触发重命名时，会提示无法重命名的原因；光标不在任何名称上时，不会执行任何操作
 
 ```case
 tests/rename/refusals/01_unrenamable_symbols
@@ -65,6 +77,18 @@ tests/rename/refusals/01_unrenamable_symbols
 
 ```case
 tests/rename/refusals/02_rejected_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**不允许使用的新宏名**
+
+宏没有作用域：新名称若已被项目中的某个符号、宏或 `#ifdef` 写出，就会被拒绝，`defined` 同样会被拒绝；使用保留名称时会执行重命名并发出警告
+
+```case
+tests/rename/refusals/05_macro_names
 ```
 
 <!-- END CAPABILITY -->

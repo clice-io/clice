@@ -738,7 +738,9 @@ ZEST_CASE(NewNameInChangedFile) {
     )");
     merge();
     // A declaration of the new name the index has not seen yet.
-    change("b.cpp", "int other() { return 0; }\nint evaluate;\n");
+    change("b.cpp", R"(int other() { return 0; }
+int evaluate;
+)");
 
     auto renamed = rename("compute", "evaluate");
     ZASSERT(renamed);
@@ -859,7 +861,7 @@ ZEST_CASE(MacroAcrossUnits) {
     ZEXPECT(clean(*renamed));
 }
 
-ZEST_CASE(MacroBranchesOfOneFile) {
+ZEST_CASE(MacroBranches) {
     add_focus(file("a.cpp"), R"(
         #ifdef BIG
         #define §LIMIT 100
@@ -909,6 +911,22 @@ ZEST_CASE(MacroInOtherBodies) {
     merge();
 
     // A body no expansion runs names nothing the index knows.
+    auto renamed = rename_at("cursor", "BOUND");
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
+}
+
+ZEST_CASE(MacroTestedInBody) {
+    add_focus(file("a.cpp"), R"(
+        #define HAS_LIMIT defined(LIMIT)
+        #if HAS_LIMIT
+        #endif
+        #define §(cursor)§LIMIT 10
+        int a = §LIMIT;
+    )");
+    merge();
+
     auto renamed = rename_at("cursor", "BOUND");
     ZASSERT(renamed);
     ZEXPECT(edits(*renamed) == marks());
@@ -983,30 +1001,6 @@ ZEST_CASE(MacroLinkedThroughBody) {
     ZASSERT(renamed);
     ZEXPECT(edits(*renamed) == marks());
     ZEXPECT(clean(*renamed));
-}
-
-ZEST_CASE(MacroNewNameTaken) {
-    add_focus(file("a.cpp"), R"(
-        #define §(cursor)LIMIT 10
-        #define OTHER 1
-        #ifdef FEATURE
-        #endif
-        namespace ns { int count; }
-        int a = LIMIT;
-    )");
-    merge();
-
-    for(auto [name, conflict]: {
-            std::pair{"count",   "which the macro would replace"},
-            std::pair{"OTHER",   "is a macro already"           },
-            std::pair{"FEATURE", "a directive tests"            },
-            std::pair{"defined", "cannot name a macro"          }
-    }) {
-        auto renamed = rename_at("cursor", name);
-        ZASSERT(renamed);
-        ZASSERT(renamed->conflicts.size() == 1U);
-        ZEXPECT(renamed->conflicts.front().contains(conflict));
-    }
 }
 
 ZEST_CASE(ApplyRewritesTokens) {
