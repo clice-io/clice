@@ -5,6 +5,7 @@ import :server.client;
 import :server.master;
 import :server.served_project;
 import :support.logging;
+import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -42,6 +43,7 @@ void MasterServer::open_document(Fid path_id,
             .spelling = spelling.str(),
             .buffer = Session(path_id, std::move(text), version),
         });
+        second.buffer.set_bom(vfs::starts_with_bom(files.resolve(path_id)));
         if(client) {
             client->publish_second_name(document, second);
         }
@@ -65,6 +67,7 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
         end_session(document);
     }
     document.session = std::make_shared<Session>(path_id, std::move(text), version);
+    document.session->set_bom(vfs::starts_with_bom(files.resolve(path_id)));
     if(projects.empty()) {
         return;
     }
@@ -202,10 +205,21 @@ void MasterServer::close_document(Fid path_id, llvm::StringRef spelling) {
 }
 
 void MasterServer::save_document(Fid path_id) {
-    // The user's retry: whatever crashed on the saved document runs again
-    // on its next request.
-    if(auto* document = find_document(path_id); document && document->owner) {
-        document->owner->retry_after_save(*document->session);
+    if(auto* document = find_document(path_id)) {
+        // Saved in another encoding, the file gained or lost its byte order
+        // mark: a change of the buffer the editor does not send.
+        auto bom = vfs::starts_with_bom(files.resolve(path_id));
+        for(auto& second: document->second_names) {
+            second.buffer.set_bom(bom);
+        }
+        if(document->session->set_bom(bom) && document->owner) {
+            document->owner->edited(*document->session);
+        }
+        // The user's retry: whatever crashed on the saved document runs
+        // again on its next request.
+        if(document->owner) {
+            document->owner->retry_after_save(*document->session);
+        }
     }
     llvm::SmallVector<Fid> closures{path_id};
     for(auto& project: projects) {

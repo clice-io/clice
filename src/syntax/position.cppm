@@ -2,6 +2,7 @@ module clice:syntax.position;
 
 import :support.logging;
 import :support.prelude;
+import :support.text;
 import :syntax.token;
 
 namespace clice {
@@ -19,30 +20,37 @@ inline bool ends_crlf(std::span<const std::uint64_t> crlf, std::size_t line) {
 /// Borrows everything.
 ///
 /// A line ends at '\n', and a '\r' just before it belongs to the line's end,
-/// not its text: an offset between them is at the line's end.
+/// not its text: an offset between them is at the line's end. A byte order
+/// mark is no part of the first line, which the editor shows without it: the
+/// line starts after it, and an offset inside it is at the line's start.
 class PositionMap {
 public:
-    /// A text at hand and its lsp::line_starts(). Its
-    /// lsp::non_ascii_lines() spare the conversions reading ASCII
-    /// lines; without them every line converted is read.
+    /// A text at hand and the lsp::line_starts() of the text after its byte
+    /// order mark (without_bom). Their lsp::non_ascii_lines() spare the
+    /// conversions reading ASCII lines; without them every line converted
+    /// is read.
     PositionMap(llvm::StringRef content,
                 std::span<const std::uint32_t> lines,
                 std::optional<std::span<const std::uint64_t>> non_ascii = std::nullopt) :
-        content(content), content_size(static_cast<std::uint32_t>(content.size())), starts(lines),
+        content(content), content_size(static_cast<std::uint32_t>(content.size())),
+        mark(static_cast<std::uint32_t>(leading_bom(content).size())), starts(lines),
         non_ascii(non_ascii) {}
 
-    /// A text known by its size and line starts, with the text of the lines
+    /// A text known by its size, whether a byte order mark starts it, and the
+    /// line starts of the text after the mark, with the text of the lines
     /// holding non-ASCII bytes alone: `utf8_lines` ascending, their text
     /// without the line end back to back in `utf8_text`, ending at
     /// `utf8_ends`. On every other line every encoding counts bytes. `crlf`
     /// has bit `n % 64` of word `n / 64` set when line `n` ends in "\r\n".
     PositionMap(std::uint32_t size,
+                bool bom,
                 std::span<const std::uint32_t> lines,
                 std::span<const std::uint64_t> crlf,
                 std::span<const std::uint32_t> utf8_lines = {},
                 llvm::StringRef utf8_text = {},
                 std::span<const std::uint32_t> utf8_ends = {}) :
-        content_size(size), starts(lines), crlf(crlf), utf8_lines(utf8_lines), utf8_text(utf8_text),
+        content_size(size), mark(bom ? static_cast<std::uint32_t>(utf8_bom.size()) : 0),
+        starts(lines), crlf(crlf), utf8_lines(utf8_lines), utf8_text(utf8_text),
         utf8_ends(utf8_ends) {}
 
     /// The text, when this map was given it.
@@ -54,12 +62,17 @@ public:
         return content_size;
     }
 
+    /// The line holding byte `offset`, its line end included.
+    std::uint32_t line_of(std::uint32_t offset) const {
+        return lsp::line_of(starts, local(offset));
+    }
+
     /// The position of an offset the server computed: one past the text is
     /// a bug, reported as an anomaly. An offset inside a code point is at
     /// the code point's start.
     std::optional<protocol::Position> position(std::uint32_t offset,
                                                PositionEncoding encoding) const {
-        auto position = to_position(offset, encoding);
+        auto position = to_position(local(offset), encoding);
         if(!position) {
             LOG_ANOMALY(PositionMapFail, "offset {} cannot be mapped to a position", offset);
         }
@@ -68,15 +81,17 @@ public:
 
     /// The positions of a byte range's ends, as position() converts each.
     std::optional<protocol::Range> range(LocalSourceRange range, PositionEncoding encoding) const {
+        auto begin = local(range.begin);
+        auto end = local(range.end);
         std::optional<protocol::Range> converted;
         if(by_line()) {
             // The start is in the text if the end is.
-            if(auto end = to_position(range.end, encoding); end && range.begin <= range.end) {
-                converted = protocol::Range{*to_position(range.begin, encoding), *end};
+            if(auto last = to_position(end, encoding); last && begin <= end) {
+                converted = protocol::Range{*to_position(begin, encoding), *last};
             }
         } else {
             converted = dispatch(encoding, [&](auto text, const auto&... known) {
-                return lsp::to_range(text, starts, range.begin, range.end, known...);
+                return lsp::to_range(text, starts, begin, end, known...);
             });
         }
         if(!converted) {
@@ -92,16 +107,21 @@ public:
     /// being its end; none past the last line or inside a code point.
     std::optional<std::uint32_t> offset(protocol::Position position,
                                         PositionEncoding encoding) const {
+        std::optional<std::uint32_t> offset;
         if(auto line = line_text(position.line)) {
-            auto offset = lsp::to_offset(line->text,
-                                         one_line,
-                                         {.line = 0, .character = position.character},
-                                         encoding);
-            return offset ? std::optional(line->start + *offset) : std::nullopt;
+            offset = lsp::to_offset(line->text,
+                                    one_line,
+                                    {.line = 0, .character = position.character},
+                                    encoding);
+            if(offset) {
+                *offset += line->start;
+            }
+        } else {
+            offset = dispatch(encoding, [&](auto text, const auto&... known) {
+                return lsp::to_offset(text, starts, position, known...);
+            });
         }
-        return dispatch(encoding, [&](auto text, const auto&... known) {
-            return lsp::to_offset(text, starts, position, known...);
-        });
+        return offset ? std::optional(mark + *offset) : std::nullopt;
     }
 
     /// The offset of a client's position, clamped as LSP asks: past the last
@@ -109,15 +129,15 @@ public:
     /// code point is its start.
     std::uint32_t offset_clamped(protocol::Position position, PositionEncoding encoding) const {
         if(auto line = line_text(position.line)) {
-            return line->start +
+            return mark + line->start +
                    lsp::to_offset_clamped(line->text,
                                           one_line,
                                           {.line = 0, .character = position.character},
                                           encoding);
         }
-        return dispatch(encoding, [&](auto text, const auto&... known) {
-            return lsp::to_offset_clamped(text, starts, position, known...);
-        });
+        return mark + dispatch(encoding, [&](auto text, const auto&... known) {
+                   return lsp::to_offset_clamped(text, starts, position, known...);
+               });
     }
 
     /// The bytes a client's range covers, both ends clamped; a reversed
@@ -132,7 +152,7 @@ public:
         auto offsets = dispatch(encoding, [&](auto text, const auto&... known) {
             return lsp::to_offset_range(text, starts, range, known...);
         });
-        return {offsets.begin, offsets.end};
+        return {mark + offsets.begin, mark + offsets.end};
     }
 
     /// A line's bytes, its line end excluded; none past the last line.
@@ -142,18 +162,24 @@ public:
         }
         protocol::Position end{.line = line, .character = UINT32_MAX};
         // Counting bytes as ASCII finds the line's end without reading it.
-        auto stop = crlf ? lsp::to_offset_clamped(content_size, starts, end, CRLF{*crlf})
-                         : lsp::to_offset_clamped(std::string_view(content),
+        auto stop = crlf ? lsp::to_offset_clamped(content_size - mark, starts, end, CRLF{*crlf})
+                         : lsp::to_offset_clamped(std::string_view(without_bom(content)),
                                                   starts,
                                                   end,
                                                   PositionEncoding::UTF8,
                                                   lsp::all_ascii);
-        return LocalSourceRange{starts[line], stop};
+        return LocalSourceRange{mark + starts[line], mark + stop};
     }
 
 private:
     /// The line table of a single line's text.
     constexpr static std::array<std::uint32_t, 1> one_line = {0};
+
+    /// Where `offset` lies in the text after the byte order mark, the line
+    /// starts' text.
+    std::uint32_t local(std::uint32_t offset) const {
+        return offset < mark ? 0 : offset - mark;
+    }
 
     /// Whether conversions read the lines the map knows by line: in every
     /// encoding, since even UTF-8 places an offset inside a code point at
@@ -178,14 +204,15 @@ private:
         return LineText{starts[line], std::string_view(text.data(), text.size())};
     }
 
+    /// The position of an offset into the text after the byte order mark.
     std::optional<protocol::Position> to_position(std::uint32_t offset,
                                                   PositionEncoding encoding) const {
-        if(by_line() && offset <= content_size) {
+        if(by_line() && offset <= content_size - mark) {
             auto number = lsp::line_of(starts, offset);
             if(auto line = line_text(number)) {
                 // An offset inside the line end is at the end of the text.
-                auto local = std::min<std::uint32_t>(offset - line->start, line->text.size());
-                auto position = lsp::to_position(line->text, one_line, local, encoding);
+                auto within = std::min<std::uint32_t>(offset - line->start, line->text.size());
+                auto position = lsp::to_position(line->text, one_line, within, encoding);
                 position->line = number;
                 return position;
             }
@@ -204,16 +231,16 @@ private:
     };
 
     /// Calls `convert(text, known...)` with what kotatsu's conversions take of
-    /// this text: a text at hand, then the encoding and what is known of its
-    /// ASCII lines; or the size of one known by its size, then its "\r\n"
-    /// endings.
+    /// the text after the byte order mark: a text at hand, then the encoding
+    /// and what is known of its ASCII lines; or the size of one known by its
+    /// size, then its "\r\n" endings.
     template <typename Convert>
     auto dispatch(PositionEncoding encoding, const Convert& convert) const
         -> std::invoke_result_t<const Convert&, std::string_view, PositionEncoding> {
         if(crlf) {
-            return convert(content_size, CRLF{*crlf});
+            return convert(content_size - mark, CRLF{*crlf});
         }
-        std::string_view text(content);
+        std::string_view text(without_bom(content));
         if(non_ascii) {
             return convert(text, encoding, *non_ascii);
         }
@@ -222,6 +249,10 @@ private:
 
     llvm::StringRef content;
     std::uint32_t content_size;
+
+    /// The bytes of the byte order mark the text starts with, 0 for none.
+    std::uint32_t mark;
+
     std::span<const std::uint32_t> starts;
     std::optional<std::span<const std::uint64_t>> non_ascii;
     std::optional<std::span<const std::uint64_t>> crlf;

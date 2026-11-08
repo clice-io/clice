@@ -9,6 +9,7 @@ import :compile.tidy;
 import :compile.tokens;
 import :support.logging;
 import :support.process;
+import :support.text;
 import :syntax.header_context;
 import :syntax.lexical_scan;
 import :syntax.position;
@@ -883,11 +884,15 @@ CompilationStatus CompilationUnit::run() {
         point = std::min(point, static_cast<std::uint32_t>(focus.content().size()));
         auto position = focus.positions().position(point, PositionEncoding::UTF8);
         assert(position && "clamped completion offset must be mappable");
-        /// Clang completion locations are 1-based.
+        /// Clang completion locations are 1-based, and the first line's
+        /// columns count a byte order mark.
         auto& at = instance->getFrontendOpts().CodeCompletionAt;
         at.FileName = SM().getFileEntryRefForID(focus.file())->getName().str();
         at.Line = position->line + 1;
         at.Column = position->character + 1;
+        if(position->line == 0) {
+            at.Column += leading_bom(focus.content()).size();
+        }
         instance->setCodeCompletionConsumer(params.completion.consumer(*this).release());
     }
 

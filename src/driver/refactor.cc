@@ -150,8 +150,7 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
         if(auto error = status ? fs::read_file(content, path) : status.error()) {
             return std::unexpected(std::format("cannot read {}: {}", site.path, error.message()));
         }
-        auto text = vfs::without_bom(content);
-        auto renamed = feature::apply_renames(text, plan, file);
+        auto renamed = feature::apply_renames(content, plan, file);
         if(!renamed) {
             return std::unexpected(
                 std::format("{} changed since it was indexed; run with --fresh", site.path));
@@ -159,7 +158,7 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
         rewrites.push_back({
             .path = std::move(path),
             .stamp = vfs::Stamp::of(*status),
-            .text = content.substr(0, content.size() - text.size()) + *renamed,
+            .text = std::move(*renamed),
         });
     }
     for(std::size_t i = 0; i < rewrites.size(); i += 1) {

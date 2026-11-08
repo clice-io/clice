@@ -12,10 +12,26 @@ inline llvm::StringRef take_characters(llvm::StringRef text, std::size_t count) 
     return end ? text.take_front(*end) : text;
 }
 
-/// The first byte of the line containing `offset`.
+/// The UTF-8 byte order mark: a file saved with one holds it before its
+/// text, which an editor shows and sends without it.
+constexpr inline llvm::StringLiteral utf8_bom = "\xEF\xBB\xBF";
+
+/// The byte order mark `text` starts with; empty for none.
+inline llvm::StringRef leading_bom(llvm::StringRef text) {
+    return text.starts_with(utf8_bom) ? text.take_front(utf8_bom.size()) : llvm::StringRef();
+}
+
+inline llvm::StringRef without_bom(llvm::StringRef text) {
+    return text.drop_front(leading_bom(text).size());
+}
+
+/// The first byte of the line containing `offset`; the first line starts
+/// after a byte order mark.
 inline std::uint32_t line_begin(llvm::StringRef content, std::uint32_t offset) {
     auto newline = content.rfind('\n', offset);
-    return newline == llvm::StringRef::npos ? 0 : static_cast<std::uint32_t>(newline + 1);
+    return newline == llvm::StringRef::npos
+               ? std::min(offset, static_cast<std::uint32_t>(leading_bom(content).size()))
+               : static_cast<std::uint32_t>(newline + 1);
 }
 
 /// The first byte of the logical line containing `offset`: its line, or

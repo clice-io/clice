@@ -7,12 +7,7 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { quote } from "shell-quote";
 import { REPO_ROOT } from "../repo.ts";
-import {
-    resolveLocation,
-    SourceText,
-    withoutBom,
-    type Position,
-} from "../testing/render/position.ts";
+import { resolveLocation, SourceText, type Position } from "../testing/render/position.ts";
 import type { Perf } from "./perf/scenarios.ts";
 import {
     configurationOf,
@@ -316,7 +311,7 @@ export type Probe = (typeof PROBES)[number];
 export type PerfFile = { file: string; query?: string } & Partial<Record<Probe, Place>>;
 
 function sourceOf(root: string, file: string): SourceText {
-    return new SourceText(file, withoutBom(fs.readFileSync(path.join(root, file), "utf8")));
+    return new SourceText(file, fs.readFileSync(path.join(root, file), "utf8"));
 }
 
 /// Where a place is in a file of the checkout `root`.

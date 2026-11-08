@@ -43,8 +43,8 @@ ZEST_CASE(OpenedFilesKeepIdentity) {
     ZASSERT(stated->getUniqueID() == id);
     ZASSERT(text_status->getUniqueID() == id);
     ZASSERT(bytes_status->getUniqueID() == id);
-    ZASSERT(stated->getSize() == 7u);
-    ZASSERT(text_status->getSize() == 7u);
+    ZASSERT(stated->getSize() == 10u);
+    ZASSERT(text_status->getSize() == 10u);
     ZASSERT(bytes_status->getSize() == 10u);
     ZASSERT(text_status->getLastModificationTime() ==
             vfs::to_llvm(*status, path).getLastModificationTime());

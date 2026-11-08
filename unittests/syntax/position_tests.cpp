@@ -1,6 +1,7 @@
 module clice;
 
 import :support.logging;
+import :support.text;
 import :syntax.position;
 import :unittests.utils;
 
@@ -81,7 +82,7 @@ ZEST_CASE(CRLFLineEnd) {
     auto starts = lsp::line_starts(text);
     std::vector<std::uint64_t> crlf = {1};
     PositionMap read(text, starts);
-    PositionMap sized(static_cast<std::uint32_t>(text.size()), starts, crlf);
+    PositionMap sized(static_cast<std::uint32_t>(text.size()), false, starts, crlf);
     for(auto* map: {&read, &sized}) {
         ZEXPECT(at(*map, 5, UTF16) == "0:5");
         ZEXPECT(at(*map, 6, UTF16) == "0:5");
@@ -103,7 +104,7 @@ ZEST_CASE(LoneCRIsText) {
 
 ZEST_CASE(SizedCountsBytes) {
     std::vector<std::uint32_t> starts = {0, 3, 6};
-    PositionMap map(6, starts, {});
+    PositionMap map(6, false, starts, {});
     ZEXPECT(map.text().empty());
     ZEXPECT(map.size() == 6u);
     for(auto encoding: {UTF8, UTF16, UTF32}) {
@@ -111,6 +112,43 @@ ZEST_CASE(SizedCountsBytes) {
         ZEXPECT(map.offset(point(1, 1), encoding) == std::optional<std::uint32_t>(4));
     }
     ZEXPECT(map.line_bounds(1) == std::optional(LocalSourceRange{3, 5}));
+}
+
+/// A byte order mark, then "xé\ny\n": the first line starts after the mark,
+/// and an offset inside the mark is at its start.
+ZEST_CASE(ByteOrderMark) {
+    llvm::StringRef text = "\xEF\xBB\xBFx\xC3\xA9\ny\n";
+    auto starts = lsp::line_starts(without_bom(text));
+    auto ascii = lsp::non_ascii_lines(without_bom(text));
+    std::vector<std::uint32_t> utf8_lines = {0};
+    std::vector<std::uint32_t> utf8_ends = {3};
+    PositionMap read(text, starts, ascii);
+    PositionMap sized(static_cast<std::uint32_t>(text.size()),
+                      true,
+                      starts,
+                      {},
+                      utf8_lines,
+                      "x\xC3\xA9",
+                      utf8_ends);
+    for(auto* map: {&read, &sized}) {
+        ZEXPECT(at(*map, 0, UTF16) == "0:0");
+        ZEXPECT(at(*map, 2, UTF16) == "0:0");
+        ZEXPECT(at(*map, 3, UTF16) == "0:0");
+        ZEXPECT(at(*map, 4, UTF16) == "0:1");
+        ZEXPECT(at(*map, 6, UTF8) == "0:3");
+        ZEXPECT(at(*map, 7, UTF16) == "1:0");
+        ZEXPECT(map->line_of(2) == 0u);
+        ZEXPECT(map->line_of(7) == 1u);
+        ZEXPECT(map->offset(point(0, 0), UTF16) == std::optional<std::uint32_t>(3));
+        ZEXPECT(map->offset(point(0, 2), UTF16) == std::optional<std::uint32_t>(6));
+        ZEXPECT(map->offset_clamped(point(1, 0), UTF16) == 7u);
+        ZEXPECT(map->offset_range({.start = point(0, 0), .end = point(1, 1)}, UTF16) ==
+                (LocalSourceRange{3, 8}));
+        ZEXPECT(map->range({0, 4}, UTF16) ==
+                std::optional(protocol::Range{.start = point(0, 0), .end = point(0, 1)}));
+        ZEXPECT(map->line_bounds(0) == std::optional(LocalSourceRange{3, 6}));
+        ZEXPECT(map->line_bounds(1) == std::optional(LocalSourceRange{7, 8}));
+    }
 }
 
 ZEST_CASE(PastTextAnomaly) {

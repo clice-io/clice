@@ -47,7 +47,7 @@ export class AnswerContext {
     readonly roots: readonly Root[];
     private readonly read: (path: string) => string;
     private readonly encoding: PositionEncoding;
-    private readonly cache = new Map<string, SourceText>();
+    private readonly cache = new Map<string, { read: string; source: SourceText }>();
 
     /// `read` returns the text requests see for a workspace path: the open
     /// buffer, else the disk. A file outside reads from the disk. Replies
@@ -72,11 +72,11 @@ export class AnswerContext {
         const outside = outsidePath(path, this.roots);
         const text = outside === undefined ? this.read(path) : fs.readFileSync(outside, "utf8");
         const cached = this.cache.get(path);
-        if (cached?.text === text) {
-            return cached;
+        if (cached?.read === text) {
+            return cached.source;
         }
         const source = new SourceText(path, text);
-        this.cache.set(path, source);
+        this.cache.set(path, { read: text, source });
         return source;
     }
 

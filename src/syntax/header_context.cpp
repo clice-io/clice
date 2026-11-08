@@ -122,7 +122,7 @@ Cut place_cut(const LexicalInfo& lexical, llvm::StringRef content, std::uint32_t
     // opening it.
     llvm::SmallVector<std::uint32_t> branches;
     std::vector<Candidate> candidates{
-        {.offset = 0, .branches = {}}
+        {.offset = static_cast<std::uint32_t>(leading_bom(content).size()), .branches = {}}
     };
     auto mark = [&](std::uint32_t at) {
         if(cut.braces <= 0) {
@@ -445,9 +445,11 @@ std::optional<SynthesizedContext>
         };
         auto cut = place_cut(lexical, entry.content, matched.offset);
         bool splits = !open && cut.braces > 0;
+        // A fragment lands in the middle of a file, where a byte order
+        // mark would be a stray character.
         auto& head = before.emplace_back();
         append_line_marker(head.text, entry.path, 1);
-        emit(head, 0, splits ? cut.top : cut.offset);
+        emit(head, leading_bom(entry.content).size(), splits ? cut.top : cut.offset);
         if(splits) {
             for(std::uint16_t d = cut.top_conditionals; d > 0; d -= 1) {
                 head.text += "#endif\n";

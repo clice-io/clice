@@ -229,33 +229,38 @@ ZEST_CASE(FreshReadNotConfirmed) {
     ZASSERT(!pool.disk.cached_hash(fid, read->stamp).has_value());
 }
 
-ZEST_CASE(ReadDropsBom) {
-    // A file saved with a UTF-8 byte order mark reads as the text an editor
-    // sends: both sides of every buffer-versus-disk comparison agree.
+ZEST_CASE(ReadKeepsBom) {
+    // A file saved with a UTF-8 byte order mark reads as its bytes, the
+    // mark among them, as clang reads it.
     TempDir tmp;
     tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
     auto observed = vfs::read_observed(tmp.path("bom.h"));
     ZASSERT(observed);
-    ZASSERT(observed->text == "int x;\n");
-    ZASSERT(observed->obs.hash == llvm::xxh3_64bits("int x;\n"));
+    ZASSERT(observed->text == "\xEF\xBB\xBFint x;\n");
+    ZASSERT(observed->obs.hash == llvm::xxh3_64bits("\xEF\xBB\xBFint x;\n"));
+    ZASSERT(vfs::read_text(tmp.path("bom.h")).value_or("") == observed->text);
+    ZASSERT(vfs::starts_with_bom(tmp.path("bom.h")));
+    tmp.touch("plain.h", "int x;\n");
+    ZASSERT(!vfs::starts_with_bom(tmp.path("plain.h")));
 }
 
-ZEST_CASE(CompileFSDropsBom) {
-    // The compile's file system serves the same text, its stat agreeing on
-    // the size as clang checks.
+ZEST_CASE(CompileFSKeepsBom) {
+    // The compile's file system serves the same bytes, its stat agreeing on
+    // the size as clang checks, whether clang stats the file first or
+    // opens it.
     TempDir tmp;
     tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
     auto path = tmp.path("bom.h");
     vfs::View view;
     auto status = view.status(path);
     ZASSERT(bool(status));
-    ZASSERT(status->getSize() == 7u);
+    ZASSERT(status->getSize() == 10u);
     auto file = view.openFileForRead(path);
     ZASSERT(bool(file));
     auto buffer = (*file)->getBuffer(path, -1, true, false);
     ZASSERT(bool(buffer));
-    ZASSERT((*buffer)->getBuffer() == "int x;\n");
-    ZASSERT((*file)->status()->getSize() == 7u);
+    ZASSERT((*buffer)->getBuffer() == "\xEF\xBB\xBFint x;\n");
+    ZASSERT((*file)->status()->getSize() == 10u);
 }
 
 ZEST_CASE(BinaryReadKeepsBom) {
@@ -266,29 +271,13 @@ ZEST_CASE(BinaryReadKeepsBom) {
               "AB");
     auto path = tmp.path("data.bin");
     vfs::View view;
+    ZASSERT(view.status(path)->getSize() == 5u);
     auto file = view.openFileForReadBinary(path);
     ZASSERT(bool(file));
     ZASSERT((*file)->status()->getSize() == 5u);
     auto buffer = (*file)->getBuffer(path, -1, true, false);
     ZASSERT(bool(buffer));
     ZASSERT((*buffer)->getBuffer() ==
-            "\xEF\xBB\xBF"
-            "AB");
-}
-
-ZEST_CASE(ReadModesServeBom) {
-    TempDir tmp;
-    tmp.touch("bom.txt",
-              "\xEF\xBB\xBF"
-              "AB");
-    auto path = tmp.path("bom.txt");
-    ZASSERT(vfs::read_text(path).value_or("") == "AB");
-    ZASSERT(read_file(path).value_or("") ==
-            "\xEF\xBB\xBF"
-            "AB");
-    auto mapped = fs::File::open(path).and_then(fs::Mapping::map);
-    ZASSERT(mapped);
-    ZASSERT(mapped->bytes() ==
             "\xEF\xBB\xBF"
             "AB");
 }

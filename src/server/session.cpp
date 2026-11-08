@@ -2,6 +2,7 @@ module clice;
 
 import :server.session;
 import :support.logging;
+import :support.text;
 
 namespace clice {
 
@@ -11,6 +12,17 @@ Session::Session(Fid path_id, std::string text, int version) : path_id(path_id),
 
 void Session::set_text(std::string text) {
     source = std::make_shared<SourceText>(std::move(text));
+}
+
+bool Session::set_bom(bool bom) {
+    auto mark = leading_bom(text());
+    if(bom == !mark.empty()) {
+        return false;
+    }
+    auto body = text().drop_front(mark.size());
+    set_text((bom ? utf8_bom.str() : std::string()) + body.str());
+    generation += 1;
+    return true;
 }
 
 bool Session::edit(llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> changes,
@@ -24,8 +36,9 @@ bool Session::edit(llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> chan
             [&](auto& c) {
                 using T = std::remove_cvref_t<decltype(c)>;
                 if constexpr(std::is_same_v<T, protocol::TextDocumentContentChangeWholeDocument>) {
-                    if(text() != c.text) {
-                        set_text(c.text);
+                    auto mark = leading_bom(text());
+                    if(text().drop_front(mark.size()) != c.text) {
+                        set_text(mark.str() + c.text);
                         applied = true;
                     }
                 } else {
