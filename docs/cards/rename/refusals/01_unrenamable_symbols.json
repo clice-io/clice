@@ -3,14 +3,14 @@
   "topic": "rename",
   "subtopic": "refusals",
   "title": "Names a rename refuses",
-  "summary": "Pressing rename on an operator, a symbol or a macro of the system headers, a macro the compile command defines or a name only instantiations resolve says why it cannot be renamed; off any name, nothing happens",
+  "summary": "Pressing rename on an operator, a symbol or a macro of the system headers, a macro the compile command defines or a name its instantiations resolve to several symbols says why it cannot be renamed; off any name, nothing happens",
   "prose": "",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "#include <cstdio>\n\nstruct Point {\n    int x;\n    Point operator+(const Point& other) const { return {x + other.x}; }\n};\n\ntemplate <typename T>\nint width(const T& shape) {\n    return shape.x;\n}\n\nint main() {\n    Point p{1};\n    std::printf(\"%d\", (p + p).x);\n    return FROM_BUILD + EOF + width(p);\n}\n",
+      "text": "#include <cstdio>\n\nstruct Point {\n    int x;\n    Point operator+(const Point& other) const { return {x + other.x}; }\n};\n\nstruct Size {\n    int x;\n};\n\ntemplate <typename T>\nint width(const T& shape) {\n    return shape.x;\n}\n\nint main() {\n    Point p{1};\n    std::printf(\"%d\", (p + p).x);\n    return FROM_BUILD + EOF + width(p) + width(Size{2});\n}\n",
       "markers": [
         {
           "name": "include",
@@ -26,26 +26,26 @@
         },
         {
           "name": "dependent",
-          "begin": 188,
-          "end": 188,
+          "begin": 217,
+          "end": 217,
           "range": false
         },
         {
           "name": "system",
-          "begin": 232,
-          "end": 232,
+          "begin": 261,
+          "end": 261,
           "range": false
         },
         {
           "name": "command_line",
-          "begin": 268,
-          "end": 268,
+          "begin": 297,
+          "end": 297,
           "range": false
         },
         {
           "name": "system_macro",
-          "begin": 281,
-          "end": 281,
+          "begin": 310,
+          "end": 310,
           "range": false
         }
       ]
@@ -76,7 +76,7 @@
           "marker": "dependent",
           "value": {
             "prepare_rename": {
-              "error": "what the name here refers to differs from one instantiation or macro expansion to the next; rename from a declaration"
+              "error": "the instantiations resolve the name here to `Point::x`, `Size::x`; rename them to one name in one list of renames, or one of them from its declaration"
             }
           }
         },

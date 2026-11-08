@@ -131,7 +131,7 @@ stdout = '''
         "line": 3,
         "column": 45,
         "name": "scale",
-        "reason": "the name here also refers to `scale`, under another build configuration, as another candidate of a dependent call or in another instantiation",
+        "reason": "the name here also refers to `scale`, another candidate of a dependent call",
         "text": "template <typename T> T twice(T v) { return scale(v) * 2; }"
       }
     ],

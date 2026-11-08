@@ -546,7 +546,7 @@ std::optional<codec::raw_value> run_document_highlight(const FeatureParams& para
     llvm::SmallVector<const index::InstantiationShard*, 1> instantiations;
     if(auto section = tu.instantiation_section_of(tu.focus_file())) {
         instantiations.push_back(&tu.instantiation_shard(*section));
-        index::add_resolved(*instantiations.front(), offset, named);
+        index::add_resolved(*instantiations.front(), offset, true, named);
     }
     if(!named) {
         return to_raw_json(std::vector<feature::Highlight>{});

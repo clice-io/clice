@@ -680,14 +680,17 @@ ZEST_CASE(DependentCallCandidate) {
 
 ZEST_CASE(InstantiationsDecideDependentNames) {
     add_focus(file("a.cpp"), R"(
-        struct A { void §(cursor)§go(); };
+        struct A { void §(cursor)go(); };
         struct B { void go(); };
 
         template <typename T>
-        void one(T t) { t.§go(); }
+        void one(T t) { t.§(one)go(); }
 
         template <typename T>
-        void both(T t) { t.go(); }
+        void both(T t) { t.§(both)go(); }
+
+        template <typename T>
+        void none(T t) { t.§(none)go(); }
 
         void use() {
             one(A{});
@@ -697,11 +700,27 @@ ZEST_CASE(InstantiationsDecideDependentNames) {
     )");
     merge();
 
-    auto renamed = rename_at("cursor", "start");
-    ZASSERT(renamed);
-    ZEXPECT(edits(*renamed) == marks());
-    ZASSERT(renamed->unconfirmed.size() == 1U);
-    ZEXPECT(renamed->unconfirmed.front().reason.contains("`B::go`"));
+    // `both` calls B::go too: its name can neither change nor stay.
+    auto alone = rename_at("cursor", "start");
+    ZASSERT(alone);
+    ZASSERT(alone->conflicts.size() == 1U);
+    ZEXPECT(alone->conflicts.front().contains("`B::go`"));
+
+    auto together = batch({
+        {.target = target("A::go"), .new_name = "start"},
+        {.target = target("B::go"), .new_name = "start"},
+    });
+    ZEXPECT(!together.blocked());
+    ZEXPECT(together.edits.size() == 4U);
+
+    // From the template, the name is what its instantiations resolve it to.
+    auto from_one = cursor("one");
+    ZASSERT(from_one);
+    ZEXPECT(from_one->target.symbol.symbol.hash == target("A::go").symbol.symbol.hash);
+    auto from_both = cursor("both");
+    ZASSERT(!from_both);
+    ZEXPECT(from_both.error().contains("`B::go`"));
+    ZEXPECT(!cursor("none"));
 }
 
 ZEST_CASE(GuessesNeedAnInstantiation) {
@@ -710,10 +729,10 @@ ZEST_CASE(GuessesNeedAnInstantiation) {
         struct Box { static constexpr int §(cursor)§value = 1; };
 
         template <typename T>
-        int read() { return Box<T>::§value; }
+        int read() { return Box<T>::§(read)§value; }
 
         template <typename T>
-        int peek() { return Box<T>::value; }
+        int peek() { return Box<T>::§(peek)value; }
 
         int use() { return read<int>(); }
     )");
@@ -725,6 +744,14 @@ ZEST_CASE(GuessesNeedAnInstantiation) {
     ZASSERT(renamed->unconfirmed.size() == 1U);
     ZEXPECT(renamed->unconfirmed.front().reason.contains("no instantiation"));
     ZEXPECT(renamed->unconfirmed.front().line.contains("peek"));
+
+    // Renamed from the guessed name, the instantiation decides.
+    auto from_read = cursor("read");
+    ZASSERT(from_read);
+    ZEXPECT(from_read->target.symbol.symbol.name == "value");
+    auto from_peek = cursor("peek");
+    ZASSERT(!from_peek);
+    ZEXPECT(from_peek.error().contains("no instantiation"));
 }
 
 ZEST_CASE(DependentCallOverloads) {

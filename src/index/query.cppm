@@ -163,11 +163,12 @@ std::optional<Named> named_at(const Shard& shard,
                               std::uint32_t offset,
                               llvm::function_ref<bool(SymbolHash)> is_macro);
 
-/// Adds to `named` what an instantiation or a macro expansion resolves at
-/// `offset`: a name its template leaves open (a member of a dependent
-/// object), or more of what the name means.
+/// Adds to `named` what an instantiation, or with `expansions` a macro
+/// expansion, resolves at `offset`: a name its template leaves open (a
+/// member of a dependent object), or more of what the name means.
 void add_resolved(const InstantiationShard& shard,
                   std::uint32_t offset,
+                  bool expansions,
                   std::optional<Named>& named);
 
 /// The disk bytes of a shard's file, served only while their
@@ -332,10 +333,14 @@ public:
 
     std::optional<Cursor> symbol_at(Fid file, std::uint32_t offset) const;
 
-    /// What the instantiations of a template and the expansions of a macro
-    /// body resolve the name at `offset` to, in the file's serving source:
-    /// no guess of the written code.
-    llvm::SmallVector<SymbolHash, 1> resolved_at(Fid file, std::uint32_t offset) const;
+    /// What the instantiations of the template the name at `offset` lies
+    /// in resolve it to, in the file's serving source: no guess of the
+    /// written code.
+    std::optional<Cursor> instantiated_at(Fid file, std::uint32_t offset) const;
+
+    /// Whether the file's serving source relates `symbol` by `kind` at
+    /// `range`, in its preamble region too.
+    bool relates_at(Fid file, LocalSourceRange range, SymbolHash symbol, RelationKind kind) const;
 
     /// The same for a position as the editor spells it, counted in
     /// `encoding` in the serving source's text.

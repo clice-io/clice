@@ -53,7 +53,7 @@ tests/rename/edits/12_macros
 
 **Rename a template's dependent name**
 
-In a template, a call depending on a template parameter is renamed where the indexed instantiations resolve it to the renamed method; where one of them resolves it to another method, or no instantiation was indexed, it is left alone and named in a message
+In a template, a call depending on a template parameter is renamed where the indexed instantiations resolve it to the renamed method; one another instantiation resolves to another method of the same name stops the rename, and one no instantiation resolves is left alone and named in a message
 
 ```case
 tests/rename/edits/13_templates
@@ -73,7 +73,7 @@ A symbol that cannot be renamed, or a new name that does not fit, is refused wit
 
 **Names a rename refuses**
 
-Pressing rename on an operator, a symbol or a macro of the system headers, a macro the compile command defines or a name only instantiations resolve says why it cannot be renamed; off any name, nothing happens
+Pressing rename on an operator, a symbol or a macro of the system headers, a macro the compile command defines or a name its instantiations resolve to several symbols says why it cannot be renamed; off any name, nothing happens
 
 ```case
 tests/rename/refusals/01_unrenamable_symbols

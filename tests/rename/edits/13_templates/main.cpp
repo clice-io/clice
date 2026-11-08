@@ -3,7 +3,11 @@ struct Circle {
 };
 
 struct Square {
-    double area() const { return 4.0; }
+    double §(square)area() const { return 4.0; }
+};
+
+struct Triangle {
+    double area() const { return 2.0; }
 };
 
 template <typename T>
@@ -21,5 +25,5 @@ template <typename T>
 double size_of(const Box<T>& box) { return box.area(); }
 
 int main() {
-    return static_cast<int>(measure(Circle{}) + report(Circle{}) + report(Square{}));
+    return static_cast<int>(measure(Circle{}) + report(Square{}) + report(Triangle{}));
 }

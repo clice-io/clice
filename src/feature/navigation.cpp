@@ -449,32 +449,6 @@ std::vector<index::Site> type_definition(const index::IndexQuery& index,
     return result;
 }
 
-bool names_uncertainly(const index::IndexQuery& index,
-                       const index::IndexQuery::Cursor& cursor,
-                       index::SymbolHash symbol) {
-    auto source = index.serving(cursor.site.file);
-    if(!source) {
-        return false;
-    }
-    bool found = false;
-    auto hit = [&](const index::Shard& shard) {
-        for(auto kind: {RelationKind::Guess, RelationKind::Candidate}) {
-            shard.relations_of(symbol, kind, [&](const index::Relation& relation) {
-                found = relation.range == cursor.site.range;
-                return !found;
-            });
-            if(found) {
-                break;
-            }
-        }
-        return found;
-    };
-    if(!hit(*source->shard)) {
-        index.with_preamble(*source, [&](const index::Shard& preamble) { hit(preamble); });
-    }
-    return found;
-}
-
 std::vector<index::IndexQuery::Located> implementation(const index::IndexQuery& index,
                                                        index::SymbolHash hash,
                                                        Fid anchor) {
@@ -600,7 +574,8 @@ std::vector<index::Site> implementation(const index::IndexQuery& query,
     auto file = cursor.site.file;
     std::vector<index::Site> sites;
     for(auto symbol: cursor.symbols) {
-        if(names_uncertainly(query, cursor, symbol)) {
+        if(query.relates_at(file, cursor.site.range, symbol, RelationKind::Guess) ||
+           query.relates_at(file, cursor.site.range, symbol, RelationKind::Candidate)) {
             sites.append_range(
                 query.gather(symbol,
                              file,

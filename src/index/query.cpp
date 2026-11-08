@@ -149,10 +149,11 @@ std::optional<Named> named_at(const Shard& shard,
 
 void add_resolved(const InstantiationShard& shard,
                   std::uint32_t offset,
+                  bool expansions,
                   std::optional<Named>& named) {
     shard.records_at(offset, [&](const InstantiationRecord& record) {
         if(record.kind == InstantiationKind::Call ||
-           record.kind == InstantiationKind::TypeDefinition ||
+           record.kind == InstantiationKind::TypeDefinition || (record.expansion && !expansions) ||
            (named && !(named->range == record.range))) {
             return true;
         }
@@ -655,7 +656,7 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
         auto named = named_at(shard, offset, is_macro);
         if(with_instantiations && &shard == source->shard) {
             for(auto* instantiations: source->instantiations) {
-                add_resolved(*instantiations, offset, named);
+                add_resolved(*instantiations, offset, true, named);
             }
         }
         if(!named) {
@@ -689,16 +690,46 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     return cursor;
 }
 
-llvm::SmallVector<SymbolHash, 1> IndexQuery::resolved_at(Fid file, std::uint32_t offset) const {
+std::optional<IndexQuery::Cursor> IndexQuery::instantiated_at(Fid file,
+                                                              std::uint32_t offset) const {
     auto source = serving(file);
     if(!source || !with_instantiations) {
-        return {};
+        return std::nullopt;
     }
     std::optional<Named> named;
     for(auto* instantiations: source->instantiations) {
-        add_resolved(*instantiations, offset, named);
+        add_resolved(*instantiations, offset, false, named);
     }
-    return named ? std::move(named->symbols) : llvm::SmallVector<SymbolHash, 1>{};
+    if(!named) {
+        return std::nullopt;
+    }
+    auto site = source->site(named->range);
+    if(!site) {
+        return std::nullopt;
+    }
+    return Cursor{.symbols = std::move(named->symbols), .site = *site};
+}
+
+bool IndexQuery::relates_at(Fid file,
+                            LocalSourceRange range,
+                            SymbolHash symbol,
+                            RelationKind kind) const {
+    auto source = serving(file);
+    if(!source) {
+        return false;
+    }
+    bool found = false;
+    auto hit = [&](const Shard& shard) {
+        shard.relations_of(symbol, kind, [&](const Relation& relation) {
+            found = relation.range == range;
+            return !found;
+        });
+        return found;
+    };
+    if(!hit(*source->shard)) {
+        with_preamble(*source, [&](const Shard& preamble) { hit(preamble); });
+    }
+    return found;
 }
 
 std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file,

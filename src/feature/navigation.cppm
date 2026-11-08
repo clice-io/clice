@@ -89,14 +89,6 @@ std::vector<index::Site> type_definition(const index::IndexQuery& index,
                                          const index::IndexQuery::Cursor& cursor,
                                          index::SymbolHash symbol);
 
-/// Whether the name at the cursor may mean `symbol` without naming it
-/// for certain — a dependent name, an overload set's candidate, a
-/// using-declaration's target: a Guess or Candidate relation at the
-/// cursor's name in the index serving its file.
-bool names_uncertainly(const index::IndexQuery& index,
-                       const index::IndexQuery::Cursor& cursor,
-                       index::SymbolHash symbol);
-
 /// What implements the symbol, each at its canonical site: the types
 /// deriving from a class-like symbol, the overrides of a function, at
 /// any depth; for a function nothing overrides, its definitions.
@@ -139,7 +131,8 @@ std::vector<index::Site> type_definition(const index::IndexQuery& query,
                                          const index::IndexQuery::Cursor& cursor);
 
 /// What implements the symbols, and what a name may mean
-/// without naming it for certain (names_uncertainly) — a dependent name's
+/// without naming it for certain (a Guess or Candidate relation at the
+/// cursor's name) — a dependent name's
 /// resolution, an overload set's candidates, a using-declaration's
 /// targets — as an override implements a virtual function. The cursor's
 /// own site drops out: standing on a function nothing overrides, there is

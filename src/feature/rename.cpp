@@ -287,13 +287,36 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
 std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serving,
                                                    const index::IndexQuery::Cursor& resolved) {
     auto query = serving.written_only();
-    // A name only instantiations resolve (`value.print()` in a template)
-    // spells no symbol of its own.
-    auto cursor = query.symbol_at(resolved.site.file, resolved.site.range.begin);
-    if(!cursor) {
-        return std::unexpected(
-            "what the name here refers to differs from one instantiation or macro expansion to "
-            "the next; rename from a declaration");
+    auto file = resolved.site.file;
+    auto offset = resolved.site.range.begin;
+    // A dependent name in a template (`value.print()`) is what its
+    // instantiations resolve it to, whatever the resolver guesses.
+    auto cursor = query.symbol_at(file, offset);
+    bool guessed =
+        cursor && ranges::all_of(cursor->symbols, [&](index::SymbolHash symbol) {
+            return query.relates_at(file, cursor->site.range, symbol, RelationKind::Guess);
+        });
+    if(!cursor || guessed) {
+        cursor = serving.instantiated_at(file, offset);
+        if(!cursor) {
+            return std::unexpected(
+                guessed ? "no instantiation the index saw resolves the name here; rename from a "
+                          "declaration"
+                        : "what the name here refers to differs from one instantiation or macro "
+                          "expansion to the next; rename from a declaration");
+        }
+        if(cursor->symbols.size() > 1) {
+            std::string names;
+            for(auto symbol: cursor->symbols) {
+                names += std::format("{}`{}`",
+                                     names.empty() ? "" : ", ",
+                                     query.qualified_name(symbol, file));
+            }
+            return std::unexpected(
+                std::format("the instantiations resolve the name here to {}; rename them to one "
+                            "name in one list of renames, or one of them from its declaration",
+                            names));
+        }
     }
     std::optional<RenameTarget> found;
     std::string refused;
@@ -449,30 +472,51 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         return *slot;
     };
 
-    // Another renamable symbol of the old name the token names too: a
-    // variant of a shared header compiled under other definitions, an
-    // overload a dependent call leaves open, what another instantiation
-    // resolves it to. Changing the token changes its use as well. A site
-    // an instantiation alone gives is decided by the instantiations.
-    auto shared_with = [&](const index::Site& site,
-                           std::uint32_t offset) -> std::optional<index::SymbolHash> {
+    // Another renamable symbol of the old name the token names too, and
+    // how: an instantiation or a variant of a shared header compiled under
+    // other definitions names it for certain, and the token can neither
+    // change nor stay; an overload a dependent call leaves open may be the
+    // one it calls. A guess names nothing.
+    struct Shared {
+        index::SymbolHash symbol;
+        bool certain;
+    };
+    auto other_of_old_name = [&](index::SymbolHash symbol, Fid file) {
+        if(group.contains(symbol) || renamed_alike(symbol)) {
+            return false;
+        }
+        auto info = query.symbol_info(symbol, file);
+        return info && info->name == old_name && renamable(info->kind);
+    };
+    auto shared_with = [&](const index::Site& site, std::uint32_t offset) -> std::optional<Shared> {
         auto file = site.file;
-        auto symbols = serving.resolved_at(file, offset);
-        if(site.origin == index::SiteOrigin::Written) {
-            if(auto cursor = query.symbol_at(file, offset)) {
-                symbols.append(cursor->symbols.begin(), cursor->symbols.end());
+        if(auto instantiated = serving.instantiated_at(file, offset)) {
+            for(auto symbol: instantiated->symbols) {
+                if(other_of_old_name(symbol, file)) {
+                    return Shared{.symbol = symbol, .certain = true};
+                }
             }
         }
-        for(auto symbol: symbols) {
-            if(group.contains(symbol) || renamed_alike(symbol)) {
+        if(site.origin != index::SiteOrigin::Written) {
+            return std::nullopt;
+        }
+        auto cursor = query.symbol_at(file, offset);
+        if(!cursor) {
+            return std::nullopt;
+        }
+        std::optional<Shared> candidate;
+        for(auto symbol: cursor->symbols) {
+            if(!other_of_old_name(symbol, file)) {
                 continue;
             }
-            if(auto info = query.symbol_info(symbol, file);
-               info && info->name == old_name && renamable(info->kind)) {
-                return symbol;
+            auto range = cursor->site.range;
+            if(query.relates_at(file, range, symbol, RelationKind::Candidate)) {
+                candidate = candidate.value_or(Shared{.symbol = symbol, .certain = false});
+            } else if(!query.relates_at(file, range, symbol, RelationKind::Guess)) {
+                return Shared{.symbol = symbol, .certain = true};
             }
         }
-        return std::nullopt;
+        return candidate;
     };
 
     llvm::StringSet<> stale;
@@ -492,26 +536,34 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     auto add_edit = [&](const index::Site& site, std::uint32_t offset) {
         auto file = site.file;
         auto& text = text_of(file);
-        if(auto other = shared_with(site, offset)) {
-            auto name = query.qualified_name(*other, file);
-            if(auto renamed = batch.renamed.find(*other); renamed != batch.renamed.end()) {
-                if(held.insert({file, offset}).second) {
-                    auto token = token_site(*text.source, file, site.path, offset, old_name.size());
-                    plan.conflicts.push_back(
-                        std::format("the name at {} also refers to `{}`, which another rename "
-                                    "makes `{}`",
-                                    where(token),
-                                    name,
-                                    renamed->second));
-                }
+        if(auto shared = shared_with(site, offset)) {
+            auto name = query.qualified_name(shared->symbol, file);
+            auto renamed = batch.renamed.find(shared->symbol);
+            if(renamed == batch.renamed.end() && !shared->certain) {
+                note(site,
+                     offset,
+                     std::format("the name here also refers to `{}`, another candidate of a "
+                                 "dependent call",
+                                 name));
                 return;
             }
-            note(site,
-                 offset,
-                 std::format("the name here also refers to `{}`, under another build "
-                             "configuration, as another candidate of a dependent call or in "
-                             "another instantiation",
-                             name));
+            if(!held.insert({file, offset}).second) {
+                return;
+            }
+            auto token = token_site(*text.source, file, site.path, offset, old_name.size());
+            plan.conflicts.push_back(
+                renamed != batch.renamed.end()
+                    ? std::format("the name at {} also refers to `{}`, which another rename "
+                                  "makes `{}`",
+                                  where(token),
+                                  name,
+                                  renamed->second)
+                    : std::format("the name at {} also refers to `{}` in another instantiation "
+                                  "or build configuration: rename both to `{}` in one list of "
+                                  "renames",
+                                  where(token),
+                                  name,
+                                  new_name));
             return;
         }
         edits.try_emplace(

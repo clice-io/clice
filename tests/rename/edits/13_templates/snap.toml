@@ -1,9 +1,3 @@
-[answers.instantiated.rename]
-notice = '''
-Spellings of `area` left alone:
-  ${WS}/main.cpp:13: double report(const T& shape) { return shape.area(); } (the name here also refers to `Square::area`, under another build configuration, as another candidate of a dependent call or in another instantiation)
-'''
-
 [answers.instantiated.rename.edits]
 "main.cpp" = '''
  struct Circle {
@@ -20,10 +14,13 @@ Spellings of `area` left alone:
  template <typename T>
 '''
 
+[answers.shared.rename]
+error = "cannot rename `area`: the name at ${WS}/main.cpp:17 also refers to `Triangle::area` in another instantiation or build configuration: rename both to `side` in one list of renames"
+
 [answers.uninstantiated.rename]
 notice = '''
 Spellings of `area` left alone:
-  ${WS}/main.cpp:21: double size_of(const Box<T>& box) { return box.area(); } (in a template, where no instantiation the index saw resolves the name to it)
+  ${WS}/main.cpp:25: double size_of(const Box<T>& box) { return box.area(); } (in a template, where no instantiation the index saw resolves the name to it)
 '''
 
 [answers.uninstantiated.rename.edits]
