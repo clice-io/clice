@@ -10,7 +10,7 @@ stdout = '''
 file ${WS}/widget.h
   blob=# B  content size=149  content hash=#64bd2e1b01660dc0
   variants=1
-    #afd9ebf2bb9a642a  contributed by 2 units
+    #d36c50175f6b2a8b  contributed by 2 units
       ${WS}/a.cpp
       ${WS}/b.cpp
   symbols=8  local symbols=2  occurrences=10  relations=11
@@ -28,7 +28,7 @@ stdout = '''
 file ${WS}/c.cpp
   blob=# B  content size=135  content hash=#370be9894799d957
   variants=1
-    #59462716d9c51590  contributed by 1 unit
+    #cd2a674bfbb8832f  contributed by 1 unit
       ${WS}/c.cpp
   symbols=10  local symbols=2  occurrences=12  relations=17
     Callee=2
