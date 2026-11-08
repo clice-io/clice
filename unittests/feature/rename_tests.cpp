@@ -723,6 +723,28 @@ ZEST_CASE(InstantiationsDecideDependentNames) {
     ZEXPECT(!cursor("none"));
 }
 
+ZEST_CASE(InstantiationsOfOneRename) {
+    // Overrides are one rename: instantiations naming both agree.
+    add_focus(file("a.cpp"), R"(
+        struct Base { virtual void §go(); };
+        struct Derived : Base { void §go() override; };
+
+        template <typename T>
+        void run(T t) { t.§(call)§go(); }
+
+        void use() {
+            run(Base{});
+            run(Derived{});
+        }
+    )");
+    merge();
+
+    auto renamed = rename_at("call", "start");
+    ZASSERT(renamed);
+    ZEXPECT(!renamed->blocked());
+    ZEXPECT(edits(*renamed) == marks());
+}
+
 ZEST_CASE(GuessesNeedAnInstantiation) {
     add_focus(file("a.cpp"), R"(
         template <typename T>

@@ -305,18 +305,6 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
                         : "what the name here refers to differs from one instantiation or macro "
                           "expansion to the next; rename from a declaration");
         }
-        if(cursor->symbols.size() > 1) {
-            std::string names;
-            for(auto symbol: cursor->symbols) {
-                names += std::format("{}`{}`",
-                                     names.empty() ? "" : ", ",
-                                     query.qualified_name(symbol, file));
-            }
-            return std::unexpected(
-                std::format("the instantiations resolve the name here to {}; rename them to one "
-                            "name in one list of renames, or one of them from its declaration",
-                            names));
-        }
     }
     std::optional<RenameTarget> found;
     std::string refused;
@@ -327,14 +315,17 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
             continue;
         }
         if(found) {
-            // A macro's definitions linked together are one rename.
+            // Linked symbols — a macro's definitions, overrides, a
+            // template's specializations — are one rename.
             if(!ranges::contains(
                    found->group,
                    target->symbol.symbol.hash,
                    [](const index::IndexQuery::Located& member) { return member.symbol.hash; })) {
-                return std::unexpected(
-                    "the name here resolves to several symbols; rename from "
-                    "one of their declarations");
+                return std::unexpected(std::format(
+                    "the name here resolves to `{}` and `{}`; rename them to one name in one "
+                    "list of renames, or one of them from its declaration",
+                    query.qualified_name(found->symbol.symbol.hash, file),
+                    query.qualified_name(target->symbol.symbol.hash, file)));
             }
             continue;
         }
