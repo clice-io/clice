@@ -312,28 +312,30 @@ struct UnitCache {
     /// Members by the resolved object and the name (member_of).
     llvm::DenseMap<std::pair<const void*, const void*>, UnboundResult<Member>> members;
 
+    /// Values of dependent members by their class, resolved, and their name
+    /// (PseudoInstantiator::member_value): every member type of
+    /// `allocator_traits<A>` reads `_Is_default_allocator<A>::value`, and
+    /// every overload set of a container the same iterator traits.
+    llvm::DenseMap<std::pair<const void*, void*>, UnboundResult<std::optional<llvm::APSInt>>>
+        member_values;
+
     /// The explicit specializations of each class and variable template
     /// (PseudoInstantiator::explicit_specializations).
     llvm::DenseMap<const clang::Decl*, llvm::SmallVector<clang::NamedDecl*, 0>>
         explicit_specializations;
 };
 
-/// A dependent member's value as a query folded it
-/// (PseudoInstantiator::member_values).
-struct FoldedMember {
-    std::optional<llvm::APSInt> value;
-
-    /// Whether a nesting limit cut the folding short, and how deep the
-    /// evaluations and the rewrites nested where it was folded.
-    bool cut;
-
+/// Where a query's folding of a dependent member's value was cut short by
+/// the nesting limits (PseudoInstantiator::cut_values): how deep the
+/// evaluations and the rewrites nested there.
+struct CutFolding {
     unsigned evaluating;
 
     unsigned depth;
 
-    /// Whether folding it where the nesting is as given gives `value`.
+    /// Whether folding it where the nesting is as given is cut too.
     bool holds_at(unsigned evaluating, unsigned depth) const {
-        return !cut || (evaluating >= this->evaluating && depth >= this->depth);
+        return evaluating >= this->evaluating && depth >= this->depth;
     }
 };
 
@@ -803,6 +805,15 @@ private:
     std::optional<llvm::APSInt> value_of(clang::VarTemplateDecl* VTD,
                                          llvm::ArrayRef<clang::TemplateArgumentLoc> written);
 
+    /// The value of the member `name` of `scope`, a class resolved, kept for
+    /// the unit: folded with none of the caller's bindings, which the class
+    /// already holds.
+    std::optional<llvm::APSInt> member_value(clang::QualType scope, clang::DeclarationName name);
+
+    /// The value of `decl`, a variable or an enumerator, under the current
+    /// bindings.
+    std::optional<llvm::APSInt> declared_value(const clang::Decl* decl);
+
     /// The value `var`'s initializer folds to, converted to its type.
     std::optional<llvm::APSInt> initial_value(const clang::VarDecl* var);
 
@@ -995,8 +1006,8 @@ private:
 
     /// What `compute` gives for `key`. With no template parameter bound, the
     /// state every query starts in, a step reads of the query that asked it
-    /// only what the query found before it — the open defaults, the folded
-    /// member values — which bears on it rarely enough, and what the query
+    /// only what the query found before it — the open defaults, the foldings
+    /// it cut short — which bears on it rarely enough, and what the query
     /// sees: what an earlier query concluded there is taken as it is when
     /// this one judges every declaration it judged alike, the frames and the
     /// effects it left restored.
@@ -1158,16 +1169,12 @@ private:
 
     llvm::SmallPtrSet<const clang::VarDecl*, 4> deducing;
 
-    /// What the dependent members this query read (`Trait<T>::value`) fold
-    /// to, by their class, resolved, and their name: every member type of
-    /// `allocator_traits<A>` reads `_Is_default_allocator<A>::value`. The
-    /// class is keyed canonically, as the sugar of one `A` differs by the
-    /// path that reached it; what parameters it still names are unbound
-    /// alike. A folding the nesting limits cut short is kept too: met again
-    /// no shallower, it is cut alike, and folding it again costs each path
-    /// through `<ratio>`'s values with their operands unknown the whole tree
-    /// below it.
-    llvm::DenseMap<std::pair<const void*, void*>, FoldedMember> member_values;
+    /// The dependent members' values this query found cut short, by their
+    /// class, resolved, and their name (member_value): met again no
+    /// shallower, they are cut alike, and folding them again costs each
+    /// path through `<ratio>`'s values with their operands unknown the
+    /// whole tree below it.
+    llvm::DenseMap<std::pair<const void*, void*>, CutFolding> cut_values;
 
     /// The defaults of value parameters that did not fold, which may hold
     /// any value (deduce_arguments).

@@ -86,59 +86,63 @@ std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr
 
         auto judged = own_conclusion();
         auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(expr);
-        std::optional<std::pair<const void*, void*>> key;
-        clang::QualType scope;
         if(DSDRE && DSDRE->getQualifier().getKind() == clang::NestedNameSpecifier::Kind::Type &&
            pack_narrowing == 0) {
-            scope =
+            auto scope =
                 resolve_object(substitute(clang::QualType(DSDRE->getQualifier().getAsType(), 0)));
-            key.emplace(scope.getCanonicalType().getAsOpaquePtr(),
-                        DSDRE->getDeclName().getAsOpaquePtr());
-            if(auto known = member_values.find(*key);
-               known != member_values.end() && known->second.holds_at(evaluating, depth)) {
-                inconclusive |= known->second.cut;
-                return known->second.value;
-            }
+            return member_value(scope, DSDRE->getDeclName());
         }
-        auto cycles = troubles[static_cast<std::size_t>(Trouble::Cycle)];
 
         auto frames = stack.size();
         const clang::Decl* decl = nullptr;
-        if(key) {
-            decl = preferred(lookup(scope, DSDRE->getDeclName()));
-        } else if(DSDRE) {
+        if(DSDRE) {
             decl = preferred(lookup(DSDRE->getQualifier(), DSDRE->getDeclName()));
         } else if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(expr)) {
             decl = DRE->getDecl();
         }
-
-        std::optional<llvm::APSInt> value;
-        if(auto* var = llvm::dyn_cast_or_null<clang::VarDecl>(decl)) {
-            value = initial_value(var);
-        } else if(auto* enumerator = llvm::dyn_cast_or_null<clang::EnumConstantDecl>(decl)) {
-            /// Sema leaves the enumerators of an enumeration inside a
-            /// template uncomputed.
-            if(!enumerator->getType()->isDependentType()) {
-                value = enumerator->getInitVal();
-            } else if(auto* init = enumerator->getInitExpr()) {
-                value = evaluate(init);
-            }
-        }
+        auto value = declared_value(decl);
         stack.truncate(frames);
-        /// Where a cycle was cut, what is in progress decides, not the
-        /// nesting.
-        if(key && (!inconclusive ||
-                   (!value && troubles[static_cast<std::size_t>(Trouble::Cycle)] == cycles))) {
-            member_values.insert_or_assign(*key,
-                                           FoldedMember{
-                                               .value = value,
-                                               .cut = inconclusive,
-                                               .evaluating = evaluating,
-                                               .depth = depth,
-                                           });
-        }
         return value;
     });
+}
+
+std::optional<llvm::APSInt> PseudoInstantiator::member_value(clang::QualType scope,
+                                                             clang::DeclarationName name) {
+    std::pair key{scope.getCanonicalType().getAsOpaquePtr(), name.getAsOpaquePtr()};
+    if(auto cut = cut_values.find(key);
+       cut != cut_values.end() && cut->second.holds_at(evaluating, depth)) {
+        inconclusive = true;
+        return std::nullopt;
+    }
+    auto cycles = troubles[static_cast<std::size_t>(Trouble::Cycle)];
+    auto value = kept_result(cache.member_values, key, [&] {
+        auto outer = std::exchange(stack.frames(), {});
+        auto value = declared_value(preferred(lookup(scope, name)));
+        stack.frames() = std::move(outer);
+        return value;
+    });
+    /// Where a cycle was cut, what is in progress decides, not the nesting.
+    if(!value && inconclusive && troubles[static_cast<std::size_t>(Trouble::Cycle)] == cycles) {
+        cut_values.insert_or_assign(key, CutFolding{.evaluating = evaluating, .depth = depth});
+    }
+    return value;
+}
+
+std::optional<llvm::APSInt> PseudoInstantiator::declared_value(const clang::Decl* decl) {
+    if(auto* var = llvm::dyn_cast_or_null<clang::VarDecl>(decl)) {
+        return initial_value(var);
+    }
+    auto* enumerator = llvm::dyn_cast_or_null<clang::EnumConstantDecl>(decl);
+    if(!enumerator) {
+        return std::nullopt;
+    }
+    /// Sema leaves the enumerators of an enumeration inside a template
+    /// uncomputed.
+    if(!enumerator->getType()->isDependentType()) {
+        return enumerator->getInitVal();
+    }
+    auto* init = enumerator->getInitExpr();
+    return init ? evaluate(init) : std::nullopt;
 }
 
 std::optional<llvm::APSInt> PseudoInstantiator::initial_value(const clang::VarDecl* var) {
