@@ -1451,7 +1451,7 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
         return {};
     };
 
-    /// Joined up to `joined_limit` bytes, laid out, and shown up to
+    /// Joined until it holds `joined_limit` bytes, laid out, and shown up to
     /// `shown_lines` lines and `shown_bytes` bytes. Cut while joining, the
     /// text has its open brackets closed past a mark for the layout to reach
     /// its end, and is shown up to the mark.
@@ -1474,7 +1474,7 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
             /// depth it is given, and only the spelling carries the written
             /// bytes.
             auto spelling = unit.token_spelling(sources.getSpellingLoc(token.location()));
-            if(text.size() + spelling.size() >= joined_limit) {
+            if(text.size() >= joined_limit) {
                 cut = true;
                 break;
             }

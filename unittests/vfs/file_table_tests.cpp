@@ -176,6 +176,12 @@ ZEST_CASE(LinkedInFromOutside) {
     ZEXPECT(pool.display(app) == tmp.path("ws/shared/app.c"));
     ZEXPECT(pool.display(own) == tmp.path("ws/main.c"));
 
+    // `..` right after the link climbs out of its target, not out of the
+    // folder: the folded text would name another file.
+    tmp.touch("lib.c", "");
+    auto beside = pool.intern_spelled(Spelling::absolute(tmp.path("ws/shared/../lib.c")));
+    ZEXPECT(pool.display(beside) == pool.resolve(beside).str());
+
     FileTable outside;
     auto alone = outside.intern_spelled(Spelling::absolute(tmp.path("ws/shared/app.c")));
     ZEXPECT(outside.display(alone) == outside.resolve(alone).str());

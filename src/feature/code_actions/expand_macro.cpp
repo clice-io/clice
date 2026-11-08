@@ -2,7 +2,6 @@ module clice;
 
 import :compile.compilation;
 import :feature.code_actions.action;
-import :feature.formatting;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 
@@ -10,17 +9,15 @@ namespace clice::feature::action {
 
 namespace {
 
-/// The expansion `joined`, tokens a space apart, spaced as clang-format
-/// spaces it in place of the invocation at `invocation` in `content` — in
-/// the style configured for `file`, else LLVM's — and laid on one line, as
-/// the invocation was. Only the spaces between its own tokens change: the
+/// The expansion `joined`, tokens a space apart, spaced as clang-format's
+/// LLVM style spaces it in place of the invocation at `invocation` in
+/// `content`, and laid on one line, as the invocation was; a style the
+/// file configures lays out the lines it lands on afterwards
+/// (format_actions). Only the spaces between its own tokens change: the
 /// statement around it tells whether a leading `-` or `&` is unary, and the
 /// spaces around it keep it from running into its neighbours.
-std::string spaced(llvm::StringRef file,
-                   llvm::StringRef content,
-                   LocalSourceRange invocation,
-                   llvm::StringRef joined) {
-    auto style = configured_style(file).value_or(clang::format::getLLVMStyle());
+std::string spaced(llvm::StringRef content, LocalSourceRange invocation, llvm::StringRef joined) {
+    auto style = clang::format::getLLVMStyle();
     style.ColumnLimit = 0;
     style.BreakStringLiterals = false;
     auto code = (content.take_front(invocation.begin) + " " + joined + " " +
@@ -30,11 +27,11 @@ std::string spaced(llvm::StringRef file,
     auto end = begin + static_cast<std::uint32_t>(joined.size());
     clang::tooling::Replacements inner;
     for(const auto& replacement:
-        clang::format::reformat(style, code, {clang::tooling::Range(begin, joined.size())}, file)) {
+        clang::format::reformat(style, code, {clang::tooling::Range(begin, joined.size())})) {
         auto offset = replacement.getOffset();
         if(offset > begin && offset + replacement.getLength() < end) {
             llvm::cantFail(
-                inner.add(clang::tooling::Replacement(file,
+                inner.add(clang::tooling::Replacement(replacement.getFilePath(),
                                                       offset - begin,
                                                       replacement.getLength(),
                                                       replacement.getReplacementText())));
@@ -111,7 +108,7 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
             }
             joined += token.text(SM);
         }
-        auto text = spaced(unit.file_path(focus.file()), content, {begin, end}, joined);
+        auto text = spaced(content, {begin, end}, joined);
 
         // The text lands between the tokens written flush against the
         // invocation, which must not run into it either; the end of a

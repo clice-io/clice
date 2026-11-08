@@ -1113,6 +1113,35 @@ ZEST_CASE(TypedefsOpenedSystemHeader) {
     ZEXPECT(entity_at(alone, "sys/lib.h", "handle") == entity_at(*this, "sys/lib.h", "handle"));
 }
 
+ZEST_CASE(TypedefsNearestDirectory) {
+    // The nearest search directory above a header decides: a subdirectory
+    // of a system one is too, a user directory inside a system one is not.
+    llvm::StringRef system_header = "typedef int §(handle)handle;\n";
+    llvm::StringRef user_header = "typedef int §(count)count;\n";
+    auto directories = [](Tester& tester) {
+        tester.prepare("-std=c17");
+        tester.params.input.arguments.insert(
+            tester.params.input.arguments.end() - 1,
+            {"-I", TestVFS::path("sys/own"), "-isystem", TestVFS::path("sys")});
+        return tester.try_compile();
+    };
+    add_file("sys/bits/lib.h", system_header);
+    add_file("sys/own/own.h", user_header);
+    add_focus("a.c", "#include <bits/lib.h>\n#include <own.h>\n");
+    ZASSERT(directories(*this));
+
+    Tester bits;
+    bits.add_focus("sys/bits/lib.h", system_header);
+    ZASSERT(directories(bits));
+    ZEXPECT(entity_at(bits, "sys/bits/lib.h", "handle") ==
+            entity_at(*this, "sys/bits/lib.h", "handle"));
+
+    Tester own;
+    own.add_focus("sys/own/own.h", user_header);
+    ZASSERT(directories(own));
+    ZEXPECT(entity_at(own, "sys/own/own.h", "count") == entity_at(*this, "sys/own/own.h", "count"));
+}
+
 ZEST_CASE(CLinkageIgnoresTypes) {
     add_focus("a.c", R"c(
 typedef int wchar_t;
