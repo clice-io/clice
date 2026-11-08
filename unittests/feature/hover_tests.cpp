@@ -775,6 +775,16 @@ ZEST_CASE(HoverDefinitionShape) {
             "export int entry()");
 }
 
+ZEST_CASE(expansion_cut_outside_utf8) {
+    // Past 4 KiB of one line of bytes no UTF-8 character starts at, the cut
+    // steps back no further than a character's length.
+    auto code =
+        "#define TEXT R\"(" + std::string(5000, '\xA0') + ")\"\nconst char* text = §TEXT;\n";
+    run_info(code);
+    ZASSERT(info);
+    ZEXPECT(info->expansion.size() > 4000);
+}
+
 };  // ZEST_SUITE(hover)
 
 }  // namespace

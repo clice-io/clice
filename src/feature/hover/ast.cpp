@@ -1511,7 +1511,7 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
     reformat(unit, text);
     llvm::StringRef laid = text;
     if(cut) {
-        laid = laid.take_front(laid.find(cut_mark)).rtrim();
+        laid = laid.take_front(laid.rfind(cut_mark)).rtrim();
     }
     llvm::SmallVector<llvm::StringRef> lines;
     laid.split(lines, '\n');
@@ -1519,11 +1519,12 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
     auto shown = llvm::join(llvm::ArrayRef(lines).take_front(shown_lines), "\n");
     if(shown.size() > shown_bytes) {
         /// A line longer than the rest of the bytes is cut inside it, at a
-        /// character's start.
+        /// character's start, at most three continuation bytes back; text
+        /// not in UTF-8 is cut where it is.
         auto end = llvm::StringRef(shown).rfind('\n', shown_bytes);
         if(end == llvm::StringRef::npos) {
             end = shown_bytes;
-            while((shown[end] & 0xC0) == 0x80) {
+            for(auto back = 0; back < 3 && (shown[end] & 0xC0) == 0x80; back += 1) {
                 end -= 1;
             }
         }

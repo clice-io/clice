@@ -834,6 +834,22 @@ std::vector<IndexQuery::Placed> IndexQuery::definitions(SymbolHash hash, Fid anc
     return result;
 }
 
+std::vector<IndexQuery::Placed> IndexQuery::definitions_in(SymbolHash hash, Fid file) const {
+    std::vector<Placed> result;
+    auto source = serving(file);
+    if(!source || !source->shard) {
+        return result;
+    }
+    source->shard->relations_of(hash, RelationKind::Definition, [&](const Relation& relation) {
+        if(auto site = source->site(relation.range)) {
+            result.push_back(
+                {.site = *site, .extent = extent_of(*source, relation).value_or(*site)});
+        }
+        return true;
+    });
+    return result;
+}
+
 std::optional<IndexQuery::Placed> IndexQuery::canonical_placed(SymbolHash hash, Fid anchor) const {
     if(auto placed = first_placed(hash, anchor, RelationKind::Definition)) {
         return placed;

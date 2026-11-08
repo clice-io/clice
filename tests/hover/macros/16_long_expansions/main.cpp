@@ -10,8 +10,16 @@
         steps return total;                                                                        \
     }()
 
+#define NOTED(steps)                                                                               \
+    [] {                                                                                           \
+        const char* note = "/*...*/";                                                              \
+        int total = 0;                                                                             \
+        steps return total;                                                                        \
+    }()
+
 int lines = §(lines)SUM(STEPS64(0));
 int bytes = §(bytes)SUM(STEPS1024(0));
+int noted = §(noted)NOTED(STEPS1024(0));
 
 #define CAT_(a, b) a##b
 #define CAT(a, b) CAT_(a, b)

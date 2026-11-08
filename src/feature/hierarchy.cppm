@@ -19,17 +19,16 @@ namespace clice::feature {
 std::vector<std::string> enclosing_functions(const index::IndexQuery& index,
                                              llvm::ArrayRef<index::Site> sites);
 
-/// One neighbour of a symbol in a graph: the symbol at one of its places
-/// and the sites of the relations that connect them. A symbol stands at its
-/// canonical site, but a function several files define stands at each
-/// definition: a caller at the one its calls are written in, a callee at
-/// every one.
+/// One neighbour of a symbol in a graph: the symbol at one of its sites and
+/// the sites of the relations that connect them. A callee stands at its
+/// canonical site, a caller at the definition its calls are written in —
+/// a function several files define is a caller once per body.
 struct CallEdge {
     index::IndexQuery::Located symbol;
     std::vector<index::Site> sites;
 
-    /// `symbol` stands at one of its several definitions.
-    bool one_of_several = false;
+    /// `symbol` stands at the definition whose body holds the sites.
+    bool at_body = false;
 };
 
 /// The functions calling `root` and the ones it calls, with the call

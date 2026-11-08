@@ -58,80 +58,67 @@ void collect_by_target(const index::IndexQuery& index,
                             });
 }
 
-/// The places a symbol stands at in a call graph: its canonical site, or
-/// each of its definitions when it has several — a function several files
-/// define (a weak and a strong one, a `main` per program) is one symbol
-/// with a body in each; none when no source places it.
-std::vector<index::IndexQuery::Located> placements(const index::IndexQuery& index,
-                                                   index::SymbolHash hash,
-                                                   Fid anchor) {
-    auto canonical = index.resolve(hash, anchor);
-    if(!canonical) {
-        return {};
-    }
-    auto definitions = index.definitions(hash, anchor);
-    if(definitions.size() < 2) {
-        return {std::move(*canonical)};
-    }
-    return ranges::to<std::vector>(definitions |
-                                   views::transform([&](index::IndexQuery::Placed& placed) {
-                                       return index::IndexQuery::Located{
-                                           .symbol = canonical->symbol,
-                                           .site = std::move(placed.site),
-                                           .extent = std::move(placed.extent),
-                                       };
-                                   }));
-}
-
-/// Each caller at the definition its calls are written in.
+/// Each caller at the definition its calls are written in, found in their
+/// own file: a function several files define (a weak and a strong one, a
+/// `main` per program) is one symbol with a body in each, and each body is a
+/// caller of its own. A call no definition there holds puts its caller at
+/// the canonical site.
 std::vector<CallEdge>
     located_callers(const index::IndexQuery& index,
                     llvm::DenseMap<index::SymbolHash, std::vector<index::Site>>& by_caller) {
     std::vector<CallEdge> result;
     for(auto& [caller, sites]: by_caller) {
-        auto places = placements(index, caller, sites.front().file);
-        if(places.empty()) {
+        auto canonical = index.resolve(caller, sites.front().file);
+        if(!canonical) {
             continue;
         }
         // A relation present in both a shard and an overlay arrives twice;
         // hierarchy items must not repeat call sites.
         index::dedup_sites(sites);
-        std::vector<std::vector<index::Site>> calls(places.size());
+        auto first = result.size();
+        llvm::DenseMap<Fid, std::vector<index::IndexQuery::Placed>> definitions;
         for(auto& site: sites) {
-            auto holder = ranges::find_if(places, [&](const index::IndexQuery::Located& place) {
-                return index::covers(place.extent, site);
-            });
-            calls[holder != places.end() ? holder - places.begin() : 0].push_back(std::move(site));
-        }
-        for(auto&& [place, written]: views::zip(places, calls)) {
-            if(!written.empty()) {
-                result.push_back({
-                    .symbol = std::move(place),
-                    .sites = std::move(written),
-                    .one_of_several = places.size() > 1,
+            auto [known, inserted] = definitions.try_emplace(site.file);
+            if(inserted) {
+                known->second = index.definitions_in(caller, site.file);
+            }
+            auto holder =
+                ranges::find_if(known->second, [&](const index::IndexQuery::Placed& definition) {
+                    return index::covers(definition.extent, site);
                 });
+            auto place = *canonical;
+            bool at_body = holder != known->second.end();
+            if(at_body) {
+                place.site = holder->site;
+                place.extent = holder->extent;
+            }
+            auto edge =
+                std::find_if(result.begin() + first, result.end(), [&](const CallEdge& other) {
+                    return index::site_key(other.symbol.site) == index::site_key(place.site);
+                });
+            if(edge == result.end()) {
+                result.push_back({.symbol = std::move(place), .sites = {site}, .at_body = at_body});
+            } else {
+                edge->sites.push_back(site);
             }
         }
     }
     return result;
 }
 
-/// Each callee at each of its places, with every call to it: a call may
-/// reach any body of a function several files define.
+/// Each callee at its canonical site, with every call to it.
 std::vector<CallEdge>
     located_callees(const index::IndexQuery& index,
                     llvm::DenseMap<index::SymbolHash, std::vector<index::Site>>& by_callee) {
     std::vector<CallEdge> result;
+    result.reserve(by_callee.size());
     for(auto& [callee, sites]: by_callee) {
-        index::dedup_sites(sites);
-        auto places = placements(index, callee, sites.front().file);
-        for(auto& place: places) {
-            result.push_back({
-                .symbol = std::move(place),
-                .sites = sites,
-                .one_of_several = places.size() > 1,
-            });
+        auto located = index.resolve(callee, sites.front().file);
+        if(!located) {
+            continue;
         }
+        index::dedup_sites(sites);
+        result.push_back({.symbol = std::move(*located), .sites = std::move(sites)});
     }
     return result;
 }
@@ -352,11 +339,10 @@ std::vector<CallEdge> call_edges(const index::IndexQuery& query,
                 continue;
             }
             // Another project may place a neighbour at a declaration where
-            // this one knows its definition; only two of several
-            // definitions stay apart.
+            // this one knows its definition; only two bodies stay apart.
             auto known = ranges::find_if(into, [&](const CallEdge& other) {
                 return same_entity(other.symbol, edge.symbol) &&
-                       (!other.one_of_several || !edge.one_of_several ||
+                       (!other.at_body || !edge.at_body ||
                         index::site_key(other.symbol.site) == index::site_key(edge.symbol.site));
             });
             if(known == into.end()) {
@@ -430,16 +416,23 @@ std::vector<protocol::CallHierarchyItem>
         if(!function && !value) {
             continue;
         }
-        auto places = placements(query, located.symbol.hash, cursor.site.file);
-        auto named = ranges::find_if(places, [&](const index::IndexQuery::Located& place) {
-            return index::covers(place.site, cursor.site);
-        });
-        if(named != places.end()) {
-            items.push_back(item_of<protocol::CallHierarchyItem>(query, *named, encoding));
+        // A function several files define starts from the definition the
+        // cursor names, else from each.
+        auto definitions = query.definitions(located.symbol.hash, cursor.site.file);
+        if(definitions.size() < 2) {
+            items.push_back(item_of<protocol::CallHierarchyItem>(query, located, encoding));
             continue;
         }
-        for(auto& place: places) {
-            items.push_back(item_of<protocol::CallHierarchyItem>(query, place, encoding));
+        auto named = ranges::find_if(definitions, [&](const index::IndexQuery::Placed& definition) {
+            return index::covers(definition.site, cursor.site);
+        });
+        if(named != definitions.end()) {
+            definitions = {std::move(*named)};
+        }
+        for(auto& definition: definitions) {
+            located.site = std::move(definition.site);
+            located.extent = std::move(definition.extent);
+            items.push_back(item_of<protocol::CallHierarchyItem>(query, located, encoding));
         }
     }
     return items;
