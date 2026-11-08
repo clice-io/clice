@@ -171,6 +171,82 @@ ZEST_CASE(NestedMacroScaling) {
     ZEXPECT(*large == *small);
 }
 
+ZEST_CASE(WholeUnitWalk) {
+    add_file("header.h", "struct Base { int value; };\n");
+    add_focus("main.cpp", R"cpp(
+#include "header.h"
+int read(Base base) { return base.value; }
+)cpp");
+    ZASSERT(compile());
+
+    bool header_reached = false;
+    bool member_under_function = false;
+    auto semantics = Semantics::build(
+        *unit,
+        {.all_files = true, .visit = [&](const Semantics& path, std::uint32_t index) {
+             // The path is the visited node and its ancestors, nothing else.
+             ZEXPECT(path.node_entries().size() == index + 1);
+             ZEXPECT(path.node(index).parent == (index == 0 ? Semantics::invalid : index - 1));
+             const auto& node = path.node(index).node;
+             if(auto* record = node.get<clang::CXXRecordDecl>()) {
+                 header_reached = header_reached || record->getName() == "Base";
+             }
+             if(node.get<clang::MemberExpr>()) {
+                 for(std::uint32_t i = 0; i < index; i += 1) {
+                     auto* function = path.node(i).node.get<clang::FunctionDecl>();
+                     member_under_function =
+                         member_under_function || (function && function->getName() == "read");
+                 }
+             }
+         }});
+    ZEXPECT(header_reached);
+    ZEXPECT(member_under_function);
+    for(const auto& entry: semantics.node_entries()) {
+        ZEXPECT(!entry.node.is_ast());
+    }
+}
+
+ZEST_CASE(InstantiationWalk) {
+    add_focus("main.cpp", R"cpp(
+template <typename T>
+T twice(T value) { return value + value; }
+int use() { return twice(1); }
+)cpp");
+    ZASSERT(compile());
+
+    std::vector<const clang::Decl*> roots;
+    for(const auto* decl: unit->instantiations()) {
+        if(!llvm::isa<clang::CXXRecordDecl>(decl)) {
+            roots.push_back(decl);
+        }
+    }
+    ZASSERT(roots.size() == 1U);
+
+    const clang::Decl* entered = nullptr;
+    std::vector<const clang::Decl*> left;
+    std::uint32_t visited = 0;
+    Semantics::build(*unit,
+                     {.all_files = true,
+                      .visit =
+                          [&](const Semantics& path, std::uint32_t index) {
+                              ZEXPECT(entered == roots[0]);
+                              ZEXPECT(path.node(index).flags.in_instantiation);
+                              visited += 1;
+                          },
+                      .instantiations = roots,
+                      .enter = [&](const clang::Decl* root) { entered = root; },
+                      .leave =
+                          [&](const clang::Decl* root) {
+                              ZEXPECT(root == entered);
+                              left.push_back(root);
+                              entered = nullptr;
+                          },
+                      .written = llvm::ArrayRef<const clang::Decl*>()});
+    ZEXPECT(visited > 0U);
+    ZASSERT(left.size() == 1U);
+    ZEXPECT(left[0] == roots[0]);
+}
+
 };  // ZEST_SUITE(SemanticsTable)
 
 }  // namespace

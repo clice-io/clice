@@ -411,7 +411,9 @@ module :§(live)⟦private⟧;
 )cpp");
     ZASSERT(compile());
     for(bool all_files: {false, true}) {
-        auto semantics = Semantics::build(*unit, {.all_files = all_files});
+        auto semantics = Semantics::build(
+            *unit,
+            {.all_files = all_files, .visit = [](const Semantics&, std::uint32_t) {}});
         auto modules = semantics.module_declarations();
         ZASSERT(modules.size() == 2U);
         ZEXPECT(modules[1].kind == LexicalInfo::ModuleDeclaration::Kind::PrivateFragment);
