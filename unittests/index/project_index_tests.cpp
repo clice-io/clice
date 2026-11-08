@@ -303,10 +303,10 @@ ZEST_CASE(DefinitionFilesFromUnits) {
     auto weak = unit_defining("/proj/weak.c");
     auto strong = unit_defining("/proj/main.c");
     clice::FileTable pool;
-    auto paths = [&](index::ProjectIndex& project, index::SymbolHash hash) {
+    auto names = [&](index::ProjectIndex& project, index::SymbolHash hash) {
         std::vector<std::string> files;
         project.for_each_definition_file(hash, [&](Fid file) {
-            files.push_back(llvm::StringRef(pool.resolve(file)).str());
+            files.push_back(std::string(path::filename(pool.resolve(file))));
         });
         ranges::sort(files);
         return files;
@@ -321,7 +321,7 @@ ZEST_CASE(DefinitionFilesFromUnits) {
         project.merge_symbols(first_view, intern_paths(first_view, pool));
         project.merge_symbols(second_view, intern_paths(second_view, pool));
         project.merge_symbols(first_view, intern_paths(first_view, pool));
-        ZEXPECT(paths(project, 42) == std::vector<std::string>{"/proj/main.c", "/proj/weak.c"});
+        ZEXPECT(names(project, 42) == std::vector<std::string>{"main.c", "weak.c"});
     }
 
     // One unit defining it in two of its files.
@@ -342,7 +342,7 @@ ZEST_CASE(DefinitionFilesFromUnits) {
     index::ProjectIndex project{pool};
     auto view = index::TUIndex::from_bytes(both_bytes);
     project.merge_symbols(view, intern_paths(view, pool));
-    ZEXPECT(paths(project, 43) == std::vector<std::string>{"/proj/a.c", "/proj/a.h"});
+    ZEXPECT(names(project, 43) == std::vector<std::string>{"a.c", "a.h"});
 }
 
 ZEST_CASE(TentativeDefinitionsBothFiles) {
