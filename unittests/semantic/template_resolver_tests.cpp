@@ -265,7 +265,8 @@ ZEST_CASE(KeptCallKeepsItsBindings) {
     } finder;
 
     finder.TraverseAST(unit->context());
-    ZASSERT(finder.call && finder.value);
+    ZASSERT(finder.call);
+    ZASSERT(finder.value);
 
     auto& resolver = unit->get<types::TemplateResolver>();
     ZEXPECT(resolver.callees(finder.call).size() == 1);
