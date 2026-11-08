@@ -1110,6 +1110,13 @@ private:
             ResolvedType{.type = type, .checks = step.effects.checks, .view = view()});
     }
 
+    /// Whether what `node` resolves to may be kept by the node: while a
+    /// pack is narrowed to one of its elements, a node naming an unexpanded
+    /// pack resolves differently per element.
+    bool resolution_kept(const clang::Type* node) const {
+        return pack_narrowing == 0 || !node->containsUnexpandedParameterPack();
+    }
+
     /// What an earlier query resolved `node`, a dependent name or
     /// specialization, to, when this one judges alike what it saw; its
     /// judgements noted again.
@@ -1224,7 +1231,7 @@ private:
     unsigned evaluating = 0;
 
     /// Non-zero while a pack element rewrite has a Pack binding narrowed to
-    /// one element; node-pointer-keyed caches are bypassed for the duration.
+    /// one element (resolution_kept).
     unsigned pack_narrowing = 0;
 
     /// Some answer came back empty or partial because a lookup or the

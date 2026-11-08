@@ -332,9 +332,10 @@ std::optional<llvm::SmallVector<clang::TemplateArgument, 4>>
     auto saved = ranges::to<llvm::SmallVector<clang::TemplateArgument, 2>>(
         views::transform(slots, [&](auto handle) { return stack.slot(handle); }));
 
-    /// While narrowed, node-pointer-keyed caches are bypassed: the same
-    /// pattern node resolves differently per element, and a cached first
-    /// element would silently repeat for every later one.
+    /// While narrowed, node-pointer-keyed caches skip the nodes naming the
+    /// pack (resolution_kept): the same pattern node resolves differently
+    /// per element, and a cached first element would silently repeat for
+    /// every later one.
     pack_narrowing += 1;
     bool ok = true;
     llvm::SmallVector<clang::TemplateArgument, 4> expanded;

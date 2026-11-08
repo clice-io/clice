@@ -86,11 +86,12 @@ std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr
 
         auto judged = own_conclusion();
         auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(expr);
-        if(DSDRE && DSDRE->getQualifier().getKind() == clang::NestedNameSpecifier::Kind::Type &&
-           pack_narrowing == 0) {
+        if(DSDRE && DSDRE->getQualifier().getKind() == clang::NestedNameSpecifier::Kind::Type) {
             auto scope =
                 resolve_object(substitute(clang::QualType(DSDRE->getQualifier().getAsType(), 0)));
-            return member_value(scope, DSDRE->getDeclName());
+            if(resolution_kept(scope.getTypePtr())) {
+                return member_value(scope, DSDRE->getDeclName());
+            }
         }
 
         auto frames = stack.size();

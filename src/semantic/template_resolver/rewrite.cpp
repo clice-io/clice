@@ -649,8 +649,8 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
     indent += 1;
     auto judged = own_conclusion();
 
-    // Check cache.
-    if(pack_narrowing == 0) {
+    bool cacheable = resolution_kept(DNT);
+    if(cacheable) {
         if(auto kept = kept_resolution(DNT)) {
             LOG_DEBUG(
                 "{}"
@@ -681,7 +681,7 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
         resolving.erase(DNT);
         LOG_DEBUG("{}→ '{}' (standard rule)", pad(), by_rule->getAsString());
         indent -= 1;
-        if(*by_rule != clang::QualType(DNT, 0) && pack_narrowing == 0 && !inconclusive) {
+        if(*by_rule != clang::QualType(DNT, 0) && cacheable && !inconclusive) {
             keep_resolution(DNT, *by_rule, step);
         }
         return *by_rule;
@@ -745,7 +745,7 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
             pad(),
             result.getAsString());
         indent -= 1;
-        if(pack_narrowing == 0 && !inconclusive) {
+        if(cacheable && !inconclusive) {
             keep_resolution(DNT, result, step);
         }
         return result;
@@ -767,9 +767,7 @@ clang::QualType
 
     auto judged = own_conclusion();
     auto& template_name = *TST->getTemplateName().getAsDependentTemplateName();
-    /// Pack-narrowed resolutions depend on context the node pointer does
-    /// not capture; they may not be cached.
-    bool cacheable = pack_narrowing == 0;
+    bool cacheable = resolution_kept(TST);
 
     if(cacheable) {
         if(auto kept = kept_resolution(TST)) {
