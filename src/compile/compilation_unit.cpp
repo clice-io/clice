@@ -338,13 +338,10 @@ bool CompilationUnit::in_system_header(clang::SourceLocation location) {
                 directories.try_emplace(&dir->getDirEntry(), lookup.isSystemHeaderDirectory());
             }
         }
-        // Up the name the compile opened the file by: a lookup reaches a
-        // header through a link in a search directory, which its identity
-        // skips.
         focus_in_system_directory = false;
         auto& files = SM.getFileManager();
-        auto name = SM.getFileEntryRefForID(focus_file().file())->getName();
-        for(auto dir = path::parent(name); !dir.empty(); dir = path::parent(dir)) {
+        for(auto dir = path::parent(file_path(focus_file().file())); !dir.empty();
+            dir = path::parent(dir)) {
             auto entry = files.getOptionalDirectoryRef(dir);
             if(auto it = entry ? directories.find(&entry->getDirEntry()) : directories.end();
                it != directories.end()) {
