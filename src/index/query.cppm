@@ -452,6 +452,11 @@ public:
     /// nothing defines it (pure virtuals, externs, decl-only APIs).
     std::optional<Placed> canonical_placed(SymbolHash hash, Fid anchor) const;
 
+    /// Every definition of the symbol, by path and offset: one for most, one
+    /// per file for a C function a weak and a strong definition give or a
+    /// name each program of a project defines (`main`).
+    std::vector<Placed> definitions(SymbolHash hash, Fid anchor) const;
+
     /// The one federation walk every relation query is a fold over. The
     /// visitor returns false to stop.
     void for_each_relation(SymbolHash hash,

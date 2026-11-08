@@ -808,6 +808,32 @@ std::optional<Site> IndexQuery::first_site(SymbolHash hash, Fid anchor, Relation
     return placed ? std::optional(placed->site) : std::nullopt;
 }
 
+std::vector<IndexQuery::Placed> IndexQuery::definitions(SymbolHash hash, Fid anchor) const {
+    std::vector<Placed> result;
+    for_each_relation(
+        hash,
+        anchor,
+        RelationKind::Definition,
+        Order::DiskFirst,
+        {},
+        [&](const IndexSource& source, const Relation& relation) {
+            if(auto site = source.site(relation.range)) {
+                result.push_back(
+                    {.site = *site, .extent = extent_of(source, relation).value_or(*site)});
+            }
+            return true;
+        });
+    ranges::sort(result, [](const Placed& lhs, const Placed& rhs) {
+        return std::tuple(site_key(lhs.site), lhs.site.origin) <
+               std::tuple(site_key(rhs.site), rhs.site.origin);
+    });
+    auto [first, last] = ranges::unique(result, [](const Placed& lhs, const Placed& rhs) {
+        return site_key(lhs.site) == site_key(rhs.site);
+    });
+    result.erase(first, last);
+    return result;
+}
+
 std::optional<IndexQuery::Placed> IndexQuery::canonical_placed(SymbolHash hash, Fid anchor) const {
     if(auto placed = first_placed(hash, anchor, RelationKind::Definition)) {
         return placed;

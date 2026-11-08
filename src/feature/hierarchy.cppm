@@ -19,8 +19,11 @@ namespace clice::feature {
 std::vector<std::string> enclosing_functions(const index::IndexQuery& index,
                                              llvm::ArrayRef<index::Site> sites);
 
-/// One neighbour of a symbol in a graph: the symbol at its canonical
-/// site and the sites of the relations that connect them.
+/// One neighbour of a symbol in a graph: the symbol at one of its places
+/// and the sites of the relations that connect them. A symbol stands at its
+/// canonical site, but a function several files define stands at each
+/// definition: a caller at the one its calls are written in, a callee at
+/// every one.
 struct CallEdge {
     index::IndexQuery::Located symbol;
     std::vector<index::Site> sites;
@@ -36,6 +39,10 @@ struct CallEdge {
 struct CallGraphOptions {
     bool callers = true;
     bool callees = true;
+
+    /// The definition whose calls the callees are, of a function several
+    /// files define; every call of the root otherwise.
+    std::optional<index::Site> body;
 };
 
 struct CallGraph {
@@ -73,7 +80,9 @@ TypeHierarchy type_hierarchy(const index::IndexQuery& index,
 /// signature; it carries the symbol's handle in `data` (see data_symbol).
 /// It stands for the symbol, not the cursor: anchored at the symbol's
 /// canonical site, expanding from a use renders the same root as expanding
-/// from the declaration. A symbol no source places (an implicitly declared
+/// from the declaration. A function several files define has a body in
+/// each: a call hierarchy starts from the definition the cursor names,
+/// else from every one. A symbol no source places (an implicitly declared
 /// `operator delete`) has no item, nor has a function's local, which no
 /// function but its own calls.
 std::vector<protocol::CallHierarchyItem>
@@ -100,10 +109,14 @@ std::vector<protocol::CallHierarchyIncomingCall> incoming_calls(const index::Ind
                                                                 index::SymbolHash symbol,
                                                                 Fid file,
                                                                 PositionEncoding encoding);
-std::vector<protocol::CallHierarchyOutgoingCall> outgoing_calls(const index::IndexQuery& query,
-                                                                index::SymbolHash symbol,
-                                                                Fid file,
-                                                                PositionEncoding encoding);
+/// The outgoing calls start from the body of the definition the item's
+/// `name` site stands on, of a function several files define.
+std::vector<protocol::CallHierarchyOutgoingCall>
+    outgoing_calls(const index::IndexQuery& query,
+                   index::SymbolHash symbol,
+                   Fid file,
+                   const std::optional<index::Site>& name,
+                   PositionEncoding encoding);
 std::vector<protocol::TypeHierarchyItem> supertypes(const index::IndexQuery& query,
                                                     index::SymbolHash symbol,
                                                     Fid file,
