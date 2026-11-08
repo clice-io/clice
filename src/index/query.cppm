@@ -457,9 +457,6 @@ public:
     /// name each program of a project defines (`main`).
     std::vector<Placed> definitions(SymbolHash hash, Fid anchor) const;
 
-    /// The definitions of the symbol the index serving `file` holds.
-    std::vector<Placed> definitions_in(SymbolHash hash, Fid file) const;
-
     /// The one federation walk every relation query is a fold over. The
     /// visitor returns false to stop.
     void for_each_relation(SymbolHash hash,
@@ -561,9 +558,13 @@ private:
     /// session's table knows only its own unit, the symbol records all.
     bool reported_defined(SymbolHash hash, Fid anchor) const;
 
-    /// The disk files holding the symbol's entries, by its scope (see the
-    /// class comment on anchors).
-    void for_each_disk_file(SymbolHash hash, Fid anchor, llvm::function_ref<void(Fid)> visit) const;
+    /// The disk files that may hold the symbol's `kind` relations, by its
+    /// scope (see the class comment on anchors): for a definition of a
+    /// symbol of the project table, the files its record says define it.
+    void for_each_disk_file(SymbolHash hash,
+                            Fid anchor,
+                            RelationKind kind,
+                            llvm::function_ref<void(Fid)> visit) const;
 
     /// The `kind` relations of `hash` in the entries of a live TU index's
     /// other files than its focus file (an overlay's headers, a buffer's

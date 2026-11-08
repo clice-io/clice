@@ -1997,6 +1997,9 @@ public:
         // The canonical file is decided across every file's relations: a
         // definition wins over a declaration, and between equals the
         // lowest path id, so the choice is a pure function of the relations.
+        // The other files defining an external symbol are kept beside it,
+        // but a namespace's; another symbol is found through every file
+        // naming it.
         auto adopt = [](Symbol& symbol, std::uint32_t path_id, bool definition) {
             bool defined = has_flag(symbol.flags, SymbolFlags::HasDefinition);
             if(definition && !defined) {
@@ -2004,7 +2007,15 @@ public:
                 symbol.file = path_id;
                 return;
             }
-            if(definition == defined && (symbol.file == no_file || path_id < symbol.file)) {
+            if(definition != defined || path_id == symbol.file) {
+                return;
+            }
+            bool lower = symbol.file == no_file || path_id < symbol.file;
+            if(definition && symbol.scope == SymbolScope::External &&
+               symbol.kind != SymbolKind::Namespace) {
+                symbol.other_definition_files.add(lower ? symbol.file : path_id);
+            }
+            if(lower) {
                 symbol.file = path_id;
             }
         };
@@ -2134,6 +2145,11 @@ public:
             }
             blob.symbol_instantiation_ends.push_back(
                 static_cast<std::uint32_t>(blob.symbol_instantiations.size()));
+            for(auto file: symbol.other_definition_files) {
+                blob.other_definition_entries.push_back(
+                    static_cast<std::uint32_t>(blob.symbol_hashes.size() - 1));
+                blob.other_definition_files.push_back(file);
+            }
         }
         blob.sections = std::move(sections);
         blob.instantiations = std::move(instantiation_sections);

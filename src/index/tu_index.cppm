@@ -129,6 +129,11 @@ public:
     void for_each_instantiation_file(
         llvm::function_ref<bool(SymbolHash, llvm::ArrayRef<std::uint32_t> files)> callback) const;
 
+    /// Visit each file beside its canonical one (SymbolView::file) that
+    /// defines a symbol of the table, as a path id.
+    void for_each_other_definition(
+        llvm::function_ref<void(SymbolHash, std::uint32_t path_id)> callback) const;
+
     /// Visit every symbol of the table in ascending hash order: hash,
     /// identity, and its reference files as path ids. The table leaves out
     /// the file-local symbols no other file names (see find_symbol) and the

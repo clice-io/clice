@@ -288,6 +288,13 @@ struct Symbol {
     /// symbol is only referenced.
     std::uint32_t file = no_file;
 
+    /// The other files defining the symbol, ids like `file`'s: in a TU index
+    /// the unit's (a C variable two files tentatively define), in the
+    /// project index every unit's (a C function with a weak and a strong
+    /// definition, a `main` per program). Empty for most symbols, and for a
+    /// namespace, whose blocks are among the files naming it.
+    Bitmap other_definition_files;
+
     /// All files that referenced this symbol; for an internal-linkage one
     /// also the files whose relations target it (a structured binding's
     /// TypeDefinition relation naming a type the file never spells), and
