@@ -60,16 +60,7 @@ stdout = '''
         ]
       }
     ],
-    "unconfirmed": [
-      {
-        "file": "${WS}/main.cpp",
-        "line": 4,
-        "column": 14,
-        "name": "scale",
-        "reason": "inside a preprocessor directive, which the index does not resolve",
-        "text": "#define CALL scale(1)"
-      }
-    ],
+    "unconfirmed": [],
     "conflicts": [],
     "stale": []
   },
@@ -147,14 +138,6 @@ stdout = '''
         "name": "scale",
         "reason": "the name here also refers to `scale`, under another build configuration or as another candidate of a dependent call",
         "text": "template <typename T> T twice(T v) { return scale(v) * 2; }"
-      },
-      {
-        "file": "${WS}/main.cpp",
-        "line": 4,
-        "column": 14,
-        "name": "scale",
-        "reason": "inside a preprocessor directive, which the index does not resolve",
-        "text": "#define CALL scale(1)"
       }
     ],
     "conflicts": [],
@@ -280,16 +263,7 @@ stdout = '''
         ]
       }
     ],
-    "unconfirmed": [
-      {
-        "file": "${WS}/main.cpp",
-        "line": 4,
-        "column": 14,
-        "name": "scale",
-        "reason": "inside a preprocessor directive, which the index does not resolve",
-        "text": "#define CALL scale(1)"
-      }
-    ],
+    "unconfirmed": [],
     "conflicts": [],
     "stale": []
   },
@@ -363,16 +337,7 @@ stdout = '''
         ]
       }
     ],
-    "unconfirmed": [
-      {
-        "file": "${WS}/main.cpp",
-        "line": 4,
-        "column": 14,
-        "name": "scale",
-        "reason": "inside a preprocessor directive, which the index does not resolve",
-        "text": "#define CALL scale(1)"
-      }
-    ],
+    "unconfirmed": [],
     "conflicts": [],
     "stale": []
   },

@@ -1,0 +1,74 @@
+[answers.size.rename]
+notice = '''
+Spellings of `BUFFER_SIZE` left alone:
+  ${WS}/main.cpp:6: int pasted = CAT(BUFFER_, SIZE); (the name is written here as `CAT`)
+'''
+
+[answers.size.rename.edits]
+"config.h" = '''
+ #pragma once
+
+-#ifndef BUFFER_SIZE
+-#define BUFFER_SIZE 64
++#ifndef BUFFER_BYTES
++#define BUFFER_BYTES 64
+ #endif
+'''
+"main.cpp" = '''
+ #include "config.h"
+
+-char buffer[BUFFER_SIZE];
+-int doubled = APPLY(TWICE, BUFFER_SIZE);
++char buffer[BUFFER_BYTES];
++int doubled = APPLY(TWICE, BUFFER_BYTES);
+ int clamped = CLAMP(LIMIT + 1);
+ int pasted = CAT(BUFFER_, SIZE);
+'''
+
+[answers.limit.rename.edits]
+"config.h" = '''
+
+ #ifdef SMALL_BUFFERS
+-#define LIMIT 16
++#define MAX_LIMIT 16
+ #else
+-#define LIMIT 256
++#define MAX_LIMIT 256
+ #endif
+
+ #define TWICE(n) ((n) * 2)
+-#define CLAMP(n) ((n) < LIMIT ? (n) : LIMIT)
++#define CLAMP(n) ((n) < MAX_LIMIT ? (n) : MAX_LIMIT)
+ #define APPLY(f, n) f(n)
+ #define CAT(a, b) a##b
+'''
+"main.cpp" = '''
+ char buffer[BUFFER_SIZE];
+ int doubled = APPLY(TWICE, BUFFER_SIZE);
+-int clamped = CLAMP(LIMIT + 1);
++int clamped = CLAMP(MAX_LIMIT + 1);
+ int pasted = CAT(BUFFER_, SIZE);
+
+-#if defined(LIMIT) && LIMIT > 100
++#if defined(MAX_LIMIT) && MAX_LIMIT > 100
+ int large = 1;
+ #endif
+'''
+
+[answers.argument.rename.edits]
+"config.h" = '''
+ #endif
+
+-#define TWICE(n) ((n) * 2)
++#define DOUBLE(n) ((n) * 2)
+ #define CLAMP(n) ((n) < LIMIT ? (n) : LIMIT)
+ #define APPLY(f, n) f(n)
+'''
+"main.cpp" = '''
+
+ char buffer[BUFFER_SIZE];
+-int doubled = APPLY(TWICE, BUFFER_SIZE);
++int doubled = APPLY(DOUBLE, BUFFER_SIZE);
+ int clamped = CLAMP(LIMIT + 1);
+ int pasted = CAT(BUFFER_, SIZE);
+'''

@@ -1,0 +1,2 @@
+[answers.size.rename]
+error = "`BUFFER_SIZE` at ${WS}/config.h:7 is, in some units, the macro their compile command defines (-DBUFFER_SIZE), which a rename cannot change"

@@ -1,6 +1,6 @@
 ["each configuration's index"."$ clice index --jobs 2"]
 stdout = '''
-Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
+Indexed 1 translation unit in #s: 1 file shard (# B), 3 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
@@ -53,16 +53,7 @@ stdout = '''
         ]
       }
     ],
-    "unconfirmed": [
-      {
-        "file": "${WS}/main.cpp",
-        "line": 4,
-        "column": 21,
-        "name": "compute",
-        "reason": "the index ties no symbol to it: a dependent name it could not resolve, an inactive #if branch, or code no unit compiles",
-        "text": "int fast() { return compute(1); }"
-      }
-    ],
+    "unconfirmed": [],
     "conflicts": [],
     "stale": []
   },
@@ -112,16 +103,7 @@ stdout = '''
         ]
       }
     ],
-    "unconfirmed": [
-      {
-        "file": "${WS}/main.cpp",
-        "line": 6,
-        "column": 24,
-        "name": "compute",
-        "reason": "the index ties no symbol to it: a dependent name it could not resolve, an inactive #if branch, or code no unit compiles",
-        "text": "int checked() { return compute(2); }"
-      }
-    ],
+    "unconfirmed": [],
     "conflicts": [],
     "stale": []
   },
@@ -132,7 +114,7 @@ exit = 0
 
 ["an unknown configuration"."$ clice index --jobs 2"]
 stdout = '''
-Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
+Indexed 1 translation unit in #s: 1 file shard (# B), 3 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0

@@ -1,9 +1,6 @@
 [answers.include]
 prepare_rename = {}
 
-[answers.macro_definition.prepare_rename]
-error = "renaming a macro is not supported yet"
-
 [answers.operator.prepare_rename]
 error = "`operator+` is named by the language, not by an identifier"
 
@@ -13,5 +10,8 @@ error = "what the name here refers to differs from one instantiation or macro ex
 [answers.system.prepare_rename]
 error = "`printf` is declared in a system header"
 
-[answers.macro_use.prepare_rename]
-error = "renaming a macro is not supported yet"
+[answers.command_line.prepare_rename]
+error = "no #define of `FROM_BUILD` is indexed: the compile command or the compiler defines it, which a rename cannot change"
+
+[answers.system_macro.prepare_rename]
+error = "`EOF` is defined in a system header"

@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice refactor rename CALL INVOKE"]
+[test."$ clice refactor rename CONSOLE_WIDTH WIDTH"]
 stdout = '''
 {
   "result": {
@@ -13,15 +13,15 @@ stdout = '''
     "renames": [
       {
         "line": null,
-        "locator": "CALL",
+        "locator": "CONSOLE_WIDTH",
         "name": "",
         "kind": "",
         "symbol": "",
-        "newName": "INVOKE",
+        "newName": "WIDTH",
         "edits": 0,
         "conflicts": [],
         "warnings": [],
-        "error": "renaming a macro is not supported yet",
+        "error": "`CONSOLE_WIDTH` is defined in a system header",
         "candidates": null
       }
     ],
@@ -125,7 +125,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice refactor rename main.cpp:13:14 number --dry-run"]
+[test."$ clice refactor rename main.cpp:12:14 number --dry-run"]
 stdout = '''
 {
   "result": {
@@ -133,7 +133,7 @@ stdout = '''
     "renames": [
       {
         "line": null,
-        "locator": "main.cpp:13:14",
+        "locator": "main.cpp:12:14",
         "name": "",
         "kind": "",
         "symbol": "",
@@ -155,7 +155,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice refactor rename main.cpp:16:18 meters --dry-run"]
+[test."$ clice refactor rename main.cpp:15:18 meters --dry-run"]
 stdout = '''
 {
   "result": {
@@ -163,7 +163,7 @@ stdout = '''
     "renames": [
       {
         "line": null,
-        "locator": "main.cpp:16:18",
+        "locator": "main.cpp:15:18",
         "name": "",
         "kind": "",
         "symbol": "",

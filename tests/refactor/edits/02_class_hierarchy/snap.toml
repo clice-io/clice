@@ -343,7 +343,7 @@ stdout = '''
         "line": 4,
         "column": 47,
         "name": "area",
-        "reason": "the index ties no symbol to it: a dependent name it could not resolve, an inactive #if branch, or code no unit compiles",
+        "reason": "in a template, which names it only in some instantiations",
         "text": "double measure(const T& shape) { return shape.area(); }"
       }
     ],

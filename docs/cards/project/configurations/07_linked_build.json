@@ -289,7 +289,7 @@
         {
           "label": "$ clice index --jobs 2 #2",
           "value": {
-            "stdout": "Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "stdout": "Indexed 1 translation unit in #s: 1 file shard (# B), 3 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
             "exit": 0
           }
         }

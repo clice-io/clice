@@ -7,7 +7,7 @@ exit = 0
 
 ["sub becomes a project between runs"."$ clice index --jobs 1"]
 stdout = '''
-Indexed 2 translation units in #s: 3 file shards (# KB), 3 symbols.
+Indexed 2 translation units in #s: 3 file shards (# KB), 4 symbols.
 1 translation unit compiled with errors; the index holds what parsed:
   ${WS}/sub/a.cpp
     ${WS}/sub/a.cpp:2:2: compiled under the root's rules
@@ -18,7 +18,7 @@ exit = 0
 
 ["sub becomes a project between runs"."$ clice index --jobs 1 #2"]
 stdout = '''
-Indexed 0 translation units in #s: 3 file shards (# KB), 3 symbols.
+Indexed 0 translation units in #s: 3 file shards (# KB), 4 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0

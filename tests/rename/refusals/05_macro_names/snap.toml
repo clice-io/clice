@@ -1,0 +1,31 @@
+[answers.count.rename]
+error = "cannot rename `LIMIT`: `count` names `config::count` (${WS}/main.cpp:8), which the macro would replace"
+
+[answers.OTHER.rename]
+error = "cannot rename `LIMIT`: `OTHER` is a macro already (${WS}/main.cpp:2)"
+
+[answers.FEATURE_X.rename]
+error = "cannot rename `LIMIT`: a directive tests `FEATURE_X` (${WS}/main.cpp:4), which the macro would define"
+
+[answers.defined.rename]
+error = "cannot rename `LIMIT`: `defined` cannot name a macro"
+
+[answers._Limit.rename]
+notice = '''
+Renaming `LIMIT`:
+  `_Limit` is reserved for the implementation
+'''
+
+[answers._Limit.rename.edits]
+"main.cpp" = '''
+-#define LIMIT 10
++#define _Limit 10
+ #define OTHER 1
+
+…
+
+ namespace config {
+-int count = LIMIT + OTHER;
++int count = _Limit + OTHER;
+ }
+'''
