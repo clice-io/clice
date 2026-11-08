@@ -1,3 +1,6 @@
+[answers.global]
+references = ["int ⟦as_int⟧;", "return ⟦as_int⟧ + int(as_float);"]
+
 [answers.read]
 references = ["} ⟦read⟧;", "command.⟦read⟧.lba = 1;", "return command.compare.nlb + copy.⟦read⟧.lba;"]
 

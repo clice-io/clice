@@ -1,0 +1,9 @@
+[answers.declaration.hover]
+markdown = '''
+**function** `find`
+
+```cpp
+int* find(int* first, int* last, int value)
+```
+'''
+range = "int *⟦find⟧(int *first, int *last, int value);"
