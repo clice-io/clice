@@ -837,7 +837,7 @@ std::vector<IndexQuery::Placed> IndexQuery::definitions(SymbolHash hash, Fid anc
 std::vector<IndexQuery::Placed> IndexQuery::definitions_in(SymbolHash hash, Fid file) const {
     std::vector<Placed> result;
     auto source = serving(file);
-    if(!source || !source->shard) {
+    if(!source) {
         return result;
     }
     source->shard->relations_of(hash, RelationKind::Definition, [&](const Relation& relation) {

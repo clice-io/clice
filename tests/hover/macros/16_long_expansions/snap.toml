@@ -118,6 +118,67 @@ markdown = '''
 '''
 range = "int bytes = ⟦SUM⟧(STEPS1024(0));"
 
+[answers.noted.hover]
+markdown = '''
+**macro** `NOTED`
+
+```cpp
+#define NOTED(steps)                                                                               \
+    [] {                                                                                           \
+        const char* note = "/*...*/";                                                              \
+        int total = 0;                                                                             \
+        steps return total;                                                                        \
+    }()
+```
+**Expands to:**
+```cpp
+[] {
+  const char* note = "/*...*/";
+  int total = 0;
+  total += 0;
+  total += 0 + 1;
+  total += 0 + 2;
+  total += 0 + 3;
+  total += 0 + 4;
+  total += 0 + 4 + 1;
+  total += 0 + 4 + 2;
+  total += 0 + 4 + 3;
+  total += 0 + 8;
+  total += 0 + 8 + 1;
+  total += 0 + 8 + 2;
+  total += 0 + 8 + 3;
+  total += 0 + 12;
+  total += 0 + 12 + 1;
+  total += 0 + 12 + 2;
+  total += 0 + 12 + 3;
+  total += 0 + 16;
+  total += 0 + 16 + 1;
+  total += 0 + 16 + 2;
+  total += 0 + 16 + 3;
+  total += 0 + 16 + 4;
+  total += 0 + 16 + 4 + 1;
+  total += 0 + 16 + 4 + 2;
+  total += 0 + 16 + 4 + 3;
+  total += 0 + 16 + 8;
+  total += 0 + 16 + 8 + 1;
+  total += 0 + 16 + 8 + 2;
+  total += 0 + 16 + 8 + 3;
+  total += 0 + 16 + 12;
+  total += 0 + 16 + 12 + 1;
+  total += 0 + 16 + 12 + 2;
+  total += 0 + 16 + 12 + 3;
+  total += 0 + 32;
+  total += 0 + 32 + 1;
+  total += 0 + 32 + 2;
+  total += 0 + 32 + 3;
+  total += 0 + 32 + 4;
+// ... (truncated)
+```
+**Type:** `int`
+**Value:** `523776 (0x7fe00)`
+'''
+range = "int noted = ⟦NOTED⟧(STEPS1024(0));"
+
 [answers.long_lines.hover]
 markdown = '''
 **macro** `LONG_NAMES`

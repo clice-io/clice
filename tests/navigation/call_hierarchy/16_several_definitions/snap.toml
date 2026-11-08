@@ -40,7 +40,6 @@ call_hierarchy = [
 ]
 incoming_calls = []
 outgoing_calls = [
-    { name = "father", kind = "Function", at = "void ⟦father⟧(void) {", detail = "father()", sites = ["⟦father⟧();"] },
     {
         name = "father",
         kind = "Function",
