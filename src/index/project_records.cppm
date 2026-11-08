@@ -12,7 +12,6 @@ module clice:index.project_records;
 import :index.format;
 import :index.symbol;
 import :semantic.symbol;
-import :support.bitmap;
 import :support.prelude;
 
 namespace clice::index {

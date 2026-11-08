@@ -20,25 +20,21 @@ namespace {
 
 /// The token written right before `location`; none when a macro wrote
 /// what is there.
-std::optional<clang::Token> token_before(clang::Sema& sema, clang::SourceLocation location) {
-    auto& sources = sema.getSourceManager();
-    if(sources.isMacroArgExpansion(location)) {
-        location = sources.getSpellingLoc(location);
+std::optional<clang::Token> token_before(CompilationUnit& unit, clang::SourceLocation location) {
+    if(location.isMacroID()) {
+        if(!unit.expansion_level(location).argument) {
+            return std::nullopt;
+        }
+        location = unit.written_location(location);
     }
-    if(!location.isFileID()) {
-        return std::nullopt;
-    }
-    return clang::Lexer::findPreviousToken(location,
-                                           sources,
-                                           sema.getLangOpts(),
-                                           /*IncludeComments=*/false);
+    return unit.previous_token(location);
 }
 
 /// The name a call through an object goes by: the identifier written
 /// before its opening parenthesis (`square` in `square(`), empty when
 /// another expression is called (`make()(`).
-std::string callee_name(clang::Sema& sema, clang::SourceLocation open_paren) {
-    auto token = token_before(sema, open_paren);
+std::string callee_name(CompilationUnit& unit, clang::SourceLocation open_paren) {
+    auto token = token_before(unit, open_paren);
     if(!token || !token->is(clang::tok::raw_identifier)) {
         return {};
     }
@@ -48,12 +44,12 @@ std::string callee_name(clang::Sema& sema, clang::SourceLocation open_paren) {
 /// Whether a member call writes its object, `b.at(` or `p->at(`: Sema
 /// ranks overloads by the object only then. An implicit `this` takes no
 /// part, which leaves a const and a non-const overload tied.
-bool object_written(clang::Sema& sema, clang::SourceLocation open_paren) {
-    auto name = token_before(sema, open_paren);
+bool object_written(CompilationUnit& unit, clang::SourceLocation open_paren) {
+    auto name = token_before(unit, open_paren);
     if(!name || !name->is(clang::tok::raw_identifier)) {
         return false;
     }
-    auto access = token_before(sema, name->getLocation());
+    auto access = token_before(unit, name->getLocation());
     return access && access->isOneOf(clang::tok::period, clang::tok::arrow);
 }
 
@@ -61,20 +57,20 @@ bool object_written(clang::Sema& sema, clang::SourceLocation open_paren) {
 /// make(` or `Widget Factory::build(`: a type ends right before the name
 /// and its qualifiers, where an expression naming a class has an operator
 /// (`= Widget(`, `= std::string(`, `new Widget(`).
-bool declares_at_namespace_scope(clang::Sema& sema, clang::SourceLocation open_paren) {
-    auto name = token_before(sema, open_paren);
+bool declares_at_namespace_scope(CompilationUnit& unit, clang::SourceLocation open_paren) {
+    auto name = token_before(unit, open_paren);
     if(!name || !name->is(clang::tok::raw_identifier) ||
-       !sema.CurContext->getRedeclContext()->isFileContext()) {
+       !unit.sema().CurContext->getRedeclContext()->isFileContext()) {
         return false;
     }
-    auto before = token_before(sema, name->getLocation());
+    auto before = token_before(unit, name->getLocation());
     while(before && before->is(clang::tok::coloncolon)) {
-        auto qualifier = token_before(sema, before->getLocation());
+        auto qualifier = token_before(unit, before->getLocation());
         if(!qualifier || !qualifier->is(clang::tok::raw_identifier)) {
             before = qualifier;
             break;
         }
-        before = token_before(sema, qualifier->getLocation());
+        before = token_before(unit, qualifier->getLocation());
     }
     if(before && before->is(clang::tok::raw_identifier)) {
         return before->getRawIdentifier() != "new";
@@ -95,9 +91,8 @@ bool constructs(llvm::ArrayRef<clang::CodeCompleteConsumer::OverloadCandidate> c
 
 /// Whether anything but its closing parenthesis follows `open_paren`,
 /// before or after the completion point.
-bool holds_argument(clang::Sema& sema, clang::SourceLocation open_paren) {
-    auto token =
-        clang::Lexer::findNextToken(open_paren, sema.getSourceManager(), sema.getLangOpts());
+bool holds_argument(CompilationUnit& unit, clang::SourceLocation open_paren) {
+    auto token = unit.next_token(open_paren);
     return token && !token->isOneOf(clang::tok::r_paren, clang::tok::eof);
 }
 
@@ -107,37 +102,28 @@ bool holds_argument(clang::Sema& sema, clang::SourceLocation open_paren) {
 /// the class, which names a member the stopped parse never declared. A
 /// directive between them may leave out what the lexer reads: the call is
 /// taken as open.
-bool holds_point(clang::Sema& sema, clang::SourceLocation open) {
-    auto& sources = sema.getSourceManager();
-    auto [file, begin] = sources.getDecomposedLoc(sources.getFileLoc(open));
-    auto [point_file, point] =
-        sources.getDecomposedLoc(sema.getPreprocessor().getCodeCompletionLoc());
+bool holds_point(CompilationUnit& unit, clang::SourceLocation open) {
+    auto [file, begin] = unit.seen_at(open);
+    auto [point_file, point] = unit.seen_at(unit.sema().getPreprocessor().getCodeCompletionLoc());
     if(file != point_file || begin > point) {
         return false;
     }
-    auto text = sources.getBufferData(file);
-    clang::Lexer lexer(sources.getLocForStartOfFile(file),
-                       sema.getLangOpts(),
-                       text.begin(),
-                       text.begin() + begin,
-                       text.end());
-    clang::Token token;
-    lexer.LexFromRawLexer(token);
-    auto opening = token.getKind();
+    Lexer lexer(unit.file_content(file).substr(begin), unit.lang_options());
+    auto token = lexer.advance();
+    auto opening = token.kind;
     auto closing = opening == clang::tok::l_paren   ? clang::tok::r_paren
                    : opening == clang::tok::l_brace ? clang::tok::r_brace
                                                     : clang::tok::unknown;
     if(closing == clang::tok::unknown) {
         return true;
     }
-    for(unsigned depth = 1; !lexer.LexFromRawLexer(token);) {
-        if(sources.getFileOffset(token.getLocation()) >= point ||
-           (token.is(clang::tok::hash) && token.isAtStartOfLine())) {
+    for(unsigned depth = 1; !(token = lexer.advance()).is_eof();) {
+        if(begin + token.range.begin >= point || token.is_directive_hash()) {
             return true;
         }
-        if(token.is(opening)) {
+        if(token.kind == opening) {
             depth += 1;
-        } else if(token.is(closing)) {
+        } else if(token.kind == closing) {
             depth -= 1;
             if(depth == 0) {
                 return false;
@@ -227,11 +213,10 @@ std::optional<llvm::SmallVector<std::uintptr_t, 8>> ranking_key(const clang::Fun
 /// PCH holds otherwise than a parse of them.
 using IncludedPosition = llvm::SmallVector<std::pair<unsigned, unsigned>, 8>;
 
-IncludedPosition included_position(const clang::SourceManager& sources,
-                                   clang::SourceLocation location) {
+IncludedPosition included_position(CompilationUnit& unit, clang::SourceLocation location) {
     IncludedPosition position;
-    for(auto at = sources.getExpansionLoc(location); at.isValid();) {
-        auto presumed = sources.getPresumedLoc(at, /*UseLineDirectives=*/false);
+    for(auto at = location; at.isValid();) {
+        auto presumed = unit.presumed_location(at);
         if(presumed.isInvalid()) {
             break;
         }
@@ -248,7 +233,7 @@ IncludedPosition included_position(const clang::SourceManager& sources,
 /// of alike candidates keeps the places Sema gave it. Constraints and the
 /// attributes Sema ranks by compare a candidate with only some others, so
 /// a call reaching any keeps Sema's order whole.
-void order_alike(clang::Sema& sema,
+void order_alike(CompilationUnit& unit,
                  std::uint32_t written,
                  llvm::MutableArrayRef<clang::CodeCompleteConsumer::OverloadCandidate> candidates) {
     auto ranked_apart = [](const clang::CodeCompleteConsumer::OverloadCandidate& candidate) {
@@ -264,7 +249,7 @@ void order_alike(clang::Sema& sema,
                    return param->hasAttr<clang::PassObjectSizeAttr>();
                });
     };
-    if(sema.getLangOpts().CUDA || ranges::any_of(candidates, ranked_apart)) {
+    if(unit.lang_options().CUDA || ranges::any_of(candidates, ranked_apart)) {
         return;
     }
 
@@ -278,7 +263,6 @@ void order_alike(clang::Sema& sema,
     }
     ranges::stable_sort(keyed, {}, [](const auto& entry) -> const auto& { return entry.first; });
 
-    auto& sources = sema.getSourceManager();
     std::vector<std::pair<IncludedPosition, clang::CodeCompleteConsumer::OverloadCandidate>> alike;
     for(auto begin = keyed.begin(); begin != keyed.end();) {
         auto end = ranges::find_if(begin, keyed.end(), [&](const auto& entry) {
@@ -288,9 +272,8 @@ void order_alike(clang::Sema& sema,
             alike.clear();
             for(auto& entry: ranges::subrange(begin, end)) {
                 auto& candidate = candidates[entry.second];
-                alike.emplace_back(
-                    included_position(sources, candidate.getFunction()->getLocation()),
-                    candidate);
+                alike.emplace_back(included_position(unit, candidate.getFunction()->getLocation()),
+                                   candidate);
             }
             ranges::stable_sort(alike, {}, [](const auto& entry) -> const auto& {
                 return entry.first;
@@ -571,10 +554,11 @@ struct Documented {
 
 class Builder final : public clang::CodeCompleteConsumer {
 public:
-    Builder(protocol::SignatureHelp& help,
+    Builder(CompilationUnit& unit,
+            protocol::SignatureHelp& help,
             std::vector<Documented>& sources,
             clang::CodeCompleteOptions complete_options) :
-        clang::CodeCompleteConsumer(complete_options), help(help), sources(sources),
+        clang::CodeCompleteConsumer(complete_options), unit(unit), help(help), sources(sources),
         info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     void ProcessOverloadCandidates(clang::Sema& sema,
@@ -601,13 +585,13 @@ public:
             return;
         }
 
-        if(!holds_point(sema, open_paren)) {
+        if(!holds_point(unit, open_paren)) {
             return;
         }
         // Clang takes `Widget make(` for a variable its constructor builds:
         // until an argument is written, a function declaration reads alike.
         if(current_arg == 0 && !braced && constructs({candidates, candidate_count}) &&
-           declares_at_namespace_scope(sema, open_paren) && !holds_argument(sema, open_paren)) {
+           declares_at_namespace_scope(unit, open_paren) && !holds_argument(unit, open_paren)) {
             return;
         }
 
@@ -615,8 +599,8 @@ public:
         start(sema.getASTContext());
         call_scope = sema.CurContext;
 
-        bool ranked = object_written(sema, open_paren);
-        order_alike(sema, current_arg, {candidates, candidate_count});
+        bool ranked = object_written(unit, open_paren);
+        order_alike(unit, current_arg, {candidates, candidate_count});
         if(current_arg == 0) {
             place_implicit({candidates, candidate_count});
         }
@@ -634,7 +618,7 @@ public:
                     // named as the object.
                     const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(function);
                     auto name = method && method->getOverloadedOperator() == clang::OO_Call
-                                    ? callee_name(sema, open_paren)
+                                    ? callee_name(unit, open_paren)
                                     : std::string();
                     call(*function, current_arg, braced, name);
                 }
@@ -1045,6 +1029,8 @@ private:
 
     std::optional<Forwarding> forwarding;
 
+    CompilationUnit& unit;
+
     protocol::SignatureHelp& help;
 
     /// What documents each signature of `help`, in its order.
@@ -1222,14 +1208,12 @@ auto dependent_call_at(CompilationUnit& unit, std::uint32_t offset)
     // The cursor is in the call's own argument list, right after its `(` or
     // a `,`, not in one of a call written there that clang left no node of
     // (`push(Node<T>(a, `).
-    auto& sources = unit.context().getSourceManager();
-    auto separator =
-        clang::Lexer::findNextToken(parts.back()->getEndLoc(), sources, unit.lang_options());
+    auto separator = unit.next_token(parts.back()->getEndLoc());
     if(!separator || !separator->isOneOf(clang::tok::l_paren, clang::tok::comma)) {
         return std::nullopt;
     }
-    auto next = clang::Lexer::findNextToken(separator->getLocation(), sources, unit.lang_options());
-    if(next && sources.isBeforeInTranslationUnit(next->getLocation(), focus.location(typed))) {
+    auto next = unit.next_token(separator->getLocation());
+    if(next && unit.before(next->getLocation(), focus.location(typed))) {
         return std::nullopt;
     }
     return DependentCall{.callee = parts.front(), .written = parts.drop_front()};
@@ -1286,8 +1270,8 @@ auto signature_help(CompilationParams params,
 
     auto offset = params.completion.offset;
     std::vector<Documented> sources;
-    params.completion.consumer = [&](CompilationUnit&) {
-        return std::make_unique<Builder>(help, sources, complete_options);
+    params.completion.consumer = [&](CompilationUnit& unit) {
+        return std::make_unique<Builder>(unit, help, sources, complete_options);
     };
     auto unit = compile(std::move(params));
     if(!unit->completed()) {
@@ -1299,7 +1283,7 @@ auto signature_help(CompilationParams params,
             auto& resolver = unit->get<types::TemplateResolver>();
             auto candidates = resolver.callees(call->callee, call->written);
             const auto* access = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(call->callee);
-            Builder(help, sources, complete_options)
+            Builder(*unit, help, sources, complete_options)
                 .dependent(unit->context(),
                            candidates,
                            static_cast<std::uint32_t>(call->written.size()),

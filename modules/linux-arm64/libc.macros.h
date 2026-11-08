@@ -60,6 +60,7 @@
 #define PTHREAD_ONCE_INIT 0
 #  define __INT64_C(c)	c ## L
 #  define __UINT64_C(c)	c ## UL
+# define INT64_MIN		(-__INT64_C(9223372036854775807)-1)
 # define INT32_MAX		(2147483647)
 # define INT64_MAX		(__INT64_C(9223372036854775807))
 # define UINT32_MAX		(4294967295U)
@@ -69,7 +70,6 @@
 #  define INT64_C(c)	c ## L
 # define UINT8_C(c)	c
 #  define UINT64_C(c)	c ## UL
-#define SEEK_END	2	/* Seek from end of file.  */
 #define stdout stdout
 #define stderr stderr
 #define FLT_EVAL_METHOD __FLT_EVAL_METHOD__

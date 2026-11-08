@@ -10,7 +10,6 @@ import :driver.driver;
 import :driver.run;
 import :project.project;
 import :support.json;
-import :support.shell;
 import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
@@ -100,7 +99,7 @@ struct WrittenEntry {
         }
         return split_command(text,
                              fs::cygwin::is_posix_path(directory) ? sys::cmd::Quoting::POSIX
-                                                                  : host_quoting);
+                                                                  : sys::cmd::native_quoting);
     }
 };
 

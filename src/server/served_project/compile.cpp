@@ -17,12 +17,10 @@ import :server.master;
 import :server.served_project;
 import :server.session;
 import :settings.settings;
-import :support.anomaly;
-import :support.bytes;
-import :support.failure_record;
+import :support.failure;
 import :support.json;
 import :support.logging;
-import :support.timer;
+import :support.text;
 import :syntax.dependency_graph;
 import :vfs.file_table;
 import :vfs.path;
@@ -125,7 +123,7 @@ void ServedProject::retry_after_save(Session& session) {
     // current until the next edit: the save that retries the pass
     // recompiles.
     if(session.crash_record(feature::RequestKind::Tidy)) {
-        invalidate(path_id);
+        project.graph.invalidate(ast_node(path_id));
     }
     // Typing never re-runs the self-containment check, yet an edit can
     // make a header lean on its includer: a save showing what an includer
@@ -140,7 +138,7 @@ void ServedProject::retry_after_save(Session& session) {
         if(project.header_saved(*selection.self_containment,
                                 project.file_table.intern_version(path_id, session.source->hash()),
                                 leans)) {
-            invalidate(path_id);
+            project.graph.invalidate(ast_node(path_id));
         }
     }
     // The modules it is and imports, directly or through other modules,
@@ -179,7 +177,7 @@ void ServedProject::retry_after_save(Session& session) {
         }
     }
     if(retry) {
-        invalidate(path_id);
+        project.graph.invalidate(ast_node(path_id));
     }
 }
 
@@ -216,13 +214,6 @@ void ServedProject::edited(Session& session) {
     start_compiling(path_id);
 }
 
-void ServedProject::invalidate(Fid path_id) {
-    // The in-flight attempt's token fires, but its parse keeps running: the
-    // buffer is unchanged, so the product is worth publishing as bounded
-    // staleness before the attempt reports Stale.
-    project.graph.invalidate(ast_node(path_id));
-}
-
 void ServedProject::choice_changed(Session& session) {
     auto path_id = session.path_id;
     // Invalidate any in-flight compile: without the bump it would pass
@@ -250,7 +241,10 @@ void ServedProject::choice_changed(Session& session) {
 }
 
 void ServedProject::inputs_changed(Session& session) {
-    invalidate(session.path_id);
+    // The in-flight attempt's token fires, but its parse keeps running: the
+    // buffer is unchanged, so the product is worth publishing as bounded
+    // staleness before the attempt reports Stale.
+    project.graph.invalidate(ast_node(session.path_id));
     session.changed(Session::Clock::now());
 }
 
@@ -450,7 +444,7 @@ struct ServedProject::CompileAttempt {
 
     std::string file_path;
 
-    ScopedTimer timer;
+    Timer timer;
 
     /// An attempt past the gate on a crashed compile or preamble is its
     /// retry, and stops the others until its result (Session invariant 2).
@@ -914,7 +908,7 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
             llvm::MemoryBuffer::getMemBufferCopy(as_chars(reply.tu_index_data))));
     }
 
-    LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());
+    LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.precise_ms());
     auto unconfirmed = params.skip_bodies ? feature::take_unconfirmed(diagnostics)
                                           : std::vector<feature::FileDiagnostic>();
     next->output = CompileOutput{

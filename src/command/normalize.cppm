@@ -68,9 +68,12 @@ struct Normalizer {
                                        Fid file,
                                        llvm::StringRef command);
 
-    /// The tokens of `command`, quoted as the database writes it, into
-    /// `tokens`, whose strings keep their storage for the next command.
-    void split(llvm::StringRef command, std::vector<std::string>& tokens) const;
+    /// The tokens of `command`, quoted as the database writes it: views of
+    /// it in `views` while none needs unquoting, else every one in `tokens`,
+    /// whose strings keep their storage for the next command.
+    kotatsu::string_list_ref split(llvm::StringRef command,
+                                   llvm::SmallVectorImpl<std::string_view>& views,
+                                   std::vector<std::string>& tokens) const;
 
     /// What the commands of entries a build compiles alike share: a hash of
     /// `command_line` run from `directory`, with the entry's `file` as the

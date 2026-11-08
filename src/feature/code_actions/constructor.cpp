@@ -124,12 +124,12 @@ bool move_constructible(const clang::CXXRecordDecl* record, const clang::CXXReco
 }
 
 /// Whether `std::move` is declared before `location`.
-bool declares_std_move(clang::ASTContext& context, clang::SourceLocation location) {
-    auto& SM = context.getSourceManager();
+bool declares_std_move(CompilationUnit& unit, clang::SourceLocation location) {
+    auto& context = unit.context();
     for(auto* decl: context.getTranslationUnitDecl()->lookup(&context.Idents.get("std"))) {
         if(auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
             return ranges::any_of(ns->lookup(&context.Idents.get("move")), [&](const auto* move) {
-                return SM.isBeforeInTranslationUnit(move->getLocation(), location);
+                return unit.before(move->getLocation(), location);
             });
         }
     }
@@ -226,7 +226,7 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
         return;
     }
     std::vector<TextReplacement> edits;
-    if(moves_any && !declares_std_move(context, record->getBeginLoc())) {
+    if(moves_any && !declares_std_move(unit, record->getBeginLoc())) {
         auto insertion = include_insertion(unit);
         edits.push_back({
             .range = {insertion.offset, insertion.offset},

@@ -12,8 +12,8 @@ import :index.tu_index;
 import :project.project;
 import :semantic.identity;
 import :semantic.selection;
-import :support.bytes;
 import :support.logging;
+import :support.text;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
 import :unittests.utils.tu_index_blob;
@@ -1979,8 +1979,9 @@ ZEST_CASE(DeepExpressionChain) {
     // sanitized builds (and Windows main threads only get 1MB). 32MB is
     // an empirical bound with margin, not a derived number.
     bool compiled = false;
-    llvm::thread compile_thread(std::optional<unsigned>(32u << 20), [&] { compiled = compile(); });
-    compile_thread.join();
+    auto compile_thread = sys::Thread::start(32u << 20, [&] { compiled = compile(); });
+    ZASSERT(compile_thread);
+    compile_thread->join();
     ZASSERT(compiled);
 
     // Index on a deliberately tight stack: the traversal must use
@@ -1988,7 +1989,7 @@ ZEST_CASE(DeepExpressionChain) {
     // reintroduced per-node recursion crashes here deterministically
     // instead of only on production workers with deeper files.
     InactiveScan scan;
-    llvm::thread index_thread(std::optional<unsigned>(2u << 20), [&] {
+    auto index_thread = sys::Thread::start(2u << 20, [&] {
         // Mirror the stateful worker's post-compile sequence.
         scan = inactive_regions(*unit);
         decode_index(index::build_tu_index(*unit));
@@ -2001,7 +2002,8 @@ ZEST_CASE(DeepExpressionChain) {
         auto use_offset = static_cast<std::uint32_t>(code.rfind("A14"));
         SelectionTree::create_right(*unit, LocalSourceRange(use_offset, use_offset));
     });
-    index_thread.join();
+    ZASSERT(index_thread);
+    index_thread->join();
 
     ZASSERT(scan.regions.empty());
 

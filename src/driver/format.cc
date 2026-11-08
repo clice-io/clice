@@ -7,7 +7,7 @@ import :driver.run;
 import :feature.formatting;
 import :project.discovery;
 import :project.project;
-import :support.timer;
+import :support.logging;
 import :vfs.path;
 
 namespace clice::driver {
@@ -235,7 +235,7 @@ FileResult format_file(const Target& file, bool check) {
 /// directories, no rule saying `format = false`), and format them in
 /// process, `jobs` at a time.
 Result format_project(const Request& options) {
-    ScopedTimer timer;
+    Timer timer;
     Result result;
 
     // Explicit files are taken as given; explicit directories narrow the
@@ -317,19 +317,22 @@ Result format_project(const Request& options) {
         return result;
     }
 
-    std::uint32_t jobs =
-        options.jobs != 0 ? options.jobs : std::max(1u, std::thread::hardware_concurrency());
+    std::uint32_t jobs = options.jobs != 0 ? options.jobs : sys::parallelism();
     std::vector<FileResult> formats(files.size());
     std::atomic<std::size_t> next = 0;
-    std::vector<llvm::thread> threads;
+    std::vector<sys::Thread> threads;
     for(std::uint32_t i = 0; i < jobs && i < files.size(); i += 1) {
         // As much stack as the editor's formatting gets on a worker's pool
         // thread.
-        threads.emplace_back(std::optional<unsigned>(8u << 20), [&] {
+        auto thread = sys::Thread::start(8u << 20, [&] {
             for(auto index = next.fetch_add(1); index < files.size(); index = next.fetch_add(1)) {
                 formats[index] = format_file(files[index], options.check);
             }
         });
+        if(!thread) {
+            LOG_FATAL("Cannot start a formatting thread: {}", thread.error());
+        }
+        threads.push_back(std::move(*thread));
     }
     for(auto& thread: threads) {
         thread.join();

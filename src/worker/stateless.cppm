@@ -8,6 +8,6 @@ namespace clice {
 /// The worker receives one-shot compilation tasks (BuildPCH, BuildPCM,
 /// Completion, SignatureHelp, Index) via stdin/stdout bincode IPC,
 /// executes them on a thread pool, and returns results.
-int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir);
+int run_stateless_worker_mode();
 
 }  // namespace clice

@@ -1,5 +1,6 @@
 module clice;
 
+import :command.argument;
 import :command.table;
 import :project.command;
 import :project.project;
@@ -7,11 +8,10 @@ import :server.master;
 import :server.served_project;
 import :settings.rules;
 import :settings.settings;
-import :support.shell;
 import :unittests.server.served_project_fixture;
-import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
+import :unittests.utils;
 import :vfs.path;
 
 namespace clice::testing {
@@ -196,7 +196,7 @@ ZEST_CASE(ChoiceSteersEditorOnly) {
     // Choose the non-default candidate (candidate order is content-decided,
     // so the defines are read back rather than assumed).
     auto define_of = [&](CommandID command) -> llvm::StringRef {
-        auto argv = print_argv(project.commands.render_full(command));
+        auto argv = join_command(project.commands.render_full(command));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
     };
     auto chosen = candidates.back().command;
@@ -225,7 +225,7 @@ ZEST_CASE(ChoiceBaseSurvivesRules) {
     auto candidates = project.cdb.candidate_entries(path);
     ZASSERT(candidates.size() == 2u);
     auto define_of = [&](CommandID command) -> llvm::StringRef {
-        auto argv = print_argv(project.commands.render_full(command));
+        auto argv = join_command(project.commands.render_full(command));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
     };
     auto chosen = candidates.back().command;
@@ -267,7 +267,7 @@ ZEST_CASE(ChoiceNamesWrittenCommand) {
     auto first = [&] {
         auto own = project.candidates(file);
         auto it = ranges::find_if(own, [&](const Candidate& candidate) {
-            return llvm::StringRef(print_argv(project.commands.render_full(candidate.base)))
+            return llvm::StringRef(join_command(project.commands.render_full(candidate.base)))
                 .contains("FIRST");
         });
         ZASSERT(it != own.end());

@@ -4,19 +4,17 @@ module;
 
 module clice;
 
-import :settings.settings;
 import :server.client;
 import :server.master;
 import :server.served_project;
-import :support.anomaly;
-import :support.environment;
+import :settings.settings;
 import :support.logging;
 import :support.process;
 import :vfs.disk_state;
 import :vfs.file_system;
 import :vfs.path;
-import :worker.test_hooks;
 import :worker.resources;
+import :worker.test_hooks;
 
 namespace clice {
 
@@ -28,8 +26,7 @@ constexpr static std::size_t notify_log_limit = 128;
 
 MasterServer::MasterServer(async::event_loop& loop, std::string requested_configuration) :
     loop(loop), pool(loop), requested_configuration(std::move(requested_configuration)) {
-    std::string unused;
-    files.disk.shadow = sys::get_env(unused, "CLICE_SHADOW_FRESHNESS");
+    files.disk.shadow = env_string("CLICE_SHADOW_FRESHNESS").has_value();
     // A disk change can be seen deep inside any operation — a staleness
     // check, a rescan inside a cascade: the changes apply on the next loop
     // turn, outside it, before any compile that read the change can
@@ -45,7 +42,7 @@ MasterServer::MasterServer(async::event_loop& loop, std::string requested_config
     // depend on the server; the composition root owns it for the server's
     // lifetime and turns reports into state (notify_log) the client is told
     // of. Master-side reports only ever fire on the event-loop thread (see
-    // support/anomaly.cppm), so no synchronization is needed here.
+    // support/logging.cppm), so no synchronization is needed here.
     logging::set_notify_hook([this](logging::NotifyKind kind, std::string_view message) {
         notify_log.push_back(NotifyMessage{kind, std::string(message)});
         if(notify_log.size() > notify_log_limit) {
@@ -134,7 +131,7 @@ void MasterServer::initialize() {
     auto& first = projects.front()->project.settings.project;
     if(!first.logging_dir.empty()) {
         auto dir = logging::session_log_directory(first.logging_dir);
-        if(logging::file_logger("master", dir, logging::options)) {
+        if(logging::file_logger("master", dir)) {
             LOG_INFO("Session log directory: {}", dir);
             pool_opts.log_dir = std::move(dir);
         }
@@ -187,7 +184,7 @@ async::task<> MasterServer::poll_task() {
             }
             for(auto& project: projects) {
                 if(project->project.settings.tracker.workspace_poll_seconds > 0 &&
-                   project->reload_databases(false) > 0) {
+                   project->reload_databases(false)) {
                     hooks.happened(LoopEvent::DatabaseChange);
                 }
             }
@@ -328,9 +325,10 @@ async::task<> MasterServer::close() {
 
 void MasterServer::watch_client(std::uint32_t pid) {
     client_watch.spawn([](MasterServer& server, std::uint32_t pid) -> async::task<> {
-        while(sys::process_alive(static_cast<int>(pid))) {
-            // No event: the editor is no child of the server's to wait for.
-            co_await async::sleep(chrono::seconds(2), server.loop);
+        auto exited = co_await async::wait_exit(static_cast<int>(pid), server.loop);
+        if(exited.has_error() && exited.error() != async::error::no_such_process) {
+            LOG_WARN("Cannot watch client process {}: {}", pid, exited.error().message());
+            co_return;
         }
         LOG_INFO("Client process {} exited; shutting down", pid);
         server.schedule_shutdown();

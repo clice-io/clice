@@ -60,7 +60,6 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
     if(touching.empty()) {
         return;
     }
-    auto& SM = unit.context().getSourceManager();
     const auto& options = unit.lang_options();
     auto content = focus.content();
     auto spelled = tokens.spelled();
@@ -91,15 +90,11 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
             return;
         }
 
-        auto expanded = expansion.expanded;
-        std::string joined;
-        for(const auto& token: expanded) {
-            if(!joined.empty()) {
-                joined += ' ';
-            }
-            joined += token.text(SM);
+        llvm::SmallVector<std::string> words;
+        for(const auto& token: expansion.expanded) {
+            words.push_back(unit.token_spelling(token.location()));
         }
-        auto text = spaced(content, {begin, end}, joined);
+        auto text = spaced(content, {begin, end}, llvm::join(words, " "));
 
         // The text lands between the tokens written flush against the
         // invocation, which must not run into it either; the end of a
@@ -112,11 +107,11 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
         if(last < spelled.size() && gap(last).empty()) {
             following = spelled[last].text(content);
         }
-        auto head = expanded.empty() ? following : expanded.front().text(SM);
+        auto head = words.empty() ? following : std::optional<llvm::StringRef>(words.front());
         if(preceding && head && glues(*preceding, *head, options)) {
             text.insert(text.begin(), ' ');
         }
-        if(following && !expanded.empty() && glues(expanded.back().text(SM), *following, options)) {
+        if(following && !words.empty() && glues(words.back(), *following, options)) {
             text += ' ';
         }
 

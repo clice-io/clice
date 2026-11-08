@@ -1,7 +1,7 @@
 module clice:project.graph.precompiled;
 
 import :project.graph.task_graph;
-import :support.failure_record;
+import :support.failure;
 import :support.prelude;
 import :vfs.cache_store;
 import :vfs.file_table;

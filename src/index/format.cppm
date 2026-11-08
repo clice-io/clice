@@ -8,9 +8,9 @@ module;
 module clice:index.format;
 
 import :index.symbol;
-import :support.bytes;
 import :support.logging;
 import :support.prelude;
+import :support.text;
 import :syntax.token;
 
 namespace clice::index {

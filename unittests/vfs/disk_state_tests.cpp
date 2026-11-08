@@ -1,6 +1,6 @@
 module clice;
 
-import :support.anomaly;
+import :support.logging;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.file_table;

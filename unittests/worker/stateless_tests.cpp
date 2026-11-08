@@ -4,9 +4,9 @@ import :feature.hover;
 import :index.tu_index;
 import :semantic.display;
 import :semantic.symbol;
-import :support.bytes;
-import :unittests.worker.helpers;
+import :support.text;
 import :unittests.utils;
+import :unittests.worker.helpers;
 import :worker.protocol;
 
 namespace clice::testing {

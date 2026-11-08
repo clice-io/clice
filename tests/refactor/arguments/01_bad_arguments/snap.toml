@@ -5,7 +5,7 @@ Rewrite the project's sources through the persisted index
 usage: clice refactor [OPTIONS] <refactoring>
 
 Options:
-  -h|--help                       display this help and exit
+  -h|--help                       Print this help and exit.
 
 Subcommands:
   rename  Rename symbols across the project

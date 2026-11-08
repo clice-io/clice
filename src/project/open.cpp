@@ -9,7 +9,6 @@ import :project.saved;
 import :settings.settings;
 import :support.json;
 import :support.logging;
-import :support.timer;
 import :syntax.dependency_graph;
 import :vfs.cache_store;
 import :vfs.file_table;
@@ -32,7 +31,7 @@ namespace {
 /// those above the file a run is about (see databases_above).
 void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
     CanonicalRef root = project.root;
-    ScopedTimer cdb_timer;
+    Timer cdb_timer;
     std::size_t entries = 0;
     auto paths = project.rules.declared_databases();
     if(!project.rules.declares_sources()) {

@@ -1,7 +1,6 @@
 module clice:command.table;
 
 import :command.argument;
-import :support.object_pool;
 import :support.prelude;
 import :vfs.file_table;
 import :vfs.path;
@@ -210,7 +209,10 @@ private:
     /// Keep all strings (arguments, directories, etc.).
     llvm::UniqueStringSaver strings{*allocator};
 
-    ObjectSet<Command> commands{allocator.get()};
+    /// Each command once, at the place its CommandID names.
+    std::deque<Command> commands;
+
+    llvm::DenseMap<Command, CommandID> ids;
 
     CanonicalPath root;
 

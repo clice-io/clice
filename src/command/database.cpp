@@ -5,9 +5,7 @@ import :command.database;
 import :command.file_kind;
 import :command.normalize;
 import :command.table;
-import :support.anomaly;
 import :support.logging;
-import :support.shell;
 import :vfs.cygwin;
 import :vfs.file_system;
 import :vfs.path;
@@ -111,7 +109,7 @@ std::optional<std::string> repaired_database_text(llvm::StringRef bytes) {
     if(simdjson::validate_utf8(bytes.data(), bytes.size())) {
         return std::nullopt;
     }
-    return llvm::json::fixUTF8(bytes);
+    return kotatsu::replace_invalid_utf8(bytes);
 }
 
 CompilationDatabase::CompilationDatabase(FileTable& files, CommandTable& commands) :
@@ -291,7 +289,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
 
     // The tokens of the entry at hand, their storage kept for the next.
     std::vector<std::string> args;
-    llvm::SmallVector<std::string_view> plain_args;
+    llvm::SmallVector<std::string_view> views;
     llvm::StringMap<Spelling> working_dirs;
     llvm::DenseMap<SharedKey, CommandID> shared;
     std::uint32_t index = 0;
@@ -435,14 +433,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                                        ? command_table.intern(file)
                                        : llvm::StringRef();
 
-        // A command quoting and escaping nothing is read as views of the
-        // database's bytes; any other is split into the entry's tokens.
-        bool plain = command && split_plain(*command, plain_args);
-        if(command && !plain) {
-            normalizer.split(*command, args);
-        }
         kotatsu::string_list_ref tokens =
-            plain ? kotatsu::string_list_ref(plain_args) : kotatsu::string_list_ref(args);
+            command ? normalizer.split(*command, views, args) : kotatsu::string_list_ref(args);
         auto key = normalizer.shared_key(working, file_ref, tokens);
         std::optional<CommandID> normalized;
         if(auto known = key ? shared.find(*key) : shared.end(); known != shared.end()) {

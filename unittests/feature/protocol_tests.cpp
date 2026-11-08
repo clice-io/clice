@@ -40,15 +40,12 @@ ZEST_CASE(RoundTripIdentity) {
     FileTable pool;
     constexpr Fid bad{0xFFFFFFFF};
     auto ingest = [&](llvm::StringRef uri) -> Fid {
-        auto parsed = lsp::URI::parse(std::string_view(uri.data(), uri.size()));
-        if(!parsed.has_value()) {
+        auto parsed = lsp::URI::from_string(uri);
+        std::string path;
+        if(!parsed || parsed->to_path(path)) {
             return bad;
         }
-        auto path = parsed->file_path();
-        if(!path.has_value()) {
-            return bad;
-        }
-        return pool.intern(Spelling::absolute(*path));
+        return pool.intern(Spelling::absolute(path));
     };
     ZASSERT(ingest(feature::to_uri("/proj/a.cpp")) ==
             pool.intern(Spelling::absolute("/proj/a.cpp")));

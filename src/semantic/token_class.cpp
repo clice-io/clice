@@ -318,7 +318,7 @@ TokenClass token_class(const clang::NamedDecl* decl) {
     return result;
 }
 
-TokenClass token_class(const clang::MacroInfo& macro, const clang::SourceManager& sources) {
+TokenClass token_class(const clang::MacroInfo& macro, CompilationUnit& unit) {
     TokenClass result{.kind = Macro};
     auto add = [&](Modifier modifier) {
         result.modifiers |= mask(modifier);
@@ -341,8 +341,7 @@ TokenClass token_class(const clang::MacroInfo& macro, const clang::SourceManager
     // it, and the references a preamble's index answers for would go
     // without.
     auto location = macro.getDefinitionLoc();
-    if(sources.isInSystemHeader(location) &&
-       sources.getFileEntryRefForID(sources.getFileID(location))) {
+    if(unit.in_library(location) && !unit.is_builtin_file(unit.written_at(location).file)) {
         add(Modifier::DefaultLibrary);
     }
     return result;

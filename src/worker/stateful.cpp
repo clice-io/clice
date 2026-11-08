@@ -1,7 +1,3 @@
-module;
-
-#include "kotatsu/ipc/framing.h"
-
 module clice;
 
 import :compile.compilation;
@@ -17,7 +13,6 @@ import :feature.selection_ranges;
 import :feature.semantic_tokens;
 import :index.indexer;
 import :index.tu_index;
-import :support.environment;
 import :support.json;
 import :support.logging;
 import :support.process;
@@ -170,11 +165,11 @@ class StatefulWorker {
                                          R missing,
                                          F fn) {
         auto& doc = *hold.doc;
-        ScopedTimer timer;
+        Timer timer;
         co_await doc.ast_ready.wait();
         auto strand = co_await doc.strand.scoped_lock();
         auto thread = co_await start_work(id);
-        auto acquire_ms = timer.ms_f();
+        auto acquire_ms = timer.precise_ms();
         double compute_ms = 0;
 
         // The frame stays alive until fn returns even when the handler is
@@ -190,9 +185,9 @@ class StatefulWorker {
                 if(!doc.unit)
                     return std::move(missing);
                 CrashScope crash_scope(worker::crash_tag(params));
-                ScopedTimer compute_timer;
+                Timer compute_timer;
                 auto value = fn(doc);
-                compute_ms = compute_timer.ms_f();
+                compute_ms = compute_timer.precise_ms();
                 return value;
             },
             [&] { cancelled.store(true, std::memory_order_relaxed); });
@@ -203,7 +198,7 @@ class StatefulWorker {
                  params.path,
                  acquire_ms,
                  compute_ms,
-                 timer.ms_f());
+                 timer.precise_ms());
         co_return result;
     }
 
@@ -244,7 +239,7 @@ RequestResult<worker::CompileParams>
     auto compile_result = co_await async::queue(
         [&]() -> worker::CompileResult {
             CrashScope crash_scope(worker::crash_tag(params));
-            ScopedTimer timer;
+            Timer timer;
 
             CompilationParams cp{
                 .kind = CompilationKind::Content,
@@ -472,14 +467,7 @@ void StatefulWorker::register_handlers() {
         });
 }
 
-int run_stateful_worker_mode(const std::string& worker_name, const std::string& log_dir) {
-    logging::stderr_logger(worker_name, logging::options);
-    if(!log_dir.empty()) {
-        // File only: worker stderr is reserved for crash/unexpected output,
-        // which the master relays into its own log (see logging taxonomy).
-        logging::file_logger(worker_name, log_dir, logging::options, /*mirror_stderr=*/false);
-    }
-
+int run_stateful_worker_mode() {
     LOG_INFO("Starting stateful worker");
     install_crash_report();
 

@@ -9,7 +9,7 @@ module;
 module clice;
 
 import :index.database;
-import :support.bytes;
+import :support.text;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.cache_store;

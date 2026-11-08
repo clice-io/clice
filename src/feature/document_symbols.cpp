@@ -760,14 +760,9 @@ private:
         // written spelling; names spelled in the macro body keep the
         // invocation site, and a name a macro spells part of its first
         // token, as the index records them.
-        auto& SM = unit.context().getSourceManager();
-        auto location = SM.getFileLoc(name_range.getBegin());
-        bool from_macro = location != SM.getSpellingLoc(name_range.getBegin());
-        auto end = SM.getFileLoc(name_range.getEnd());
-        bool whole = !from_macro && end == SM.getSpellingLoc(name_range.getEnd()) &&
-                     SM.getFileID(end) == SM.getFileID(location) &&
-                     SM.getFileOffset(location) <= SM.getFileOffset(end);
-        name_range = clang::SourceRange(location, whole ? end : location);
+        auto seen = unit.seen_name(name_range);
+        name_range = seen.range;
+        bool from_macro = !seen.written;
 
         auto focus = unit.focus_file();
         auto selection_range = focus.written_range(name_range);

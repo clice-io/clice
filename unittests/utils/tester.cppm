@@ -99,6 +99,16 @@ struct Tester {
 
     LocalSourceRange range(llvm::StringRef name = "", llvm::StringRef file = "");
 
+    /// The declaration of `name` at the translation unit's scope.
+    template <typename T = clang::VarDecl>
+    const T* declared(llvm::StringRef name) {
+        auto found = unit->tu()->lookup(&unit->context().Idents.get(name));
+        ZASSERT(found.isSingleResult());
+        const auto* decl = llvm::dyn_cast<T>(found.front());
+        ZASSERT(decl);
+        return decl;
+    }
+
     /// Reset per-compile state so one case can compile several sources.
     /// The database persists — entries are append-only and harmless.
     void clear();

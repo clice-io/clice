@@ -1,6 +1,5 @@
 module clice;
 
-import :support.anomaly;
 import :support.logging;
 import :unittests.utils;
 

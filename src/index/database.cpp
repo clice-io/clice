@@ -1,21 +1,7 @@
-module;
-
-#ifndef _WIN32
-#include <fcntl.h>
-#include <sys/resource.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
 module clice;
 
 import :index.database;
 import :index.format;
-import :support.bytes;
 import :support.logging;
 import :support.text;
 import :vfs.cache_store;
@@ -42,9 +28,7 @@ std::size_t default_mapsize() {
     return lmdb_small_mapsize;
 #else
     constexpr std::size_t generous = 64ull << 30;
-    struct rlimit limit;
-    if(getrlimit(RLIMIT_AS, &limit) == 0 && limit.rlim_cur != RLIM_INFINITY &&
-       limit.rlim_cur < 2 * generous) {
+    if(auto limit = sys::address_space_limit(); limit && *limit < 2 * generous) {
         return lmdb_small_mapsize;
     }
     return generous;
@@ -188,22 +172,8 @@ bool opened_elsewhere(llvm::StringRef path) {
     if(!file) {
         return false;
     }
-#ifdef _WIN32
-    OVERLAPPED at = {};
-    auto handle = file->native_handle();
-    bool held =
-        !::LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &at);
-    if(!held) {
-        ::UnlockFileEx(handle, 0, 1, 0, &at);
-    }
-#else
-    struct flock lock{};
-    lock.l_type = F_WRLCK;
-    lock.l_whence = SEEK_SET;
-    lock.l_len = 1;
-    bool held = ::fcntl(file->native_handle(), F_GETLK, &lock) == 0 && lock.l_type != F_UNLCK;
-#endif
-    return held;
+    auto held = file->range_locked(0, 1);
+    return held && *held;
 }
 
 /// The file's length against the length its newest meta page guarantees:
@@ -221,15 +191,8 @@ Coverage coverage(MDB_env* env) {
     std::uint64_t declared = (static_cast<std::uint64_t>(info.me_last_pgno) + 1) * db_stat.ms_psize;
     mdb_filehandle_t fd;
     mdb_env_get_fd(env, &fd);
-#ifdef _WIN32
-    LARGE_INTEGER length{};
-    ::GetFileSizeEx(fd, &length);
-    return {static_cast<std::uint64_t>(length.QuadPart), declared};
-#else
-    struct stat file{};
-    ::fstat(fd, &file);
-    return {static_cast<std::uint64_t>(file.st_size), declared};
-#endif
+    auto status = fs::File::borrow(fd).status();
+    return {status ? status->size : 0, declared};
 }
 
 /// LMDB reads the file through a shared mapping, so a page referenced
@@ -257,8 +220,8 @@ int cover_declared_pages(MDB_env* env) {
     if(auto [length, declared] = coverage(env); length < declared) {
         mdb_filehandle_t fd;
         mdb_env_get_fd(env, &fd);
-        if(::ftruncate(fd, static_cast<off_t>(declared)) != 0) {
-            rc = errno;
+        if(auto error = fs::File::borrow(fd).resize(declared)) {
+            rc = error.value();
         }
     }
     mdb_txn_abort(txn);
@@ -273,9 +236,7 @@ std::optional<std::string> growth_refused(MDB_env* env, std::uint64_t extra) {
 #ifdef _WIN32
     mdb_filehandle_t fd;
     mdb_env_get_fd(env, &fd);
-    FILE_BASIC_INFO basic{};
-    if(::GetFileInformationByHandleEx(fd, FileBasicInfo, &basic, sizeof(basic)) &&
-       (basic.FileAttributes & FILE_ATTRIBUTE_SPARSE_FILE) != 0) {
+    if(auto sparse = fs::File::borrow(fd).is_sparse(); sparse && *sparse) {
         return std::nullopt;
     }
     const char* path = nullptr;
@@ -287,26 +248,19 @@ std::optional<std::string> growth_refused(MDB_env* env, std::uint64_t extra) {
     }
     return std::nullopt;
 #else
-    struct rlimit limit;
-    if(getrlimit(RLIMIT_AS, &limit) != 0 || limit.rlim_cur == RLIM_INFINITY) {
+    auto limit = sys::address_space_limit();
+    if(!limit) {
         return std::nullopt;
     }
-    std::uint64_t used = 0;
-#ifdef __linux__
-    if(std::string status; !fs::read_file(status, "/proc/self/statm")) {
-        llvm::StringRef(status).split(' ').first.getAsInteger(10, used);
-        used *= sys::page_size();
-    }
-#endif
-    if(used + extra > limit.rlim_cur) {
-        return std::format("the address space is capped at {} (ulimit -v)",
-                           format_bytes(limit.rlim_cur));
+    auto stats = sys::process_stats();
+    std::uint64_t used = stats ? stats->address_space : 0;
+    if(used + extra > *limit) {
+        return std::format("the address space is capped at {} (ulimit -v)", format_bytes(*limit));
     }
     return std::nullopt;
 #endif
 }
 
-#ifdef _WIN32
 /// Without the sparse attribute Windows backs the whole mapsize with real
 /// disk (CreateFileMapping allocates eagerly), so the file is marked
 /// sparse before LMDB first maps it. Best effort: on a volume without
@@ -317,7 +271,6 @@ void make_sparse(llvm::StringRef path) {
         file->set_sparse();
     }
 }
-#endif
 
 class LmdbDatabase final : public BlobDatabase {
 public:
@@ -611,9 +564,7 @@ private:
     /// Open the environment again after swap_compact_copy() closed it; false,
     /// the handle unusable, when that fails (logged).
     bool reopen(std::size_t mapsize) {
-#ifdef _WIN32
         make_sparse(path);
-#endif
         int rc = mdb_env_create(&env);
         if(rc == 0) {
             configure(env, mapsize);
@@ -842,11 +793,9 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
                 remove_database_files(path);
             }
         };
-#ifdef _WIN32
         if(!read_only) {
             make_sparse(path);
         }
-#endif
         MDB_env* env = nullptr;
         if(int rc = mdb_env_create(&env)) {
             LOG_WARN("Failed to create the index database environment: {}", mdb_strerror(rc));

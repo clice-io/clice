@@ -6,6 +6,7 @@ module;
 
 module clice;
 
+import :command.argument;
 import :command.database;
 import :command.edit;
 import :command.table;
@@ -16,13 +17,12 @@ import :project.members;
 import :project.project;
 import :settings.rules;
 import :settings.settings;
-import :support.shell;
-import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.cdb_layouts;
 import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
+import :unittests.utils;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -880,12 +880,12 @@ ZEST_CASE(FallbackAppliesAppend) {
     };
     CommandEdits options{.edits = edits};
 
-    auto argv = print_argv(render_fallback(project, fake("unknown.cpp"), options));
+    auto argv = join_command(render_fallback(project, fake("unknown.cpp"), options));
     ZEXPECT(llvm::StringRef(argv).contains("-std=c++20"));
     ZEXPECT(llvm::StringRef(argv).contains("/opt/include"));
 
     /// The plain-clang branch applies them too.
-    ZEXPECT(llvm::StringRef(print_argv(render_fallback(project, fake("unknown.c"), options)))
+    ZEXPECT(llvm::StringRef(join_command(render_fallback(project, fake("unknown.c"), options)))
                 .contains("/opt/include"));
 };
 

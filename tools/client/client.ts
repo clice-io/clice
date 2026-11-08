@@ -62,7 +62,7 @@ const SANITIZER_MARKER_BUFFERS = SANITIZER_MARKERS.map((m) => Buffer.from(m));
 
 /// Writes the messages to the server in the order they are sent. Under the
 /// test hook CLICE_TEST_JITTER=<ms> (the server's half is test_jitter in
-/// src/support/environment.cppm), each first waits a random time up to that
+/// src/support/process.cppm), each first waits a random time up to that
 /// many milliseconds, as a slow editor's messages do.
 class ServerWriter extends StreamMessageWriter {
     private readonly jitter = Number(process.env["CLICE_TEST_JITTER"] ?? 0);

@@ -7,7 +7,7 @@ import :project.project;
 import :server.extension;
 import :server.served_project;
 import :server.session;
-import :support.anomaly;
+import :support.logging;
 import :support.prelude;
 import :syntax.position;
 import :vfs.disk_state;

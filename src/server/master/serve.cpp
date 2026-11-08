@@ -49,9 +49,7 @@ static async::task<> serve(MasterServer& server,
     async::task_group<> signals;
     signals.spawn(watch_termination(SIGTERM, terminating, terminate));
     signals.spawn(watch_termination(SIGINT, terminating, terminate));
-#ifndef _WIN32
-    signals.spawn(watch_termination(SIGHUP, terminating, terminate));
-#endif
+    signals.spawn(watch_termination(sys::sighup, terminating, terminate));
     if(client) {
         signals.spawn(watch_end(server, *client));
     }
@@ -106,7 +104,7 @@ async::task<> accept_peers(async::tcp::acceptor acceptor,
 
 int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
     logging::options.never_block_stderr = true;
-    logging::stderr_logger("master", logging::options);
+    logging::stderr_logger("master");
 
     LOG_INFO("clice master starting: version={}, target={}, pid={}, mode={}, workspace={}",
              clice::version,

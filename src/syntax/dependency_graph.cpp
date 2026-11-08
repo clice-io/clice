@@ -2,7 +2,6 @@ module clice;
 
 import :command.search_config;
 import :support.logging;
-import :support.timer;
 import :syntax.dependency_graph;
 import :syntax.include_resolver;
 import :syntax.scan;
@@ -763,13 +762,15 @@ struct FullScan {
     /// validation stat happens lazily at first use. Returns how many.
     std::size_t list_directories(async::task_group<>& listings) {
         llvm::StringSet<> unique_dirs;
-        ScopedTimer lookup;
+        Timer lookup;
         for(auto& group: graph.groups()) {
             for(auto& dir: toolchain.search_config(group).dirs) {
                 unique_dirs.insert(dir.path);
             }
         }
-        LOG_INFO("Config extracted: {} groups, {:.1f}ms", graph.groups().size(), lookup.ms_f());
+        LOG_INFO("Config extracted: {} groups, {:.1f}ms",
+                 graph.groups().size(),
+                 lookup.precise_ms());
         for(auto& entry: cdb.entries()) {
             unique_dirs.insert(files.spelling(entry.file).parent().str());
         }
@@ -791,7 +792,7 @@ struct FullScan {
     }
 
     async::task<> run(llvm::ArrayRef<CommandRef> units) {
-        ScopedTimer timer;
+        Timer timer;
 
         // One scan group per unique (command identity, input language) —
         // the SearchConfig granularity: different -I sets resolve
@@ -838,7 +839,7 @@ struct FullScan {
         LOG_INFO("Pre-populated dir cache: {} directories", listed);
 
         while(!wave->files.empty()) {
-            ScopedTimer wave_timer;
+            Timer wave_timer;
             co_await wave->reads.join();
             auto waited = wave_timer.ms();
 

@@ -1,6 +1,6 @@
 module clice:syntax.position;
 
-import :support.anomaly;
+import :support.logging;
 import :support.prelude;
 import :syntax.token;
 

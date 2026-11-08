@@ -50,9 +50,7 @@ using Kind = Shape::Kind;
 /// The columns `text` takes: one per character, though the letters standing
 /// for parts take more than one byte.
 auto columns(llvm::StringRef text) -> std::size_t {
-    return static_cast<std::size_t>(ranges::count_if(text, [](char c) {
-        return (static_cast<unsigned char>(c) & 0xC0) != 0x80;
-    }));
+    return lsp::encoded_length(text, lsp::PositionEncoding::UTF32);
 }
 
 /// Whether `type` holds a C function declared without a prototype, past

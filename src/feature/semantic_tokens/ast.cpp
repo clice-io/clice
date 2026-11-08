@@ -139,8 +139,8 @@ public:
     Builder(CompilationUnit& unit,
             llvm::ArrayRef<std::uint32_t> inactive_regions,
             bool index_known) :
-        unit(unit), semantics(unit.get<Semantics>()), sources(unit.context().getSourceManager()),
-        inactive_regions(inactive_regions), index_known(index_known) {}
+        unit(unit), semantics(unit.get<Semantics>()), inactive_regions(inactive_regions),
+        index_known(index_known) {}
 
     auto build() -> TokenFacts {
         for(auto [entry_index, entry]: views::enumerate(semantics.node_entries())) {
@@ -183,7 +183,7 @@ private:
             case SemanticNode::Kind::MacroUndef: {
                 const auto* ref = node.get<MacroRef>();
                 if(ref->macro) {
-                    anchor(ref->loc, token_class(*ref->macro, sources), true);
+                    anchor(ref->loc, token_class(*ref->macro, unit), true);
                     if(ref->kind == MacroRef::Ref && ref->macro->isFunctionLike() &&
                        ref->loc.isFileID()) {
                         invocations.push_back(ref);
@@ -365,7 +365,7 @@ private:
                 // A macro's replacement list stays lexical: one written
                 // there formats only where the macro expands.
                 auto location = literal->getStrTokenLoc(i);
-                if(location.isMacroID() && !sources.isMacroArgExpansion(location)) {
+                if(location.isMacroID() && !unit.expansion_level(location).argument) {
                     continue;
                 }
                 if(auto offset = token_at(location)) {
@@ -560,7 +560,6 @@ private:
 
     CompilationUnit& unit;
     const Semantics& semantics;
-    const clang::SourceManager& sources;
     llvm::ArrayRef<std::uint32_t> inactive_regions;
     bool index_known;
 

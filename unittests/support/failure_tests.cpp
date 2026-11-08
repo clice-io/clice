@@ -1,6 +1,6 @@
 module clice;
 
-import :support.failure_record;
+import :support.failure;
 import :unittests.utils;
 
 namespace clice::testing {

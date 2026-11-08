@@ -1,9 +1,9 @@
 module clice;
 
+import :command.argument;
 import :command.database;
 import :command.edit;
 import :command.table;
-import :support.shell;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;

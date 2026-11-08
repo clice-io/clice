@@ -9,30 +9,24 @@ import :vfs.path;
 
 namespace clice::feature {
 
-/// Render an absolute path as an LSP URI string.
-///
-/// On Windows the path is canonicalized first (lowercase drive, forward
-/// slashes): LSP clients key documents by vscode-uri's lowercase-drive
-/// form, and an uppercase-drive URI from the server never matches there.
+/// Render an absolute path as an LSP URI string. On Windows the drive letter
+/// is written in lower case: LSP clients key documents by vscode-uri's
+/// lowercase-drive form, and an uppercase-drive URI from the server never
+/// matches there.
 inline auto to_uri(llvm::StringRef file) -> std::string {
-    llvm::SmallString<256> canonical(file);
-    path::canonicalize(canonical);
-    auto uri = lsp::URI::from_file_path(canonical.str());
+    auto uri = lsp::URI::from_path(file);
     assert(uri && "a URI names an absolute path");
-    return uri->str();
+    return std::string(uri->text());
 }
 
 /// The file a `file:` URI names; nullopt for any other URI.
 inline auto to_path(llvm::StringRef uri) -> std::optional<Spelling> {
-    auto parsed = lsp::URI::parse(uri.str());
-    if(!parsed) {
+    auto parsed = lsp::URI::from_string(uri);
+    std::string path;
+    if(!parsed || parsed->to_path(path) || !path::is_absolute(path)) {
         return std::nullopt;
     }
-    auto path = parsed->file_path();
-    if(!path || !path::is_absolute(*path)) {
-        return std::nullopt;
-    }
-    return Spelling::absolute(*path);
+    return Spelling::absolute(path);
 }
 
 /// The LSP range of a site, and the location of its file, counted in

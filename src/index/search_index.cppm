@@ -21,7 +21,6 @@ module clice:index.search_index;
 
 import :index.symbol;
 import :index.symbol_query;
-import :support.bitmap;
 import :support.fuzzy_matcher;
 import :support.prelude;
 

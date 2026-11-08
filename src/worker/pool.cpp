@@ -1,10 +1,5 @@
-module;
-
-#include "kotatsu/ipc/framing.h"
-
 module clice;
 
-import :support.anomaly;
 import :support.logging;
 import :support.process;
 import :vfs.path;
@@ -49,13 +44,9 @@ std::string describe_exit(std::int64_t exit_code, int exit_signal) {
     if(exit_signal != 0) {
         return "killed by " + exit.to_string();
     }
-#ifdef _WIN32
-    // A Windows process that crashed exits with the NTSTATUS of its
-    // exception.
-    if(static_cast<std::uint32_t>(exit_code) >= 0x8000'0000) {
+    if(exit.exception()) {
         return "terminated by " + exit.to_string();
     }
-#endif
     return std::format("exited with code {}", exit_code);
 }
 
@@ -127,11 +118,10 @@ bool WorkerPool::launch(std::size_t index, bool stateful) {
         }
     }
     // A worker lives and dies with its master: an orphan answers no one and
-    // nothing stops it when it hangs. Its own group keeps a terminal's
-    // Ctrl-C and SIGHUP for the master, which stops it. macOS has no way to
-    // tie a child to its parent's exit: the worker watches the master there.
+    // nothing stops it when it hangs, and the worker watches the master
+    // (run_worker). Its own group keeps a terminal's Ctrl-C and SIGHUP for
+    // the master, which stops it.
     opts.creation.process_group = true;
-    opts.creation.exit_with_parent = can_exit_with_parent;
     opts.streams = {
         async::process::stdio::pipe(),
         async::process::stdio::pipe(),
@@ -411,7 +401,7 @@ async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         exit_signal = result.value().term_signal;
     } else {
         LOG_ERROR("Worker {} lost: {}", slot(index, stateful).name, result.error().message());
-        exit_signal = 9;
+        exit_signal = sys::sigkill;
     }
 
     auto& w = slot(index, stateful);
@@ -499,11 +489,7 @@ bool WorkerPool::process_crash(std::size_t index,
         death.cause = describe_exit(exit_code, exit_signal);
     }
 
-    // POSIX values: Windows' <csignal> does not define SIGHUP or SIGKILL,
-    // and a worker can only receive them on POSIX anyway.
-    constexpr int sighup = 1;
-    constexpr int sigkill = 9;
-    bool terminated = exit_signal == SIGTERM || exit_signal == SIGINT || exit_signal == sighup;
+    bool terminated = exit_signal == SIGTERM || exit_signal == SIGINT || exit_signal == sys::sighup;
 
     reset_streak_if_healthy(w);
     // A death that names its request is that request's content's doing:
@@ -514,7 +500,7 @@ bool WorkerPool::process_crash(std::size_t index,
     // running requests or holding documents counts: none of them is charged
     // when several were in flight, or when none was, and only the budget
     // slows a load that keeps getting killed.
-    bool idle_kill = exit_signal == sigkill && death.in_flight == 0 && death.documents == 0;
+    bool idle_kill = exit_signal == sys::sigkill && death.in_flight == 0 && death.documents == 0;
     if(death.named.empty() && !death.out_of_memory && !terminated && !idle_kill) {
         w.crash_streak += 1;
         w.counted_deaths.push_back(w.generation - 1);

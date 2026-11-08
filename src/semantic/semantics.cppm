@@ -251,7 +251,7 @@ clang::SourceLocation keyword_after_scope(const clang::ASTContext& context,
 /// references of their own), any other name its one token. An operator
 /// used through its symbol (`a == b`, `a[i]`) is that token alone.
 clang::SourceRange written_name(const clang::DeclarationNameInfo& name,
-                                const clang::SourceManager& SM);
+                                const clang::ASTContext& context);
 
 class Semantics;
 

@@ -48,8 +48,8 @@ struct SemanticToken {
 /// The legend clice's tokens are sent with: the names of their kinds and
 /// modifiers after the `[semantic_tokens]` renames, and where each goes.
 struct SemanticTokenLegend {
-    constexpr static auto kind_count = meta::reflection<SemanticTokenKind>::member_count;
-    constexpr static auto modifier_count = meta::reflection<SemanticTokenModifier>::member_count;
+    constexpr static auto kind_count = meta::enum_values<SemanticTokenKind>.size();
+    constexpr static auto modifier_count = meta::enum_values<SemanticTokenModifier>.size();
 
     std::vector<std::string> types;
     std::vector<std::string> modifiers;

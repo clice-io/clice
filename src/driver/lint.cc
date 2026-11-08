@@ -6,7 +6,6 @@ import :driver.run;
 import :project.graph.unit;
 import :project.project;
 import :support.logging;
-import :support.timer;
 
 namespace clice::driver {
 
@@ -247,7 +246,7 @@ async::task<>
 /// of the graph; with --index it then drains the reindexes the pass's
 /// merges owed before the final save.
 async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Report& result) {
-    ScopedTimer timer;
+    Timer timer;
     auto& project = run.project;
 
     if(!start_batch(run, batch, batch.workers, "lint")) {

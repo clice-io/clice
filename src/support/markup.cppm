@@ -120,10 +120,6 @@ public:
     /// newlines.
     void add_code_block(std::string code, std::string language = "cpp");
 
-    /// Heading is a special type of paragraph that will be prepended with
-    /// \p level many '#'s in markdown.
-    Paragraph& add_heading(std::size_t level);
-
     BulletList& add_bullet_list();
 
     /// Adds text written in markdown, kept as it is: in markdown with only

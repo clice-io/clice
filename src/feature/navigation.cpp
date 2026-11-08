@@ -6,7 +6,6 @@ import :index.query;
 import :index.search;
 import :index.symbol_query;
 import :support.logging;
-import :support.timer;
 
 namespace clice::feature {
 
@@ -115,7 +114,7 @@ std::optional<index::Site> first_block(const index::IndexQuery& index,
 /// definition in one project's index.
 std::vector<index::Site> project_definition(const index::IndexQuery& index,
                                             const index::IndexQuery::Cursor& cursor) {
-    ScopedTimer timer;
+    Timer timer;
     auto anchor = cursor.site.file;
     std::vector<index::Site> result;
     for(auto symbol: cursor.symbols) {
@@ -160,14 +159,14 @@ std::vector<index::Site> project_definition(const index::IndexQuery& index,
              "kind=definition path={} results={} elapsed_ms={:.2f}",
              cursor.site.path,
              result.size(),
-             timer.ms_f());
+             timer.precise_ms());
     return result;
 }
 
 /// declaration in one project's index.
 std::vector<index::Site> project_declaration(const index::IndexQuery& index,
                                              const index::IndexQuery::Cursor& cursor) {
-    ScopedTimer timer;
+    Timer timer;
     std::vector<index::Site> result;
     for(auto symbol: cursor.symbols) {
         // Every block of a namespace declares it: the one definition gives,
@@ -201,7 +200,7 @@ std::vector<index::Site> project_declaration(const index::IndexQuery& index,
              "kind=declaration path={} results={} elapsed_ms={:.2f}",
              cursor.site.path,
              result.size(),
-             timer.ms_f());
+             timer.precise_ms());
     return result;
 }
 
@@ -300,7 +299,7 @@ std::vector<index::Site> definition_sites(const index::IndexQuery& index,
 std::vector<index::Site> references(const index::IndexQuery& index,
                                     const index::IndexQuery::Cursor& cursor,
                                     bool include_declaration) {
-    ScopedTimer timer;
+    Timer timer;
     llvm::SmallVector<RelationKind, 5> kinds{RelationKind::Reference,
                                              RelationKind::Candidate,
                                              RelationKind::Guess};
@@ -352,7 +351,7 @@ std::vector<index::Site> references(const index::IndexQuery& index,
              "kind=references path={} results={} elapsed_ms={:.2f}",
              cursor.site.path,
              result.size(),
-             timer.ms_f());
+             timer.precise_ms());
     return result;
 }
 

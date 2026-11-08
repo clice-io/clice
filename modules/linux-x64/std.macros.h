@@ -33,6 +33,7 @@
 #   define __cpp_lib_format                             202110L
 # define __cpp_lib_string_view                          201803L
 # define __cpp_lib_ranges                               202406L
+# define __cpp_lib_string_resize_and_overwrite          202110L
 #define _LIBCPP_ABI_NAMESPACE __1
 #define _LIBCPP_HAS_MUSL_LIBC 0
 #define _LIBCPP_HAS_WIDE_CHARACTERS 1

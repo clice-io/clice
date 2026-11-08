@@ -37,7 +37,6 @@
 #define __DARWIN_LITTLE_ENDIAN  1234    /* LSB first: i386, vax */
 #define __DARWIN_BIG_ENDIAN     4321    /* MSB first: 68000, ibm, net */
 #define BIG_ENDIAN      __DARWIN_BIG_ENDIAN
-#define SEEK_END        2       /* set file offset to EOF plus offset */
 #define __restrict
 #define errno (*__error())
 #define EPERM           1               /* Operation not permitted */
@@ -62,7 +61,6 @@
 #define offsetof(t, d) __builtin_offsetof(t, d)
 #define _mm256_extract_epi64(X, N)   ((long long)__builtin_ia32_vec_ext_v4di((__v4di)(__m256i)(X), (int)(N)))
 #define INT_MAX   __INT_MAX__
-#define LONG_MAX  __LONG_MAX__
 #define INT_MIN   (-__INT_MAX__  -1)
 #define UINT_MAX  (__INT_MAX__  *2U +1U)
 #define CHAR_BIT  __CHAR_BIT__

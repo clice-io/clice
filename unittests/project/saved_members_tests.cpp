@@ -6,13 +6,13 @@ import :project.background;
 import :project.saved;
 import :settings.rules;
 import :settings.settings;
-import :support.bytes;
-import :unittests.utils;
+import :support.text;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
+import :unittests.utils;
 import :vfs.path;
 
 namespace clice::testing {

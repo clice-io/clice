@@ -36,7 +36,6 @@
 #define __DARWIN_LITTLE_ENDIAN  1234    /* LSB first: i386, vax */
 #define __DARWIN_BIG_ENDIAN     4321    /* MSB first: 68000, ibm, net */
 #define BIG_ENDIAN      __DARWIN_BIG_ENDIAN
-#define SEEK_END        2       /* set file offset to EOF plus offset */
 #define __restrict
 #define errno (*__error())
 #define EPERM           1               /* Operation not permitted */
@@ -76,7 +75,6 @@
 #define vst1q_s8(__p0, __p1) __extension__ ({   int8x16_t __s1 = __p1;   __builtin_neon_vst1q_v(__p0, __builtin_bit_cast(int8x16_t, __s1), 32); })
 #define vst1_u8(__p0, __p1) __extension__ ({   uint8x8_t __s1 = __p1;   __builtin_neon_vst1_v(__p0, __builtin_bit_cast(int8x8_t, __s1), 16); })
 #define INT_MAX   __INT_MAX__
-#define LONG_MAX  __LONG_MAX__
 #define INT_MIN   (-__INT_MAX__  -1)
 #define UINT_MAX  (__INT_MAX__  *2U +1U)
 #define CHAR_BIT  __CHAR_BIT__

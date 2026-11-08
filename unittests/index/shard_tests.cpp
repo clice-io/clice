@@ -5,7 +5,7 @@ import :index.format;
 import :index.indexer;
 import :index.shard;
 import :index.tu_index;
-import :support.bytes;
+import :support.text;
 import :syntax.position;
 import :unittests.utils.tester;
 import :unittests.utils;

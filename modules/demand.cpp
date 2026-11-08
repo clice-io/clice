@@ -187,7 +187,6 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/JSON.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
@@ -198,11 +197,9 @@
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/StringSaver.h"
-#include "llvm/Support/Threading.h"
 #include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/thread.h"
 #include "llvm/Support/xxhash.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/RISCVISAInfo.h"
@@ -229,6 +226,7 @@
 #include "kotatsu/support/small_string.h"
 #include "kotatsu/support/string_list_ref.h"
 #include "kotatsu/support/utf16.h"
+#include "kotatsu/support/utf8.h"
 #include "kotatsu/sys/console.h"
 #include "kotatsu/sys/dirs.h"
 #include "kotatsu/sys/env.h"
@@ -236,6 +234,8 @@
 #include "kotatsu/sys/cmd.h"
 #include "kotatsu/sys/process.h"
 #include "kotatsu/sys/spawn.h"
+#include "kotatsu/sys/stacktrace.h"
+#include "kotatsu/sys/thread.h"
 #include "kotatsu/sys/windows.h"
 #include "kotatsu/codec/bincode/bincode.h"
 #include "kotatsu/codec/blob/blob.h"
@@ -251,6 +251,7 @@
 #include "kotatsu/cli/table.h"
 #include "kotatsu/ipc/codec/bincode.h"
 #include "kotatsu/ipc/codec/json.h"
+#include "kotatsu/ipc/framing.h"
 #include "kotatsu/ipc/lsp/position.h"
 #include "kotatsu/ipc/lsp/progress.h"
 #include "kotatsu/ipc/lsp/protocol.h"
@@ -274,22 +275,11 @@
 #endif
 
 #include "clang-tidy/ClangTidyForceLinker.h"
-#include "kotatsu/ipc/framing.h"
-
-using kotatsu::ipc::default_max_payload;
 
 using ::fileno;
-#ifdef _WIN32
-using ::_putenv_s;
-using ::localtime_s;
-#else
+#ifndef _WIN32
 using ::kill;
-using ::localtime_r;
-using ::off_t;
 using ::pid_t;
-using ::putenv;
-using ::setenv;
-using ::ssize_t;
 #endif
 
 [[maybe_unused]] static void expand() {

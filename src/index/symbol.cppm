@@ -8,7 +8,6 @@ module clice:index.symbol;
 
 import :semantic.symbol;
 import :semantic.token_class;
-import :support.bitmap;
 import :support.prelude;
 import :syntax.token;
 

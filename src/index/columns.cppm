@@ -12,7 +12,6 @@ module;
 module clice:index.columns;
 
 import :index.format;
-import :support.bitmap;
 import :support.prelude;
 import :syntax.token;
 

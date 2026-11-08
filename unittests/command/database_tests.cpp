@@ -6,9 +6,9 @@ module;
 
 module clice;
 
+import :command.argument;
 import :command.database;
 import :command.table;
-import :support.shell;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.cdb_layouts;
 import :unittests.utils.temp_dir;
@@ -136,7 +136,7 @@ ZEST_CASE(MultiCommand) {
     /// Both commands are present, in file order.
     bool has_17 = false, has_20 = false;
     for(auto& entry: candidates) {
-        auto argv = print_argv(commands.render_full(entry.command));
+        auto argv = join_command(commands.render_full(entry.command));
         if(llvm::StringRef(argv).contains("-std=c++17"))
             has_17 = true;
         if(llvm::StringRef(argv).contains("-std=c++20"))
@@ -160,9 +160,9 @@ ZEST_CASE(CandidateOrderIsFileOrder) {
     database.add_command("/fake", "other.cpp", "clang++ -std=c++20 other.cpp"sv);
     database.add_command("/fake", "other.cpp", "clang++ -std=c++17 other.cpp"sv);
 
-    ZEXPECT(llvm::StringRef(print_argv(render_entry(database, fake("main.cpp"))))
+    ZEXPECT(llvm::StringRef(join_command(render_entry(database, fake("main.cpp"))))
                 .contains("-std=c++20"));
-    ZEXPECT(llvm::StringRef(print_argv(render_entry(database, fake("other.cpp"))))
+    ZEXPECT(llvm::StringRef(join_command(render_entry(database, fake("other.cpp"))))
                 .contains("-std=c++20"));
     auto candidates = database.candidate_entries(fake("main.cpp"));
     ZASSERT(candidates.size() == 2U);
@@ -224,7 +224,7 @@ ZEST_CASE(LoadReload) {
     tmp.touch("compile_commands.json", R"([{"directory": ")" + dir + R"(", "file": "a.cpp",
           "arguments": ["clang++", "-std=c++17", "a.cpp"]}])");
     ZASSERT(database.load(cdb_path).value_or(0) == 1U);
-    ZEXPECT(llvm::StringRef(print_argv(render_entry(database, file_a))).contains("-std=c++17"));
+    ZEXPECT(llvm::StringRef(join_command(render_entry(database, file_a))).contains("-std=c++17"));
 
     tmp.touch("compile_commands.json", R"([{"directory": ")" + dir + R"(", "file": "b.cpp",
           "arguments": ["clang++", "-std=c++23", "b.cpp"]}])");
@@ -233,7 +233,7 @@ ZEST_CASE(LoadReload) {
     ZEXPECT(database.source_count() == 1U);
 
     ZEXPECT(database.candidate_entries(file_a).empty());
-    ZEXPECT(llvm::StringRef(print_argv(render_entry(database, file_b))).contains("-std=c++23"));
+    ZEXPECT(llvm::StringRef(join_command(render_entry(database, file_b))).contains("-std=c++23"));
 };
 
 ZEST_CASE(FixtureLayouts) {
@@ -259,7 +259,7 @@ ZEST_CASE(FixtureLayouts) {
         CommandTable commands;
         CompilationDatabase database{files, commands};
         ZASSERT(load_layout(database, "single_root") == 1U);
-        ZEXPECT(llvm::StringRef(print_argv(render_entry(database, source("single_root"))))
+        ZEXPECT(llvm::StringRef(join_command(render_entry(database, source("single_root"))))
                     .contains("SINGLE"));
     }
 
@@ -274,7 +274,7 @@ ZEST_CASE(FixtureLayouts) {
         ZASSERT(candidates.size() == 1U);
         ZEXPECT(llvm::StringRef(commands.get(candidates.front().command).directory) ==
                 Spelling::absolute(path::join(layouts, "subdir_cdb", "cmake")).str());
-        ZEXPECT(llvm::StringRef(print_argv(render_entry(database, source("subdir_cdb"))))
+        ZEXPECT(llvm::StringRef(join_command(render_entry(database, source("subdir_cdb"))))
                     .contains("OUT"));
     }
 
@@ -288,7 +288,7 @@ ZEST_CASE(FixtureLayouts) {
         ZASSERT(candidates.size() == 2U);
         std::string joined;
         for(auto& entry: candidates) {
-            joined += print_argv(commands.render_full(entry.command));
+            joined += join_command(commands.render_full(entry.command));
             joined += ' ';
         }
         ZEXPECT(llvm::StringRef(joined).contains("CONFIG_A"));
@@ -300,7 +300,7 @@ ZEST_CASE(FixtureLayouts) {
         CommandTable commands;
         CompilationDatabase database{files, commands};
         ZASSERT(load_layout(database, "command_string") == 1U);
-        auto argv = print_argv(render_entry(database, source("command_string")));
+        auto argv = join_command(render_entry(database, source("command_string")));
         ZEXPECT(llvm::StringRef(argv).contains("CMD"));
         ZEXPECT(!llvm::StringRef(argv).contains(" -c "));
         ZEXPECT(!llvm::StringRef(argv).contains(" -o "));
@@ -316,7 +316,7 @@ ZEST_CASE(FixtureLayouts) {
         ZASSERT(candidates.size() == 1U);
         ZEXPECT(llvm::StringRef(commands.get(candidates.front().command).directory) ==
                 Spelling::absolute(path::join(layouts, "relative_directory", "src")).str());
-        ZEXPECT(llvm::StringRef(print_argv(render_entry(database, file))).contains("RELATIVE"));
+        ZEXPECT(llvm::StringRef(join_command(render_entry(database, file))).contains("RELATIVE"));
     }
 
     {
@@ -329,7 +329,7 @@ ZEST_CASE(FixtureLayouts) {
         auto argv = render_entry(database, source("launcher_prefix"));
         ZASSERT(!argv.empty());
         ZEXPECT(argv.front() == "clang++"sv);
-        ZEXPECT(llvm::StringRef(print_argv(argv)).contains("WRAPPED"));
+        ZEXPECT(llvm::StringRef(join_command(argv)).contains("WRAPPED"));
     }
 
     {
@@ -337,7 +337,7 @@ ZEST_CASE(FixtureLayouts) {
         CommandTable commands;
         CompilationDatabase database{files, commands};
         ZASSERT(load_layout(database, "response_file") == 1U);
-        auto argv = print_argv(render_entry(database, source("response_file")));
+        auto argv = join_command(render_entry(database, source("response_file")));
         ZEXPECT(llvm::StringRef(argv).contains("FROM_RSP"));
         ZEXPECT(!llvm::StringRef(argv).contains("@flags.rsp"));
     }
@@ -637,7 +637,7 @@ ZEST_CASE(CorruptKeepsEntries) {
     auto file = path::join(tmp.root, "a.cpp");
     auto candidates = cdb.candidate_entries(file);
     ZASSERT(candidates.size() == 1U);
-    ZEXPECT(llvm::StringRef(print_argv(commands.render_full(candidates.front().command)))
+    ZEXPECT(llvm::StringRef(join_command(commands.render_full(candidates.front().command)))
                 .contains("-std=c++20"));
 };
 

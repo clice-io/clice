@@ -602,9 +602,9 @@ private:
             return std::nullopt;
         }
 
-        auto& src_mgr = unit.context().getSourceManager();
-        auto block_begin_line = src_mgr.getLineNumber(focus.file(), *block_begin);
-        auto rbrace_line = src_mgr.getLineNumber(focus.file(), rbrace_offset);
+        auto positions = focus.positions();
+        auto block_begin_line = positions.position(*block_begin, PositionEncoding::UTF8)->line;
+        auto rbrace_line = positions.position(rbrace_offset, PositionEncoding::UTF8)->line;
 
         // Don't show hint on trivial blocks like `class X {};`
         if(block_begin_line + options.min_block_lines - 1 > rbrace_line) {

@@ -3,7 +3,7 @@ module clice;
 import :index.columns;
 import :index.format;
 import :index.project_records;
-import :support.bytes;
+import :support.text;
 import :unittests.utils;
 
 namespace clice::testing {

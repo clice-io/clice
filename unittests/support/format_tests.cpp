@@ -1,6 +1,5 @@
 module clice;
 
-import :support.format;
 import :unittests.utils;
 
 namespace clice::testing {

@@ -229,4 +229,39 @@ void render_driver_arg(const Arg& arg,
 /// verbatim — over-keying is safe, under-keying is not.
 std::string canonicalize(llvm::ArrayRef<std::string> args);
 
+/// The arguments of command line `command`, quoted as `quoting` says, into
+/// `arguments`, whose strings keep their storage for the next line.
+inline void split_command(llvm::StringRef command,
+                          sys::cmd::Quoting quoting,
+                          std::vector<std::string>& arguments) {
+    std::size_t count = 0;
+    // Blanks before the program are none of the command, as clang reads a
+    // database's: Windows's rule would read them as an empty program name.
+    for(auto argument: sys::cmd::split(command.ltrim(), quoting)) {
+        if(count < arguments.size()) {
+            arguments[count].assign(argument);
+        } else {
+            arguments.emplace_back(argument);
+        }
+        count += 1;
+    }
+    arguments.resize(count);
+}
+
+/// The arguments of command line `command`, quoted as `quoting` says.
+inline std::vector<std::string>
+    split_command(llvm::StringRef command, sys::cmd::Quoting quoting = sys::cmd::native_quoting) {
+    std::vector<std::string> arguments;
+    split_command(command, quoting, arguments);
+    return arguments;
+}
+
+/// `arguments` as one command line, each quoted as the host's shell and
+/// split_command read it back: what a person copies to run the command.
+inline std::string join_command(kotatsu::string_list_ref arguments) {
+    std::string line;
+    sys::cmd::join(line, arguments);
+    return line;
+}
+
 }  // namespace clice

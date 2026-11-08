@@ -3,10 +3,10 @@ module clice;
 import :project.graph.pch;
 import :project.graph.task_graph;
 import :project.project;
-import :support.anomaly;
-import :unittests.worker.helpers;
-import :unittests.utils;
+import :support.logging;
 import :unittests.utils.temp_dir;
+import :unittests.utils;
+import :unittests.worker.helpers;
 import :vfs.cache_store;
 
 namespace clice::testing {

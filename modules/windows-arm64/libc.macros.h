@@ -19,6 +19,7 @@
 #define SIGTERM 15
 #define SIG_DFL (__p_sig_fn_t)0
 #define SIG_IGN (__p_sig_fn_t)1
+#define INT64_MIN  (-9223372036854775807LL - 1)
 #define INT32_MAX 2147483647
 #define INT64_MAX 9223372036854775807LL
 #define UINT32_MAX 0xffffffffU  /* 4294967295U */

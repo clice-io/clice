@@ -11,22 +11,18 @@ namespace {
 /// The dependent expression at the completion point, in the innermost
 /// function holding it (AtPoint).
 struct Finder : clang::RecursiveASTVisitor<Finder> {
-    Finder(const clang::SourceManager& sources, std::uint32_t target) :
-        sources(sources), target(target) {}
+    Finder(CompilationUnit& unit, std::uint32_t target) : unit(unit), target(target) {}
 
     bool at(clang::SourceLocation loc) {
-        auto [file, offset] = sources.getDecomposedLoc(loc);
-        return file == sources.getMainFileID() && offset == target;
+        return unit.focus_file().offset(loc) == target;
     }
 
     bool holds(const clang::Stmt* body) {
         if(!body) {
             return false;
         }
-        auto begin = sources.getDecomposedLoc(sources.getFileLoc(body->getBeginLoc()));
-        auto end = sources.getDecomposedLoc(sources.getFileLoc(body->getEndLoc()));
-        return begin.first == sources.getMainFileID() && begin.second <= target &&
-               target <= end.second;
+        auto begin = unit.focus_file().offset(body->getBeginLoc());
+        return begin && *begin <= target && target <= unit.seen_at(body->getEndLoc()).offset;
     }
 
     bool VisitFunctionDecl(clang::FunctionDecl* function) {
@@ -44,21 +40,21 @@ struct Finder : clang::RecursiveASTVisitor<Finder> {
     }
 
     bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* access) {
-        if(at(sources.getFileLoc(access->getMemberLoc()))) {
+        if(at(access->getMemberLoc())) {
             member = access;
         }
         return !found();
     }
 
     bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* name) {
-        if(at(sources.getFileLoc(name->getLocation()))) {
+        if(at(name->getLocation())) {
             qualifier = name->getQualifierLoc();
         }
         return !found();
     }
 
     bool VisitDependentNameTypeLoc(clang::DependentNameTypeLoc name) {
-        if(at(sources.getFileLoc(name.getNameLoc()))) {
+        if(at(name.getNameLoc())) {
             qualifier = name.getQualifierLoc();
         }
         return !found();
@@ -68,7 +64,7 @@ struct Finder : clang::RecursiveASTVisitor<Finder> {
         return member || qualifier;
     }
 
-    const clang::SourceManager& sources;
+    CompilationUnit& unit;
 
     std::uint32_t target;
 
@@ -94,7 +90,7 @@ WholeBuffer::WholeBuffer(const CompilationParams& completion) :
 
 auto WholeBuffer::instantiated(const clang::NamedDecl* templated,
                                bool loop,
-                               clang::Preprocessor& pp) -> std::optional<AtPoint> {
+                               CompilationUnit& completion) -> std::optional<AtPoint> {
     if(!compiled) {
         // The resolver binds no class template's parameters through its
         // instantiations: a member of one learns nothing more here, but for
@@ -114,7 +110,7 @@ auto WholeBuffer::instantiated(const clang::NamedDecl* templated,
         }
         auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(templated);
         if(auto* name = named->getIdentifier()) {
-            if(!loop && !called_after(name->getName(), pp)) {
+            if(!loop && !called_after(name->getName(), completion.sema().getPreprocessor())) {
                 return std::nullopt;
             }
             names.emplace().insert(name->getName());
@@ -124,8 +120,7 @@ auto WholeBuffer::instantiated(const clang::NamedDecl* templated,
         }
         std::optional<std::uint32_t> declared;
         if(!member) {
-            auto& sources = pp.getSourceManager();
-            declared = sources.getDecomposedExpansionLoc(templated->getLocation()).second;
+            declared = completion.produced_at(templated->getLocation()).offset;
         }
         compiled = compile({
             .kind = CompilationKind::Content,
@@ -143,7 +138,7 @@ auto WholeBuffer::instantiated(const clang::NamedDecl* templated,
     if(!whole) {
         return std::nullopt;
     }
-    Finder finder(whole->context().getSourceManager(), target);
+    Finder finder(*whole, target);
     for(auto* decl: whole->top_level_decls()) {
         if(!finder.TraverseDecl(decl)) {
             break;

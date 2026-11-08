@@ -1,19 +1,5 @@
-module;
-
-#ifdef __GLIBC__
-#include <malloc.h>
-#endif
-
-#include <signal.h>
-
-#ifdef __APPLE__
-#include <sys/event.h>
-#include <unistd.h>
-#endif
-
 module clice;
 
-import :support.environment;
 import :support.logging;
 import :support.process;
 
@@ -63,12 +49,7 @@ extern "C" {
 }
 
 void release_free_memory() {
-    // Under ASan glibc's allocator holds nothing: malloc_trim would only
-    // initialize it, which glibc does without a lock, so two threads trimming
-    // at once corrupt it (a crash then, or an abort at thread exit).
-#if defined(__GLIBC__) && !defined(__SANITIZE_ADDRESS__)
-    malloc_trim(0);
-#endif
+    sys::release_free_heap();
     if(clice_allocator_collect) {
         clice_allocator_collect();
     }
@@ -119,14 +100,6 @@ async::task<> release_free_memory_everywhere() {
 }
 
 async::task<> watch_termination(int signum, bool& requested, std::function<void()> stop) {
-    // Runs after the watcher closes, which restores the default action: a
-    // repeated SIGTERM or SIGHUP would then kill a process that is only left
-    // to report and exit.
-    auto keep_ignoring = llvm::make_scope_exit([&] {
-        if(requested && signum != SIGINT) {
-            std::signal(signum, SIG_IGN);
-        }
-    });
     auto watcher = async::signal::create();
     if(!watcher || watcher->start(signum).has_error()) {
         co_return;
@@ -135,32 +108,16 @@ async::task<> watch_termination(int signum, bool& requested, std::function<void(
         co_await watcher->wait();
         if(!requested) {
             requested = true;
+            // Once the watcher closes, a repeated SIGTERM or SIGHUP must not
+            // kill a process that is only left to report and exit.
+            if(signum != SIGINT) {
+                watcher->start(signum, async::signal::leave::ignored);
+            }
             stop();
         } else if(signum == SIGINT) {
             std::_Exit(130);
         }
     }
 }
-
-#ifdef __APPLE__
-
-void exit_with_parent() {
-    auto parent = ::getppid();
-    auto queue = ::kqueue();
-    struct kevent change;
-    EV_SET(&change, parent, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, nullptr);
-    // launchd adopts an orphan: a parent of 1 exited before this ran.
-    if(parent == 1 || queue == -1 || ::kevent(queue, &change, 1, nullptr, 0, nullptr) == -1 ||
-       ::getppid() != parent) {
-        std::_Exit(1);
-    }
-    std::thread([queue] {
-        struct kevent event;
-        while(::kevent(queue, nullptr, 0, &event, 1, nullptr) == -1 && errno == EINTR) {}
-        std::_Exit(1);
-    }).detach();
-}
-
-#endif
 
 }  // namespace clice

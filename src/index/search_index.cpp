@@ -272,7 +272,7 @@ std::vector<std::byte> encode_segment(llvm::ArrayRef<Node> nodes,
         }
     }
 
-    constexpr auto kind_count = meta::reflection<SymbolKind::Kind>::member_names.size();
+    constexpr auto kind_count = meta::enum_names<SymbolKind::Kind>.size();
     std::vector<Bitmap> kinds(kind_count);
     llvm::DenseMap<std::uint32_t, Bitmap> files;
     for(std::uint32_t id = 0; id < count; id += 1) {

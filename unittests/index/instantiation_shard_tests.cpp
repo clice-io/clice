@@ -2,7 +2,7 @@ module clice;
 
 import :index.format;
 import :index.instantiation_shard;
-import :support.bytes;
+import :support.text;
 import :unittests.utils;
 
 namespace clice::testing {

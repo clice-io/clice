@@ -31,11 +31,9 @@ auto CompilationUnit::file_id(clang::FileEntryRef entry) -> clang::FileID {
 }
 
 auto CompilationUnit::file_id(llvm::StringRef file) -> clang::FileID {
-    auto entry = SM().getFileManager().getFileRef(file);
-    if(entry) {
+    if(auto entry = SM().getFileManager().getOptionalFileRef(file)) {
         return file_id(*entry);
     }
-
     return clang::FileID();
 }
 
@@ -153,6 +151,22 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
     };
 }
 
+auto CompilationUnit::written_range(clang::CharSourceRange range) -> std::optional<FileRange> {
+    if(range.isTokenRange()) {
+        return written_range(range.getAsRange());
+    }
+    auto chars = clang::Lexer::makeFileCharRange(range, SM(), lang_options());
+    if(chars.isInvalid()) {
+        return std::nullopt;
+    }
+    auto begin = decompose(chars.getBegin());
+    auto end = decompose(chars.getEnd());
+    return FileRange{
+        begin.file,
+        {begin.offset, end.offset}
+    };
+}
+
 auto CompilationUnit::produced_range(clang::SourceRange range) -> FileRange {
     auto& SM = this->SM();
     auto begin = decompose(SM.getExpansionLoc(range.getBegin()));
@@ -174,6 +188,53 @@ auto CompilationUnit::produced_range(clang::SourceRange range) -> FileRange {
     };
 }
 
+auto CompilationUnit::seen_name(clang::SourceRange name) -> SeenName {
+    auto& SM = this->SM();
+    auto begin = SM.getFileLoc(name.getBegin());
+    SeenName seen{
+        .range = begin,
+        .written = begin == SM.getSpellingLoc(name.getBegin()),
+    };
+    auto end = SM.getFileLoc(name.getEnd());
+    if(seen.written && end == SM.getSpellingLoc(name.getEnd()) &&
+       SM.getFileID(end) == SM.getFileID(begin) &&
+       SM.getFileOffset(begin) <= SM.getFileOffset(end)) {
+        seen.range.setEnd(end);
+    }
+    return seen;
+}
+
+auto CompilationUnit::written_location(clang::SourceLocation location) -> clang::SourceLocation {
+    return SM().getSpellingLoc(location);
+}
+
+auto CompilationUnit::seen_location(clang::SourceLocation location) -> clang::SourceLocation {
+    return SM().getFileLoc(location);
+}
+
+auto CompilationUnit::produced_bounds(clang::SourceRange range) -> clang::SourceRange {
+    return SM().getExpansionRange(range).getAsRange();
+}
+
+bool CompilationUnit::before(clang::SourceLocation a, clang::SourceLocation b) {
+    return SM().isBeforeInTranslationUnit(a, b);
+}
+
+bool CompilationUnit::concatenated(clang::SourceLocation location) {
+    return SM().isWrittenInScratchSpace(SM().getSpellingLoc(location));
+}
+
+auto CompilationUnit::expansion_level(clang::SourceLocation location) -> ExpansionLevel {
+    assert(location.isMacroID() && "a location a macro produced");
+    auto& SM = this->SM();
+    const auto& expansion = SM.getSLocEntry(SM.getFileID(location)).getExpansion();
+    return {
+        .spelling = SM.getImmediateSpellingLoc(location),
+        .start = expansion.getExpansionLocStart(),
+        .argument = expansion.isMacroArgExpansion(),
+    };
+}
+
 auto CompilationUnit::focus_file() -> FocusFile {
     return FocusFile(*this);
 }
@@ -192,11 +253,11 @@ auto CompilationUnit::entry_path(clang::FileEntryRef entry) -> llvm::StringRef {
 
     /// Absolutized against the compile's working directory, then named by
     /// the identity the master interns: symlinked spellings of a file
-    /// collapse into one path here, hardlinked ones do not, and the cache
-    /// is keyed by the spelling-level FileEntryRef so each keeps its own
-    /// path — the dependency set must cover every spelling the compile
-    /// read. A file only memory holds (a header context's fragment) is
-    /// named like a missing one, through its directory.
+    /// collapse into one path here. Clang reads hardlinked spellings as one
+    /// file entry, which the FileEntryRef key does not tell apart: the
+    /// first names them all, and the dependency set misses the others. A
+    /// file only memory holds (a header context's fragment) is named like
+    /// a missing one, through its directory.
     auto path = input_path(SM().getFileManager(), entry);
     auto [it, inserted] = path_cache.try_emplace(entry, llvm::StringSaver(path_storage).save(path));
     assert(inserted && "File path already exists");
@@ -244,8 +305,12 @@ auto CompilationUnit::file_content(clang::FileID fid) -> llvm::StringRef {
     return file_text(fid).text();
 }
 
+auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
+    return file_text(fid).positions();
+}
+
 auto CompilationUnit::loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef> {
-    return SM().getBufferDataOrNone(fid);
+    return SM().getBufferDataIfLoaded(fid);
 }
 
 auto CompilationUnit::lexical(clang::FileID fid) -> const LexicalInfo& {
@@ -261,11 +326,10 @@ auto CompilationUnit::comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo:
 }
 
 bool CompilationUnit::is_builtin_file(clang::FileID fid) {
-    // No FileEntryRef => built-in/command line/scratch.
     if(!SM().getFileEntryRefForID(fid)) {
         if(auto buffer = SM().getBufferOrNone(fid)) {
             auto name = buffer->getBufferIdentifier();
-            return name == "<built-in>" || name == "<command line>" || name == "<scratch space>";
+            return name == "<built-in>" || name == "<scratch space>";
         }
     }
 
@@ -274,6 +338,10 @@ bool CompilationUnit::is_builtin_file(clang::FileID fid) {
 
 auto CompilationUnit::include_location(clang::FileID fid) -> clang::SourceLocation {
     return SM().getIncludeLoc(fid);
+}
+
+bool CompilationUnit::imported(clang::FileID fid) {
+    return SM().getModuleImportLoc(SM().getLocForStartOfFile(fid)).first.isValid();
 }
 
 const SynthesizedOrigin* CompilationUnit::origin(clang::FileEntryRef entry) {
@@ -351,6 +419,10 @@ bool CompilationUnit::in_system_header(clang::SourceLocation location) {
         }
     }
     return *focus_in_system_directory;
+}
+
+bool CompilationUnit::in_library(clang::SourceLocation location) {
+    return SM().isInSystemHeader(location);
 }
 
 bool CompilationUnit::from_context(clang::FileID fid) {
@@ -437,6 +509,12 @@ bool FocusFile::contains(clang::FileID fid) {
     return fid == file() || (fid.isValid() && fid == unit.SM().getPreambleFileID());
 }
 
+bool FocusFile::parsed_by_pch(clang::SourceLocation location) {
+    auto& SM = unit.SM();
+    auto preamble = SM.getPreambleFileID();
+    return preamble.isValid() && SM.isInFileID(SM.getFileLoc(location), preamble);
+}
+
 auto FocusFile::text() -> SourceText& {
     return unit.file_text(file());
 }
@@ -474,6 +552,32 @@ auto FocusFile::offset(clang::SourceLocation location) -> std::optional<std::uin
     return seen.offset;
 }
 
+auto FocusFile::written_offset(clang::SourceLocation location) -> std::optional<std::uint32_t> {
+    auto written = unit.written_at(location);
+    if(!contains(written.file)) {
+        return std::nullopt;
+    }
+    return written.offset;
+}
+
+auto FocusFile::macro_invocations() -> std::vector<clang::SourceLocation> {
+    auto& SM = unit.SM();
+    std::vector<clang::SourceLocation> invocations;
+    for(unsigned i = 0; i < SM.local_sloc_entry_size(); i += 1) {
+        const auto& entry = SM.getLocalSLocEntry(i);
+        if(!entry.isExpansion() || entry.getExpansion().isMacroArgExpansion() ||
+           !contains(SM.getFileID(entry.getExpansion().getSpellingLoc()))) {
+            continue;
+        }
+        invocations.push_back(SM.getExpansionLoc(entry.getExpansion().getExpansionLocStart()));
+    }
+    ranges::sort(invocations, [&](clang::SourceLocation left, clang::SourceLocation right) {
+        return SM.isBeforeInTranslationUnit(left, right);
+    });
+    invocations.erase(ranges::unique(invocations).begin(), invocations.end());
+    return invocations;
+}
+
 auto FocusFile::written_range(clang::SourceRange range) -> std::optional<LocalSourceRange> {
     auto written = unit.written_range(range);
     if(!written || !contains(written->file)) {
@@ -496,7 +600,23 @@ auto CompilationUnit::token_length(clang::SourceLocation location) -> std::uint3
 
 auto CompilationUnit::token_spelling(clang::SourceLocation location) -> std::string {
     llvm::SmallString<64> buffer;
-    return clang::Lexer::getSpelling(location, buffer, SM(), instance->getLangOpts()).str();
+    return clang::Lexer::getSpelling(SM().getSpellingLoc(location),
+                                     buffer,
+                                     SM(),
+                                     instance->getLangOpts())
+        .str();
+}
+
+auto CompilationUnit::next_token(clang::SourceLocation location) -> std::optional<clang::Token> {
+    return clang::Lexer::findNextToken(location, SM(), instance->getLangOpts());
+}
+
+auto CompilationUnit::previous_token(clang::SourceLocation location)
+    -> std::optional<clang::Token> {
+    return clang::Lexer::findPreviousToken(location,
+                                           SM(),
+                                           instance->getLangOpts(),
+                                           /*IncludeComments=*/false);
 }
 
 bool CompilationUnit::is_named_module() {

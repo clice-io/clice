@@ -498,10 +498,8 @@ private:
     }
 
     SemanticsBuilder(Semantics& semantics, CompilationUnit& unit, SemanticsOptions options) :
-        semantics(semantics), unit(unit), options(options), SM(unit.context().getSourceManager()) {
+        semantics(semantics), unit(unit), options(options) {
         focus_fid = unit.focus_file().file();
-        focus_file_range = clang::SourceRange(SM.getLocForStartOfFile(focus_fid),
-                                              SM.getLocForEndOfFile(focus_fid));
 
         // Token ownership serves the focus file's features; the whole-TU
         // shape reads no tokens.
@@ -730,9 +728,8 @@ private:
     // A macro's argument is taken where it is written, the rest of its
     // expansion at the invocation's name, as TokenMap::origin maps them.
     void take_preamble(clang::SourceRange S, std::uint32_t self) {
-        auto preamble = SM.getPreambleFileID();
-        if(preamble.isInvalid() || !SM.isInFileID(SM.getFileLoc(S.getBegin()), preamble) ||
-           !SM.isInFileID(SM.getFileLoc(S.getEnd()), preamble)) {
+        auto focus = unit.focus_file();
+        if(!focus.parsed_by_pch(S.getBegin()) || !focus.parsed_by_pch(S.getEnd())) {
             return;
         }
         auto begin = unit.seen_at(S.getBegin());
@@ -771,18 +768,6 @@ private:
         }
     }
 
-    // Decomposes Loc and returns the offset if the file ID is the focus file.
-    std::optional<unsigned> offset_in_focus_file(clang::SourceLocation location) const {
-        // Decoding Loc with SM.getDecomposedLoc is relatively expensive.
-        // But SourceLocations for a file are numerically contiguous, so we
-        // can use cheap integer operations instead.
-        if(location < focus_file_range.getBegin() || location >= focus_file_range.getEnd()) {
-            return std::nullopt;
-        }
-
-        return location.getRawEncoding() - focus_file_range.getBegin().getRawEncoding();
-    }
-
     // Cross-check the lexically scanned module declarations against the
     // compiled module before they become nodes: valid code cannot spell
     // these token patterns with another meaning, but invalid or disabled
@@ -799,13 +784,14 @@ private:
         // DefinitionLoc — the written `module` keyword of the real
         // declaration. This survives macro-spelled names (the keyword is
         // always written) and kills duplicates in disabled branches.
+        auto focus = unit.focus_file();
         std::optional<unsigned> definition_offset;
         if(auto def_loc = mod->DefinitionLoc; def_loc.isValid()) {
-            definition_offset = offset_in_focus_file(SM.getSpellingLoc(def_loc));
+            definition_offset = focus.written_offset(def_loc);
         }
         std::optional<unsigned> private_offset;
         if(auto* fragment = mod->getPrivateModuleFragment()) {
-            private_offset = offset_in_focus_file(SM.getSpellingLoc(fragment->DefinitionLoc));
+            private_offset = focus.written_offset(fragment->DefinitionLoc);
         }
 
         std::erase_if(modules, [&](const LexicalInfo::ModuleDeclaration& module) {
@@ -843,17 +829,22 @@ private:
 
         std::vector<Entry> directives;
 
+        auto focus = unit.focus_file();
+        /// Where the focus file writes `location` itself, not through a macro.
+        auto written_here = [&](clang::SourceLocation location) -> std::optional<std::uint32_t> {
+            return location.isFileID() ? focus.written_offset(location) : std::nullopt;
+        };
         if(auto it = unit.directives().find(focus_fid); it != unit.directives().end()) {
             auto& directive = it->second;
 
             for(auto& macro: directive.macros) {
-                if(auto offset = offset_in_focus_file(macro.loc)) {
+                if(auto offset = written_here(macro.loc)) {
                     directives.push_back({*offset, SemanticNode(&macro), {}});
                 }
             }
 
             for(auto& include: directive.includes) {
-                if(auto offset = offset_in_focus_file(include.location)) {
+                if(auto offset = written_here(include.location)) {
                     directives.push_back({*offset, SemanticNode(&include), {}});
                 }
             }
@@ -864,15 +855,12 @@ private:
                 /// spelled focus-file tokens.
                 Entry entry{0, SemanticNode(&import), {}};
                 std::optional<unsigned> anchor;
-                if(auto offset = offset_in_focus_file(import.location)) {
+                if(auto offset = written_here(import.location)) {
                     anchor = *offset;
                     entry.extra_offsets.push_back(*offset);
                 }
                 for(auto loc: import.name_locations) {
-                    if(loc.isMacroID()) {
-                        loc = SM.getSpellingLoc(loc);
-                    }
-                    if(auto name_offset = offset_in_focus_file(loc)) {
+                    if(auto name_offset = focus.written_offset(loc)) {
                         if(!anchor) {
                             anchor = *name_offset;
                         }
@@ -965,9 +953,7 @@ private:
     Semantics& semantics;
     CompilationUnit& unit;
     SemanticsOptions options;
-    clang::SourceManager& SM;
     clang::FileID focus_fid;
-    clang::SourceRange focus_file_range;
 
     /// Per expanded token, whether a node took it.
     llvm::BitVector taken;
@@ -1022,7 +1008,7 @@ void refer_name(References& out,
     if(!decl) {
         return;
     }
-    auto range = written_name(name, decl->getASTContext().getSourceManager());
+    auto range = written_name(name, decl->getASTContext());
     auto end = range.getEnd() == range.getBegin() ? clang::SourceLocation() : range.getEnd();
     out.push_back({decl, kind, range.getBegin(), end});
 }
@@ -1989,7 +1975,8 @@ clang::SourceLocation keyword_after_scope(const clang::ASTContext& context,
 }
 
 clang::SourceRange written_name(const clang::DeclarationNameInfo& name,
-                                const clang::SourceManager& SM) {
+                                const clang::ASTContext& context) {
+    auto& SM = context.getSourceManager();
     auto location = name.getLoc();
     switch(name.getName().getNameKind()) {
         case clang::DeclarationName::CXXDestructorName: {

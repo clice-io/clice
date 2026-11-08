@@ -5093,6 +5093,7 @@ using ::kotatsu::decode_utf8;
 using ::kotatsu::dependent_false;
 using ::kotatsu::eq_comparable_with;
 using ::kotatsu::first_byte_index;
+using ::kotatsu::floor_char_boundary;
 using ::kotatsu::format_kind;
 using ::kotatsu::from_utf16;
 using ::kotatsu::function;
@@ -5148,35 +5149,19 @@ using ::kotatsu::string_buffer;
 using ::kotatsu::string_list_ref;
 using ::kotatsu::string_ref;
 using ::kotatsu::to_utf16;
-using ::kotatsu::tuple_any_of_v;
-using ::kotatsu::tuple_count_of_v;
-using ::kotatsu::tuple_find;
-using ::kotatsu::tuple_find_spec;
-using ::kotatsu::tuple_find_spec_t;
-using ::kotatsu::tuple_find_t;
-using ::kotatsu::tuple_has_spec_v;
-using ::kotatsu::tuple_has_v;
 using ::kotatsu::tuple_push_front;
 using ::kotatsu::tuple_push_front_t;
 using ::kotatsu::type_list;
-using ::kotatsu::type_list_cat;
-using ::kotatsu::type_list_cat_t;
-using ::kotatsu::type_list_concat;
 using ::kotatsu::type_list_concat_t;
-using ::kotatsu::type_list_contains;
 using ::kotatsu::type_list_contains_v;
-using ::kotatsu::type_list_element;
 using ::kotatsu::type_list_element_t;
-using ::kotatsu::type_list_filter;
 using ::kotatsu::type_list_filter_t;
-using ::kotatsu::type_list_prepend;
-using ::kotatsu::type_list_prepend_t;
-using ::kotatsu::type_list_size;
+using ::kotatsu::type_list_find_spec_t;
+using ::kotatsu::type_list_find_t;
+using ::kotatsu::type_list_has_spec_v;
 using ::kotatsu::type_list_size_v;
 using ::kotatsu::type_list_to_union;
 using ::kotatsu::type_list_to_union_t;
-using ::kotatsu::type_list_unique;
-using ::kotatsu::type_list_unique_impl;
 using ::kotatsu::type_list_unique_t;
 using ::kotatsu::unordered_associative_range;
 using ::kotatsu::unordered_map_range;
@@ -5218,6 +5203,7 @@ using ::kotatsu::async::relay;
 using ::kotatsu::async::result;
 using ::kotatsu::async::run;
 using ::kotatsu::async::semaphore;
+using ::kotatsu::async::set_thread_pool_size;
 using ::kotatsu::async::signal;
 using ::kotatsu::async::sleep;
 using ::kotatsu::async::stream;
@@ -5228,6 +5214,7 @@ using ::kotatsu::async::task_group;
 using ::kotatsu::async::tcp;
 using ::kotatsu::async::timer;
 using ::kotatsu::async::udp;
+using ::kotatsu::async::wait_exit;
 using ::kotatsu::async::wait_node;
 using ::kotatsu::async::watcher;
 using ::kotatsu::async::when_all;
@@ -5560,7 +5547,6 @@ using ::kotatsu::codec::blob::detail::align_up;
 using ::kotatsu::codec::blob::detail::arithmetic_t;
 using ::kotatsu::codec::blob::detail::decode;
 using ::kotatsu::codec::blob::detail::element_t;
-using ::kotatsu::codec::blob::detail::field_count_v;
 using ::kotatsu::codec::blob::detail::field_t;
 using ::kotatsu::codec::blob::detail::fingerprint;
 using ::kotatsu::codec::blob::detail::fingerprint_v;
@@ -5632,16 +5618,19 @@ using ::kotatsu::codec::detail::encode_under;
 using ::kotatsu::codec::detail::encode_untagged_variant;
 using ::kotatsu::codec::detail::encode_with_attrs;
 using ::kotatsu::codec::detail::ensure_allocated;
+using ::kotatsu::codec::detail::entered_field_v;
 using ::kotatsu::codec::detail::enum_info_node;
 using ::kotatsu::codec::detail::enum_names_of;
 using ::kotatsu::codec::detail::enum_names_policy_t;
 using ::kotatsu::codec::detail::fail_unknown_tag;
 using ::kotatsu::codec::detail::fail_unnamed_enum;
 using ::kotatsu::codec::detail::fail_unusable_tag;
-using ::kotatsu::codec::detail::field_name_in;
-using ::kotatsu::codec::detail::fill_field;
+using ::kotatsu::codec::detail::field_at;
+using ::kotatsu::codec::detail::field_kind;
+using ::kotatsu::codec::detail::field_type_info;
 using ::kotatsu::codec::detail::find_field_slot;
 using ::kotatsu::codec::detail::find_tag_index;
+using ::kotatsu::codec::detail::flattened_fields;
 using ::kotatsu::codec::detail::format_of_impl;
 using ::kotatsu::codec::detail::has_field_named;
 using ::kotatsu::codec::detail::has_native_variant;
@@ -5650,9 +5639,9 @@ using ::kotatsu::codec::detail::has_try_read;
 using ::kotatsu::codec::detail::info_node;
 using ::kotatsu::codec::detail::kind_compatible;
 using ::kotatsu::codec::detail::kind_compatible_impl;
-using ::kotatsu::codec::detail::make_field_info;
 using ::kotatsu::codec::detail::match_field;
 using ::kotatsu::codec::detail::nested_alternative_pass;
+using ::kotatsu::codec::detail::node_format;
 using ::kotatsu::codec::detail::on_chain;
 using ::kotatsu::codec::detail::pass_unknown_field;
 using ::kotatsu::codec::detail::peek_tag_index;
@@ -5675,6 +5664,7 @@ using ::kotatsu::codec::detail::run_encode;
 using ::kotatsu::codec::detail::scope;
 using ::kotatsu::codec::detail::scoped_format;
 using ::kotatsu::codec::detail::single_field_slots;
+using ::kotatsu::codec::detail::spec_or_unset;
 using ::kotatsu::codec::detail::struct_info;
 using ::kotatsu::codec::detail::tag_policy;
 using ::kotatsu::codec::detail::taggable;
@@ -5749,6 +5739,7 @@ using ::kotatsu::codec::json::Source;
 using ::kotatsu::codec::json::StringBuilder;
 using ::kotatsu::codec::json::StructWriter;
 using ::kotatsu::codec::json::ValueWriter;
+using ::kotatsu::codec::json::default_capacity;
 using ::kotatsu::codec::json::encode_options;
 using ::kotatsu::codec::json::format;
 using ::kotatsu::codec::json::from_padded_string;
@@ -5829,24 +5820,35 @@ using ::kotatsu::codec::toml::detail::select_root_node;
 export namespace kotatsu::detail {
 using ::kotatsu::detail::ErasedCallable;
 using ::kotatsu::detail::append_sequence_element;
+using ::kotatsu::detail::byte_ones;
+using ::kotatsu::detail::concat_element;
+using ::kotatsu::detail::concat_places;
+using ::kotatsu::detail::concat_size;
 using ::kotatsu::detail::decode_sequence;
 using ::kotatsu::detail::default_buffer_size;
+using ::kotatsu::detail::first_of;
+using ::kotatsu::detail::first_set;
 using ::kotatsu::detail::from_utf16;
 using ::kotatsu::detail::inline_buffer;
 using ::kotatsu::detail::insert_map_entry;
 using ::kotatsu::detail::is_small_vector_v;
+using ::kotatsu::detail::list_concat;
+using ::kotatsu::detail::list_element;
+using ::kotatsu::detail::list_filter;
+using ::kotatsu::detail::list_find;
+using ::kotatsu::detail::list_find_spec;
+using ::kotatsu::detail::list_place;
+using ::kotatsu::detail::list_places;
+using ::kotatsu::detail::list_unique;
 using ::kotatsu::detail::map_entry_like;
 using ::kotatsu::detail::map_entry_pair_like;
 using ::kotatsu::detail::map_entry_tuple_like;
 using ::kotatsu::detail::map_entry_types;
 using ::kotatsu::detail::map_insertable;
-using ::kotatsu::detail::pack_any_v;
-using ::kotatsu::detail::pack_count_v;
-using ::kotatsu::detail::pack_find;
-using ::kotatsu::detail::pack_find_spec;
 using ::kotatsu::detail::sequence_insertable;
 using ::kotatsu::detail::small_vector_compatible_range;
 using ::kotatsu::detail::small_vector_size_type;
+using ::kotatsu::detail::sum;
 using ::kotatsu::detail::synth_three_way;
 using ::kotatsu::detail::to_utf16;
 }
@@ -5867,6 +5869,7 @@ using ::kotatsu::fs::Volume;
 using ::kotatsu::fs::Walk;
 using ::kotatsu::fs::absolute;
 using ::kotatsu::fs::canonical;
+using ::kotatsu::fs::case_sensitive;
 using ::kotatsu::fs::copy_file;
 using ::kotatsu::fs::create_directories;
 using ::kotatsu::fs::create_directory;
@@ -5975,9 +5978,12 @@ using ::kotatsu::ipc::Transport;
 using ::kotatsu::ipc::UnansweredRequest;
 using ::kotatsu::ipc::ViolationPolicy;
 using ::kotatsu::ipc::basic_request_context;
+using ::kotatsu::ipc::default_max_payload;
 using ::kotatsu::ipc::frame_header;
 using ::kotatsu::ipc::lsp_format;
+using ::kotatsu::ipc::payload_padding;
 using ::kotatsu::ipc::request_options;
+using ::kotatsu::ipc::skipped_prefix_size;
 }
 
 export namespace kotatsu::ipc::detail {
@@ -6547,31 +6553,27 @@ using ::kotatsu::mem::detail::copy_bytes;
 }
 
 export namespace kotatsu::meta {
+using ::kotatsu::meta::apply_fields;
 using ::kotatsu::meta::attribute_traits;
 using ::kotatsu::meta::attrs_of_t;
-using ::kotatsu::meta::bool_like;
-using ::kotatsu::meta::bytes_like;
 using ::kotatsu::meta::char_like;
 using ::kotatsu::meta::derived_variant;
 using ::kotatsu::meta::enum_index;
 using ::kotatsu::meta::enum_name;
-using ::kotatsu::meta::enum_type;
+using ::kotatsu::meta::enum_names;
 using ::kotatsu::meta::enum_value;
+using ::kotatsu::meta::enum_values;
 using ::kotatsu::meta::eq;
 using ::kotatsu::meta::eq_t;
-using ::kotatsu::meta::field;
-using ::kotatsu::meta::field_addr_of;
 using ::kotatsu::meta::field_annotated;
 using ::kotatsu::meta::field_attrs_t;
 using ::kotatsu::meta::field_count;
-using ::kotatsu::meta::field_name;
 using ::kotatsu::meta::field_names;
 using ::kotatsu::meta::field_of;
 using ::kotatsu::meta::field_offset;
-using ::kotatsu::meta::field_refs;
+using ::kotatsu::meta::field_offsets;
 using ::kotatsu::meta::field_type;
 using ::kotatsu::meta::floating_like;
-using ::kotatsu::meta::for_each;
 using ::kotatsu::meta::ge;
 using ::kotatsu::meta::ge_t;
 using ::kotatsu::meta::gt;
@@ -6579,8 +6581,6 @@ using ::kotatsu::meta::gt_t;
 using ::kotatsu::meta::int_like;
 using ::kotatsu::meta::is_floating_kind;
 using ::kotatsu::meta::is_integer_kind;
-using ::kotatsu::meta::is_pair_v;
-using ::kotatsu::meta::is_tuple_v;
 using ::kotatsu::meta::kind_of;
 using ::kotatsu::meta::le;
 using ::kotatsu::meta::le_t;
@@ -6592,20 +6592,14 @@ using ::kotatsu::meta::name_key;
 using ::kotatsu::meta::name_list;
 using ::kotatsu::meta::ne;
 using ::kotatsu::meta::ne_t;
-using ::kotatsu::meta::null_like;
-using ::kotatsu::meta::pointer_name;
+using ::kotatsu::meta::qualified_type_name;
 using ::kotatsu::meta::reflectable_class;
-using ::kotatsu::meta::reflection;
 using ::kotatsu::meta::runtime_shaped;
 using ::kotatsu::meta::schema_opaque;
 using ::kotatsu::meta::spec_attr;
 using ::kotatsu::meta::spec_attr_t;
-using ::kotatsu::meta::spec_base;
-using ::kotatsu::meta::spec_in;
-using ::kotatsu::meta::spec_key;
 using ::kotatsu::meta::spec_ref;
 using ::kotatsu::meta::spec_refs_of;
-using ::kotatsu::meta::spec_value;
 using ::kotatsu::meta::str_like;
 using ::kotatsu::meta::tuple_like;
 using ::kotatsu::meta::type_kind;
@@ -6618,13 +6612,18 @@ export namespace kotatsu::meta::detail {
 using ::kotatsu::meta::detail::__kotatsu__field_annotation;
 using ::kotatsu::meta::detail::__kotatsu__type_annotation;
 using ::kotatsu::meta::detail::added_attr;
+using ::kotatsu::meta::detail::annotated_from_outside;
 using ::kotatsu::meta::detail::annotated_in_class;
 using ::kotatsu::meta::detail::annotated_out_of_class;
-using ::kotatsu::meta::detail::any;
+using ::kotatsu::meta::detail::apply_attribute;
 using ::kotatsu::meta::detail::as_variant;
 using ::kotatsu::meta::detail::attributes_unique;
+using ::kotatsu::meta::detail::binder;
+using ::kotatsu::meta::detail::binder_of;
 using ::kotatsu::meta::detail::bundle_attributes;
+using ::kotatsu::meta::detail::byte_span_range;
 using ::kotatsu::meta::detail::check_specs;
+using ::kotatsu::meta::detail::chunk_length;
 using ::kotatsu::meta::detail::compare_eq;
 using ::kotatsu::meta::detail::compare_ge;
 using ::kotatsu::meta::detail::compare_gt;
@@ -6643,66 +6642,110 @@ using ::kotatsu::meta::detail::compare_sequence_lt;
 using ::kotatsu::meta::detail::compare_set_eq_unordered;
 using ::kotatsu::meta::detail::compose_attributes;
 using ::kotatsu::meta::detail::compose_bundles;
-using ::kotatsu::meta::detail::composed_attributes_t;
+using ::kotatsu::meta::detail::composed_attributes;
 using ::kotatsu::meta::detail::composed_tag;
-using ::kotatsu::meta::detail::count_valid;
+using ::kotatsu::meta::detail::copy_chunk;
+using ::kotatsu::meta::detail::count_char;
+using ::kotatsu::meta::detail::count_named;
+using ::kotatsu::meta::detail::decomposable;
 using ::kotatsu::meta::detail::direct_attributes;
-using ::kotatsu::meta::detail::enum_probe;
-using ::kotatsu::meta::detail::enum_probe_name;
+using ::kotatsu::meta::detail::enum_chunk;
 using ::kotatsu::meta::detail::enum_probe_value;
+using ::kotatsu::meta::detail::enumerator;
+using ::kotatsu::meta::detail::enumerator_table;
+using ::kotatsu::meta::detail::enumerators;
 using ::kotatsu::meta::detail::eq_op;
 using ::kotatsu::meta::detail::ext;
-using ::kotatsu::meta::detail::extract_identifier;
 using ::kotatsu::meta::detail::field_annotation;
 using ::kotatsu::meta::detail::field_annotation_attributes;
 using ::kotatsu::meta::detail::field_annotation_found;
 using ::kotatsu::meta::detail::field_annotation_t;
 using ::kotatsu::meta::detail::field_count;
 using ::kotatsu::meta::detail::field_key_text;
-using ::kotatsu::meta::detail::find_last_top_level_scope;
-using ::kotatsu::meta::detail::find_spec_attr;
+using ::kotatsu::meta::detail::field_types_t;
+using ::kotatsu::meta::detail::find_char;
+using ::kotatsu::meta::detail::find_text;
 using ::kotatsu::meta::detail::findable_in;
 using ::kotatsu::meta::detail::ge_op;
 using ::kotatsu::meta::detail::gt_op;
 using ::kotatsu::meta::detail::has_field_keyed;
 using ::kotatsu::meta::detail::has_type_annotation;
+using ::kotatsu::meta::detail::holds_at;
+using ::kotatsu::meta::detail::holds_reference;
+using ::kotatsu::meta::detail::identifier_char;
+using ::kotatsu::meta::detail::identifier_end;
 using ::kotatsu::meta::detail::integer_like;
 using ::kotatsu::meta::detail::integer_value;
 using ::kotatsu::meta::detail::is_bundle_v;
-using ::kotatsu::meta::detail::is_spec_attr_v;
 using ::kotatsu::meta::detail::kept_attribute;
-using ::kotatsu::meta::detail::kept_spec_value;
-using ::kotatsu::meta::detail::kept_spec_values;
+using ::kotatsu::meta::detail::kept_spec;
+using ::kotatsu::meta::detail::kept_specs;
 using ::kotatsu::meta::detail::key_of;
 using ::kotatsu::meta::detail::kind_type_t;
 using ::kotatsu::meta::detail::kinds_comparable;
+using ::kotatsu::meta::detail::last_name;
+using ::kotatsu::meta::detail::layered;
 using ::kotatsu::meta::detail::layered_attrs;
 using ::kotatsu::meta::detail::layered_attrs_t;
 using ::kotatsu::meta::detail::le_op;
+using ::kotatsu::meta::detail::leading_identifier;
+using ::kotatsu::meta::detail::leaf_ref;
+using ::kotatsu::meta::detail::listed_by_commas;
+using ::kotatsu::meta::detail::literal_end;
+using ::kotatsu::meta::detail::locate;
 using ::kotatsu::meta::detail::lt_op;
-using ::kotatsu::meta::detail::make_candidate_names;
-using ::kotatsu::meta::detail::make_candidate_valid;
-using ::kotatsu::meta::detail::make_candidate_values;
+using ::kotatsu::meta::detail::make_enumerators;
 using ::kotatsu::meta::detail::make_scan_values;
+using ::kotatsu::meta::detail::make_scanned_names;
 using ::kotatsu::meta::detail::map_entries_contained_in;
+using ::kotatsu::meta::detail::max_fields;
+using ::kotatsu::meta::detail::measure_type;
+using ::kotatsu::meta::detail::measure_zero;
 using ::kotatsu::meta::detail::member_key;
 using ::kotatsu::meta::detail::member_key_t;
 using ::kotatsu::meta::detail::member_name;
+using ::kotatsu::meta::detail::member_names;
 using ::kotatsu::meta::detail::member_probe;
+using ::kotatsu::meta::detail::member_text;
+using ::kotatsu::meta::detail::name_order;
+using ::kotatsu::meta::detail::name_start;
 using ::kotatsu::meta::detail::no_annotation;
 using ::kotatsu::meta::detail::op_comparable_with;
+using ::kotatsu::meta::detail::operator_char;
+using ::kotatsu::meta::detail::operator_length;
 using ::kotatsu::meta::detail::optional_like;
 using ::kotatsu::meta::detail::overrides;
+using ::kotatsu::meta::detail::pack_list;
+using ::kotatsu::meta::detail::pack_signature;
+using ::kotatsu::meta::detail::pack_spelling;
+using ::kotatsu::meta::detail::pick;
+using ::kotatsu::meta::detail::probe_chunk;
+using ::kotatsu::meta::detail::probe_name;
 using ::kotatsu::meta::detail::range_ref_t;
 using ::kotatsu::meta::detail::range_value_op_comparable;
+using ::kotatsu::meta::detail::ref_leaf;
+using ::kotatsu::meta::detail::ref_pack;
 using ::kotatsu::meta::detail::reflectable_pair;
 using ::kotatsu::meta::detail::same_attribute;
+using ::kotatsu::meta::detail::scan_scopes;
 using ::kotatsu::meta::detail::scan_values;
+using ::kotatsu::meta::detail::scanned_names;
+using ::kotatsu::meta::detail::scopes;
 using ::kotatsu::meta::detail::set_entries_contained_in;
 using ::kotatsu::meta::detail::sets_spec;
+using ::kotatsu::meta::detail::signature_text;
+using ::kotatsu::meta::detail::sorted_order;
+using ::kotatsu::meta::detail::spec_attr_of;
+using ::kotatsu::meta::detail::spec_base;
 using ::kotatsu::meta::detail::spec_from;
+using ::kotatsu::meta::detail::spec_refs;
 using ::kotatsu::meta::detail::spec_tag_t;
 using ::kotatsu::meta::detail::spec_types;
+using ::kotatsu::meta::detail::spec_types_t;
+using ::kotatsu::meta::detail::spec_value;
+using ::kotatsu::meta::detail::spec_value_of;
+using ::kotatsu::meta::detail::spelled_type;
+using ::kotatsu::meta::detail::spelling;
 using ::kotatsu::meta::detail::standard_integer;
 using ::kotatsu::meta::detail::takeover_for_range;
 using ::kotatsu::meta::detail::takeover_range_eq;
@@ -6710,19 +6753,21 @@ using ::kotatsu::meta::detail::takeover_range_ge;
 using ::kotatsu::meta::detail::takeover_range_gt;
 using ::kotatsu::meta::detail::takeover_range_le;
 using ::kotatsu::meta::detail::takeover_range_lt;
-using ::kotatsu::meta::detail::test;
+using ::kotatsu::meta::detail::trailing_identifier;
 using ::kotatsu::meta::detail::tuple_gettable;
 using ::kotatsu::meta::detail::tuple_gettable_impl;
 using ::kotatsu::meta::detail::type_annotation;
 using ::kotatsu::meta::detail::type_annotation_t;
 using ::kotatsu::meta::detail::type_attributes;
+using ::kotatsu::meta::detail::type_signature;
+using ::kotatsu::meta::detail::type_spelling;
 using ::kotatsu::meta::detail::uninitialized;
-using ::kotatsu::meta::detail::unqualify_type_name;
-using ::kotatsu::meta::detail::unwrap_wrapper_value;
+using ::kotatsu::meta::detail::value_signature;
+using ::kotatsu::meta::detail::value_spelling;
 using ::kotatsu::meta::detail::variant_base_of;
 using ::kotatsu::meta::detail::variant_like;
 using ::kotatsu::meta::detail::variant_pair;
-using ::kotatsu::meta::detail::wrapper;
+using ::kotatsu::meta::detail::without_offsets;
 }
 
 export namespace kotatsu::meta::dsl {
@@ -6762,9 +6807,11 @@ export namespace kotatsu::naming::detail {
 using ::kotatsu::naming::detail::fn_policy;
 using ::kotatsu::naming::detail::policy_of;
 using ::kotatsu::naming::detail::renamed_table;
+using ::kotatsu::naming::detail::writes_names;
 }
 
 export namespace kotatsu::naming::rename_policy {
+using ::kotatsu::naming::rename_policy::camel;
 using ::kotatsu::naming::rename_policy::identity;
 using ::kotatsu::naming::rename_policy::lower_camel;
 using ::kotatsu::naming::rename_policy::lower_snake;
@@ -6787,6 +6834,8 @@ using ::kotatsu::sys::ProcessStats;
 using ::kotatsu::sys::ProgramSearch;
 using ::kotatsu::sys::SpawnOptions;
 using ::kotatsu::sys::Stdio;
+using ::kotatsu::sys::Thread;
+using ::kotatsu::sys::address_space_limit;
 using ::kotatsu::sys::arguments;
 using ::kotatsu::sys::cache_dir;
 using ::kotatsu::sys::capture;
@@ -6795,33 +6844,43 @@ using ::kotatsu::sys::cpu_cores;
 using ::kotatsu::sys::data_dir;
 using ::kotatsu::sys::env_name_equal;
 using ::kotatsu::sys::environment;
+using ::kotatsu::sys::executable_base;
 using ::kotatsu::sys::executable_path;
+using ::kotatsu::sys::exit_with_parent;
 using ::kotatsu::sys::expand_tilde;
 using ::kotatsu::sys::find_program;
 using ::kotatsu::sys::get_env;
 using ::kotatsu::sys::home_dir;
 using ::kotatsu::sys::hostname;
+using ::kotatsu::sys::ignore_sigpipe;
 using ::kotatsu::sys::is_console;
 using ::kotatsu::sys::is_pipe;
 using ::kotatsu::sys::join_paths;
+using ::kotatsu::sys::local_time;
 using ::kotatsu::sys::memory;
 using ::kotatsu::sys::oom_score_adjustment;
 using ::kotatsu::sys::os;
 using ::kotatsu::sys::page_size;
 using ::kotatsu::sys::parallelism;
 using ::kotatsu::sys::parent_pid;
+using ::kotatsu::sys::physical_cores;
 using ::kotatsu::sys::pid;
 using ::kotatsu::sys::priority;
 using ::kotatsu::sys::process_alive;
 using ::kotatsu::sys::process_stats;
+using ::kotatsu::sys::release_free_heap;
 using ::kotatsu::sys::resident_memory;
 using ::kotatsu::sys::self_executable;
 using ::kotatsu::sys::set_env;
+using ::kotatsu::sys::set_nonblocking;
 using ::kotatsu::sys::set_oom_score_adjustment;
+using ::kotatsu::sys::set_power_throttling;
 using ::kotatsu::sys::set_priority;
 using ::kotatsu::sys::set_process_name;
 using ::kotatsu::sys::set_process_title;
 using ::kotatsu::sys::set_thread_priority;
+using ::kotatsu::sys::sighup;
+using ::kotatsu::sys::sigkill;
 using ::kotatsu::sys::signal_name;
 using ::kotatsu::sys::spawn;
 using ::kotatsu::sys::split_paths;
@@ -6830,7 +6889,10 @@ using ::kotatsu::sys::started_path;
 using ::kotatsu::sys::temp_dir;
 using ::kotatsu::sys::unset_env;
 using ::kotatsu::sys::uptime;
+using ::kotatsu::sys::user_name;
 using ::kotatsu::sys::write_console;
+using ::kotatsu::sys::write_console_some;
+using ::kotatsu::sys::write_stacktrace;
 }
 
 export namespace kotatsu::sys::cmd {
@@ -6838,8 +6900,13 @@ using ::kotatsu::sys::cmd::Quoting;
 using ::kotatsu::sys::cmd::expand;
 using ::kotatsu::sys::cmd::expand_view;
 using ::kotatsu::sys::cmd::join;
+using ::kotatsu::sys::cmd::native_quoting;
 using ::kotatsu::sys::cmd::split;
 using ::kotatsu::sys::cmd::split_view;
+}
+
+export namespace kotatsu::sys::detail {
+using ::kotatsu::sys::detail::ThreadEntry;
 }
 
 export namespace kotatsu::sys::windows {
@@ -7530,14 +7597,9 @@ using ::llvm::largest_bitmask_enum_bit;
 using ::llvm::left_justify;
 using ::llvm::less_first;
 using ::llvm::less_second;
-using ::llvm::llvm_execute_on_thread_impl;
 using ::llvm::llvm_is_multithreaded;
 using ::llvm::llvm_shutdown;
 using ::llvm::llvm_shutdown_obj;
-using ::llvm::llvm_thread_detach_impl;
-using ::llvm::llvm_thread_get_current_id_impl;
-using ::llvm::llvm_thread_get_id_impl;
-using ::llvm::llvm_thread_join_impl;
 using ::llvm::llvm_unreachable_internal;
 using ::llvm::logAllUnhandledErrors;
 using ::llvm::lostFraction;
@@ -7675,7 +7737,6 @@ using ::llvm::stringifyKCFIHashAlgorithm;
 using ::llvm::succeeded;
 using ::llvm::success;
 using ::llvm::sum_of;
-using ::llvm::thread;
 using ::llvm::timeTraceAddInstantEvent;
 using ::llvm::timeTraceAsyncProfilerBegin;
 using ::llvm::timeTraceProfilerBegin;
@@ -8835,10 +8896,6 @@ using ::llvm::sys::path::system_temp_directory;
 using ::llvm::sys::path::user_config_directory;
 }
 
-export namespace llvm::this_thread {
-using ::llvm::this_thread::get_id;
-}
-
 export namespace llvm::trailing_objects_internal {
 using ::llvm::trailing_objects_internal::ExtractSecondType;
 using ::llvm::trailing_objects_internal::MaxAlignment;
@@ -9213,6 +9270,7 @@ using ::roaring::api::roaring_bitmap_statistics;
 using ::roaring::api::roaring_bitmap_t;
 using ::roaring::api::roaring_bitmap_to_bitset;
 using ::roaring::api::roaring_bitmap_to_uint32_array;
+using ::roaring::api::roaring_bitmap_word_range_to_bitset;
 using ::roaring::api::roaring_bitmap_xor;
 using ::roaring::api::roaring_bitmap_xor_cardinality;
 using ::roaring::api::roaring_bitmap_xor_inplace;
@@ -9298,6 +9356,7 @@ using ::roaring::internal::array_container_minimum;
 using ::roaring::internal::array_container_negation;
 using ::roaring::internal::array_container_negation_range;
 using ::roaring::internal::array_container_negation_range_inplace;
+using ::roaring::internal::array_container_negation_range_to_any;
 using ::roaring::internal::array_container_number_of_runs;
 using ::roaring::internal::array_container_offset;
 using ::roaring::internal::array_container_printf;
@@ -9394,7 +9453,9 @@ using ::roaring::internal::bitset_container_write;
 using ::roaring::internal::bitset_container_xor;
 using ::roaring::internal::bitset_container_xor_justcard;
 using ::roaring::internal::bitset_container_xor_nocard;
+using ::roaring::internal::bitset_extract_intersection_setbits_avx512_uint16;
 using ::roaring::internal::bitset_extract_intersection_setbits_uint16;
+using ::roaring::internal::bitset_extract_intersection_setbits_uint16_with_card;
 using ::roaring::internal::bitset_extract_setbits;
 using ::roaring::internal::bitset_extract_setbits_avx2;
 using ::roaring::internal::bitset_extract_setbits_avx512;
@@ -9433,6 +9494,7 @@ using ::roaring::internal::convert_run_optimize;
 using ::roaring::internal::convert_run_to_efficient_container;
 using ::roaring::internal::convert_run_to_efficient_container_and_free;
 using ::roaring::internal::convert_to_bitset_or_array_container;
+using ::roaring::internal::croaring_hardware_support;
 using ::roaring::internal::difference_uint16;
 using ::roaring::internal::difference_vector16;
 using ::roaring::internal::extend_array;
@@ -9480,6 +9542,7 @@ using ::roaring::internal::ra_overwrite;
 using ::roaring::internal::ra_portable_deserialize;
 using ::roaring::internal::ra_portable_deserialize_size;
 using ::roaring::internal::ra_portable_header_size;
+using ::roaring::internal::ra_portable_header_size_from_counts;
 using ::roaring::internal::ra_portable_serialize;
 using ::roaring::internal::ra_portable_size_in_bytes;
 using ::roaring::internal::ra_remove_at_index;
@@ -9571,6 +9634,7 @@ using enum unnamed_enum<decltype(::roaring::internal::ARRAY_LAZY_LOWERBOUND)>;
 using enum unnamed_enum<decltype(::roaring::internal::BITSET_CONTAINER_SIZE_IN_WORDS)>;
 using enum unnamed_enum<decltype(::roaring::internal::DEFAULT_MAX_SIZE)>;
 using enum unnamed_enum<decltype(::roaring::internal::FROZEN_COOKIE)>;
+using enum unnamed_enum<decltype(::roaring::internal::ROARING_SUPPORTS_AVX2)>;
 using enum unnamed_enum<decltype(::roaring::internal::RUN_DEFAULT_INIT_SIZE)>;
 }
 
@@ -9583,9 +9647,13 @@ using ::simdjson::deserialize;
 using ::simdjson::deserialize_tag;
 using ::simdjson::error_code;
 using ::simdjson::error_message;
+using ::simdjson::fractured_json;
+using ::simdjson::fractured_json_options;
+using ::simdjson::fractured_json_string;
 using ::simdjson::get_active_implementation;
 using ::simdjson::get_available_implementations;
 using ::simdjson::get_next_key_and_json_path;
+using ::simdjson::get_page_size;
 using ::simdjson::has_custom_serialization;
 using ::simdjson::implementation;
 using ::simdjson::is_builtin_deserializable;
@@ -9596,11 +9664,15 @@ using ::simdjson::json_path_to_pointer_conversion;
 using ::simdjson::minify;
 using ::simdjson::nothrow_custom_deserializable;
 using ::simdjson::nothrow_deserializable;
+using ::simdjson::nothrow_gettable;
 using ::simdjson::nothrow_tag_invocable;
+using ::simdjson::number_list_alignment;
 using ::simdjson::operator<<;
 using ::simdjson::pad;
 using ::simdjson::pad_with_reserve;
+using ::simdjson::padded_input;
 using ::simdjson::padded_string;
+using ::simdjson::padded_string_builder;
 using ::simdjson::padded_string_view;
 using ::simdjson::prettify;
 using ::simdjson::require_custom_serialization;
@@ -9608,7 +9680,10 @@ using ::simdjson::serialize;
 using ::simdjson::serialize_tag;
 using ::simdjson::simdjson_error;
 using ::simdjson::simdjson_result;
+using ::simdjson::slice_at;
 using ::simdjson::stage1_mode;
+using ::simdjson::stream_format;
+using ::simdjson::table_comma_placement;
 using ::simdjson::tag_invocable;
 using ::simdjson::tag_invoke;
 using ::simdjson::to_json;
@@ -9623,6 +9698,7 @@ using enum unnamed_enum<decltype(::simdjson::SIMDJSON_VERSION_MAJOR)>;
 export namespace simdjson::concepts {
 using ::simdjson::concepts::appendable_containers;
 using ::simdjson::concepts::constructible_from_string_view;
+using ::simdjson::concepts::constructible_from_u8string_view;
 using ::simdjson::concepts::container_but_not_string;
 using ::simdjson::concepts::emplace_one;
 using ::simdjson::concepts::indexable_container;
@@ -9650,12 +9726,24 @@ using ::simdjson::concepts::details::supports_push_back;
 export namespace simdjson::constevalutil {
 using ::simdjson::constevalutil::consteval_to_quoted_escaped;
 using ::simdjson::constevalutil::fixed_string;
+using ::simdjson::constevalutil::is_fixed_string;
+using ::simdjson::constevalutil::make_static_string;
+using ::simdjson::constevalutil::padded_key_length;
+using ::simdjson::constevalutil::padded_static_string_size;
+using ::simdjson::constevalutil::quoted_escaped_text;
+using ::simdjson::constevalutil::static_string;
+using ::simdjson::constevalutil::static_string_size;
 using ::simdjson::constevalutil::string_constant;
 }
 
 export namespace simdjson::convert::internal {
 using ::simdjson::convert::internal::auto_parser;
 using ::simdjson::convert::internal::to_adaptor;
+}
+
+export namespace simdjson::details {
+using ::simdjson::details::deserialize_in_place;
+using ::simdjson::details::pop_back_guard;
 }
 
 export namespace simdjson::dom {
@@ -9669,38 +9757,77 @@ using ::simdjson::dom::key_value_pair;
 using ::simdjson::dom::object;
 using ::simdjson::dom::operator<<;
 using ::simdjson::dom::parser;
+using ::simdjson::dom::set_bounded_batch;
 using ::simdjson::dom::stage1_worker;
 }
 
 export namespace simdjson::internal {
 using ::simdjson::internal::BitsSetTable256mul2;
 using ::simdjson::internal::allocate_padded_buffer;
+using ::simdjson::internal::as_u8string_view;
+using ::simdjson::internal::assign_utf8;
+using ::simdjson::internal::at_wildcard_json_path;
 using ::simdjson::internal::atomic_ptr;
 using ::simdjson::internal::available_implementation_list;
 using ::simdjson::internal::base_formatter;
+using ::simdjson::internal::child_metrics_at;
 using ::simdjson::internal::digit_to_val32;
 using ::simdjson::internal::dom_parser_implementation;
+using ::simdjson::internal::element_metrics;
 using ::simdjson::internal::error_code_info;
 using ::simdjson::internal::error_codes;
+using ::simdjson::internal::escape_json_char;
 using ::simdjson::internal::escape_json_string;
+using ::simdjson::internal::escape_tables;
+using ::simdjson::internal::find_next_json_quotable_character_scalar;
+using ::simdjson::internal::fractured_formatter;
+using ::simdjson::internal::fractured_string_builder;
 using ::simdjson::internal::from_chars;
+using ::simdjson::internal::from_chars_float;
+using ::simdjson::internal::get_container_values;
 using ::simdjson::internal::instruction_set;
+using ::simdjson::internal::is_matching_failure_error;
+using ::simdjson::internal::jeaiii_8_digits;
+using ::simdjson::internal::jeaiii_9_or_10;
+using ::simdjson::internal::jeaiii_lt1e8;
+using ::simdjson::internal::jeaiii_write_dd;
+using ::simdjson::internal::jeaiii_write_fd;
+using ::simdjson::internal::json_path_segment;
+using ::simdjson::internal::layout_mode;
 using ::simdjson::internal::mini_formatter;
 using ::simdjson::internal::operator<<;
+using ::simdjson::internal::parse_json_pointer_array_index;
+using ::simdjson::internal::parse_wildcard_json_path;
 using ::simdjson::internal::power_of_five_128;
 using ::simdjson::internal::power_of_ten;
 using ::simdjson::internal::pretty_formatter;
 using ::simdjson::internal::pshufb_combine_table;
+using ::simdjson::internal::scoped_single_line_mode;
 using ::simdjson::internal::simdjson_result_base;
+using ::simdjson::internal::split_json_path;
 using ::simdjson::internal::string_builder;
 using ::simdjson::internal::structural_or_whitespace;
 using ::simdjson::internal::structural_or_whitespace_negated;
+using ::simdjson::internal::structure_analyzer;
+using ::simdjson::internal::table_column;
+using ::simdjson::internal::table_column_type;
+using ::simdjson::internal::table_row_is_nested;
 using ::simdjson::internal::tape_ref;
 using ::simdjson::internal::tape_type;
 using ::simdjson::internal::thintable_epi8;
 using ::simdjson::internal::to_chars;
+using ::simdjson::internal::trailing_zeroes;
 using ::simdjson::internal::value128;
+using ::simdjson::internal::wildcard_json_path;
+using ::simdjson::internal::write_string_escaped_with;
+using ::simdjson::internal::write_uint_jeaiii;
 using enum ::simdjson::internal::instruction_set;
+using enum unnamed_enum<decltype(::simdjson::internal::to_chars_buffer_size)>;
+}
+
+export namespace simdjson::internal::escape_scalar {
+using ::simdjson::internal::escape_scalar::finder;
+using ::simdjson::internal::escape_scalar::write_string_escaped;
 }
 
 export namespace spdlog {
@@ -10016,6 +10143,10 @@ using ::toml::impl::wrap_node;
 export namespace llvm::sys::fs {
 using ::llvm::sys::fs::changeFileOwnership;
 }
+
+export namespace simdjson {
+using ::simdjson::padded_memory_map;
+}
 #endif
 
 #if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__x86_64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
@@ -10027,8 +10158,6 @@ export using ::_CXCursorAndRangeVisitorBlock;
 export namespace roaring::internal {
 using ::roaring::internal::avx512_array_container_to_uint32_array;
 using ::roaring::internal::avx512_union_uint16;
-using ::roaring::internal::croaring_hardware_support;
-using enum unnamed_enum<decltype(::roaring::internal::ROARING_SUPPORTS_AVX2)>;
 }
 
 export namespace simdjson {
@@ -10047,48 +10176,57 @@ using ::simdjson::fallback::operator<<;
 }
 
 export namespace simdjson::fallback::builder {
-using ::simdjson::fallback::builder::escape_json_char;
-using ::simdjson::fallback::builder::fast_needs_escaping;
-using ::simdjson::fallback::builder::find_next_json_quotable_character;
-using ::simdjson::fallback::builder::simple_needs_escaping;
+using ::simdjson::fallback::builder::compile_time_formattable;
+using ::simdjson::fallback::builder::key_value_text;
+using ::simdjson::fallback::builder::quoted_key_text;
 using ::simdjson::fallback::builder::string_builder;
 using ::simdjson::fallback::builder::write_string_escaped;
 }
 
 export namespace simdjson::fallback::builder::internal {
-using ::simdjson::fallback::builder::internal::digit_count;
-using ::simdjson::fallback::builder::internal::fast_digit_count_32;
-using ::simdjson::fallback::builder::internal::fast_digit_count_64;
-using ::simdjson::fallback::builder::internal::int_log2;
+using ::simdjson::fallback::builder::internal::resize_uninitialized;
+using ::simdjson::fallback::builder::internal::write_double;
+using ::simdjson::fallback::builder::internal::write_uint_jeaiii;
 }
 
 export namespace simdjson::fallback::numberparsing {
 using ::simdjson::fallback::numberparsing::full_multiplication;
 using ::simdjson::fallback::numberparsing::parse_number;
+using ::simdjson::fallback::numberparsing::slow_float_parsing;
 using ::simdjson::fallback::numberparsing::write_float;
 }
 
 export namespace simdjson::fallback::ondemand {
 using ::simdjson::fallback::ondemand::array;
 using ::simdjson::fallback::ondemand::array_iterator;
+using ::simdjson::fallback::ondemand::array_range;
+using ::simdjson::fallback::ondemand::array_range_iterator;
 using ::simdjson::fallback::ondemand::depth_t;
 using ::simdjson::fallback::ondemand::document;
 using ::simdjson::fallback::ondemand::document_reference;
 using ::simdjson::fallback::ondemand::document_stream;
 using ::simdjson::fallback::ondemand::field;
+using ::simdjson::fallback::ondemand::for_each_result;
+using ::simdjson::fallback::ondemand::get_key_value_range;
+using ::simdjson::fallback::ondemand::get_range;
 using ::simdjson::fallback::ondemand::is_pointer_well_formed;
 using ::simdjson::fallback::ondemand::json_iterator;
 using ::simdjson::fallback::ondemand::json_type;
+using ::simdjson::fallback::ondemand::key_selector;
+using ::simdjson::fallback::ondemand::key_selector_type;
+using ::simdjson::fallback::ondemand::narrow_integer;
 using ::simdjson::fallback::ondemand::number;
 using ::simdjson::fallback::ondemand::number_type;
 using ::simdjson::fallback::ondemand::object;
 using ::simdjson::fallback::ondemand::object_iterator;
+using ::simdjson::fallback::ondemand::object_position;
+using ::simdjson::fallback::ondemand::object_range;
+using ::simdjson::fallback::ondemand::object_range_iterator;
 using ::simdjson::fallback::ondemand::operator!=;
 using ::simdjson::fallback::ondemand::operator<<;
 using ::simdjson::fallback::ondemand::operator==;
 using ::simdjson::fallback::ondemand::parser;
 using ::simdjson::fallback::ondemand::raw_json_string;
-using ::simdjson::fallback::ondemand::release_parser;
 using ::simdjson::fallback::ondemand::stage1_worker;
 using ::simdjson::fallback::ondemand::token_iterator;
 using ::simdjson::fallback::ondemand::token_position;
@@ -10096,8 +10234,73 @@ using ::simdjson::fallback::ondemand::value;
 using ::simdjson::fallback::ondemand::value_iterator;
 }
 
+export namespace simdjson::fallback::ondemand::key_selector_detail {
+using ::simdjson::fallback::ondemand::key_selector_detail::append_byte;
+using ::simdjson::fallback::ondemand::key_selector_detail::append_uint;
+using ::simdjson::fallback::ondemand::key_selector_detail::backtracking_search;
+using ::simdjson::fallback::ondemand::key_selector_detail::build_phf_data;
+using ::simdjson::fallback::ondemand::key_selector_detail::char_at;
+using ::simdjson::fallback::ondemand::key_selector_detail::compare_key_bytes;
+using ::simdjson::fallback::ondemand::key_selector_detail::compile_time_error;
+using ::simdjson::fallback::ondemand::key_selector_detail::compute_max_key_len;
+using ::simdjson::fallback::ondemand::key_selector_detail::compute_phf;
+using ::simdjson::fallback::ondemand::key_selector_detail::compute_phf_hd_po2;
+using ::simdjson::fallback::ondemand::key_selector_detail::compute_window;
+using ::simdjson::fallback::ondemand::key_selector_detail::count_undistinguished_pairs;
+using ::simdjson::fallback::ondemand::key_selector_detail::discriminating_power;
+using ::simdjson::fallback::ondemand::key_selector_detail::hd_bucket_hash;
+using ::simdjson::fallback::ondemand::key_selector_detail::hd_key_hash_2;
+using ::simdjson::fallback::ondemand::key_selector_detail::hd_key_hash_4;
+using ::simdjson::fallback::ondemand::key_selector_detail::hd_safe_char;
+using ::simdjson::fallback::ondemand::key_selector_detail::is_key_selector;
+using ::simdjson::fallback::ondemand::key_selector_detail::match_window_candidate;
+using ::simdjson::fallback::ondemand::key_selector_detail::max_key_length;
+using ::simdjson::fallback::ondemand::key_selector_detail::next_power_of_2;
+using ::simdjson::fallback::ondemand::key_selector_detail::phf_data;
+using ::simdjson::fallback::ondemand::key_selector_detail::phf_result;
+using ::simdjson::fallback::ondemand::key_selector_detail::positions_distinguish;
+using ::simdjson::fallback::ondemand::key_selector_detail::read_window;
+using ::simdjson::fallback::ondemand::key_selector_detail::scan_key_length;
+using ::simdjson::fallback::ondemand::key_selector_detail::select_positions;
+using ::simdjson::fallback::ondemand::key_selector_detail::try_compute_phf;
+using ::simdjson::fallback::ondemand::key_selector_detail::try_compute_phf_hd;
+using ::simdjson::fallback::ondemand::key_selector_detail::try_generate_gperf;
+using ::simdjson::fallback::ondemand::key_selector_detail::try_gperf_po2;
+using ::simdjson::fallback::ondemand::key_selector_detail::try_hash_and_displace;
+using ::simdjson::fallback::ondemand::key_selector_detail::window_byte_at;
+using ::simdjson::fallback::ondemand::key_selector_detail::window_data;
+using ::simdjson::fallback::ondemand::key_selector_detail::window_value;
+}
+
+export namespace simdjson::fallback::ondemand::key_selector_for_each_detail {
+using ::simdjson::fallback::ondemand::key_selector_for_each_detail::dispatch_value;
+using ::simdjson::fallback::ondemand::key_selector_for_each_detail::field_handler;
+using ::simdjson::fallback::ondemand::key_selector_for_each_detail::nothrow_field_handler_v;
+using ::simdjson::fallback::ondemand::key_selector_for_each_detail::nothrow_field_handlers_v;
+}
+
 export namespace simdjson::fallback::ondemand::logger {
 using ::simdjson::fallback::ondemand::logger::log_level;
+}
+
+export namespace simdjson::internal {
+namespace escape_best = ::simdjson::internal::escape_sse2;
+}
+
+export namespace simdjson::internal::escape_sse2 {
+using ::simdjson::internal::escape_sse2::copy_lt16;
+using ::simdjson::internal::escape_sse2::escape_any;
+using ::simdjson::internal::escape_sse2::escape_bitmask;
+using ::simdjson::internal::escape_sse2::escape_block;
+using ::simdjson::internal::escape_sse2::escape_flags;
+using ::simdjson::internal::escape_sse2::escape_from;
+using ::simdjson::internal::escape_sse2::escape_load16;
+using ::simdjson::internal::escape_sse2::escape_load4x2;
+using ::simdjson::internal::escape_sse2::escape_load8x2;
+using ::simdjson::internal::escape_sse2::escape_mask;
+using ::simdjson::internal::escape_sse2::escape_store16;
+using ::simdjson::internal::escape_sse2::escape_vector;
+using ::simdjson::internal::escape_sse2::write_string_escaped;
 }
 #endif
 
@@ -10125,48 +10328,57 @@ using ::simdjson::arm64::operator<<;
 }
 
 export namespace simdjson::arm64::builder {
-using ::simdjson::arm64::builder::escape_json_char;
-using ::simdjson::arm64::builder::fast_needs_escaping;
-using ::simdjson::arm64::builder::find_next_json_quotable_character;
-using ::simdjson::arm64::builder::simple_needs_escaping;
+using ::simdjson::arm64::builder::compile_time_formattable;
+using ::simdjson::arm64::builder::key_value_text;
+using ::simdjson::arm64::builder::quoted_key_text;
 using ::simdjson::arm64::builder::string_builder;
 using ::simdjson::arm64::builder::write_string_escaped;
 }
 
 export namespace simdjson::arm64::builder::internal {
-using ::simdjson::arm64::builder::internal::digit_count;
-using ::simdjson::arm64::builder::internal::fast_digit_count_32;
-using ::simdjson::arm64::builder::internal::fast_digit_count_64;
-using ::simdjson::arm64::builder::internal::int_log2;
+using ::simdjson::arm64::builder::internal::resize_uninitialized;
+using ::simdjson::arm64::builder::internal::write_double;
+using ::simdjson::arm64::builder::internal::write_uint_jeaiii;
 }
 
 export namespace simdjson::arm64::numberparsing {
 using ::simdjson::arm64::numberparsing::full_multiplication;
 using ::simdjson::arm64::numberparsing::parse_number;
+using ::simdjson::arm64::numberparsing::slow_float_parsing;
 using ::simdjson::arm64::numberparsing::write_float;
 }
 
 export namespace simdjson::arm64::ondemand {
 using ::simdjson::arm64::ondemand::array;
 using ::simdjson::arm64::ondemand::array_iterator;
+using ::simdjson::arm64::ondemand::array_range;
+using ::simdjson::arm64::ondemand::array_range_iterator;
 using ::simdjson::arm64::ondemand::depth_t;
 using ::simdjson::arm64::ondemand::document;
 using ::simdjson::arm64::ondemand::document_reference;
 using ::simdjson::arm64::ondemand::document_stream;
 using ::simdjson::arm64::ondemand::field;
+using ::simdjson::arm64::ondemand::for_each_result;
+using ::simdjson::arm64::ondemand::get_key_value_range;
+using ::simdjson::arm64::ondemand::get_range;
 using ::simdjson::arm64::ondemand::is_pointer_well_formed;
 using ::simdjson::arm64::ondemand::json_iterator;
 using ::simdjson::arm64::ondemand::json_type;
+using ::simdjson::arm64::ondemand::key_selector;
+using ::simdjson::arm64::ondemand::key_selector_type;
+using ::simdjson::arm64::ondemand::narrow_integer;
 using ::simdjson::arm64::ondemand::number;
 using ::simdjson::arm64::ondemand::number_type;
 using ::simdjson::arm64::ondemand::object;
 using ::simdjson::arm64::ondemand::object_iterator;
+using ::simdjson::arm64::ondemand::object_position;
+using ::simdjson::arm64::ondemand::object_range;
+using ::simdjson::arm64::ondemand::object_range_iterator;
 using ::simdjson::arm64::ondemand::operator!=;
 using ::simdjson::arm64::ondemand::operator<<;
 using ::simdjson::arm64::ondemand::operator==;
 using ::simdjson::arm64::ondemand::parser;
 using ::simdjson::arm64::ondemand::raw_json_string;
-using ::simdjson::arm64::ondemand::release_parser;
 using ::simdjson::arm64::ondemand::stage1_worker;
 using ::simdjson::arm64::ondemand::token_iterator;
 using ::simdjson::arm64::ondemand::token_position;
@@ -10174,8 +10386,74 @@ using ::simdjson::arm64::ondemand::value;
 using ::simdjson::arm64::ondemand::value_iterator;
 }
 
+export namespace simdjson::arm64::ondemand::key_selector_detail {
+using ::simdjson::arm64::ondemand::key_selector_detail::append_byte;
+using ::simdjson::arm64::ondemand::key_selector_detail::append_uint;
+using ::simdjson::arm64::ondemand::key_selector_detail::backtracking_search;
+using ::simdjson::arm64::ondemand::key_selector_detail::build_phf_data;
+using ::simdjson::arm64::ondemand::key_selector_detail::char_at;
+using ::simdjson::arm64::ondemand::key_selector_detail::compare_key_bytes;
+using ::simdjson::arm64::ondemand::key_selector_detail::compile_time_error;
+using ::simdjson::arm64::ondemand::key_selector_detail::compute_max_key_len;
+using ::simdjson::arm64::ondemand::key_selector_detail::compute_phf;
+using ::simdjson::arm64::ondemand::key_selector_detail::compute_phf_hd_po2;
+using ::simdjson::arm64::ondemand::key_selector_detail::compute_window;
+using ::simdjson::arm64::ondemand::key_selector_detail::count_undistinguished_pairs;
+using ::simdjson::arm64::ondemand::key_selector_detail::discriminating_power;
+using ::simdjson::arm64::ondemand::key_selector_detail::hd_bucket_hash;
+using ::simdjson::arm64::ondemand::key_selector_detail::hd_key_hash_2;
+using ::simdjson::arm64::ondemand::key_selector_detail::hd_key_hash_4;
+using ::simdjson::arm64::ondemand::key_selector_detail::hd_safe_char;
+using ::simdjson::arm64::ondemand::key_selector_detail::is_key_selector;
+using ::simdjson::arm64::ondemand::key_selector_detail::match_window_candidate;
+using ::simdjson::arm64::ondemand::key_selector_detail::max_key_length;
+using ::simdjson::arm64::ondemand::key_selector_detail::neon_all_bytes_zero;
+using ::simdjson::arm64::ondemand::key_selector_detail::next_power_of_2;
+using ::simdjson::arm64::ondemand::key_selector_detail::phf_data;
+using ::simdjson::arm64::ondemand::key_selector_detail::phf_result;
+using ::simdjson::arm64::ondemand::key_selector_detail::positions_distinguish;
+using ::simdjson::arm64::ondemand::key_selector_detail::read_window;
+using ::simdjson::arm64::ondemand::key_selector_detail::scan_key_length;
+using ::simdjson::arm64::ondemand::key_selector_detail::select_positions;
+using ::simdjson::arm64::ondemand::key_selector_detail::try_compute_phf;
+using ::simdjson::arm64::ondemand::key_selector_detail::try_compute_phf_hd;
+using ::simdjson::arm64::ondemand::key_selector_detail::try_generate_gperf;
+using ::simdjson::arm64::ondemand::key_selector_detail::try_gperf_po2;
+using ::simdjson::arm64::ondemand::key_selector_detail::try_hash_and_displace;
+using ::simdjson::arm64::ondemand::key_selector_detail::window_byte_at;
+using ::simdjson::arm64::ondemand::key_selector_detail::window_data;
+using ::simdjson::arm64::ondemand::key_selector_detail::window_value;
+}
+
+export namespace simdjson::arm64::ondemand::key_selector_for_each_detail {
+using ::simdjson::arm64::ondemand::key_selector_for_each_detail::dispatch_value;
+using ::simdjson::arm64::ondemand::key_selector_for_each_detail::field_handler;
+using ::simdjson::arm64::ondemand::key_selector_for_each_detail::nothrow_field_handler_v;
+using ::simdjson::arm64::ondemand::key_selector_for_each_detail::nothrow_field_handlers_v;
+}
+
 export namespace simdjson::arm64::ondemand::logger {
 using ::simdjson::arm64::ondemand::logger::log_level;
+}
+
+export namespace simdjson::internal {
+namespace escape_best = ::simdjson::internal::escape_neon;
+}
+
+export namespace simdjson::internal::escape_neon {
+using ::simdjson::internal::escape_neon::copy_lt16;
+using ::simdjson::internal::escape_neon::escape_any;
+using ::simdjson::internal::escape_neon::escape_bitmask;
+using ::simdjson::internal::escape_neon::escape_block;
+using ::simdjson::internal::escape_neon::escape_flags;
+using ::simdjson::internal::escape_neon::escape_from;
+using ::simdjson::internal::escape_neon::escape_load16;
+using ::simdjson::internal::escape_neon::escape_load4x2;
+using ::simdjson::internal::escape_neon::escape_load8x2;
+using ::simdjson::internal::escape_neon::escape_mask;
+using ::simdjson::internal::escape_neon::escape_store16;
+using ::simdjson::internal::escape_neon::escape_vector;
+using ::simdjson::internal::escape_neon::write_string_escaped;
 }
 #endif
 
@@ -10197,10 +10475,7 @@ using ::llvm::setCurrentDebugTypes;
 #endif
 
 #if (defined(_WIN32) && defined(__x86_64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
-export using ::DWORD;
-export using ::HANDLE;
 export using ::MultiByteToWideChar;
-export using ::PVOID;
 export using ::WideCharToMultiByte;
 
 export namespace kotatsu::fs::windows {

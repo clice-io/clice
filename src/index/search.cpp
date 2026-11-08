@@ -6,7 +6,6 @@ import :index.search;
 import :index.search_index;
 import :index.tu_index;
 import :support.logging;
-import :support.timer;
 
 namespace clice::index {
 
@@ -238,7 +237,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
 std::vector<IndexQuery::Located> search(const IndexQuery& index,
                                         const SymbolQuery& query,
                                         std::uint32_t limit) {
-    ScopedTimer timer;
+    Timer timer;
     if(limit == 0 || !query.by_pattern()) {
         return {};
     }
@@ -266,7 +265,7 @@ std::vector<IndexQuery::Located> search(const IndexQuery& index,
              "kind=search pattern_len={} results={} elapsed_ms={:.2f}",
              query.pattern.size(),
              results.size(),
-             timer.ms_f());
+             timer.precise_ms());
     return results;
 }
 

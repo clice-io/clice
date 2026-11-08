@@ -910,9 +910,8 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
         /// The declarations it brings in, in the order they are declared,
         /// as many as a class's members at most.
         auto targets = brought_in(*using_decl);
-        auto& sources = context.getSourceManager();
         ranges::sort(targets, [&](const clang::NamedDecl* left, const clang::NamedDecl* right) {
-            return sources.isBeforeInTranslationUnit(left->getLocation(), right->getLocation());
+            return unit.before(left->getLocation(), right->getLocation());
         });
         /// The using-declaration of inheriting constructors is named after
         /// the class it is in.
@@ -1410,17 +1409,14 @@ auto file_directive_hover(CompilationUnit& unit, std::uint32_t offset) -> std::o
 /// that macro's top-level expansion, whose tokens carry the chain of
 /// expansions they went through.
 auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std::string {
-    auto& sources = unit.context().getSourceManager();
-
     /// Whether the location lies in the reference's expansion.
     auto within = [&](clang::SourceLocation location) {
         while(location.isMacroID()) {
-            const auto& expansion =
-                sources.getSLocEntry(sources.getFileID(location)).getExpansion();
-            if(!expansion.isMacroArgExpansion() && expansion.getExpansionLocStart() == name) {
+            auto level = unit.expansion_level(location);
+            if(!level.argument && level.start == name) {
                 return true;
             }
-            location = expansion.getExpansionLocStart();
+            location = level.start;
         }
         return false;
     };
@@ -1431,16 +1427,15 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
     /// hold the reference may copy it for each use of its parameter.
     auto produced = [&](this auto& self, clang::SourceLocation token) -> clang::SourceLocation {
         for(auto location = token; location.isMacroID();) {
-            const auto& expansion =
-                sources.getSLocEntry(sources.getFileID(location)).getExpansion();
-            if(expansion.isMacroArgExpansion()) {
-                if(!within(expansion.getExpansionLocStart())) {
-                    return self(sources.getImmediateSpellingLoc(location));
+            auto level = unit.expansion_level(location);
+            if(level.argument) {
+                if(!within(level.start)) {
+                    return self(level.spelling);
                 }
-            } else if(expansion.getExpansionLocStart() == name) {
+            } else if(level.start == name) {
                 return token;
             }
-            location = expansion.getExpansionLocStart();
+            location = level.start;
         }
         return {};
     };
@@ -1464,10 +1459,7 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
             if(at.isInvalid() || !seen.insert(at).second) {
                 continue;
             }
-            /// Lex at the token's spelling site — getSpelling stays at the
-            /// depth it is given, and only the spelling carries the written
-            /// bytes.
-            auto spelling = unit.token_spelling(sources.getSpellingLoc(token.location()));
+            auto spelling = unit.token_spelling(token.location());
             if(text.size() >= joined_limit) {
                 cut = true;
                 break;
