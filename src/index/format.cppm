@@ -115,8 +115,11 @@ namespace clice::index {
 /// letter; v57: the template resolver answers dependent names, calls and
 /// patterns as instantiation would, and a header records of a dependent
 /// call's overload set the candidates it sees on its own; v58: a unit's
-/// command identity is its command as the rules edit it.
-constexpr inline std::uint32_t index_format_version = 58;
+/// command identity is its command as the rules edit it; v59: a C tag
+/// carries its file when a source file declares it, told by the file's
+/// name, and a header compiled alone names its typedefs as a system header
+/// when a system search directory of its command holds it.
+constexpr inline std::uint32_t index_format_version = 59;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it, so one past it stops the

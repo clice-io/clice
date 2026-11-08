@@ -323,14 +323,33 @@ auto CompilationUnit::source_of(FileOffset position) -> std::optional<SourceOffs
                         .offset = run->source_offset + (offset - run->offset)};
 }
 
-bool CompilationUnit::host_source(clang::FileID fid) {
-    if(!borrows_context()) {
-        return focus_file().contains(fid);
+bool CompilationUnit::in_system_header(clang::SourceLocation location) {
+    auto& SM = this->SM();
+    if(!lang_options().IsHeaderFile ||
+       !focus_file().contains(SM.getFileID(SM.getExpansionLoc(location)))) {
+        return SM.isInSystemHeader(location);
     }
-    if(!synthesized(fid)) {
-        return false;
+    if(!focus_in_system_directory) {
+        auto& search = instance->getPreprocessor().getHeaderSearchInfo();
+        llvm::DenseMap<const clang::DirectoryEntry*, bool> directories;
+        for(auto& lookup: search.search_dir_range()) {
+            if(auto dir = lookup.getDirRef()) {
+                directories.try_emplace(&dir->getDirEntry(), lookup.isSystemHeaderDirectory());
+            }
+        }
+        focus_in_system_directory = false;
+        auto& files = SM.getFileManager();
+        for(auto dir = path::parent(file_path(focus_file().file())); !dir.empty();
+            dir = path::parent(dir)) {
+            auto entry = files.getOptionalDirectoryRef(dir);
+            if(auto it = entry ? directories.find(&entry->getDirEntry()) : directories.end();
+               it != directories.end()) {
+                focus_in_system_directory = it->second;
+                break;
+            }
+        }
     }
-    return file_path(fid) == params.input.host;
+    return *focus_in_system_directory;
 }
 
 bool CompilationUnit::from_context(clang::FileID fid) {
