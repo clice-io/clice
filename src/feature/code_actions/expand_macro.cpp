@@ -2,6 +2,7 @@ module clice;
 
 import :compile.compilation;
 import :feature.code_actions.action;
+import :feature.formatting;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 
@@ -9,44 +10,30 @@ namespace clice::feature::action {
 
 namespace {
 
-/// Whether two adjacent expanded tokens are written with a space between
-/// them: none inside brackets, around member and scope operators, between
-/// a name and the parenthesis calling it, or after a prefix operator — one
-/// not following an operand, `before` being the token ahead of `left`
-/// (`unknown` at the start); one everywhere else.
-bool needs_space(clang::tok::TokenKind before,
-                 clang::tok::TokenKind left,
-                 clang::tok::TokenKind right) {
-    using namespace clang::tok;
-    if(left == identifier && right == l_paren) {
-        return false;
+/// `joined`, tokens a space apart, spaced as clang-format spaces them — in
+/// the style configured for `file`, else LLVM's — on one line, as the
+/// invocation they replace.
+std::string spaced(llvm::StringRef file, std::string joined) {
+    auto style = configured_style(file).value_or(clang::format::getLLVMStyle());
+    style.ColumnLimit = 0;
+    style.BreakStringLiterals = false;
+    auto formatted = clang::tooling::applyAllReplacements(
+        joined,
+        clang::format::reformat(style, joined, {clang::tooling::Range(0, joined.size())}));
+    if(!formatted) {
+        llvm::consumeError(formatted.takeError());
+        return joined;
     }
-    switch(right) {
-        case r_paren:
-        case r_square:
-        case comma:
-        case semi:
-        case period:
-        case arrow:
-        case coloncolon: return false;
-        default: break;
+    std::string line;
+    llvm::SmallVector<llvm::StringRef> lines;
+    llvm::StringRef(*formatted).split(lines, '\n', -1, /*KeepEmpty=*/false);
+    for(auto each: lines) {
+        if(!line.empty()) {
+            line += ' ';
+        }
+        line += each.trim();
     }
-    switch(left) {
-        case l_paren:
-        case l_square:
-        case period:
-        case arrow:
-        case coloncolon: return false;
-        case star:
-        case amp:
-        case minus:
-        case plus:
-        case exclaim:
-        case tilde:
-            return before == identifier || before == r_paren || before == r_square ||
-                   isLiteral(before);
-        default: return true;
-    }
+    return line;
 }
 
 /// Whether `left` written right before `right` lexes as other tokens:
@@ -98,18 +85,14 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
         }
 
         auto expanded = expansion.expanded;
-        std::string text;
-        for(auto [index, token]: views::enumerate(expanded)) {
-            if(index > 0) {
-                const auto& left = expanded[index - 1];
-                auto before = index > 1 ? expanded[index - 2].kind() : clang::tok::unknown;
-                if(needs_space(before, left.kind(), token.kind()) ||
-                   glues(left.text(SM), token.text(SM), options)) {
-                    text += ' ';
-                }
+        std::string joined;
+        for(const auto& token: expanded) {
+            if(!joined.empty()) {
+                joined += ' ';
             }
-            text += token.text(SM);
+            joined += token.text(SM);
         }
+        auto text = spaced(unit.file_path(focus.file()), std::move(joined));
 
         // The text lands between the tokens written flush against the
         // invocation, which must not run into it either; the end of a

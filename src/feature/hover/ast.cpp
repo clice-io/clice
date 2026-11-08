@@ -3,6 +3,7 @@ module clice;
 import :compile.compilation;
 import :feature.document_links;
 import :feature.documentation;
+import :feature.formatting;
 import :feature.hover.card;
 import :feature.hover;
 import :semantic.decls;
@@ -575,15 +576,29 @@ auto written_text(CompilationUnit& unit, const clang::Decl* decl) -> std::option
     return text.str();
 }
 
-/// Lay out code a card shows, a printed declaration or an expansion, in the
-/// LLVM style with `*` and `&` beside the type, as the card writes types: it
-/// is printed as one line, not as anyone wrote it.
-void reformat(std::string& code) {
+/// How a card lays out the code it shows: in the style configured for the
+/// focus file, else in the LLVM style with `*` and `&` beside the type, as
+/// the card writes types.
+struct CardStyle {
+    explicit CardStyle(CompilationUnit& unit) {
+        if(auto configured = configured_style(unit.file_path(unit.focus_file().file()))) {
+            style = std::move(*configured);
+        } else {
+            style = clang::format::getLLVMStyle();
+            style.PointerAlignment = clang::format::FormatStyle::PAS_Left;
+        }
+    }
+
+    clang::format::FormatStyle style;
+};
+
+/// Lay out code a card shows, a printed declaration or an expansion: it is
+/// printed as one line, not as anyone wrote it.
+void reformat(CompilationUnit& unit, std::string& code) {
     if(code.empty()) {
         return;
     }
-    auto style = clang::format::getLLVMStyle();
-    style.PointerAlignment = clang::format::FormatStyle::PAS_Left;
+    auto& style = unit.get<CardStyle>().style;
     auto replacements =
         clang::format::reformat(style, code, {clang::tooling::Range(0, code.size())});
     auto formatted = clang::tooling::applyAllReplacements(code, replacements);
@@ -596,23 +611,23 @@ void reformat(std::string& code) {
 
 /// A declaration as its card shows it, laid out: the attributes written
 /// before it on a line of their own, after its template head.
-auto layout(display::Definition definition, bool exported) -> std::string {
+auto layout(CompilationUnit& unit, display::Definition definition, bool exported) -> std::string {
     std::string prefix = exported ? "export " : "";
     if(definition.attributes.empty()) {
         auto text = prefix + definition.head + definition.text;
-        reformat(text);
+        reformat(unit, text);
         return text;
     }
     std::string text;
     if(!definition.head.empty()) {
         auto head = prefix + definition.head;
-        reformat(head);
+        reformat(unit, head);
         text = head + "\n";
         prefix.clear();
     }
     auto attributes = prefix + definition.attributes;
-    reformat(attributes);
-    reformat(definition.text);
+    reformat(unit, attributes);
+    reformat(unit, definition.text);
     return text + attributes + "\n" + definition.text;
 }
 
@@ -914,7 +929,7 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
             }
             auto definition = display::definition(target, options);
             add_macros(info, definition, options);
-            info.target_definition += layout(std::move(definition), false) + ";";
+            info.target_definition += layout(unit, std::move(definition), false) + ";";
         }
     } else if(const auto* function = underlying_function(entity)) {
         add_function(info,
@@ -954,7 +969,7 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
            !llvm::isa<clang::ClassTemplateSpecializationDecl>(tag)) {
             auto definition = display::definition(tag->getDefinition(), options);
             add_macros(info, definition, options);
-            info.target_definition = layout(std::move(definition), false);
+            info.target_definition = layout(unit, std::move(definition), false);
         }
     }
 
@@ -981,13 +996,13 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
             if(decls::is_exported(decl)) {
                 info.definition.insert(0, "export ");
             }
-            reformat(info.definition);
+            reformat(unit, info.definition);
             return info;
         }
     }
     auto definition = display::definition(declaration, options);
     add_macros(info, definition, options);
-    info.definition = layout(std::move(definition), decls::is_exported(decl));
+    info.definition = layout(unit, std::move(definition), decls::is_exported(decl));
     return info;
 }
 
@@ -1340,7 +1355,7 @@ auto attr_hover(CompilationUnit& unit, const clang::Attr& attr) -> HoverInfo {
         info.name = (attr.getScopeName()->getName() + "::" + info.name).str();
     }
     info.definition = display::attribute(attr, unit.context());
-    reformat(info.definition);
+    reformat(unit, info.definition);
     info.attribute_documentation = clang::Attr::getDocumentation(attr.getKind()).str();
     return info;
 }
@@ -1396,10 +1411,10 @@ auto file_directive_hover(CompilationUnit& unit, std::uint32_t offset) -> std::o
     return std::nullopt;
 }
 
-/// The tokens the macro reference at `name` expands to, spelled and joined.
-/// Written in another macro's arguments, it is expanded within that macro's
-/// top-level expansion, whose tokens carry the chain of expansions they
-/// went through.
+/// The tokens the macro reference at `name` expands to, spelled, joined and
+/// laid out. Written in another macro's arguments, it is expanded within
+/// that macro's top-level expansion, whose tokens carry the chain of
+/// expansions they went through.
 auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std::string {
     auto& sources = unit.context().getSourceManager();
 
@@ -1436,8 +1451,16 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
         return {};
     };
 
-    std::string preview;
-    constexpr std::size_t preview_limit = 1024;
+    /// Joined up to `joined_limit` bytes, laid out, and shown up to
+    /// `shown_lines` lines. Cut while joining, the text has its open brackets
+    /// closed past a mark for the layout to reach its end, and is shown up
+    /// to the mark.
+    constexpr std::size_t joined_limit = 16 * 1024;
+    constexpr std::size_t shown_lines = 40;
+    constexpr llvm::StringLiteral cut_mark = "/*...*/";
+    std::string text;
+    std::string closers;
+    bool cut = false;
     llvm::DenseSet<clang::SourceLocation> seen;
     auto& tokens = unit.focus_file().tokens();
     for(auto& expansion: tokens.expansions_overlapping(tokens.spelled_touching(name))) {
@@ -1446,22 +1469,55 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
             if(at.isInvalid() || !seen.insert(at).second) {
                 continue;
             }
-            if(!preview.empty()) {
-                preview += ' ';
-            }
             /// Lex at the token's spelling site — getSpelling stays at the
             /// depth it is given, and only the spelling carries the written
             /// bytes.
             auto spelling = unit.token_spelling(sources.getSpellingLoc(token.location()));
-            if(auto remaining = preview_limit - preview.size(); spelling.size() >= remaining) {
-                preview.append(spelling, 0, remaining);
-                preview += " ...";
-                return preview;
+            if(text.size() + spelling.size() >= joined_limit) {
+                cut = true;
+                break;
             }
-            preview += spelling;
+            if(!text.empty()) {
+                text += ' ';
+            }
+            text += spelling;
+            switch(token.kind()) {
+                case clang::tok::l_paren: closers.push_back(')'); break;
+                case clang::tok::l_square: closers.push_back(']'); break;
+                case clang::tok::l_brace: closers.push_back('}'); break;
+                case clang::tok::r_paren:
+                case clang::tok::r_square:
+                case clang::tok::r_brace:
+                    if(!closers.empty()) {
+                        closers.pop_back();
+                    }
+                    break;
+                default: break;
+            }
+        }
+        if(cut) {
+            break;
         }
     }
-    return preview;
+    if(cut) {
+        text += ' ';
+        text += cut_mark;
+        for(auto closer: views::reverse(closers)) {
+            text += ' ';
+            text += closer;
+        }
+    }
+    reformat(unit, text);
+    llvm::StringRef laid = text;
+    if(cut) {
+        laid = laid.take_front(laid.find(cut_mark)).rtrim();
+    }
+    llvm::SmallVector<llvm::StringRef> lines;
+    laid.split(lines, '\n');
+    if(!cut && lines.size() <= shown_lines) {
+        return text;
+    }
+    return llvm::join(llvm::ArrayRef(lines).take_front(shown_lines), "\n") + "\n// ... (truncated)";
 }
 
 /// The card of a macro: its `#define` as written, and its documentation.
@@ -1786,7 +1842,6 @@ auto hover_info(CompilationUnit& unit,
     display_options.readable = &readable;
 
     if(auto info = macro_hover(unit, offset, documentation, display_options)) {
-        reformat(info->expansion);
         return info;
     }
     Request request{

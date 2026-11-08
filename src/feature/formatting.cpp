@@ -124,12 +124,8 @@ auto document_format(llvm::StringRef file,
 
 auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<TextReplacement> edits)
     -> std::vector<TextReplacement> {
-    auto style = file_style(file);
+    auto style = configured_style(file);
     if(!style) {
-        LOG_WARN("Failed to load the format style of {}: {}", file, style.error());
-        return edits;
-    }
-    if(!style->configured || style->style.DisableFormat) {
         return edits;
     }
 
@@ -150,7 +146,7 @@ auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<Tex
         return edits;
     }
     auto formatted =
-        clang::format::reformat(style->style,
+        clang::format::reformat(*style,
                                 *changed,
                                 tooling::calculateRangesAfterReplacements(replacements, ranges),
                                 file);
@@ -193,17 +189,28 @@ auto cleanup_edits(llvm::StringRef file,
 }
 
 auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string {
-    auto style = file_style(file);
-    if(!style || !style->configured || style->style.DisableFormat) {
+    auto style = configured_style(file);
+    if(!style) {
         return text.str();
     }
     std::vector<tooling::Range> ranges = {
         tooling::Range(0, static_cast<unsigned>(text.size())),
     };
     auto formatted =
-        tooling::applyAllReplacements(text,
-                                      clang::format::reformat(style->style, text, ranges, file));
+        tooling::applyAllReplacements(text, clang::format::reformat(*style, text, ranges, file));
     return formatted ? std::move(*formatted) : text.str();
+}
+
+auto configured_style(llvm::StringRef file) -> std::optional<clang::format::FormatStyle> {
+    auto style = file_style(file);
+    if(!style) {
+        LOG_WARN("Failed to load the format style of {}: {}", file, style.error());
+        return std::nullopt;
+    }
+    if(!style->configured || style->style.DisableFormat) {
+        return std::nullopt;
+    }
+    return std::move(style->style);
 }
 
 }  // namespace clice::feature
