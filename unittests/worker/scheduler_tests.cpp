@@ -725,6 +725,31 @@ ZEST_CASE(ScaleDownTakesHeaviest) {
     ZEXPECT(scale_downs[0].slot == 1u);
 }
 
+ZEST_CASE(ShortMemoryTakesHeavyIdle) {
+    constexpr auto heavy = WorkerScheduler::replace_above + MiB;
+    Core core(1);
+    core.submit(1, Priority::Low);
+    core.finish(1);
+    core.advance(WorkerScheduler::idle_scale_down);
+    core.sample(16 * GiB,
+                {
+                    {.slot = 0, .memory = heavy}
+    });
+    ZASSERT(core.all<scheduler::Spawn>().size() == 1u);
+    core.scheduler.worker_ready(1, core.now);
+    core.processes = 2;
+    // Short of memory before the idle time is up: the heavy one goes, not
+    // its fresh replacement.
+    core.sample(100 * MiB,
+                {
+                    {.slot = 0, .memory = heavy  },
+                    {.slot = 1, .memory = 3 * MiB}
+    });
+    auto scale_downs = core.all<scheduler::ScaleDown>();
+    ZASSERT(scale_downs.size() == 1u);
+    ZEXPECT(scale_downs[0].slot == 0u);
+}
+
 ZEST_CASE(StarvedForegroundSpawns) {
     Core core(1);
     core.submit(1, Priority::High);

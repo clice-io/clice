@@ -456,20 +456,29 @@ void WorkerScheduler::dispatch(SchedulerTime now) {
     }
 }
 
+WorkerScheduler::Slot* WorkerScheduler::heaviest_idle() {
+    Slot* heaviest = nullptr;
+    for(auto& [_, slot]: slots | views::reverse) {
+        if(!slot.scaling_down && !slot.request && (!heaviest || slot.memory > heaviest->memory)) {
+            heaviest = &slot;
+        }
+    }
+    return heaviest;
+}
+
 bool WorkerScheduler::scale_down_idle() {
     auto serving =
         ranges::count_if(slots, [](const auto& entry) { return !entry.second.scaling_down; });
     bool scaled_down = false;
-    for(auto& [index, slot]: slots | views::reverse) {
-        if(static_cast<std::size_t>(serving) <= options.min_workers) {
+    while(static_cast<std::size_t>(serving) > options.min_workers) {
+        auto* slot = heaviest_idle();
+        if(!slot) {
             break;
         }
-        if(!slot.scaling_down && !slot.request) {
-            slot.scaling_down = true;
-            serving -= 1;
-            scaled_down = true;
-            actions.push_back(scheduler::ScaleDown{.slot = index});
-        }
+        slot->scaling_down = true;
+        serving -= 1;
+        scaled_down = true;
+        actions.push_back(scheduler::ScaleDown{.slot = slot->slot});
     }
     return scaled_down;
 }
@@ -579,13 +588,7 @@ void WorkerScheduler::scale(SchedulerTime now) {
     auto serving =
         ranges::count_if(slots, [](const auto& entry) { return !entry.second.scaling_down; });
     if(static_cast<std::size_t>(serving) > options.min_workers) {
-        // The one holding the most goes, the newest of equals.
-        Slot* heaviest = nullptr;
-        for(auto& [_, slot]: slots | views::reverse) {
-            if(!slot.scaling_down && (!heaviest || slot.memory > heaviest->memory)) {
-                heaviest = &slot;
-            }
-        }
+        auto* heaviest = heaviest_idle();
         heaviest->scaling_down = true;
         last_busy = now;
         actions.push_back(scheduler::ScaleDown{.slot = heaviest->slot});

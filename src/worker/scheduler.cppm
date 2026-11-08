@@ -421,6 +421,10 @@ private:
 
     Slot* idle_slot();
 
+    /// The idle process holding the most, the newest of equals: the one a
+    /// scale-down takes.
+    Slot* heaviest_idle();
+
     /// Stateless requests queued or running.
     bool busy() const;
 
