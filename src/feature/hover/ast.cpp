@@ -1452,11 +1452,12 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
     };
 
     /// Joined up to `joined_limit` bytes, laid out, and shown up to
-    /// `shown_lines` lines. Cut while joining, the text has its open brackets
-    /// closed past a mark for the layout to reach its end, and is shown up
-    /// to the mark.
+    /// `shown_lines` lines and `shown_bytes` bytes. Cut while joining, the
+    /// text has its open brackets closed past a mark for the layout to reach
+    /// its end, and is shown up to the mark.
     constexpr std::size_t joined_limit = 16 * 1024;
     constexpr std::size_t shown_lines = 40;
+    constexpr std::size_t shown_bytes = 4 * 1024;
     constexpr llvm::StringLiteral cut_mark = "/*...*/";
     std::string text;
     std::string closers;
@@ -1514,10 +1515,25 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
     }
     llvm::SmallVector<llvm::StringRef> lines;
     laid.split(lines, '\n');
-    if(!cut && lines.size() <= shown_lines) {
-        return text;
+    bool truncated = cut || lines.size() > shown_lines;
+    auto shown = llvm::join(llvm::ArrayRef(lines).take_front(shown_lines), "\n");
+    if(shown.size() > shown_bytes) {
+        /// A line longer than the rest of the bytes is cut inside it, at a
+        /// character's start.
+        auto end = llvm::StringRef(shown).rfind('\n', shown_bytes);
+        if(end == llvm::StringRef::npos) {
+            end = shown_bytes;
+            while((shown[end] & 0xC0) == 0x80) {
+                end -= 1;
+            }
+        }
+        shown.resize(end);
+        truncated = true;
     }
-    return llvm::join(llvm::ArrayRef(lines).take_front(shown_lines), "\n") + "\n// ... (truncated)";
+    if(truncated) {
+        shown += "\n// ... (truncated)";
+    }
+    return shown;
 }
 
 /// The card of a macro: its `#define` as written, and its documentation.
