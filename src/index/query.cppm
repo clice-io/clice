@@ -109,6 +109,10 @@ public:
 
     bool stale(Fid file, std::uint64_t content_hash) const;
 
+    /// stale() without withholding: whether the file moved on, for a
+    /// reader that serves nothing from it.
+    bool moved_on(Fid file, std::uint64_t content_hash) const;
+
     /// The files whose indexes were withheld, in no particular order.
     llvm::SmallVector<Fid> withheld() const {
         return ranges::to<llvm::SmallVector<Fid>>(withheld_files);

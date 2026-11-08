@@ -167,20 +167,25 @@ void add_resolved(const InstantiationShard& shard,
 }
 
 bool FreshnessGate::stale(Fid file, std::uint64_t content_hash) const {
+    if(!moved_on(file, content_hash)) {
+        return false;
+    }
+    withheld_files.insert(file);
+    return true;
+}
+
+bool FreshnessGate::moved_on(Fid file, std::uint64_t content_hash) const {
     if(!options.withhold) {
         return false;
     }
     if(options.check_disk && checked.insert(file).second) {
         files.disk.current(file);
     }
-    if(!files.disk.seen_missing(file)) {
-        auto seen = files.disk.seen_hash(file);
-        if(!seen || *seen == content_hash) {
-            return false;
-        }
+    if(files.disk.seen_missing(file)) {
+        return true;
     }
-    withheld_files.insert(file);
-    return true;
+    auto seen = files.disk.seen_hash(file);
+    return seen && *seen != content_hash;
 }
 
 IndexQuery::IndexQuery(const ProjectIndex& index, FileTable& files, const FreshnessGate* gate) :
@@ -279,7 +284,7 @@ void IndexQuery::for_each_overlay(llvm::function_ref<bool(const TUIndex&)> visit
 std::vector<Fid> IndexQuery::outdated_files() const {
     std::vector<Fid> outdated;
     index.for_each_indexed_file([&](Fid file, std::uint64_t content) {
-        if(buffer_of(file) ? !serving(file) : gate && gate->stale(file, content)) {
+        if(buffer_of(file) ? !serving(file) : gate && gate->moved_on(file, content)) {
             outdated.push_back(file);
         }
     });
