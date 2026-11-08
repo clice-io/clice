@@ -333,6 +333,29 @@ Completables completables(const IndexQuery& index, llvm::StringRef prefix, std::
     return result;
 }
 
+std::optional<IndexQuery::Cursor> cursor_at(const IndexQuery& index,
+                                            const SymbolQuery::Position& place) {
+    assert(place.column);
+    auto file = index.file_table().intern(Spelling::absolute(place.path));
+    // A stale index describes text that no longer exists: resolving the
+    // requested place against it would name the wrong symbol.
+    auto source = index.serving(file);
+    if(!source) {
+        return std::nullopt;
+    }
+    auto bounds = source->positions.line_bounds(static_cast<std::uint32_t>(place.line - 1));
+    if(!bounds) {
+        return std::nullopt;
+    }
+    // The column counts bytes: the line's start plus the column, bounded
+    // by the line's own length.
+    auto offset = bounds->begin + static_cast<std::uint32_t>(*place.column - 1);
+    if(offset > bounds->end) {
+        return std::nullopt;
+    }
+    return index.symbol_at(file, offset);
+}
+
 std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQuery& query) {
     if(query.handle) {
         Fid anchor;
@@ -345,32 +368,20 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
         return {};
     }
 
+    if(query.position && query.position->column) {
+        auto cursor = cursor_at(index, *query.position);
+        return cursor ? index.resolve_at(*cursor) : std::vector<IndexQuery::Located>{};
+    }
     if(query.position) {
         auto& place = *query.position;
         auto file = index.file_table().intern(Spelling::absolute(place.path));
-        // A stale index describes text that no longer exists: resolving the
-        // requested place against it would name the wrong symbol.
         auto source = index.serving(file);
         if(!source) {
             return {};
         }
-        auto line = static_cast<std::uint32_t>(place.line - 1);
-        auto bounds = source->positions.line_bounds(line);
+        auto bounds = source->positions.line_bounds(static_cast<std::uint32_t>(place.line - 1));
         if(!bounds) {
             return {};
-        }
-        if(place.column) {
-            // The column counts bytes: the line's start plus the column,
-            // bounded by the line's own length.
-            auto offset = bounds->begin + static_cast<std::uint32_t>(*place.column - 1);
-            if(offset > bounds->end) {
-                return {};
-            }
-            auto cursor = index.symbol_at(file, offset);
-            if(!cursor) {
-                return {};
-            }
-            return index.resolve_at(*cursor);
         }
         // The definitions on the line, the file's own symbols included:
         // the serving source holds every entry, whichever table names it.

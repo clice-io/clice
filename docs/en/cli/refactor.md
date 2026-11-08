@@ -8,7 +8,7 @@
 
 ## Rename
 
-The symbol is named by a [locator](./query.md#locators), as `clice query` takes one: by its name, spelled exactly, case included, by the `symbol` an answer of `clice query` carried, or by a place, `file:line[:column]`. A near match or a pattern names nothing to rewrite a project for. A name the overloads of one scope spell renames them all; the `symbol` of one of them renames that one. A name several other symbols spell lists them as `candidates`.
+The symbol is named by a [locator](./query.md#locators), as `clice query` takes one: by its name, spelled exactly, case included, by the `symbol` an answer of `clice query` carried, or by a place, `file:line[:column]`. A place, like the editor's cursor, on a name in a template that depends on a template parameter renames what the instantiations resolve the name to, and is refused when they resolve it to symbols of different renames or none was indexed. A near match or a pattern names nothing to rewrite a project for. A name the overloads of one scope spell renames them all; the `symbol` of one of them renames that one. A name several other symbols spell lists them as `candidates`.
 
 A rename changes every declaration, definition and reference the index ties to the symbol, and the symbols that must keep its name:
 
@@ -63,7 +63,7 @@ The command reads the disk; unsaved editor buffers are invisible to it. Save the
 
 ## In the editor
 
-The editor's rename selects the name under the cursor, or says why the symbol there cannot be renamed. On a name in a template that depends on a template parameter, it renames what the instantiations resolve the name to, and refuses when they resolve it to several symbols or none was indexed. The edits it returns are versioned against the open buffers, which it reads instead of the disk. Conflicts and stale files answer an error naming them; warnings and the places left alone are shown in a message.
+The editor's rename selects the name under the cursor, or says why the symbol there cannot be renamed. The edits it returns are versioned against the open buffers, which it reads instead of the disk. Conflicts and stale files answer an error naming them; warnings and the places left alone are shown in a message.
 
 ## Examples
 

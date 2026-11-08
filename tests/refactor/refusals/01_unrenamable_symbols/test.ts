@@ -12,4 +12,6 @@ test(async (t) => {
     await t.cli(
         `refactor rename ${t.place(t.at("main.cpp", 'Meters operator""|_m'))} meters --dry-run`,
     );
+    // Its instantiations resolve the name to two fields.
+    await t.cli(`refactor rename ${t.place(t.at("main.cpp", "item.|value"))} amount --dry-run`);
 });

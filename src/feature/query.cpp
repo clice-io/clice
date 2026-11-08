@@ -231,6 +231,23 @@ Result<RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
     if(!hold_to_whole_name(locator)) {
         return std::unexpected("a rename names its symbol by its whole name, not by a pattern");
     }
+    // A place renames what the editor's rename there would.
+    if(locator.position && locator.position->column) {
+        auto anchored = anchor_paths(ctx, locator);
+        if(!anchored) {
+            return std::unexpected(anchored.error());
+        }
+        auto cursor = *anchored ? index::cursor_at(ctx.query, *locator.position)
+                                : std::optional<index::IndexQuery::Cursor>();
+        if(!cursor) {
+            return std::unexpected("symbol not found");
+        }
+        auto renamed = rename_at(ctx.query, *cursor);
+        if(!renamed) {
+            return std::unexpected(renamed.error());
+        }
+        return std::move(renamed->target);
+    }
     bool by_pattern = locator.by_pattern();
     auto candidates = resolve(ctx, std::move(locator));
     if(!candidates) {

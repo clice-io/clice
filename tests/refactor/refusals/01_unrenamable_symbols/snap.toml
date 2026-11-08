@@ -1,6 +1,6 @@
 [test."$ clice index --jobs 2"]
 stdout = '''
-Indexed 1 translation unit in #s: 2 file shards (# KB), 11 symbols.
+Indexed 1 translation unit in #s: 2 file shards (# KB), 14 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
@@ -172,6 +172,36 @@ stdout = '''
         "conflicts": [],
         "warnings": [],
         "error": "`operator\"\"_m` is named by the language, not by an identifier",
+        "candidates": null
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename main.cpp:22:42 amount --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "main.cpp:22:42",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "amount",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "the name here resolves to `Seconds::value` and `Meters::value`; rename them to one name in one list of renames, or one of them from its declaration",
         "candidates": null
       }
     ],
