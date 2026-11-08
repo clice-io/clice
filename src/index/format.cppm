@@ -122,8 +122,10 @@ namespace clice::index {
 /// the access reaching a member of an anonymous struct or union records
 /// no reference, and a symbol records every file defining it; v60: a class
 /// template relates to its deduction guides, a macro name written as an
-/// argument is a reference there and a pasted one at the expansion, and
-/// directives record the macro names no definition resolves.
+/// argument is a reference there and a pasted one at the expansion,
+/// directives record the macro names no definition resolves, the overloads
+/// a name certainly stands for are Candidates apart from the resolver's
+/// Guesses, and an instantiation confirming a guess is recorded.
 constexpr inline std::uint32_t index_format_version = 60;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less

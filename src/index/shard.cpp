@@ -579,7 +579,7 @@ CheckResult relations_ok(const Root& root) {
             case range_none: {
                 // Pair relations carry no range of their own; every other
                 // kind is written with a real range.
-                if(!table.kind_of(entry).isBetweenSymbol()) {
+                if(!table.kind_of(entry).between_symbols()) {
                     return std::unexpected("no range on a relation that carries one");
                 }
                 break;

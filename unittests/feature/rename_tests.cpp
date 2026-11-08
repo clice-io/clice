@@ -661,7 +661,9 @@ ZEST_CASE(MacroSpellingsUnconfirmed) {
     ZEXPECT(renamed->unconfirmed[1].reason.contains("written here as `CALL`"));
 }
 
-ZEST_CASE(DependentCallHeuristic) {
+ZEST_CASE(DependentCallCandidate) {
+    // The overloads a dependent call finds where it is written are its
+    // for certain, instantiated or not.
     add_focus(file("a.cpp"), R"(
         int §compute(int x) { return x; }
 
@@ -673,9 +675,56 @@ ZEST_CASE(DependentCallHeuristic) {
     auto renamed = rename("compute", "evaluate");
     ZASSERT(renamed);
     ZEXPECT(edits(*renamed) == marks());
-    ZASSERT(renamed->edits.size() == 2U);
-    ZEXPECT(!renamed->edits[0].heuristic);
-    ZEXPECT(renamed->edits[1].heuristic);
+    ZEXPECT(renamed->unconfirmed.empty());
+}
+
+ZEST_CASE(InstantiationsDecideDependentNames) {
+    add_focus(file("a.cpp"), R"(
+        struct A { void §(cursor)§go(); };
+        struct B { void go(); };
+
+        template <typename T>
+        void one(T t) { t.§go(); }
+
+        template <typename T>
+        void both(T t) { t.go(); }
+
+        void use() {
+            one(A{});
+            both(A{});
+            both(B{});
+        }
+    )");
+    merge();
+
+    auto renamed = rename_at("cursor", "start");
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZASSERT(renamed->unconfirmed.size() == 1U);
+    ZEXPECT(renamed->unconfirmed.front().reason.contains("`B::go`"));
+}
+
+ZEST_CASE(GuessesNeedAnInstantiation) {
+    add_focus(file("a.cpp"), R"(
+        template <typename T>
+        struct Box { static constexpr int §(cursor)§value = 1; };
+
+        template <typename T>
+        int read() { return Box<T>::§value; }
+
+        template <typename T>
+        int peek() { return Box<T>::value; }
+
+        int use() { return read<int>(); }
+    )");
+    merge();
+
+    auto renamed = rename_at("cursor", "amount");
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZASSERT(renamed->unconfirmed.size() == 1U);
+    ZEXPECT(renamed->unconfirmed.front().reason.contains("no instantiation"));
+    ZEXPECT(renamed->unconfirmed.front().line.contains("peek"));
 }
 
 ZEST_CASE(DependentCallOverloads) {

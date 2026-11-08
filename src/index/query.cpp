@@ -17,7 +17,7 @@ std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
 }
 
 std::optional<Site> extent_of(const IndexSource& source, const Relation& relation) {
-    assert(RelationKind(relation.kind).isDeclOrDef());
+    assert(RelationKind(relation.kind).declares());
     auto extent = relation.extent();
     if(extent.begin >= extent.end) {
         return std::nullopt;
@@ -687,6 +687,18 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     // shared-PCH identity).
     with_preamble(*source, [&](const Shard& preamble) { hit(preamble); });
     return cursor;
+}
+
+llvm::SmallVector<SymbolHash, 1> IndexQuery::resolved_at(Fid file, std::uint32_t offset) const {
+    auto source = serving(file);
+    if(!source || !with_instantiations) {
+        return {};
+    }
+    std::optional<Named> named;
+    for(auto* instantiations: source->instantiations) {
+        add_resolved(*instantiations, offset, named);
+    }
+    return named ? std::move(named->symbols) : llvm::SmallVector<SymbolHash, 1>{};
 }
 
 std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file,

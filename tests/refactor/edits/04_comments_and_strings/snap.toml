@@ -33,15 +33,13 @@ stdout = '''
             "line": 1,
             "column": 11,
             "name": "geo",
-            "newName": "shapes",
-            "heuristic": false
+            "newName": "shapes"
           },
           {
             "line": 8,
             "column": 21,
             "name": "geo",
-            "newName": "shapes",
-            "heuristic": false
+            "newName": "shapes"
           }
         ]
       }

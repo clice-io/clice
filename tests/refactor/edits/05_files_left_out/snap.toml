@@ -33,8 +33,7 @@ stdout = '''
             "line": 3,
             "column": 5,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       },
@@ -45,8 +44,7 @@ stdout = '''
             "line": 3,
             "column": 5,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       }

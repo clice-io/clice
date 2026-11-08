@@ -556,7 +556,6 @@ PlannedRename rename(Context& ctx,
             .column = static_cast<int>(site.begin.column) + 1,
             .name = plans[owner].old_name,
             .new_name = plans[owner].new_name,
-            .heuristic = edit.heuristic,
         });
     }
     result.conflicts = planned.plan.conflicts;

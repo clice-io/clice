@@ -49,6 +49,18 @@ tests/rename/edits/12_macros
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**重命名模板中的依赖名称**
+
+在模板中，依赖于模板参数的调用，若已索引的实例化将其解析到被重命名的方法，就会被重命名；若其中某个实例化将其解析到另一个方法，或没有任何实例化被索引，则保持不变，并会在消息中指出
+
+```case
+tests/rename/edits/13_templates
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 拒绝重命名的情况

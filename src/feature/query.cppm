@@ -206,9 +206,6 @@ struct RenameEditEntry {
     int column = 0;
     std::string name;
     std::string new_name;
-
-    /// Reached through a name the index resolved heuristically.
-    bool heuristic = false;
 };
 
 struct RenameFileEntry {

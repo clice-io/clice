@@ -1,0 +1,36 @@
+[answers.instantiated.rename]
+notice = '''
+Spellings of `area` left alone:
+  ${WS}/main.cpp:13: double report(const T& shape) { return shape.area(); } (the name here also refers to `Square::area`, under another build configuration, as another candidate of a dependent call or in another instantiation)
+'''
+
+[answers.instantiated.rename.edits]
+"main.cpp" = '''
+ struct Circle {
+-    double area() const { return 3.0; }
++    double perimeter() const { return 3.0; }
+ };
+
+…
+
+ template <typename T>
+-double measure(const T& shape) { return shape.area(); }
++double measure(const T& shape) { return shape.perimeter(); }
+
+ template <typename T>
+'''
+
+[answers.uninstantiated.rename]
+notice = '''
+Spellings of `area` left alone:
+  ${WS}/main.cpp:21: double size_of(const Box<T>& box) { return box.area(); } (in a template, where no instantiation the index saw resolves the name to it)
+'''
+
+[answers.uninstantiated.rename.edits]
+"main.cpp" = '''
+ template <typename T>
+ struct Box {
+-    double area() const { return 1.0; }
++    double volume() const { return 1.0; }
+ };
+'''

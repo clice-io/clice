@@ -48,15 +48,13 @@ stdout = '''
             "line": 1,
             "column": 5,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           },
           {
             "line": 2,
             "column": 20,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       }
@@ -113,15 +111,13 @@ stdout = '''
             "line": 1,
             "column": 5,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           },
           {
             "line": 2,
             "column": 20,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       }

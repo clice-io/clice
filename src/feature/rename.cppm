@@ -77,11 +77,6 @@ struct RenameScope {
 /// One token the rename replaces.
 struct RenameEdit {
     index::Site site;
-
-    /// Reached through a name the index resolved heuristically (a
-    /// dependent call, a using-declaration of an overload set): changed,
-    /// and worth a look.
-    bool heuristic = false;
 };
 
 /// A token spelling the old name that the rename leaves alone, and why.
@@ -180,9 +175,8 @@ std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& 
 std::string refusal(const RenamePlan& plan);
 
 /// The edits of a rename, each file's versioned against its open buffer,
-/// and what the user should hear about them: the warnings, the tokens
-/// spelling the old name that were left alone, the edits reached through a
-/// heuristic resolution.
+/// and what the user should hear about them: the warnings and the tokens
+/// spelling the old name that were left alone.
 struct Renamed {
     protocol::WorkspaceEdit edit;
     std::string notice;

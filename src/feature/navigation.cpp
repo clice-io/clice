@@ -232,7 +232,8 @@ std::vector<Highlight>
         add(symbol, RelationKind::Declaration, HighlightKind::Text);
         add(symbol, RelationKind::Definition, HighlightKind::Text);
         add(symbol, RelationKind::Reference, used);
-        add(symbol, RelationKind::WeakReference, used);
+        add(symbol, RelationKind::Candidate, used);
+        add(symbol, RelationKind::Guess, used);
         if(accessed) {
             add(symbol, RelationKind::Write, HighlightKind::Write);
         }
@@ -300,7 +301,9 @@ std::vector<index::Site> references(const index::IndexQuery& index,
                                     const index::IndexQuery::Cursor& cursor,
                                     bool include_declaration) {
     ScopedTimer timer;
-    llvm::SmallVector<RelationKind, 4> kinds{RelationKind::Reference, RelationKind::WeakReference};
+    llvm::SmallVector<RelationKind, 5> kinds{RelationKind::Reference,
+                                             RelationKind::Candidate,
+                                             RelationKind::Guess};
     if(include_declaration) {
         kinds.append({RelationKind::Declaration, RelationKind::Definition});
     }
@@ -322,7 +325,8 @@ std::vector<index::Site> references(const index::IndexQuery& index,
         if(index::is_function(info->kind)) {
             for(auto base: index.transitive_targets(symbol, anchor, RelationKind::Interface)) {
                 auto direct = index.sites(base.symbol, base.anchor, RelationKind::Direct);
-                for(auto kind: {RelationKind::Reference, RelationKind::WeakReference}) {
+                for(auto kind:
+                    {RelationKind::Reference, RelationKind::Candidate, RelationKind::Guess}) {
                     for(auto& site: index.sites(base.symbol, base.anchor, kind)) {
                         if(ranges::none_of(direct, [&](const index::Site& call) {
                                return index::site_key(call) == index::site_key(site);
@@ -445,21 +449,24 @@ std::vector<index::Site> type_definition(const index::IndexQuery& index,
     return result;
 }
 
-bool names_weakly(const index::IndexQuery& index,
-                  const index::IndexQuery::Cursor& cursor,
-                  index::SymbolHash symbol) {
+bool names_uncertainly(const index::IndexQuery& index,
+                       const index::IndexQuery::Cursor& cursor,
+                       index::SymbolHash symbol) {
     auto source = index.serving(cursor.site.file);
     if(!source) {
         return false;
     }
     bool found = false;
     auto hit = [&](const index::Shard& shard) {
-        shard.relations_of(symbol,
-                           RelationKind::WeakReference,
-                           [&](const index::Relation& relation) {
-                               found = relation.range == cursor.site.range;
-                               return !found;
-                           });
+        for(auto kind: {RelationKind::Guess, RelationKind::Candidate}) {
+            shard.relations_of(symbol, kind, [&](const index::Relation& relation) {
+                found = relation.range == cursor.site.range;
+                return !found;
+            });
+            if(found) {
+                break;
+            }
+        }
         return found;
     };
     if(!hit(*source->shard)) {
@@ -593,7 +600,7 @@ std::vector<index::Site> implementation(const index::IndexQuery& query,
     auto file = cursor.site.file;
     std::vector<index::Site> sites;
     for(auto symbol: cursor.symbols) {
-        if(names_weakly(query, cursor, symbol)) {
+        if(names_uncertainly(query, cursor, symbol)) {
             sites.append_range(
                 query.gather(symbol,
                              file,

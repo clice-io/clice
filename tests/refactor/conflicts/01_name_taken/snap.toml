@@ -35,8 +35,7 @@ stdout = '''
             "line": 3,
             "column": 5,
             "name": "compute",
-            "newName": "Widget",
-            "heuristic": false
+            "newName": "Widget"
           }
         ]
       },
@@ -47,15 +46,13 @@ stdout = '''
             "line": 3,
             "column": 5,
             "name": "compute",
-            "newName": "Widget",
-            "heuristic": false
+            "newName": "Widget"
           },
           {
             "line": 7,
             "column": 20,
             "name": "compute",
-            "newName": "Widget",
-            "heuristic": false
+            "newName": "Widget"
           }
         ]
       },
@@ -66,8 +63,7 @@ stdout = '''
             "line": 3,
             "column": 22,
             "name": "compute",
-            "newName": "Widget",
-            "heuristic": false
+            "newName": "Widget"
           }
         ]
       }

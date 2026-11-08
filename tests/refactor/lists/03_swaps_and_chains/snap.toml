@@ -59,36 +59,31 @@ stdout = '''
             "line": 1,
             "column": 5,
             "name": "alpha",
-            "newName": "beta",
-            "heuristic": false
+            "newName": "beta"
           },
           {
             "line": 2,
             "column": 5,
             "name": "beta",
-            "newName": "gamma",
-            "heuristic": false
+            "newName": "gamma"
           },
           {
             "line": 3,
             "column": 5,
             "name": "gamma",
-            "newName": "alpha",
-            "heuristic": false
+            "newName": "alpha"
           },
           {
             "line": 3,
             "column": 22,
             "name": "alpha",
-            "newName": "beta",
-            "heuristic": false
+            "newName": "beta"
           },
           {
             "line": 3,
             "column": 30,
             "name": "beta",
-            "newName": "gamma",
-            "heuristic": false
+            "newName": "gamma"
           }
         ]
       }

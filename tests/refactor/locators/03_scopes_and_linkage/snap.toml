@@ -131,29 +131,25 @@ stdout = '''
             "line": 1,
             "column": 5,
             "name": "mix",
-            "newName": "h",
-            "heuristic": false
+            "newName": "h"
           },
           {
             "line": 2,
             "column": 12,
             "name": "mix",
-            "newName": "h",
-            "heuristic": false
+            "newName": "h"
           },
           {
             "line": 3,
             "column": 24,
             "name": "mix",
-            "newName": "h",
-            "heuristic": false
+            "newName": "h"
           },
           {
             "line": 3,
             "column": 33,
             "name": "mix",
-            "newName": "h",
-            "heuristic": false
+            "newName": "h"
           }
         ]
       }
@@ -195,43 +191,37 @@ stdout = '''
             "line": 3,
             "column": 16,
             "name": "g",
-            "newName": "h",
-            "heuristic": false
+            "newName": "h"
           },
           {
             "line": 3,
             "column": 30,
             "name": "g",
-            "newName": "h",
-            "heuristic": false
+            "newName": "h"
           },
           {
             "line": 4,
             "column": 8,
             "name": "g",
-            "newName": "h",
-            "heuristic": false
+            "newName": "h"
           },
           {
             "line": 5,
             "column": 8,
             "name": "g",
-            "newName": "h",
-            "heuristic": false
+            "newName": "h"
           },
           {
             "line": 6,
             "column": 47,
             "name": "g",
-            "newName": "h",
-            "heuristic": false
+            "newName": "h"
           },
           {
             "line": 6,
             "column": 56,
             "name": "g",
-            "newName": "h",
-            "heuristic": false
+            "newName": "h"
           }
         ]
       }

@@ -450,15 +450,20 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     };
 
     // Another renamable symbol of the old name the token names too: a
-    // variant of a shared header compiled under other definitions, or an
-    // overload a dependent call leaves open. Changing the token changes
-    // its use as well.
-    auto shared_with = [&](Fid file, std::uint32_t offset) -> std::optional<index::SymbolHash> {
-        auto cursor = query.symbol_at(file, offset);
-        if(!cursor) {
-            return std::nullopt;
+    // variant of a shared header compiled under other definitions, an
+    // overload a dependent call leaves open, what another instantiation
+    // resolves it to. Changing the token changes its use as well. A site
+    // an instantiation alone gives is decided by the instantiations.
+    auto shared_with = [&](const index::Site& site,
+                           std::uint32_t offset) -> std::optional<index::SymbolHash> {
+        auto file = site.file;
+        auto symbols = serving.resolved_at(file, offset);
+        if(site.origin == index::SiteOrigin::Written) {
+            if(auto cursor = query.symbol_at(file, offset)) {
+                symbols.append(cursor->symbols.begin(), cursor->symbols.end());
+            }
         }
-        for(auto symbol: cursor->symbols) {
+        for(auto symbol: symbols) {
             if(group.contains(symbol) || renamed_alike(symbol)) {
                 continue;
             }
@@ -484,10 +489,10 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
             .line = preview_line(*text.source, offset),
         });
     };
-    auto add_edit = [&](const index::Site& site, std::uint32_t offset, bool heuristic) {
+    auto add_edit = [&](const index::Site& site, std::uint32_t offset) {
         auto file = site.file;
         auto& text = text_of(file);
-        if(auto other = shared_with(file, offset)) {
+        if(auto other = shared_with(site, offset)) {
             auto name = query.qualified_name(*other, file);
             if(auto renamed = batch.renamed.find(*other); renamed != batch.renamed.end()) {
                 if(held.insert({file, offset}).second) {
@@ -504,17 +509,14 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
             note(site,
                  offset,
                  std::format("the name here also refers to `{}`, under another build "
-                             "configuration or as another candidate of a dependent call",
+                             "configuration, as another candidate of a dependent call or in "
+                             "another instantiation",
                              name));
             return;
         }
-        auto [it, inserted] = edits.try_emplace(
+        edits.try_emplace(
             {file, offset},
-            RenameEdit{.site = token_site(*text.source, file, site.path, offset, old_name.size()),
-                       .heuristic = heuristic});
-        if(!inserted) {
-            it->second.heuristic &= heuristic;
-        }
+            RenameEdit{.site = token_site(*text.source, file, site.path, offset, old_name.size())});
     };
     // The offsets of the old name a site spells; none when the file's index
     // is not current, or the site spells another name — punctuation (a
@@ -544,11 +546,11 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         for(auto kind: {RelationKind::Definition,
                         RelationKind::Declaration,
                         RelationKind::Reference,
-                        RelationKind::WeakReference}) {
+                        RelationKind::Candidate}) {
             for(auto& site: query.sites(member.symbol.hash, member.site.file, kind)) {
                 tied.insert(site.file);
                 for(auto offset: spelled_at(site)) {
-                    add_edit(site, offset, kind == RelationKind::WeakReference);
+                    add_edit(site, offset);
                 }
             }
         }
@@ -568,25 +570,37 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
                 continue;
             }
             for(auto offset: spelled_at(site)) {
-                add_edit(site, offset, false);
+                add_edit(site, offset);
             }
         }
     } else {
-        // What the instantiations of a template and the expansions of a
-        // macro body resolve: those tokens name other symbols elsewhere.
+        // A name in a template is the symbol's where its instantiations
+        // resolve it so; one in a #define body names something else in
+        // another expansion; the resolver's guesses confirm nothing.
         for(auto& member: target.group) {
-            for(auto kind: {RelationKind::Reference, RelationKind::WeakReference}) {
-                for(auto& site: serving.sites(member.symbol.hash, member.site.file, kind)) {
-                    if(site.origin == index::SiteOrigin::Written || !text_of(site.file).text ||
-                       edits.contains({site.file, site.range.begin})) {
-                        continue;
+            auto hash = member.symbol.hash;
+            for(auto& site: serving.sites(hash, member.site.file, RelationKind::Reference)) {
+                if(site.origin == index::SiteOrigin::Instantiation) {
+                    for(auto offset: spelled_at(site)) {
+                        add_edit(site, offset);
                     }
+                } else if(site.origin == index::SiteOrigin::Expansion && text_of(site.file).text &&
+                          !edits.contains({site.file, site.range.begin})) {
                     note(site,
                          site.range.begin,
-                         site.origin == index::SiteOrigin::Expansion
-                             ? "inside a #define body, which names something else in another "
-                               "expansion"
-                             : "in a template, which names it only in some instantiations");
+                         "inside a #define body, which names something else in another "
+                         "expansion");
+                }
+            }
+        }
+        for(auto& member: target.group) {
+            for(auto& site:
+                query.sites(member.symbol.hash, member.site.file, RelationKind::Guess)) {
+                if(text_of(site.file).text && !edits.contains({site.file, site.range.begin})) {
+                    note(site,
+                         site.range.begin,
+                         "in a template, where no instantiation the index saw resolves the name "
+                         "to it");
                 }
             }
         }
@@ -944,7 +958,6 @@ BatchPlan plan_renames(const index::IndexQuery& query,
                                 earlier,
                                 result.plans[i].new_name));
             }
-            it->second.edit.heuristic &= edit.heuristic;
         }
     }
     for(auto& edit: views::values(edits)) {
@@ -1018,7 +1031,6 @@ Renamed to_protocol(const RenamePlan& plan,
                                              protocol::DeleteFile>;
     std::vector<DocumentChange> changes;
     protocol::TextDocumentEdit* change = nullptr;
-    std::vector<std::string> heuristic;
     for(auto& edit: plan.edits) {
         if(!change || change->text_document.uri != to_uri(edit.site.path)) {
             protocol::TextDocumentEdit next{
@@ -1031,9 +1043,6 @@ Renamed to_protocol(const RenamePlan& plan,
             .range = to_range(edit.site, encoding),
             .new_text = new_name.str(),
         });
-        if(edit.heuristic) {
-            heuristic.push_back(std::format("{}:{}", edit.site.path, edit.site.begin.line + 1));
-        }
     }
     renamed.edit.document_changes = std::move(changes);
 
@@ -1047,7 +1056,6 @@ Renamed to_protocol(const RenamePlan& plan,
                                    note.reason));
     }
     list_notice(renamed.notice, std::format("Spellings of `{}` left alone", plan.old_name), left);
-    list_notice(renamed.notice, "Renamed through a heuristic resolution", heuristic);
     return renamed;
 }
 

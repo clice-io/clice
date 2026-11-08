@@ -10,15 +10,15 @@ stdout = '''
 file ${WS}/util.h
   blob=# B  content size=111  content hash=#e95b3c83f713268a
   variants=1
-    #4a4bb8c91f8d9d9b  contributed by 1 unit
+    #23664d7d797d0a47  contributed by 1 unit
       ${WS}/main.cpp
   symbols=8  local symbols=4  occurrences=12  relations=16
     Callee=1
     Caller=1
+    Candidate=1
     Definition=5
     Reference=6
     TypeDefinition=2
-    WeakReference=1
     local #6f467c243a36aaa2  kind=Type  name=P
     local #a5464685e2caf263  kind=Type  name=C
     local #bad926d7a1a6cee3  kind=Parameter  name=c
@@ -31,15 +31,15 @@ stdout = '''
 file ${WS}/wrap.h
   blob=# B  content size=121  content hash=#dbe19b955d3425f7
   variants=1
-    #5bf3352911c5c171  contributed by 1 unit
+    #945fb83b599ca6a8  contributed by 1 unit
       ${WS}/main.cpp
   symbols=7  local symbols=4  occurrences=11  relations=15
     Callee=1
     Caller=1
+    Candidate=1
     Definition=5
     Reference=5
     TypeDefinition=2
-    WeakReference=1
     local #20efbda22bb946d7  kind=Type  name=P
     local #31f72b66220a06e9  kind=Parameter  name=p
     local #c5e3cba16d80e315  kind=Type  name=C
@@ -52,15 +52,15 @@ stdout = '''
 file ${WS}/relay.h
   blob=# B  content size=89  content hash=#2aeef4eb0422525e
   variants=1
-    #5dd0050b3caa076f  contributed by 1 unit
+    #32f0a9551ca6ca08  contributed by 1 unit
       ${WS}/main.cpp
   symbols=6  local symbols=2  occurrences=8  relations=11
     Callee=1
     Caller=1
+    Candidate=1
     Definition=3
     Reference=4
     TypeDefinition=1
-    WeakReference=1
     local #2363ba3a6ef4553c  kind=Type  name=C
     local #9c6fdcc54b04ad66  kind=Parameter  name=c
 '''

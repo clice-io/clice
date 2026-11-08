@@ -332,6 +332,11 @@ public:
 
     std::optional<Cursor> symbol_at(Fid file, std::uint32_t offset) const;
 
+    /// What the instantiations of a template and the expansions of a macro
+    /// body resolve the name at `offset` to, in the file's serving source:
+    /// no guess of the written code.
+    llvm::SmallVector<SymbolHash, 1> resolved_at(Fid file, std::uint32_t offset) const;
+
     /// The same for a position as the editor spells it, counted in
     /// `encoding` in the serving source's text.
     std::optional<Cursor> symbol_at(Fid file,

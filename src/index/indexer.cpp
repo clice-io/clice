@@ -490,7 +490,7 @@ public:
         // Definition relations carry the macro's full extent (name through
         // last body token), like declarations do — definition-text
         // consumers decode it out of target.
-        if(kind.isDeclOrDef()) {
+        if(kind.declares()) {
             auto [def_fid, def_range] = *unit.written_range(
                 clang::SourceRange(def->getDefinitionLoc(), def->getDefinitionEndLoc()));
             if(def_fid == fid) {
@@ -543,7 +543,7 @@ public:
         auto [fid, range] = *unit.written_range(name);
         Relation relation{.kind = kind, .range = range, .target = 0};
 
-        if(kind.isDeclOrDef()) {
+        if(kind.declares()) {
             auto source_range = decls::written_range(decl);
             if(source_range.isValid()) {
                 auto [def_fid, extent] = unit.produced_range(source_range);
@@ -661,7 +661,7 @@ public:
             // Decl/def consumers read the definition range out of
             // target; without it, module symbols would report their
             // definition as missing.
-            if(kind.isDeclOrDef()) {
+            if(kind.declares()) {
                 relation.set_extent(range);
             }
             index->relations[hash].emplace_back(relation);
@@ -954,7 +954,7 @@ public:
                 return;
             }
             // A dependent call reaches every candidate the resolver finds
-            // for it, as its weak references do.
+            // for it, as its candidate and guess references do.
             bool overload_set =
                 llvm::isa<clang::UnresolvedLookupExpr>(CE->getCallee()->IgnoreParenImpCasts());
             for(auto* candidate: resolver.callees(CE)) {
@@ -1281,7 +1281,7 @@ public:
                     continue;
                 }
                 for(auto& reference: resolve_references(SemanticNode(redecl))) {
-                    if(reference.location.isValid() && reference.kind.isDeclOrDef()) {
+                    if(reference.location.isValid() && reference.kind.declares()) {
                         declarations.push_back({reference.decl,
                                                 reference.kind,
                                                 reference.location,
@@ -1312,7 +1312,8 @@ public:
         }
         bool overload_set = semantics.node(i).node.get<clang::UnresolvedLookupExpr>() != nullptr;
         for(auto& occurrence: resolve_occurrences(semantics, i, &resolver)) {
-            if(overload_set && occurrence.kind.is_one_of(RelationKind::WeakReference) &&
+            if(overload_set &&
+               occurrence.kind.is_one_of(RelationKind::Candidate, RelationKind::Guess) &&
                !sees_on_its_own(occurrence.decl, occurrence.location)) {
                 continue;
             }
@@ -1329,7 +1330,9 @@ public:
                 }
                 add_specialized_type(occurrence.decl, name);
             }
-            if(occurrence.kind.is_one_of(RelationKind::Reference, RelationKind::WeakReference) &&
+            if(occurrence.kind.is_one_of(RelationKind::Reference,
+                                         RelationKind::Candidate,
+                                         RelationKind::Guess) &&
                names_member_qualified(semantics.node(i).node)) {
                 if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(occurrence.decl);
                    method && method->isVirtual()) {
@@ -1339,7 +1342,8 @@ public:
 
             if(!occurrence.kind.is_one_of(RelationKind::Declaration,
                                           RelationKind::Definition,
-                                          RelationKind::WeakReference)) {
+                                          RelationKind::Candidate,
+                                          RelationKind::Guess)) {
                 add_pasted_relation(occurrence.decl,
                                     enclosing_top_level(semantics, i),
                                     name.getBegin());
@@ -1558,9 +1562,12 @@ public:
         std::tuple<SymbolHash, std::uint32_t, std::uint32_t, std::uint32_t, SymbolHash>;
 
     static WrittenKey written_key(SymbolHash symbol, const Relation& relation) {
-        // A weak reference already names what the reference would.
+        // A candidate already names what an instantiation's reference
+        // would; a guess does not, and the instantiation confirming it is
+        // recorded.
         RelationKind kind = relation.kind;
-        auto kind_class = kind.isReference() ? RelationKind::Reference : kind.value();
+        auto kind_class =
+            kind.is_one_of(RelationKind::Candidate) ? RelationKind::Reference : kind.value();
         return {symbol,
                 kind_class,
                 relation.range.begin,
@@ -1591,7 +1598,7 @@ public:
             for(auto& relation: relations) {
                 RelationKind kind = relation.kind;
                 InstantiationRecord record{.range = relation.range, .target = symbol};
-                if(kind.isReference()) {
+                if(kind.is_one_of(RelationKind::Reference, RelationKind::Candidate)) {
                     record.kind = InstantiationKind::Reference;
                 } else if(kind.is_one_of(RelationKind::Deduced)) {
                     record.kind = InstantiationKind::Deduced;
@@ -1794,7 +1801,9 @@ public:
         // What a body declares is each expansion's own: its uses alone.
         for(auto& name: body_names) {
             std::optional<InstantiationKind> kind;
-            if(name.kind.isReference()) {
+            if(name.kind.is_one_of(RelationKind::Reference,
+                                   RelationKind::Candidate,
+                                   RelationKind::Guess)) {
                 kind = InstantiationKind::Reference;
             } else if(name.kind.is_one_of(RelationKind::Deduced)) {
                 kind = InstantiationKind::Deduced;
@@ -2082,7 +2091,7 @@ public:
                         adopt(symbol, path_id, true);
                     } else if(relation.kind == RelationKind::Declaration) {
                         adopt(symbol, path_id, false);
-                    } else if(RelationKind(relation.kind).isBetweenSymbol()) {
+                    } else if(RelationKind(relation.kind).between_symbols()) {
                         // A query anchors a relation's target at the file
                         // holding the relation; an internal one reaches its
                         // own entries from there only through this file.

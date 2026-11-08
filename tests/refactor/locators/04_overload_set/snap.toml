@@ -33,29 +33,25 @@ stdout = '''
             "line": 1,
             "column": 5,
             "name": "scale",
-            "newName": "resize",
-            "heuristic": false
+            "newName": "resize"
           },
           {
             "line": 2,
             "column": 8,
             "name": "scale",
-            "newName": "resize",
-            "heuristic": false
+            "newName": "resize"
           },
           {
             "line": 3,
             "column": 45,
             "name": "scale",
-            "newName": "resize",
-            "heuristic": true
+            "newName": "resize"
           },
           {
             "line": 5,
             "column": 20,
             "name": "scale",
-            "newName": "resize",
-            "heuristic": false
+            "newName": "resize"
           }
         ]
       }
@@ -124,8 +120,7 @@ stdout = '''
             "line": 2,
             "column": 8,
             "name": "scale",
-            "newName": "resize",
-            "heuristic": false
+            "newName": "resize"
           }
         ]
       }
@@ -136,7 +131,7 @@ stdout = '''
         "line": 3,
         "column": 45,
         "name": "scale",
-        "reason": "the name here also refers to `scale`, under another build configuration or as another candidate of a dependent call",
+        "reason": "the name here also refers to `scale`, under another build configuration, as another candidate of a dependent call or in another instantiation",
         "text": "template <typename T> T twice(T v) { return scale(v) * 2; }"
       }
     ],
@@ -236,29 +231,25 @@ stdout = '''
             "line": 1,
             "column": 5,
             "name": "scale",
-            "newName": "resize",
-            "heuristic": false
+            "newName": "resize"
           },
           {
             "line": 2,
             "column": 8,
             "name": "scale",
-            "newName": "resize",
-            "heuristic": false
+            "newName": "resize"
           },
           {
             "line": 3,
             "column": 45,
             "name": "scale",
-            "newName": "resize",
-            "heuristic": true
+            "newName": "resize"
           },
           {
             "line": 5,
             "column": 20,
             "name": "scale",
-            "newName": "resize",
-            "heuristic": false
+            "newName": "resize"
           }
         ]
       }
@@ -317,22 +308,19 @@ stdout = '''
             "line": 1,
             "column": 5,
             "name": "scale",
-            "newName": "grow",
-            "heuristic": false
+            "newName": "grow"
           },
           {
             "line": 2,
             "column": 8,
             "name": "scale",
-            "newName": "shrink",
-            "heuristic": false
+            "newName": "shrink"
           },
           {
             "line": 5,
             "column": 20,
             "name": "scale",
-            "newName": "grow",
-            "heuristic": false
+            "newName": "grow"
           }
         ]
       }

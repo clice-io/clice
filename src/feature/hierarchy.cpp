@@ -178,7 +178,7 @@ std::vector<CallEdge> referencing_functions(const index::IndexQuery& index,
         }
         return true;
     };
-    for(auto kind: {RelationKind::Reference, RelationKind::WeakReference}) {
+    for(auto kind: {RelationKind::Reference, RelationKind::Candidate, RelationKind::Guess}) {
         index.for_each_relation(hash,
                                 anchor,
                                 kind,

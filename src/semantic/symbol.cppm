@@ -67,7 +67,10 @@ struct RelationKind {
         Declaration,
         Definition,
         Reference,
-        WeakReference,
+        /// At a dependent name, a declaration the template resolver takes it
+        /// to mean (`t.foo()`, `T::type`, `std::vector<T>::value_type`):
+        /// navigation follows it, but only an instantiation confirms it.
+        Guess,
         Read,
         /// A reference that modifies what it names (is_written), recorded
         /// next to the Reference relation of the same name.
@@ -114,6 +117,11 @@ struct RelationKind {
         /// Keyed by a class template, the target a deduction guide of it;
         /// the guide's TypeDefinition is the template.
         Guide,
+        /// At a name that certainly stands for a set of declarations — a
+        /// using-declaration's targets, the overloads a dependent call's
+        /// definition finds — each of them: which one a use runs is left to
+        /// overload resolution or instantiation.
+        Candidate,
     };
 
     constexpr RelationKind() = default;
@@ -133,7 +141,7 @@ struct RelationKind {
         return ((kind_value == kinds) || ...);
     }
 
-    constexpr bool isDeclOrDef() const {
+    constexpr bool declares() const {
         return is_one_of(Declaration, Definition);
     }
 
@@ -143,11 +151,7 @@ struct RelationKind {
         return is_one_of(Declaration, Definition, Instantiation);
     }
 
-    constexpr bool isReference() const {
-        return is_one_of(Reference, WeakReference);
-    }
-
-    constexpr bool isBetweenSymbol() const {
+    constexpr bool between_symbols() const {
         return is_one_of(Interface,
                          Implementation,
                          TypeDefinition,

@@ -33,15 +33,13 @@ stdout = '''
             "line": 4,
             "column": 9,
             "name": "LIMIT",
-            "newName": "CAPACITY",
-            "heuristic": false
+            "newName": "CAPACITY"
           },
           {
             "line": 6,
             "column": 9,
             "name": "LIMIT",
-            "newName": "CAPACITY",
-            "heuristic": false
+            "newName": "CAPACITY"
           }
         ]
       },
@@ -52,29 +50,25 @@ stdout = '''
             "line": 3,
             "column": 22,
             "name": "LIMIT",
-            "newName": "CAPACITY",
-            "heuristic": false
+            "newName": "CAPACITY"
           },
           {
             "line": 5,
             "column": 8,
             "name": "LIMIT",
-            "newName": "CAPACITY",
-            "heuristic": false
+            "newName": "CAPACITY"
           },
           {
             "line": 6,
             "column": 9,
             "name": "LIMIT",
-            "newName": "CAPACITY",
-            "heuristic": false
+            "newName": "CAPACITY"
           },
           {
             "line": 8,
             "column": 22,
             "name": "LIMIT",
-            "newName": "CAPACITY",
-            "heuristic": false
+            "newName": "CAPACITY"
           }
         ]
       }

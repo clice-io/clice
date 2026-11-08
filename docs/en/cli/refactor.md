@@ -16,6 +16,8 @@ A rename changes every declaration, definition and reference the index ties to t
 - the explicit and partial specializations of a template, and the deduction guides of a class template;
 - the overrides a virtual function is linked with, in base and derived classes.
 
+In a template, a name that depends on a template parameter (`value.print()`, `T::type`) is renamed where the instantiations the index holds resolve it to the symbol, and listed where one resolves it to another symbol of the old name or none was indexed. A call whose overloads the template's own lookup finds (`compute(value)`) is renamed whenever the rename takes all of them, instantiated or not.
+
 Operators, conversion functions, user-defined literals, symbols declared in system headers and symbols whose every declaration a macro spells cannot be renamed. The new name must be an identifier that is a keyword in neither C nor C++; a name reserved for the implementation (`__x`, `_X`, and `_x` at global scope) is a warning.
 
 ## Macros
@@ -44,8 +46,8 @@ The list is all or nothing: a line that names no symbol, a conflict of any line,
 The answer is one JSON object, `{"result": ..., "stale": [...]}`, like a query's, the same for one rename and for a list:
 
 - `renames` has one entry per rename asked for, with its `line` in the list, its `locator` as written, the symbol it found — `name`, `kind`, `symbol` — its `newName` and how many tokens it `edits`. An `error` says why its locator names no symbol to rename, with `candidates` when it names several. Its `warnings` are made anyway: the new name overloads a function of the same scope, or is reserved for the implementation; some units of the build are not indexed yet, and what they name is not renamed. Its `conflicts` stop it: the new name is declared in the same scope already, is a macro, names any symbol or `#ifdef` of the project for a macro, names a parameter or label of the same function, a member of a base or derived class, the class the renamed member belongs to or a member of the renamed class; the rename would edit a file outside the project; two namespaces would merge; an earlier line renames the symbol to another name; a token it changes also names a symbol another line renames to another name.
-- `files` lists the tokens replaced in each file, with a 1-based line and byte column and the `name` and `newName` each trades. `heuristic` marks one reached through a name the index resolved by heuristics — a call in a template whose callee depends on a template parameter — worth a look.
-- `unconfirmed` lists the places the index ties to an old `name` that the renames leave alone because no written code says what they name: the body of a `#define`, which names something else in another expansion, a macro whose expansion spells the name, or a macro name pasted together with `##`, a name in a template only some instantiations resolve to the symbol, a token that also names another symbol of the old name — under another build configuration, or as another overload a call in a template may pick — and, for a macro, a directive naming it where no definition reaches in a file the macro is neither defined nor used in. Read them before building.
+- `files` lists the tokens replaced in each file, with a 1-based line and byte column and the `name` and `newName` each trades.
+- `unconfirmed` lists the places the index ties to an old `name` that the renames leave alone because no written code says what they name: the body of a `#define`, which names something else in another expansion, a macro whose expansion spells the name, or a macro name pasted together with `##`, a name in a template no instantiation the index holds resolves to the symbol, a token that also names another symbol of the old name — under another build configuration, as another overload a call in a template may pick, or in another instantiation — and, for a macro, a directive naming it where no definition reaches in a file the macro is neither defined nor used in. Read them before building.
 - `conflicts` stop all the renames together: a token two of them would change to different names, or a file that could not be rewritten.
 - `stale` lists the files the renames edit, or that spell an old or a new name, whose text changed since they were indexed. They stop the renames as well; `--fresh` reindexes them first.
 
@@ -61,7 +63,7 @@ The command reads the disk; unsaved editor buffers are invisible to it. Save the
 
 ## In the editor
 
-The editor's rename selects the name under the cursor, or says why the symbol there cannot be renamed. The edits it returns are versioned against the open buffers, which it reads instead of the disk. Conflicts and stale files answer an error naming them; warnings, the places left alone and the edits made through heuristics are shown in a message.
+The editor's rename selects the name under the cursor, or says why the symbol there cannot be renamed. The edits it returns are versioned against the open buffers, which it reads instead of the disk. Conflicts and stale files answer an error naming them; warnings and the places left alone are shown in a message.
 
 ## Examples
 

@@ -1022,11 +1022,14 @@ void refer_name(References& out,
     out.push_back({decl, kind, range.getBegin(), end});
 }
 
-/// Weak references to the candidates a dependent name or an overload set
-/// may mean. A using shadow stands for its target, and each introducing
+/// References of `kind` to the candidates a dependent name or an overload
+/// set may mean. A using shadow stands for its target, and each introducing
 /// using-declaration is referenced once: hover picks it when the set is
 /// otherwise ambiguous.
-void refer_candidates(References& out, auto&& candidates, const clang::DeclarationNameInfo& name) {
+void refer_candidates(References& out,
+                      auto&& candidates,
+                      const clang::DeclarationNameInfo& name,
+                      RelationKind kind) {
     llvm::SmallPtrSet<const clang::UsingDecl*, 2> introducers;
     for(const clang::NamedDecl* target: candidates) {
         if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(target)) {
@@ -1034,10 +1037,10 @@ void refer_candidates(References& out, auto&& candidates, const clang::Declarati
                 introducers.insert(UD);
             }
         }
-        refer_name(out, target->getUnderlyingDecl(), RelationKind::WeakReference, name);
+        refer_name(out, target->getUnderlyingDecl(), kind, name);
     }
     for(const auto* UD: introducers) {
-        refer_name(out, UD, RelationKind::WeakReference, name);
+        refer_name(out, UD, kind, name);
     }
 }
 
@@ -1146,7 +1149,7 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
     if(auto* UUV = llvm::dyn_cast<clang::UnresolvedUsingValueDecl>(D)) {
         if(resolver) {
             for(auto* target: resolver->lookup(UUV)) {
-                refer(out, target, RelationKind::WeakReference, UUV->getLocation());
+                refer(out, target, RelationKind::Guess, UUV->getLocation());
             }
         }
         return;
@@ -1155,7 +1158,7 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
     if(auto* UUT = llvm::dyn_cast<clang::UnresolvedUsingTypenameDecl>(D)) {
         if(resolver) {
             for(auto* target: resolver->lookup(UUT)) {
-                refer(out, target, RelationKind::WeakReference, UUT->getLocation());
+                refer(out, target, RelationKind::Guess, UUT->getLocation());
             }
         }
         return;
@@ -1173,10 +1176,7 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
             if(constructor && constructor->isCopyOrMoveConstructor()) {
                 continue;
             }
-            refer_name(out,
-                       shadow->getTargetDecl(),
-                       RelationKind::WeakReference,
-                       UD->getNameInfo());
+            refer_name(out, shadow->getTargetDecl(), RelationKind::Candidate, UD->getNameInfo());
         }
         return;
     }
@@ -1388,7 +1388,7 @@ void type_loc_references(clang::TypeLoc TL, References& out, types::TemplateReso
     /// unresolved-using declaration itself, resolved further when possible.
     if(auto UUTL = TL.getAs<clang::UnresolvedUsingTypeLoc>()) {
         for(const auto* target: types::decls_of(UUTL.getType(), resolver)) {
-            refer(out, target, RelationKind::WeakReference, UUTL.getNameLoc());
+            refer(out, target, RelationKind::Guess, UUTL.getNameLoc());
         }
         return;
     }
@@ -1427,10 +1427,10 @@ void type_loc_references(clang::TypeLoc TL, References& out, types::TemplateReso
             }
 
             /// std::allocator<T>::rebind<U> — the template itself is a
-            /// dependent name; weak reference, resolved on the primary
+            /// dependent name; a guess, resolved on the primary
             /// template.
             for(const auto* target: types::decls_of(TSTL.getType(), resolver)) {
-                refer(out, target, RelationKind::WeakReference, TSTL.getTemplateNameLoc());
+                refer(out, target, RelationKind::Guess, TSTL.getTemplateNameLoc());
             }
             return;
         }
@@ -1452,10 +1452,10 @@ void type_loc_references(clang::TypeLoc TL, References& out, types::TemplateReso
     }
 
     /// std::vector<T>::value_type
-    ///                      ^~~~ weak reference, resolved on the primary template
+    ///                      ^~~~ guess, resolved on the primary template
     if(auto DNTL = TL.getAs<clang::DependentNameTypeLoc>()) {
         for(const auto* target: types::decls_of(DNTL.getType(), resolver)) {
-            refer(out, target, RelationKind::WeakReference, DNTL.getNameLoc());
+            refer(out, target, RelationKind::Guess, DNTL.getNameLoc());
         }
         return;
     }
@@ -1655,13 +1655,19 @@ void stmt_references(const clang::Stmt* S,
     }
 
     /// std::is_same<T, U>::value
-    ///                       ^~~~ weak reference
+    ///                       ^~~~ guess
     if(auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(S)) {
         if(resolver) {
             if(call) {
-                refer_candidates(out, resolver->callees(call), DSDRE->getNameInfo());
+                refer_candidates(out,
+                                 resolver->callees(call),
+                                 DSDRE->getNameInfo(),
+                                 RelationKind::Guess);
             } else {
-                refer_candidates(out, resolver->lookup(DSDRE), DSDRE->getNameInfo());
+                refer_candidates(out,
+                                 resolver->lookup(DSDRE),
+                                 DSDRE->getNameInfo(),
+                                 RelationKind::Guess);
             }
         }
         return;
@@ -1672,11 +1678,23 @@ void stmt_references(const clang::Stmt* S,
     if(auto* OE = llvm::dyn_cast<clang::OverloadExpr>(S)) {
         /// As a callee, the candidate set shrinks to the overloads that can
         /// accept the call's argument count.
-        if(call && resolver) {
-            refer_candidates(out, resolver->callees(call), OE->getNameInfo());
-        } else {
-            refer_candidates(out, OE->decls(), OE->getNameInfo());
+        if(!call || !resolver) {
+            refer_candidates(out, OE->decls(), OE->getNameInfo(), RelationKind::Candidate);
+            return;
         }
+        // What the definition's lookup found is certain; what
+        // argument-dependent lookup adds for the arguments' resolved types
+        // is the resolver's guess.
+        llvm::SmallVector<const clang::NamedDecl*, 4> found;
+        llvm::SmallVector<const clang::NamedDecl*, 4> guessed;
+        for(const auto* callee: resolver->callees(call)) {
+            bool visible = ranges::any_of(OE->decls(), [&](const clang::NamedDecl* decl) {
+                return decl->getUnderlyingDecl() == callee->getUnderlyingDecl();
+            });
+            (visible ? found : guessed).push_back(callee);
+        }
+        refer_candidates(out, found, OE->getNameInfo(), RelationKind::Candidate);
+        refer_candidates(out, guessed, OE->getNameInfo(), RelationKind::Guess);
         return;
     }
 
@@ -1698,13 +1716,19 @@ void stmt_references(const clang::Stmt* S,
     }
 
     /// t.foo / this->foo where the base type is dependent
-    ///   ^~~~ weak reference, resolved through the template resolver
+    ///   ^~~~ guess, resolved through the template resolver
     if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(S)) {
         if(resolver) {
             if(call) {
-                refer_candidates(out, resolver->callees(call), DSME->getMemberNameInfo());
+                refer_candidates(out,
+                                 resolver->callees(call),
+                                 DSME->getMemberNameInfo(),
+                                 RelationKind::Guess);
             } else {
-                refer_candidates(out, resolver->lookup(DSME), DSME->getMemberNameInfo());
+                refer_candidates(out,
+                                 resolver->lookup(DSME),
+                                 DSME->getMemberNameInfo(),
+                                 RelationKind::Guess);
             }
         }
         return;
@@ -2014,9 +2038,9 @@ llvm::SmallVector<Reference, 2> resolve_references(const SemanticNode& node,
                       init->getMemberLocation());
             }
             /// template <class T> struct X { X() : X(T{}) {} };
-            ///                                      ^~~~ weak reference to
-            /// every constructor taking that many arguments: dependent ones
-            /// leave the choice to instantiation. Inside a template a
+            ///                                      ^~~~ candidate: every
+            /// constructor taking that many arguments, dependent ones leaving
+            /// the choice to instantiation. Inside a template a
             /// delegating initializer reads as one of the base.
             auto* PLE = llvm::dyn_cast_if_present<clang::ParenListExpr>(init->getInit());
             auto* type = init->getTypeSourceInfo();
@@ -2026,7 +2050,7 @@ llvm::SmallVector<Reference, 2> resolve_references(const SemanticNode& node,
                 for(auto* ctor: record->ctors()) {
                     if(ctor->getMinRequiredArguments() <= count &&
                        (count <= ctor->getNumParams() || ctor->isVariadic())) {
-                        refer(out, ctor, RelationKind::WeakReference, PLE->getLParenLoc());
+                        refer(out, ctor, RelationKind::Candidate, PLE->getLParenLoc());
                     }
                 }
             }

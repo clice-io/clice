@@ -63,22 +63,19 @@ stdout = '''
             "line": 3,
             "column": 5,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           },
           {
             "line": 5,
             "column": 8,
             "name": "Widget",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           },
           {
             "line": 6,
             "column": 5,
             "name": "Widget",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       },
@@ -89,36 +86,31 @@ stdout = '''
             "line": 3,
             "column": 5,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           },
           {
             "line": 5,
             "column": 1,
             "name": "Widget",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           },
           {
             "line": 5,
             "column": 9,
             "name": "Widget",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           },
           {
             "line": 7,
             "column": 20,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           },
           {
             "line": 10,
             "column": 5,
             "name": "Widget",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       },
@@ -129,8 +121,7 @@ stdout = '''
             "line": 3,
             "column": 22,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       }
@@ -202,8 +193,7 @@ stdout = '''
             "line": 3,
             "column": 5,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       },
@@ -214,15 +204,13 @@ stdout = '''
             "line": 3,
             "column": 5,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           },
           {
             "line": 7,
             "column": 20,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       },
@@ -233,8 +221,7 @@ stdout = '''
             "line": 3,
             "column": 22,
             "name": "compute",
-            "newName": "evaluate",
-            "heuristic": false
+            "newName": "evaluate"
           }
         ]
       }

@@ -195,15 +195,13 @@ stdout = '''
             "line": 1,
             "column": 5,
             "name": "compute",
-            "newName": "_Compute",
-            "heuristic": false
+            "newName": "_Compute"
           },
           {
             "line": 2,
             "column": 20,
             "name": "compute",
-            "newName": "_Compute",
-            "heuristic": false
+            "newName": "_Compute"
           }
         ]
       }
