@@ -70,6 +70,16 @@ bool is_instantiation(const clang::Decl* decl);
 /// standard reserves for the implementation (libstdc++'s `__gnu_cxx`).
 bool in_standard_library(const clang::Decl* decl);
 
+/// Whether `function` is one of the standard library's cast-like forms —
+/// `addressof`, `as_const`, `forward`, `forward_like`, `move`,
+/// `move_if_noexcept` — clang knows as library builtins.
+bool std_cast_form(const clang::FunctionDecl* function);
+
+/// Whether `decl` is a function of the standard library whose meaning the
+/// standard fixes, the same in every unit declaring it: a cast-like form
+/// (std_cast_form) or `declval`.
+bool fixed_std_utility(const clang::NamedDecl* decl);
+
 /// Return the decl where it is instantiated from. It could be a template
 /// decl or a member of a class template. If the decl is a full
 /// specialization, return itself.

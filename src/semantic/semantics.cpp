@@ -1679,6 +1679,8 @@ void stmt_references(const clang::Stmt* S,
         /// accept the call's argument count.
         if(call && resolver) {
             refer_candidates(out, resolver->callees(call), OE->getNameInfo());
+        } else if(resolver) {
+            refer_candidates(out, resolver->overloads(OE), OE->getNameInfo());
         } else {
             refer_candidates(out, OE->decls(), OE->getNameInfo());
         }
