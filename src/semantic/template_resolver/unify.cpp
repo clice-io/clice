@@ -592,6 +592,27 @@ bool Unifier::collect(unsigned index, const clang::TemplateArgument& argument) {
     return true;
 }
 
+clang::QualType injected_specialization(clang::ASTContext& context,
+                                        const clang::CXXRecordDecl* record) {
+    if(auto* partial = llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(record)) {
+        llvm::SmallVector<clang::TemplateArgument, 4> arguments;
+        for(auto& written: partial->getTemplateArgsAsWritten()->arguments()) {
+            arguments.push_back(written.getArgument());
+        }
+        return context.getTemplateSpecializationType(
+            clang::ElaboratedTypeKeyword::None,
+            clang::TemplateName(partial->getSpecializedTemplate()),
+            arguments,
+            /*CanonicalArgs=*/{});
+    }
+    auto* CTD = record->getDescribedClassTemplate();
+    return context.getTemplateSpecializationType(
+        clang::ElaboratedTypeKeyword::None,
+        clang::TemplateName(CTD),
+        CTD->getTemplateParameters()->getInjectedTemplateArgs(context),
+        /*CanonicalArgs=*/{});
+}
+
 bool Unifier::template_id(clang::QualType type,
                           clang::TemplateName& name,
                           TemplateArguments& arguments) const {
@@ -599,7 +620,7 @@ bool Unifier::template_id(clang::QualType type,
     type = peel(type, quals);
 
     if(auto ICNT = llvm::dyn_cast<clang::InjectedClassNameType>(type)) {
-        type = ICNT->getDecl()->getCanonicalTemplateSpecializationType(context);
+        type = injected_specialization(context, ICNT->getDecl());
     }
 
     if(auto TST = llvm::dyn_cast<clang::TemplateSpecializationType>(type)) {

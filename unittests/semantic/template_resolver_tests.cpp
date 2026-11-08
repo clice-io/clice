@@ -374,6 +374,41 @@ ZEST_CASE(UsingDeclarationPerView) {
     ZEXPECT(resolver.callees(call).size() == 1);
 }
 
+ZEST_CASE(InjectedClassKeepsParameters) {
+    /// Through its own name the class reads its parameters as written. The
+    /// canonical form names one by depth and index alone, which `all`'s own
+    /// parameter at the same place would be taken for, `wrap<Ts>` nested
+    /// into itself.
+    add_focus("main.cpp", R"code(
+        template <class T> struct wrap {};
+        template <class... Ts> struct all {};
+        template <class F, class... R> struct all<F, R...> { using type = F; };
+        template <class... Ts> struct holder {
+            using first = typename all<wrap<Ts>...>::type;
+        };
+        template <class... Ts> struct user : holder<Ts...> {
+            void f() { typename user::first x; }
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* x = nodes.named<clang::VarDecl>("x");
+    ZASSERT(x);
+
+    auto resolved = unit->get<types::TemplateResolver>().resolve(x->getType());
+    auto* wrap = resolved.isNull() ? nullptr : resolved->getAs<clang::TemplateSpecializationType>();
+    ZASSERT(wrap);
+    ZASSERT(wrap->template_arguments().size() == 1);
+    auto argument = wrap->template_arguments()[0].getAsType();
+    if(auto* expansion = argument->getAs<clang::PackExpansionType>()) {
+        argument = expansion->getPattern();
+    }
+    auto* parameter = argument->getAs<clang::TemplateTypeParmType>();
+    ZASSERT(parameter);
+    ZEXPECT(parameter->getDecl() != nullptr);
+}
+
 };  // ZEST_SUITE(TemplateResolver)
 
 }  // namespace

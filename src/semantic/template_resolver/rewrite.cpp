@@ -79,8 +79,7 @@ clang::QualType PseudoInstantiator::rewrite_type(clang::QualType type, Policy po
 
         case clang::Type::InjectedClassName: {
             auto ICT = llvm::cast<clang::InjectedClassNameType>(T);
-            result =
-                rewrite(ICT->getDecl()->getCanonicalTemplateSpecializationType(context), policy);
+            result = rewrite(injected_specialization(context, ICT->getDecl()), policy);
             break;
         }
 
@@ -100,7 +99,7 @@ clang::QualType PseudoInstantiator::rewrite_type(clang::QualType type, Policy po
                 auto enclosing =
                     parent->getDescribedClassTemplate() ||
                             llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(parent)
-                        ? parent->getCanonicalTemplateSpecializationType(context)
+                        ? injected_specialization(context, parent)
                         : context.getCanonicalTagType(parent);
                 qualifier = clang::NestedNameSpecifier(enclosing.getTypePtr());
             }
