@@ -509,6 +509,12 @@ private:
 
     clang::QualType resolve_dependent_name(const clang::DependentNameType* DNT);
 
+    /// Whether `NNS` reaches a template type parameter nothing binds through
+    /// members of members (`typename _Traits::allocator_type::template
+    /// rebind<U>::other` with `_Traits` free): no lookup into it finds
+    /// anything, whatever the rest names.
+    bool unbound_root(clang::NestedNameSpecifier NNS);
+
     /// Resolve a specialization whose template is a dependent name
     /// (`T::template rebind<U>`) to a concrete TST when lookup finds the
     /// template.

@@ -620,6 +620,26 @@ clang::QualType PseudoInstantiator::rewrite_parameter(const clang::TemplateTypeP
     return clang::QualType();
 }
 
+bool PseudoInstantiator::unbound_root(clang::NestedNameSpecifier NNS) {
+    while(NNS.getKind() == clang::NestedNameSpecifier::Kind::Type) {
+        auto* type = NNS.getAsType()->getUnqualifiedDesugaredType();
+        if(auto* TTPT = llvm::dyn_cast<clang::TemplateTypeParmType>(type)) {
+            return rewrite_parameter(TTPT, Policy::Resolve).isNull();
+        }
+        if(auto* DNT = llvm::dyn_cast<clang::DependentNameType>(type)) {
+            NNS = DNT->getQualifier();
+            continue;
+        }
+        auto* TST = llvm::dyn_cast<clang::TemplateSpecializationType>(type);
+        auto* name = TST ? TST->getTemplateName().getAsDependentTemplateName() : nullptr;
+        if(!name) {
+            return false;
+        }
+        NNS = name->getQualifier();
+    }
+    return false;
+}
+
 clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::DependentNameType* DNT) {
     LOG_DEBUG(
         "{}"
@@ -640,6 +660,11 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
             indent -= 1;
             return *kept;
         }
+    }
+    if(unbound_root(DNT->getQualifier())) {
+        LOG_DEBUG("{}→ <unresolved: free parameter>", pad());
+        indent -= 1;
+        return clang::QualType(DNT, 0);
     }
     StepRecording step;
     auto recorder = record_effects(step);
@@ -751,6 +776,11 @@ clang::QualType
             indent -= 1;
             return *kept;
         }
+    }
+    if(unbound_root(template_name.getQualifier())) {
+        LOG_DEBUG("{}→ <unresolved TST: free parameter>", pad());
+        indent -= 1;
+        return clang::QualType(TST, 0);
     }
     StepRecording step;
     auto recorder = record_effects(step);
