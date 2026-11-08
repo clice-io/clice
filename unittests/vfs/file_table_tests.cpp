@@ -131,8 +131,9 @@ ZEST_CASE(PairNeedsSameFile) {
 #ifndef _WIN32
 ZEST_CASE(SymlinkShownAsSpelled) {
     // A file is its resolved path; results name it the way the user does:
-    // the open document's spelling, else the workspace root's — never the
-    // spelling an include lookup reached it by.
+    // the open document's spelling, else the workspace root's — not the
+    // spelling an include lookup reached it by while the file lies in a
+    // folder.
     TempDir tmp;
     tmp.touch("real/a.h", "");
     ZASSERT(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()) == 0);
@@ -155,6 +156,35 @@ ZEST_CASE(SymlinkShownAsSpelled) {
 
     pool.unspell_root(Spelling::absolute(tmp.path("link")));
     ZASSERT(pool.display(fid) == llvm::StringRef(real));
+}
+
+ZEST_CASE(LinkedInFromOutside) {
+    // A folder links in shared sources from outside it: they show through
+    // the link the build names them by, while a file the folder holds
+    // shows by its own path whatever link the build went through.
+    TempDir tmp;
+    tmp.touch("source/app.c", "");
+    tmp.mkdir("source/build");
+    tmp.touch("ws/main.c", "");
+    ZASSERT(::symlink(tmp.path("source").c_str(), tmp.path("ws/shared").c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("ws").c_str(), tmp.path("exec").c_str()) == 0);
+
+    FileTable pool;
+    pool.spell_root(Spelling::absolute(tmp.path("ws")));
+    auto app = pool.intern_spelled(Spelling::absolute(tmp.path("ws/shared/build/../app.c")));
+    auto own = pool.intern_spelled(Spelling::absolute(tmp.path("exec/main.c")));
+    ZEXPECT(pool.display(app) == tmp.path("ws/shared/app.c"));
+    ZEXPECT(pool.display(own) == tmp.path("ws/main.c"));
+
+    // `..` right after the link climbs out of its target, not out of the
+    // folder: the folded text would name another file.
+    tmp.touch("lib.c", "");
+    auto beside = pool.intern_spelled(Spelling::absolute(tmp.path("ws/shared/../lib.c")));
+    ZEXPECT(pool.display(beside) == pool.resolve(beside).str());
+
+    FileTable outside;
+    auto alone = outside.intern_spelled(Spelling::absolute(tmp.path("ws/shared/app.c")));
+    ZEXPECT(outside.display(alone) == outside.resolve(alone).str());
 }
 
 ZEST_CASE(RootClimbPastSymlink) {

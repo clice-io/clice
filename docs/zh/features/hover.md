@@ -1015,4 +1015,18 @@ tests/hover/presentation/04_long_type_lines
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**文件的样式**
+
+卡片中显示的代码，无论是声明还是宏的展开结果，都按文件向上查找到的 `.clang-format` 中的样式排版
+
+没有该文件时，则按 LLVM 样式排版，`*` 和 `&` 紧贴类型书写。
+
+```case
+tests/hover/presentation/05_configured_style
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->

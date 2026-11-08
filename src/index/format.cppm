@@ -115,8 +115,13 @@ namespace clice::index {
 /// letter; v57: the template resolver answers dependent names, calls and
 /// patterns as instantiation would, and a header records of a dependent
 /// call's overload set the candidates it sees on its own; v58: a unit's
-/// command identity is its command as the rules edit it.
-constexpr inline std::uint32_t index_format_version = 58;
+/// command identity is its command as the rules edit it; v59: a C tag
+/// carries its file when a source file declares it, told by the file's
+/// name, a header compiled alone names its typedefs as a system header when
+/// the search directory of its command nearest above it is a system one,
+/// the access reaching a member of an anonymous struct or union records
+/// no reference, and a symbol records every file defining it.
+constexpr inline std::uint32_t index_format_version = 59;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it, so one past it stops the
@@ -560,6 +565,13 @@ struct TUIndexBlobOf {
     /// back as path ids.
     Seq<std::uint32_t> symbol_instantiation_ends;
     Seq<std::uint32_t> symbol_instantiations;
+
+    /// The symbols of the table more than one file of the TU defines, a
+    /// pair per file beside `symbol_files`' one: the symbol's entry,
+    /// ascending, and the path id. Empty in most TU indexes: a C variable
+    /// two files tentatively define, a typedef two system headers repeat.
+    Seq<std::uint32_t> other_definition_entries;
+    Seq<std::uint32_t> other_definition_files;
 
     /// One entry per file with an index, ascending by path id.
     Seq<FileSectionOf<Seq>> sections;

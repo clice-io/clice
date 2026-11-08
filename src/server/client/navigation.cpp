@@ -280,10 +280,13 @@ void LSPClient::register_navigation() {
             if(!symbol) {
                 co_await async::fail(std::move(symbol.error()));
             }
-            co_return to_raw(feature::outgoing_calls(project.query_all(),
-                                                     *symbol,
-                                                     document.path_id,
-                                                     server.position_encoding));
+            auto name = project.cursor_at(document.path_id, params.item.selection_range.start);
+            co_return to_raw(
+                feature::outgoing_calls(project.query_all(),
+                                        *symbol,
+                                        document.path_id,
+                                        name ? std::optional(name->site) : std::nullopt,
+                                        server.position_encoding));
         },
         {.closed = true});
 

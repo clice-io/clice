@@ -16,6 +16,7 @@ import :semantic.template_resolver;
 import :semantic.semantics;
 import :semantic.symbol;
 import :semantic.types;
+import :support.text;
 import :syntax.lexical_scan;
 import :syntax.position;
 import :vfs.file_table;
@@ -164,9 +165,7 @@ std::string truncate(llvm::StringRef text, std::size_t limit) {
     if(limit == 0 || characters(text) <= limit) {
         return text.str();
     }
-    auto kept =
-        lsp::encoded_offset(text, static_cast<std::uint32_t>(limit - 1), PositionEncoding::UTF32);
-    return (text.take_front(*kept) + "…").str();
+    return (take_characters(text, limit - 1) + "…").str();
 }
 
 /// The first template argument list at the top level of a printed type,

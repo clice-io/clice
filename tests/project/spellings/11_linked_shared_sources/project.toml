@@ -1,0 +1,3 @@
+# The folder the editor opens is ws; ws/shared links to source, made by the
+# test, and the database names the shared files through the link.
+databases = {}

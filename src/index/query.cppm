@@ -390,8 +390,8 @@ public:
     /// re-read).
     std::optional<std::string> serving_text(Fid file) const;
 
-    /// A symbol together with its canonical site, and the whole
-    /// declaration there.
+    /// A symbol together with a site of it — its canonical site, or one of
+    /// its definitions — and the whole declaration there.
     struct Located {
         SymbolInfo symbol;
         Site site;
@@ -451,6 +451,11 @@ public:
     /// The symbol's canonical site: its definition, or a declaration when
     /// nothing defines it (pure virtuals, externs, decl-only APIs).
     std::optional<Placed> canonical_placed(SymbolHash hash, Fid anchor) const;
+
+    /// Every definition of the symbol, by path and offset: one for most, one
+    /// per file for a C function a weak and a strong definition give or a
+    /// name each program of a project defines (`main`).
+    std::vector<Placed> definitions(SymbolHash hash, Fid anchor) const;
 
     /// The one federation walk every relation query is a fold over. The
     /// visitor returns false to stop.
@@ -553,9 +558,13 @@ private:
     /// session's table knows only its own unit, the symbol records all.
     bool reported_defined(SymbolHash hash, Fid anchor) const;
 
-    /// The disk files holding the symbol's entries, by its scope (see the
-    /// class comment on anchors).
-    void for_each_disk_file(SymbolHash hash, Fid anchor, llvm::function_ref<void(Fid)> visit) const;
+    /// The disk files that may hold the symbol's `kind` relations, by its
+    /// scope (see the class comment on anchors): for a definition of a
+    /// symbol of the project table, the files its record says define it.
+    void for_each_disk_file(SymbolHash hash,
+                            Fid anchor,
+                            RelationKind kind,
+                            llvm::function_ref<void(Fid)> visit) const;
 
     /// The `kind` relations of `hash` in the entries of a live TU index's
     /// other files than its focus file (an overlay's headers, a buffer's

@@ -37,6 +37,16 @@ std::vector<std::uint8_t> file_set(const Bitmap& ids) {
     return bytes;
 }
 
+/// A bit above SymbolFlags in a symbol record's flags: its other definition
+/// files follow its reference files, a record defined in one file holding
+/// no bytes for them.
+constexpr std::uint32_t defined_elsewhere = 1u << 16;
+
+std::uint32_t encoded_flags(const Symbol& symbol) {
+    return static_cast<std::uint16_t>(symbol.flags) |
+           (symbol.other_definition_files.isEmpty() ? 0 : defined_elsewhere);
+}
+
 template <typename Seq>
 std::optional<Bitmap> file_set_of(const Seq& bytes) {
     return read_file_set(llvm::ArrayRef<std::uint8_t>(bytes.data(), bytes.size()));
@@ -341,12 +351,18 @@ std::vector<std::byte> encode_record(const Symbol& symbol) {
     }
     write_varint(bytes, symbol.file == no_file ? 0 : std::uint64_t(symbol.file) + 1);
     write_varint(bytes, symbol.token_class.modifiers);
-    write_varint(bytes, static_cast<std::uint16_t>(symbol.flags));
+    write_varint(bytes, encoded_flags(symbol));
     bytes.push_back(symbol.kind.value());
     bytes.push_back(static_cast<std::uint8_t>(symbol.token_class.kind));
-    auto references = file_set(symbol.reference_files);
-    write_varint(bytes, references.size());
-    bytes.insert(bytes.end(), references.begin(), references.end());
+    auto sized_set = [&](const Bitmap& ids) {
+        auto set = file_set(ids);
+        write_varint(bytes, set.size());
+        bytes.insert(bytes.end(), set.begin(), set.end());
+    };
+    sized_set(symbol.reference_files);
+    if(!symbol.other_definition_files.isEmpty()) {
+        sized_set(symbol.other_definition_files);
+    }
     append_file_set(bytes, symbol.instantiation_files);
     auto* data = reinterpret_cast<const std::byte*>(bytes.data());
     return {data, data + bytes.size()};
@@ -387,7 +403,8 @@ std::optional<Symbol> decode_symbol(llvm::StringRef data) {
     }
     auto file = number(std::uint64_t(no_file));
     auto modifiers = file ? number(std::numeric_limits<std::uint32_t>::max()) : std::nullopt;
-    auto flags = modifiers ? number(std::numeric_limits<std::uint16_t>::max()) : std::nullopt;
+    auto flags = modifiers ? number(std::numeric_limits<std::uint16_t>::max() | defined_elsewhere)
+                           : std::nullopt;
     if(!flags || reserved_key(parent) || bytes.size() - at < 2 ||
        !all_token_kinds(bytes.slice(at + 1, 1))) {
         return std::nullopt;
@@ -395,13 +412,24 @@ std::optional<Symbol> decode_symbol(llvm::StringRef data) {
     auto kind = bytes[at];
     auto token_kind = bytes[at + 1];
     at += 2;
-    auto reference_bytes = slice();
-    if(!reference_bytes) {
+    auto sized_set = [&]() -> std::optional<Bitmap> {
+        auto part = slice();
+        return part ? read_file_set(*part) : std::nullopt;
+    };
+    auto references = sized_set();
+    if(!references) {
         return std::nullopt;
     }
-    auto references = read_file_set(*reference_bytes);
+    Bitmap others;
+    if(*flags & defined_elsewhere) {
+        auto read = sized_set();
+        if(!read || read->isEmpty()) {
+            return std::nullopt;
+        }
+        others = std::move(*read);
+    }
     auto instantiations = read_file_set(bytes.drop_front(at));
-    if(!references || !instantiations) {
+    if(!instantiations) {
         return std::nullopt;
     }
     return Symbol{
@@ -410,10 +438,11 @@ std::optional<Symbol> decode_symbol(llvm::StringRef data) {
         .signature = text(*signature),
         .parent = parent,
         .kind = SymbolKind(kind),
-        .flags = static_cast<SymbolFlags>(*flags),
+        .flags = static_cast<SymbolFlags>(*flags & ~defined_elsewhere),
         .token_class = {.kind = static_cast<SemanticTokenKind>(token_kind),
                         .modifiers = static_cast<std::uint32_t>(*modifiers)},
         .file = *file == 0 ? no_file : static_cast<std::uint32_t>(*file - 1),
+        .other_definition_files = std::move(others),
         .reference_files = std::move(*references),
         .instantiation_files = std::move(*instantiations),
     };
@@ -439,9 +468,13 @@ void measure_symbol(llvm::StringRef data, FieldBytes& bytes) {
     bytes.add("file, modifiers, flags, kinds",
               varints({symbol->file == no_file ? 0 : std::uint64_t(symbol->file) + 1,
                        symbol->token_class.modifiers,
-                       static_cast<std::uint16_t>(symbol->flags)}) +
+                       encoded_flags(*symbol)}) +
                   2);
     bytes.add("reference files", varints({references}) + references);
+    if(!symbol->other_definition_files.isEmpty()) {
+        auto others = file_set(symbol->other_definition_files).size();
+        bytes.add("other definition files", varints({others}) + others);
+    }
     bytes.add("instantiation files", file_set(symbol->instantiation_files).size());
 }
 

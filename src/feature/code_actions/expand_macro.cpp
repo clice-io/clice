@@ -9,44 +9,38 @@ namespace clice::feature::action {
 
 namespace {
 
-/// Whether two adjacent expanded tokens are written with a space between
-/// them: none inside brackets, around member and scope operators, between
-/// a name and the parenthesis calling it, or after a prefix operator — one
-/// not following an operand, `before` being the token ahead of `left`
-/// (`unknown` at the start); one everywhere else.
-bool needs_space(clang::tok::TokenKind before,
-                 clang::tok::TokenKind left,
-                 clang::tok::TokenKind right) {
-    using namespace clang::tok;
-    if(left == identifier && right == l_paren) {
-        return false;
+/// The expansion `joined`, tokens a space apart, spaced as clang-format's
+/// LLVM style spaces it in place of the invocation at `invocation` in
+/// `content`, and laid on one line, as the invocation was; a style the
+/// file configures lays out the lines it lands on afterwards
+/// (format_actions). Only the spaces between its own tokens change: the
+/// statement around it tells whether a leading `-` or `&` is unary, and the
+/// spaces around it keep it from running into its neighbours.
+std::string spaced(llvm::StringRef content, LocalSourceRange invocation, llvm::StringRef joined) {
+    auto style = clang::format::getLLVMStyle();
+    style.ColumnLimit = 0;
+    style.BreakStringLiterals = false;
+    auto code = (content.take_front(invocation.begin) + " " + joined + " " +
+                 content.drop_front(invocation.end))
+                    .str();
+    auto begin = invocation.begin + 1;
+    auto end = begin + static_cast<std::uint32_t>(joined.size());
+    // A line break clang-format puts between two tokens is a space here; a
+    // token's own (a raw string's) stays.
+    clang::tooling::Replacements inner;
+    for(const auto& replacement:
+        clang::format::reformat(style, code, {clang::tooling::Range(begin, joined.size())})) {
+        auto offset = replacement.getOffset();
+        if(offset > begin && offset + replacement.getLength() < end) {
+            auto text = replacement.getReplacementText();
+            llvm::cantFail(
+                inner.add(clang::tooling::Replacement(replacement.getFilePath(),
+                                                      offset - begin,
+                                                      replacement.getLength(),
+                                                      text.contains('\n') ? " " : text)));
+        }
     }
-    switch(right) {
-        case r_paren:
-        case r_square:
-        case comma:
-        case semi:
-        case period:
-        case arrow:
-        case coloncolon: return false;
-        default: break;
-    }
-    switch(left) {
-        case l_paren:
-        case l_square:
-        case period:
-        case arrow:
-        case coloncolon: return false;
-        case star:
-        case amp:
-        case minus:
-        case plus:
-        case exclaim:
-        case tilde:
-            return before == identifier || before == r_paren || before == r_square ||
-                   isLiteral(before);
-        default: return true;
-    }
+    return llvm::cantFail(clang::tooling::applyAllReplacements(joined, inner));
 }
 
 /// Whether `left` written right before `right` lexes as other tokens:
@@ -98,18 +92,14 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
         }
 
         auto expanded = expansion.expanded;
-        std::string text;
-        for(auto [index, token]: views::enumerate(expanded)) {
-            if(index > 0) {
-                const auto& left = expanded[index - 1];
-                auto before = index > 1 ? expanded[index - 2].kind() : clang::tok::unknown;
-                if(needs_space(before, left.kind(), token.kind()) ||
-                   glues(left.text(SM), token.text(SM), options)) {
-                    text += ' ';
-                }
+        std::string joined;
+        for(const auto& token: expanded) {
+            if(!joined.empty()) {
+                joined += ' ';
             }
-            text += token.text(SM);
+            joined += token.text(SM);
         }
+        auto text = spaced(content, {begin, end}, joined);
 
         // The text lands between the tokens written flush against the
         // invocation, which must not run into it either; the end of a

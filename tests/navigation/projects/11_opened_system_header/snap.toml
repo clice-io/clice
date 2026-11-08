@@ -1,0 +1,9 @@
+[answers.use]
+definition = ["third/lib.h │ typedef int ⟦handle_t⟧;"]
+declaration = ["third/lib.h │ typedef int ⟦handle_t⟧;"]
+references = ["⟦handle_t⟧ h = make();", "third/lib.h │ typedef int ⟦handle_t⟧;", "third/lib.h │ ⟦handle_t⟧ make();"]
+
+[answers.declared]
+definition = ["typedef int ⟦handle_t⟧;"]
+declaration = ["typedef int ⟦handle_t⟧;"]
+references = ["main.cpp │ ⟦handle_t⟧ h = make();", "typedef int ⟦handle_t⟧;", "⟦handle_t⟧ make();"]

@@ -168,6 +168,11 @@ public:
     /// The files referencing the symbol, as the file table's ids.
     void for_each_reference_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const;
 
+    /// The files units defined the symbol in, as its record reports them:
+    /// `Symbol::file` and the other definition files; a namespace's, the
+    /// files naming it.
+    void for_each_definition_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const;
+
     /// The files whose instantiation shards name the symbol.
     void for_each_instantiation_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const;
 

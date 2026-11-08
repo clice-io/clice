@@ -1643,9 +1643,14 @@ void stmt_references(const clang::Stmt* S,
     /// foo.bar
     ///      ^~~~ reference
     /// An invalid member location means an implicit member expr, e.g. the
-    /// implicit `operator bool` call in `if(x)`.
+    /// implicit `operator bool` call in `if(x)`. A member of an anonymous
+    /// struct or union is reached through an access of the anonymous one,
+    /// written at the member's name, which names the member alone.
     if(auto* ME = llvm::dyn_cast<clang::MemberExpr>(S)) {
-        refer_name(out, ME->getMemberDecl(), RelationKind::Reference, ME->getMemberNameInfo());
+        auto* field = llvm::dyn_cast<clang::FieldDecl>(ME->getMemberDecl());
+        if(!field || !field->isAnonymousStructOrUnion()) {
+            refer_name(out, ME->getMemberDecl(), RelationKind::Reference, ME->getMemberNameInfo());
+        }
         return;
     }
 
