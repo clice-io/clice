@@ -319,6 +319,11 @@ struct UnitCache {
     llvm::DenseMap<std::pair<const void*, void*>, UnboundResult<std::optional<llvm::APSInt>>>
         member_values;
 
+    /// Whether a type, the bindings substituted, cannot form, by the type
+    /// (PseudoInstantiator::unformable): the overloads of a container take
+    /// the same iterator types at every call.
+    llvm::DenseMap<const void*, UnboundResult<bool>> unformable;
+
     /// The explicit specializations of each class and variable template
     /// (PseudoInstantiator::explicit_specializations).
     llvm::DenseMap<const clang::Decl*, llvm::SmallVector<clang::NamedDecl*, 0>>
@@ -954,6 +959,15 @@ private:
                       llvm::ArrayRef<CallArgument> arguments,
                       bool member_call);
 
+    /// Whether `type`, the bindings substituted, names a member certainly
+    /// absent, as written or through its aliases (`void_t<...>` holds its
+    /// probe as written, `enable_if_t<...>` in what it aliases).
+    bool absent_member(clang::QualType type);
+
+    /// absent_member for a type naming no parameter the frames hold free,
+    /// kept for the unit: the caller's bindings bear on it no more.
+    bool unformable(clang::QualType type);
+
     /// Overloads that differ only in their object parameter — its cv- and
     /// ref-qualifiers, `front()` and `front() const`, `value() &` and
     /// `value() &&` — are told apart by the object, an lvalue unless
@@ -1125,20 +1139,23 @@ private:
         }
     }
 
+    /// Whether the query sees `decl`, the judgement noted.
+    bool sees(const clang::NamedDecl* decl) {
+        if(!visibility) {
+            return true;
+        }
+        bool seen = visibility->sees(decl);
+        judged_visibility({
+            {decl, seen}
+        });
+        return seen;
+    }
+
     /// `found`, what an unqualified or namespace-qualified name finds or the
     /// specializations of a template, without what the query does not see.
     template <typename Decl>
     void drop_unseen(llvm::SmallVectorImpl<Decl*>& found) {
-        if(!visibility) {
-            return;
-        }
-        llvm::SmallVector<VisibilityCheck, 4> checks;
-        llvm::erase_if(found, [&](const clang::NamedDecl* decl) {
-            bool seen = visibility->sees(decl);
-            checks.push_back({decl, seen});
-            return !seen;
-        });
-        judged_visibility(checks);
+        llvm::erase_if(found, [&](const clang::NamedDecl* decl) { return !sees(decl); });
     }
 
     /// The partial specializations of a template the query sees.

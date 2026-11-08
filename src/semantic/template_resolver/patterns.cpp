@@ -353,12 +353,13 @@ bool PseudoInstantiator::any_specialization_declares(clang::ClassTemplateDecl* C
                (!definition->lookup(name).empty() || !lookup_in_bases(definition, name).empty());
     };
 
-    llvm::SmallVector<clang::ClassTemplateSpecializationDecl*, 4> specializations(
-        CTD->specializations().begin(),
-        CTD->specializations().end());
-    drop_unseen(specializations);
+    /// What the unit instantiated runs to hundreds (`enable_if`): the
+    /// visibility of those that declare it alone decides.
     return ranges::any_of(seen_partials(CTD), declares) ||
-           ranges::any_of(specializations, declares);
+           ranges::any_of(CTD->specializations(),
+                          [&](clang::ClassTemplateSpecializationDecl* spec) {
+                              return declares(spec) && sees(spec);
+                          });
 }
 
 bool PseudoInstantiator::scope_lacks(clang::NestedNameSpecifier scope,
