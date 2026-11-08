@@ -12,26 +12,32 @@ namespace {
 
 /// `joined`, tokens a space apart, spaced as clang-format spaces them — in
 /// the style configured for `file`, else LLVM's — on one line, as the
-/// invocation they replace.
-std::string spaced(llvm::StringRef file, std::string joined) {
+/// invocation they replace. `context`, the statement's tokens before the
+/// invocation, goes ahead past a mark: whether a leading `-` or `&` is
+/// unary depends on it.
+std::string spaced(llvm::StringRef file, llvm::StringRef context, llvm::StringRef joined) {
+    constexpr llvm::StringLiteral mark = "/*expansion*/";
     auto style = configured_style(file).value_or(clang::format::getLLVMStyle());
     style.ColumnLimit = 0;
     style.BreakStringLiterals = false;
+    auto code = (context + mark + " " + joined).str();
     auto formatted = clang::tooling::applyAllReplacements(
-        joined,
-        clang::format::reformat(style, joined, {clang::tooling::Range(0, joined.size())}));
+        code,
+        clang::format::reformat(style, code, {clang::tooling::Range(0, code.size())}));
     if(!formatted) {
         llvm::consumeError(formatted.takeError());
-        return joined;
+        return joined.str();
     }
     std::string line;
     llvm::SmallVector<llvm::StringRef> lines;
-    llvm::StringRef(*formatted).split(lines, '\n', -1, /*KeepEmpty=*/false);
+    llvm::StringRef(*formatted).split(mark).second.split(lines, '\n', -1, /*KeepEmpty=*/false);
     for(auto each: lines) {
-        if(!line.empty()) {
-            line += ' ';
+        if(each = each.trim(); !each.empty()) {
+            if(!line.empty()) {
+                line += ' ';
+            }
+            line += each;
         }
-        line += each.trim();
     }
     return line;
 }
@@ -43,6 +49,9 @@ bool glues(llvm::StringRef left, llvm::StringRef right, const clang::LangOptions
     Lexer lexer(text, options, {.keep_comments = true});
     return lexer.advance().range.end != left.size();
 }
+
+/// How many tokens before an invocation give clang-format its context.
+constexpr std::size_t context_tokens = 32;
 
 }  // namespace
 
@@ -92,7 +101,17 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
             }
             joined += token.text(SM);
         }
-        auto text = spaced(unit.file_path(focus.file()), std::move(joined));
+        std::string context;
+        for(auto index = first; index > 0 && first - index < context_tokens; index -= 1) {
+            const auto& token = spelled[index - 1];
+            auto kind = focus.kind(token);
+            if(token.is_eod() || kind == clang::tok::semi || kind == clang::tok::l_brace ||
+               kind == clang::tok::r_brace) {
+                break;
+            }
+            context.insert(0, token.text(content).str() + " ");
+        }
+        auto text = spaced(unit.file_path(focus.file()), context, joined);
 
         // The text lands between the tokens written flush against the
         // invocation, which must not run into it either; the end of a
