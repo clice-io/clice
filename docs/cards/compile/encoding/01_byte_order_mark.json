@@ -124,7 +124,40 @@
           "label": "completion",
           "value": {
             "completion": {
-              "items": []
+              "items": [
+                {
+                  "label": "auto",
+                  "kind": "Keyword",
+                  "replace": {
+                    "$place": "⟦auto⟧ answer = []{",
+                    "path": "first.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 0
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 4
+                      }
+                    }
+                  },
+                  "insert_range": {
+                    "$place": "⟦aut⟧o answer = []{",
+                    "path": "first.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 0
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 3
+                      }
+                    }
+                  }
+                }
+              ]
             }
           }
         }

@@ -27,7 +27,9 @@ compiles = true
 '''
 
 ["first line".completion.completion]
-items = []
+items = [
+    { label = "auto", kind = "Keyword", replace = "⟦auto⟧ answer = []{", insert_range = "⟦aut⟧o answer = []{" },
+]
 
 [formatting."first.cpp"]
 formatting = '''

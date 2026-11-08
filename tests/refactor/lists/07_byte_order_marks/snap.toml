@@ -1,0 +1,73 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 4 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --spec renames.txt"]
+stdout = '''
+{
+  "result": {
+    "applied": true,
+    "renames": [
+      {
+        "line": 1,
+        "locator": "Count",
+        "name": "Count",
+        "kind": "Struct",
+        "symbol": "#7652b8c4edddab5a",
+        "newName": "Tally",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 1,
+            "name": "Count",
+            "newName": "Tally"
+          }
+        ]
+      },
+      {
+        "file": "${WS}/types.h",
+        "edits": [
+          {
+            "line": 1,
+            "column": 8,
+            "name": "Count",
+            "newName": "Tally"
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename --spec renames.txt".files]
+"main.cpp" = '''
+-﻿Count make() { return {1}; }
++﻿Tally make() { return {1}; }
+
+ int main() { return make().value; }
+'''
+"types.h" = '''
+-struct Count {
++struct Tally {
+     int value;
+ };
+'''
