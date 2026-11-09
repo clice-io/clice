@@ -655,6 +655,44 @@ bool index(llvm::StringRef name) {
     return !indexed.data.empty() && f.merge(indexed.data);
 }
 
+/// Index a unit, skipping what the index offers it, as a unit reading box.h
+/// through its precompiled header ships its index: without box.h's entries
+/// or a hash of it, whose build indexed box.h. Merge it with box.h as that
+/// build read it, `built_from`.
+std::expected<index::IndexReport, index::MergeError> index_behind_pch(llvm::StringRef name,
+                                                                      llvm::StringRef built_from) {
+    f.clear_staleness_cache();
+    auto known = f.known_instantiations(id(name));
+    auto indexed = index_file(tmp, tmp.path(name), {}, {}, known);
+    auto blob = tu_index_blob(index::TUIndex::from_bytes(indexed.data));
+    auto header = static_cast<std::uint32_t>(
+        ranges::find_if(
+            blob.paths,
+            [](const std::string& path) { return llvm::StringRef(path).ends_with("box.h"); }) -
+        blob.paths.begin());
+    ZASSERT(header < blob.paths.size());
+    blob.content_hashes[header] = 0;
+    decltype(blob.sections) sections;
+    for(auto& section: blob.sections) {
+        if(section.path_id != header) {
+            sections.push_back(std::move(section));
+        }
+    }
+    blob.sections = std::move(sections);
+
+    Input header_input{
+        .file = id("box.h"),
+        .version = f.project.file_table.intern_version(id("box.h"), llvm::xxh3_64bits(built_from)),
+    };
+    auto report = f.project.index.merge(tu_index_bytes(blob),
+                                        {header_input},
+                                        f.project.command_identity(id(name)));
+    if(report) {
+        f.project.take_report(*report);
+    }
+    return report;
+}
+
 const index::InstantiationShard* box() {
     return f.project.index.instantiation_shard(id("box.h"));
 }
@@ -731,6 +769,31 @@ void a2() { Box<A>{}.show(); Box<B>{}.show(); }
     f.drop_index(id("b.cpp"));
     f.save();
     ZEXPECT(prints() == 2u);
+}
+
+ZEST_CASE(SkippedBehindPrecompiledHeader) {
+    // a2.cpp skips Box<A>::show, which a.cpp walked: the key stands for
+    // box.h as a2.cpp's precompiled header read it.
+    ZASSERT(index("a.cpp"));
+    auto text = read_file(tmp.path("box.h"));
+    ZASSERT(text);
+    ZASSERT(index_behind_pch("a2.cpp", *text));
+    auto skipped = f.project.index.manifest(id("a2.cpp"))->instantiations;
+    ZEXPECT(skipped == f.project.index.manifest(id("a.cpp"))->instantiations);
+}
+
+ZEST_CASE(HeaderEditedMidRun) {
+    // b.cpp's precompiled header read box.h before an edit its walk of
+    // Box<B>::show read: what the walk resolved is the edit's, not the
+    // parse's.
+    ZASSERT(index("a.cpp"));
+    auto text = read_file(tmp.path("box.h"));
+    ZASSERT(text);
+    tmp.touch("box.h", *text + "// edited\n");
+    auto report = index_behind_pch("b.cpp", *text);
+    ZASSERT(!report);
+    ZEXPECT(report.error() == index::MergeError::Outdated);
+    ZEXPECT(prints() == 1u);
 }
 
 ZEST_CASE(StaleProducerNotOffered) {

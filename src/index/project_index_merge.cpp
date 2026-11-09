@@ -158,6 +158,15 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         .unit = unit_hash(tu_path_id),
         .run = static_cast<std::uint64_t>(view.built_at()),
     };
+    // A file the unit reads through its precompiled header or a module has
+    // no buffer in the parse to hash: the unit read the copy their build
+    // read, whose hash the build's inputs record.
+    llvm::DenseMap<Fid, std::uint64_t> precompiled_reads;
+    for(auto& dep: imports) {
+        if(dep.version.valid()) {
+            precompiled_reads.try_emplace(dep.file, files.version(dep.version).content_hash);
+        }
+    }
     llvm::SmallVector<std::pair<Fid, InstantiationShard>> instantiation_replacements;
     llvm::DenseMap<Fid, std::pair<std::uint32_t, UseHash>> unit_uses;
     for(std::uint32_t section = 0; section < view.instantiation_count(); section += 1) {
@@ -165,6 +174,9 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         auto global_id = file_ids_map[local_id];
         auto generation = consumed_hashes[local_id] != 0 ? consumed_hashes[local_id]
                                                          : view.content_hash(local_id);
+        if(generation == 0) {
+            generation = precompiled_reads.lookup(global_id);
+        }
         const InstantiationShard* stored = instantiation_shard(global_id);
         if(stored && stored->content_hash() != generation) {
             stored = nullptr;
@@ -196,6 +208,15 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
             }
             if(!record_consumed(local_id, fresh->content_hash())) {
                 return std::unexpected(MergeError::Invalid);
+            }
+            // The walk reads a file the precompiled header served from the
+            // disk: text that moved on since that build read it is another
+            // generation than the parse's.
+            if(generation != 0 && fresh->content_hash() != generation) {
+                LOG_INFO("Rerun {}: {} changed while the unit read it",
+                         tu_path,
+                         files.resolve(global_id));
+                return std::unexpected(MergeError::Outdated);
             }
             used.append_range(fresh->resolutions());
         }
