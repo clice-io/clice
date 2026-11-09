@@ -14,23 +14,42 @@ clang::QualType PseudoInstantiator::substitute(clang::QualType type) {
     return rewrite(type, Policy::Substitute);
 }
 
+/// Whether rewriting `type` looks a name up or folds an expression. Any
+/// other type rewrites the types it is built of, each kept on its own:
+/// keeping it too costs more than rewriting it again.
+static bool looks_up(const clang::Type* type) {
+    switch(type->getTypeClass()) {
+        case clang::Type::DependentName:
+        case clang::Type::Decltype: return true;
+        case clang::Type::TemplateSpecialization:
+            return llvm::cast<clang::TemplateSpecializationType>(type)
+                       ->getTemplateName()
+                       .getAsDependentTemplateName() != nullptr;
+        default: return false;
+    }
+}
+
 clang::QualType PseudoInstantiator::rewrite(clang::QualType type, Policy policy) {
     if(type.isNull() || !type->isDependentType()) {
         return type;
     }
+    auto compute = [&] {
+        steps += 1;
+        if(depth > depth_limit || steps > step_budget) {
+            give_up(depth > depth_limit ? Trouble::Depth : Trouble::Steps);
+            return type;
+        }
+        depth += 1;
+        auto result = rewrite_type(type, policy);
+        depth -= 1;
+        return result.isNull() ? type : result;
+    };
+    if(!looks_up(type.getTypePtr())) {
+        return compute();
+    }
     return kept_step(cache.rewrites,
                      std::pair{type.getAsOpaquePtr(), static_cast<unsigned>(policy)},
-                     [&] {
-                         steps += 1;
-                         if(depth > depth_limit || steps > step_budget) {
-                             give_up(depth > depth_limit ? Trouble::Depth : Trouble::Steps);
-                             return type;
-                         }
-                         depth += 1;
-                         auto result = rewrite_type(type, policy);
-                         depth -= 1;
-                         return result.isNull() ? type : result;
-                     });
+                     compute);
 }
 
 clang::QualType PseudoInstantiator::rewrite_type(clang::QualType type, Policy policy) {

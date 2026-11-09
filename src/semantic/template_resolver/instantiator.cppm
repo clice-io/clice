@@ -314,7 +314,8 @@ struct Member {
 /// none of their caller's bindings (PseudoInstantiator::kept_step), by what
 /// they were given.
 struct UnitCache {
-    /// Rewrites by the type and the policy.
+    /// Rewrites of the types that look a name up or fold an expression (rewrite), by
+    /// the type and the policy.
     llvm::DenseMap<std::pair<const void*, unsigned>, KeptStep<clang::QualType>> rewrites;
 
     /// Dependent names resolved to a type naming no template parameter, or
