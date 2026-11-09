@@ -706,6 +706,43 @@ ZEST_CASE(PCHKeepsModuleImports) {
                             [](auto& diag) { return diag.id.level >= DiagnosticLevel::Error; }));
 }
 
+ZEST_CASE(ModulesEmbedNoSources) {
+    // A module embedding its sources overrides them in a compile loading
+    // it, where a precompiled header holding the same files then refuses to
+    // load. The build leaves them on disk whatever it is asked: the module
+    // file comes out as without the request.
+    TempDir tmp;
+    tmp.touch("shared.h", "#pragma once\ninline int shared() { return 1; }\n");
+    tmp.touch("b.cppm", R"(module;
+#include "shared.h"
+export module B;
+export int b() { return shared(); }
+)");
+
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
+    auto pcm_path = precompiled_path("pcm");
+    auto build = [&](std::optional<std::string> embedding) {
+        CompilationParams params;
+        params.kind = CompilationKind::ModuleInterface;
+        params.input.arguments = cxx20_command(cdb, toolchain, tmp, "b.cppm");
+        if(embedding) {
+            // The command is cc1's: the option goes as -Xclang passes it on.
+            params.input.arguments.insert(params.input.arguments.end() - 1, *embedding);
+        }
+        params.output_file = pcm_path;
+        ZASSERT(clice::compile(std::move(params))->has_output());
+        return read_file(pcm_path);
+    };
+
+    auto plain = build(std::nullopt);
+    ZASSERT(plain);
+    ZEXPECT(build("-fmodules-embed-all-files") == plain);
+    ZEXPECT(build("-fmodules-embed-file=" + tmp.path("shared.h")) == plain);
+}
+
 ZEST_CASE(PCHWithoutModule) {
     TempDir tmp;
     tmp.touch("b.pcm", "not a module file");

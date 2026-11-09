@@ -272,6 +272,7 @@ bool is_discarded_option(unsigned id) {
         case OPT_fmodule_output:
         case OPT_fmodule_output_EQ:
         case OPT_fmodules_embed_all_files:
+        case OPT_fmodules_embed_file_EQ:
         case OPT_fprebuilt_module_path: return true;
 
         default: return false;

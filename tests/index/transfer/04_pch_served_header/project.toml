@@ -1,0 +1,3 @@
+# CMake's database for a target with a precompiled header, as it writes it
+# for clang.
+databases = {}
