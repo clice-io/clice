@@ -287,10 +287,10 @@ async::task<std::optional<Result>> TaskGraph::await_attempt(NodeId id,
     // Waiting again on a failure nothing invalidated since would repeat it
     // once per path to the node: an import graph's diamonds make that
     // exponential in its depth.
-    if(auto& node = nodes.find(id)->second;
-       !node.compiling() && node.attempt && node.attempt->result == Result::Failed &&
-       node.attempt->generation == node.generation && work.failure_stands &&
-       work.failure_stands()) {
+    auto& node = nodes.find(id)->second;
+    bool failed = !node.compiling() && node.attempt && node.attempt->result == Result::Failed &&
+                  node.attempt->generation == node.generation;
+    if(failed && work.failure_stands && work.failure_stands()) {
         if(waiter) {
             mark_received(*waiter, id);
         }
