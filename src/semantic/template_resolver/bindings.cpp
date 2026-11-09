@@ -496,9 +496,10 @@ llvm::SmallVector<clang::TemplateArgument, 4>
 
 namespace {
 
-/// Whether `argument` is `param` itself, as a template's own parameters bind
-/// it inside it (TemplateParameterList::getInjectedTemplateArgs).
-bool names_itself(const clang::TemplateArgument& argument, const clang::NamedDecl* param) {
+/// The declaration `argument` names alone, a template parameter's as its
+/// own template binds it inside it (TemplateParameterList::getInjectedTemplateArgs);
+/// null for an argument naming more.
+const clang::NamedDecl* named_alone(const clang::TemplateArgument& argument) {
     switch(argument.getKind()) {
         case clang::TemplateArgument::Type: {
             auto type = argument.getAsType();
@@ -506,8 +507,8 @@ bool names_itself(const clang::TemplateArgument& argument, const clang::NamedDec
                 type = expansion->getPattern();
             }
             auto* TTPT = type->getAs<clang::TemplateTypeParmType>();
-            return TTPT && TTPT->getDecl() == param &&
-                   !type.getCanonicalType().hasLocalQualifiers();
+            return TTPT && !type.getCanonicalType().hasLocalQualifiers() ? TTPT->getDecl()
+                                                                         : nullptr;
         }
         case clang::TemplateArgument::Expression: {
             auto* expr = argument.getAsExpr();
@@ -515,16 +516,20 @@ bool names_itself(const clang::TemplateArgument& argument, const clang::NamedDec
                 expr = expansion->getPattern();
             }
             auto* reference = llvm::dyn_cast<clang::DeclRefExpr>(expr->IgnoreImpCasts());
-            return reference && reference->getDecl() == param;
+            return reference ? reference->getDecl() : nullptr;
         }
         case clang::TemplateArgument::Template:
         case clang::TemplateArgument::TemplateExpansion:
-            return argument.getAsTemplateOrTemplatePattern().getAsTemplateDecl() == param;
-        /// A pack deduced from its own expansion holds that expansion alone.
+            return argument.getAsTemplateOrTemplatePattern().getAsTemplateDecl();
+        /// A pack deduced from an expansion holds that expansion alone.
         case clang::TemplateArgument::Pack:
-            return argument.pack_size() == 1 && names_itself(argument.pack_begin()[0], param);
-        default: return false;
+            return argument.pack_size() == 1 ? named_alone(argument.pack_begin()[0]) : nullptr;
+        default: return nullptr;
     }
+}
+
+bool names_itself(const clang::TemplateArgument& argument, const clang::NamedDecl* param) {
+    return named_alone(argument) == param;
 }
 
 }  // namespace
@@ -541,6 +546,18 @@ PseudoInstantiator::Binding PseudoInstantiator::binding(const clang::NamedDecl* 
                     {param, depth, index}
                 });
             }
+        } else if(auto* target = argument && param ? renaming_target(*argument, param) : nullptr) {
+            if(recording) {
+                recording->renamed(
+                    {
+                        .parameter = {param, depth, index},
+                        .target = target
+                },
+                    *frame);
+                recording->found_free({
+                    {target, target->getDepth(), target->getIndex()}
+                });
+            }
         } else {
             read_frame(*frame);
         }
@@ -555,6 +572,25 @@ PseudoInstantiator::Binding PseudoInstantiator::binding(const clang::NamedDecl* 
         });
     }
     return {};
+}
+
+const clang::TemplateTypeParmDecl*
+    PseudoInstantiator::renaming_target(const clang::TemplateArgument& argument,
+                                        const clang::NamedDecl* parameter) const {
+    auto* target = llvm::dyn_cast_or_null<clang::TemplateTypeParmDecl>(named_alone(argument));
+    if(!target || target == parameter || !free({target, target->getDepth(), target->getIndex()})) {
+        return nullptr;
+    }
+    return target;
+}
+
+const clang::TemplateTypeParmDecl*
+    PseudoInstantiator::renamed_to(const ParameterRef& parameter) const {
+    auto frame = stack.holder(parameter.decl, parameter.depth, parameter.index);
+    if(!frame || parameter.index >= stack.data[*frame].arguments.size()) {
+        return nullptr;
+    }
+    return renaming_target(stack.data[*frame].arguments[parameter.index], parameter.decl);
 }
 
 bool PseudoInstantiator::free(const ParameterRef& parameter) const {

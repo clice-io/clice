@@ -39,9 +39,10 @@ clang::QualType PseudoInstantiator::rewrite(clang::QualType type, Policy policy)
             give_up(depth > depth_limit ? Trouble::Depth : Trouble::Steps);
             return type;
         }
-        depth += 1;
+        unsigned nesting = policy == Policy::Resolve ? 1 : 0;
+        depth += nesting;
         auto result = rewrite_type(type, policy);
-        depth -= 1;
+        depth -= nesting;
         return result.isNull() ? type : result;
     };
     if(!looks_up(type.getTypePtr())) {

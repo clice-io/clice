@@ -322,8 +322,22 @@ std::optional<llvm::SmallVector<clang::TemplateArgument, 4>>
         if(!handle) {
             return std::nullopt;
         }
-        read_frame(handle->first);
         auto& bound = stack.slot(*handle);
+        if(auto* target = pack.decl ? renaming_target(bound, pack.decl) : nullptr) {
+            if(recording) {
+                recording->renamed(
+                    {
+                        .parameter = {pack.decl, pack.depth, pack.index},
+                        .target = target
+                },
+                    handle->first);
+                recording->found_free({
+                    {target, target->getDepth(), target->getIndex()}
+                });
+            }
+        } else {
+            read_frame(handle->first);
+        }
         if(bound.getKind() != clang::TemplateArgument::Pack ||
            (!slots.empty() && bound.pack_size() != length)) {
             return std::nullopt;
