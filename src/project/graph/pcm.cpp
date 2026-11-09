@@ -100,6 +100,21 @@ FailedChain failed_chain(const Project& project, NodeId module) {
     }
 }
 
+/// Whether a wait takes the module's last failure as it stands, building
+/// nothing: its own build's on inputs that still hold, a crash's, one an
+/// import's standing failure caused, or a cycle of imports. One that says
+/// nothing of the module, an import's PCM leaving the disk under the build,
+/// is built again.
+bool failure_stands(Project& project, NodeId module) {
+    auto chain = failed_chain(project, module);
+    if(chain.cycle) {
+        return true;
+    }
+    auto* last = chain.last;
+    return last && last->failure && !last->failure->result.import_lost &&
+           inputs_hold(project.file_table, last->failure->inputs);
+}
+
 /// The modules a compile importing `modules` reads, once it waited on them:
 /// they and, below each that built, the modules it imports in turn — clang
 /// loads every module below an import, and a built module's imports are
@@ -455,14 +470,15 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
             // missing file: the next wait builds them again, and the module
             // with them.
             auto key = pcm_key;
-            if(!record.crashed() && lost_import(bp)) {
+            bool lost = !record.crashed() && lost_import(bp);
+            if(lost) {
                 key.clear();
                 record.cause = "an import's module file left the cache during the build";
             }
             // An attempt overtaken in flight records its inputs all the same:
             // they no longer match, and its successor rebuilds.
             project.pcms[node].failure = {
-                {.key = std::move(key), .record = std::move(record)},
+                {.key = std::move(key), .record = std::move(record), .import_lost = lost},
                 std::move(inputs)
             };
         });
@@ -653,11 +669,7 @@ Work Project::module_work(NodeId module) {
         .run = [this, module](Attempt& attempt) { return build_module(*this, attempt, module); },
         .check = [this,
                   module] { return imports_present(module) ? Check::Holds : Check::ProductGone; },
-        .failure_stands =
-            [this, module] {
-                auto it = pcms.find(module);
-                return it != pcms.end() && it->second.standing_failure(file_table);
-            },
+        .failure_stands = [this, module] { return failure_stands(*this, module); },
     };
 }
 

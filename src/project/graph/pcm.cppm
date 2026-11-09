@@ -26,6 +26,10 @@ struct ModuleBuildFailed {
     /// The PCM of the import whose build failed, or that closed a cycle back
     /// to the unit; none when the unit's own build failed.
     std::optional<NodeId> import;
+
+    /// An import's PCM left the disk under the build: the failure says
+    /// nothing of the module, and the next wait builds both again.
+    bool import_lost = false;
 };
 
 /// The PCM of a C++20 module unit under one of its commands, shared across
