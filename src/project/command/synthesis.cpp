@@ -74,7 +74,7 @@ Memo<Fid, HeaderContext>::Entry Project::synthesize(Fid header,
         auto path = files.resolve(chain[i]);
         auto observed = vfs::read_observed(path);
         if(!observed) {
-            LOG_WARN("Cannot read {} for the context of {}", path, files.resolve(header));
+            LOG_WARN("{}, for the context of {}", observed.error(), files.resolve(header));
             if(auto missing = current_input(files, chain[i])) {
                 inputs.push_back(*missing);
             }

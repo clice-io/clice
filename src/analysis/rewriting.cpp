@@ -394,8 +394,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         auto path = path::join(root, info.path);
         auto content = vfs::read_text(path);
         if(!content) {
-            return std::unexpected(
-                std::format("cannot read {}: {}", path, content.error().message()));
+            return std::unexpected(std::format("{}", content.error()));
         }
         auto& draft = drafts[file];
         Text text(contents[file] = std::move(*content));

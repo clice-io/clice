@@ -8,6 +8,7 @@ import :feature.formatting;
 import :project.discovery;
 import :project.project;
 import :support.logging;
+import :vfs.file_system;
 import :vfs.path;
 
 namespace clice::driver {
@@ -200,11 +201,11 @@ std::string violations(const Target& file,
 }
 
 FileResult format_file(const Target& file, bool check) {
-    std::string content;
-    if(auto error = fs::read_file(content, file.path)) {
-        return {.error = std::format("cannot read {}: {}", file.path, error.message())};
+    auto content = vfs::read_bytes(file.path);
+    if(!content) {
+        return {.error = std::format("{}", content.error())};
     }
-    llvm::StringRef text = content;
+    llvm::StringRef text = *content;
     auto edits = feature::document_format(file.name, text);
     if(!edits) {
         return {.error = std::move(edits.error())};
@@ -223,8 +224,8 @@ FileResult format_file(const Target& file, bool check) {
         offset = edit.range.end;
     }
     formatted += text.substr(offset);
-    if(auto error = fs::write_file(file.path, formatted)) {
-        return {.error = std::format("cannot write {}: {}", file.path, error.message())};
+    if(auto written = vfs::write_file(file.path, formatted); !written) {
+        return {.error = std::format("{}", written.error())};
     }
     return {};
 }

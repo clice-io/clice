@@ -161,7 +161,7 @@ struct DatabaseText {
 std::expected<DatabaseText, std::string> read_database(const Spelling& path) {
     auto observed = vfs::read_observed(path);
     if(!observed) {
-        return std::unexpected(std::format("cannot read {}: {}", path, observed.error().message()));
+        return std::unexpected(std::format("{}", observed.error()));
     }
     DatabaseText text{.hash = observed->obs.hash};
     auto repaired = repaired_database_text(observed->text);

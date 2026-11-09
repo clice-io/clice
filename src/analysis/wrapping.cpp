@@ -34,8 +34,7 @@ struct PartitionFile {
 std::expected<llvm::SmallVector<std::string>, std::string> read_lines(llvm::StringRef path) {
     auto text = vfs::read_text(path);
     if(!text) {
-        return std::unexpected(
-            std::format("cannot read {}: {}", path.str(), text.error().message()));
+        return std::unexpected(std::format("{}", text.error()));
     }
     llvm::SmallVector<llvm::StringRef> lines;
     llvm::StringRef(*text).split(lines, '\n');
@@ -215,20 +214,15 @@ std::expected<std::optional<StdModules>, std::string> read_std_modules(llvm::Str
     }
 
     auto compat = path::join(directory, "std.compat");
-    auto entries = fs::Directory::open(compat);
-    if(!entries) {
-        return std::unexpected(
-            std::format("cannot list {}: {}", compat, entries.error().message()));
+    auto names = vfs::list_names(compat);
+    if(!names) {
+        return std::unexpected(std::format("{}", names.error()));
     }
-    for(auto& entry: *entries) {
-        if(!entry) {
-            return std::unexpected(
-                std::format("cannot list {}: {}", compat, entry.error().message()));
-        }
-        if(!entry->name.ends_with(".inc")) {
+    for(auto& name: *names) {
+        if(!llvm::StringRef(name).ends_with(".inc")) {
             continue;
         }
-        auto exported = read_lines(path::join(compat, entry->name));
+        auto exported = read_lines(path::join(compat, name));
         if(!exported) {
             return std::unexpected(exported.error());
         }
@@ -253,8 +247,7 @@ std::expected<PartitionSpec, std::string> read_partition(PartitionSpec spec,
     }
     auto text = vfs::read_text(path);
     if(!text) {
-        return std::unexpected(
-            std::format("cannot read {}: {}", path.str(), text.error().message()));
+        return std::unexpected(std::format("{}", text.error()));
     }
     PartitionFile file;
     if(auto result = json::from_string(*text, file); !result) {

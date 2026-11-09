@@ -693,10 +693,15 @@ enum class MetaCheck : std::uint8_t {
     Transient,
 };
 
+/// The corruption a read of the database met: LMDB's return code.
+struct Corruption {
+    int rc = 0;
+};
+
 /// Validates the meta record under the resident transaction; initializes
-/// it first on a fresh (provably empty) writable database. The error is
-/// the corruption the read of the record met.
-std::expected<MetaCheck, int> check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
+/// it first on a fresh (provably empty) writable database.
+std::expected<MetaCheck, Corruption>
+    check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     auto mk = to_val(meta_key);
     MDB_val value;
     int rc = mdb_get(txn, dbi, &mk, &value);
@@ -708,7 +713,7 @@ std::expected<MetaCheck, int> check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn
     }
     if(rc != MDB_NOTFOUND) {
         if(is_corruption(rc)) {
-            return std::unexpected(rc);
+            return std::unexpected(Corruption{rc});
         }
         return MetaCheck::Transient;
     }
@@ -901,7 +906,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
         auto meta = check_meta(env, dbi, txn, read_only);
         if(!meta) {
             mdb_txn_abort(txn);
-            if(fail(meta.error(), "meta")) {
+            if(fail(meta.error().rc, "meta")) {
                 continue;
             }
             return nullptr;

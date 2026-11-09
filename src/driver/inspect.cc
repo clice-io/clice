@@ -647,7 +647,7 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
     }
     auto content = vfs::read_text(file.path);
     if(!content) {
-        return std::unexpected(std::format("cannot read {}: {}", path, content.error().message()));
+        return std::unexpected(std::format("{}", content.error()));
     }
     file.content = std::move(*content);
     if(!markers) {
@@ -656,8 +656,7 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
 
     auto text = vfs::read_text(*markers);
     if(!text) {
-        return std::unexpected(
-            std::format("cannot read --markers {}: {}", *markers, text.error().message()));
+        return std::unexpected(std::format("--markers: {}", text.error()));
     }
     auto& [points, ranges] = file.markers;
     // An unknown key is a typo, not something to silently ignore.

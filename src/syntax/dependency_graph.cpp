@@ -453,12 +453,11 @@ struct ScannedText {
 };
 
 /// Read and lex the file at `path`, a stable pointer from the FileTable
-/// that outlives the task; none when it cannot be read. Runs on the
-/// thread pool.
-std::optional<ScannedText> read_and_scan(const char* path) {
+/// that outlives the task. Runs on the thread pool.
+std::expected<ScannedText, vfs::FileError> read_and_scan(const char* path) {
     auto observed = vfs::read_observed(path);
     if(!observed) {
-        return std::nullopt;
+        return std::unexpected(std::move(observed.error()));
     }
     return ScannedText{
         .obs = observed->obs,
@@ -730,7 +729,11 @@ struct FullScan {
                                    std::size_t index,
                                    const char* path) {
         auto scanned = co_await async::queue([path] { return read_and_scan(path); });
-        scans[index] = std::move(scanned);
+        if(!scanned) {
+            LOG_WARN("{}; its includes are not scanned", scanned.error());
+            co_return;
+        }
+        scans[index] = std::move(*scanned);
     }
 
     /// The quick scan of `fid`'s bytes when a live stat the shared table's
@@ -850,7 +853,6 @@ struct FullScan {
             for(auto [file, scanned]: views::zip(wave->files, wave->scans)) {
                 report.total_files += 1;
                 if(!scanned) {
-                    LOG_WARN("Failed to read file for scanning: {}", files.resolve(file.fid));
                     continue;
                 }
                 if(!file.warm) {

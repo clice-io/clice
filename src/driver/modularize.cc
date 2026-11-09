@@ -131,12 +131,11 @@ std::expected<void, std::string> write_files(llvm::StringRef out,
         if(auto existing = vfs::read_text(path); existing && *existing == file.content) {
             continue;
         }
-        if(auto made = fs::create_directories(path::parent(path)); !made) {
-            return std::unexpected(
-                std::format("cannot create the directory of {}: {}", path, made.error().message()));
+        if(auto made = vfs::create_directories(path::parent(path)); !made) {
+            return std::unexpected(std::format("{}", made.error()));
         }
-        if(auto error = fs::write_file(path, file.content)) {
-            return std::unexpected(std::format("cannot write {}: {}", path, error.message()));
+        if(auto written = vfs::write_file(path, file.content); !written) {
+            return std::unexpected(std::format("{}", written.error()));
         }
     }
     if(auto previous = vfs::read_text(at(".modularize"))) {
@@ -144,17 +143,13 @@ std::expected<void, std::string> write_files(llvm::StringRef out,
             if(written.contains(relative)) {
                 continue;
             }
-            if(auto removed = fs::remove(at(relative)); !removed) {
-                return std::unexpected(std::format("cannot remove {}/{}: {}",
-                                                   out.str(),
-                                                   relative.str(),
-                                                   removed.error().message()));
+            if(auto removed = vfs::remove(at(relative)); !removed) {
+                return std::unexpected(std::format("{}", removed.error()));
             }
         }
     }
-    if(auto error = fs::write_file(at(".modularize"), manifest)) {
-        return std::unexpected(
-            std::format("cannot write {}/.modularize: {}", out.str(), error.message()));
+    if(auto written = vfs::write_file(at(".modularize"), manifest); !written) {
+        return std::unexpected(std::format("{}", written.error()));
     }
     return {};
 }
@@ -163,8 +158,7 @@ std::expected<std::vector<analysis::Configuration>, std::string>
     read_configurations(llvm::StringRef path) {
     auto text = vfs::read_text(path);
     if(!text) {
-        return std::unexpected(
-            std::format("cannot read {}: {}", path.str(), text.error().message()));
+        return std::unexpected(std::format("{}", text.error()));
     }
     MergeFile file;
     if(auto result = json::from_string(*text, file); !result) {
@@ -186,10 +180,7 @@ std::expected<std::vector<analysis::Configuration>, std::string>
         for(auto relative: manifest_paths(*manifest)) {
             auto content = vfs::read_text(join_path(out, relative));
             if(!content) {
-                return std::unexpected(std::format("cannot read {}/{}: {}",
-                                                   out,
-                                                   relative.str(),
-                                                   content.error().message()));
+                return std::unexpected(std::format("{}", content.error()));
             }
             configuration.files.push_back({relative.str(), std::move(*content)});
         }
@@ -294,19 +285,17 @@ int run(Modularize& opts) {
     if(rewriting) {
         for(auto& file: rewriting->files) {
             auto path = join_path(loaded->root, file.path);
-            if(auto made = fs::create_directories(path::parent(path)); !made) {
-                return fail(std::format("cannot create the directory of {}: {}",
-                                        path,
-                                        made.error().message()));
+            if(auto made = vfs::create_directories(path::parent(path)); !made) {
+                return fail(std::format("{}", made.error()));
             }
-            if(auto error = fs::write_file(path, file.content)) {
-                return fail(std::format("cannot write {}: {}", path, error.message()));
+            if(auto written = vfs::write_file(path, file.content); !written) {
+                return fail(std::format("{}", written.error()));
             }
         }
         for(auto& removed: rewriting->plan.removed) {
             auto path = join_path(loaded->root, removed);
-            if(auto result = fs::remove(path); !result) {
-                return fail(std::format("cannot remove {}: {}", path, result.error().message()));
+            if(auto removed = vfs::remove(path); !removed) {
+                return fail(std::format("{}", removed.error()));
             }
         }
         plan.rewriting = std::move(rewriting->plan);
