@@ -19,6 +19,11 @@
       "markers": []
     },
     {
+      "path": "checked.cpp",
+      "text": "constexpr unsigned char checked[] = {\n#if __has_embed(\"data.bin\")\n#embed \"data.bin\"\n#endif\n};\n\nstatic_assert(sizeof(checked) == 5);\n",
+      "markers": []
+    },
+    {
       "path": "data.bin",
       "text": "﻿AB",
       "markers": []
