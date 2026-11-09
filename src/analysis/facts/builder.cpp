@@ -109,11 +109,6 @@ void FactsBuilder::list_files() {
         fids.push_back(fid);
     };
     index.for_each_unit([&](Fid tu) {
-        // A header the database lists has a manifest too, though no build
-        // compiles it on its own: its includers' units are its units.
-        if(is_header_path(display(tu))) {
-            return;
-        }
         if(auto manifest = index.manifest(tu)) {
             manifests.emplace_back(tu, std::move(*manifest));
         }
@@ -153,7 +148,10 @@ void FactsBuilder::read_includes() {
     /// (scoped includer, scoped file) -> the first directive line naming it.
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> include_lines;
     for(auto& [tu, manifest]: manifests) {
-        auto unit = id_of(tu);
+        // A header the database lists has a manifest too, though no build
+        // compiles it on its own: it names what it includes, and its
+        // includers' units are its units.
+        auto unit = is_header_path(display(tu)) ? none : id_of(tu);
         llvm::DenseSet<std::uint32_t> entered;
         if(unit != none) {
             entered.insert(unit);

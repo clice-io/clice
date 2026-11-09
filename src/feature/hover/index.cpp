@@ -153,10 +153,7 @@ auto module_hover(const index::IndexQuery& query,
                          return from.sites(named, cursor.site.file, RelationKind::Definition);
                      });
     // A unit's own declaration names the unit itself.
-    llvm::SmallVector<Fid> providers;
-    for(auto& unit: units) {
-        providers.push_back(unit.file);
-    }
+    auto providers = ranges::to<std::vector>(units | views::transform(&index::Site::file));
     if(!providers.empty()) {
         auto provider = ranges::contains(providers, cursor.site.file)
                             ? cursor.site.file

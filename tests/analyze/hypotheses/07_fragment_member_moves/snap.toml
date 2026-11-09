@@ -43,3 +43,13 @@ stdout = '''
 }
 '''
 exit = 0
+
+[test."$ clice analyze modules edge util core --move-entity Clock=core/clock.h --move-entity Clock=meta/clock.h"]
+stdout = '''
+{
+  "from": "util",
+  "to": "core",
+  "entities": []
+}
+'''
+exit = 0

@@ -94,8 +94,7 @@ bool failure_stands(Project& project, NodeId module) {
         return false;
     }
     return ranges::all_of(chain.modules, [&](NodeId failed) {
-        auto& failure = project.pcms.find(failed)->second.failure;
-        return failure && inputs_hold(project.file_table, failure->inputs);
+        return project.pcms.find(failed)->second.standing_failure(project.file_table) != nullptr;
     });
 }
 
@@ -295,9 +294,6 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
     bp.project_root = project.root.str();
     bp.arguments = resolution->arguments;
     bp.hidden = resolution->hidden;
-    // What a failure of an import stands on: the text naming the imports,
-    // sampled before the scan reads it.
-    auto own = current_input(project.file_table, path_id);
     auto imports = co_await project.scan_imports(path_id, *resolution, std::nullopt);
     project.graph.set_edges(attempt.node(), imports.declared);
 
@@ -343,7 +339,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
             entry.retire(project.store ? &*project.store : nullptr, "pcm");
             entry.key.clear();
             entry.pch.clear();
-            entry.failure = {{.import = failed_import}, own ? Inputs{*own} : Inputs{}};
+            entry.failure = {{.import = failed_import}, std::move(imports.inputs)};
             co_return Result::Failed;
         }
     }
@@ -567,10 +563,12 @@ async::task<Imports> Project::scan_imports(Fid path_id,
     // for it.
     auto& scans = content ? buffer_scans : disk_scans;
     ImportScan scan;
+    Inputs read;
     if(auto* memo = scans.lookup(file_table, path_id, content ? path_id : Fid{});
        memo && memo->result.directives == directives && memo->result.bound == bound &&
        memo->result.arguments == arguments_hash) {
         scan = memo->result;
+        read = memo->inputs;
     } else {
         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs =
             llvm::makeIntrusiveRefCnt<vfs::View>(resolution.hidden);
@@ -627,9 +625,9 @@ async::task<Imports> Project::scan_imports(Fid path_id,
             std::erase_if(scanned.deps,
                           [&](const ReportedInput& input) { return memory.contains(input.path); });
         }
-        auto inputs = intern_inputs(file_table, scanned.deps, started_at);
-        inputs.append(resolution.inputs.begin(), resolution.inputs.end());
-        scans.commit(path_id, scan, std::move(inputs));
+        read = intern_inputs(file_table, scanned.deps, started_at);
+        read.append(resolution.inputs.begin(), resolution.inputs.end());
+        scans.commit(path_id, scan, read);
     }
 
     // Every scanned name goes into the edge set, resolved or not: an
@@ -638,7 +636,8 @@ async::task<Imports> Project::scan_imports(Fid path_id,
     // ordinary cascade later — no side bookkeeping of who failed against it.
     Imports imports{
         .offsets = {scan.offsets.begin(), scan.offsets.end()},
-        .module_unit = scan.module_unit
+        .module_unit = scan.module_unit,
+        .inputs = std::move(read),
     };
     for(auto& name: scan.imports) {
         auto providers = dep_graph.lookup_module(name);
@@ -812,20 +811,21 @@ async::task<Result> Project::wait_modules(Attempt* attempt,
     co_return Result::Failed;
 }
 
-const Inputs* Project::module_inputs(NodeId module) const {
-    auto chain = failed_chain(*this, module);
-    if(chain.cycle || !chain.last) {
-        return nullptr;
+llvm::SmallVector<const Inputs*> Project::module_inputs(NodeId module) const {
+    llvm::SmallVector<const Inputs*> inputs;
+    for(auto failed: failed_chain(*this, module).modules) {
+        if(auto it = pcms.find(failed); it != pcms.end()) {
+            auto& entry = it->second;
+            inputs.push_back(entry.failure ? &entry.failure->inputs : &entry.inputs);
+        }
     }
-    return chain.last->failure ? &chain.last->failure->inputs : &chain.last->inputs;
+    return inputs;
 }
 
 Inputs Project::module_inputs(llvm::ArrayRef<NodeId> modules) const {
     llvm::SmallVector<const Inputs*> parts;
     for(auto module: modules) {
-        if(auto* inputs = module_inputs(module)) {
-            parts.push_back(inputs);
-        }
+        parts.append(module_inputs(module));
     }
     Inputs inputs;
     merge_inputs(inputs, parts);

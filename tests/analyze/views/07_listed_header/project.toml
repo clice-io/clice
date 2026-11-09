@@ -1,6 +1,7 @@
-# The database lists the header as a unit of its own, beside its two
-# includers.
+# The database lists two headers as units of their own: core/str.h beside
+# its two includers, and util/fmt.h, which no file includes.
 [units]
 "app/main.cpp" = []
 "util/clock.cpp" = []
 "core/str.h" = []
+"util/fmt.h" = []

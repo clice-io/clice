@@ -53,6 +53,12 @@ ZEST_CASE(ClModulesDropped) {
                       "/ifcSearchDir",
                       "ifc",
                       "/ifcOutputb.ifc",
+                      "-ifcMap",
+                      "map.toml",
+                      "/stdIfcDir",
+                      "std",
+                      "-scanDependencies",
+                      "a.json",
                       "-DX"},
                      MSVC);
     ZASSERT(args.size() == 1u);

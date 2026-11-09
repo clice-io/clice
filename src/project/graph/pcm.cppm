@@ -6,6 +6,7 @@ import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :support.failure;
 import :support.prelude;
+import :vfs.file_table;
 import :vfs.ids;
 
 namespace clice {
@@ -68,6 +69,9 @@ struct Imports {
 
     /// The unit declares a module.
     bool module_unit = false;
+
+    /// What the scan read: what the import list stands on.
+    Inputs inputs;
 
     /// The PCMs of `declared`: what a consumer waits on.
     llvm::SmallVector<NodeId> resolved() const;

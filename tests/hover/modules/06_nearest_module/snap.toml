@@ -1,3 +1,13 @@
+[answers.own.hover]
+markdown = '''
+**module** `util`
+
+The alternative utilities of a.
+
+`${WS}/a/util_alt.cppm`
+'''
+range = "export module ⟦util⟧;"
+
 [answers.nearest.hover]
 markdown = '''
 **module** `util`

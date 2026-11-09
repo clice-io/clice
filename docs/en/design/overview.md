@@ -64,7 +64,6 @@ Syntax-level processing that does not require a full AST. Runs before compilatio
 - Dependency scanning: Wraps Clang's `DependencyDirectivesScanner` to quickly extract include and module dependencies
 - `IncludeResolver`: Resolves include paths to actual files based on search path configuration
 - Header contexts: Builds the prefix/suffix files that let a header compile under its host's preprocessor state
-- Documentation comments: Finds the comment documenting a declaration in a file's text, the same way for a compiled unit and for the index, and reads it as Doxygen and Markdown — commands, parameters, return values, `@copydoc` — into one structured form that hover and `clice query` render
 
 See [Dependency Scanning](dependency-scanning.md).
 
@@ -76,6 +75,7 @@ Semantic analysis capabilities beyond Clang's native APIs, over the AST of a com
 - `EntityTable`: The identity of a declaration, equal across translation units for the declarations the compiler would merge
 - `TemplateResolver`: Resolves dependent names through pseudo-instantiation, enabling semantic analysis to see through template contexts. See [Template Resolver](template-resolver.md).
 - `SymbolKind` / `RelationKind`: Fine-grained symbol kinds and relation types
+- Documentation comments (`comment/`): Finds the comment documenting a declaration in a file's text, the same way for a compiled unit and for the index, and reads it as Doxygen and Markdown — commands, parameters, return values, `@copydoc` — into one structured form that hover and `clice query` render
 
 ### `src/index/` — Symbol Index
 

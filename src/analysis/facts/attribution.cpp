@@ -314,6 +314,9 @@ std::expected<void, std::string> move_entities(Facts& facts,
     }
     for(auto entity: moved) {
         facts.entities[entity].owner = target;
+        for(auto& use: facts.entities[entity].body) {
+            use.file = target;
+        }
     }
     // The files naming what moved include the header it moved to: the units
     // entering them enter it.
