@@ -35,6 +35,17 @@ function readLogs(t: TestContext): Map<string, string> {
     );
 }
 
+/// How the master words the worker's death: on Windows a fault ends it by
+/// the exception, and abort() with 3.
+function death(kind: WorkerFault["kind"]): string {
+    if (process.platform !== "win32") {
+        return String.raw`killed by signal \d+ \(SIG\w+\)`;
+    }
+    return kind === "abort" || kind === "fatal"
+        ? "exited with code 3 "
+        : "terminated by exception 0x[0-9A-F]+";
+}
+
 const KINDS: readonly { name: string; kind?: NonNullable<WorkerFault["kind"]> }[] = [
     { name: "trap" },
     { name: "null write", kind: "segv" },
@@ -61,7 +72,7 @@ for (const { name, kind } of KINDS) {
         const master = logs.get("master.log") ?? "";
         expect(master).not.toMatch(/CRASH STACK TRACE/);
         expect(master).toMatch(
-            /\[anomaly:WorkerCrash\] Worker SF-\d+ (?:killed by signal \d+ \(SIG\w+\)|terminated by exception 0x[0-9A-F]+)/,
+            new RegExp(String.raw`\[anomaly:WorkerCrash\] Worker SF-\d+ ` + death(kind)),
         );
     });
 }
