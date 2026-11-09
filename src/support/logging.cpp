@@ -221,6 +221,20 @@ void rotate() {
     write(*file, std::format("[logging] the lines before are in {}\n", fs::path::filename(older)));
 }
 
+/// Where `path` is in `text` from `from` on: on Windows, which reads a path
+/// with either separator and in either case, spelled either way.
+std::size_t find_path(std::string_view text, std::string_view path, std::size_t from) {
+    auto found =
+        std::search(text.begin() + from, text.end(), path.begin(), path.end(), [](char a, char b) {
+            if constexpr(fs::path::native_style == fs::path::Style::Windows) {
+                return fs::path::is_separator(a) ? fs::path::is_separator(b)
+                                                 : llvm::toLower(a) == llvm::toLower(b);
+            }
+            return a == b;
+        });
+    return found == text.end() ? std::string_view::npos : std::size_t(found - text.begin());
+}
+
 /// `text`, every path under one of the thread's project roots relative to
 /// it.
 std::string relative_paths(std::string text) {
@@ -233,8 +247,8 @@ std::string relative_paths(std::string text) {
         std::size_t at = std::string_view::npos;
         const Root* found = nullptr;
         for(auto& root: roots) {
-            for(auto from = rest.find(root.path); from < at;
-                from = rest.find(root.path, from + 1)) {
+            for(auto from = find_path(rest, root.path, 0); from < at;
+                from = find_path(rest, root.path, from + 1)) {
                 // A whole path, not the tail of another (`/src` in `/usr/src/a.h`).
                 auto end = from + root.path.size();
                 bool starts = from == 0 || !(llvm::isAlnum(rest[from - 1]) ||

@@ -17,7 +17,7 @@ stdout = '''
 ]
 '''
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
-error: 1 of the entries stay driver commands: the errors above say why
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
+error: 1 of the entries stay driver commands: the warnings above say why
 '''
 exit = 1
