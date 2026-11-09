@@ -1,0 +1,9 @@
+[answers.nearest.hover]
+markdown = '''
+**module** `util`
+
+The utilities of z.
+
+`${WS}/z/util.cppm`
+'''
+range = "import ⟦util⟧;"

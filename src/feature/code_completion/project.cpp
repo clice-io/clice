@@ -449,28 +449,19 @@ static auto module_completion(const CompletionName& completing, const Completion
         module_names = complete_module_import(providers, completing.prefix, unit);
         own_module = llvm::StringRef(unit.module_name).split(':').first.str();
     }
-    auto directory = path::parent(inputs.path);
-    auto up_to = [&](Fid provider) {
-        std::uint32_t up = 0;
-        auto interface = llvm::StringRef(inputs.files.resolve(provider));
-        for(auto dir: path::ancestors(directory)) {
-            up += 1;
-            if(path::is_within(interface, dir)) {
-                break;
-            }
-        }
-        return up;
-    };
     // The module a name completes to and the unit providing it an import
     // resolves to, the nearest.
     auto module_of = [&](llvm::StringRef name) {
         return name.starts_with(":") ? own_module + name.str() : name.str();
     };
     auto nearest = [&](llvm::StringRef name) {
-        return ranges::min(providers.modules.find(module_of(name))->getValue(), {}, up_to);
+        return nearest_provider(inputs.files,
+                                providers.modules.find(module_of(name))->getValue(),
+                                inputs.file);
     };
     auto distance = [&](llvm::StringRef name) {
-        return name.starts_with(":") ? std::uint32_t(0) : up_to(nearest(name));
+        return name.starts_with(":") ? std::uint32_t(0)
+                                     : module_distance(inputs.files, nearest(name), inputs.file);
     };
     std::vector<protocol::CompletionItem> items;
     items.reserve(module_names.size());

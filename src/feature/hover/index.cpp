@@ -4,10 +4,12 @@ import :feature.documentation;
 import :feature.hover.card;
 import :feature.hover;
 import :index.query;
+import :index.site;
 import :index.symbol;
 import :index.text;
 import :semantic.symbol;
 import :support.text;
+import :syntax.dependency_graph;
 import :syntax.documentation;
 import :syntax.lexer;
 import :syntax.lexical_scan;
@@ -150,9 +152,18 @@ auto module_hover(const index::IndexQuery& query,
                      [&](const index::IndexQuery& from, index::SymbolHash named) {
                          return from.sites(named, cursor.site.file, RelationKind::Definition);
                      });
-    if(!units.empty()) {
-        hover.documentation = module_documentation(query, units.front(), documentation);
-        hover.file = query.file_table().display_identity(units.front().path);
+    // A unit's own declaration names the unit itself.
+    llvm::SmallVector<Fid> providers;
+    for(auto& unit: units) {
+        providers.push_back(unit.file);
+    }
+    if(!providers.empty()) {
+        auto provider = ranges::contains(providers, cursor.site.file)
+                            ? cursor.site.file
+                            : nearest_provider(query.file_table(), providers, cursor.site.file);
+        auto& unit = *ranges::find(units, provider, &index::Site::file);
+        hover.documentation = module_documentation(query, unit, documentation);
+        hover.file = query.file_table().display_identity(unit.path);
     }
     hover.symbol_range = cursor.site.range;
     return hover;

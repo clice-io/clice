@@ -10,6 +10,7 @@ import :project.graph.task_graph;
 import :project.graph.unit;
 import :project.project;
 import :support.logging;
+import :syntax.dependency_graph;
 import :syntax.header_context;
 import :syntax.preamble;
 import :syntax.scan;
@@ -27,26 +28,6 @@ namespace {
 /// so a blob or a record an older clice stored is not taken for the new
 /// one.
 constexpr llvm::StringRef pcm_version = "7";
-
-/// The provider an import in `importer` resolves to among several of one
-/// name: the nearest — the fewest directories up from the importer to one
-/// holding it — and the first by path among equally near ones.
-Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> providers, Fid importer) {
-    if(providers.size() == 1) {
-        return providers.front();
-    }
-    auto distance = [&](Fid provider) {
-        std::uint32_t up = 0;
-        path::walk_ancestors(files.resolve(importer).parent(), [&](CanonicalRef dir) {
-            up += 1;
-            return !path::is_within(files.resolve(provider), dir);
-        });
-        return up;
-    };
-    return *ranges::min_element(providers, {}, [&](Fid provider) {
-        return std::pair(distance(provider), llvm::StringRef(files.resolve(provider)));
-    });
-}
 
 /// The entry's PCM, or the PCH it was built over, left the disk: forget it,
 /// so the module's next attempt builds again. Returns whether it had.
@@ -101,18 +82,21 @@ FailedChain failed_chain(const Project& project, NodeId module) {
 }
 
 /// Whether a wait takes the module's last failure as it stands, building
-/// nothing: its own build's on inputs that still hold, a crash's, one an
-/// import's standing failure caused, or a cycle of imports. One that says
-/// nothing of the module, an import's PCM leaving the disk under the build,
-/// is built again.
+/// nothing: its own build's, a crash's, one an import's standing failure
+/// caused, or a cycle of imports, while what every failure along the chain
+/// stands on holds — an importer edited to drop the failing import builds
+/// again before the change is noticed. One that says nothing of the module,
+/// an import's PCM leaving the disk under the build, is built again.
 bool failure_stands(Project& project, NodeId module) {
     auto chain = failed_chain(project, module);
-    if(chain.cycle) {
-        return true;
-    }
     auto* last = chain.last;
-    return last && last->failure && !last->failure->result.import_lost &&
-           inputs_hold(project.file_table, last->failure->inputs);
+    if(!chain.cycle && !(last && last->failure && !last->failure->result.import_lost)) {
+        return false;
+    }
+    return ranges::all_of(chain.modules, [&](NodeId failed) {
+        auto& failure = project.pcms.find(failed)->second.failure;
+        return failure && inputs_hold(project.file_table, failure->inputs);
+    });
 }
 
 /// The modules a compile importing `modules` reads, once it waited on them:
@@ -311,6 +295,9 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
     bp.project_root = project.root.str();
     bp.arguments = resolution->arguments;
     bp.hidden = resolution->hidden;
+    // What a failure of an import stands on: the text naming the imports,
+    // sampled before the scan reads it.
+    auto own = current_input(project.file_table, path_id);
     auto imports = co_await project.scan_imports(path_id, *resolution, std::nullopt);
     project.graph.set_edges(attempt.node(), imports.declared);
 
@@ -356,7 +343,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
             entry.retire(project.store ? &*project.store : nullptr, "pcm");
             entry.key.clear();
             entry.pch.clear();
-            entry.failure = {{.import = failed_import}, {}};
+            entry.failure = {{.import = failed_import}, own ? Inputs{*own} : Inputs{}};
             co_return Result::Failed;
         }
     }
