@@ -66,7 +66,8 @@ local function show_context(client, bufnr)
     local command = current.command
     local source = ''
     if command ~= nil and command ~= vim.NIL then
-      local from = command.from ~= vim.NIL
+      local from = command.from ~= nil
+          and command.from ~= vim.NIL
           and (' from %s'):format(vim.fn.fnamemodify(vim.uri_to_fname(command.from), ':~:.'))
         or ''
       source = ('; its command: %s%s'):format(command.source, from)

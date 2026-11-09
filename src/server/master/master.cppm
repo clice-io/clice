@@ -290,7 +290,8 @@ public:
     /// clice/queryContext over every project, paginated: the contexts the
     /// file's own project offers, then the ones other projects do —
     /// choosing one of those moves the file there (switch_context). The
-    /// listing's epoch covers every project (context_epoch).
+    /// listing's epoch covers every project (context_epoch). The first page
+    /// lists them all; the later pages of the same epoch read that listing.
     ext::QueryContextResult query_contexts(Fid path_id, const ext::QueryContextParams& params);
 
     /// clice/switchContext: make the listed context the file's choice in the
@@ -520,6 +521,19 @@ private:
 private:
     std::uint64_t context_generation = 0;
     std::pair<std::uint64_t, std::uint64_t> context_seen;
+
+    /// The contexts the first page of a file's listing found, which its
+    /// later pages read while the epoch holds: a header with thousands of
+    /// hosts takes long to list, in hundreds of pages.
+    struct ContextListing {
+        Fid file;
+
+        std::uint64_t epoch = 0;
+
+        std::vector<ListedContext> items;
+    };
+
+    std::optional<ContextListing> listing;
 
     /// Advances with every change of the projects served.
     std::uint64_t projects_generation = 0;
