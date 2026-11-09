@@ -1,12 +1,14 @@
+import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
-// The server started before the project had a database: asked to index
-// once one exists, it loads it and indexes.
+// The server started before the project had a database, and holds nothing
+// of it: once it finds the database, it opens the project and indexes for
+// `clice index`.
 test(async (t) => {
     const s = await t.start();
     await s.sync();
-    await t.cli("index");
     t.disk.database({ "main.cpp": [] });
+    expect(await s.poll("cdb")).toBe(1);
     await t.cli("index");
     await s.sync();
     await t.show("symbols", s.workspaceSymbols("compute"));

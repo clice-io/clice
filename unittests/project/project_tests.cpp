@@ -82,7 +82,7 @@ ZEST_CASE(DatabaseAboveFile) {
     open(project,
          {
              .load = Project::OpenOptions::Load::Databases,
-             .file = CanonicalPath(Spelling::absolute(tmp.path("deep/er/tool.cpp"))),
+             .files = {CanonicalPath(Spelling::absolute(tmp.path("deep/er/tool.cpp")))},
          });
     ZEXPECT(project.cdb.source_count() == 2U);
     ZEXPECT(!project.entries(fid("deep/er/tool.cpp")).empty());

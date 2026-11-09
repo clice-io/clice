@@ -266,7 +266,7 @@ int run(Command& opts) {
     auto opened =
         open_at(root,
                 std::move(loaded),
-                {.load = Project::OpenOptions::Load::Databases, .file = CanonicalPath(path)});
+                {.load = Project::OpenOptions::Load::Databases, .files = {CanonicalPath(path)}});
     auto& project = opened->project;
     auto& files = project.file_table;
     auto file = files.intern(path);

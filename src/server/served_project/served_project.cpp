@@ -5,11 +5,13 @@ module;
 module clice;
 
 import :command.table;
+import :index.database;
 import :index.project_index;
 import :index.writer_lock;
 import :project.background;
 import :project.discovery;
 import :project.graph.task_graph;
+import :project.project;
 import :server.client;
 import :server.control;
 import :server.master;
@@ -17,6 +19,7 @@ import :server.served_project;
 import :settings.rules;
 import :settings.settings;
 import :support.logging;
+import :vfs.cache_store;
 import :vfs.path;
 import :worker.test_hooks;
 import :worker.protocol;
@@ -128,19 +131,32 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
     }
 }
 
-/// Whether the folder has a database to index: one its rules name, or one
-/// discovery finds.
-static bool lists_database(const Project& project, llvm::StringRef configuration) {
-    return Rules(project.settings, project.root, configuration).declares_sources() ||
-           !discovered_databases(project.root).empty();
+/// Whether the project has its build to open before a document of it
+/// opens: a database to index, one its rules name or one discovery finds,
+/// or the index an earlier session built.
+static bool has_build(const Project& project, llvm::StringRef configuration) {
+    Rules rules(project.settings, project.root, configuration);
+    if(rules.declares_sources() || !discovered_databases(project.root).empty()) {
+        return true;
+    }
+    auto& cache_dir = project.settings.project.cache_dir;
+    if(cache_dir.empty()) {
+        return false;
+    }
+    auto store = CacheStore::open(cache_dir, cache_format_version, /*read_only=*/true);
+    return store && index::database_exists(*store, rules.database_key(rules.resolved_databases()));
 }
 
 void ServedProject::start() {
     if(!project.root.empty() && !broken() && documents.empty() &&
-       !lists_database(project, configuration)) {
+       !has_build(project, configuration)) {
         waiting = true;
         return;
     }
+    open();
+}
+
+void ServedProject::open() {
     waiting = false;
     started = true;
     if(broken()) {
@@ -148,10 +164,15 @@ void ServedProject::start() {
     }
     if(!project.root.empty()) {
         server.log_into(*this);
+        llvm::SmallVector<CanonicalPath> open;
+        for(auto& [path_id, document]: documents) {
+            open.emplace_back(project.file_table.resolve(path_id));
+        }
         auto opened = project.open({
             .configuration = configuration,
             .cache = Project::OpenOptions::Cache::Write,
             .freshness = {.withhold = project.settings.project.enable_indexing},
+            .files = std::move(open),
         });
         if(project.store) {
             bg_tasks.spawn(checkpoint_task());
@@ -269,6 +290,23 @@ void ServedProject::update_latest(Fid path_id, llvm::function_ref<void(DocumentC
 }
 
 void ServedProject::adopt(Fid path_id) {
+    // Every invalidation from now on counts in the generation its compiles
+    // and its requests' PCH adoptions read, before its first compile too.
+    project.graph.add(ast_node(path_id));
+    documents[path_id] = {};
+    if(project.settings.project.readonly == ReadonlyMode::Off ||
+       server.own_context_only.contains(path_id)) {
+        start_compiling(path_id);
+    }
+    // What the disk holds under the buffer: a later save or outside
+    // write is then a change from it, even for a file nothing else knew.
+    project.file_table.disk.current(path_id);
+    // Its first document opens a project start() left waiting, and goes
+    // with the documents open() takes.
+    bool opening = waiting;
+    if(opening) {
+        open();
+    }
     // A database generated since the start counts: the poll, or the
     // discovery around this file, has loaded it by now. A provisional
     // member's command is a guess too.
@@ -282,22 +320,7 @@ void ServedProject::adopt(Fid path_id) {
             "https://docs.clice.io/clice/guide/quick-start#project-setup for setup.",
             why);
     }
-    // Every invalidation from now on counts in the generation its compiles
-    // and its requests' PCH adoptions read, before its first compile too.
-    project.graph.add(ast_node(path_id));
-    documents[path_id] = {};
-    if(project.settings.project.readonly == ReadonlyMode::Off ||
-       server.own_context_only.contains(path_id)) {
-        start_compiling(path_id);
-    }
-    // What the disk holds under the buffer: a later save or outside
-    // write is then a change from it, even for a file nothing else knew.
-    project.file_table.disk.current(path_id);
-    if(waiting) {
-        start();
-        return;
-    }
-    if(!started || broken()) {
+    if(opening || !started || broken()) {
         return;
     }
     if(project.record_provisional(path_id)) {
@@ -338,17 +361,22 @@ void ServedProject::decide_compiling(Fid path_id) {
     }
 }
 
-bool ServedProject::look_for_database() {
-    auto poll = chrono::seconds(project.settings.tracker.workspace_poll_seconds);
-    auto now = chrono::steady_clock::now();
-    if(!waiting || poll.count() == 0 || now < next_look) {
+bool ServedProject::look_for_database(bool force) {
+    if(!waiting) {
         return false;
     }
-    next_look = now + poll;
-    if(!lists_database(project, configuration)) {
+    if(!force) {
+        auto poll = chrono::seconds(project.settings.tracker.workspace_poll_seconds);
+        auto now = chrono::steady_clock::now();
+        if(poll.count() == 0 || now < next_look) {
+            return false;
+        }
+        next_look = now + poll;
+    }
+    if(!has_build(project, configuration)) {
         return false;
     }
-    start();
+    open();
     return true;
 }
 

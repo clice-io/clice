@@ -280,8 +280,8 @@ Project::Opened Project::open(const OpenOptions& options) {
         saved_members.read(*database);
     }
     auto nearby = saved_members.databases(index);
-    if(!options.file.empty()) {
-        auto above = databases_above(CanonicalRef(options.file).parent(), root);
+    for(auto& file: options.files) {
+        auto above = databases_above(CanonicalRef(file).parent(), root);
         nearby.append(above.begin(), above.end());
     }
     switch(options.load) {

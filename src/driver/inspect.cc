@@ -713,7 +713,7 @@ std::expected<std::unique_ptr<OpenedProject>, ProjectError> load_inspected(const
                           std::move(loaded),
                           {
                               .cache = Project::OpenOptions::Cache::Read,
-                              .file = CanonicalPath(path),
+                              .files = {CanonicalPath(path)},
                           });
     if(!opened->opened.unreadable.empty()) {
         LOG_INFO("{}", opened->opened.unreadable);

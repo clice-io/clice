@@ -352,9 +352,10 @@ struct Project {
         /// What the reads of the index withhold (FreshnessGate).
         index::FreshnessOptions freshness;
 
-        /// The file a run is about: the databases in its directory and
-        /// above it up to the root join the ones discovered.
-        CanonicalPath file;
+        /// The files a run is about, or the documents open as a server
+        /// starts: the databases in their directories and above them up to
+        /// the root join the ones discovered.
+        llvm::SmallVector<CanonicalPath> files;
     };
 
     /// What open() found.

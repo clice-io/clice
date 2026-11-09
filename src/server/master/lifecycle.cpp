@@ -195,7 +195,7 @@ async::task<> MasterServer::poll_task() {
             }
         }
         for(auto& project: projects) {
-            if(project->look_for_database()) {
+            if(project->look_for_database(false)) {
                 hooks.happened(LoopEvent::DatabaseChange);
             }
         }
