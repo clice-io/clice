@@ -1,7 +1,7 @@
-[test."$ clice inspect template-resolver-audit main.cpp"]
+[test."$ clice inspect template-resolver main.cpp --audit"]
 stdout = '''
 {
-  "feature": "template-resolver-audit",
+  "feature": "template-resolver",
   "files": {
     "main.cpp": {
       "result": {

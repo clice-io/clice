@@ -15,7 +15,7 @@ struct ResolverOptions {
 
     /// Keep what each query cost and where its work was cut short
     /// (TemplateResolver::audits), for finding the code the resolver
-    /// struggles with (`clice inspect template-resolver-audit`).
+    /// struggles with (`clice inspect template-resolver --audit`).
     bool audit = false;
 };
 

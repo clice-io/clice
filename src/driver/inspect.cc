@@ -169,15 +169,17 @@ struct FeatureParams {
     LocalSourceRange range;
 };
 
-/// A feature: its operation and line of help, what it is asked about, and
-/// what --index runs instead, for one the index answers too. `run` gives
-/// nullopt when its answer does not serialize.
+/// A feature: its operation and line of help, what it is asked about, what
+/// --index runs instead, for one the index answers too, and what --audit
+/// runs instead, for one that audits its work. `run` gives nullopt when its
+/// answer does not serialize.
 struct FeatureSpec {
     std::string_view name;
     std::string_view description;
     Shape shape = Shape::File;
     std::optional<codec::raw_value> (*run)(const FeatureParams&) = nullptr;
     const FeatureSpec* index = nullptr;
+    const FeatureSpec* audit = nullptr;
 };
 
 /// The unit's own TU index, standing in for the server's index of a file
@@ -656,6 +658,8 @@ constexpr FeatureSpec folding_ranges_from_index{.name = "folding-range",
                                                 .run = run_folding_ranges_from_index};
 constexpr FeatureSpec semantic_tokens_from_index{.name = "semantic-tokens",
                                                  .run = run_semantic_tokens_from_index};
+constexpr FeatureSpec template_resolver_audit{.name = "template-resolver",
+                                              .run = run_template_resolver_audit};
 
 constexpr std::array features = {
     FeatureSpec{.name = "code-action",
@@ -705,10 +709,8 @@ constexpr std::array features = {
     FeatureSpec{.name = "template-resolver",
                 .description = "What the template resolver answers at a point",
                 .shape = Shape::Points,
-                .run = run_template_resolver},
-    FeatureSpec{.name = "template-resolver-audit",
-                .description = "Where the template resolver spends its work in the file",
-                .run = run_template_resolver_audit},
+                .run = run_template_resolver,
+                .audit = &template_resolver_audit},
 };
 
 /// The inspected file, with the markers --markers places in it.
@@ -1066,6 +1068,20 @@ struct IndexedFeature {
     LogLevelOption log;
 };
 
+/// The options of features[I], which audits its work.
+template <std::size_t I>
+struct AuditedFeature {
+    Options inspect;
+
+    KANNOTATE(&audit,
+              description =
+                  "Where the work goes in the whole file, and where it gives up or "
+                  "leaves a choice open")
+    bool audit = false;
+
+    LogLevelOption log;
+};
+
 template <std::size_t I>
 consteval auto __kotatsu__type_annotation(std::type_identity<Feature<I>>) {
     return meta::make_annotation(codec::dsl::description = features[I].description);
@@ -1077,6 +1093,11 @@ consteval auto __kotatsu__type_annotation(std::type_identity<IndexedFeature<I>>)
 }
 
 template <std::size_t I>
+consteval auto __kotatsu__type_annotation(std::type_identity<AuditedFeature<I>>) {
+    return meta::make_annotation(codec::dsl::description = features[I].description);
+}
+
+template <std::size_t I>
 int run(Feature<I>& feature) {
     return run_inspect(feature.inspect, features[I]);
 }
@@ -1084,6 +1105,11 @@ int run(Feature<I>& feature) {
 template <std::size_t I>
 int run(IndexedFeature<I>& feature) {
     return run_inspect(feature.inspect, feature.index ? *features[I].index : features[I]);
+}
+
+template <std::size_t I>
+int run(AuditedFeature<I>& feature) {
+    return run_inspect(feature.inspect, feature.audit ? *features[I].audit : features[I]);
 }
 
 KANNOTATE_TYPE(struct ConfigSchema, description = "The JSON schema of the clice configuration");
@@ -1116,8 +1142,10 @@ struct Inspect {
 [[maybe_unused]] const bool added = [] {
     []<std::size_t... I>(std::index_sequence<I...>) {
         (cli::add_command<Operations>(
-             dispatch<
-                 std::conditional_t<features[I].index != nullptr, IndexedFeature<I>, Feature<I>>>,
+             dispatch<std::conditional_t<
+                 features[I].index != nullptr,
+                 IndexedFeature<I>,
+                 std::conditional_t<features[I].audit != nullptr, AuditedFeature<I>, Feature<I>>>>,
              {.name = features[I].name}),
          ...);
     }(std::make_index_sequence<features.size()>{});
