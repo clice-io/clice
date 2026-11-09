@@ -181,39 +181,54 @@ ZEST_CASE(StandardScan) {
 }
 
 ZEST_CASE(ScopedBindingStaysLocal) {
-    add_focus("main.cpp", R"code(
-        template <typename T>
-        struct Holder {
-            template <typename U>
-            struct Inner {
-                using type = T;
+    /// `Inner<U>::type` is `int` under `Holder<int>`'s binding and stays
+    /// dependent without it, whichever the resolver meets first.
+    for(bool deduce_first: {true, false}) {
+        clear();
+        add_focus("main.cpp", R"code(
+            template <typename T>
+            struct Holder {
+                template <typename U>
+                struct Inner {
+                    using type = T;
+                };
+
+                template <typename U>
+                void reset() {
+                    auto first = typename Inner<U>::type();
+                    using input = typename Inner<U>::type;
+                }
             };
 
-            template <typename U>
-            void reset() {
-                auto first = typename Inner<U>::type();
-                using input = typename Inner<U>::type;
-            }
+            template struct Holder<int>;
+        )code");
+        ZASSERT(compile());
+
+        Nodes nodes(unit->context());
+        auto* first = nodes.named<clang::VarDecl>("first");
+        ZASSERT(first);
+        auto* input = nodes.named<clang::TypedefNameDecl>("input");
+        ZASSERT(input);
+
+        auto& resolver = unit->get<types::TemplateResolver>();
+        auto check_deduced = [&] {
+            auto deduced = resolver.deduce(first);
+            ZASSERT(!deduced.isNull());
+            ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);
         };
-
-        template struct Holder<int>;
-    )code");
-    ZASSERT(compile());
-
-    Nodes nodes(unit->context());
-    auto* first = nodes.named<clang::VarDecl>("first");
-    ZASSERT(first);
-    auto* input = nodes.named<clang::TypedefNameDecl>("input");
-    ZASSERT(input);
-
-    auto& resolver = unit->get<types::TemplateResolver>();
-    auto deduced = resolver.deduce(first);
-    ZASSERT(!deduced.isNull());
-    ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);
-
-    auto resolved = resolver.resolve(input->getUnderlyingType());
-    ZASSERT(!resolved.isNull());
-    ZEXPECT(resolved->isDependentType());
+        auto check_resolved = [&] {
+            auto resolved = resolver.resolve(input->getUnderlyingType());
+            ZASSERT(!resolved.isNull());
+            ZEXPECT(resolved->isDependentType());
+        };
+        if(deduce_first) {
+            check_deduced();
+            check_resolved();
+        } else {
+            check_resolved();
+            check_deduced();
+        }
+    }
 }
 
 ZEST_CASE(ProbeBindingsStayInProbe) {
