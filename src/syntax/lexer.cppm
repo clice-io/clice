@@ -1,6 +1,7 @@
 module clice:syntax.lexer;
 
 import :support.prelude;
+import :support.text;
 import :syntax.token;
 
 namespace clice {
@@ -49,10 +50,22 @@ inline bool is_identifier_char(char c) {
            static_cast<unsigned char>(c) >= 0x80;
 }
 
-/// The identifier or number `offset` is in or ends, by the lexer, a
-/// keyword's spelling an identifier; an empty range at `offset` for none.
-/// `text` is a whole buffer, a NUL after it.
-LocalSourceRange word_at(llvm::StringRef text, std::uint32_t offset);
+/// The run of identifier characters `offset` is in or ends: an identifier,
+/// a keyword, the digits of a number; an empty range at `offset` for none.
+/// The bytes of a byte order mark, which read as identifier characters,
+/// are no word's.
+inline LocalSourceRange word_at(llvm::StringRef text, std::uint32_t offset) {
+    auto begin = offset;
+    while(begin > 0 && is_identifier_char(text[begin - 1])) {
+        begin -= 1;
+    }
+    begin = std::max(begin, std::min(offset, static_cast<std::uint32_t>(leading_bom(text).size())));
+    auto end = offset;
+    while(end < text.size() && is_identifier_char(text[end])) {
+        end += 1;
+    }
+    return {begin, end};
+}
 
 struct LexerOptions {
     /// Emit comment tokens instead of dropping them.

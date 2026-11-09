@@ -22,7 +22,6 @@ struct Prefix {
 
     llvm::StringRef spelling;
 
-    /// `content` is a whole buffer, a NUL after it.
     static auto from(llvm::StringRef content, std::uint32_t offset) -> Prefix {
         assert(offset <= content.size());
         auto whole = word_at(content, offset);
