@@ -43,6 +43,7 @@ int run_worker(Worker& worker) {
     // The pool relays each line of a worker's stderr as a warning: one
     // with no log file to write keeps its lower levels out of it.
     logging::options.stderr_level = logging::Level::warn;
+    logging::options.stderr_crash_trace = false;
     logging::stderr_logger(worker.worker_name);
     if(!worker.log_dir.empty()) {
         // File only: worker stderr is reserved for crash/unexpected output,

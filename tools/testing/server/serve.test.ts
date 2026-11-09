@@ -59,7 +59,7 @@ describe("gateLogs", () => {
             ".clice/logs/session/lint.log",
             `${[
                 `[t] [warning] [thread 1] [pool.cpp:39] [SL-0] clice worker crashed in: clice/worker/compileUnit ${workspace.displayPath("a.cpp")}`,
-                "[t] [error] [thread 1] [pool.cpp:575] [anomaly:WorkerCrash] Worker SL-0 killed by signal 4 (crash streak: 0)",
+                "[t] [error] [thread 1] [pool.cpp:575] [anomaly:WorkerCrash] Worker SL-0 killed by signal 4 (SIGILL) (crash streak: 0)",
             ].join("\n")}\n`,
         );
         expect(gateLogs(workspace, {}, false)).not.toEqual([]);

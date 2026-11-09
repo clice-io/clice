@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :driver.driver;
+import :support.logging;
 
 namespace clice::driver {
 
@@ -26,12 +27,23 @@ struct Clice {
 
 }  // namespace clice::driver
 
+#if __has_feature(address_sanitizer)
+/// ASan's handlers of these faults would run after sys::on_crash's, which
+/// passes a fault on to the handler before it: the crash would be reported
+/// twice and end with exit code 1, not by its signal as in a release build.
+/// ASan still reports the memory errors its checks find.
+extern "C" [[gnu::used, gnu::visibility("default")]] const char* __asan_default_options() {
+    return "handle_segv=0:handle_sigbus=0:handle_sigfpe=0";
+}
+#endif
+
 extern "C++" int main(int argc, const char** argv) {
     // A process without a window is background work to Windows: it is
     // throttled (EcoQoS) onto the efficiency cores of a hybrid CPU, which
     // made every request about twice as slow as on Linux.
     clice::sys::set_power_throttling(false);
     clice::sys::ignore_sigpipe();
+    clice::logging::handle_crashes();
 
     // The CRT's argv is in the ANSI code page, which holds few characters
     // past ASCII: the arguments are read from the UTF-16 command line. Linux

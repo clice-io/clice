@@ -1,3 +1,13 @@
+module;
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <signal.h>
+#endif
+
 module clice;
 
 import :command.database;
@@ -14,6 +24,21 @@ import :vfs.path;
 namespace clice::testing {
 
 namespace {
+
+/// What LLVM's signal handling takes over as it is set up: SIGUSR1, its
+/// info signal, which nothing else in the process handles, or Windows'
+/// unhandled exception filter.
+std::uintptr_t llvm_signal_target() {
+#ifdef _WIN32
+    auto filter = ::SetUnhandledExceptionFilter(nullptr);
+    ::SetUnhandledExceptionFilter(filter);
+    return reinterpret_cast<std::uintptr_t>(filter);
+#else
+    struct sigaction action = {};
+    ::sigaction(SIGUSR1, nullptr, &action);
+    return reinterpret_cast<std::uintptr_t>(action.sa_handler);
+#endif
+}
 
 /// The C++20 command of `file` in `tmp`, added to `cdb` and rendered.
 std::vector<std::string> cxx20_command(CompilationDatabase& cdb,
@@ -665,6 +690,40 @@ export int a_value() { return b_value() + 1; }
     auto unit_a = clice::compile(std::move(params_a));
     ZASSERT(unit_a->completed());
     ZASSERT(unit_a->has_output());
+}
+
+// A file clang registers for removal on a crash makes LLVM take the crash
+// signals over clice's (sys::on_crash).
+ZEST_CASE(OutputsLeaveCrashesAlone) {
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int m() { return 1; }\n");
+    tmp.touch("main.cpp", "int main() { return 0; }\n");
+
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
+
+    auto before = llvm_signal_target();
+#ifndef _WIN32
+    // Set up once per process, by an earlier test it would leave nothing to
+    // see here.
+    ZEXPECT(before == reinterpret_cast<std::uintptr_t>(SIG_DFL));
+#endif
+
+    CompilationParams module_params;
+    module_params.kind = CompilationKind::ModuleInterface;
+    module_params.input.arguments = cxx20_command(cdb, toolchain, tmp, "m.cppm");
+    module_params.output_file = precompiled_path("pcm");
+    ZASSERT(clice::compile(std::move(module_params))->has_output());
+
+    CompilationParams pch_params;
+    pch_params.kind = CompilationKind::PrecompiledHeader;
+    pch_params.input.arguments = cxx20_command(cdb, toolchain, tmp, "main.cpp");
+    pch_params.output_file = precompiled_path("pch");
+    ZASSERT(clice::compile(std::move(pch_params))->has_output());
+
+    ZEXPECT(llvm_signal_target() == before);
 }
 
 ZEST_CASE(PCHKeepsModuleImports) {

@@ -57,11 +57,16 @@ describe("normalize", () => {
     });
 
     test("a worker's death reads the same everywhere", () => {
-        expect(elideCrash("Worker SL-0 killed by signal 4 (crash streak: 0)")).toBe(
+        expect(elideCrash("Worker SL-0 killed by signal 4 (SIGILL) (crash streak: 0)")).toBe(
             "Worker SL-0 ${CRASH} (crash streak: 0)",
         );
-        expect(elideCrash("Worker SL-0 exited with code -1073741795 (crash streak: 0)")).toBe(
-            "Worker SL-0 ${CRASH} (crash streak: 0)",
+        expect(
+            elideCrash(
+                "Worker SL-0 terminated by exception 0xC000001D (STATUS_ILLEGAL_INSTRUCTION) (crash streak: 0)",
+            ),
+        ).toBe("Worker SL-0 ${CRASH} (crash streak: 0)");
+        expect(elideCrash("Worker SL-0 exited with code 1 (crash streak: 1)")).toBe(
+            "Worker SL-0 ${CRASH} (crash streak: 1)",
         );
     });
 });

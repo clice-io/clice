@@ -1,5 +1,41 @@
-[test.hover]
+[trap.hover]
 hover = {}
 
-[test.crashes]
+[trap.crashes]
+value = 1
+
+["null write".hover]
+hover = {}
+
+["null write".crashes]
+value = 1
+
+[abort.hover]
+hover = {}
+
+[abort.crashes]
+value = 1
+
+["fatal error".hover]
+hover = {}
+
+["fatal error".crashes]
+value = 1
+
+["stack overflow".hover]
+hover = {}
+
+["stack overflow".crashes]
+value = 1
+
+["other thread".hover]
+hover = {}
+
+["other thread".crashes]
+value = 1
+
+["stack overflow while indexing".sync]
+failed = ["main.cpp"]
+
+["stack overflow while indexing".crashes]
 value = 1

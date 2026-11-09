@@ -531,17 +531,11 @@ bool WorkerPool::process_crash(std::size_t index,
     } else if(death.out_of_memory) {
         // The machine ran out, not clice.
         LOG_WARN("Worker {} ran out of memory at {} MiB", w.name, death.memory >> 20);
-    } else if(exit_signal != 0) {
-        LOG_ANOMALY(WorkerCrash,
-                    "Worker {} killed by signal {} (crash streak: {})",
-                    w.name,
-                    exit_signal,
-                    w.crash_streak);
     } else {
         LOG_ANOMALY(WorkerCrash,
-                    "Worker {} exited with code {} (crash streak: {})",
+                    "Worker {} {} (crash streak: {})",
                     w.name,
-                    exit_code,
+                    describe_exit(exit_code, exit_signal),
                     w.crash_streak);
     }
 
@@ -556,14 +550,10 @@ bool WorkerPool::process_crash(std::size_t index,
 }
 
 llvm::StringRef WorkerPool::crash_output(llvm::StringRef log, std::size_t from) {
-    // The LLVM crash backtrace itself stays in the worker log: the master
-    // log carries the diagnosis, not the (noisy, non-portable) stack frames.
+    // The crash's backtrace stays in the worker log: the master log carries
+    // the diagnosis, not the (noisy, non-portable) stack frames.
     auto output = log.substr(from);
-    for(llvm::StringRef marker: {"CRASH STACK TRACE", "Stack dump"}) {
-        if(auto pos = output.find(marker); pos != llvm::StringRef::npos)
-            output = output.substr(0, pos);
-    }
-    output = output.rtrim();
+    output = output.substr(0, output.find("=== CRASH STACK TRACE ===")).rtrim();
 
     constexpr std::size_t max_output = 4096;
     if(output.size() > max_output) {

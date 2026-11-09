@@ -229,6 +229,17 @@ jobs:
           CLICE_TEST_JITTER: ${{ inputs.jitter }}
         run: pixi run -e test-run unit-test ${{ inputs.build_type }}
 
+      - name: Download the package
+        if: ${{ inputs.asset_name }}
+        uses: actions/download-artifact@v8
+        with:
+          name: package-${{ inputs.asset_name }}
+          path: ${{ runner.temp }}/package
+
+      - name: Symbolize a crash of the package
+        if: ${{ inputs.asset_name }}
+        run: pixi run -e test-run python scripts/check_crash_symbols.py "$RUNNER_TEMP/package"
+
   cases:
     needs: build
     name: cases ${{ matrix.shard }}/${{ strategy.job-total }}

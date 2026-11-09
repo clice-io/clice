@@ -6823,6 +6823,8 @@ export namespace kotatsu::sys {
 using ::kotatsu::sys::CPUCore;
 using ::kotatsu::sys::CPUTimes;
 using ::kotatsu::sys::Child;
+using ::kotatsu::sys::Crash;
+using ::kotatsu::sys::CrashHandler;
 using ::kotatsu::sys::CreationOptions;
 using ::kotatsu::sys::EnvChange;
 using ::kotatsu::sys::EnvVar;
@@ -6858,6 +6860,7 @@ using ::kotatsu::sys::is_pipe;
 using ::kotatsu::sys::join_paths;
 using ::kotatsu::sys::local_time;
 using ::kotatsu::sys::memory;
+using ::kotatsu::sys::on_crash;
 using ::kotatsu::sys::oom_score_adjustment;
 using ::kotatsu::sys::os;
 using ::kotatsu::sys::page_size;
@@ -6869,6 +6872,7 @@ using ::kotatsu::sys::priority;
 using ::kotatsu::sys::process_alive;
 using ::kotatsu::sys::process_stats;
 using ::kotatsu::sys::release_free_heap;
+using ::kotatsu::sys::reserve_crash_stack;
 using ::kotatsu::sys::resident_memory;
 using ::kotatsu::sys::self_executable;
 using ::kotatsu::sys::set_env;
@@ -6907,6 +6911,7 @@ using ::kotatsu::sys::cmd::split_view;
 
 export namespace kotatsu::sys::detail {
 using ::kotatsu::sys::detail::ThreadEntry;
+using ::kotatsu::sys::detail::reserve_crash_stack_if_handled;
 }
 
 export namespace kotatsu::sys::windows {
@@ -8677,32 +8682,18 @@ using ::llvm::support::endian::writeNext;
 }
 
 export namespace llvm::sys {
-using ::llvm::sys::AddSignalHandler;
 using ::llvm::sys::ChangeStdinMode;
 using ::llvm::sys::ChangeStdinToBinary;
 using ::llvm::sys::ChangeStdoutMode;
 using ::llvm::sys::ChangeStdoutToBinary;
-using ::llvm::sys::CleanupOnSignal;
-using ::llvm::sys::DefaultOneShotPipeSignalHandler;
-using ::llvm::sys::DisableSystemDialogsOnCrash;
-using ::llvm::sys::DontRemoveFileOnSignal;
 using ::llvm::sys::DynamicLibrary;
 using ::llvm::sys::ExecuteAndWait;
 using ::llvm::sys::ExecuteNoWait;
 using ::llvm::sys::Mutex;
-using ::llvm::sys::PrintStackTrace;
-using ::llvm::sys::PrintStackTraceOnErrorSignal;
 using ::llvm::sys::Process;
 using ::llvm::sys::ProcessInfo;
 using ::llvm::sys::ProcessStatistics;
-using ::llvm::sys::RemoveFileOnSignal;
-using ::llvm::sys::RunInterruptHandlers;
-using ::llvm::sys::RunSignalHandlers;
 using ::llvm::sys::ScopedLock;
-using ::llvm::sys::SetInfoSignalFunction;
-using ::llvm::sys::SetInterruptFunction;
-using ::llvm::sys::SetOneShotPipeSignalFunction;
-using ::llvm::sys::SignalHandlerCallback;
 using ::llvm::sys::SmartMutex;
 using ::llvm::sys::SmartScopedLock;
 using ::llvm::sys::TimePoint;
@@ -8725,7 +8716,6 @@ using ::llvm::sys::swapByteOrder;
 using ::llvm::sys::toTimePoint;
 using ::llvm::sys::toTimeT;
 using ::llvm::sys::toUtcTime;
-using ::llvm::sys::unregisterHandlers;
 using ::llvm::sys::writeFileWithEncoding;
 using enum ::llvm::sys::WindowsEncodingMethod;
 }
@@ -8909,12 +8899,14 @@ using ::llvm::vfs::File;
 using ::llvm::vfs::FileSystem;
 using ::llvm::vfs::InMemoryFileSystem;
 using ::llvm::vfs::NullOutputFileImpl;
+using ::llvm::vfs::OnDiskOutputBackend;
 using ::llvm::vfs::OutputBackend;
 using ::llvm::vfs::OutputConfig;
 using ::llvm::vfs::OutputFile;
 using ::llvm::vfs::OutputFileImpl;
 using ::llvm::vfs::OverlayFileSystem;
 using ::llvm::vfs::ProxyFileSystem;
+using ::llvm::vfs::ProxyOutputBackend;
 using ::llvm::vfs::RedirectingFSDirIterImpl;
 using ::llvm::vfs::RedirectingFileSystem;
 using ::llvm::vfs::RedirectingFileSystemParser;
@@ -8931,6 +8923,9 @@ using ::llvm::vfs::directory_iterator;
 using ::llvm::vfs::getNextVirtualUniqueID;
 using ::llvm::vfs::getRealFileSystem;
 using ::llvm::vfs::getVFSFromYAML;
+using ::llvm::vfs::makeFilteringOutputBackend;
+using ::llvm::vfs::makeMirroringOutputBackend;
+using ::llvm::vfs::makeNullOutputBackend;
 using ::llvm::vfs::recursive_directory_iterator;
 }
 
@@ -10512,7 +10507,6 @@ using enum ::llvm::InitStatus;
 }
 
 export namespace llvm::sys {
-using ::llvm::sys::CallOneShotPipeSignalHandler;
 using ::llvm::sys::CompareAndSwap;
 using ::llvm::sys::MemoryFence;
 using ::llvm::sys::cas_flag;

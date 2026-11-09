@@ -245,8 +245,8 @@ void install_test_hooks(ipc::BincodePeer& peer, async::event_loop& loop);
 /// The test hooks of a request whose work starts on the calling thread (see
 /// CrashScope): a gate standing for `tag` parks it; the environment can
 /// delay it (CLICE_TEST_JITTER), crash its worker in it
-/// (CLICE_TEST_CRASH_REQUEST) or kill its worker as from outside
-/// (CLICE_TEST_KILL_REQUEST).
+/// (CLICE_TEST_CRASH_REQUEST, as CLICE_TEST_CRASH_KIND says) or kill its
+/// worker as from outside (CLICE_TEST_KILL_REQUEST).
 void run_test_hooks(llvm::StringRef tag);
 
 }  // namespace clice

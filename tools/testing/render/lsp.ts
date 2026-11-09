@@ -476,12 +476,11 @@ export class AnswerContext {
 }
 
 /// A worker's way of dying differs by platform (a signal, a Windows
-/// exception): the text names it `${CRASH}`. The pool's crash report
-/// gives the bare number, a signal or a Windows exit code, before the
-/// crash streak.
+/// exception, the exit code a killed Windows process ends with): the text
+/// names it `${CRASH}`.
 export function elideCrash(text: string): string {
     return text.replace(
-        /killed by signal \d+ \(\w+\)|terminated by (?:exception )?0x[0-9A-Fa-f]+(?: \([^)]*\))?|(?:killed by signal|exited with code) -?\d+(?= \(crash streak)/g,
+        /killed by signal \d+ \(\w+\)|terminated by (?:exception )?0x[0-9A-Fa-f]+(?: \([^)]*\))?|exited with code -?\d+(?= \(crash streak)/g,
         "${CRASH}",
     );
 }

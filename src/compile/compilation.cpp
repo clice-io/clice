@@ -859,6 +859,12 @@ CompilationStatus CompilationUnit::run() {
     }
 
     instance = std::make_unique<clang::CompilerInstance>(std::move(invocation));
+    // Kept on a crash: a file registered for removal makes LLVM install its
+    // signal handlers over clice's (sys::on_crash). The cache store removes
+    // what a crashed build left.
+    auto outputs = llvm::makeIntrusiveRefCnt<llvm::vfs::OnDiskOutputBackend>();
+    outputs->Settings.RemoveOnSignal = false;
+    instance->setOutputManager(std::move(outputs));
     instance->createVirtualFileSystem(params.input.vfs, diagnostic_consumer.get());
     instance->createDiagnostics(diagnostic_consumer.release(), true);
     // A missing header is fatal to clang, which then reports nothing after it.
