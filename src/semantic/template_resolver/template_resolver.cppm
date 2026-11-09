@@ -79,7 +79,7 @@ public:
     void see_from(clang::SourceLocation location);
 
     /// What each query cost, in the order they were asked, with
-    /// ResolverOptions::record; empty without.
+    /// ResolverOptions::audit; empty without.
     llvm::ArrayRef<QueryAudit> audits() const {
         return audited;
     }
@@ -177,7 +177,7 @@ public:
     }
 
 private:
-    /// Where a query's cost goes, with ResolverOptions::record.
+    /// Where a query's cost goes, with ResolverOptions::audit.
     std::vector<QueryAudit>* auditing();
 
 private:
@@ -193,7 +193,7 @@ private:
     /// Where the queries are answered from, once see_from is called.
     std::unique_ptr<Visibility> visibility;
 
-    /// What each query cost, with ResolverOptions::record.
+    /// What each query cost, with ResolverOptions::audit.
     std::vector<QueryAudit> audited;
 };
 

@@ -633,6 +633,7 @@ ZEST_CASE(StandardTypeRules) {
         template <class T> struct remove_cvref { using type = T; };
         template <class T> struct remove_pointer { using type = T; };
         template <class T> struct add_pointer { using type = T*; };
+        template <class T> struct add_const { using type = const T; };
         }
         template <class T> struct uses {
             using stripped = typename std::remove_reference<T&>::type;
@@ -648,6 +649,8 @@ ZEST_CASE(StandardTypeRules) {
             using bare = typename std::remove_cvref<const T&>::type;
             using pointee = typename std::remove_pointer<T*>::type;
             using pointer = typename std::add_pointer<T&>::type;
+            using reference = typename std::add_const<T&>::type;
+            using constant = typename std::add_const<T*>::type;
             using function = typename std::decay<void(T)>::type;
             using alike = typename std::conditional<sizeof(T) == 4, T, T>::type;
             using disabled = typename std::enable_if<false, T>::type;
@@ -689,6 +692,8 @@ ZEST_CASE(StandardTypeRules) {
     ZEXPECT(same(resolve("bare"), parameter));
     ZEXPECT(same(resolve("pointee"), parameter));
     ZEXPECT(same(resolve("pointer"), context.getPointerType(parameter)));
+    ZEXPECT(same(resolve("reference"), context.getLValueReferenceType(parameter)));
+    ZEXPECT(same(resolve("constant"), context.getPointerType(parameter).withConst()));
     auto function = resolve("function");
     ZASSERT(!function.isNull());
     ZEXPECT(function->isFunctionPointerType());

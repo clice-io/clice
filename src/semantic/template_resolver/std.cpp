@@ -164,9 +164,17 @@ std::optional<clang::QualType> PseudoInstantiator::std_type(const clang::Depende
             return type->isVoidType() ? type : context.getLValueReferenceType(type);
         case Rule::AddRValueReference:
             return type->isVoidType() ? type : context.getRValueReferenceType(type);
-        case Rule::AddConst: return type.withConst();
-        case Rule::AddVolatile: return type.withVolatile();
-        case Rule::AddCV: return type.withConst().withVolatile();
+        /// A reference or a function type takes no cv-qualifier.
+        case Rule::AddConst:
+        case Rule::AddVolatile:
+        case Rule::AddCV:
+            if(type->isReferenceType() || type->isFunctionType()) {
+                return type;
+            }
+            if(*rule != Rule::AddVolatile) {
+                type = type.withConst();
+            }
+            return *rule == Rule::AddConst ? type : type.withVolatile();
         default: break;
     }
     /// A layer the argument writes is the one the rule removes; one only a
