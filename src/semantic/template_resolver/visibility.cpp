@@ -6,7 +6,16 @@ import :semantic.template_resolver.visibility;
 namespace clice::types {
 
 void Visibility::look_from(clang::SourceLocation location) {
-    auto place = unit.produced_at(location);
+    looked_from = location;
+    placed = false;
+}
+
+void Visibility::place() {
+    if(placed) {
+        return;
+    }
+    placed = true;
+    auto place = unit.produced_at(looked_from);
     file = place.file.isValid() && !unit.focus_file().contains(place.file) ? place.file
                                                                            : clang::FileID();
     offset = place.offset;
@@ -19,6 +28,7 @@ void Visibility::look_from(clang::SourceLocation location) {
 }
 
 bool Visibility::sees(const clang::NamedDecl* decl) {
+    place();
     if(file.isInvalid()) {
         return true;
     }

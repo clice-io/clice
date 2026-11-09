@@ -26,7 +26,8 @@ public:
     /// The places that see alike as the one looked from, numbered from 1:
     /// those of its file between the same two of the file's imports and
     /// includes, or with the whole unit.
-    std::uint32_t view() const {
+    std::uint32_t view() {
+        place();
         return current;
     }
 
@@ -42,6 +43,10 @@ private:
     /// Add the modules an import of `name` makes visible: it, and those it
     /// re-exports, in turn.
     void add_imported(llvm::StringRef name, llvm::StringSet<>& modules);
+
+    /// Find the place looked from, the first time the queries ask of it:
+    /// the indexer looks from every declaration, few of which ask.
+    void place();
 
     const Reach& reach(clang::FileID file);
 
@@ -61,6 +66,12 @@ private:
 
 private:
     CompilationUnit& unit;
+
+    /// Where look_from was last told to look from, and whether place found
+    /// the place since.
+    clang::SourceLocation looked_from;
+
+    bool placed = true;
 
     /// The place looked from; none for the whole unit.
     clang::FileID file;
