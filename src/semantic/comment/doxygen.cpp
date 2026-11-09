@@ -1,7 +1,7 @@
 module clice;
 
 import :support.markup;
-import :syntax.documentation;
+import :semantic.comment.doxygen;
 import :syntax.lexer;
 
 namespace clice {

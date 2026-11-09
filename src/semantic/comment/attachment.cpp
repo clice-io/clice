@@ -1,7 +1,7 @@
 module clice;
 
 import :support.text;
-import :syntax.doc_comment;
+import :semantic.comment.attachment;
 import :syntax.lexical_scan;
 
 namespace clice {
@@ -17,7 +17,7 @@ llvm::StringRef text_of(llvm::StringRef content, const Comment& comment) {
 /// Whether the comment says it documents what precedes it: `///<`,
 /// `//!<`, `/**<` or `/*!<`.
 bool marked_trailing(llvm::StringRef text) {
-    return is_doc_comment(text) && text.size() > 3 && text[3] == '<';
+    return is_doxygen_comment(text) && text.size() > 3 && text[3] == '<';
 }
 
 bool follows_code(llvm::StringRef content, const Comment& comment) {
@@ -111,7 +111,7 @@ DocumentedDecl documented_macro(llvm::StringRef content, LocalSourceRange defini
     return {.range = definition, .trailing = true};
 }
 
-bool is_doc_comment(llvm::StringRef text) {
+bool is_doxygen_comment(llvm::StringRef text) {
     if(text.starts_with("//")) {
         return (text.starts_with("///") && !text.starts_with("////")) || text.starts_with("//!");
     }
@@ -120,9 +120,9 @@ bool is_doc_comment(llvm::StringRef text) {
 }
 
 llvm::ArrayRef<LexicalInfo::Comment>
-    documenting_comments(llvm::StringRef content,
-                         llvm::ArrayRef<LexicalInfo::Comment> comments,
-                         DocumentedDecl decl) {
+    attached_comments(llvm::StringRef content,
+                      llvm::ArrayRef<LexicalInfo::Comment> comments,
+                      DocumentedDecl decl) {
     auto begin_of = [](const Comment& comment) {
         return comment.range.begin;
     };
@@ -155,7 +155,7 @@ llvm::ArrayRef<LexicalInfo::Comment>
     auto& nearest = comments[at - 1];
     auto text = text_of(content, nearest);
     auto gap = content.slice(nearest.range.end, range.begin);
-    bool doc = is_doc_comment(text);
+    bool doc = is_doxygen_comment(text);
     if(marked_trailing(text) || follows_code(content, nearest) || separates(gap) ||
        (!doc && has_blank_line(gap))) {
         return trailing;
@@ -165,7 +165,7 @@ llvm::ArrayRef<LexicalInfo::Comment>
     while(first > 0) {
         auto& previous = comments[first - 1];
         auto previous_text = text_of(content, previous);
-        if(is_doc_comment(previous_text) != doc || marked_trailing(previous_text) ||
+        if(is_doxygen_comment(previous_text) != doc || marked_trailing(previous_text) ||
            follows_code(content, previous) || !adjacent(content, previous, comments[first])) {
             break;
         }
@@ -173,19 +173,6 @@ llvm::ArrayRef<LexicalInfo::Comment>
     }
     auto run = comments.slice(first, at - first);
     return is_licence(content, run) ? trailing : run;
-}
-
-bool DocCommentChoice::offer(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Comment> run) {
-    if(doxygen || run.empty()) {
-        return doxygen;
-    }
-    if(is_doc_comment(text_of(content, run.front()))) {
-        text = comment_text(content, run);
-        doxygen = true;
-    } else if(text.empty()) {
-        text = comment_text(content, run);
-    }
-    return doxygen;
 }
 
 std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Comment> comments) {
@@ -201,7 +188,7 @@ std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Co
     llvm::SmallVector<Line> lines;
     for(auto& comment: comments) {
         auto text = text_of(content, comment);
-        auto marker = is_doc_comment(text) ? 3 : 2;
+        auto marker = is_doxygen_comment(text) ? 3 : 2;
         if(marked_trailing(text)) {
             marker += 1;
         }

@@ -1,6 +1,6 @@
 module clice;
 
-import :syntax.documentation;
+import :semantic.comment;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -12,7 +12,7 @@ Documentation parse(llvm::StringRef text) {
     });
 }
 
-ZEST_SUITE(Documentation) {
+ZEST_SUITE(Doxygen) {
 
 ZEST_CASE(DoxygenSections) {
     auto doc = parse(R"(@brief Computes the area.
@@ -278,7 +278,7 @@ ZEST_CASE(Notes) {
     ZEXPECT(doc.details == "**Warning:** Not thread safe.\n\n- one\n- two");
 }
 
-};  // ZEST_SUITE(Documentation)
+};  // ZEST_SUITE(Doxygen)
 
 }  // namespace
 }  // namespace clice::testing

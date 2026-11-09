@@ -4,11 +4,11 @@ import :compile.compilation;
 import :feature.documentation;
 import :index.query;
 import :index.symbol;
+import :semantic.comment;
 import :semantic.display;
 import :semantic.symbol;
 import :support.markup;
 import :support.prelude;
-import :syntax.documentation;
 import :syntax.position;
 import :vfs.file_table;
 

@@ -1,4 +1,4 @@
-module clice:syntax.documentation;
+module clice:semantic.comment.doxygen;
 
 import :support.prelude;
 
@@ -97,7 +97,7 @@ public:
     };
 
     /// The parts of the next comment of the run, a Doxygen one
-    /// (is_doc_comment) whole with its markers, in order.
+    /// (is_doxygen_comment) whole with its markers, in order.
     llvm::SmallVector<Part> scan(llvm::StringRef text);
 
     /// End the run, closing the raw block left open in it.

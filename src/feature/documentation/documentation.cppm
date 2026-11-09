@@ -4,9 +4,9 @@ import :compile.compilation;
 import :index.query;
 import :index.site;
 import :index.symbol;
+import :semantic.comment;
 import :support.markup;
 import :support.prelude;
-import :syntax.documentation;
 import :vfs.ids;
 
 namespace clice::feature {
@@ -33,27 +33,33 @@ struct DocumentationOptions {
     bool inherit = true;
 };
 
-/// The documentation of a declaration: its comment (doc_comment) read as
-/// `options` say.
+/// The documentation of a declaration, read as `options` say from the
+/// comment attached to its declarations: of them, the first a Doxygen
+/// comment documents, else the first any comment documents; a template's
+/// instantiation and its members read the template's. A namespace, a
+/// parameter and what the compiler declares implicitly have none. A
+/// `@copydoc` copies the documentation of what it names, looked up from the
+/// declaration's scope outward.
 auto documentation(CompilationUnit& unit,
                    const clang::NamedDecl* decl,
                    const DocumentationOptions& options) -> Documentation;
 
-/// The same of a macro.
+/// The same of a macro: the comment above its `#define`, or after it on
+/// its line.
 auto documentation(CompilationUnit& unit,
                    const clang::MacroInfo* macro,
                    const DocumentationOptions& options) -> Documentation;
 
 /// The same of an indexed symbol, from the comments in the text the index
-/// read (index::doc_comment).
+/// serves for its declarations, then its definitions.
 auto documentation(const index::IndexQuery& query,
                    index::SymbolHash hash,
                    Fid anchor,
                    const DocumentationOptions& options) -> Documentation;
 
 /// The same of a module, from one of its interface units: the comment
-/// above the module declaration whose name is `declaration`
-/// (index::module_comment).
+/// above the module declaration whose name is `declaration`, in the text
+/// the index serves for the unit.
 auto module_documentation(const index::IndexQuery& query,
                           const index::Site& declaration,
                           const DocumentationOptions& options) -> Documentation;

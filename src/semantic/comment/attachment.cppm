@@ -1,4 +1,4 @@
-module clice:syntax.doc_comment;
+module clice:semantic.comment.attachment;
 
 import :support.prelude;
 import :syntax.lexical_scan;
@@ -24,7 +24,7 @@ DocumentedDecl documented_macro(llvm::StringRef content, LocalSourceRange defini
 
 /// Whether a comment's text is Doxygen's: `///`, `//!`, `/**` or `/*!` —
 /// a banner of slashes or stars is not.
-bool is_doc_comment(llvm::StringRef text);
+bool is_doxygen_comment(llvm::StringRef text);
 
 /// The comments of a file documenting a declaration, a run of `comments`
 /// (the file's, in order): a comment after the declaration on its last
@@ -40,37 +40,9 @@ bool is_doc_comment(llvm::StringRef text);
 /// `SPDX-License-Identifier`, documents nothing. Empty when no comment
 /// documents the declaration.
 llvm::ArrayRef<LexicalInfo::Comment>
-    documenting_comments(llvm::StringRef content,
-                         llvm::ArrayRef<LexicalInfo::Comment> comments,
-                         DocumentedDecl decl);
-
-/// Of the comments documenting the declarations of one entity, offered in
-/// order, the one documenting the entity: the first Doxygen comment, else
-/// the first of any style. Once a Doxygen comment is offered the choice
-/// stays.
-class DocCommentChoice {
-public:
-    /// Offer the comments documenting one declaration of `content`
-    /// (documenting_comments); true once the choice is made.
-    bool offer(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Comment> run);
-
-    bool decided() const {
-        return doxygen;
-    }
-
-    bool empty() const {
-        return text.empty();
-    }
-
-    /// The text (comment_text) of the comment chosen, empty without one.
-    std::string take() && {
-        return std::move(text);
-    }
-
-private:
-    std::string text;
-    bool doxygen = false;
-};
+    attached_comments(llvm::StringRef content,
+                      llvm::ArrayRef<LexicalInfo::Comment> comments,
+                      DocumentedDecl decl);
 
 /// The text of a run of comments: the comment markers and the leading `*`
 /// of a block comment's lines taken out, the indentation the lines share
