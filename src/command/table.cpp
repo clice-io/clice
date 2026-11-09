@@ -337,7 +337,7 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
                 /// extension), an explicit selector precedes the file.
                 if(state.empty()) {
                     namespace types = clang::driver::types;
-                    auto type = suffix_type(source);
+                    auto type = driver_type(source);
                     llvm::StringRef driver_lang =
                         type == types::TY_INVALID ? "" : types::getTypeName(type);
                     llvm::StringRef language(ref.language.value);

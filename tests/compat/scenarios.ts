@@ -311,6 +311,22 @@ export const SCENARIOS: Scenario[] = [
         "/opt/homebrew/opt/llvm@18/bin/clang++",
     ),
     cmakeNinja("cmake ninja msvc", ["win32"], "cl", "cl", { msvc: true }),
+    {
+        // CMake hands each of cl's module units a response file of its own
+        // (its modmap): what the unit is, the interface it writes and those
+        // it reads, none of which the command clice compiles keeps; clice
+        // builds the module itself.
+        ...cmakeNinja("cmake ninja msvc modules", ["win32"], "cl", "cl", {
+            msvc: true,
+            extra: ["-DCOMPAT_MODULES=ON"],
+        }),
+        files: {
+            "src/greeting.cppm": {
+                excludes: ["-interface", "-ifcOutput", "-reference", "/reference"],
+            },
+            "src/use_greeting.cpp": { excludes: ["-reference", "/reference"] },
+        },
+    },
     // An older toolset beside the newest: its cl.exe compiles with its own
     // headers (`_MSVC_STL_VERSION`), not the newest toolset's.
     cmakeNinja("cmake ninja msvc 14.29 toolset", ["win32"], "cl", "cl", {

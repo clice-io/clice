@@ -422,8 +422,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
 
         // Some build systems emit non-C-family files (e.g. .rc, .asm, .S, .def)
         // into compile_commands.json: skipped, unless the command's -x
-        // says what clang does not know the extension for (a `.ixx`
-        // module interface); one clang knows as another language stays
+        // says what clang does not know the extension for (an Arduino
+        // `.ino` sketch); one clang knows as another language stays
         // skipped, as the server and inspect skip it.
         bool c_family = is_c_family_file(file_ref);
 

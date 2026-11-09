@@ -1,0 +1,4 @@
+-reference
+"greeting=${WS}/greeting.ifc"
+-reference
+"util=${WS}/util.ifc"

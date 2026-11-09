@@ -4,9 +4,15 @@ import :support.prelude;
 
 namespace clice {
 
-/// The type clang assigns to a file by its extension (Types.def);
-/// TY_INVALID when it has none — `.cuh`, which clang does not list, and
-/// unknown suffixes alike.
+/// The type clang's driver assigns to a file by its extension (Types.def);
+/// TY_INVALID when it lists none.
+clang::driver::types::ID driver_type(llvm::StringRef path);
+
+/// The type clice reads a file as by its extension: clang's (driver_type),
+/// and C++ for the module unit suffixes other compilers and build systems
+/// write that clang does not list (MSVC's `.ixx`, build2's `.mxx`, `.mpp`)
+/// — whether such a unit is an interface, its scan says, as for any;
+/// TY_INVALID for none — `.cuh` and unknown suffixes alike.
 clang::driver::types::ID suffix_type(llvm::StringRef path);
 
 /// The clang language name of a file by its extension ("c++", "cuda",

@@ -43,6 +43,22 @@ ZEST_CASE(BuildOutputsDropped) {
     ZEXPECT(args[0].first == clang_options::OPT_D);
 }
 
+ZEST_CASE(ClModulesDropped) {
+    // What cl's modules ask of a unit, as CMake's response files spell it
+    // and as MSBuild does.
+    auto args = read({"-interface",
+                      "/internalPartition",
+                      "-ifcOutput",
+                      "a.ifc",
+                      "/ifcSearchDir",
+                      "ifc",
+                      "/ifcOutputb.ifc",
+                      "-DX"},
+                     MSVC);
+    ZASSERT(args.size() == 1u);
+    ZEXPECT(args[0].second == std::vector<std::string>{"X"});
+}
+
 ZEST_CASE(IntelOpenMP) {
     // icpx's OpenMP is clang's; icx in cl mode reads /Qiopenmp and ignores
     // the GCC-style spellings.

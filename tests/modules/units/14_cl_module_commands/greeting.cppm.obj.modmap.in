@@ -1,0 +1,5 @@
+-reference
+"greeting:detail=${WS}/greeting-detail.ifc"
+-ifcOutput
+"${WS}/greeting.ifc"
+-interface
