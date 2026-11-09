@@ -108,15 +108,29 @@ PipeSwitch switch_to_nonblocking(int fd) {
                                                          : PipeSwitch::Refused;
 }
 
-/// Delivers the gap report, staged when drops are unreported, then the
-/// backlog, as far as the pipe takes them. The gap is older than any
-/// survivor, so its report goes first and lives outside the backlog:
-/// continued pressure can evict buffered lines but never the count itself.
+/// Delivers the rest of a line whose head the pipe took, then the gap
+/// report, staged when drops are unreported, then the backlog, as far as
+/// the pipe takes them. The gap is older than any survivor, so its report
+/// goes before them and lives outside the backlog: continued pressure can
+/// evict buffered lines but never the count itself.
 void pump(PipeOutput& output) {
     if(output.pipe == PipeSwitch::Busy) {
         output.pipe = switch_to_nonblocking(output.fd);
     }
     if(output.pipe != PipeSwitch::Done) {
+        return;
+    }
+    // The first `count` bytes of the backlog; true when the pipe took them.
+    auto deliver = [&](std::size_t count) {
+        auto [written, _] = write_out(output.fd, std::string_view(output.pending).substr(0, count));
+        if(written > 0) {
+            output.front_partial = output.pending[written - 1] != '\n';
+            output.pending.erase(0, written);
+        }
+        output.front_partial = output.front_partial && !output.pending.empty();
+        return written == count;
+    };
+    if(output.front_partial && !deliver(output.pending.find('\n') + 1)) {
         return;
     }
     if(output.unreported > 0 && output.note.empty()) {
@@ -133,14 +147,7 @@ void pump(PipeOutput& output) {
         output.note.clear();
         output.note_sent = 0;
     }
-    if(!output.pending.empty()) {
-        auto [written, _] = write_out(output.fd, output.pending);
-        if(written > 0) {
-            output.front_partial = output.pending[written - 1] != '\n';
-            output.pending.erase(0, written);
-        }
-        output.front_partial = output.front_partial && !output.pending.empty();
-    }
+    deliver(output.pending.size());
 }
 
 /// Evict whole oldest lines until the backlog fits its budget. Never cut

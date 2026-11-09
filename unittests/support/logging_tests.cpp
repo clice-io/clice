@@ -211,6 +211,29 @@ ZEST_CASE(TinyPipeStillReports) {
     ZEXPECT(out.find("z<") == std::string::npos);
 }
 
+ZEST_CASE(TornLineEndsBeforeNote) {
+    // The pipe takes the head of a long line; lines after it overflow the
+    // backlog. The line's tail goes out before the gap report does.
+    Pipe pipe;
+    ::fcntl(pipe.fds[1], F_SETPIPE_SZ, 4096);
+    auto sink = logging::pipe_output({.fd = pipe.fds[1], .capacity = 8192});
+    auto long_line = as_line(std::string(100'000, 'x'));
+    logging::write(sink, long_line);
+    for(int i = 0; i < 5000 && sink.dropped == 0; i += 1) {
+        logging::write(sink, as_line(std::string(100, 'y')));
+    }
+    ZASSERT(sink.dropped > 0);
+
+    std::string out;
+    for(int i = 0; i < 100; i += 1) {
+        out += pipe.drain();
+        logging::write(sink, as_line("nudge"));
+    }
+    out += pipe.drain();
+    ZEXPECT(out.find(long_line) != std::string::npos);
+    ZEXPECT(out.find("client not draining") > out.find(long_line));
+}
+
 ZEST_CASE(NoteSurvivesPressure) {
     // The gap report lives outside the backlog: pressure that keeps
     // evicting buffered lines must never evict the count itself.
