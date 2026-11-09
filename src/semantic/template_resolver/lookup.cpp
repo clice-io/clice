@@ -85,9 +85,10 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::QualType typ
 
     clang::Decl* TD = TST->getTemplateName().getAsTemplateDecl();
     if(auto dependent = !TD ? TST->getTemplateName().getAsDependentTemplateName() : nullptr) {
-        // If this dependent specialization was already resolved (possibly to
-        // itself when unresolvable), skip the redundant lookup.
-        if(may_keep_resolution(TST) && kept_resolution(cache.resolved, TST)) {
+        /// Resolving the object kept it as it is when no lookup finds its
+        /// template: looking again finds nothing either.
+        if(auto kept = cache.rewrites.find({TST, static_cast<unsigned>(Policy::Resolve)});
+           kept != cache.rewrites.end() && holds(kept->second)) {
             return lookup_result();
         }
 

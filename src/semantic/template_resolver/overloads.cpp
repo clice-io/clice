@@ -583,12 +583,7 @@ bool PseudoInstantiator::member_absent(clang::QualType type) {
 }
 
 bool PseudoInstantiator::unformable(clang::QualType type) {
-    return kept_result(cache.unformable, type.getAsOpaquePtr(), [&] {
-        auto outer = std::exchange(stack.frames(), {});
-        bool absent = member_absent(type);
-        stack.frames() = std::move(outer);
-        return absent;
-    });
+    return kept_step(cache.unformable, type.getAsOpaquePtr(), [&] { return member_absent(type); });
 }
 
 void
@@ -673,7 +668,7 @@ Callees PseudoInstantiator::call_candidates(const clang::CallExpr* expr) {
     if(llvm::isa<clang::CXXOperatorCallExpr>(expr)) {
         return {};
     }
-    return unbound_result(cache.calls, expr, [&] {
+    return kept_step(cache.calls, expr, [&] {
         llvm::ArrayRef<const clang::Expr*> arguments(expr->getArgs(), expr->getNumArgs());
         bool pack = expands_pack(arguments);
         auto callees =

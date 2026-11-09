@@ -194,18 +194,12 @@ bool TemplateResolver::specializable(clang::QualType type) {
 
 clang::QualType TemplateResolver::deduce(const clang::VarDecl* var) {
     /// A variable inside class templates the unit instantiates once deduces
-    /// as in those instantiations. Their parameters are bound for this query
-    /// alone, so what it resolves under them stays out of the unit's cache.
+    /// as in those instantiations, their parameters bound for this query.
     llvm::SmallVector<OnlyInstantiation> bindings;
     if(options.only_instantiation) {
         bindings = only_instantiations(var);
     }
-    UnitCache scoped;
-    PseudoInstantiator instantiator(context,
-                                    bindings.empty() ? *cache : scoped,
-                                    options,
-                                    visibility.get(),
-                                    auditing());
+    PseudoInstantiator instantiator(context, *cache, options, visibility.get(), auditing());
     for(auto& binding: bindings) {
         instantiator.assume(binding.owner,
                             binding.params,

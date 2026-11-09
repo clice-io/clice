@@ -216,6 +216,35 @@ ZEST_CASE(ScopedBindingStaysLocal) {
     ZEXPECT(resolved->isDependentType());
 }
 
+ZEST_CASE(ProbeBindingsStayInProbe) {
+    /// Choosing `has_type`'s pattern resolves `T::type` with `T` bound to
+    /// `box<U>`; written in the pattern itself, `T` is free.
+    add_focus("main.cpp", R"code(
+        template <class...> using void_t = void;
+        template <class T> struct box { using type = int; };
+        template <class T, class = void> struct has_type { using result = long; };
+        template <class T> struct has_type<T, void_t<typename T::type>> {
+            using result = int;
+            using probe = typename T::type;
+        };
+        template <class U> struct user { using t = typename has_type<box<U>>::result; };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* t = nodes.named<clang::TypedefNameDecl>("t");
+    ZASSERT(t);
+    auto* probe = nodes.named<clang::TypedefNameDecl>("probe");
+    ZASSERT(probe);
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto chosen = resolver.resolve(t->getUnderlyingType());
+    ZASSERT(!chosen.isNull());
+    ZEXPECT(chosen.getCanonicalType() == unit->context().IntTy);
+    auto free = resolver.resolve(probe->getUnderlyingType());
+    ZASSERT(!free.isNull());
+    ZEXPECT(free->getAs<clang::DependentNameType>() != nullptr);
+}
+
 ZEST_CASE(KeptCallBindings) {
     /// A later query takes a call's candidates as an earlier one found them,
     /// with the bindings of the lookup that found them: the type of the

@@ -264,18 +264,20 @@ Deduction PseudoInstantiator::push_deduction(clang::Decl* decl,
         return deduction;
     }
 
-    /// If the stack is empty, we need to fabricate outer template contexts so that
-    /// parameter depth/index in the deduced result can be correctly mapped. Walk
-    /// up through enclosing template declarations and push their injected args.
-    /// This handles cases like resolving members of a class template that is
-    /// itself nested inside other templates.
-    if(stack.empty()) {
-        visit_template_decl_contexts(
-            llvm::dyn_cast<clang::Decl>(decl->getDeclContext()),
-            [&](clang::Decl* decl, clang::TemplateParameterList* params) {
-                stack.push(decl, params, params->getInjectedTemplateArgs(context));
-            });
-        ranges::reverse(stack.frames());
+    /// The templates enclosing `decl` that no frame holds stand for
+    /// themselves: their parameters bound to themselves, a canonical one in
+    /// the deduced result maps to its own declaration rather than to another
+    /// template's at the same depth.
+    llvm::SmallVector<std::pair<clang::Decl*, clang::TemplateParameterList*>, 2> enclosing;
+    visit_template_decl_contexts(llvm::dyn_cast<clang::Decl>(decl->getDeclContext()),
+                                 [&](clang::Decl* decl, clang::TemplateParameterList* params) {
+                                     if(!params->empty() &&
+                                        !binding(params->getParam(0), params->getDepth(), 0).held) {
+                                         enclosing.emplace_back(decl, params);
+                                     }
+                                 });
+    for(auto [outer, params]: llvm::reverse(enclosing)) {
+        stack.push(outer, params, params->getInjectedTemplateArgs(context));
     }
 
     stack.push(decl, list, deduced);
@@ -314,9 +316,6 @@ PseudoInstantiator::TemplateArguments
     /// the stack (recursive chains like allocator_traits' rebind). An
     /// empty-argument frame masks them: decl matching stops at it and
     /// reports "unbound", while enclosing templates' frames still apply.
-    if(stack.empty()) {
-        return patterns;
-    }
     stack.push(decl, list, {});
     bool changed = rewrite_arguments(patterns, storage, Policy::Substitute);
     stack.pop();
@@ -376,19 +375,27 @@ bool mentions_parameters(clang::QualType type, const clang::TemplateParameterLis
     });
 }
 
-bool PseudoInstantiator::names_instantiated_parameter(const clang::DependentNameType* DNT) {
-    if(!options.only_instantiation) {
+bool PseudoInstantiator::names_only_free_parameters(const clang::Type* type) {
+    auto [found, added] = cache.named_parameters.try_emplace(type);
+    if(added) {
+        llvm::SmallVector<ParameterRef, 2> named;
+        names_parameter(clang::QualType(type, 0),
+                        [&](const clang::NamedDecl* param, unsigned depth, unsigned index) {
+                            if(!ranges::contains(named, ParameterRef{param, depth, index})) {
+                                named.push_back({param, depth, index});
+                            }
+                            return false;
+                        });
+        found = cache.named_parameters.insert_or_assign(type, std::move(named)).first;
+    }
+    auto& named = found->second;
+    if(!ranges::all_of(named, [&](const ParameterRef& parameter) { return free(parameter); })) {
         return false;
     }
-    auto [found, added] = cache.instantiated_names.try_emplace(DNT, false);
-    if(added) {
-        found->second =
-            names_parameter(clang::QualType(DNT, 0),
-                            [&](const clang::NamedDecl* param, unsigned, unsigned index) {
-                                return only_instantiation_argument(param, index) != nullptr;
-                            });
+    if(recording) {
+        recording->found_free(named);
     }
-    return found->second;
+    return true;
 }
 
 llvm::SmallVector<clang::TemplateArgument, 4>
@@ -488,13 +495,76 @@ llvm::SmallVector<clang::TemplateArgument, 4>
     return deduced;
 }
 
-const clang::TemplateArgument* PseudoInstantiator::bound_argument(const clang::NamedDecl* param,
-                                                                  unsigned depth,
-                                                                  unsigned index) const {
-    if(stack.owns(param, depth)) {
-        return stack.find_argument(param, depth, index);
+namespace {
+
+/// Whether `argument` is `param` itself, as a template's own parameters bind
+/// it inside it (TemplateParameterList::getInjectedTemplateArgs).
+bool names_itself(const clang::TemplateArgument& argument, const clang::NamedDecl* param) {
+    switch(argument.getKind()) {
+        case clang::TemplateArgument::Type: {
+            auto type = argument.getAsType();
+            if(auto* expansion = type->getAs<clang::PackExpansionType>()) {
+                type = expansion->getPattern();
+            }
+            auto* TTPT = type->getAs<clang::TemplateTypeParmType>();
+            return TTPT && TTPT->getDecl() == param;
+        }
+        case clang::TemplateArgument::Expression: {
+            auto* expr = argument.getAsExpr();
+            if(auto* expansion = llvm::dyn_cast<clang::PackExpansionExpr>(expr)) {
+                expr = expansion->getPattern();
+            }
+            auto* reference = llvm::dyn_cast<clang::DeclRefExpr>(expr->IgnoreImpCasts());
+            return reference && reference->getDecl() == param;
+        }
+        case clang::TemplateArgument::Template:
+        case clang::TemplateArgument::TemplateExpansion:
+            return argument.getAsTemplateOrTemplatePattern().getAsTemplateDecl() == param;
+        /// A pack deduced from its own expansion holds that expansion alone.
+        case clang::TemplateArgument::Pack:
+            return argument.pack_size() == 1 && names_itself(argument.pack_begin()[0], param);
+        default: return false;
     }
-    return only_instantiation_argument(param, index);
+}
+
+}  // namespace
+
+PseudoInstantiator::Binding PseudoInstantiator::binding(const clang::NamedDecl* param,
+                                                        unsigned depth,
+                                                        unsigned index) {
+    if(auto frame = stack.holder(param, depth, index)) {
+        auto& arguments = stack.frames()[*frame].arguments;
+        auto* argument = index < arguments.size() ? &arguments[index] : nullptr;
+        if(argument && param && names_itself(*argument, param)) {
+            if(recording) {
+                recording->found_free({
+                    {param, depth, index}
+                });
+            }
+        } else {
+            read_frame(*frame);
+        }
+        return {.argument = argument, .held = true};
+    }
+    if(auto* argument = only_instantiation_argument(param, index)) {
+        return {.argument = argument};
+    }
+    if(recording) {
+        recording->found_free({
+            {param, depth, index}
+        });
+    }
+    return {};
+}
+
+bool PseudoInstantiator::free(const ParameterRef& parameter) const {
+    auto frame = stack.holder(parameter.decl, parameter.depth, parameter.index);
+    if(!frame) {
+        return !only_instantiation_argument(parameter.decl, parameter.index);
+    }
+    auto& arguments = stack.data[*frame].arguments;
+    return parameter.decl && parameter.index < arguments.size() &&
+           names_itself(arguments[parameter.index], parameter.decl);
 }
 
 const clang::TemplateArgument*

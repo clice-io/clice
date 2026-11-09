@@ -18,19 +18,19 @@ clang::QualType PseudoInstantiator::rewrite(clang::QualType type, Policy policy)
     if(type.isNull() || !type->isDependentType()) {
         return type;
     }
-    return unbound_result(cache.rewrites,
-                          std::pair{type.getAsOpaquePtr(), static_cast<unsigned>(policy)},
-                          [&] {
-                              steps += 1;
-                              if(depth > depth_limit || steps > step_budget) {
-                                  give_up(depth > depth_limit ? Trouble::Depth : Trouble::Steps);
-                                  return type;
-                              }
-                              depth += 1;
-                              auto result = rewrite_type(type, policy);
-                              depth -= 1;
-                              return result.isNull() ? type : result;
-                          });
+    return kept_step(cache.rewrites,
+                     std::pair{type.getAsOpaquePtr(), static_cast<unsigned>(policy)},
+                     [&] {
+                         steps += 1;
+                         if(depth > depth_limit || steps > step_budget) {
+                             give_up(depth > depth_limit ? Trouble::Depth : Trouble::Steps);
+                             return type;
+                         }
+                         depth += 1;
+                         auto result = rewrite_type(type, policy);
+                         depth -= 1;
+                         return result.isNull() ? type : result;
+                     });
 }
 
 clang::QualType PseudoInstantiator::rewrite_type(clang::QualType type, Policy policy) {
@@ -585,7 +585,8 @@ clang::QualType PseudoInstantiator::transformed(clang::UnaryTransformType::UTTKi
 
 clang::QualType PseudoInstantiator::rewrite_parameter(const clang::TemplateTypeParmType* TTPT,
                                                       Policy policy) {
-    if(const auto* argument = bound_argument(TTPT->getDecl(), TTPT->getDepth(), TTPT->getIndex())) {
+    auto bound = binding(TTPT->getDecl(), TTPT->getDepth(), TTPT->getIndex());
+    if(const auto* argument = bound.argument) {
         clang::QualType type;
 
         if(argument->getKind() == clang::TemplateArgument::Type) {
@@ -607,7 +608,7 @@ clang::QualType PseudoInstantiator::rewrite_parameter(const clang::TemplateTypeP
     // default. This enables resolution chains like:
     //   template<typename T, typename Alloc = allocator<T>> struct vector;
     // where Alloc's default depends on T.
-    if(stack.owns(TTPT->getDecl(), TTPT->getDepth()) && policy == Policy::Resolve) {
+    if(bound.held && policy == Policy::Resolve) {
         if(clang::TemplateTypeParmDecl* TTPD = TTPT->getDecl();
            TTPD && TTPD->hasDefaultArgument()) {
             const auto& argument = TTPD->getDefaultArgument().getArgument();
@@ -641,44 +642,36 @@ bool PseudoInstantiator::unbound_root(clang::NestedNameSpecifier NNS) {
 }
 
 clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::DependentNameType* DNT) {
+    if(!names_only_free_parameters(DNT)) {
+        return resolve_name(DNT);
+    }
+    /// A name whose parameters are all free resolves alike under any sugar
+    /// of its canonical form, to what carries none of the sugar: a type
+    /// naming no parameter, or nothing.
+    auto type = kept_step(
+        cache.canonical_names,
+        DNT->getCanonicalTypeInternal().getTypePtr(),
+        [&] {
+            auto type = resolve_name(DNT);
+            return type == clang::QualType(DNT, 0) ? clang::QualType() : type;
+        },
+        [](clang::QualType type) { return type.isNull() || !type->isDependentType(); });
+    return type.isNull() ? clang::QualType(DNT, 0) : type;
+}
+
+clang::QualType PseudoInstantiator::resolve_name(const clang::DependentNameType* DNT) {
     LOG_DEBUG(
         "{}"
         "resolve '{}'",
         pad(),
         clang::QualType(DNT, 0).getAsString());
     indent += 1;
-    auto judged = own_conclusion();
 
-    bool cacheable = may_keep_resolution(DNT);
-    bool by_canonical = cacheable && !names_instantiated_parameter(DNT);
-    const auto* canonical = DNT->getCanonicalTypeInternal().getTypePtr();
-    if(cacheable) {
-        if(auto known =
-               by_canonical ? kept_resolution(cache.canonical_resolved, canonical) : std::nullopt) {
-            LOG_DEBUG("{}→ '{}' (by its canonical form)",
-                      pad(),
-                      known->isNull() ? "<unresolved>" : known->getAsString());
-            indent -= 1;
-            return known->isNull() ? clang::QualType(DNT, 0) : *known;
-        }
-        if(auto kept = kept_resolution(cache.resolved, DNT)) {
-            LOG_DEBUG(
-                "{}"
-                "→ '{}' (cached)",
-                pad(),
-                kept->getAsString());
-            indent -= 1;
-            return *kept;
-        }
-    }
     if(unbound_root(DNT->getQualifier())) {
         LOG_DEBUG("{}→ <unresolved: free parameter>", pad());
         indent -= 1;
         return clang::QualType(DNT, 0);
     }
-    StepRecording step;
-    auto recorder = record_effects(step);
-
     // Cycle detection: if we're already resolving this DNT, bail out.
     if(!resolving.insert(DNT).second) {
         LOG_DEBUG("{}→ <cycle detected, returning original>", pad());
@@ -691,12 +684,6 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
         resolving.erase(DNT);
         LOG_DEBUG("{}→ '{}' (standard rule)", pad(), by_rule->getAsString());
         indent -= 1;
-        if(cacheable && !inconclusive) {
-            keep_resolution(cache.resolved, DNT, *by_rule, step);
-            if(by_canonical && *by_rule == clang::QualType(DNT, 0)) {
-                keep_resolution(cache.canonical_resolved, canonical, clang::QualType(), step);
-            }
-        }
         return *by_rule;
     }
 
@@ -758,20 +745,11 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
             pad(),
             result.getAsString());
         indent -= 1;
-        if(cacheable && !inconclusive) {
-            keep_resolution(cache.resolved, DNT, result, step);
-            if(by_canonical && !result->isDependentType()) {
-                keep_resolution(cache.canonical_resolved, canonical, result, step);
-            }
-        }
         return result;
     }
 
     LOG_DEBUG("{}→ <unresolved>", pad());
     indent -= 1;
-    if(by_canonical && !inconclusive) {
-        keep_resolution(cache.canonical_resolved, canonical, clang::QualType(), step);
-    }
     return clang::QualType(DNT, 0);
 }
 
@@ -784,23 +762,12 @@ clang::QualType
         clang::QualType(TST, 0).getAsString());
     indent += 1;
 
-    auto judged = own_conclusion();
     auto& template_name = *TST->getTemplateName().getAsDependentTemplateName();
-    bool cacheable = may_keep_resolution(TST);
-
-    if(cacheable) {
-        if(auto kept = kept_resolution(cache.resolved, TST)) {
-            indent -= 1;
-            return *kept;
-        }
-    }
     if(unbound_root(template_name.getQualifier())) {
         LOG_DEBUG("{}→ <unresolved TST: free parameter>", pad());
         indent -= 1;
         return clang::QualType(TST, 0);
     }
-    StepRecording step;
-    auto recorder = record_effects(step);
 
     auto NNS = rewrite_specifier(template_name.getQualifier(), Policy::Resolve);
 
@@ -831,9 +798,6 @@ clang::QualType
                         pad(),
                         type.getAsString());
                     indent -= 1;
-                    if(cacheable && !inconclusive) {
-                        keep_resolution(cache.resolved, TST, type, step);
-                    }
                     return type;
                 }
             }
@@ -850,9 +814,6 @@ clang::QualType
                 pad(),
                 result.getAsString());
             indent -= 1;
-            if(cacheable && !inconclusive) {
-                keep_resolution(cache.resolved, TST, result, step);
-            }
             return result;
         }
     }
@@ -860,15 +821,7 @@ clang::QualType
 
     LOG_DEBUG("{}→ <unresolved TST>", pad());
     indent -= 1;
-    auto fallback = clang::QualType(TST, 0);
-    /// Only a conclusive failure may be cached: an exhausted step budget
-    /// or a tripped recursion guard proves nothing, and the cache is
-    /// TU-wide — a truncated query must not poison this node for later
-    /// queries that could still resolve it.
-    if(cacheable && !inconclusive) {
-        keep_resolution(cache.resolved, TST, fallback, step);
-    }
-    return fallback;
+    return clang::QualType(TST, 0);
 }
 
 }  // namespace clice::types

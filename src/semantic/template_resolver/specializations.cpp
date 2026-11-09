@@ -318,6 +318,7 @@ std::optional<llvm::SmallVector<clang::TemplateArgument, 4>>
         if(!handle) {
             return std::nullopt;
         }
+        read_frame(handle->first);
         auto& bound = stack.slot(*handle);
         if(bound.getKind() != clang::TemplateArgument::Pack ||
            (!slots.empty() && bound.pack_size() != length)) {
@@ -332,11 +333,6 @@ std::optional<llvm::SmallVector<clang::TemplateArgument, 4>>
     auto saved = ranges::to<llvm::SmallVector<clang::TemplateArgument, 2>>(
         views::transform(slots, [&](auto handle) { return stack.slot(handle); }));
 
-    /// While narrowed, node-pointer-keyed caches skip the nodes naming the
-    /// pack (may_keep_resolution): the same pattern node resolves differently
-    /// per element, and a cached first element would silently repeat for
-    /// every later one.
-    pack_narrowing += 1;
     bool ok = true;
     llvm::SmallVector<clang::TemplateArgument, 4> expanded;
     for(unsigned k = 0; k < length && ok; k += 1) {
@@ -349,7 +345,6 @@ std::optional<llvm::SmallVector<clang::TemplateArgument, 4>>
             expanded.emplace_back(element);
         }
     }
-    pack_narrowing -= 1;
 
     for(auto [handle, pack]: views::zip(slots, saved)) {
         stack.slot(handle) = pack;

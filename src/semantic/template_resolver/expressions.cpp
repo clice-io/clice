@@ -59,7 +59,7 @@ std::optional<llvm::APSInt> PseudoInstantiator::evaluate(const clang::Expr* expr
 }
 
 std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr) {
-    return unbound_result(cache.values, expr, [&]() -> std::optional<llvm::APSInt> {
+    return kept_step(cache.values, expr, [&]() -> std::optional<llvm::APSInt> {
         /// A trait asks of the type its operand names: `typename
         /// allocator<T>::_From_primary` is an `allocator<T>`.
         if(auto trait = type_trait(context, expr, [&](clang::QualType operand) {
@@ -87,11 +87,9 @@ std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr
         auto judged = own_conclusion();
         auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(expr);
         if(DSDRE && DSDRE->getQualifier().getKind() == clang::NestedNameSpecifier::Kind::Type) {
-            auto scope =
-                resolve_object(substitute(clang::QualType(DSDRE->getQualifier().getAsType(), 0)));
-            if(may_keep_resolution(scope.getTypePtr())) {
-                return member_value(scope, DSDRE->getDeclName());
-            }
+            return member_value(
+                resolve_object(substitute(clang::QualType(DSDRE->getQualifier().getAsType(), 0))),
+                DSDRE->getDeclName());
         }
 
         auto frames = stack.size();
@@ -116,12 +114,15 @@ std::optional<llvm::APSInt> PseudoInstantiator::member_value(clang::QualType sco
         return std::nullopt;
     }
     auto cycles = troubles[static_cast<std::size_t>(Trouble::Cycle)];
-    auto value = kept_result(cache.member_values, key, [&] {
-        auto outer = std::exchange(stack.frames(), {});
+    auto fold = [&] {
+        auto frames = stack.size();
         auto value = declared_value(preferred(lookup(scope, name)));
-        stack.frames() = std::move(outer);
+        stack.truncate(frames);
         return value;
-    });
+    };
+    auto value = names_only_free_parameters(scope.getTypePtr())
+                     ? kept_step(cache.member_values, key, fold)
+                     : fold();
     /// Where a cycle was cut, what is in progress decides, not the nesting.
     if(!value && inconclusive && troubles[static_cast<std::size_t>(Trouble::Cycle)] == cycles) {
         cut_values.insert_or_assign(key, CutFolding{.evaluating = evaluating, .depth = depth});
@@ -206,12 +207,7 @@ std::optional<llvm::APSInt>
             return value_of(VTD, rewritten);
         }
     }
-    return kept_result(cache.variable_values, key, [&] {
-        auto outer = std::exchange(stack.frames(), {});
-        auto value = value_of(VTD, rewritten);
-        stack.frames() = std::move(outer);
-        return value;
-    });
+    return kept_step(cache.variable_values, key, [&] { return value_of(VTD, rewritten); });
 }
 
 std::optional<llvm::APSInt>
@@ -280,7 +276,7 @@ std::optional<llvm::APSInt>
 
 clang::QualType PseudoInstantiator::type_of(const clang::Expr* expr, bool through_object) {
     expr = expr->IgnoreParenImpCasts();
-    return unbound_result(cache.types, std::pair{expr, static_cast<unsigned>(through_object)}, [&] {
+    return kept_step(cache.types, std::pair{expr, static_cast<unsigned>(through_object)}, [&] {
         auto frames = stack.size();
         clang::QualType type;
         unsigned object_quals = 0;
@@ -331,19 +327,17 @@ Member PseudoInstantiator::member_of(clang::QualType object, clang::DeclarationN
     if(resolved.isNull()) {
         return {};
     }
-    /// What the object still names unbound stays so: under no bindings of
-    /// the caller's, the answer is the resolved object's alone.
-    return kept_result(cache.members,
-                       std::pair{resolved.getAsOpaquePtr(), name.getAsOpaquePtr()},
-                       [&] {
-                           auto outer = std::exchange(stack.frames(), {});
-                           Member member{.decl = preferred(lookup_member(resolved, name))};
-                           if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(member.decl)) {
-                               member.type = value_type(value);
-                           }
-                           stack.frames() = std::move(outer);
-                           return member;
-                       });
+    return kept_step(cache.members,
+                     std::pair{resolved.getAsOpaquePtr(), name.getAsOpaquePtr()},
+                     [&] {
+                         auto frames = stack.size();
+                         Member member{.decl = preferred(lookup_member(resolved, name))};
+                         if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(member.decl)) {
+                             member.type = value_type(value);
+                         }
+                         stack.truncate(frames);
+                         return member;
+                     });
 }
 
 clang::QualType PseudoInstantiator::value_type(const clang::ValueDecl* value) {
