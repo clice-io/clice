@@ -131,7 +131,9 @@ llvm::StringRef revalidate(Project& project, NodeId module, llvm::StringRef pcm_
     }
     auto& entry = it->second;
     llvm::StringRef miss;
-    if(entry.key != pcm_key) {
+    if(entry.key.empty()) {
+        miss = entry.failure ? "failed" : "no_build";
+    } else if(entry.key != pcm_key) {
         miss = "key_changed";
     } else if(!inputs_hold(project.file_table, entry.inputs)) {
         miss = "inputs_changed";
@@ -651,6 +653,11 @@ Work Project::module_work(NodeId module) {
         .run = [this, module](Attempt& attempt) { return build_module(*this, attempt, module); },
         .check = [this,
                   module] { return imports_present(module) ? Check::Holds : Check::ProductGone; },
+        .failure_stands =
+            [this, module] {
+                auto it = pcms.find(module);
+                return it != pcms.end() && it->second.standing_failure(file_table);
+            },
     };
 }
 

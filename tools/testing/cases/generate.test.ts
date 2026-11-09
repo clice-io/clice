@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { functions, padded, unitSymbols, units } from "./generate.ts";
+import { functions, moduleLayers, padded, unitSymbols, units } from "./generate.ts";
 
 test("generated names are numbered", () => {
     expect(Object.keys(units(12)).slice(0, 2)).toEqual(["unit_00.cpp", "unit_01.cpp"]);
@@ -7,4 +7,19 @@ test("generated names are numbered", () => {
     expect(units(1)).toEqual({ "unit_0.cpp": "int unit_0() { return 0; }\n" });
     expect(functions(2)).toBe("int function_0() { return 0; }\nint function_1() { return 1; }\n");
     expect(Buffer.byteLength(padded("int x;\n", 1000))).toBeGreaterThanOrEqual(1000);
+});
+
+test("module layers import both modules below", () => {
+    const files = moduleLayers(2);
+    expect(Object.keys(files)).toEqual([
+        "layer_1_a.cppm",
+        "layer_1_b.cppm",
+        "layer_2_a.cppm",
+        "layer_2_b.cppm",
+        "main.cpp",
+    ]);
+    expect(files["layer_2_b.cppm"]).toBe(
+        "export module layer_2_b;\nimport layer_1_a;\nimport layer_1_b;\nexport int layer_2_b();\n",
+    );
+    expect(files["main.cpp"]).toBe("import layer_2_a;\nimport layer_2_b;\nint main() {}\n");
 });

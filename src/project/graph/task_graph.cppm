@@ -58,7 +58,8 @@ enum class Result : std::uint8_t {
     /// The node holds a product of its current content.
     Success,
     /// The attempt failed on current content, or waiting would close a
-    /// cycle. Not sticky: a later wait tries again.
+    /// cycle. A later wait tries again, unless the work says the failure
+    /// stands (Work::failure_stands).
     Failed,
     /// No result: the attempt was overtaken by a content change, lost all
     /// interest, or the graph is shutting down. An attempt overtaken
@@ -91,6 +92,12 @@ struct Work {
     /// Asked when a waiter reaches a clean node; null when a clean node
     /// always holds.
     std::function<Check()> check;
+
+    /// Asked when a waiter reaches a node whose last attempt failed and
+    /// that no invalidation reached since: whether that failure stands, so
+    /// the waiter takes it instead of starting an attempt. Null when every
+    /// wait tries again.
+    std::function<bool()> failure_stands;
 };
 
 struct JoinOptions {
