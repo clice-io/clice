@@ -649,13 +649,15 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
     indent += 1;
     auto judged = own_conclusion();
 
-    bool cacheable = resolution_kept(DNT);
+    bool cacheable = may_keep_resolution(DNT);
     const auto* canonical = DNT->getCanonicalTypeInternal().getTypePtr();
     if(cacheable) {
-        if(auto settled = kept_resolution(cache.settled, canonical)) {
-            LOG_DEBUG("{}→ settled", pad());
+        if(auto known = kept_resolution(cache.canonical_resolved, canonical)) {
+            LOG_DEBUG("{}→ '{}' (by its canonical form)",
+                      pad(),
+                      known->isNull() ? "<unresolved>" : known->getAsString());
             indent -= 1;
-            return settled->isNull() ? clang::QualType(DNT, 0) : *settled;
+            return known->isNull() ? clang::QualType(DNT, 0) : *known;
         }
         if(auto kept = kept_resolution(cache.resolved, DNT)) {
             LOG_DEBUG(
@@ -754,7 +756,7 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
         if(cacheable && !inconclusive) {
             keep_resolution(cache.resolved, DNT, result, step);
             if(!result->isDependentType()) {
-                keep_resolution(cache.settled, canonical, result, step);
+                keep_resolution(cache.canonical_resolved, canonical, result, step);
             }
         }
         return result;
@@ -763,7 +765,7 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
     LOG_DEBUG("{}→ <unresolved>", pad());
     indent -= 1;
     if(cacheable && !inconclusive) {
-        keep_resolution(cache.settled, canonical, clang::QualType(), step);
+        keep_resolution(cache.canonical_resolved, canonical, clang::QualType(), step);
     }
     return clang::QualType(DNT, 0);
 }
@@ -779,7 +781,7 @@ clang::QualType
 
     auto judged = own_conclusion();
     auto& template_name = *TST->getTemplateName().getAsDependentTemplateName();
-    bool cacheable = resolution_kept(TST);
+    bool cacheable = may_keep_resolution(TST);
 
     if(cacheable) {
         if(auto kept = kept_resolution(cache.resolved, TST)) {

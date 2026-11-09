@@ -236,7 +236,7 @@ PseudoInstantiator::lookup_result
                                                     clang::DeclarationName name) {
     auto frames = stack.size();
     std::optional<Found> common;
-    for(auto [index, alternative]: llvm::enumerate(alternatives)) {
+    for(auto [index, alternative]: views::enumerate(alternatives)) {
         auto members = lookup(alternative, name);
         if(members.empty()) {
             stack.truncate(frames);
@@ -248,7 +248,7 @@ PseudoInstantiator::lookup_result
             return lookup_result();
         }
         common = std::move(here);
-        if(index + 1 < alternatives.size()) {
+        if(static_cast<std::size_t>(index) + 1 < alternatives.size()) {
             stack.truncate(frames);
         }
     }

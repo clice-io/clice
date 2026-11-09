@@ -89,7 +89,7 @@ std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr
         if(DSDRE && DSDRE->getQualifier().getKind() == clang::NestedNameSpecifier::Kind::Type) {
             auto scope =
                 resolve_object(substitute(clang::QualType(DSDRE->getQualifier().getAsType(), 0)));
-            if(resolution_kept(scope.getTypePtr())) {
+            if(may_keep_resolution(scope.getTypePtr())) {
                 return member_value(scope, DSDRE->getDeclName());
             }
         }
@@ -203,20 +203,20 @@ std::optional<llvm::APSInt>
         } else if(argument.getKind() == clang::TemplateArgument::Template) {
             key.push_back(argument.getAsTemplate().getAsVoidPointer());
         } else {
-            return variable_value(VTD, rewritten);
+            return value_of(VTD, rewritten);
         }
     }
     return kept_result(cache.variable_values, key, [&] {
         auto outer = std::exchange(stack.frames(), {});
-        auto value = variable_value(VTD, rewritten);
+        auto value = value_of(VTD, rewritten);
         stack.frames() = std::move(outer);
         return value;
     });
 }
 
 std::optional<llvm::APSInt>
-    PseudoInstantiator::variable_value(clang::VarTemplateDecl* VTD,
-                                       llvm::ArrayRef<clang::TemplateArgument> rewritten) {
+    PseudoInstantiator::value_of(clang::VarTemplateDecl* VTD,
+                                 llvm::ArrayRef<clang::TemplateArgument> rewritten) {
     llvm::SmallVector<clang::TemplateArgument, 4> arguments;
     if(!fill_defaults(VTD, rewritten, arguments)) {
         return std::nullopt;

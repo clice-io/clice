@@ -418,7 +418,7 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
             /// One still naming a parameter deduction left free reads its
             /// default where the template's frame holds it.
             auto cannot_form = [&](clang::QualType type) {
-                return mentions_parameters(type, FTD->getTemplateParameters()) ? absent_member(type)
+                return mentions_parameters(type, FTD->getTemplateParameters()) ? member_absent(type)
                                                                                : unformable(type);
             };
             /// A default deduction leaves decides whether the template is a
@@ -578,14 +578,14 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
     }
 }
 
-bool PseudoInstantiator::absent_member(clang::QualType type) {
+bool PseudoInstantiator::member_absent(clang::QualType type) {
     return member_absent(type, 0) || member_absent(type.getCanonicalType(), 0);
 }
 
 bool PseudoInstantiator::unformable(clang::QualType type) {
     return kept_result(cache.unformable, type.getAsOpaquePtr(), [&] {
         auto outer = std::exchange(stack.frames(), {});
-        bool absent = absent_member(type);
+        bool absent = member_absent(type);
         stack.frames() = std::move(outer);
         return absent;
     });

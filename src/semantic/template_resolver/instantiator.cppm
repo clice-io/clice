@@ -303,7 +303,7 @@ struct UnitCache {
     /// to nothing (a null type), by their canonical node: the sugar of one
     /// name differs by the path that wrote it, and such an answer carries
     /// none of it.
-    llvm::DenseMap<const void*, ResolvedType> settled;
+    llvm::DenseMap<const void*, ResolvedType> canonical_resolved;
 
     /// The steps taken with nothing bound (PseudoInstantiator::unbound_result):
     /// rewrites by the type and the policy, types of expressions by the
@@ -382,20 +382,19 @@ public:
     using lookup_result = clang::DeclContext::lookup_result;
 
     /// Without `visibility`, the query sees the whole unit.
-    /// What the query cost goes to `records` when it ends; nowhere when null.
+    /// What the query cost goes to `audits` when it ends; nowhere when null.
     PseudoInstantiator(clang::ASTContext& context,
                        UnitCache& cache,
                        const ResolverOptions& options,
                        Visibility* visibility,
-                       std::vector<QueryRecord>* records = nullptr) :
-        context(context), cache(cache), options(options), visibility(visibility), records(records) {
-    }
+                       std::vector<QueryAudit>* audits = nullptr) :
+        context(context), cache(cache), options(options), visibility(visibility), audits(audits) {}
 
     PseudoInstantiator(const PseudoInstantiator&) = delete;
 
     ~PseudoInstantiator() {
-        if(records) {
-            records->push_back({.steps = steps, .troubles = troubles});
+        if(audits) {
+            audits->push_back({.steps = steps, .troubles = troubles});
         }
     }
 
@@ -830,8 +829,8 @@ private:
                                          llvm::ArrayRef<clang::TemplateArgumentLoc> written);
 
     /// The value of `VTD<arguments>`, the arguments resolved.
-    std::optional<llvm::APSInt> variable_value(clang::VarTemplateDecl* VTD,
-                                               llvm::ArrayRef<clang::TemplateArgument> arguments);
+    std::optional<llvm::APSInt> value_of(clang::VarTemplateDecl* VTD,
+                                         llvm::ArrayRef<clang::TemplateArgument> arguments);
 
     /// The value of the member `name` of `scope`, a class resolved, kept for
     /// the unit: folded with none of the caller's bindings, which the class
@@ -979,9 +978,9 @@ private:
     /// Whether `type`, the bindings substituted, names a member certainly
     /// absent, as written or through its aliases (`void_t<...>` holds its
     /// probe as written, `enable_if_t<...>` in what it aliases).
-    bool absent_member(clang::QualType type);
+    bool member_absent(clang::QualType type);
 
-    /// absent_member for a type naming no parameter the frames hold free,
+    /// member_absent for a type naming no parameter the frames hold free,
     /// kept for the unit: the caller's bindings bear on it no more.
     bool unformable(clang::QualType type);
 
@@ -1096,8 +1095,8 @@ private:
         return result;
     }
 
-    /// Where the query is answered from (Visibility::view); 0 for the whole
-    /// unit.
+    /// Where the query is answered from (Visibility::view); 0 when no
+    /// Visibility limits it to a place.
     std::uint32_t view() const {
         return visibility ? visibility->view() : 0;
     }
@@ -1133,7 +1132,7 @@ private:
     /// Whether what `node` resolves to may be kept by the node: while a
     /// pack is narrowed to one of its elements, a node naming an unexpanded
     /// pack resolves differently per element.
-    bool resolution_kept(const clang::Type* node) const {
+    bool may_keep_resolution(const clang::Type* node) const {
         return pack_narrowing == 0 || !node->containsUnexpandedParameterPack();
     }
 
@@ -1245,14 +1244,14 @@ private:
     std::array<std::uint32_t, 6> troubles = {};
 
     /// Where the query's cost goes when it ends.
-    std::vector<QueryRecord>* records;
+    std::vector<QueryAudit>* audits;
 
     unsigned probing = 0;
 
     unsigned evaluating = 0;
 
     /// Non-zero while a pack element rewrite has a Pack binding narrowed to
-    /// one element (resolution_kept).
+    /// one element (may_keep_resolution).
     unsigned pack_narrowing = 0;
 
     /// Some answer came back empty or partial because a lookup or the

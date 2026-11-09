@@ -409,6 +409,84 @@ ZEST_CASE(InjectedClassKeepsParameters) {
     ZEXPECT(parameter->getDecl() != nullptr);
 }
 
+ZEST_CASE(InjectedPartialKeepsParameters) {
+    /// A partial specialization names its own parameters as written too.
+    add_focus("main.cpp", R"code(
+        template <class T> struct wrap {};
+        template <class... Ts> struct all {};
+        template <class F, class... R> struct all<F, R...> { using type = F; };
+        template <class... Ts> struct holder {
+            using first = typename all<wrap<Ts>...>::type;
+        };
+        template <class... Ts> struct user;
+        template <class... Ts> struct user<int, Ts...> : holder<Ts...> {
+            void f() { typename user::first x; }
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* x = nodes.named<clang::VarDecl>("x");
+    ZASSERT(x);
+
+    auto resolved = unit->get<types::TemplateResolver>().resolve(x->getType());
+    auto* wrap = resolved.isNull() ? nullptr : resolved->getAs<clang::TemplateSpecializationType>();
+    ZASSERT(wrap);
+    ZASSERT(wrap->template_arguments().size() == 1);
+    auto argument = wrap->template_arguments()[0].getAsType();
+    if(auto* expansion = argument->getAs<clang::PackExpansionType>()) {
+        argument = expansion->getPattern();
+    }
+    auto* parameter = argument->getAs<clang::TemplateTypeParmType>();
+    ZASSERT(parameter);
+    ZEXPECT(parameter->getDecl() != nullptr);
+}
+
+ZEST_CASE(ViewsBetweenIncludes) {
+    /// A header sees the partial specialization extra.h declares only past
+    /// its include; one name asked from both places answers each alike.
+    add_file("lib.h", R"code(
+        #pragma once
+        namespace ns {
+        template <class T> struct traits { using type = int; };
+        }
+    )code");
+    add_file("extra.h", R"code(
+        #pragma once
+        #include "lib.h"
+        namespace ns {
+        template <class T> struct traits<T*> { using type = long; };
+        }
+    )code");
+    add_file("util.h", R"code(
+        #pragma once
+        #include "lib.h"
+        template <class C> using kind = typename ns::traits<C*>::type;
+        #include "extra.h"
+        template <class C> struct after {};
+    )code");
+    add_focus("main.cpp", R"code(
+        #include "util.h"
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* kind = nodes.named<clang::TypeAliasDecl>("kind");
+    ZASSERT(kind);
+    auto* after = nodes.named<clang::ClassTemplateDecl>("after");
+    ZASSERT(after);
+
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto& context = unit->context();
+    for(auto from: {kind->getLocation(), after->getLocation(), kind->getLocation()}) {
+        resolver.see_from(from);
+        auto resolved = resolver.resolve(kind->getUnderlyingType());
+        ZASSERT(!resolved.isNull());
+        bool past = from == after->getLocation();
+        ZEXPECT(resolved.getCanonicalType() == (past ? context.LongTy : context.IntTy));
+    }
+}
+
 ZEST_CASE(StandardConditionalBase) {
     /// A base chosen by `conditional` whose condition is not known (MSVC's
     /// variant) has a member both choices give alike.
@@ -444,6 +522,12 @@ ZEST_CASE(StandardTypeRules) {
         template <bool B, class T, class F> struct conditional { using type = T; };
         template <bool B, class T = void> struct enable_if {};
         template <class T> struct enable_if<true, T> { using type = T; };
+        template <class T> struct type_identity { using type = T; };
+        template <class T> struct add_lvalue_reference { using type = T&; };
+        template <class T> struct remove_const { using type = T; };
+        template <class T> struct remove_cvref { using type = T; };
+        template <class T> struct remove_pointer { using type = T; };
+        template <class T> struct add_pointer { using type = T*; };
         }
         template <class T> struct uses {
             using stripped = typename std::remove_reference<T&>::type;
@@ -451,6 +535,15 @@ ZEST_CASE(StandardTypeRules) {
             using chosen = typename std::conditional<true, T, int>::type;
             using enabled = typename std::enable_if<sizeof(T) == 4, T*>::type;
             using waiting = typename std::remove_reference<T>::type;
+            using identity = typename std::type_identity<T>::type;
+            using void_ref = typename std::add_lvalue_reference<void>::type;
+            using unconst = typename std::remove_const<const T[3]>::type;
+            using bare = typename std::remove_cvref<const T&>::type;
+            using pointee = typename std::remove_pointer<T*>::type;
+            using pointer = typename std::add_pointer<T&>::type;
+            using function = typename std::decay<void(T)>::type;
+            using alike = typename std::conditional<sizeof(T) == 4, T, T>::type;
+            using disabled = typename std::enable_if<false, T>::type;
         };
     )code");
     ZASSERT(compile());
@@ -475,6 +568,72 @@ ZEST_CASE(StandardTypeRules) {
     auto waiting = resolve("waiting");
     ZASSERT(!waiting.isNull());
     ZEXPECT(waiting->getAs<clang::DependentNameType>() != nullptr);
+    ZEXPECT(same(resolve("identity"), parameter));
+    ZEXPECT(same(resolve("void_ref"), context.VoidTy));
+    ZEXPECT(same(resolve("unconst"),
+                 context.getConstantArrayType(parameter,
+                                              llvm::APInt(64, 3),
+                                              nullptr,
+                                              clang::ArraySizeModifier::Normal,
+                                              0)));
+    ZEXPECT(same(resolve("bare"), parameter));
+    ZEXPECT(same(resolve("pointee"), parameter));
+    ZEXPECT(same(resolve("pointer"), context.getPointerType(parameter)));
+    auto function = resolve("function");
+    ZASSERT(!function.isNull());
+    ZEXPECT(function->isFunctionPointerType());
+    ZEXPECT(same(resolve("alike"), parameter));
+    /// Where `enable_if` holds no `type`, the library's definition says so.
+    auto disabled = resolve("disabled");
+    ZASSERT(!disabled.isNull());
+    ZEXPECT(disabled->getAs<clang::DependentNameType>() != nullptr);
+}
+
+ZEST_CASE(StandardConditionalBaseDiffers) {
+    /// Where the two bases a `conditional` may choose give different
+    /// members, the member is neither.
+    add_focus("main.cpp", R"code(
+        namespace std {
+        template <bool B, class T, class F> struct conditional { using type = T; };
+        template <class T> constexpr bool trivial = __is_trivially_destructible(T);
+        template <class... Ts> struct base { void reset(); };
+        template <class... Ts> struct layer : base<Ts...> { void reset(); };
+        template <class... Ts>
+        struct variant : conditional<(trivial<Ts> && ...), base<Ts...>, layer<Ts...>>::type {
+            void f() { this->reset(); }
+        };
+        }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    ZASSERT(!nodes.members.empty());
+    auto& resolver = unit->get<types::TemplateResolver>();
+    ZEXPECT(resolver.lookup(nodes.members.back()).empty());
+}
+
+ZEST_CASE(UnknownOperandOfAnd) {
+    /// `false` decides `&&` on either side of an operand not known.
+    add_focus("main.cpp", R"code(
+        template <bool B, class T, class F> struct choose { using type = T; };
+        template <class T, class F> struct choose<false, T, F> { using type = F; };
+        template <class T> struct both {
+            using left = typename choose<(sizeof(T) > 4) && false, int, char>::type;
+            using right = typename choose<false && (sizeof(T) > 4), int, char>::type;
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto& context = unit->context();
+    for(auto name: {"left", "right"}) {
+        auto* alias = nodes.named<clang::TypedefNameDecl>(name);
+        ZASSERT(alias);
+        auto resolved = resolver.resolve(alias->getUnderlyingType());
+        ZASSERT(!resolved.isNull());
+        ZEXPECT(context.hasSameType(resolved, context.CharTy));
+    }
 }
 
 ZEST_CASE(UnknownLengthExpansion) {
@@ -513,11 +672,11 @@ ZEST_CASE(RecursiveValueUnknown) {
     Nodes nodes(unit->context());
     auto* type = nodes.named<clang::TypedefNameDecl>("type");
     ZASSERT(type);
-    types::TemplateResolver resolver(*unit, {.record = true});
+    types::TemplateResolver resolver(*unit, {.audit = true});
     resolver.resolve(type->getUnderlyingType());
-    ZASSERT(resolver.records().size() == 1);
-    auto& record = resolver.records().front();
-    ZEXPECT(record.troubles[static_cast<std::size_t>(types::Trouble::Evaluation)] < 32);
+    ZASSERT(resolver.audits().size() == 1);
+    auto& audit = resolver.audits().front();
+    ZEXPECT(audit.troubles[static_cast<std::size_t>(types::Trouble::Evaluation)] < 32);
 }
 
 };  // ZEST_SUITE(TemplateResolver)

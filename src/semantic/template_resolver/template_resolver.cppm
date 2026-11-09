@@ -14,9 +14,9 @@ struct ResolverOptions {
     bool only_instantiation = true;
 
     /// Keep what each query cost and where its work was cut short
-    /// (TemplateResolver::records), for finding the code the resolver
+    /// (TemplateResolver::audits), for finding the code the resolver
     /// struggles with (`clice inspect template-resolver-audit`).
-    bool record = false;
+    bool audit = false;
 };
 
 /// Where a query's work was cut short, or a choice was left open.
@@ -36,8 +36,8 @@ enum class Trouble : std::uint8_t {
     AmbiguousBase,
 };
 
-/// What one query cost (TemplateResolver::records).
-struct QueryRecord {
+/// What one query cost (TemplateResolver::audits).
+struct QueryAudit {
     /// The rewrites it took.
     std::uint32_t steps = 0;
 
@@ -80,8 +80,8 @@ public:
 
     /// What each query cost, in the order they were asked, with
     /// ResolverOptions::record; empty without.
-    llvm::ArrayRef<QueryRecord> records() const {
-        return recorded;
+    llvm::ArrayRef<QueryAudit> audits() const {
+        return audited;
     }
 
     clang::QualType resolve(clang::QualType type);
@@ -178,7 +178,7 @@ public:
 
 private:
     /// Where a query's cost goes, with ResolverOptions::record.
-    std::vector<QueryRecord>* recording();
+    std::vector<QueryAudit>* auditing();
 
 private:
     clang::ASTContext& context;
@@ -194,7 +194,7 @@ private:
     std::unique_ptr<Visibility> visibility;
 
     /// What each query cost, with ResolverOptions::record.
-    std::vector<QueryRecord> recorded;
+    std::vector<QueryAudit> audited;
 };
 
 /// The pattern a specialization the unit names but never instantiated would

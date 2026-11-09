@@ -482,11 +482,11 @@ std::optional<codec::raw_value> run_template_resolver_audit(const FeatureParams&
     auto& unit = params.unit;
     auto focus = unit.focus_file();
     auto semantics = Semantics::build(unit);
-    types::TemplateResolver resolver(unit, {.only_instantiation = false, .record = true});
+    types::TemplateResolver resolver(unit, {.only_instantiation = false, .audit = true});
     auto entries = semantics.node_entries();
     RawAudit out;
-    auto add = [](std::map<std::string, std::uint32_t>& counts, const types::QueryRecord& record) {
-        for(auto [kind, count]: llvm::enumerate(record.troubles)) {
+    auto add = [](std::map<std::string, std::uint32_t>& counts, const types::QueryAudit& audit) {
+        for(auto [kind, count]: views::enumerate(audit.troubles)) {
             if(count != 0) {
                 counts[std::string(meta::enum_name(static_cast<types::Trouble>(kind)))] += count;
             }
@@ -495,16 +495,19 @@ std::optional<codec::raw_value> run_template_resolver_audit(const FeatureParams&
     for(std::uint32_t i = 0; i < entries.size(); i += 1) {
         auto& node = entries[i].node;
         auto range = node.is_ast() ? focus.produced_range(node.source_range()) : std::nullopt;
-        if(!range) {
+        auto position =
+            range ? focus.positions().range(*range, PositionEncoding::UTF16) : std::nullopt;
+        if(!position) {
             continue;
         }
-        auto before = resolver.records().size();
+        auto before = resolver.audits().size();
         resolve_occurrences(semantics, i, &resolver);
-        auto records = resolver.records().drop_front(before);
-        if(records.empty()) {
+        auto audits = resolver.audits().drop_front(before);
+        if(audits.empty()) {
             continue;
         }
         RawAuditPlace place{
+            .range = *position,
             .node = std::string(meta::enum_name(node.kind())),
             .text = focus.content()
                         .slice(range->begin, range->end)
@@ -512,15 +515,12 @@ std::optional<codec::raw_value> run_template_resolver_audit(const FeatureParams&
                         .first.trim()
                         .take_front(80)
                         .str(),
-            .queries = static_cast<std::uint32_t>(records.size()),
+            .queries = static_cast<std::uint32_t>(audits.size()),
         };
-        if(auto position = focus.positions().range(*range, PositionEncoding::UTF16)) {
-            place.range = *position;
-        }
-        for(auto& record: records) {
-            place.steps += record.steps;
-            add(place.troubles, record);
-            add(out.troubles, record);
+        for(auto& audit: audits) {
+            place.steps += audit.steps;
+            add(place.troubles, audit);
+            add(out.troubles, audit);
         }
         out.queries += place.queries;
         out.steps += place.steps;

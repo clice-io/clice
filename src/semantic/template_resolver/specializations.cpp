@@ -333,7 +333,7 @@ std::optional<llvm::SmallVector<clang::TemplateArgument, 4>>
         views::transform(slots, [&](auto handle) { return stack.slot(handle); }));
 
     /// While narrowed, node-pointer-keyed caches skip the nodes naming the
-    /// pack (resolution_kept): the same pattern node resolves differently
+    /// pack (may_keep_resolution): the same pattern node resolves differently
     /// per element, and a cached first element would silently repeat for
     /// every later one.
     pack_narrowing += 1;
