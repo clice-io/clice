@@ -169,35 +169,36 @@ std::optional<clang::QualType> PseudoInstantiator::std_type(const clang::Depende
         case Rule::AddCV: return type.withConst().withVolatile();
         default: break;
     }
-    if(opaque(type)) {
-        return unknown;
-    }
-    auto without = [&](clang::Qualifiers::TQ removed) {
+    /// A layer the argument writes is the one the rule removes; one only a
+    /// parameter may carry waits for the parameter.
+    auto without = [&](clang::QualType type, clang::Qualifiers::TQ removed) {
         clang::Qualifiers quals;
         auto unqualified = context.getUnqualifiedArrayType(type, quals);
+        if(!(quals.getCVRQualifiers() & removed) &&
+           opaque(context.getBaseElementType(unqualified))) {
+            return unknown;
+        }
         quals.removeCVRQualifiers(removed);
         return context.getQualifiedType(unqualified, quals);
     };
+    auto referred =
+        !type->isReferenceType() && opaque(type) ? clang::QualType() : type.getNonReferenceType();
+    constexpr auto cv =
+        static_cast<clang::Qualifiers::TQ>(clang::Qualifiers::Const | clang::Qualifiers::Volatile);
     switch(*rule) {
-        case Rule::RemoveReference: return type.getNonReferenceType();
-        case Rule::RemoveConst: return without(clang::Qualifiers::Const);
-        case Rule::RemoveVolatile: return without(clang::Qualifiers::Volatile);
-        case Rule::RemoveCV:
-            return without(static_cast<clang::Qualifiers::TQ>(clang::Qualifiers::Const |
-                                                              clang::Qualifiers::Volatile));
-        case Rule::RemoveCVRef: {
-            type = type.getNonReferenceType();
-            if(opaque(type)) {
-                return unknown;
-            }
-            return without(static_cast<clang::Qualifiers::TQ>(clang::Qualifiers::Const |
-                                                              clang::Qualifiers::Volatile));
-        }
+        case Rule::RemoveReference: return referred.isNull() ? unknown : referred;
+        case Rule::RemoveConst: return without(type, clang::Qualifiers::Const);
+        case Rule::RemoveVolatile: return without(type, clang::Qualifiers::Volatile);
+        case Rule::RemoveCV: return without(type, cv);
+        case Rule::RemoveCVRef: return referred.isNull() ? unknown : without(referred, cv);
         case Rule::RemovePointer: {
-            auto* pointer = type->getAs<clang::PointerType>();
-            return pointer ? pointer->getPointeeType() : type;
+            if(auto* pointer = type->getAs<clang::PointerType>()) {
+                return pointer->getPointeeType();
+            }
+            return opaque(type) ? unknown : type;
         }
-        case Rule::AddPointer: return context.getPointerType(type.getNonReferenceType());
+        case Rule::AddPointer:
+            return referred.isNull() ? unknown : context.getPointerType(referred);
         case Rule::Decay: {
             type = type.getNonReferenceType();
             if(opaque(type)) {

@@ -587,8 +587,10 @@ ZEST_CASE(StandardTypeRules) {
             using enabled = typename std::enable_if<sizeof(T) == 4, T*>::type;
             using waiting = typename std::remove_reference<T>::type;
             using identity = typename std::type_identity<T>::type;
-            using void_ref = typename std::add_lvalue_reference<void>::type;
+            using void_ref = typename std::add_lvalue_reference<
+                typename std::conditional<true, void, T>::type>::type;
             using unconst = typename std::remove_const<const T[3]>::type;
+            using unwritten = typename std::remove_const<T[3]>::type;
             using bare = typename std::remove_cvref<const T&>::type;
             using pointee = typename std::remove_pointer<T*>::type;
             using pointer = typename std::add_pointer<T&>::type;
@@ -627,6 +629,9 @@ ZEST_CASE(StandardTypeRules) {
                                               nullptr,
                                               clang::ArraySizeModifier::Normal,
                                               0)));
+    auto unwritten = resolve("unwritten");
+    ZASSERT(!unwritten.isNull());
+    ZEXPECT(unwritten->getAs<clang::DependentNameType>() != nullptr);
     ZEXPECT(same(resolve("bare"), parameter));
     ZEXPECT(same(resolve("pointee"), parameter));
     ZEXPECT(same(resolve("pointer"), context.getPointerType(parameter)));

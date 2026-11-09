@@ -1,0 +1,99 @@
+[test."$ clice inspect template-resolver-audit main.cpp"]
+stdout = '''
+{
+  "feature": "template-resolver-audit",
+  "files": {
+    "main.cpp": {
+      "result": {
+        "queries": 4,
+        "steps": 20,
+        "troubles": {
+          "AmbiguousBase": 1,
+          "Cycle": 1,
+          "Undecided": 1
+        },
+        "places": [
+          {
+            "range": {
+              "start": {
+                "line": 23,
+                "character": 4
+              },
+              "end": {
+                "line": 23,
+                "character": 32
+              }
+            },
+            "node": "TypeLoc",
+            "text": "typename both<T>::value_type",
+            "queries": 1,
+            "steps": 12,
+            "troubles": {
+              "AmbiguousBase": 1
+            }
+          },
+          {
+            "range": {
+              "start": {
+                "line": 5,
+                "character": 4
+              },
+              "end": {
+                "line": 5,
+                "character": 30
+              }
+            },
+            "node": "TypeLoc",
+            "text": "typename traits<F>::result",
+            "queries": 1,
+            "steps": 6,
+            "troubles": {
+              "Cycle": 1
+            }
+          },
+          {
+            "range": {
+              "start": {
+                "line": 1,
+                "character": 33
+              },
+              "end": {
+                "line": 1,
+                "character": 44
+              }
+            },
+            "node": "Stmt",
+            "text": "F::operator",
+            "queries": 1,
+            "steps": 1,
+            "troubles": {}
+          },
+          {
+            "range": {
+              "start": {
+                "line": 38,
+                "character": 4
+              },
+              "end": {
+                "line": 38,
+                "character": 31
+              }
+            },
+            "node": "TypeLoc",
+            "text": "typename pick<N == 0>::type",
+            "queries": 1,
+            "steps": 1,
+            "troubles": {
+              "Undecided": 1
+            }
+          }
+        ]
+      },
+      "markers": null,
+      "error": null,
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0
