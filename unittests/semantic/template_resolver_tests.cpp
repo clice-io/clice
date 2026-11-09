@@ -519,13 +519,13 @@ ZEST_CASE(MemberValueUnderBindings) {
         template <class T> struct is_int { static constexpr bool value = false; };
         template <> struct is_int<int> { static constexpr bool value = true; };
         template <bool B> struct flag { static constexpr bool value = B; };
-        template <bool B, class R = void> struct enable_if {};
-        template <class R> struct enable_if<true, R> { using type = R; };
+        template <bool B> struct pick { using type = long; };
+        template <> struct pick<true> { using type = int; };
         template <class A, class B> struct traits {
             static constexpr bool ok = flag<is_int<B>::value>::value;
         };
         template <class T> struct user {
-            using t = typename enable_if<traits<T, int>::ok, int>::type;
+            using t = typename pick<traits<T, int>::ok>::type;
         };
     )code");
     ZASSERT(compile());
@@ -536,6 +536,28 @@ ZEST_CASE(MemberValueUnderBindings) {
     auto resolved = unit->get<types::TemplateResolver>().resolve(t->getUnderlyingType());
     ZASSERT(!resolved.isNull());
     ZEXPECT(resolved.getCanonicalType() == unit->context().IntTy);
+}
+
+ZEST_CASE(DefaultUnderBindings) {
+    /// The default of `put`'s second parameter reads the class's `A`, bound
+    /// to `float` by the object: it cannot form, and `put` is no candidate.
+    add_focus("main.cpp", R"code(
+        template <class T> struct is_int { static constexpr bool value = false; };
+        template <> struct is_int<int> { static constexpr bool value = true; };
+        template <bool B, class R = void> struct enable_if {};
+        template <class R> struct enable_if<true, R> { using type = R; };
+        template <class A, class B> struct holder {
+            template <class U, class = typename enable_if<is_int<A>::value>::type> int put(U);
+            template <class U> long put(U, int = 0);
+        };
+        template <class T> void use(holder<float, T> h) { h.put(1); }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* call = nodes.call_through<clang::CXXDependentScopeMemberExpr>();
+    ZASSERT(call);
+    ZEXPECT(unit->get<types::TemplateResolver>().callees(call).size() == 1);
 }
 
 ZEST_CASE(StandardConditionalBase) {

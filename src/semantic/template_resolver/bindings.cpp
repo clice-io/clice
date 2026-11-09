@@ -323,38 +323,72 @@ PseudoInstantiator::TemplateArguments
     return changed ? TemplateArguments(storage) : patterns;
 }
 
-bool mentions_parameters(clang::QualType type, const clang::TemplateParameterList* params) {
-    struct Finder : clang::RecursiveASTVisitor<Finder> {
-        const clang::TemplateParameterList* params = nullptr;
-        bool found = false;
+namespace {
 
-        bool owns(const clang::NamedDecl* decl) const {
-            return decl && ranges::contains(*params, decl);
+struct ParameterFinder : clang::RecursiveASTVisitor<ParameterFinder> {
+    llvm::function_ref<bool(const clang::NamedDecl*, unsigned, unsigned)> wanted;
+
+    bool found = false;
+
+    bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
+        found |= wanted(T->getDecl(), T->getDepth(), T->getIndex());
+        return !found;
+    }
+
+    /// A function parameter named in a trailing return type
+    /// (`-> decltype(f(key))`) stands for its type.
+    bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
+        auto* decl = expr->getDecl();
+        if(auto* NTTP = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(decl)) {
+            found |= wanted(NTTP, NTTP->getDepth(), NTTP->getIndex());
+        } else if(llvm::isa<clang::ParmVarDecl>(decl)) {
+            TraverseType(decl->getType());
         }
+        return !found;
+    }
 
-        bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
-            found |= T->getDecl() ? owns(T->getDecl()) : T->getDepth() == params->getDepth();
-            return !found;
+    bool TraverseTemplateName(clang::TemplateName name) {
+        if(auto* TTP =
+               llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(name.getAsTemplateDecl())) {
+            found |= wanted(TTP, TTP->getDepth(), TTP->getIndex());
         }
+        return !found && RecursiveASTVisitor::TraverseTemplateName(name);
+    }
+};
 
-        /// A function parameter named in a trailing return type
-        /// (`-> decltype(f(key))`) stands for its type.
-        bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
-            auto* decl = expr->getDecl();
-            found |= owns(decl) || (llvm::isa<clang::ParmVarDecl>(decl) &&
-                                    mentions_parameters(decl->getType(), params));
-            return !found;
-        }
-
-        bool TraverseTemplateName(clang::TemplateName name) {
-            found |= owns(name.getAsTemplateDecl());
-            return !found && RecursiveASTVisitor::TraverseTemplateName(name);
-        }
-    } finder;
-
-    finder.params = params;
+/// Whether `type` names a template parameter `wanted` holds of; a canonical
+/// type parameter comes with no declaration.
+bool names_parameter(
+    clang::QualType type,
+    llvm::function_ref<bool(const clang::NamedDecl* param, unsigned depth, unsigned index)>
+        wanted) {
+    ParameterFinder finder;
+    finder.wanted = wanted;
     finder.TraverseType(type);
     return finder.found;
+}
+
+}  // namespace
+
+bool mentions_parameters(clang::QualType type, const clang::TemplateParameterList* params) {
+    return names_parameter(type, [&](const clang::NamedDecl* param, unsigned depth, unsigned) {
+        return param ? ranges::contains(*params, param) : depth == params->getDepth();
+    });
+}
+
+bool PseudoInstantiator::names_instantiated_parameter(const clang::DependentNameType* DNT) {
+    if(!options.only_instantiation) {
+        return false;
+    }
+    auto [found, added] = cache.instantiated_names.try_emplace(DNT, false);
+    if(added) {
+        found->second =
+            names_parameter(clang::QualType(DNT, 0),
+                            [&](const clang::NamedDecl* param, unsigned, unsigned index) {
+                                return only_instantiation_argument(param, index) != nullptr;
+                            });
+    }
+    return found->second;
 }
 
 llvm::SmallVector<clang::TemplateArgument, 4>

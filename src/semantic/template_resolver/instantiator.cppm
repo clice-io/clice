@@ -302,8 +302,14 @@ struct UnitCache {
     /// Dependent names resolved to a type naming no template parameter, or
     /// to nothing (a null type), by their canonical node: the sugar of one
     /// name differs by the path that wrote it, and such an answer carries
-    /// none of it.
+    /// none of it. The canonical node names any template's parameters at
+    /// the same depth and index, so a name whose parameter the only
+    /// instantiation binds is kept by its own node alone.
     llvm::DenseMap<const void*, ResolvedType> canonical_resolved;
+
+    /// Whether a dependent name names a parameter the only instantiation of
+    /// its function binds (PseudoInstantiator::names_instantiated_parameter).
+    llvm::DenseMap<const clang::Type*, bool> instantiated_names;
 
     /// The steps taken with nothing bound (PseudoInstantiator::unbound_result):
     /// rewrites by the type and the policy, types of expressions by the
@@ -531,6 +537,10 @@ private:
     /// rebind<U>::other` with `_Traits` free): no lookup into it finds
     /// anything, whatever the rest names.
     bool unbound_root(clang::NestedNameSpecifier NNS);
+
+    /// Whether `DNT` names a parameter the only instantiation of its
+    /// function binds (only_instantiation_argument).
+    bool names_instantiated_parameter(const clang::DependentNameType* DNT);
 
     /// Resolve a specialization whose template is a dependent name
     /// (`T::template rebind<U>`) to a concrete TST when lookup finds the

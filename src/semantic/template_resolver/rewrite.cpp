@@ -650,9 +650,11 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
     auto judged = own_conclusion();
 
     bool cacheable = may_keep_resolution(DNT);
+    bool by_canonical = cacheable && !names_instantiated_parameter(DNT);
     const auto* canonical = DNT->getCanonicalTypeInternal().getTypePtr();
     if(cacheable) {
-        if(auto known = kept_resolution(cache.canonical_resolved, canonical)) {
+        if(auto known =
+               by_canonical ? kept_resolution(cache.canonical_resolved, canonical) : std::nullopt) {
             LOG_DEBUG("{}→ '{}' (by its canonical form)",
                       pad(),
                       known->isNull() ? "<unresolved>" : known->getAsString());
@@ -755,7 +757,7 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
         indent -= 1;
         if(cacheable && !inconclusive) {
             keep_resolution(cache.resolved, DNT, result, step);
-            if(!result->isDependentType()) {
+            if(by_canonical && !result->isDependentType()) {
                 keep_resolution(cache.canonical_resolved, canonical, result, step);
             }
         }
@@ -764,7 +766,7 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
 
     LOG_DEBUG("{}→ <unresolved>", pad());
     indent -= 1;
-    if(cacheable && !inconclusive) {
+    if(by_canonical && !inconclusive) {
         keep_resolution(cache.canonical_resolved, canonical, clang::QualType(), step);
     }
     return clang::QualType(DNT, 0);
