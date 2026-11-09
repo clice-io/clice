@@ -299,7 +299,7 @@ int run(Modularize& opts) {
                                         path,
                                         made.error().message()));
             }
-            if(auto error = fs::write_file(path, file.content)) {
+            if(auto error = vfs::write_text(path, file.content, file.bom)) {
                 return fail(std::format("cannot write {}: {}", path, error.message()));
             }
         }

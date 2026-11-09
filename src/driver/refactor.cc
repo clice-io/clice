@@ -134,6 +134,7 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
         std::string path;
         vfs::Stamp stamp;
         std::string text;
+        bool bom = false;
     };
 
     std::vector<Rewrite> rewrites;
@@ -146,20 +147,22 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
         }
         auto path = files.resolve(file).str();
         auto status = fs::status(path);
-        std::string content;
-        if(auto error = status ? fs::read_file(content, path) : status.error()) {
-            return std::unexpected(std::format("cannot read {}: {}", site.path, error.message()));
+        auto text = status ? vfs::read_text(path) : std::unexpected(status.error());
+        if(!text) {
+            return std::unexpected(
+                std::format("cannot read {}: {}", site.path, text.error().message()));
         }
-        auto text = vfs::without_bom(content);
-        auto renamed = feature::apply_renames(text, plan, file);
+        auto renamed = feature::apply_renames(*text, plan, file);
         if(!renamed) {
             return std::unexpected(
                 std::format("{} changed since it was indexed; run with --fresh", site.path));
         }
+        auto bom = vfs::starts_with_bom(path);
         rewrites.push_back({
             .path = std::move(path),
             .stamp = vfs::Stamp::of(*status),
-            .text = content.substr(0, content.size() - text.size()) + *renamed,
+            .text = std::move(*renamed),
+            .bom = bom,
         });
     }
     for(std::size_t i = 0; i < rewrites.size(); i += 1) {
@@ -168,7 +171,7 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
         std::string failure;
         if(!status || vfs::Stamp::of(*status) != rewrite.stamp) {
             failure = std::format("{} changed while the rename was being written", rewrite.path);
-        } else if(auto error = fs::write_file(rewrite.path, rewrite.text)) {
+        } else if(auto error = vfs::write_text(rewrite.path, rewrite.text, rewrite.bom)) {
             failure = std::format("cannot write {}: {}", rewrite.path, error.message());
         } else {
             continue;

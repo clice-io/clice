@@ -8,32 +8,49 @@ namespace clice::vfs {
 
 namespace {
 
-/// The text of an open file (see without_bom).
-llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> load_text(const fs::File& file,
-                                                             const llvm::Twine& name) {
-    auto buffer = llvm::MemoryBuffer::getOpenFile(file.native_handle(),
-                                                  name,
-                                                  /*FileSize=*/-1,
-                                                  /*RequiresNullTerminator=*/true,
-                                                  /*IsVolatile=*/true);
-    if(!buffer) {
-        return buffer;
-    }
-    auto text = without_bom((*buffer)->getBuffer());
-    if(text.size() == (*buffer)->getBufferSize()) {
-        return buffer;
-    }
-    return llvm::MemoryBuffer::getMemBufferCopy(text, (*buffer)->getBufferIdentifier());
-}
+/// Serves a buffer the process keeps to one compile, or the part of it a
+/// text takes past a byte order mark.
+class SharedBuffer : public llvm::MemoryBuffer {
+public:
+    SharedBuffer(std::shared_ptr<const llvm::MemoryBuffer> owner, bool requires_terminator) :
+        SharedBuffer(owner, owner->getBuffer(), requires_terminator) {}
 
-bool read_starts_with_bom(llvm::StringRef path) {
-    auto file = fs::File::open(path);
-    if(!file) {
-        return false;
+    SharedBuffer(std::shared_ptr<const llvm::MemoryBuffer> owner,
+                 llvm::StringRef part,
+                 bool requires_terminator) : owner(std::move(owner)) {
+        init(part.begin(), part.end(), requires_terminator);
     }
-    char head[3];
-    auto read = file->read(head);
-    return read && *read == 3 && without_bom(llvm::StringRef(head, 3)).empty();
+
+    llvm::StringRef getBufferIdentifier() const override {
+        return owner->getBufferIdentifier();
+    }
+
+    BufferKind getBufferKind() const override {
+        return owner->getBufferKind();
+    }
+
+private:
+    std::shared_ptr<const llvm::MemoryBuffer> owner;
+};
+
+/// The text of an open file (see without_bom), in the buffer its bytes
+/// were read into.
+llvm::ErrorOr<std::shared_ptr<const llvm::MemoryBuffer>> load_text(const fs::File& file,
+                                                                   const llvm::Twine& name) {
+    auto read = llvm::MemoryBuffer::getOpenFile(file.native_handle(),
+                                                name,
+                                                /*FileSize=*/-1,
+                                                /*RequiresNullTerminator=*/true,
+                                                /*IsVolatile=*/true);
+    if(!read) {
+        return read.getError();
+    }
+    std::shared_ptr<const llvm::MemoryBuffer> bytes = std::move(*read);
+    auto text = without_bom(bytes->getBuffer());
+    if(text.size() == bytes->getBufferSize()) {
+        return bytes;
+    }
+    return std::make_shared<SharedBuffer>(std::move(bytes), text, true);
 }
 
 /// Whether the file a stamp describes starts with the mark, peeked once
@@ -60,7 +77,7 @@ bool starts_with_bom(const Stamp& stamp, llvm::StringRef path) {
             return it->second;
         }
     }
-    auto has_bom = read_starts_with_bom(path);
+    auto has_bom = vfs::starts_with_bom(path);
     std::lock_guard lock(mutex);
     results.try_emplace(key, has_bom);
     return has_bom;
@@ -101,26 +118,6 @@ llvm::StringMap<fs::Status> list_statuses(llvm::StringRef dir) {
 }
 
 #endif
-
-/// Serves a buffer the process keeps to one compile.
-class SharedBuffer : public llvm::MemoryBuffer {
-public:
-    SharedBuffer(std::shared_ptr<const llvm::MemoryBuffer> owner, bool requires_terminator) :
-        owner(std::move(owner)) {
-        init(this->owner->getBufferStart(), this->owner->getBufferEnd(), requires_terminator);
-    }
-
-    llvm::StringRef getBufferIdentifier() const override {
-        return owner->getBufferIdentifier();
-    }
-
-    BufferKind getBufferKind() const override {
-        return owner->getBufferKind();
-    }
-
-private:
-    std::shared_ptr<const llvm::MemoryBuffer> owner;
-};
 
 /// Source texts kept across the compiles of a process, by the path they
 /// were opened under: every compile reads each header it includes, and
@@ -399,6 +396,32 @@ std::expected<std::string, std::error_code> read_text(llvm::StringRef path) {
     }
     text.erase(0, text.size() - without_bom(text).size());
     return text;
+}
+
+bool starts_with_bom(llvm::StringRef path) {
+    auto file = fs::File::open(path);
+    if(!file) {
+        return false;
+    }
+    char head[3];
+    auto read = file->read(head);
+    return read && llvm::StringRef(head, *read) == byte_order_mark;
+}
+
+std::error_code write_text(llvm::StringRef path, llvm::StringRef text, bool bom) {
+    auto file = fs::File::open(path, {.write = true, .truncate = true, .create = true});
+    if(!file) {
+        return file.error();
+    }
+    if(bom) {
+        if(auto error = file->write(byte_order_mark)) {
+            return error;
+        }
+    }
+    if(auto error = file->write(text)) {
+        return error;
+    }
+    return file->close();
 }
 
 std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path,

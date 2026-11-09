@@ -33,6 +33,10 @@ struct Rewriting {
         /// Relative to the project root.
         std::string path;
         std::string content;
+
+        /// Whether the source it is rewritten from starts with a UTF-8 byte
+        /// order mark, which it keeps.
+        bool bom = false;
     };
 
     struct Module {

@@ -13,6 +13,7 @@ import :syntax.header_context;
 import :syntax.lexical_scan;
 import :syntax.position;
 import :syntax.preamble;
+import :vfs.file_system;
 
 namespace clice {
 
@@ -827,6 +828,44 @@ struct SystemHeaderPragma : clang::PragmaHandler {
     SilencedHeaders& silenced;
 };
 
+/// `#embed` reads a file through the one content clang keeps for it, which
+/// the file system serves as text, without its byte order mark, when an
+/// earlier lookup found the file without opening it. After `__has_embed`,
+/// a file with the mark gets its bytes as that content while nothing has
+/// read it yet; what an `#include` entered keeps its text.
+class EmbeddedBytes : public clang::PPCallbacks {
+public:
+    explicit EmbeddedBytes(clang::SourceManager& sources) : sources(sources) {}
+
+    void HasEmbed(clang::SourceLocation,
+                  llvm::StringRef,
+                  bool,
+                  clang::OptionalFileEntryRef file) override {
+        if(!file) {
+            return;
+        }
+        auto path = file->getFileEntry().tryGetRealPathName();
+        if(path.empty() || !vfs::starts_with_bom(path)) {
+            return;
+        }
+        auto contents = llvm::make_range(sources.fileinfo_begin(), sources.fileinfo_end());
+        if(llvm::any_of(contents, [&](const auto& entry) { return entry.first == *file; })) {
+            return;
+        }
+        if(auto bytes = sources.getFileManager().getVirtualFileSystem().getBufferForFile(
+               path,
+               /*FileSize=*/-1,
+               /*RequiresNullTerminator=*/true,
+               /*IsVolatile=*/false,
+               /*IsText=*/false)) {
+            sources.overrideFileContents(*file, std::move(*bytes));
+        }
+    }
+
+private:
+    clang::SourceManager& sources;
+};
+
 }  // namespace
 
 static void handle_system_header_pragmas(clang::Preprocessor& pp) {
@@ -928,6 +967,7 @@ CompilationStatus CompilationUnit::run() {
 
     /// Add PPCallbacks to collect preprocessing information.
     instance->getPreprocessor().addPPCallbacks(directive_recorder());
+    instance->getPreprocessor().addPPCallbacks(std::make_unique<EmbeddedBytes>(SM()));
     handle_system_header_pragmas(instance->getPreprocessor());
 
     // Past the end of the focus file clang instantiates the templates the

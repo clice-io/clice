@@ -76,18 +76,29 @@ struct ObservedFile {
 
 namespace vfs {
 
+constexpr llvm::StringLiteral byte_order_mark = "\xEF\xBB\xBF";
+
 /// A source file's text as every part of clice sees it: its bytes without
 /// a leading UTF-8 byte order mark — the text an editor shows and sends.
 /// Clang skips the mark as well, but would count it in every offset.
 inline llvm::StringRef without_bom(llvm::StringRef bytes) {
     llvm::StringRef text = bytes;
-    text.consume_front("\xEF\xBB\xBF");
+    text.consume_front(byte_order_mark);
     return text;
 }
 
 /// A file's text (see without_bom). Read, never mapped: Windows refuses an
 /// editor's save over a mapped file.
 std::expected<std::string, std::error_code> read_text(llvm::StringRef path);
+
+/// Whether the file at `path` starts with a UTF-8 byte order mark, which
+/// its text leaves out (see without_bom).
+bool starts_with_bom(llvm::StringRef path);
+
+/// Writes `text` as the whole of the file at `path`, after a UTF-8 byte
+/// order mark when `bom`: a file read as text, rewritten, keeps the mark
+/// it had.
+std::error_code write_text(llvm::StringRef path, llvm::StringRef text, bool bom);
 
 /// A file's text read and hashed under the pairing discipline: open a
 /// handle, fstat it, read through it, fstat again. Equal fstats prove
@@ -164,9 +175,10 @@ public:
         ProxyFileSystem(llvm::vfs::createPhysicalFileSystem()), hidden(std::move(hidden)) {}
 
     /// The size of the text: clang checks what it reads against it, and a
-    /// PCH records it for every input. Status carries no use, so a binary
-    /// use of a file clang only stat'ed first gets the text: `#embed` after
-    /// `__has_embed` probed the same file reads it without the mark.
+    /// PCH records it for every input. Status carries no use, and clang
+    /// keeps one content for a file: `#embed` reads the text of a file the
+    /// same compile included, which lacks its mark. One `__has_embed` only
+    /// looked up gets its bytes from the compile (see CompilationUnit::run).
     llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override;
 
     /// Named by the path the OS opened (its RealName), which names include

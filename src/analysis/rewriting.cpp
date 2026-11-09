@@ -388,6 +388,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     }
 
     std::map<std::uint32_t, std::string> contents;
+    llvm::DenseSet<std::uint32_t> marked;
     std::map<std::uint32_t, Draft> drafts;
     for(auto file: files) {
         auto& info = facts.files[file];
@@ -396,6 +397,9 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         if(!content) {
             return std::unexpected(
                 std::format("cannot read {}: {}", path, content.error().message()));
+        }
+        if(vfs::starts_with_bom(path)) {
+            marked.insert(file);
         }
         auto& draft = drafts[file];
         Text text(contents[file] = std::move(*content));
@@ -698,7 +702,11 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 return std::unexpected(*taken);
             }
         }
-        result.files.push_back({.path = path, .content = assemble(lines, verbatim)});
+        result.files.push_back({
+            .path = path,
+            .content = assemble(lines, verbatim),
+            .bom = marked.contains(file),
+        });
         if(!module_unit) {
             plan.importers.push_back(path);
             continue;
@@ -799,7 +807,11 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         if(auto taken = reserve(path, facts.files[defining].path)) {
             return std::unexpected(*taken);
         }
-        result.files.push_back({.path = path, .content = assemble(lines)});
+        result.files.push_back({
+            .path = path,
+            .content = assemble(lines),
+            .bom = marked.contains(defining),
+        });
         plan.macros.push_back(std::move(path));
     }
     for(auto* list: {&plan.importers, &plan.macros, &plan.removed, &plan.warnings}) {

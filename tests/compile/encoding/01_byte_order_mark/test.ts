@@ -25,7 +25,9 @@ test("marked host keeps the context", async (t) => {
 });
 
 test("embedded data keeps the mark", async (t) => {
-    // The mark is text's, not data's: #embed reads all five bytes.
+    // The mark is text's, not data's: #embed reads all five bytes, after
+    // __has_embed looked the file up too.
     const s = await t.start();
     expect(await s.errors("embed.cpp")).toEqual([]);
+    expect(await s.errors("checked.cpp")).toEqual([]);
 });

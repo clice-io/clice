@@ -255,6 +255,7 @@ ZEST_CASE(CompileFSDropsBom) {
     auto buffer = (*file)->getBuffer(path, -1, true, false);
     ZASSERT(bool(buffer));
     ZASSERT((*buffer)->getBuffer() == "int x;\n");
+    ZASSERT(*(*buffer)->getBufferEnd() == '\0');
     ZASSERT((*file)->status()->getSize() == 7u);
 }
 
@@ -291,6 +292,17 @@ ZEST_CASE(ReadModesServeBom) {
     ZASSERT(mapped->bytes() ==
             "\xEF\xBB\xBF"
             "AB");
+}
+
+ZEST_CASE(WriteKeepsBom) {
+    TempDir tmp;
+    auto path = tmp.path("bom.h");
+    ZASSERT(!vfs::write_text(path, "int y;\n", true));
+    ZASSERT(read_file(path).value_or("") == "\xEF\xBB\xBFint y;\n");
+    ZASSERT(vfs::starts_with_bom(path));
+    ZASSERT(!vfs::write_text(path, "int z;\n", false));
+    ZASSERT(read_file(path).value_or("") == "int z;\n");
+    ZASSERT(!vfs::starts_with_bom(path));
 }
 
 ZEST_CASE(ListingKnowsDirectories) {
