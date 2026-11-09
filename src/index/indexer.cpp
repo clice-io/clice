@@ -118,10 +118,12 @@ clang::QualType value_type(const clang::ValueDecl* decl) {
 
 /// The declaration go-to-type-definition reaches from a value or a
 /// function: the one its value_type names once pointers, references and
-/// arrays are stripped, and inside a template once the resolver resolved it.
+/// arrays are stripped, and inside a template once the resolver, if any,
+/// resolved it.
 const clang::NamedDecl* type_definition_of(const clang::ValueDecl* decl,
-                                           types::TemplateResolver& resolver) {
-    return types::decl_of(types::unwrap(resolver.resolve(value_type(decl))), &resolver);
+                                           types::TemplateResolver* resolver) {
+    auto type = value_type(decl);
+    return types::decl_of(types::unwrap(resolver ? resolver->resolve(type) : type), resolver);
 }
 
 /// Occurrences cover disjoint ranges: a name inside another symbol's
@@ -573,16 +575,19 @@ public:
     /// value): the type it is declared with, and for a smart pointer also
     /// the type it points to.
     void add_type_definitions(const clang::ValueDecl* decl) {
-        auto* target = type_definition_of(decl, resolver);
+        auto* target = type_definition_of(decl, place_resolver);
         if(!target) {
             return;
         }
         add_pair_relation(decl, RelationKind::TypeDefinition, target, decl->getLocation());
-        auto type = types::unwrap(resolver.resolve(value_type(decl)));
+        if(!place_resolver) {
+            return;
+        }
+        auto type = types::unwrap(place_resolver->resolve(value_type(decl)));
         if(!llvm::isa<clang::CXXRecordDecl>(target) || type->isDependentType()) {
             return;
         }
-        if(auto* pointed = types::decl_of(types::unwrap(resolver.arrow_pointee(type)))) {
+        if(auto* pointed = types::decl_of(types::unwrap(place_resolver->arrow_pointee(type)))) {
             add_pair_relation(decl, RelationKind::TypeDefinition, pointed, decl->getLocation());
         }
     }
@@ -600,11 +605,11 @@ public:
         if(pattern == decl->getCanonicalDecl()) {
             return;
         }
-        auto* target = type_definition_of(llvm::cast<clang::ValueDecl>(decl), resolver);
+        auto* target = type_definition_of(llvm::cast<clang::ValueDecl>(decl), place_resolver);
         if(!target) {
             return;
         }
-        auto* declared = type_definition_of(llvm::cast<clang::ValueDecl>(pattern), resolver);
+        auto* declared = type_definition_of(llvm::cast<clang::ValueDecl>(pattern), place_resolver);
         auto& entities = unit.get<EntityTable>();
         if(declared && entities.entity(decls::normalize(declared)) ==
                            entities.entity(decls::normalize(target))) {
@@ -846,8 +851,10 @@ public:
             }
             // A dependent call reaches every candidate the resolver finds
             // for it, as its candidate and guess references do.
-            for(auto* candidate: resolver.callees(CE)) {
-                call(candidate->getUnderlyingDecl(), range);
+            if(place_resolver) {
+                for(auto* candidate: place_resolver->callees(CE)) {
+                    call(candidate->getUnderlyingDecl(), range);
+                }
             }
             return;
         }
@@ -1081,10 +1088,10 @@ public:
            AT && AT->getDeducedKind() != clang::DeducedKind::Deduced) {
             // A dependent initializer leaves `auto` to instantiation.
             const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
-            if(!var || !var->getInit()) {
+            if(!var || !var->getInit() || !place_resolver) {
                 return;
             }
-            type = resolver.deduce(var);
+            type = place_resolver->deduce(var);
             if(type.isNull()) {
                 return;
             }
@@ -1092,7 +1099,7 @@ public:
 
         for(const auto* target:
             types::decls_of(types::unwrap(readable.readable(type, decl->getDeclContext())),
-                            &resolver)) {
+                            place_resolver)) {
             // A closure type is declared by no name to reach.
             if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(target);
                record && record->isLambda()) {
@@ -1174,9 +1181,17 @@ public:
     /// every unit including it shares them; what a declaration holds, met
     /// after it in the walk, sees what the declaration does.
     void see_from(const Semantics& semantics, std::uint32_t i) {
-        if(const auto* decl = semantics.node(i).node.get<clang::Decl>()) {
-            resolver.see_from(decl->getLocation());
+        const auto* decl = semantics.node(i).node.get<clang::Decl>();
+        if(!decl) {
+            return;
         }
+        auto location = decl->getLocation();
+        if(unit.in_library(location) && !unit.focus_file().contains(unit.file_id(location))) {
+            place_resolver = nullptr;
+            return;
+        }
+        place_resolver = &resolver;
+        resolver.see_from(location);
     }
 
     void project_node(const Semantics& semantics, std::uint32_t i) {
@@ -1196,7 +1211,7 @@ public:
             }
             return;
         }
-        for(auto& occurrence: resolve_occurrences(semantics, i, &resolver)) {
+        for(auto& occurrence: resolve_occurrences(semantics, i, place_resolver)) {
             auto name = add_name(occurrence);
             if(instantiation_entries) {
                 continue;
@@ -1281,8 +1296,8 @@ public:
         };
         add(target);
         // A smart pointer leads on to its pointee, as add_type_definitions.
-        if(llvm::isa<clang::CXXRecordDecl>(target)) {
-            if(auto* pointed = types::decl_of(types::unwrap(resolver.arrow_pointee(type)))) {
+        if(llvm::isa<clang::CXXRecordDecl>(target) && place_resolver) {
+            if(auto* pointed = types::decl_of(types::unwrap(place_resolver->arrow_pointee(type)))) {
                 add(pointed);
             }
         }
@@ -1699,7 +1714,7 @@ public:
     /// own entries are their files' to index.
     void collect_body_names(const Semantics& path, std::uint32_t index) {
         see_from(path, index);
-        for(auto& occurrence: resolve_occurrences(path, index, &resolver)) {
+        for(auto& occurrence: resolve_occurrences(path, index, place_resolver)) {
             if(occurrence.location.isMacroID() &&
                unit.focus_file().written_offset(occurrence.location)) {
                 body_names.push_back({occurrence.decl, occurrence.kind, occurrence.location});
@@ -2119,6 +2134,13 @@ private:
     llvm::ArrayRef<std::uint64_t> known_variants;
 
     types::TemplateResolver resolver;
+
+    /// The resolver for the place see_from set; none in a system header
+    /// other than the focus file. Every unit including a library would
+    /// resolve its templates' bodies again, the most of the resolver's work
+    /// in a unit, for names only a reader of the library's own code asks
+    /// about: opening the header makes it the focus file.
+    types::TemplateResolver* place_resolver = &resolver;
 
     /// The types function signatures print as readers know them.
     display::ReadableTypes readable;
