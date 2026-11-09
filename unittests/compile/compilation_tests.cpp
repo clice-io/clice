@@ -707,9 +707,10 @@ ZEST_CASE(PCHKeepsModuleImports) {
 }
 
 ZEST_CASE(ModulesEmbedNoSources) {
-    // A module embedding its sources would override them in a compile
-    // importing it, where a precompiled header holding the same file then
-    // refuses to load: the build reads them on disk whatever it is asked.
+    // A module embedding its sources overrides them in a compile loading
+    // it, where a precompiled header holding the same files then refuses to
+    // load. The build leaves them on disk whatever it is asked: the module
+    // file comes out as without the request.
     TempDir tmp;
     tmp.touch("shared.h", "#pragma once\ninline int shared() { return 1; }\n");
     tmp.touch("b.cppm", R"(module;
@@ -717,49 +718,29 @@ ZEST_CASE(ModulesEmbedNoSources) {
 export module B;
 export int b() { return shared(); }
 )");
-    llvm::StringRef content = R"(#include "shared.h"
-int before();
-import B;
-int use() { return b() + shared(); }
-)";
-    tmp.touch("main.cpp", content);
 
     FileTable file_table;
     CommandTable commands;
     CompilationDatabase cdb{file_table, commands};
     Toolchain toolchain{commands, file_table};
+    auto pcm_path = precompiled_path("pcm");
+    auto build = [&](std::optional<std::string> embedding) {
+        CompilationParams params;
+        params.kind = CompilationKind::ModuleInterface;
+        params.input.arguments = cxx20_command(cdb, toolchain, tmp, "b.cppm");
+        if(embedding) {
+            // The command is cc1's: the option goes as -Xclang passes it on.
+            params.input.arguments.insert(params.input.arguments.end() - 1, *embedding);
+        }
+        params.output_file = pcm_path;
+        ZASSERT(clice::compile(std::move(params))->has_output());
+        return read_file(pcm_path);
+    };
 
-    for(auto embedding: {std::string("-fmodules-embed-all-files"),
-                         "-fmodules-embed-file=" + tmp.path("shared.h")}) {
-        CompilationParams module_params;
-        module_params.kind = CompilationKind::ModuleInterface;
-        module_params.input.arguments = cxx20_command(cdb, toolchain, tmp, "b.cppm");
-        module_params.input.arguments.insert(module_params.input.arguments.end() - 1,
-                                             {"-Xclang", embedding});
-        auto pcm_path = precompiled_path("pcm");
-        module_params.output_file = pcm_path;
-        ZASSERT(clice::compile(std::move(module_params))->has_output());
-
-        CompilationParams preamble;
-        preamble.kind = CompilationKind::Preamble;
-        preamble.input.arguments = cxx20_command(cdb, toolchain, tmp, "main.cpp");
-        auto pch_path = precompiled_path("pch");
-        preamble.output_file = pch_path;
-        auto bound = preamble_bound(content);
-
-        CompilationParams params{.kind = CompilationKind::Content, .input = preamble.input};
-        params.input.pch = {pch_path, bound};
-        params.input.pcms.try_emplace("B", pcm_path);
-
-        preamble.input.add_remapped_file(tmp.path("main.cpp"), content, bound);
-        ZASSERT(clice::compile(std::move(preamble))->has_output());
-
-        auto unit = clice::compile(std::move(params));
-        ZASSERT(unit->completed());
-        ZEXPECT(ranges::none_of(unit->diagnostics(), [](auto& diag) {
-            return diag.id.level >= DiagnosticLevel::Error;
-        }));
-    }
+    auto plain = build(std::nullopt);
+    ZASSERT(plain);
+    ZEXPECT(build("-fmodules-embed-all-files") == plain);
+    ZEXPECT(build("-fmodules-embed-file=" + tmp.path("shared.h")) == plain);
 }
 
 ZEST_CASE(PCHWithoutModule) {
