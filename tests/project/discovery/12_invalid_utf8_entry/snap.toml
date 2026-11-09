@@ -5,9 +5,9 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 stderr = '''
 warning: Skipping entry 0 of the compilation database compile_commands.json: a.cpp holds bytes that are not UTF-8
-warning: 1 entries of the compilation database compile_commands.json are skipped; the log names them
+warning: 1 entry of the compilation database compile_commands.json is skipped; the log names it
 '''
 exit = 0
 
 [server.guidance]
-value = ["1 entries of the compilation database ${WS}/compile_commands.json are skipped; the log names them"]
+value = ["1 entry of the compilation database ${WS}/compile_commands.json is skipped; the log names it"]

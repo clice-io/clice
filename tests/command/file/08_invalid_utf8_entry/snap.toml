@@ -1,7 +1,7 @@
 [test."$ clice command a.cpp"]
 stderr = '''
 warning: Skipping entry 0 of the compilation database compile_commands.json: a.cpp holds bytes that are not UTF-8
-warning: 1 entries of the compilation database compile_commands.json are skipped; the log names them
+warning: 1 entry of the compilation database compile_commands.json is skipped; the log names it
 error: No compilation database lists a.cpp
 '''
 exit = 1
@@ -16,7 +16,7 @@ ${WS}/compile_commands.json:
 '''
 stderr = '''
 warning: Skipping entry 0 of the compilation database compile_commands.json: a.cpp holds bytes that are not UTF-8
-warning: 1 entries of the compilation database compile_commands.json are skipped; the log names them
+warning: 1 entry of the compilation database compile_commands.json is skipped; the log names it
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
 '''
 exit = 0
@@ -51,7 +51,7 @@ stdout = '''
 '''
 stderr = '''
 warning: Skipping entry 0 of the compilation database compile_commands.json: a.cpp holds bytes that are not UTF-8
-warning: 1 entries of the compilation database compile_commands.json are skipped; the log names them
+warning: 1 entry of the compilation database compile_commands.json is skipped; the log names it
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
 error: 1 of the entries stay driver commands: the warnings above say why
 '''
