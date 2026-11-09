@@ -44,9 +44,9 @@ enum class Deduction : std::uint8_t {
 /// against `array<T, N>`), are special cases instead: they do not match,
 /// and the primary template stands for the rest.
 struct DeductionOptions {
-    /// Value arguments that may hold any value — defaults that do not fold:
-    /// a value pattern meeting one is undecided whatever its type.
-    llvm::ArrayRef<const clang::Expr*> open;
+    /// Whether a value argument may hold any value — a default that does
+    /// not fold: a value pattern meeting one is undecided whatever its type.
+    llvm::function_ref<bool(const clang::Expr*)> open;
 
     /// Leave a parameter the match binds nothing to null rather than fail
     /// the deduction: a function template's defaults fill it after the
@@ -83,6 +83,15 @@ bool may_name(clang::ASTContext& context,
               llvm::ArrayRef<clang::TemplateArgument> specialized,
               llvm::ArrayRef<clang::TemplateArgument> arguments,
               const DeductionOptions& options = {});
+
+/// What the name of `record`, a class template's pattern or a partial
+/// specialization, stands for inside it: the specialization whose arguments
+/// are its own parameters as written. The canonical form names a parameter
+/// by its depth and index alone, which another template's parameter at the
+/// same place would be taken for (`variant<_Types...>`'s `_Types` for
+/// `conjunction<_First, _Rest...>`'s `_First`).
+clang::QualType injected_specialization(clang::ASTContext& context,
+                                        const clang::CXXRecordDecl* record);
 
 /// Whether `lhs` and `rhs` are one type, by their shapes: none while the
 /// template parameters in them leave it open. A type never holds itself, so

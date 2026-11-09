@@ -23,20 +23,54 @@ public:
     /// `using std::swap;` brings only the overloads the file sees.
     bool sees(const clang::NamedDecl* decl);
 
+    /// The places that see alike as the one looked from, numbered from 1:
+    /// those of its file between the same two of the file's imports and
+    /// includes, or with the whole unit.
+    std::uint32_t view() {
+        place();
+        return current;
+    }
+
 private:
     /// What a file brings in itself: it, every file it includes with what
-    /// those include in turn, and the modules they import.
+    /// those include in turn (by their nodes), and the modules they import.
     struct Reach {
-        llvm::DenseSet<clang::FileID> files;
+        llvm::BitVector files;
 
         llvm::StringSet<> modules;
+
+        /// Whether `node` is among the files.
+        bool brings(std::optional<unsigned> node) const {
+            return node && *node < files.size() && files.test(*node);
+        }
     };
 
     /// Add the modules an import of `name` makes visible: it, and those it
     /// re-exports, in turn.
     void add_imported(llvm::StringRef name, llvm::StringSet<>& modules);
 
+    /// Find the place looked from, the first time the queries ask of it:
+    /// the indexer looks from every declaration, few of which ask.
+    void place();
+
     const Reach& reach(clang::FileID file);
+
+    /// The node of `file` in the unit's include graph, added when new.
+    unsigned node(clang::FileID file);
+
+    /// The node of `file`, if the graph has it.
+    std::optional<unsigned> known_node(clang::FileID file) const;
+
+    /// Lay out the unit's include graph by node, once: walking it touches
+    /// each file's includes for every file that brings it.
+    void lay_out();
+
+    /// Where in `file` its imports and includes start bringing declarations
+    /// in, in order: past each of them.
+    llvm::ArrayRef<std::uint32_t> boundaries(clang::FileID file);
+
+    /// The offset past a directive at `location` in its file.
+    std::uint32_t past(clang::SourceLocation location);
 
     /// The offset in `file` from which `decl` is visible on its own: 0 when
     /// the file or a forced include declares it or it is a function of the
@@ -48,13 +82,38 @@ private:
 private:
     CompilationUnit& unit;
 
+    /// Where look_from was last told to look from, and whether place found
+    /// the place since.
+    clang::SourceLocation looked_from;
+
+    bool placed = true;
+
     /// The place looked from; none for the whole unit.
     clang::FileID file;
 
     std::uint32_t offset = 0;
 
+    /// The view of the place looked from (view).
+    std::uint32_t current = 0;
+
+    /// The views by their file and the boundaries before their places.
+    llvm::DenseMap<std::pair<clang::FileID, unsigned>, std::uint32_t> views;
+
+    /// The boundaries of each file (boundaries).
+    llvm::DenseMap<clang::FileID, llvm::SmallVector<std::uint32_t, 0>> file_boundaries;
+
     /// What each file brings in itself (reach).
     llvm::DenseMap<clang::FileID, Reach> reached;
+
+    /// The include graph (lay_out): the node of each file, and by node the
+    /// nodes it includes and the full names of the modules it imports.
+    llvm::DenseMap<clang::FileID, unsigned> nodes;
+
+    std::vector<llvm::SmallVector<unsigned, 4>> includes;
+
+    std::vector<llvm::SmallVector<llvm::StringRef, 0>> imports;
+
+    bool laid_out = false;
 
     /// Where in a file a declaration becomes visible on its own
     /// (first_visible).

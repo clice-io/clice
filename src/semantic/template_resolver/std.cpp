@@ -1,0 +1,345 @@
+module clice;
+
+import :semantic.template_resolver.instantiator;
+import :support.logging;
+
+namespace clice::types {
+
+namespace {
+
+/// What a standard library class template's `type` is, by the standard.
+enum class Rule : std::uint8_t {
+    Conditional,
+    EnableIf,
+    TypeIdentity,
+    RemoveReference,
+    RemoveConst,
+    RemoveVolatile,
+    RemoveCV,
+    RemoveCVRef,
+    RemovePointer,
+    AddPointer,
+    AddLValueReference,
+    AddRValueReference,
+    AddConst,
+    AddVolatile,
+    AddCV,
+    Decay,
+};
+
+/// The class templates of namespace std whose `type` the resolver answers by
+/// rule. Reading their definitions costs every query a deduction through
+/// their partial specializations, written differently by each library, and
+/// the answer is the same in all of them.
+constexpr std::pair<llvm::StringLiteral, Rule> rules[] = {
+    {"conditional",          Rule::Conditional       },
+    {"enable_if",            Rule::EnableIf          },
+    {"type_identity",        Rule::TypeIdentity      },
+    {"remove_reference",     Rule::RemoveReference   },
+    {"remove_const",         Rule::RemoveConst       },
+    {"remove_volatile",      Rule::RemoveVolatile    },
+    {"remove_cv",            Rule::RemoveCV          },
+    {"remove_cvref",         Rule::RemoveCVRef       },
+    {"remove_pointer",       Rule::RemovePointer     },
+    {"add_pointer",          Rule::AddPointer        },
+    {"add_lvalue_reference", Rule::AddLValueReference},
+    {"add_rvalue_reference", Rule::AddRValueReference},
+    {"add_const",            Rule::AddConst          },
+    {"add_volatile",         Rule::AddVolatile       },
+    {"add_cv",               Rule::AddCV             },
+    {"decay",                Rule::Decay             },
+};
+
+/// What a standard library class template's `value` is, by the standard:
+/// what its arguments' values give, which each library reaches through
+/// partial specializations no argument of a length not known settles.
+enum class ValueRule : std::uint8_t {
+    Conjunction,
+    Disjunction,
+    Negation,
+};
+
+constexpr std::pair<llvm::StringLiteral, ValueRule> value_rules[] = {
+    {"conjunction", ValueRule::Conjunction},
+    {"disjunction", ValueRule::Disjunction},
+    {"negation",    ValueRule::Negation   },
+};
+
+/// The rule `DNT`, a `type` of a standard library class template's
+/// specialization, is answered by, with the specialization as written.
+std::optional<Rule> rule_of(const clang::DependentNameType* DNT,
+                            const clang::TemplateSpecializationType*& written) {
+    auto* name = DNT->getIdentifier();
+    auto qualifier = DNT->getQualifier();
+    if(!name || !name->isStr("type") ||
+       qualifier.getKind() != clang::NestedNameSpecifier::Kind::Type) {
+        return std::nullopt;
+    }
+    written = qualifier.getAsType()->getAs<clang::TemplateSpecializationType>();
+    auto* CTD = written ? llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
+                              written->getTemplateName().getAsTemplateDecl())
+                        : nullptr;
+    if(!CTD || !CTD->getIdentifier() || !CTD->isInStdNamespace()) {
+        return std::nullopt;
+    }
+    for(auto [spelling, rule]: rules) {
+        if(CTD->getName() == spelling) {
+            return rule;
+        }
+    }
+    return std::nullopt;
+}
+
+/// Whether nothing tells how `type` is built: a parameter, a dependent name,
+/// a `decltype` may turn out a reference, cv-qualified or an array.
+bool opaque(clang::QualType type) {
+    auto* canonical = type.getCanonicalType().getTypePtr();
+    if(!canonical->isDependentType()) {
+        return false;
+    }
+    if(auto* TST = llvm::dyn_cast<clang::TemplateSpecializationType>(canonical)) {
+        return !llvm::isa_and_present<clang::ClassTemplateDecl>(
+            TST->getTemplateName().getAsTemplateDecl());
+    }
+    return !llvm::isa<clang::PointerType,
+                      clang::ReferenceType,
+                      clang::ArrayType,
+                      clang::FunctionType,
+                      clang::MemberPointerType,
+                      clang::InjectedClassNameType,
+                      clang::RecordType>(canonical);
+}
+
+}  // namespace
+
+std::optional<std::optional<llvm::APSInt>>
+    PseudoInstantiator::std_value(clang::QualType scope, clang::DeclarationName name) {
+    auto* TST = scope.isNull() ? nullptr : scope->getAs<clang::TemplateSpecializationType>();
+    auto* CTD = TST ? llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
+                          TST->getTemplateName().getAsTemplateDecl())
+                    : nullptr;
+    if(!CTD || !CTD->getIdentifier() || !CTD->isInStdNamespace() || !name.isIdentifier() ||
+       !name.getAsIdentifierInfo()->isStr("value")) {
+        return std::nullopt;
+    }
+    auto rule = ranges::find(value_rules,
+                             CTD->getName(),
+                             &std::pair<llvm::StringLiteral, ValueRule>::first);
+    if(rule == ranges::end(value_rules)) {
+        return std::nullopt;
+    }
+    auto boolean = [](bool value) {
+        return llvm::APSInt(llvm::APInt(1, value ? 1 : 0), /*isUnsigned=*/true);
+    };
+    /// The value that decides a conjunction or a disjunction alone.
+    bool deciding = rule->second == ValueRule::Disjunction;
+    bool known = true;
+    for(auto& argument: TST->template_arguments()) {
+        auto value =
+            argument.getKind() == clang::TemplateArgument::Type && !argument.isPackExpansion()
+                ? member_value(argument.getAsType(), name)
+                : std::nullopt;
+        if(!value) {
+            known = false;
+        } else if(rule->second == ValueRule::Negation) {
+            return boolean(!value->getBoolValue());
+        } else if(value->getBoolValue() == deciding) {
+            return boolean(deciding);
+        }
+    }
+    if(!known || rule->second == ValueRule::Negation) {
+        return std::optional<llvm::APSInt>();
+    }
+    return boolean(!deciding);
+}
+
+std::optional<bool> PseudoInstantiator::std_condition(const clang::TemplateArgument& argument) {
+    std::optional<llvm::APSInt> value;
+    if(argument.getKind() == clang::TemplateArgument::Integral) {
+        value = argument.getAsIntegral();
+    } else if(argument.getKind() == clang::TemplateArgument::Expression) {
+        value = evaluate(argument.getAsExpr());
+    }
+    if(!value) {
+        return std::nullopt;
+    }
+    return value->getBoolValue();
+}
+
+std::optional<clang::QualType> PseudoInstantiator::std_type(const clang::DependentNameType* DNT) {
+    const clang::TemplateSpecializationType* written = nullptr;
+    auto rule = rule_of(DNT, written);
+    if(!rule) {
+        return std::nullopt;
+    }
+    auto written_arguments = written->template_arguments();
+    llvm::SmallVector<clang::TemplateArgument, 4> arguments;
+    unsigned rewritten = 0;
+    /// Rewrite the arguments in order up to the one at `index`: what a
+    /// condition does not choose stays as written. MSVC's special member
+    /// layers nest one in each alternative of the one above, twelve deep.
+    auto has = [&](unsigned index) {
+        while(arguments.size() <= index && rewritten < written_arguments.size()) {
+            rewrite_arguments(written_arguments.slice(rewritten, 1), arguments, Policy::Resolve);
+            rewritten += 1;
+        }
+        return index < arguments.size();
+    };
+    auto type_at = [&](unsigned index) {
+        if(!has(index) || arguments[index].getKind() != clang::TemplateArgument::Type ||
+           arguments[index].getAsType()->getAs<clang::PackExpansionType>()) {
+            return clang::QualType();
+        }
+        return arguments[index].getAsType();
+    };
+    auto unknown = clang::QualType(DNT, 0);
+
+    if(*rule == Rule::Conditional || *rule == Rule::EnableIf) {
+        if(!has(0)) {
+            return std::nullopt;
+        }
+        auto condition = std_condition(arguments.front());
+        if(*rule == Rule::EnableIf) {
+            /// Where the condition is false the library's definition has no
+            /// `type`: what tells a constraint from a member it lacks stays
+            /// the definition's.
+            if(condition == false) {
+                return std::nullopt;
+            }
+            auto type = has(1) ? type_at(1) : context.VoidTy;
+            return type.isNull() ? std::nullopt : std::optional(type);
+        }
+        if(!condition) {
+            if(written_arguments.size() == 3 && !written_arguments[1].isPackExpansion() &&
+               context.isSameTemplateArgument(written_arguments[1], written_arguments[2])) {
+                auto type = type_at(1);
+                return type.isNull() ? unknown : type;
+            }
+            return unknown;
+        }
+        auto type = type_at(*condition ? 1 : 2);
+        return type.isNull() ? std::nullopt : std::optional(type);
+    }
+
+    auto type = type_at(0);
+    if(type.isNull()) {
+        return std::nullopt;
+    }
+    switch(*rule) {
+        case Rule::TypeIdentity: return type;
+        case Rule::AddLValueReference:
+            return type->isVoidType() ? type : context.getLValueReferenceType(type);
+        case Rule::AddRValueReference:
+            return type->isVoidType() ? type : context.getRValueReferenceType(type);
+        /// A reference or a function type takes no cv-qualifier.
+        case Rule::AddConst:
+        case Rule::AddVolatile:
+        case Rule::AddCV:
+            if(type->isReferenceType() || type->isFunctionType()) {
+                return type;
+            }
+            if(*rule != Rule::AddVolatile) {
+                type = type.withConst();
+            }
+            return *rule == Rule::AddConst ? type : type.withVolatile();
+        default: break;
+    }
+    /// A layer the argument writes is the one the rule removes; one only a
+    /// parameter may carry waits for the parameter.
+    auto without = [&](clang::QualType type, clang::Qualifiers::TQ removed) {
+        clang::Qualifiers quals;
+        auto unqualified = context.getUnqualifiedArrayType(type, quals);
+        if(!(quals.getCVRQualifiers() & removed) &&
+           opaque(context.getBaseElementType(unqualified))) {
+            return unknown;
+        }
+        quals.removeCVRQualifiers(removed);
+        return context.getQualifiedType(unqualified, quals);
+    };
+    auto referred =
+        !type->isReferenceType() && opaque(type) ? clang::QualType() : type.getNonReferenceType();
+    constexpr auto cv =
+        static_cast<clang::Qualifiers::TQ>(clang::Qualifiers::Const | clang::Qualifiers::Volatile);
+    switch(*rule) {
+        case Rule::RemoveReference: return referred.isNull() ? unknown : referred;
+        case Rule::RemoveConst: return without(type, clang::Qualifiers::Const);
+        case Rule::RemoveVolatile: return without(type, clang::Qualifiers::Volatile);
+        case Rule::RemoveCV: return without(type, cv);
+        case Rule::RemoveCVRef: return referred.isNull() ? unknown : without(referred, cv);
+        case Rule::RemovePointer: {
+            if(auto* pointer = type->getAs<clang::PointerType>()) {
+                return pointer->getPointeeType();
+            }
+            return opaque(type) ? unknown : type;
+        }
+        case Rule::AddPointer:
+            return referred.isNull() ? unknown : context.getPointerType(referred);
+        case Rule::Decay: {
+            type = type.getNonReferenceType();
+            if(opaque(type)) {
+                return unknown;
+            }
+            if(type->isArrayType()) {
+                return context.getArrayDecayedType(type);
+            }
+            if(type->isFunctionType()) {
+                return context.getPointerType(type);
+            }
+            return type.getUnqualifiedType();
+        }
+        default: std::unreachable();
+    }
+}
+
+llvm::SmallVector<clang::QualType, 2>
+    PseudoInstantiator::std_alternatives(const clang::DependentNameType* DNT) {
+    const clang::TemplateSpecializationType* written = nullptr;
+    if(rule_of(DNT, written) != Rule::Conditional) {
+        return {};
+    }
+    llvm::SmallVector<clang::TemplateArgument, 4> arguments;
+    rewrite_arguments(written->template_arguments(), arguments, Policy::Resolve);
+    if(arguments.size() != 3 || std_condition(arguments[0]) ||
+       arguments[1].getKind() != clang::TemplateArgument::Type ||
+       arguments[2].getKind() != clang::TemplateArgument::Type) {
+        return {};
+    }
+    return {arguments[1].getAsType(), arguments[2].getAsType()};
+}
+
+PseudoInstantiator::lookup_result
+    PseudoInstantiator::lookup_through_alternatives(const clang::DependentNameType* DNT,
+                                                    clang::DeclarationName name) {
+    /// Its layers reach a condition through other sugar on each path: one
+    /// naming no parameter anything binds is kept by its canonical form.
+    const void* key = names_only_free_parameters(DNT) ? DNT->getCanonicalTypeInternal().getTypePtr()
+                                                      : static_cast<const clang::Type*>(DNT);
+    return kept_step(cache.alternatives, {key, name.getAsOpaquePtr()}, [&] {
+        auto alternatives = std_alternatives(DNT);
+        if(alternatives.empty()) {
+            return lookup_result();
+        }
+        auto frames = stack.size();
+        std::optional<Found> common;
+        for(auto [index, alternative]: views::enumerate(alternatives)) {
+            auto members = lookup(alternative, name);
+            if(members.empty()) {
+                stack.truncate(frames);
+                return lookup_result();
+            }
+            auto here = found_by(members, frames);
+            if(common && !same_found(*common, here)) {
+                stack.truncate(frames);
+                return lookup_result();
+            }
+            common = std::move(here);
+            if(static_cast<std::size_t>(index) + 1 < alternatives.size()) {
+                stack.truncate(frames);
+            }
+        }
+        LOG_DEBUG("{}found '{}' alike in each alternative", pad(), name.getAsString());
+        return common->members;
+    });
+}
+
+}  // namespace clice::types
