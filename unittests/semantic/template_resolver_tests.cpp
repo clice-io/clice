@@ -217,32 +217,35 @@ ZEST_CASE(ScopedBindingStaysLocal) {
 }
 
 ZEST_CASE(ProbeBindingsStayInProbe) {
-    /// Choosing `has_type`'s pattern resolves `T::type` with `T` bound to
-    /// `box<U>`; written in the pattern itself, `T` is free.
+    /// Choosing `has_inner`'s pattern resolves `T::inner` once with `T`
+    /// bound to `box<U>`, once to `bare<U>`, whose `inner` has no `type`.
     add_focus("main.cpp", R"code(
         template <class...> using void_t = void;
-        template <class T> struct box { using type = int; };
-        template <class T, class = void> struct has_type { using result = long; };
-        template <class T> struct has_type<T, void_t<typename T::type>> {
+        template <class T> struct box { struct inner { using type = int; }; };
+        template <class T> struct bare { struct inner {}; };
+        template <class T, class = void> struct has_inner { using result = long; };
+        template <class T> struct has_inner<T, void_t<typename T::inner::type>> {
             using result = int;
-            using probe = typename T::type;
         };
-        template <class U> struct user { using t = typename has_type<box<U>>::result; };
+        template <class U> struct user {
+            using boxed = typename has_inner<box<U>>::result;
+            using plain = typename has_inner<bare<U>>::result;
+        };
     )code");
     ZASSERT(compile());
 
     Nodes nodes(unit->context());
-    auto* t = nodes.named<clang::TypedefNameDecl>("t");
-    ZASSERT(t);
-    auto* probe = nodes.named<clang::TypedefNameDecl>("probe");
-    ZASSERT(probe);
+    auto* boxed = nodes.named<clang::TypedefNameDecl>("boxed");
+    ZASSERT(boxed);
+    auto* plain = nodes.named<clang::TypedefNameDecl>("plain");
+    ZASSERT(plain);
     auto& resolver = unit->get<types::TemplateResolver>();
-    auto chosen = resolver.resolve(t->getUnderlyingType());
+    auto chosen = resolver.resolve(boxed->getUnderlyingType());
     ZASSERT(!chosen.isNull());
     ZEXPECT(chosen.getCanonicalType() == unit->context().IntTy);
-    auto free = resolver.resolve(probe->getUnderlyingType());
-    ZASSERT(!free.isNull());
-    ZEXPECT(free->getAs<clang::DependentNameType>() != nullptr);
+    auto primary = resolver.resolve(plain->getUnderlyingType());
+    ZASSERT(!primary.isNull());
+    ZEXPECT(primary.getCanonicalType() == unit->context().LongTy);
 }
 
 ZEST_CASE(KeptCallBindings) {
