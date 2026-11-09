@@ -7,9 +7,10 @@ namespace clice {
 /// Names the request the calling thread runs in the worker's last words.
 /// A synchronous crash — a fault, an abort, a sanitizer report — is handled
 /// on the thread that raised it, so a thread-local mark singles out the
-/// request among those a stateful worker runs side by side; the
-/// handler writes worker::crashed_in_marker and the tag to stderr, where
-/// the master's drain picks it up.
+/// request among those a stateful worker runs side by side, and a crash on
+/// a thread without one names the request only one running; the handler
+/// writes worker::crashed_in_marker and the tag to stderr, where the
+/// master's drain picks it up.
 class CrashScope {
 public:
     explicit CrashScope(std::string tag);
@@ -23,8 +24,8 @@ private:
     std::string tag;
 };
 
-/// Hook the crash line into LLVM's signal handling and the sanitizer death
-/// callback. Call once, at worker startup.
+/// Write the crash line before the crash's trace (logging::write_crash),
+/// and from the sanitizer's death callback. Call once, at worker startup.
 void install_crash_report();
 
 }  // namespace clice

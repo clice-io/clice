@@ -1,3 +1,13 @@
+module;
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <signal.h>
+#endif
+
 module clice;
 
 import :command.database;
@@ -14,6 +24,20 @@ import :vfs.path;
 namespace clice::testing {
 
 namespace {
+
+/// What a crash runs now: SIGSEGV's action, or Windows' unhandled
+/// exception filter.
+std::uintptr_t crash_action() {
+#ifdef _WIN32
+    auto filter = ::SetUnhandledExceptionFilter(nullptr);
+    ::SetUnhandledExceptionFilter(filter);
+    return reinterpret_cast<std::uintptr_t>(filter);
+#else
+    struct sigaction action = {};
+    ::sigaction(SIGSEGV, nullptr, &action);
+    return reinterpret_cast<std::uintptr_t>(action.sa_sigaction);
+#endif
+}
 
 /// The C++20 command of `file` in `tmp`, added to `cdb` and rendered.
 std::vector<std::string> cxx20_command(CompilationDatabase& cdb,
@@ -665,6 +689,35 @@ export int a_value() { return b_value() + 1; }
     auto unit_a = clice::compile(std::move(params_a));
     ZASSERT(unit_a->completed());
     ZASSERT(unit_a->has_output());
+}
+
+// A file clang registers for removal on a crash makes LLVM take the crash
+// signals over clice's (sys::on_crash).
+ZEST_CASE(OutputsLeaveCrashesAlone) {
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int m() { return 1; }\n");
+    tmp.touch("main.cpp", "int main() { return 0; }\n");
+
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
+
+    auto before = crash_action();
+
+    CompilationParams module_params;
+    module_params.kind = CompilationKind::ModuleInterface;
+    module_params.input.arguments = cxx20_command(cdb, toolchain, tmp, "m.cppm");
+    module_params.output_file = precompiled_path("pcm");
+    ZASSERT(clice::compile(std::move(module_params))->has_output());
+
+    CompilationParams pch_params;
+    pch_params.kind = CompilationKind::PrecompiledHeader;
+    pch_params.input.arguments = cxx20_command(cdb, toolchain, tmp, "main.cpp");
+    pch_params.output_file = precompiled_path("pch");
+    ZASSERT(clice::compile(std::move(pch_params))->has_output());
+
+    ZEXPECT(crash_action() == before);
 }
 
 ZEST_CASE(PCHKeepsModuleImports) {

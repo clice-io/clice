@@ -6823,6 +6823,8 @@ export namespace kotatsu::sys {
 using ::kotatsu::sys::CPUCore;
 using ::kotatsu::sys::CPUTimes;
 using ::kotatsu::sys::Child;
+using ::kotatsu::sys::Crash;
+using ::kotatsu::sys::CrashHandler;
 using ::kotatsu::sys::CreationOptions;
 using ::kotatsu::sys::EnvChange;
 using ::kotatsu::sys::EnvVar;
@@ -6858,6 +6860,7 @@ using ::kotatsu::sys::is_pipe;
 using ::kotatsu::sys::join_paths;
 using ::kotatsu::sys::local_time;
 using ::kotatsu::sys::memory;
+using ::kotatsu::sys::on_crash;
 using ::kotatsu::sys::oom_score_adjustment;
 using ::kotatsu::sys::os;
 using ::kotatsu::sys::page_size;
@@ -6869,6 +6872,7 @@ using ::kotatsu::sys::priority;
 using ::kotatsu::sys::process_alive;
 using ::kotatsu::sys::process_stats;
 using ::kotatsu::sys::release_free_heap;
+using ::kotatsu::sys::reserve_crash_stack;
 using ::kotatsu::sys::resident_memory;
 using ::kotatsu::sys::self_executable;
 using ::kotatsu::sys::set_env;
@@ -6907,6 +6911,7 @@ using ::kotatsu::sys::cmd::split_view;
 
 export namespace kotatsu::sys::detail {
 using ::kotatsu::sys::detail::ThreadEntry;
+using ::kotatsu::sys::detail::reserve_crash_stack_if_handled;
 }
 
 export namespace kotatsu::sys::windows {
@@ -8909,12 +8914,14 @@ using ::llvm::vfs::File;
 using ::llvm::vfs::FileSystem;
 using ::llvm::vfs::InMemoryFileSystem;
 using ::llvm::vfs::NullOutputFileImpl;
+using ::llvm::vfs::OnDiskOutputBackend;
 using ::llvm::vfs::OutputBackend;
 using ::llvm::vfs::OutputConfig;
 using ::llvm::vfs::OutputFile;
 using ::llvm::vfs::OutputFileImpl;
 using ::llvm::vfs::OverlayFileSystem;
 using ::llvm::vfs::ProxyFileSystem;
+using ::llvm::vfs::ProxyOutputBackend;
 using ::llvm::vfs::RedirectingFSDirIterImpl;
 using ::llvm::vfs::RedirectingFileSystem;
 using ::llvm::vfs::RedirectingFileSystemParser;
@@ -8931,6 +8938,9 @@ using ::llvm::vfs::directory_iterator;
 using ::llvm::vfs::getNextVirtualUniqueID;
 using ::llvm::vfs::getRealFileSystem;
 using ::llvm::vfs::getVFSFromYAML;
+using ::llvm::vfs::makeFilteringOutputBackend;
+using ::llvm::vfs::makeMirroringOutputBackend;
+using ::llvm::vfs::makeNullOutputBackend;
 using ::llvm::vfs::recursive_directory_iterator;
 }
 

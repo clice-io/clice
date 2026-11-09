@@ -77,12 +77,10 @@ import :support.prelude;
 /// their own <session>/<worker>.log (mirror_stderr = false): a worker's
 /// stderr is reserved for unexpected third-party output — assertion
 /// failures, sanitizer reports — which the pool relays line-by-line into the
-/// master log. Crash backtraces are appended to the owning process's log
-/// file by file_logger (error signals including SIGABRT, so
-/// LOG_FATAL and Debug anomaly traps are covered); a worker's backtrace goes
-/// ONLY to its own log file, while the master's is also printed to stderr.
-/// Before file_logger runs, backtraces reach stderr only (master) or are
-/// lost (workers without a log dir).
+/// master log. A crash's stack trace (handle_crashes, from LOG_FATAL and
+/// Debug anomaly traps too) is appended to the process's log file once
+/// file_logger opened it, and printed to stderr, but a worker's: its
+/// trace goes only to its own log file, none without a log dir.
 namespace clice::logging {
 
 using Level = spdlog::level::level_enum;
@@ -101,11 +99,23 @@ struct Options {
     /// command-line tool does — its reader is a terminal, a pipeline, or
     /// the master's drain.
     bool never_block_stderr = false;
+
+    /// A crash's trace is printed to stderr too. Not a worker's, whose
+    /// stderr the pool relays into the master's log line by line.
+    bool stderr_crash_trace = true;
 };
 
 extern Options options;
 
 void stderr_logger(std::string_view name);
+
+/// Write a crash's stack trace where `options` says: from main, before any
+/// other thread starts.
+void handle_crashes();
+
+/// What handle_crashes writes for a crash, for a handler that writes its
+/// own lines first; async-signal-safe.
+void write_crash(const sys::Crash& crash) noexcept;
 
 /// The per-session log directory under `logging_dir`: the local start
 /// time and the pid, so a run is found by the clock on the wall.

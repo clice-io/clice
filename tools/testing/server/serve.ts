@@ -93,6 +93,10 @@ export interface WorkerFault {
     /// this string (CLICE_TEST_TIDY_CRASH); the compile running it is the
     /// request.
     tidy?: string;
+    /// How the request crashes its worker (CLICE_TEST_CRASH_KIND): a trap by
+    /// default, a write to a null pointer, abort(), LLVM's fatal error, a
+    /// stack overflow, or a trap on a thread the request started.
+    kind?: "segv" | "abort" | "fatal" | "overflow" | "thread";
     /// A crash the copy's files provoke on their own, as a damaged cache
     /// blob does: the crash is declared, and a PCH `t.disk.corrupt` damaged
     /// in its middle crashes the compile reading it (CLICE_TEST_DAMAGE).
@@ -1156,6 +1160,9 @@ export class Serve extends Client {
         } else if (crash !== undefined) {
             env["CLICE_TEST_CRASH_REQUEST"] =
                 `${crash.request} ${this.workspace.displayPath(crash.file)}`;
+            if (crash.kind !== undefined) {
+                env["CLICE_TEST_CRASH_KIND"] = crash.kind;
+            }
         }
         const args = this.options.args;
         recordInvocation(args ?? ["serve"]);

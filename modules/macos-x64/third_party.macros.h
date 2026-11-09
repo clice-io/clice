@@ -3,6 +3,17 @@
 #define CLANG_TIDY_ENABLE_QUERY_BASED_CUSTOM_CHECKS 0
 #define LLVM_DEFAULT_TARGET_TRIPLE "x86_64-apple-darwin"
 # define LLVM_BUILTIN_TRAP __builtin_trap()
+#define MDB_NOSUBDIR	0x4000
+#define MDB_RDONLY		0x20000
+#define MDB_NOTLS		0x200000
+#define MDB_CP_COMPACT	0x01
+#define MDB_NOTFOUND	(-30798)
+#define MDB_PAGE_NOTFOUND	(-30797)
+#define MDB_CORRUPTED	(-30796)
+#define MDB_VERSION_MISMATCH	(-30794)
+#define MDB_INVALID	(-30793)
+#define MDB_MAP_FULL	(-30792)
+#define MDB_MAP_RESIZED	(-30785)
 #define KOTATSU_CONCAT_IMPL(a, b) a##b
 #define KOTATSU_CONCAT(a, b) KOTATSU_CONCAT_IMPL(a, b)
 #define KOTATSU_ANNOTATION_ATTRIBUTES(...)                                                             [] {                                                                                                   using ::kotatsu::codec::dsl::rename;                                                               using ::kotatsu::codec::dsl::description;                                                          using ::kotatsu::codec::dsl::alias;                                                                using ::kotatsu::codec::dsl::skip;                                                                 using ::kotatsu::codec::dsl::flatten;                                                              using ::kotatsu::codec::dsl::presence;                                                             using ::kotatsu::codec::dsl::as;                                                                   using ::kotatsu::codec::dsl::with;                                                                 using ::kotatsu::codec::dsl::schema_default;                                                       using ::kotatsu::codec::dsl::minimum;                                                              using ::kotatsu::codec::dsl::maximum;                                                              using ::kotatsu::codec::dsl::choices;                                                              using ::kotatsu::codec::dsl::rename_all;                                                           using ::kotatsu::codec::dsl::deny_unknown_fields;                                                  using ::kotatsu::codec::dsl::presence_all;                                                         using ::kotatsu::codec::dsl::tagged;                                                               using ::kotatsu::codec::dsl::tag;                                                                  using ::kotatsu::codec::dsl::content;                                                              using ::kotatsu::codec::dsl::tag_names;                                                            using ::kotatsu::meta::dsl::type;                                                                  using enum ::kotatsu::codec::presence_kind;                                                        using ::kotatsu::naming::Casing;                                                                   return ::kotatsu::meta::make_annotation(__VA_ARGS__);                                          }()
@@ -23,14 +34,3 @@
 #define ZEST_CHECK(checker, ...)                                                                       do {                                                                                                   ZEST_SPLIT_BEGIN                                                                                   ::kotatsu::zest::detail::checker(::kotatsu::zest::detail::Decomposer{} << __VA_ARGS__,                                              #__VA_ARGS__);                                                    ZEST_SPLIT_END                                                                                 } while(0)
 #define ZEXPECT(...) ZEST_CHECK(check, __VA_ARGS__)
 #define ZASSERT(...) ZEST_CHECK(check_fatal, __VA_ARGS__)
-#define MDB_NOSUBDIR	0x4000
-#define MDB_RDONLY		0x20000
-#define MDB_NOTLS		0x200000
-#define MDB_CP_COMPACT	0x01
-#define MDB_NOTFOUND	(-30798)
-#define MDB_PAGE_NOTFOUND	(-30797)
-#define MDB_CORRUPTED	(-30796)
-#define MDB_VERSION_MISMATCH	(-30794)
-#define MDB_INVALID	(-30793)
-#define MDB_MAP_FULL	(-30792)
-#define MDB_MAP_RESIZED	(-30785)

@@ -15,6 +15,39 @@ namespace clice {
 
 namespace {
 
+/// Calls itself until the thread's stack runs out: the frame's array and
+/// the work after the call keep it from becoming a loop, and the test of
+/// `depth`, never false, from a recursion clang sees as infinite.
+[[gnu::noinline]] int exhaust_stack(volatile int& depth) {
+    volatile char frame[4096];
+    frame[0] = static_cast<char>(depth);
+    depth += 1;
+    if(depth > 0) {
+        return exhaust_stack(depth) + frame[0];
+    }
+    return 0;
+}
+
+/// Crash the way `kind` names, as real crashes do: a trap, a write to a
+/// null pointer, abort(), LLVM's fatal error, a stack overflow, or a trap
+/// on a thread the request started.
+[[noreturn]] void crash(llvm::StringRef kind) {
+    if(kind == "segv") {
+        *static_cast<volatile int*>(nullptr) = 1;
+    } else if(kind == "abort") {
+        std::abort();
+    } else if(kind == "fatal") {
+        llvm::report_fatal_error("a test hook's fatal error");
+    } else if(kind == "overflow") {
+        volatile int depth = 0;
+        exhaust_stack(depth);
+    } else if(kind == "thread") {
+        auto thread = sys::Thread::start(1u << 20, [] { LLVM_BUILTIN_TRAP; });
+        thread->join();
+    }
+    LLVM_BUILTIN_TRAP;
+}
+
 /// The enumerator `names` spells `name` for.
 template <typename Enum, std::size_t N>
 std::optional<Enum> parse_name(const std::array<llvm::StringLiteral, N>& names,
@@ -246,10 +279,11 @@ void run_test_hooks(llvm::StringRef tag) {
     this_thread::sleep_for(test_jitter());
 
     // The request whose tag contains CLICE_TEST_CRASH_REQUEST crashes its
-    // worker right here — any kind of request, attributed like a real crash.
+    // worker right here — any kind of request, attributed like a real crash
+    // of the kind CLICE_TEST_CRASH_KIND names, a trap by default.
     const static auto crash_request = env_string("CLICE_TEST_CRASH_REQUEST");
     if(crash_request && tag.contains(*crash_request)) {
-        LLVM_BUILTIN_TRAP;
+        crash(env_string("CLICE_TEST_CRASH_KIND").value_or("trap"));
     }
 
     // The worker running the first request whose tag contains the text of

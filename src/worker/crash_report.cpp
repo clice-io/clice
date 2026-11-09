@@ -1,11 +1,5 @@
 module;
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
-#endif
-
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
 #define CLICE_ASAN 1
@@ -21,6 +15,7 @@ module;
 
 module clice;
 
+import :support.logging;
 import :worker.crash_report;
 import :worker.protocol;
 import :worker.test_hooks;
@@ -34,12 +29,25 @@ namespace {
 thread_local const char* running_tag = nullptr;
 thread_local std::size_t running_size = 0;
 
+/// The scopes open in the process, and the tag of the one opened last: a
+/// crash on a thread no scope is open on, as the one clang continues a deep
+/// parse on (clang::runWithSufficientStackSpace), names the request when it
+/// is the only one running.
+std::atomic<std::size_t> open_scopes = 0;
+std::atomic<const std::string*> last_opened = nullptr;
+
 void report_crash() {
-    if(!running_tag) {
+    std::string_view tag(running_tag, running_size);
+    if(!running_tag && open_scopes.load() == 1) {
+        if(auto* only = last_opened.load()) {
+            tag = *only;
+        }
+    }
+    if(tag.empty()) {
         return;
     }
     sys::write_console(2, worker::crashed_in_marker);
-    sys::write_console(2, std::string_view(running_tag, running_size));
+    sys::write_console(2, tag);
     sys::write_console(2, "\n");
 }
 
@@ -48,28 +56,25 @@ void report_crash() {
 CrashScope::CrashScope(std::string tag) : tag(std::move(tag)) {
     running_tag = this->tag.data();
     running_size = this->tag.size();
+    open_scopes += 1;
+    last_opened = &this->tag;
 
     run_test_hooks(this->tag);
 }
 
 CrashScope::~CrashScope() {
+    const std::string* own = &tag;
+    last_opened.compare_exchange_strong(own, nullptr);
+    open_scopes -= 1;
     running_tag = nullptr;
     running_size = 0;
 }
 
 void install_crash_report() {
-    llvm::sys::AddSignalHandler([](void*) { report_crash(); }, nullptr);
-#ifdef _WIN32
-    // The filter LLVM installs for the handler above also prints the
-    // exception and a backtrace to stderr, which the master relays line by
-    // line; a worker's trace belongs in its log file only, as on POSIX.
-    // This filter keeps the rest of LLVM's: it runs the handlers and
-    // removes the files registered for removal.
-    ::SetUnhandledExceptionFilter([](EXCEPTION_POINTERS*) -> LONG {
-        llvm::sys::RunInterruptHandlers();
-        return EXCEPTION_EXECUTE_HANDLER;
+    [[maybe_unused]] auto error = sys::on_crash([](const sys::Crash& crash) noexcept {
+        report_crash();
+        logging::write_crash(crash);
     });
-#endif
 #ifdef CLICE_ASAN
     // ASan reports memory errors and dies without raising a signal, and it
     // handles the faults it intercepts itself.

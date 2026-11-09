@@ -531,17 +531,11 @@ bool WorkerPool::process_crash(std::size_t index,
     } else if(death.out_of_memory) {
         // The machine ran out, not clice.
         LOG_WARN("Worker {} ran out of memory at {} MiB", w.name, death.memory >> 20);
-    } else if(exit_signal != 0) {
-        LOG_ANOMALY(WorkerCrash,
-                    "Worker {} killed by signal {} (crash streak: {})",
-                    w.name,
-                    exit_signal,
-                    w.crash_streak);
     } else {
         LOG_ANOMALY(WorkerCrash,
-                    "Worker {} exited with code {} (crash streak: {})",
+                    "Worker {} {} (crash streak: {})",
                     w.name,
-                    exit_code,
+                    describe_exit(exit_code, exit_signal),
                     w.crash_streak);
     }
 

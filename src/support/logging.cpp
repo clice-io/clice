@@ -37,43 +37,16 @@ int crash_log = -1;
 std::array<char, 256> crash_header;
 std::size_t crash_header_size = 0;
 
-void crash_handler(void*) {
-    if(crash_log >= 0) {
-        sys::write_console(crash_log, {crash_header.data(), crash_header_size});
-        sys::write_stacktrace(crash_log);
-    }
-}
-
-/// Append a crash's stack trace to the log file `log_path`; with
-/// stderr_trace, LLVM's to stderr too — the master wants it (editors capture
-/// its stderr), workers must not (their stderr pipe would relay the trace
-/// into the master log; a worker's crash trace belongs in its own log file
-/// only).
-void install_crash_handler(std::string_view log_path, bool stderr_trace) {
+void open_crash_log(std::string_view log_path) {
     auto fd =
         fs::File::open(log_path, {.append = true, .create = true}).and_then([](fs::File file) {
             return std::move(file).into_descriptor();
         });
     if(!fd) {
-        LOG_WARN("Failed to install crash handler for {}: {}", log_path, fd.error().message());
+        LOG_WARN("Cannot open {} for crash traces: {}", log_path, fd.error().message());
         return;
     }
-    // Names the exact build, so symbolization uses the matching symbol file.
-    auto header = std::format_to_n(crash_header.data(),
-                                   crash_header.size(),
-                                   "\n=== CRASH STACK TRACE ===\nclice {} {}\n",
-                                   version,
-                                   target);
-    crash_header_size = std::min(static_cast<std::size_t>(header.size), crash_header.size());
     crash_log = *fd;
-    llvm::sys::AddSignalHandler(crash_handler, nullptr);
-    // Crash-only exception to the never-blocked-by-the-client rule: LLVM's
-    // raw_ostream spins on a full non-blocking pipe, so a crash trace to an
-    // undrained stderr can stall the dying process. The same trace already
-    // reached the log file above, unaffected by fd 2's state.
-    if(stderr_trace) {
-        llvm::sys::PrintStackTraceOnErrorSignal("clice");
-    }
 }
 
 /// Why `dir` could not be created: a file standing where one of its
@@ -202,8 +175,30 @@ bool file_logger(std::string_view name, std::string_view dir, bool mirror_stderr
         ringbuffer_sink.reset();
     }
 
-    install_crash_handler(filepath, /*stderr_trace=*/mirror_stderr);
+    open_crash_log(filepath);
     return true;
+}
+
+void handle_crashes() {
+    // Names the exact build, so symbolization uses the matching symbol file.
+    auto header = std::format_to_n(crash_header.data(),
+                                   crash_header.size(),
+                                   "\n=== CRASH STACK TRACE ===\nclice {} {}\n",
+                                   version,
+                                   target);
+    crash_header_size = std::min(static_cast<std::size_t>(header.size), crash_header.size());
+    [[maybe_unused]] auto error = sys::on_crash(write_crash);
+}
+
+void write_crash(const sys::Crash& crash) noexcept {
+    if(crash_log >= 0) {
+        sys::write_console(crash_log, {crash_header.data(), crash_header_size});
+        sys::write_stacktrace(crash_log, crash);
+    }
+    if(options.stderr_crash_trace) {
+        sys::write_console(2, {crash_header.data(), crash_header_size});
+        sys::write_stacktrace(2, crash);
+    }
 }
 
 bool should_report(AnomalyId id) {

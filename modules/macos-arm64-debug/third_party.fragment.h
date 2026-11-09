@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <signal.h>
 #include <strings.h>
-#include <unistd.h>
+#include <sys/types.h>
 #include <errno.h>
 #include <stdio.h>
 #include <arm_neon.h>
@@ -147,15 +147,14 @@ import std.compat;
 #include "llvm/Support/StringSaver.h"
 #include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/VirtualFileSystem.h"
+#include "llvm/Support/VirtualOutputBackends.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/RISCVISAInfo.h"
 #include "llvm/TargetParser/Triple.h"
-#include "spdlog/details/log_msg.h"
-#include "spdlog/sinks/base_sink.h"
-#include "spdlog/sinks/ringbuffer_sink.h"
-#include "spdlog/spdlog.h"
+#include "roaring/roaring.hh"
+#include "lmdb.h"
 #include "simdjson.h"
 #include "kotatsu/async/async.h"
 #include "kotatsu/cli/cli.h"
@@ -205,6 +204,7 @@ import std.compat;
 #include "kotatsu/support/utf8.h"
 #include "kotatsu/sys/cmd.h"
 #include "kotatsu/sys/console.h"
+#include "kotatsu/sys/crash.h"
 #include "kotatsu/sys/dirs.h"
 #include "kotatsu/sys/env.h"
 #include "kotatsu/sys/info.h"
@@ -215,5 +215,7 @@ import std.compat;
 #include "kotatsu/sys/windows.h"
 #include "kotatsu/zest/async.h"
 #include "kotatsu/zest/zest.h"
-#include "roaring/roaring.hh"
-#include "lmdb.h"
+#include "spdlog/details/log_msg.h"
+#include "spdlog/sinks/base_sink.h"
+#include "spdlog/sinks/ringbuffer_sink.h"
+#include "spdlog/spdlog.h"

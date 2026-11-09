@@ -208,8 +208,10 @@ server: `config` (initializationOptions in clice.toml's shape), `capabilities`,
 before UTF-16, and the server must take it; the actions convert at the
 protocol, so what a test shows reads the same in every encoding), `folders`,
 `args`, `env`; and the faults the test provokes on purpose —
-`crash: { request, file }` crashes every such request's worker
-(`CLICE_TEST_CRASH_REQUEST`), `kill: { request, file }` kills the first one's
+`crash: { request, file, kind }` crashes every such request's worker
+(`CLICE_TEST_CRASH_REQUEST`), by a trap or as `kind` says (a null write,
+`abort`, LLVM's fatal error, a stack overflow, a trap on another thread),
+`kill: { request, file }` kills the first one's
 from outside (`CLICE_TEST_KILL_REQUEST`), `anomalies: true` misleads the
 server and asserts the anomalies itself. A crash, kill or anomaly nothing
 declared fails the test, and so does a declared one that never happened.

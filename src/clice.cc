@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :driver.driver;
+import :support.logging;
 
 namespace clice::driver {
 
@@ -32,6 +33,7 @@ extern "C++" int main(int argc, const char** argv) {
     // made every request about twice as slow as on Linux.
     clice::sys::set_power_throttling(false);
     clice::sys::ignore_sigpipe();
+    clice::logging::handle_crashes();
 
     // The CRT's argv is in the ANSI code page, which holds few characters
     // past ASCII: the arguments are read from the UTF-16 command line. Linux
