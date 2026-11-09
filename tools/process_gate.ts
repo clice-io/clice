@@ -52,7 +52,8 @@ export function logFiles(root: string): string[] {
             .sort()
             .map((name) => path.join(logsDir, name))
             .filter((file) => {
-                const real = fs.realpathSync(file);
+                // Through a Windows junction the drive reads as clice spelled it.
+                const real = fs.realpathSync(file).replace(/^[A-Z]:/, (drive) => drive.toLowerCase());
                 const fresh = !seen.has(real);
                 seen.add(real);
                 return fresh;

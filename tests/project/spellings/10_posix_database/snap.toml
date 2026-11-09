@@ -28,7 +28,7 @@ stdout = '''
 ]
 '''
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Driver ${WS}/missing-cc not found or not executable; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands
 error: 1 of the entries stay driver commands: the warnings above say why
 '''
 exit = 1
