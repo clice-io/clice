@@ -33,11 +33,16 @@ public:
 
 private:
     /// What a file brings in itself: it, every file it includes with what
-    /// those include in turn, and the modules they import.
+    /// those include in turn (by their nodes), and the modules they import.
     struct Reach {
-        llvm::DenseSet<clang::FileID> files;
+        llvm::BitVector files;
 
         llvm::StringSet<> modules;
+
+        /// Whether `node` is among the files.
+        bool brings(std::optional<unsigned> node) const {
+            return node && *node < files.size() && files.test(*node);
+        }
     };
 
     /// Add the modules an import of `name` makes visible: it, and those it
@@ -49,6 +54,16 @@ private:
     void place();
 
     const Reach& reach(clang::FileID file);
+
+    /// The node of `file` in the unit's include graph, added when new.
+    unsigned node(clang::FileID file);
+
+    /// The node of `file`, if the graph has it.
+    std::optional<unsigned> known_node(clang::FileID file) const;
+
+    /// Lay out the unit's include graph by node, once: walking it touches
+    /// each file's includes for every file that brings it.
+    void lay_out();
 
     /// Where in `file` its imports and includes start bringing declarations
     /// in, in order: past each of them.
@@ -89,6 +104,16 @@ private:
 
     /// What each file brings in itself (reach).
     llvm::DenseMap<clang::FileID, Reach> reached;
+
+    /// The include graph (lay_out): the node of each file, and by node the
+    /// nodes it includes and the full names of the modules it imports.
+    llvm::DenseMap<clang::FileID, unsigned> nodes;
+
+    std::vector<llvm::SmallVector<unsigned, 4>> includes;
+
+    std::vector<llvm::SmallVector<llvm::StringRef, 0>> imports;
+
+    bool laid_out = false;
 
     /// Where in a file a declaration becomes visible on its own
     /// (first_visible).

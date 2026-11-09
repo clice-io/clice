@@ -234,7 +234,7 @@ struct VisibilityCheck {
 /// it found not to fold (deduce_arguments), the declarations whose
 /// visibility it judged (drop_unseen).
 struct StepEffects {
-    llvm::SmallVector<const clang::Expr*, 1> open_defaults;
+    llvm::SmallVector<const clang::Expr*, 0> open_defaults;
 
     llvm::SmallVector<VisibilityCheck, 0> checks;
 };
@@ -274,7 +274,7 @@ struct UnboundResult {
 
     Result result;
 
-    llvm::SmallVector<InstantiationStack::Frame, 1> frames;
+    llvm::SmallVector<InstantiationStack::Frame, 0> frames;
 
     StepEffects effects;
 
