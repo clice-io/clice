@@ -32,10 +32,13 @@ thread_local std::size_t running_size = 0;
 /// The tags of the scopes open in the process, a slot each: a crash on a
 /// thread no scope is open on, as the one clang continues a deep parse on
 /// (clang::runWithSufficientStackSpace), names the request when it is the
-/// only one running, which waits for that thread and keeps its tag. Scopes
-/// open on libuv's pool threads and the compile thread, far fewer than the
-/// slots.
+/// only one running. Scopes open on libuv's pool threads and the compile
+/// thread, far fewer than the slots.
 std::array<std::atomic<const std::string*>, 64> open_tags = {};
+
+/// Set as a crash is reported: a scope closing from then on waits for the
+/// process to end, rather than free the tag the report may be reading.
+std::atomic<bool> reporting = false;
 
 /// The event loop's thread runs no request's work but between them, as
 /// dropping a document's old AST or sending a reply: a crash there names
@@ -57,6 +60,7 @@ const std::string* only_open_tag() {
 }
 
 void report_crash() {
+    reporting.store(true);
     std::string_view tag(running_tag, running_size);
     if(!running_tag && !runs_event_loop) {
         if(auto* only = only_open_tag()) {
@@ -94,6 +98,11 @@ CrashScope::~CrashScope() {
         const std::string* own = &tag;
         if(slot.compare_exchange_strong(own, nullptr)) {
             break;
+        }
+    }
+    if(reporting.load()) {
+        for(;;) {
+            this_thread::sleep_for(chrono::hours(1));
         }
     }
     running_tag = nullptr;

@@ -8,9 +8,9 @@ namespace clice {
 /// A synchronous crash — a fault, an abort, a sanitizer report — is handled
 /// on the thread that raised it, so a thread-local mark singles out the
 /// request among those a stateful worker runs side by side, and a crash on
-/// a thread without one names the request only one running; the handler
-/// writes worker::crashed_in_marker and the tag to stderr, where the
-/// master's drain picks it up.
+/// a thread without one names the request when it is the only one running;
+/// the handler writes worker::crashed_in_marker and the tag to stderr, where
+/// the master's drain picks it up.
 class CrashScope {
 public:
     explicit CrashScope(std::string tag);
