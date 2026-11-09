@@ -307,7 +307,11 @@ bool PseudoInstantiator::rewrite_arguments(TemplateArguments arguments,
 std::optional<llvm::SmallVector<clang::TemplateArgument, 4>>
     PseudoInstantiator::expand_pack_pattern(clang::QualType pattern, Policy policy) {
     auto packs = packs_in(clang::TemplateArgument(pattern));
-    if(packs.empty()) {
+    /// Packs their own template leaves bound to themselves expand as
+    /// written: rewritten whole, the pattern reads no binding of theirs.
+    if(ranges::all_of(packs, [&](const PackParameter& pack) {
+           return pack.decl && free({pack.decl, pack.depth, pack.index});
+       })) {
         return std::nullopt;
     }
 
