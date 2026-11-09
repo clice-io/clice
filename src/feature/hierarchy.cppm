@@ -1,5 +1,3 @@
-module;
-
 /// The call graph and the type hierarchy around a symbol, and the functions
 /// enclosing sites.
 

@@ -1,5 +1,3 @@
-module;
-
 /// What each code action renders is pinned by the cases
 /// (tests/code_actions/); these tests apply one action and compile the
 /// result: the edited file must be the expected text, compile cleanly and,

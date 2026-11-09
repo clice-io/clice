@@ -1,5 +1,3 @@
-module;
-
 /// Symbols by name: the ranked search over the search index, what
 /// unqualified completion may offer, and the symbols a locator names.
 

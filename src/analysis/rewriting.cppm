@@ -1,6 +1,8 @@
 module clice:analysis.rewriting;
 
-import :analysis.module_graph;
+import :analysis.facts;
+import :analysis.interface;
+import :analysis.partition;
 import :support.prelude;
 
 namespace clice::analysis {

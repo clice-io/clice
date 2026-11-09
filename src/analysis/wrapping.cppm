@@ -1,6 +1,7 @@
 module clice:analysis.wrapping;
 
-import :analysis.module_graph;
+import :analysis.interface;
+import :analysis.partition;
 import :support.prelude;
 
 namespace clice::analysis {

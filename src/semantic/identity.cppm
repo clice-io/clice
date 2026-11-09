@@ -1,5 +1,3 @@
-module;
-
 /// Declaration identity: the entity hash that keys the symbol index, equal
 /// across translation units and processes for declarations the compiler
 /// would merge as one entity (ASTContext::isSameEntity), and different for

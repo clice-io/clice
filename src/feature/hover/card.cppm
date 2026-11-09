@@ -1,5 +1,3 @@
-module;
-
 /// The inside of hover its two sources share: the card of the file a
 /// directive names, which the AST and the index's document links both
 /// show, and how wide the card lays its types out.

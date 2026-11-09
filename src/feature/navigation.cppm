@@ -1,5 +1,3 @@
-module;
-
 /// The questions an editor asks at a cursor: where a symbol is defined and
 /// declared, its references, highlights, type definition and implementations.
 

@@ -1,5 +1,3 @@
-module;
-
 /// Pseudo-instantiation of dependent C++ types: heuristic lookup in primary
 /// templates and partial specializations, driven by a hand-written
 /// QualType → QualType rewriter with two policies:

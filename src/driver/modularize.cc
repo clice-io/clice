@@ -1,6 +1,8 @@
 module clice;
 
-import :analysis.module_graph;
+import :analysis.facts;
+import :analysis.interface;
+import :analysis.partition;
 import :analysis.rewriting;
 import :analysis.wrapping;
 import :driver.driver;
@@ -243,16 +245,9 @@ int run(Modularize& opts) {
     if(!partition) {
         return fail(partition.error());
     }
-    analysis::Annotations annotations;
-    analysis::Report report{.facts = loaded->facts,
-                            .partition = *partition,
-                            .annotations = annotations};
-    auto interfaces = report.interface("");
-    if(!interfaces) {
-        return fail(interfaces.error());
-    }
+    auto interfaces = analysis::interfaces(loaded->facts, *partition);
     auto wrapping =
-        analysis::wrap(*partition, *interfaces, *libcxx, loaded->root, !opts.output.no_mirrors);
+        analysis::wrap(*partition, interfaces, *libcxx, loaded->root, !opts.output.no_mirrors);
     if(!wrapping) {
         return fail(wrapping.error());
     }
@@ -280,7 +275,7 @@ int run(Modularize& opts) {
             wrapped.imports.push_back(module.name);
         }
         auto rewritten =
-            analysis::rewrite(loaded->facts, *partition, *interfaces, wrapped, loaded->root);
+            analysis::rewrite(loaded->facts, *partition, interfaces, wrapped, loaded->root);
         if(!rewritten) {
             return fail(rewritten.error());
         }

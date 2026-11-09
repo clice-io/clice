@@ -1,5 +1,3 @@
-module;
-
 /// The records the project index keeps in the database besides shards,
 /// instantiation shards and manifests, decoded: the header, a file's
 /// record and its dependents, the internal names it declares, a symbol's

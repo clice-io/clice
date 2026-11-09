@@ -1,5 +1,3 @@
-module;
-
 /// Expression profiling for declaration identity: a port of clang's
 /// StmtProfiler (clang/lib/AST/StmtProfile.cpp, LLVM 23.1.1) restricted to
 /// the canonical profile Sema uses to decide template equivalence

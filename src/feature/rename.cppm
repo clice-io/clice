@@ -1,5 +1,3 @@
-module;
-
 /// Rename: the symbols one name change touches, the tokens spelling their
 /// name, and what keeps the change from being safe. The index answers all
 /// of it — no recompile, and no read of the project's other files: a
