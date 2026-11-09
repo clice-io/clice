@@ -1114,12 +1114,14 @@ bool Unifier::unify(TemplateArguments patterns, TemplateArguments arguments) {
         }
         /// An expansion whose length is not known (`conjunction<is_empty<_Types>...>`
         /// against `conjunction<_First, _Rest...>`) may be as long as the
-        /// patterns need or shorter: taken as one element, the match holds
-        /// for some lengths only.
-        if(flat[i].isPackExpansion() && !ordering) {
+        /// patterns need or shorter: taken as one element, its pattern, the
+        /// match holds for some lengths only.
+        auto argument = flat[i];
+        if(argument.isPackExpansion() && !ordering) {
             undecided_match = true;
+            argument = argument.getPackExpansionPattern();
         }
-        if(!unify(pattern, flat[i])) {
+        if(!unify(pattern, argument)) {
             return false;
         }
         i += 1;

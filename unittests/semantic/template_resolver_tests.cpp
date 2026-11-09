@@ -489,6 +489,35 @@ ZEST_CASE(InjectedClassKeepsParameters) {
     ZEXPECT(parameter->getDecl() != nullptr);
 }
 
+ZEST_CASE(ExpansionOfCallerPack) {
+    /// A pack bound to the caller's own `Ts...` stands for elements of a
+    /// length not known: what expands over it expands over `Ts` in turn.
+    add_focus("main.cpp", R"code(
+        template <class T> struct wrap {};
+        template <class... Ts> struct list {};
+        template <class... Us> struct each { using type = list<wrap<Us>...>; };
+        template <class... Ts> struct user {
+            using wrapped = typename each<Ts...>::type;
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* alias = nodes.named<clang::TypedefNameDecl>("wrapped");
+    ZASSERT(alias);
+    auto resolved = unit->get<types::TemplateResolver>().resolve(alias->getUnderlyingType());
+    auto* list = resolved.isNull() ? nullptr : resolved->getAs<clang::TemplateSpecializationType>();
+    ZASSERT(list);
+    ZASSERT(list->template_arguments().size() == 1);
+    auto* expansion = list->template_arguments()[0].getAsType()->getAs<clang::PackExpansionType>();
+    ZASSERT(expansion);
+    auto* wrap = expansion->getPattern()->getAs<clang::TemplateSpecializationType>();
+    ZASSERT(wrap);
+    ZASSERT(wrap->template_arguments().size() == 1);
+    ZEXPECT(wrap->template_arguments()[0].getAsType()->getAs<clang::TemplateTypeParmType>() !=
+            nullptr);
+}
+
 ZEST_CASE(InjectedPartialKeepsParameters) {
     /// A partial specialization names its own parameters as written too.
     add_focus("main.cpp", R"code(

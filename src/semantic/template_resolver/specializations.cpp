@@ -336,13 +336,23 @@ std::optional<llvm::SmallVector<clang::TemplateArgument, 4>>
     bool ok = true;
     llvm::SmallVector<clang::TemplateArgument, 4> expanded;
     for(unsigned k = 0; k < length && ok; k += 1) {
+        /// An element that is itself an expansion (a pack bound to the
+        /// caller's `Ts...`) stands for elements of a length not known: the
+        /// pattern expands over its pattern in turn.
+        bool expansion = false;
         for(auto [handle, pack]: views::zip(slots, saved)) {
-            stack.slot(handle) = pack.pack_begin()[k];
+            auto element = pack.pack_begin()[k];
+            if(element.isPackExpansion()) {
+                element = element.getPackExpansionPattern();
+                expansion = true;
+            }
+            stack.slot(handle) = element;
         }
         auto element = rewrite(pattern, policy);
-        ok = element != pattern && !element->containsUnexpandedParameterPack();
+        ok = element != pattern && element->containsUnexpandedParameterPack() == expansion;
         if(ok) {
-            expanded.emplace_back(element);
+            expanded.emplace_back(expansion ? context.getPackExpansionType(element, std::nullopt)
+                                            : element);
         }
     }
 
