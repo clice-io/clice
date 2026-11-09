@@ -780,6 +780,13 @@ private:
     /// (`remove_reference<T>` of a parameter); none where no rule applies.
     std::optional<clang::QualType> std_type(const clang::DependentNameType* DNT);
 
+    /// The `value` of `scope`, a standard library class template's
+    /// specialization, by the standard's rule for it (std.cpp): the value,
+    /// or none inside when it waits for what is not known; none where no
+    /// rule applies.
+    std::optional<std::optional<llvm::APSInt>> std_value(clang::QualType scope,
+                                                         clang::DeclarationName name);
+
     /// What `DNT`, a `conditional<B, T, F>::type` whose condition is not
     /// known, may be: `T` and `F`; none for any other type.
     llvm::SmallVector<clang::QualType, 2> std_alternatives(const clang::DependentNameType* DNT);

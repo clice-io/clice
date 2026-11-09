@@ -107,6 +107,9 @@ std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr
 
 std::optional<llvm::APSInt> PseudoInstantiator::member_value(clang::QualType scope,
                                                              clang::DeclarationName name) {
+    if(auto by_rule = std_value(scope, name)) {
+        return *by_rule;
+    }
     std::pair key{scope.getCanonicalType().getAsOpaquePtr(), name.getAsOpaquePtr()};
     if(auto cut = cut_values.find(key);
        cut != cut_values.end() && cut->second.holds_at(evaluating, depth)) {

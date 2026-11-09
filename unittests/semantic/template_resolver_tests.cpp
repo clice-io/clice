@@ -820,6 +820,61 @@ ZEST_CASE(StandardTypeRules) {
     ZEXPECT(disabled->getAs<clang::DependentNameType>() != nullptr);
 }
 
+ZEST_CASE(StandardValueRules) {
+    /// An argument known false decides a conjunction whatever the others
+    /// are, one known true a disjunction; the library's partial
+    /// specializations wait on the first argument.
+    add_focus("main.cpp", R"code(
+        namespace std {
+        template <bool V> struct bool_constant { static constexpr bool value = V; };
+        using true_type = bool_constant<true>;
+        using false_type = bool_constant<false>;
+        template <bool B, class T, class F> struct conditional { using type = T; };
+        template <class T, class F> struct conditional<false, T, F> { using type = F; };
+        template <bool, class First, class...> struct _Conjunction { using type = First; };
+        template <class True, class Next, class... Rest>
+        struct _Conjunction<true, True, Next, Rest...> {
+            using type = typename _Conjunction<Next::value, Next, Rest...>::type;
+        };
+        template <class... Traits> struct conjunction : true_type {};
+        template <class First, class... Rest>
+        struct conjunction<First, Rest...> : _Conjunction<First::value, First, Rest...>::type {};
+        template <class... Traits> struct disjunction : false_type {};
+        template <class First, class... Rest>
+        struct disjunction<First, Rest...>
+            : conditional<First::value, First, disjunction<Rest...>>::type {};
+        template <class T> struct negation : bool_constant<!T::value> {};
+        }
+        template <class T> struct trait : std::bool_constant<sizeof(T) == 4> {};
+        template <class T> struct box {
+            using none = typename std::conditional<
+                std::conjunction<trait<T>, std::false_type>::value, T*, T&>::type;
+            using some = typename std::conditional<
+                std::disjunction<trait<T>, std::true_type>::value, T*, T&>::type;
+            using negated = typename std::conditional<
+                std::negation<std::disjunction<trait<T>, std::true_type>>::value, T*, T&>::type;
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* T = nodes.named<clang::TemplateTypeParmDecl>("T");
+    ZASSERT(T);
+    auto& context = unit->context();
+    auto parameter = context.getTypeDeclType(T);
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto resolve = [&](llvm::StringRef name) {
+        auto* alias = nodes.named<clang::TypedefNameDecl>(name);
+        return alias ? resolver.resolve(alias->getUnderlyingType()) : clang::QualType();
+    };
+    auto same = [&](clang::QualType lhs, clang::QualType rhs) {
+        return !lhs.isNull() && context.hasSameType(lhs, rhs);
+    };
+    ZEXPECT(same(resolve("none"), context.getLValueReferenceType(parameter)));
+    ZEXPECT(same(resolve("some"), context.getPointerType(parameter)));
+    ZEXPECT(same(resolve("negated"), context.getLValueReferenceType(parameter)));
+}
+
 ZEST_CASE(StandardConditionalBaseDiffers) {
     /// Where the two bases a `conditional` may choose give different
     /// members, the member is neither.

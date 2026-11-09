@@ -50,6 +50,21 @@ constexpr std::pair<llvm::StringLiteral, Rule> rules[] = {
     {"decay",                Rule::Decay             },
 };
 
+/// What a standard library class template's `value` is, by the standard:
+/// what its arguments' values give, which each library reaches through
+/// partial specializations no argument of a length not known settles.
+enum class ValueRule : std::uint8_t {
+    Conjunction,
+    Disjunction,
+    Negation,
+};
+
+constexpr std::pair<llvm::StringLiteral, ValueRule> value_rules[] = {
+    {"conjunction", ValueRule::Conjunction},
+    {"disjunction", ValueRule::Disjunction},
+    {"negation",    ValueRule::Negation   },
+};
+
 /// The rule `DNT`, a `type` of a standard library class template's
 /// specialization, is answered by, with the specialization as written.
 std::optional<Rule> rule_of(const clang::DependentNameType* DNT,
@@ -96,6 +111,47 @@ bool opaque(clang::QualType type) {
 }
 
 }  // namespace
+
+std::optional<std::optional<llvm::APSInt>>
+    PseudoInstantiator::std_value(clang::QualType scope, clang::DeclarationName name) {
+    auto* TST = scope.isNull() ? nullptr : scope->getAs<clang::TemplateSpecializationType>();
+    auto* CTD = TST ? llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
+                          TST->getTemplateName().getAsTemplateDecl())
+                    : nullptr;
+    if(!CTD || !CTD->getIdentifier() || !CTD->isInStdNamespace() || !name.isIdentifier() ||
+       !name.getAsIdentifierInfo()->isStr("value")) {
+        return std::nullopt;
+    }
+    auto rule = ranges::find(value_rules,
+                             CTD->getName(),
+                             &std::pair<llvm::StringLiteral, ValueRule>::first);
+    if(rule == ranges::end(value_rules)) {
+        return std::nullopt;
+    }
+    auto boolean = [](bool value) {
+        return llvm::APSInt(llvm::APInt(1, value ? 1 : 0), /*isUnsigned=*/true);
+    };
+    /// The value that decides a conjunction or a disjunction alone.
+    bool deciding = rule->second == ValueRule::Disjunction;
+    bool known = true;
+    for(auto& argument: TST->template_arguments()) {
+        auto value =
+            argument.getKind() == clang::TemplateArgument::Type && !argument.isPackExpansion()
+                ? member_value(argument.getAsType(), name)
+                : std::nullopt;
+        if(!value) {
+            known = false;
+        } else if(rule->second == ValueRule::Negation) {
+            return boolean(!value->getBoolValue());
+        } else if(value->getBoolValue() == deciding) {
+            return boolean(deciding);
+        }
+    }
+    if(!known || rule->second == ValueRule::Negation) {
+        return std::optional<llvm::APSInt>();
+    }
+    return boolean(!deciding);
+}
 
 std::optional<bool> PseudoInstantiator::std_condition(const clang::TemplateArgument& argument) {
     std::optional<llvm::APSInt> value;
