@@ -487,6 +487,57 @@ ZEST_CASE(ViewsBetweenIncludes) {
     }
 }
 
+ZEST_CASE(CanonicalNamesKeepTheirBindings) {
+    /// `C::value_type` and `T::value_type` share their canonical form; the
+    /// only instantiation binds `C` alone.
+    add_focus("main.cpp", R"code(
+        template <class X> struct box { using value_type = int; };
+        template <class C> void sum(const C&) { typename C::value_type total{}; }
+        template <class T> struct wrapper { typename T::value_type held; };
+        void use() { sum(box<int>{}); }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* total = nodes.named<clang::VarDecl>("total");
+    ZASSERT(total);
+    auto* held = nodes.named<clang::FieldDecl>("held");
+    ZASSERT(held);
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto resolved = resolver.resolve(total->getType());
+    ZASSERT(!resolved.isNull());
+    ZEXPECT(resolved.getCanonicalType() == unit->context().IntTy);
+    auto free = resolver.resolve(held->getType());
+    ZASSERT(!free.isNull());
+    ZEXPECT(free->getAs<clang::DependentNameType>() != nullptr);
+}
+
+ZEST_CASE(MemberValueUnderBindings) {
+    /// A value argument written in the caller's parameters (`is_int<B>`)
+    /// folds under the caller's bindings.
+    add_focus("main.cpp", R"code(
+        template <class T> struct is_int { static constexpr bool value = false; };
+        template <> struct is_int<int> { static constexpr bool value = true; };
+        template <bool B> struct flag { static constexpr bool value = B; };
+        template <bool B, class R = void> struct enable_if {};
+        template <class R> struct enable_if<true, R> { using type = R; };
+        template <class A, class B> struct traits {
+            static constexpr bool ok = flag<is_int<B>::value>::value;
+        };
+        template <class T> struct user {
+            using t = typename enable_if<traits<T, int>::ok, int>::type;
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* t = nodes.named<clang::TypedefNameDecl>("t");
+    ZASSERT(t);
+    auto resolved = unit->get<types::TemplateResolver>().resolve(t->getUnderlyingType());
+    ZASSERT(!resolved.isNull());
+    ZEXPECT(resolved.getCanonicalType() == unit->context().IntTy);
+}
+
 ZEST_CASE(StandardConditionalBase) {
     /// A base chosen by `conditional` whose condition is not known (MSVC's
     /// variant) has a member both choices give alike.
