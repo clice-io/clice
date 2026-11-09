@@ -15,19 +15,17 @@ namespace clice::feature {
 
 namespace {
 
-/// The offsets in `text[begin, end)` where `name` stands as an identifier
-/// token. `text` is a whole buffer, a NUL after it.
+/// The offsets in `text[begin, end)` where `name` stands as a whole
+/// identifier, in code or in a comment documenting it.
 llvm::SmallVector<std::uint32_t, 1>
     spellings(llvm::StringRef text, std::uint32_t begin, std::uint32_t end, llvm::StringRef name) {
     llvm::SmallVector<std::uint32_t, 1> found;
-    auto start = logical_line_begin(text, begin);
-    auto rest = text.substr(start);
-    Lexer lexer(rest, dialect_of());
-    for(auto token = lexer.advance(); !token.is_eof() && start + token.range.end <= end;
-        token = lexer.advance()) {
-        if(start + token.range.begin >= begin && token.is_identifier() &&
-           token.text(rest) == name) {
-            found.push_back(start + token.range.begin);
+    for(auto at = text.find(name, begin); at != llvm::StringRef::npos && at + name.size() <= end;
+        at = text.find(name, at + 1)) {
+        auto after = at + name.size();
+        if((at == line_begin(text, at) || !is_identifier_char(text[at - 1])) &&
+           (after == text.size() || !is_identifier_char(text[after]))) {
+            found.push_back(static_cast<std::uint32_t>(at));
         }
     }
     return found;
