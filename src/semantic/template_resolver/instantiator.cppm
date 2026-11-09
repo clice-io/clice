@@ -1324,7 +1324,7 @@ private:
 
     /// Hard ceiling on rewrite steps per query; bounds the total work
     /// including pseudo-SFINAE probes over rejected branches.
-    constexpr static unsigned step_budget = 4096;
+    constexpr static unsigned step_budget = 2048;
 
     /// Hard ceiling on nested rewrites. What an expression in a type
     /// evaluates to nests inside it: the iterator MSVC's `std::map::begin()`
