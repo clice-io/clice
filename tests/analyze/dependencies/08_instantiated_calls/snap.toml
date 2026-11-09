@@ -1,0 +1,62 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 7 file shards (# KB), 11 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules edge util core"]
+stdout = '''
+{
+  "from": "util",
+  "to": "core",
+  "entities": [
+    {
+      "id": "#19d7d3810cb38af7",
+      "entity": "ops::clamp",
+      "owner": "core/clamp.h",
+      "users": [
+        "util/clamped.h:5"
+      ],
+      "interface": true
+    },
+    {
+      "id": "#0c38de0d58dc377c",
+      "entity": "ops::scale",
+      "owner": "core/scale.h",
+      "users": [
+        "util/scaled.h:5"
+      ],
+      "interface": true
+    }
+  ]
+}
+'''
+exit = 0
+
+[test."$ clice analyze modules file util/total.h"]
+stdout = '''
+{
+  "path": "util/total.h",
+  "module": "util",
+  "source": false,
+  "annotations": [],
+  "uses": [],
+  "usedBy": [
+    {
+      "module": "app",
+      "entities": [
+        "total"
+      ]
+    }
+  ],
+  "affinity": [
+    {
+      "module": "app",
+      "entities": 1
+    }
+  ]
+}
+'''
+stderr = "warning: no churn annotation: Process git ended with exit code 128"
+exit = 0

@@ -19,42 +19,21 @@ Rebuild::Rebuild(const Graph& graph, const Annotations& annotations) {
             importers[target].push_back(module);
         }
     }
-    // The sources reaching each internal partition, through other
-    // internal partitions too.
-    auto reaching = [&](std::uint32_t header) {
-        llvm::SmallVector<std::uint32_t> sources;
-        llvm::DenseSet<std::uint32_t> reached{header};
-        llvm::SmallVector<std::uint32_t> pending{header};
-        while(!pending.empty()) {
-            auto current = pending.pop_back_val();
-            for(auto dependent: graph.dependents[current]) {
-                if(!reached.insert(dependent).second) {
-                    continue;
-                }
-                if(facts.files[dependent].source) {
-                    sources.push_back(dependent);
-                } else {
-                    pending.push_back(dependent);
-                }
-            }
-        }
-        return sources;
+    // An edit to a source or an internal partition rebuilds the units
+    // entering it: the rewrite imports a partition wherever its header was
+    // included. Those units name the modules it names.
+    auto imported = [&](std::uint32_t user) {
+        return facts.files[user].source || graph.internal[user];
     };
-
-    // The modules each source names beyond its own, itself or through
-    // the internal partitions it reaches.
     std::vector<llvm::SmallDenseSet<std::uint32_t, 8>> named(facts.files.size());
     for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
         for(auto user: facts.charged_files(file)) {
-            llvm::SmallVector<std::uint32_t> sources;
-            if(facts.files[user].source) {
-                sources.push_back(user);
-            } else if(graph.internal[user]) {
-                sources = reaching(user);
+            if(!imported(user)) {
+                continue;
             }
-            for(auto source: sources) {
+            for(auto unit: facts.files[user].units) {
                 for(auto& use: facts.uses[file]) {
-                    named[source].insert(module_of[facts.entities[use.entity].owner]);
+                    named[unit].insert(module_of[facts.entities[use.entity].owner]);
                 }
             }
         }
@@ -89,13 +68,9 @@ Rebuild::Rebuild(const Graph& graph, const Annotations& annotations) {
         baseline.push_back(today);
         llvm::DenseSet<std::uint32_t> rebuilt;
         for(auto user: facts.charged_files(file)) {
-            if(facts.files[user].source) {
-                rebuilt.insert(user);
-            } else if(!graph.internal[user]) {
-                rebuilt.insert_range(rebuilt_by_module[module_of[user]]);
-            } else {
-                rebuilt.insert_range(reaching(user));
-            }
+            rebuilt.insert_range(imported(user)
+                                     ? llvm::ArrayRef(facts.files[user].units)
+                                     : llvm::ArrayRef(rebuilt_by_module[module_of[user]]));
         }
         // Summed in file order, so the floating-point total is stable.
         llvm::SmallVector<std::uint32_t> sources(rebuilt.begin(), rebuilt.end());

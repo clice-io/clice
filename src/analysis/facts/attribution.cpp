@@ -94,6 +94,7 @@ std::uint32_t FactsBuilder::owner_of(index::SymbolHash hash,
 }
 
 std::uint32_t FactsBuilder::paster_of(std::uint32_t fragment,
+                                      index::SymbolHash hash,
                                       const index::SymbolView& identity,
                                       llvm::ArrayRef<Site> scoped) {
     // A fragment's entities belong to the file pasting it in: the one
@@ -117,6 +118,16 @@ std::uint32_t FactsBuilder::paster_of(std::uint32_t fragment,
             includers = std::move(kept);
         }
     };
+    // A fragment its includers read differently declares an entity for the
+    // includers the units whose reading declares it enter (common/omp.inc
+    // declares sema_clause where sema/check.h defines GEN_SEMA ahead of it).
+    if(auto units = declaring_units.lookup({fragment, hash}); !units.empty()) {
+        narrow([&](std::uint32_t includer) {
+            return ranges::any_of(units, [&](std::uint32_t unit) {
+                return ranges::contains(facts.files[includer].units, unit);
+            });
+        });
+    }
     if(auto enclosing = sites.find(identity.parent); enclosing != sites.end()) {
         narrow([&](std::uint32_t includer) {
             return ranges::any_of(enclosing->second,

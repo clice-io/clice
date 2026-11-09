@@ -50,6 +50,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     builder.list_files();
     builder.read_includes();
     builder.read_shards();
+    builder.read_instantiations();
     builder.find_pasters();
     builder.read_macros();
     builder.find_usings();

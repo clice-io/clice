@@ -3,6 +3,7 @@ module clice;
 import :analysis.facts.builder;
 import :analysis.text;
 import :command.file_kind;
+import :index.instantiation_shard;
 import :index.project_index;
 import :index.shard;
 import :index.symbol_query;
@@ -427,6 +428,51 @@ void FactsBuilder::read_shards() {
     }
 }
 
+void FactsBuilder::read_instantiations() {
+    // A dependent call by a qualified name (`ops::clamp(value)`) looks its
+    // overloads up where the template is defined, as a non-dependent name
+    // does: the one an instantiation runs is the file's to see, even when
+    // only the including unit declared it. What argument dependent lookup
+    // or a dependent type's member brings is the instantiating unit's,
+    // which a module defining the template never imports. An instantiation
+    // running a candidate the file's own entries name records nothing.
+    for(std::uint32_t id = 0; id < facts.files.size(); id += 1) {
+        auto* instantiations = index.instantiation_shard(fids[id]);
+        auto* shard = index.shard(fids[id]);
+        if(!instantiations || !shard) {
+            continue;
+        }
+        instantiations->for_each_record([&](const index::InstantiationRecord& record) {
+            if(record.kind != index::InstantiationKind::Reference || record.expansion) {
+                return true;
+            }
+            auto identity = find_symbol(record.target, shard);
+            auto parent = identity && identity->parent != 0 ? find_symbol(identity->parent, shard)
+                                                            : std::nullopt;
+            if(!identity || (parent && parent->kind != SymbolKind::Namespace)) {
+                return true;
+            }
+            auto& tokens = text_of(id).tokens;
+            auto name = ranges::lower_bound(tokens, record.range.begin, {}, [](const Token& token) {
+                return token.range.begin;
+            });
+            if(name == tokens.begin() || name == tokens.end() ||
+               name->range.begin != record.range.begin ||
+               std::prev(name)->kind != clang::tok::coloncolon) {
+                return true;
+            }
+            auto& use = raw[id][record.target];
+            if(use.count == 0) {
+                use.line = line_of(*shard, record.range.begin);
+            }
+            use.count += 1;
+            use.strong = true;
+            use_sites[id].emplace_back(record.range.begin, record.target);
+            return true;
+        });
+    }
+}
+
 void FactsBuilder::find_pasters() {
     // A fragment pasted inside a declaration: the includer's Pasted relations at
     // the directive name what the fragment names there.
@@ -668,7 +714,7 @@ void FactsBuilder::classify(index::SymbolHash hash) {
     }
     auto declared_in = owner;
     if(facts.files[owner].fragment) {
-        owner = paster_of(owner, *identity, scoped);
+        owner = paster_of(owner, hash, *identity, scoped);
         if(owner == none) {
             return;
         }

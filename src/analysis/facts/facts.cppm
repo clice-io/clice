@@ -254,8 +254,9 @@ struct Facts {
     std::vector<Entity> entities;
 
     /// Per file, the entities it names that another file owns: spelled
-    /// names, names a macro expansion produces there, and the template an
-    /// explicit specialization specializes.
+    /// names, names a macro expansion produces there, the overloads its
+    /// templates' instantiations call by a qualified name, and the template
+    /// an explicit specialization specializes.
     std::vector<std::vector<Use>> uses;
 
     /// Per file, the macros it expands or tests that another file defines.

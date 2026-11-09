@@ -1,6 +1,6 @@
 /// What an edit to each file rebuilds: today, the units entering it; under
-/// a partition, the importers of its module or the sources reaching its
-/// internal partition.
+/// a partition, the importers of its module, or for an internal partition
+/// the units importing it, those entering its header.
 
 module clice:analysis.impact;
 

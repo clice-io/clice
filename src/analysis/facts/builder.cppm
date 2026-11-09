@@ -5,6 +5,7 @@ module clice:analysis.facts.builder;
 
 import :analysis.facts;
 import :analysis.text;
+import :index.instantiation_shard;
 import :index.project_index;
 import :index.shard;
 import :index.symbol;
@@ -55,6 +56,10 @@ struct FactsBuilder {
 
     /// What each scoped file's shard declares and names.
     void read_shards();
+
+    /// What each scoped file's template instantiations call by a
+    /// namespace-qualified name.
+    void read_instantiations();
 
     /// The includers whose Pasted relations name what a fragment names.
     void find_pasters();
@@ -146,10 +151,11 @@ struct FactsBuilder {
                            llvm::ArrayRef<Site> scoped,
                            Fid canonical);
 
-    /// Of the files including `fragment`, the one providing what the
-    /// fragment declares at its site among `scoped`; none when no file
-    /// includes it.
+    /// Of the files including `fragment`, the one providing the entity
+    /// `hash` the fragment declares at its site among `scoped`; none when no
+    /// file includes it.
     std::uint32_t paster_of(std::uint32_t fragment,
+                            index::SymbolHash hash,
                             const index::SymbolView& identity,
                             llvm::ArrayRef<Site> scoped);
 
@@ -209,7 +215,8 @@ struct FactsBuilder {
     /// produces has only the relation. A weak one, a candidate or a guess,
     /// may be one overload a dependent call does not run, kept apart: the
     /// candidates an operator finds where a template is defined are not
-    /// what its instantiations call.
+    /// what its instantiations call. What an instantiation calls by a
+    /// qualified name is named as a spelled name is.
     std::vector<llvm::DenseMap<index::SymbolHash, RawUse>> raw;
 
     /// Per file, the lines of its Pasted relations.

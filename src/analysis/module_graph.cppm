@@ -63,10 +63,11 @@ struct Graph {
     /// owns, apart from those of its module that declare it themselves.
     std::vector<llvm::SmallVector<std::uint32_t>> dependents;
 
-    /// Headers only their own module's sources use, directly or through
-    /// other such headers: internal partitions, whose names never reach
-    /// the module's interface. A header specializing an out-of-scope
-    /// template has users no relation shows and never is one.
+    /// Headers only their own module's sources use and include, directly or
+    /// through other such headers: the implementation partitions the
+    /// rewrite makes, which the module's interface never imports. A header
+    /// specializing an out-of-scope template has users no relation shows
+    /// and never is one.
     std::vector<bool> internal;
 
     Graph(const Facts& facts, const Partition& partition);

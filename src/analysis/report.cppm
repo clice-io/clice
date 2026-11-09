@@ -63,7 +63,8 @@ struct Impact {
     /// Under the partition: the units of every module whose interface
     /// imports the file's module, transitively, and of the sources
     /// importing any of them — a BMI records the hash of each BMI it
-    /// imports, so an interface edit travels the whole importer closure.
+    /// imports, so an interface edit travels the whole importer closure;
+    /// for an internal partition, the units entering it, which import it.
     double partitioned = 0;
 
     /// The churn annotation, when present.
@@ -149,10 +150,10 @@ struct Overview {
     std::uint32_t cyclic_modules = 0;
     std::vector<PartitionCycle> partition_cycles;
 
-    /// Headers only their own module's sources use, directly or through
-    /// other such headers: the generator makes them internal partitions,
-    /// which import nothing into the module's interface and whose edits
-    /// rebuild only their users.
+    /// Headers only their own module's sources use and include, directly
+    /// or through other such headers: the generator makes them internal
+    /// partitions, which import nothing into the module's interface and
+    /// whose edits rebuild only the units including them.
     std::uint32_t internal_headers = 0;
     std::vector<std::string> deepest_chain;
     Totals totals;

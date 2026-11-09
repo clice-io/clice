@@ -104,21 +104,30 @@ Graph::Graph(const Facts& facts, const Partition& partition) :
             }
         }
     }
+    // A header owning nothing other files name, an umbrella over other
+    // headers, is internal too: its includers reach what it includes
+    // through those headers' partitions.
     for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
         auto& info = facts.files[file];
         internal[file] = !info.source && !info.fragment && info.specializes.empty() &&
-                         !dependents[file].empty() &&
                          ranges::all_of(dependents[file], [&](std::uint32_t user) {
                              return partition.module_of[user] == partition.module_of[file];
                          });
     }
-    // A header the module's interface uses cannot stay internal.
+    // A header the module's interface uses or includes cannot stay
+    // internal, nor one another module includes: an interface importing an
+    // implementation partition leaves its names unreachable to importers.
+    auto interface = [&](std::uint32_t file) {
+        return !facts.files[file].source && !facts.files[file].fragment && !internal[file];
+    };
     for(bool changed = true; changed;) {
         changed = false;
         for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
-            if(internal[file] && ranges::any_of(dependents[file], [&](std::uint32_t user) {
-                   return !facts.files[user].source && !internal[user];
-               })) {
+            if(internal[file] &&
+               (ranges::any_of(dependents[file], interface) ||
+                ranges::any_of(facts.files[file].includers, [&](std::uint32_t by) {
+                    return partition.module_of[by] != partition.module_of[file] || interface(by);
+                }))) {
                 internal[file] = false;
                 changed = true;
             }
