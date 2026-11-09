@@ -34,9 +34,7 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::QualType typ
     auto written = type;
     type = resolve_object(type);
     if(auto* DNT = type->getAs<clang::DependentNameType>()) {
-        if(auto alternatives = std_alternatives(DNT); !alternatives.empty()) {
-            return lookup_through_alternatives(alternatives, name);
-        }
+        return lookup_through_alternatives(DNT, name);
     }
 
     if(auto* record = type->getAsCXXRecordDecl()) {

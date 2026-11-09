@@ -348,6 +348,13 @@ struct UnitCache {
     /// the same iterator types at every call.
     llvm::DenseMap<const void*, KeptStep<bool>> unformable;
 
+    /// Members found alike in every alternative of a condition not known,
+    /// by the condition's `type` and the name (lookup_through_alternatives):
+    /// each of MSVC's special member layers reaches the layer below from
+    /// all three of its choices, twelve layers deep under `std::variant`.
+    llvm::DenseMap<std::pair<const void*, const void*>, KeptStep<clang::DeclContext::lookup_result>>
+        alternatives;
+
     /// Values of variable templates by the template and its arguments, when
     /// they are all types or templates (PseudoInstantiator::value_of):
     /// `is_empty_v<_Alloc>` decides the layout of every MSVC container.
@@ -780,9 +787,10 @@ private:
     /// The condition a standard library template takes as its argument.
     std::optional<bool> std_condition(const clang::TemplateArgument& argument);
 
-    /// `name` in each of `alternatives`, when every one finds it alike. The
-    /// frames of the last lookup stay.
-    lookup_result lookup_through_alternatives(llvm::ArrayRef<clang::QualType> alternatives,
+    /// `name` in each alternative of `DNT` (std_alternatives), when every
+    /// one finds it alike, kept for the unit; nothing for a `DNT` with no
+    /// alternatives. The frames of the last lookup stay.
+    lookup_result lookup_through_alternatives(const clang::DependentNameType* DNT,
                                               clang::DeclarationName name);
 
     /// The partial specializations whose pattern deduces against
@@ -1302,10 +1310,6 @@ private:
     unsigned probing = 0;
 
     unsigned evaluating = 0;
-
-    /// Whether a lookup is looking through the alternatives of a condition
-    /// not known (lookup_through_alternatives).
-    bool through_alternatives = false;
 
     /// Some answer came back empty or partial because a lookup or the
     /// deduction of a variable was already in progress (a recursive chain

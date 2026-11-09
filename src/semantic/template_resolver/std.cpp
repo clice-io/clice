@@ -116,11 +116,21 @@ std::optional<clang::QualType> PseudoInstantiator::std_type(const clang::Depende
     if(!rule) {
         return std::nullopt;
     }
+    auto written_arguments = written->template_arguments();
     llvm::SmallVector<clang::TemplateArgument, 4> arguments;
-    rewrite_arguments(written->template_arguments(), arguments, Policy::Resolve);
+    unsigned rewritten = 0;
+    /// Rewrite the arguments in order up to the one at `index`: what a
+    /// condition does not choose stays as written. MSVC's special member
+    /// layers nest one in each alternative of the one above, twelve deep.
+    auto has = [&](unsigned index) {
+        while(arguments.size() <= index && rewritten < written_arguments.size()) {
+            rewrite_arguments(written_arguments.slice(rewritten, 1), arguments, Policy::Resolve);
+            rewritten += 1;
+        }
+        return index < arguments.size();
+    };
     auto type_at = [&](unsigned index) {
-        if(index >= arguments.size() ||
-           arguments[index].getKind() != clang::TemplateArgument::Type ||
+        if(!has(index) || arguments[index].getKind() != clang::TemplateArgument::Type ||
            arguments[index].getAsType()->getAs<clang::PackExpansionType>()) {
             return clang::QualType();
         }
@@ -129,7 +139,7 @@ std::optional<clang::QualType> PseudoInstantiator::std_type(const clang::Depende
     auto unknown = clang::QualType(DNT, 0);
 
     if(*rule == Rule::Conditional || *rule == Rule::EnableIf) {
-        if(arguments.empty()) {
+        if(!has(0)) {
             return std::nullopt;
         }
         auto condition = std_condition(arguments.front());
@@ -140,15 +150,16 @@ std::optional<clang::QualType> PseudoInstantiator::std_type(const clang::Depende
             if(condition == false) {
                 return std::nullopt;
             }
-            auto type = arguments.size() > 1 ? type_at(1) : context.VoidTy;
+            auto type = has(1) ? type_at(1) : context.VoidTy;
             return type.isNull() ? std::nullopt : std::optional(type);
         }
         if(!condition) {
-            auto chosen = type_at(1);
-            auto other = type_at(2);
-            return !chosen.isNull() && !other.isNull() && context.hasSameType(chosen, other)
-                       ? chosen
-                       : unknown;
+            if(written_arguments.size() == 3 && !written_arguments[1].isPackExpansion() &&
+               context.isSameTemplateArgument(written_arguments[1], written_arguments[2])) {
+                auto type = type_at(1);
+                return type.isNull() ? unknown : type;
+            }
+            return unknown;
         }
         auto type = type_at(*condition ? 1 : 2);
         return type.isNull() ? std::nullopt : std::optional(type);
@@ -241,38 +252,38 @@ llvm::SmallVector<clang::QualType, 2>
 }
 
 PseudoInstantiator::lookup_result
-    PseudoInstantiator::lookup_through_alternatives(llvm::ArrayRef<clang::QualType> alternatives,
+    PseudoInstantiator::lookup_through_alternatives(const clang::DependentNameType* DNT,
                                                     clang::DeclarationName name) {
-    /// Alternatives inside an alternative multiply: MSVC's special member
-    /// layers nest a conditional base in each of three choices, four deep.
-    /// Past the first, a condition not known leaves the member unfound, as
-    /// the library's definition does.
-    if(through_alternatives) {
-        give_up(Trouble::Undecided);
-        return lookup_result();
-    }
-    through_alternatives = true;
-    auto outermost = llvm::make_scope_exit([&] { through_alternatives = false; });
-    auto frames = stack.size();
-    std::optional<Found> common;
-    for(auto [index, alternative]: views::enumerate(alternatives)) {
-        auto members = lookup(alternative, name);
-        if(members.empty()) {
-            stack.truncate(frames);
+    /// Its layers reach a condition through other sugar on each path: one
+    /// naming no parameter anything binds is kept by its canonical form.
+    const void* key = names_only_free_parameters(DNT) ? DNT->getCanonicalTypeInternal().getTypePtr()
+                                                      : static_cast<const clang::Type*>(DNT);
+    return kept_step(cache.alternatives, {key, name.getAsOpaquePtr()}, [&] {
+        auto alternatives = std_alternatives(DNT);
+        if(alternatives.empty()) {
             return lookup_result();
         }
-        auto here = found_by(members, frames);
-        if(common && !same_found(*common, here)) {
-            stack.truncate(frames);
-            return lookup_result();
+        auto frames = stack.size();
+        std::optional<Found> common;
+        for(auto [index, alternative]: views::enumerate(alternatives)) {
+            auto members = lookup(alternative, name);
+            if(members.empty()) {
+                stack.truncate(frames);
+                return lookup_result();
+            }
+            auto here = found_by(members, frames);
+            if(common && !same_found(*common, here)) {
+                stack.truncate(frames);
+                return lookup_result();
+            }
+            common = std::move(here);
+            if(static_cast<std::size_t>(index) + 1 < alternatives.size()) {
+                stack.truncate(frames);
+            }
         }
-        common = std::move(here);
-        if(static_cast<std::size_t>(index) + 1 < alternatives.size()) {
-            stack.truncate(frames);
-        }
-    }
-    LOG_DEBUG("{}found '{}' alike in each alternative", pad(), name.getAsString());
-    return common->members;
+        LOG_DEBUG("{}found '{}' alike in each alternative", pad(), name.getAsString());
+        return common->members;
+    });
 }
 
 }  // namespace clice::types

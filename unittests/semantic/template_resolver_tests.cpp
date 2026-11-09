@@ -666,18 +666,23 @@ ZEST_CASE(StandardConditionalBase) {
 }
 
 ZEST_CASE(StandardConditionalBasesNested) {
-    /// Each layer is chosen by a condition not known, between the layer
-    /// below and a class over it (MSVC's special member layers): looking
-    /// through every choice at every layer would double the work per layer.
+    /// Each layer is chosen by conditions not known among the layer below
+    /// and two classes over it (MSVC's special member layers): looking
+    /// through every choice at every layer would triple the work per layer.
     add_focus("main.cpp", R"code(
         namespace std {
         template <bool B, class T, class F> struct conditional { using type = T; };
         template <class T, class F> struct conditional<false, T, F> { using type = F; };
+        template <bool B, class T, class F>
+        using conditional_t = typename conditional<B, T, F>::type;
         template <class T> constexpr bool trivial = __is_trivially_destructible(T);
+        template <class T> constexpr bool movable = __is_constructible(T, T&&);
         template <class... Ts> struct base { void reset(); };
         template <class B> struct over : B {};
+        template <class B> struct deleted : B {};
         template <class B, class... Ts>
-        using pick = typename conditional<(trivial<Ts> && ...), B, over<B>>::type;
+        using pick = conditional_t<(trivial<Ts> && ...), B,
+                                   conditional_t<(movable<Ts> && ...), over<B>, deleted<B>>>;
         template <class B, class... Ts>
         using pick3 = pick<pick<pick<B, Ts...>, Ts...>, Ts...>;
         template <class... Ts>
@@ -691,7 +696,9 @@ ZEST_CASE(StandardConditionalBasesNested) {
     Nodes nodes(unit->context());
     ZASSERT(!nodes.members.empty());
     types::TemplateResolver resolver(*unit, {.audit = true});
-    resolver.lookup(nodes.members.back());
+    auto found = resolver.lookup(nodes.members.back());
+    ZASSERT(found.isSingleResult());
+    ZEXPECT(found.front()->getName() == "reset");
     ZASSERT(resolver.audits().size() == 1);
     auto& audit = resolver.audits().front();
     ZEXPECT(audit.troubles[static_cast<std::size_t>(types::Trouble::Steps)] == 0);
