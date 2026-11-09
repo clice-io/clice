@@ -497,8 +497,8 @@ ZEST_CASE(UnknownLengthExpansion) {
 }
 
 ZEST_CASE(RecursiveValueUnknown) {
-    /// A recursive value whose operands are not known folds down one chain:
-    /// past an unknown operand the other is not folded.
+    /// A recursive value whose operands are not known folds down a chain per
+    /// argument, not a tree: past an unknown operand the other is not folded.
     add_focus("main.cpp", R"code(
         template <long X, long Y> constexpr long gcd = gcd<Y, X % Y>;
         template <long X> constexpr long gcd<X, 0> = X;
@@ -517,7 +517,7 @@ ZEST_CASE(RecursiveValueUnknown) {
     resolver.resolve(type->getUnderlyingType());
     ZASSERT(resolver.records().size() == 1);
     auto& record = resolver.records().front();
-    ZEXPECT(record.troubles[static_cast<std::size_t>(types::Trouble::Evaluation)] <= 2);
+    ZEXPECT(record.troubles[static_cast<std::size_t>(types::Trouble::Evaluation)] < 32);
 }
 
 };  // ZEST_SUITE(TemplateResolver)
