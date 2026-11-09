@@ -6,7 +6,7 @@ ${WS}/compile_commands.json:
   resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D DEBUG ${WS}/main.cpp
   error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
 '''
-stderr = "warning: Cannot ask the compiler for its default settings: Driver ${WS}/missing-cc not found or not executable; clang's own driver reads its commands"
+stderr = "warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands"
 exit = 0
 
 [test."$ clice command main.cpp --configuration release"]
@@ -17,5 +17,5 @@ ${WS}/compile_commands.json:
   resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D NDEBUG ${WS}/main.cpp
   error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
 '''
-stderr = "warning: Cannot ask the compiler for its default settings: Driver ${WS}/missing-cc not found or not executable; clang's own driver reads its commands"
+stderr = "warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands"
 exit = 0

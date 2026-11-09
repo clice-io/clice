@@ -1,4 +1,4 @@
-[test."$ clice index"]
+[index."$ clice index"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/.clice/logs/${SESSION}
@@ -8,3 +8,6 @@ warning: Skipping entry 0 of the compilation database compile_commands.json: a.c
 warning: 1 entries of the compilation database compile_commands.json are skipped; the log names them
 '''
 exit = 0
+
+[server.guidance]
+value = ["1 entries of the compilation database ${WS}/compile_commands.json are skipped; the log names them"]

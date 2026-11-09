@@ -163,6 +163,7 @@ struct PipeOutput {
     /// lose the count, and it is delivered ahead of everything — the gap
     /// is older than any survivor. note_sent tracks partial delivery.
     std::string note;
+
     std::size_t note_sent = 0;
 
     /// Bytes the pipe refused, flushed ahead of fresh content.
@@ -176,11 +177,12 @@ struct PipeOutput {
     /// Lines dropped so far because the pipe was full, and of those the ones
     /// no gap report told yet.
     std::size_t dropped = 0;
+
     std::size_t unreported = 0;
 };
 
-/// A PipeOutput writing to `fd`, a pipe switched to non-blocking.
-PipeOutput pipe_output(int fd, std::size_t capacity = 256 * 1024);
+/// `output`, its fd switched to non-blocking if it is a pipe.
+PipeOutput pipe_output(PipeOutput output);
 
 /// Writes `text`, then pushes the note and backlog as far as the pipe
 /// allows.
@@ -202,7 +204,9 @@ struct FileOutput {
     /// Lines dropped so far because a write failed, and of those the ones
     /// no gap report told yet, with the last error.
     std::size_t dropped = 0;
+
     std::size_t unreported = 0;
+
     std::error_code last_error;
 
     /// A failed write left part of a line behind and nothing followed it
@@ -231,8 +235,8 @@ void set_project_roots(llvm::ArrayRef<std::string> roots);
 std::string start_session_log(std::string_view logging_dir);
 
 /// Make the session logging in `session_dir`, under another project's
-/// logging directory, found under `logging_dir` too: a link to it, or where
-/// the system makes none (Windows without the right), a `.txt` naming it.
+/// logging directory, found under `logging_dir` too: a link to it (on
+/// Windows a junction, which needs no privilege).
 void link_session_log(std::string_view logging_dir, std::string_view session_dir);
 
 /// Log to <dir>/<name>.log, the name stderr_logger took, starting with the
@@ -284,8 +288,7 @@ enum class AnomalyId : std::uint8_t {
     /// A freshness check answered from an earlier look at a file that the
     /// disk contradicts (reported only while shadow checks run).
     StaleTrust,
-    /// What the index built, or wrote under its own writer lock, does not
-    /// read back.
+    /// What the index built in memory does not load back.
     IndexReadBack,
 
     /// Number of ids, not a reportable anomaly — keep last.

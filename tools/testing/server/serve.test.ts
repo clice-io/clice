@@ -11,9 +11,9 @@ function logged(lines: readonly string[]): Workspace {
     return workspace;
 }
 
-function crash(workspace: Workspace, file: string): string[] {
+function crash(file: string): string[] {
     return [
-        `t t [warning] pool.cpp:39 [SF-0] clice worker crashed in: clice/worker/hover ${workspace.displayPath(file)}`,
+        `t t [warning] pool.cpp:39 [SF-0] clice worker crashed in: clice/worker/hover ${file}`,
         "t t [error] pool.cpp:578 [anomaly:WorkerCrash] Worker SF-0 killed by signal 4 (SIGILL)",
     ];
 }
@@ -23,10 +23,7 @@ describe("gateLogs", () => {
 
     test("the declared crash passes", () => {
         const workspace = logged([]);
-        workspace.write(
-            ".clice/logs/session/master.log",
-            `${crash(workspace, "a.cpp").join("\n")}\n`,
-        );
+        workspace.write(".clice/logs/session/master.log", `${crash("a.cpp").join("\n")}\n`);
         expect(gateLogs(workspace, { servers: [hover] }, false)).toEqual([]);
         workspace.remove();
     });
@@ -35,7 +32,7 @@ describe("gateLogs", () => {
         const workspace = logged([]);
         workspace.write(
             ".clice/logs/session/master.log",
-            `${[...crash(workspace, "a.cpp"), ...crash(workspace, "b.cpp")].join("\n")}\n`,
+            `${[...crash("a.cpp"), ...crash("b.cpp")].join("\n")}\n`,
         );
         const [error] = gateLogs(workspace, { servers: [hover] }, false) as Error[];
         expect(error?.message).toMatch(/nothing declared/);
@@ -58,7 +55,7 @@ describe("gateLogs", () => {
         workspace.write(
             ".clice/logs/session/lint.log",
             `${[
-                `t t [warning] pool.cpp:39 [SL-0] clice worker crashed in: clice/worker/compileUnit ${workspace.displayPath("a.cpp")}`,
+                `t t [warning] pool.cpp:39 [SL-0] clice worker crashed in: clice/worker/compileUnit a.cpp`,
                 "t t [error] pool.cpp:575 [anomaly:WorkerCrash] Worker SL-0 killed by signal 4 (SIGILL) (crash streak: 0)",
             ].join("\n")}\n`,
         );

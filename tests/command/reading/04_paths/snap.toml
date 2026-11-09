@@ -18,7 +18,7 @@ exit = 1
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -working-directory ${WS}/build -I ${WS}/build/include ${WS}/build/main.cpp"
 stderr = '''
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
-warning: clang's driver, reading the command of missing-clang++: unable to set working directory: ${WS}/build
+warning: clang's driver, reading the command of missing-clang++: unable to set working directory: build
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -36,7 +36,7 @@ stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE
 stderr = '''
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 warning: clang's driver, reading the command of missing-clang++: configuration file 'x.cfg' cannot be found
-warning: clang's driver, reading the command of missing-clang++: no such file or directory: '${WS}/ignore.txt'
+warning: clang's driver, reading the command of missing-clang++: no such file or directory: 'ignore.txt'
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1

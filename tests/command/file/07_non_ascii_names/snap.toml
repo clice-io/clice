@@ -6,7 +6,7 @@ ${WS}/构建/compile_commands.json:
   resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 -I ${WS}/构建/../头文件 -D LABEL=你好 ${WS}/构建/../源码/主程序.cpp
   error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
 '''
-stderr = "warning: Cannot ask the compiler for its default settings: Driver ${WS}/missing-cc not found or not executable; clang's own driver reads its commands"
+stderr = "warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands"
 exit = 0
 
 [test."$ clice command 源码/主程序.cpp --json"]
@@ -50,7 +50,7 @@ stdout = '''
   ]
 }
 '''
-stderr = "warning: Cannot ask the compiler for its default settings: Driver ${WS}/missing-cc not found or not executable; clang's own driver reads its commands"
+stderr = "warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands"
 exit = 0
 
 [test."$ clice command convert 构建/compile_commands.json"]
@@ -75,7 +75,7 @@ stdout = '''
 ]
 '''
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Driver ${WS}/missing-cc not found or not executable; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands
 error: 1 of the entries stay driver commands: the warnings above say why
 '''
 exit = 1

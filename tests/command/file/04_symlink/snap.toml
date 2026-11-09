@@ -6,5 +6,5 @@ ${WS}/compile_commands.json:
   resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D FROM_RULE ${WS}/real/main.cpp
   error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
 '''
-stderr = "warning: Cannot ask the compiler for its default settings: Driver ${WS}/missing-cc not found or not executable; clang's own driver reads its commands"
+stderr = "warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands"
 exit = 0

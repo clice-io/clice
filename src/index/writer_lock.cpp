@@ -1,11 +1,8 @@
-module;
-
-#include "version.h"
-
 module clice;
 
 import :index.writer_lock;
 import :support.logging;
+import :support.version;
 import :vfs.path;
 
 namespace clice::index {

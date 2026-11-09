@@ -70,7 +70,7 @@ error: The command stays a driver command: Cannot find driver: missing-cc
 exit = 1
 
 ["one source a command"."$ clice command convert -- missing-cc -c main.cpp other.cpp"]
-stderr = "error: The command names 2 C-family sources (${WS}/main.cpp, ${WS}/other.cpp) among its arguments; convert takes a command compiling one"
+stderr = "error: The command names 2 C-family sources (main.cpp, other.cpp) among its arguments; convert takes a command compiling one"
 exit = 1
 
 ["one source a command"."$ clice command convert -- missing-cc -c"]

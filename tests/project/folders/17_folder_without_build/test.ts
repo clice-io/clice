@@ -31,3 +31,13 @@ test("the log goes with the first project opened", async (t) => {
     expect(exists(t, ".clice")).toBe(false);
     expect(t.disk.list("alpha/.clice/logs/*/master.log")).toHaveLength(1);
 });
+
+// A database the waiting folder finds later takes the open files it lists
+// from the folder that held them.
+test("a database found later takes its files", async (t) => {
+    const s = await t.start({ folders: ["alpha", "plain"] });
+    await t.show("before", s.errors("alpha/extra.cpp"));
+    t.disk.database({ "alpha/extra.cpp": ["-DFROM_PLAIN"] }, "plain");
+    expect(await s.poll("cdb")).toBe(1);
+    await t.show("after", s.errors("alpha/extra.cpp"));
+});

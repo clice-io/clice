@@ -2,8 +2,6 @@
 stdout = "Linted 2 translation units in #s: 0 findings."
 stderr = '''
 error: Last output of crashed worker SL-0:
-#time.258 [info] stateless.cpp:723 Starting stateless worker
-#time.258 [info] stateless.cpp:761 Stateless worker ready, waiting for requests
 error: [anomaly:WorkerCrash] Worker SL-0 ${CRASH} (crash streak: 1)
 '''
 exit = 0

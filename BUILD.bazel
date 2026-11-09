@@ -8,7 +8,6 @@ xclang_resource_dir(name = "resource_dir")
 cc_library(
     name = "version",
     srcs = ["//bazel:version_cpp"],
-    hdrs = ["src/version.h"],
     copts = COPTS,
 )
 

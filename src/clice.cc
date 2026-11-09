@@ -1,11 +1,8 @@
-module;
-
-#include "version.h"
-
 module clice;
 
 import :driver.driver;
 import :support.logging;
+import :support.version;
 
 namespace clice::driver {
 

@@ -1,13 +1,10 @@
-module;
-
-#include "version.h"
-
 module clice;
 
 import :server.client;
 import :server.master;
 import :support.logging;
 import :support.process;
+import :support.version;
 
 namespace clice {
 

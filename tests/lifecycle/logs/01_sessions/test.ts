@@ -54,7 +54,8 @@ const LINE =
 
 // Every line of the server's log has the same shape; paths under the
 // project are relative to it, which a line naming the project still names
-// in full, and a file's command is logged once while it stays the same.
+// in full, and a file's command is logged once while it stays the same,
+// again once it changes.
 test("the server's lines", async (t) => {
     const s = await t.start();
     s.open("main.cpp");
@@ -66,6 +67,9 @@ test("the server's lines", async (t) => {
         s.edit("main.cpp", { replace: `return ${from};`, with: `return ${to};` });
         await s.sync();
     }
+    t.disk.database({ "main.cpp": ["-DCHANGED"] });
+    expect(await s.poll("cdb")).toBe(1);
+    await s.sync();
     await s.stop();
     const [log] = t.disk.list(`${LOGS}/*/master.log`);
     const lines = t.disk
@@ -73,12 +77,66 @@ test("the server's lines", async (t) => {
         .split(/\r?\n/)
         .filter((line) => line !== "");
     expect(lines.filter((line) => !LINE.test(line))).toEqual([]);
-    const under = [t.root, fs.realpathSync.native(t.root)].flatMap((root) => [
-        `${root}/`,
-        `${root}${path.sep}`,
-    ]);
+    // Every spelling of the root: as given and resolved, with either
+    // separator, a drive in either case.
+    const under = [t.root, fs.realpathSync.native(t.root)].flatMap((root) =>
+        [root, root.replaceAll("\\", "/")].flatMap((spelled) =>
+            [spelled, spelled.replace(/^[A-Za-z]:/, (drive) => drive.toLowerCase())].map(
+                (form) => `${form}${form.includes("\\") ? "\\" : "/"}`,
+            ),
+        ),
+    );
     expect(lines.filter((line) => under.some((prefix) => line.includes(prefix)))).toEqual([]);
     expect(lines.filter((line) => line.includes("] resolve.cpp:"))).toEqual([
         expect.stringContaining("Command of main.cpp: from its database entry"),
+        expect.stringContaining("Command of main.cpp: from its database entry"),
     ]);
 });
+
+// A server on no workspace folder logs into the cache directory the
+// editor's settings name, its lines' paths whole.
+test("a server on no folder", async (t) => {
+    const s = await t.start({ folders: [] });
+    s.open("main.cpp");
+    await s.sync();
+    await s.stop();
+    const logs = t.disk.list(`${LOGS}/*/*.log`);
+    expect(logs.filter((log) => log.endsWith("/master.log"))).toHaveLength(1);
+    const separatorless = t.root.replaceAll(/[\\/]/g, "");
+    const lines = logs.flatMap((log) => t.disk.read(log).split(/\r?\n/));
+    expect(lines.filter((line) => line.includes(separatorless))).toEqual([]);
+});
+
+// A server whose log moves aside over and over keeps no file it moved aside
+// open: the disk gets each one's space back.
+test(
+    "moved aside files are let go",
+    {
+        except: {
+            win32: "only Linux lists a process's files",
+            darwin: "only Linux lists a process's files",
+        },
+    },
+    async (t) => {
+        const s = await t.start({ env: { CLICE_TEST_LOG_FILE_BYTES: "4096" } });
+        await s.client.logFlood(200, 256);
+        const fds = `/proc/${String(s.client.child.pid)}/fd`;
+        const held = fs
+            .readdirSync(fds)
+            // The descriptor the listing itself used is gone by now.
+            .flatMap((fd) => {
+                try {
+                    return [fs.readlinkSync(path.join(fds, fd), { encoding: "utf8" })];
+                } catch {
+                    return [];
+                }
+            })
+            .filter((target) => target.endsWith(" (deleted)"));
+        expect(held).toEqual([]);
+        await s.stop();
+        expect(t.disk.list(`${LOGS}/*/master*.log`).map((log) => path.basename(log))).toEqual([
+            "master.1.log",
+            "master.log",
+        ]);
+    },
+);

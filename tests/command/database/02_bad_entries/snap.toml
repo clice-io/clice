@@ -88,11 +88,11 @@ stdout = '''
 ]
 '''
 stderr = '''
-warning: Skipping entry 0 of the compilation database ${WS}/compile_commands.json: it has no "directory"
-warning: Skipping entry 1 of the compilation database ${WS}/compile_commands.json: it has no "file"
-warning: Skipping entry 2 of the compilation database ${WS}/compile_commands.json: it has neither "arguments" nor "command"
-warning: Skipping entry 5 of the compilation database ${WS}/compile_commands.json: it is not an object
-warning: 4 entries of the compilation database ${WS}/compile_commands.json are skipped; the log names them
+warning: Skipping entry 0 of the compilation database compile_commands.json: it has no "directory"
+warning: Skipping entry 1 of the compilation database compile_commands.json: it has no "file"
+warning: Skipping entry 2 of the compilation database compile_commands.json: it has neither "arguments" nor "command"
+warning: Skipping entry 5 of the compilation database compile_commands.json: it is not an object
+warning: 4 entries of the compilation database compile_commands.json are skipped; the log names them
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands

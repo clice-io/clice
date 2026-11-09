@@ -195,9 +195,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     if(!observed) {
         // A database not built yet is no failure: the callers wait for it.
         if(observed.error().code != std::errc::no_such_file_or_directory) {
-            LOG_GUIDANCE("Cannot read the compilation database {}: {}",
-                         path,
-                         observed.error().code.message());
+            LOG_WARN("Cannot read the compilation database {}: {}",
+                     path,
+                     observed.error().code.message());
         }
         return std::nullopt;
     }
@@ -218,9 +218,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
     if(auto error = json_parser.iterate(padded).get(doc)) {
-        LOG_GUIDANCE("The compilation database {} is not valid JSON: {}",
-                     path,
-                     simdjson::error_message(error));
+        LOG_WARN("The compilation database {} is not valid JSON: {}",
+                 path,
+                 simdjson::error_message(error));
         return std::nullopt;
     }
 
@@ -441,9 +441,11 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     }
 
     if(skipped != 0) {
-        LOG_GUIDANCE("{} entries of the compilation database {} are skipped; the log names them",
-                     skipped,
-                     path);
+        LOG_GUIDANCE("{} of the compilation database {} {} skipped; the log names {}",
+                     skipped == 1 ? "1 entry" : std::format("{} entries", skipped),
+                     path,
+                     skipped == 1 ? "is" : "are",
+                     skipped == 1 ? "it" : "them");
     }
 
     if(auto option = per_file_option(command_table, new_entries); !option.empty()) {

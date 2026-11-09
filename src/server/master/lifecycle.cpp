@@ -1,7 +1,3 @@
-module;
-
-#include "version.h"
-
 module clice;
 
 import :server.client;
@@ -10,6 +6,7 @@ import :server.served_project;
 import :settings.settings;
 import :support.logging;
 import :support.process;
+import :support.version;
 import :vfs.disk_state;
 import :vfs.file_system;
 import :vfs.path;
@@ -69,7 +66,7 @@ MasterServer::~MasterServer() {
 /// The values of `actual` that `defaults` does not have, as `a.b = <JSON>`.
 static void differing(simdjson::dom::element actual,
                       simdjson::dom::element defaults,
-                      const std::string& prefix,
+                      llvm::StringRef prefix,
                       std::vector<std::string>& out) {
     simdjson::dom::object fields, default_fields;
     if(!actual.get_object().get(fields) && !defaults.get_object().get(default_fields)) {
@@ -102,11 +99,12 @@ void MasterServer::log_settings(const ServedProject& project) const {
     auto defaults = json::to_string(Settings{});
     simdjson::dom::parser actual_parser, defaults_parser;
     simdjson::dom::element actual_root, defaults_root;
-    std::vector<std::string> changed;
-    if(actual && defaults && !actual_parser.parse(*actual).get(actual_root) &&
-       !defaults_parser.parse(*defaults).get(defaults_root)) {
-        differing(actual_root, defaults_root, "", changed);
+    if(!actual || !defaults || actual_parser.parse(*actual).get(actual_root) ||
+       defaults_parser.parse(*defaults).get(defaults_root)) {
+        return;
     }
+    std::vector<std::string> changed;
+    differing(actual_root, defaults_root, "", changed);
     LOG_INFO("Settings of the project at {}, from {}: {}",
              project.project.root,
              sources.empty() ? "the defaults alone" : llvm::join(sources, " and "),

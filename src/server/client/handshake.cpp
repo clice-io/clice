@@ -1,7 +1,3 @@
-module;
-
-#include "version.h"
-
 module clice;
 
 import :feature.code_actions;
@@ -12,6 +8,7 @@ import :server.extension;
 import :server.master;
 import :server.served_project;
 import :support.logging;
+import :support.version;
 import :vfs.path;
 
 namespace clice {

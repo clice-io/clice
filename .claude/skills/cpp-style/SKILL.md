@@ -62,11 +62,11 @@ defending against ghosts.
   (`ranges::sort`, `protocol::Range`, `async::task`), never `std::ranges::`
   or `kotatsu::ipc::protocol::`, and no file declares them again.
 - No module carries a macro: every compilation force-includes
-  `support/macros.h`, the libraries' (`modules/macros.h`) and clice's own
-  (`*.macros.h`). A unit opens a global module fragment (`module;`) only
-  for a header no module carries, a platform header or `version.h`.
-- `.h` is left for what a module cannot carry — macros (`*.macros.h`) and
-  platform headers — with `#pragma once`, never include guards.
+  `support/macros.h`, which holds clice's own after including the
+  libraries' (`modules/macros.h`). A unit opens a global module fragment
+  (`module;`) only for a header no module carries, a platform header.
+- `.h` is left for what a module cannot carry — macros (`support/macros.h`)
+  and platform headers — with `#pragma once`, never include guards.
 - File names are `snake_case`.
 - Every file sees the names of all it imports: a file-local helper can
   clash with a name of another partition or lose overload resolution and

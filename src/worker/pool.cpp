@@ -564,7 +564,9 @@ bool WorkerPool::process_crash(std::size_t index,
 llvm::StringRef WorkerPool::crash_output(llvm::StringRef log, std::size_t from) {
     // The crash's backtrace stays in the worker log: the master log carries
     // the diagnosis, not the (noisy, non-portable) stack frames.
-    auto output = log.substr(from);
+    // The log moved aside since the worker started: what the fresh one holds
+    // is all its own.
+    auto output = log.substr(from <= log.size() ? from : 0);
     output = output.substr(0, output.find("=== CRASH STACK TRACE ===")).rtrim();
 
     constexpr std::size_t max_output = 4096;

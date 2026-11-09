@@ -758,9 +758,9 @@ async::task<std::optional<BuiltImports>> Project::build_imports(Fid file,
     if(!built.failed.empty()) {
         LOG_INFO("Imports of {} failed to build: {}; the parse reports them",
                  file_table.resolve(file),
-                 llvm::join(llvm::map_range(
-                                built.failed,
-                                [&](NodeId module) { return dep_graph.module_of(module.file()); }),
+                 llvm::join(built.failed | views::transform([&](NodeId module) {
+                                return dep_graph.module_of(module.file());
+                            }),
                             ", "));
     }
     co_return built;

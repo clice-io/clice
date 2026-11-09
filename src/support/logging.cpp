@@ -1,11 +1,16 @@
 module;
 
-#include "version.h"
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 module clice;
 
 import :support.logging;
 import :support.process;
+import :support.version;
 
 namespace clice::logging {
 
@@ -18,6 +23,7 @@ namespace {
 /// a separator for one of several.
 struct Root {
     std::string path;
+
     std::string shown;
 };
 
@@ -53,15 +59,16 @@ std::string file_path;
 /// The largest a log file grows before it moves aside; tests lower it.
 std::uint64_t max_file_bytes = 0;
 
-/// The latest lines logged before the log file opened, which it starts with.
+/// The latest lines logged before the log file opened, up to 4 MiB of
+/// them, which it starts with: a server opens it with its first project.
 std::deque<std::string> early;
+std::size_t early_bytes = 0;
 
 /// The local time's offset from UTC in seconds, as of the latest line: a
 /// crash's line reads it, the handler unable to ask the time zone.
 std::atomic<std::int64_t> utc_offset = 0;
 
-/// The log file's descriptor, which a crash's trace goes to; one a
-/// rotation replaced stays open, for a crash at that very moment.
+/// The log file's descriptor, which a crash's trace goes to.
 std::atomic<int> crash_fd = -1;
 
 /// `time` on the local clock.
@@ -96,7 +103,7 @@ std::pair<std::size_t, std::error_code> write_out(int fd, std::string_view text)
 
 PipeSwitch switch_to_nonblocking(int fd) {
     auto error = sys::set_nonblocking(fd);
-    return !error                                          ? PipeSwitch::Done
+    return !error                                        ? PipeSwitch::Done
            : error == std::errc::device_or_resource_busy ? PipeSwitch::Busy
                                                          : PipeSwitch::Refused;
 }
@@ -170,9 +177,28 @@ std::expected<FileOutput, std::error_code> open_log(llvm::StringRef path) {
         return std::unexpected(opened.error());
     }
     auto size = opened->status().transform([](const fs::Status& status) { return status.size; });
-    return std::move(*opened).into_descriptor().transform([&](int fd) {
-        return FileOutput{.fd = fd, .size = size.value_or(0)};
-    });
+    return std::move(*opened).into_descriptor().transform(
+        [&](int fd) { return FileOutput{.fd = fd, .size = size.value_or(0)}; });
+}
+
+/// Lines go to `fresh` from now on, under the descriptor number the file
+/// before had: a crash's trace written meanwhile on another thread goes to
+/// one file or the other, and the one before is closed, so that a file
+/// rotated out frees its space.
+void log_to(FileOutput fresh) {
+    if(!file) {
+        file = fresh;
+        crash_fd = fresh.fd;
+        return;
+    }
+#ifdef _WIN32
+    ::_dup2(fresh.fd, file->fd);
+    ::_close(fresh.fd);
+#else
+    ::dup2(fresh.fd, file->fd);
+    ::close(fresh.fd);
+#endif
+    file->size = fresh.size;
 }
 
 /// The log file moves to `<name>.1.log`, the one before going, and a fresh
@@ -188,10 +214,10 @@ void rotate() {
     auto fresh = open_log(file_path);
     if(!fresh) {
         file->last_error = fresh.error();
+        fs::rename(older, file_path);
         return;
     }
-    file = std::move(*fresh);
-    crash_fd = file->fd;
+    log_to(*fresh);
     write(*file, std::format("[logging] the lines before are in {}\n", fs::path::filename(older)));
 }
 
@@ -207,9 +233,13 @@ std::string relative_paths(std::string text) {
         std::size_t at = std::string_view::npos;
         const Root* found = nullptr;
         for(auto& root: roots) {
-            for(auto from = rest.find(root.path); from < at; from = rest.find(root.path, from + 1)) {
+            for(auto from = rest.find(root.path); from < at;
+                from = rest.find(root.path, from + 1)) {
+                // A whole path, not the tail of another (`/src` in `/usr/src/a.h`).
                 auto end = from + root.path.size();
-                if(end < rest.size() && fs::path::is_separator(rest[end])) {
+                bool starts = from == 0 || !(llvm::isAlnum(rest[from - 1]) ||
+                                             llvm::StringRef("._-~+/\\").contains(rest[from - 1]));
+                if(starts && end < rest.size() && fs::path::is_separator(rest[end])) {
                     at = from;
                     found = &root;
                 }
@@ -225,25 +255,13 @@ std::string relative_paths(std::string text) {
     }
 }
 
-/// Why `dir` could not be created: a file standing where one of its
-/// directories goes is named, which Windows reports as a missing path.
-std::string creation_error(llvm::StringRef dir, std::error_code error) {
-    for(auto at: fs::path::ancestors(dir)) {
-        if(fs::exists(at)) {
-            return fs::is_directory(at) ? error.message() : std::format("{} is not a directory", at);
-        }
-    }
-    return error.message();
-}
-
 /// The pid of the session a logging directory's entry is, or links to:
-/// `<YYYY-MM-DD_HH-MM-SS>_<pid>` (start_session_log), `.txt` after it for a
-/// note naming it; none for another entry.
+/// `<YYYY-MM-DD_HH-MM-SS>_<pid>` (start_session_log); none for another
+/// entry.
 std::optional<int> session_pid(llvm::StringRef name) {
-    name.consume_back(".txt");
-    auto [stamp, pid] = name.rsplit('_');
+    auto [started, pid] = name.rsplit('_');
     int value = 0;
-    if(stamp.size() != std::string_view("YYYY-MM-DD_HH-MM-SS").size() ||
+    if(started.size() != std::string_view("YYYY-MM-DD_HH-MM-SS").size() ||
        pid.getAsInteger(10, value)) {
         return std::nullopt;
     }
@@ -261,32 +279,26 @@ void remove_old_sessions(std::string_view logging_dir) {
     if(!entries) {
         return;
     }
-    llvm::SmallVector<std::string> sessions;
+    std::vector<fs::Directory::Entry> sessions;
     for(auto& entry: *entries) {
         if(entry && session_pid(entry->name)) {
-            sessions.push_back(std::move(entry->name));
+            sessions.push_back(std::move(*entry));
         }
     }
     // The names start with the start time: the latest sort first.
-    ranges::sort(sessions, std::greater{});
-    for(auto [index, name]: views::enumerate(sessions)) {
+    ranges::sort(sessions, std::greater{}, &fs::Directory::Entry::name);
+    for(auto [index, session]: views::enumerate(sessions)) {
         std::string path(logging_dir);
-        fs::path::push(path, name);
-        bool note = llvm::StringRef(name).ends_with(".txt");
-        bool link = !note && fs::symlink_status(path)
-                                 .transform([](const fs::Status& status) {
-                                     return status.type == fs::FileType::Symlink;
-                                 })
-                                 .value_or(false);
+        fs::path::push(path, session.name);
+        bool link = session.type == fs::FileType::Symlink;
         bool latest = static_cast<std::size_t>(index) + 1 < kept_sessions;
         bool kept = link ? latest && fs::is_directory(path)
-                         : latest || (!note && sys::process_alive(*session_pid(name)));
+                         : latest || sys::process_alive(*session_pid(session.name));
         if(kept) {
             continue;
         }
-        if(auto removed = link || note ? fs::remove(path)
-                                       : fs::remove_all(path).transform([](auto) { return true; });
-           !removed) {
+        // A link goes alone, never the session it links to.
+        if(auto removed = fs::remove_all(path); !removed) {
             LOG_WARN("Cannot remove the old session log {}: {}", path, removed.error().message());
         }
     }
@@ -320,213 +332,6 @@ void write_crash_header(int fd) noexcept {
     sys::write_console(fd, std::string_view(header.data(), end));
 }
 
-}  // namespace
-
-PipeOutput pipe_output(int fd, std::size_t capacity) {
-    // A pipe that cannot be switched must never be written: a blocking
-    // write to it is exactly the wedge this output exists to prevent.
-    return {
-        .fd = fd,
-        .capacity = capacity,
-        .pipe = sys::is_pipe(fd) ? switch_to_nonblocking(fd) : PipeSwitch::Done,
-    };
-}
-
-void write(PipeOutput& output, std::string_view text) {
-    pump(output);
-    if(output.pipe == PipeSwitch::Refused) {
-        output.dropped += 1;
-        return;
-    }
-    // Older bytes go first: fresh content queues behind the backlog.
-    if(output.pipe == PipeSwitch::Done && output.note.empty() && output.pending.empty()) {
-        auto [written, _] = write_out(output.fd, text);
-        text.remove_prefix(written);
-        output.front_partial = written > 0 && !text.empty();
-    }
-    output.pending.append(text);
-    shed_over_capacity(output);
-    pump(output);
-}
-
-void write(FileOutput& output, std::string_view text) {
-    auto all = [&](std::string_view bytes) {
-        auto [written, error] = write_out(output.fd, bytes);
-        output.size += written;
-        output.torn = error ? output.torn || written > 0 : false;
-        output.last_error = error ? error : output.last_error;
-        return !error;
-    };
-    if(output.unreported != 0 &&
-       all(std::format("{}[logging] dropped {} line(s): {}\n",
-                       output.torn ? "\n" : "",
-                       output.unreported,
-                       output.last_error.message()))) {
-        output.unreported = 0;
-    }
-    if(output.unreported == 0 && all(text)) {
-        return;
-    }
-    output.dropped += 1;
-    output.unreported += 1;
-}
-
-void stderr_logger(std::string_view name) {
-    this_thread = 0;
-    std::lock_guard lock(mutex);
-    process_name = name;
-    if(options.never_block_stderr) {
-        editor = pipe_output(2);
-        return;
-    }
-    console = FileOutput{.fd = 2};
-#ifndef _WIN32
-    // A Windows console shows escape sequences as they are unless asked to
-    // read them.
-    color = sys::is_console(2) && !env_string("NO_COLOR");
-#endif
-}
-
-void set_project_roots(llvm::ArrayRef<std::string> paths) {
-    roots.clear();
-    if(paths.empty()) {
-        return;
-    }
-    // The deepest directory holding them all, its separator kept.
-    std::string_view common = paths.front();
-    for(auto& path: paths.drop_front()) {
-        common = common.substr(0, ranges::mismatch(common, path).in1 - common.begin());
-    }
-    if(paths.size() > 1) {
-        common = common.substr(0, common.find_last_of("/\\") + 1);
-        // The file system's root, or a drive's, holds every path.
-        if(common.find_first_not_of("/\\") == std::string_view::npos || common.ends_with(":/") ||
-           common.ends_with(":\\")) {
-            return;
-        }
-    }
-    for(auto& path: paths) {
-        roots.push_back({
-            .path = path,
-            .shown = paths.size() > 1 ? path.substr(common.size()) + "/" : "",
-        });
-    }
-    ranges::sort(roots, std::greater{}, [](const Root& root) { return root.path.size(); });
-}
-
-std::string start_session_log(std::string_view logging_dir) {
-    remove_old_sessions(logging_dir);
-    std::string directory(logging_dir);
-    fs::path::push(directory,
-                   std::format("{:%Y-%m-%d_%H-%M-%S}_{}",
-                               chrono::floor<chrono::seconds>(local(chrono::system_clock::now())),
-                               sys::pid()));
-    return directory;
-}
-
-void link_session_log(std::string_view logging_dir, std::string_view session_dir) {
-    if(auto made = fs::create_directories(logging_dir); !made) {
-        LOG_WARN("Cannot create the log directory {}: {}",
-                 logging_dir,
-                 creation_error(logging_dir, made.error()));
-        return;
-    }
-    remove_old_sessions(logging_dir);
-    std::string link(logging_dir);
-    fs::path::push(link, fs::path::filename(session_dir));
-    if(!fs::create_directory_symlink(session_dir, link)) {
-        return;
-    }
-    auto note = link + ".txt";
-    if(auto error = fs::write_file(note, std::format("{}\n", session_dir))) {
-        LOG_WARN("Cannot write {}: {}", note, error.message());
-    }
-}
-
-bool file_logger(std::string_view dir, bool mirror_stderr) {
-    if(auto made = fs::create_directories(dir); !made) {
-        LOG_ERROR("Cannot create the log directory {}: {}", dir, creation_error(dir, made.error()));
-        return false;
-    }
-    std::string path(dir);
-    fs::path::push(path, std::format("{}.log", process_name));
-    auto opened = open_log(path);
-    if(!opened) {
-        LOG_ERROR("Cannot open the log file {}: {}", path, opened.error().message());
-        return false;
-    }
-    std::lock_guard lock(mutex);
-    file = std::move(*opened);
-    file_path = std::move(path);
-    max_file_bytes = env_integer("CLICE_TEST_LOG_FILE_BYTES").value_or(std::uint64_t{64} << 20);
-    crash_fd = file->fd;
-    for(auto& line: early) {
-        write(*file, line);
-    }
-    early.clear();
-    mirror = mirror_stderr;
-    return true;
-}
-
-void log(Level level, std::source_location location, std::string text) {
-    constexpr std::string_view names[] = {"trace", "debug", "info", "warning", "error", "fatal"};
-    auto name = names[std::to_underlying(level)];
-    text = relative_paths(std::move(text));
-    auto line = std::format("{:%F %T} [{}] {}{}:{} {}\n",
-                            local(chrono::system_clock::now()),
-                            name,
-                            this_thread == 0 ? "" : std::format("[thread {}] ", this_thread),
-                            fs::path::filename(location.file_name()),
-                            location.line(),
-                            text);
-    std::lock_guard lock(mutex);
-    if(mirror && level >= options.stderr_level) {
-        if(editor) {
-            write(*editor, line);
-        } else if(console) {
-            auto paint = !color                  ? ""
-                         : level >= Level::Error ? "\x1b[1;31m"
-                         : level == Level::Warn  ? "\x1b[1;35m"
-                                                 : "";
-            write(*console, std::format("{}{}:{} {}\n", paint, name, *paint ? "\x1b[0m" : "", text));
-        }
-    }
-    if(!file) {
-        if(early.size() == 128) {
-            early.pop_front();
-        }
-        early.push_back(std::move(line));
-        return;
-    }
-    if(file->size + line.size() > max_file_bytes) {
-        rotate();
-    }
-    write(*file, line);
-}
-
-void fatal(std::source_location location, std::string text) {
-    log(Level::Fatal, location, std::move(text));
-    std::abort();
-}
-
-void handle_crashes() {
-    local(chrono::system_clock::now());
-    sys::on_crash(write_crash);
-}
-
-void write_crash(const sys::Crash& crash) noexcept {
-    if(auto fd = crash_fd.load(); fd >= 0) {
-        write_crash_header(fd);
-        sys::write_stacktrace(fd, crash);
-    }
-    if(options.stderr_crash_trace) {
-        write_crash_header(2);
-        sys::write_stacktrace(2, crash);
-    }
-}
-
-namespace {
-
 std::array<std::atomic<std::uint32_t>, anomaly_id_count> report_counts;
 
 /// Guards the two hooks below. Reporting sites copy the hook under the lock
@@ -554,8 +359,8 @@ void trap(AnomalyId id) {
         return;
     }
 #ifndef NDEBUG
-    // Debug builds treat anomalies as assertion failures: flush the log so
-    // the report survives, then abort. CLICE_ANOMALY_NO_TRAP exists for
+    // Debug builds treat anomalies as assertion failures: the report is
+    // written, then they abort. CLICE_ANOMALY_NO_TRAP exists for
     // integration tests that intentionally trigger anomalies and verify the
     // Release behavior (report and continue).
     const static bool disabled = env_string("CLICE_ANOMALY_NO_TRAP").has_value();
@@ -569,6 +374,208 @@ void trap(AnomalyId id) {
 }
 
 }  // namespace
+
+PipeOutput pipe_output(PipeOutput output) {
+    // A pipe that cannot be switched must never be written: a blocking
+    // write to it is exactly the wedge this output exists to prevent.
+    output.pipe = sys::is_pipe(output.fd) ? switch_to_nonblocking(output.fd) : PipeSwitch::Done;
+    return output;
+}
+
+void write(PipeOutput& output, std::string_view text) {
+    pump(output);
+    if(output.pipe == PipeSwitch::Refused) {
+        output.dropped += 1;
+        return;
+    }
+    // Older bytes go first: fresh content queues behind the backlog.
+    if(output.pipe == PipeSwitch::Done && output.note.empty() && output.pending.empty()) {
+        auto [written, _] = write_out(output.fd, text);
+        text.remove_prefix(written);
+        output.front_partial = written > 0 && !text.empty();
+    }
+    output.pending.append(text);
+    shed_over_capacity(output);
+    pump(output);
+}
+
+void write(FileOutput& output, std::string_view text) {
+    auto all = [&](std::string_view bytes) {
+        auto [written, error] = write_out(output.fd, bytes);
+        output.size += written;
+        output.torn = error ? output.torn || written > 0 : false;
+        output.last_error = error ? error : output.last_error;
+        return !error;
+    };
+    if(output.unreported != 0 && all(std::format("{}[logging] dropped {} line(s): {}\n",
+                                                 output.torn ? "\n" : "",
+                                                 output.unreported,
+                                                 output.last_error.message()))) {
+        output.unreported = 0;
+    }
+    if(output.unreported == 0 && all(text)) {
+        return;
+    }
+    output.dropped += 1;
+    output.unreported += 1;
+}
+
+void stderr_logger(std::string_view name) {
+    this_thread = 0;
+    {
+        std::lock_guard lock(mutex);
+        process_name = name;
+        if(!options.never_block_stderr) {
+            console = FileOutput{.fd = 2};
+#ifndef _WIN32
+            // A Windows console shows escape sequences as they are unless
+            // asked to read them.
+            color = sys::is_console(2) && !env_string("NO_COLOR");
+#endif
+            return;
+        }
+        editor = pipe_output({.fd = 2});
+        if(editor->pipe != PipeSwitch::Refused) {
+            return;
+        }
+    }
+    LOG_WARN("stderr is a pipe that cannot stop blocking clice: lines go to the log file alone");
+}
+
+void set_project_roots(llvm::ArrayRef<std::string> paths) {
+    roots.clear();
+    if(paths.size() > 1) {
+        // Shown from the deepest directory holding them all; when that is
+        // the file system's root, or a drive's, they stay absolute.
+        auto ancestors = fs::path::ancestors(fs::path::parent(paths.front()));
+        auto common = ranges::find_if(ancestors, [&](std::string_view ancestor) {
+            return ranges::all_of(paths,
+                                  [&](auto& path) { return fs::path::is_within(path, ancestor); });
+        });
+        if(common == ancestors.end() || fs::path::filename(*common).empty()) {
+            return;
+        }
+        for(auto& path: paths) {
+            roots.push_back({
+                .path = path,
+                .shown = std::format("{}/", *fs::path::strip_prefix(path, *common)),
+            });
+        }
+    } else if(!paths.empty()) {
+        roots.push_back({.path = paths.front()});
+    }
+    ranges::sort(roots, std::greater{}, [](const Root& root) { return root.path.size(); });
+}
+
+std::string start_session_log(std::string_view logging_dir) {
+    remove_old_sessions(logging_dir);
+    std::string directory(logging_dir);
+    fs::path::push(directory,
+                   std::format("{:%Y-%m-%d_%H-%M-%S}_{}",
+                               chrono::floor<chrono::seconds>(local(chrono::system_clock::now())),
+                               sys::pid()));
+    return directory;
+}
+
+void link_session_log(std::string_view logging_dir, std::string_view session_dir) {
+    if(auto made = fs::create_directories(logging_dir); !made) {
+        LOG_WARN("Cannot create the log directory {}: {}", logging_dir, made.error().message());
+        return;
+    }
+    remove_old_sessions(logging_dir);
+    std::string link(logging_dir);
+    fs::path::push(link, fs::path::filename(session_dir));
+    if(auto error = fs::create_directory_symlink(session_dir, link)) {
+        LOG_WARN("Cannot link {} to the session log {}: {}", link, session_dir, error.message());
+    }
+}
+
+bool file_logger(std::string_view dir, bool mirror_stderr) {
+    if(auto made = fs::create_directories(dir); !made) {
+        LOG_ERROR("Cannot create the log directory {}: {}", dir, made.error().message());
+        return false;
+    }
+    std::string path(dir);
+    fs::path::push(path, std::format("{}.log", process_name));
+    auto opened = open_log(path);
+    if(!opened) {
+        LOG_ERROR("Cannot open the log file {}: {}", path, opened.error().message());
+        return false;
+    }
+    std::lock_guard lock(mutex);
+    log_to(*opened);
+    file_path = std::move(path);
+    max_file_bytes = env_integer("CLICE_TEST_LOG_FILE_BYTES").value_or(std::uint64_t{64} << 20);
+    for(auto& line: early) {
+        write(*file, line);
+    }
+    early.clear();
+    early_bytes = 0;
+    mirror = mirror_stderr;
+    return true;
+}
+
+void log(Level level, std::source_location location, std::string text) {
+    constexpr std::string_view names[] = {"trace", "debug", "info", "warning", "error", "fatal"};
+    auto name = names[std::to_underlying(level)];
+    text = relative_paths(std::move(text));
+    auto line = std::format("{:%F %T} [{}] {}{}:{} {}\n",
+                            local(chrono::system_clock::now()),
+                            name,
+                            this_thread == 0 ? "" : std::format("[thread {}] ", this_thread),
+                            fs::path::filename(location.file_name()),
+                            location.line(),
+                            text);
+    std::lock_guard lock(mutex);
+    if(mirror && level >= options.stderr_level) {
+        if(editor) {
+            write(*editor, line);
+        } else if(console) {
+            auto paint = !color                  ? ""
+                         : level >= Level::Error ? "\x1b[1;31m"
+                         : level == Level::Warn  ? "\x1b[1;35m"
+                                                 : "";
+            write(*console,
+                  std::format("{}{}:{} {}\n", paint, name, *paint ? "\x1b[0m" : "", text));
+        }
+    }
+    if(!file) {
+        early_bytes += line.size();
+        early.push_back(std::move(line));
+        while(early_bytes > (std::size_t{4} << 20)) {
+            early_bytes -= early.front().size();
+            early.pop_front();
+        }
+        return;
+    }
+    if(file->size + line.size() > max_file_bytes) {
+        rotate();
+    }
+    write(*file, line);
+}
+
+void fatal(std::source_location location, std::string text) {
+    log(Level::Fatal, location, std::move(text));
+    std::abort();
+}
+
+void handle_crashes() {
+    local(chrono::system_clock::now());
+    sys::on_crash(write_crash);
+}
+
+void write_crash(const sys::Crash& crash) noexcept {
+    if(auto fd = crash_fd.load(); fd >= 0) {
+        write_crash_header(fd);
+        sys::write_stacktrace(fd, crash);
+    }
+    if(options.stderr_crash_trace) {
+        // An editor's pipe may hold part of a line.
+        sys::write_console(2, "\n");
+        write_crash_header(2);
+        sys::write_stacktrace(2, crash);
+    }
+}
 
 bool should_report(AnomalyId id) {
     if(options.level > Level::Error)

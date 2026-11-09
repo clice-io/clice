@@ -647,10 +647,10 @@ async::task<bool> ProjectIndex::rebind_views(BlobDatabase& db,
             }
             auto blob = db.read(kind, file_key(resident[i]));
             if(!blob || !it->second.rebind(std::move(blob.buffer))) {
-                LOG_ANOMALY(IndexReadBack,
-                            "The index of {} changed while the index database moved to its "
-                            "latest save",
-                            files.resolve(resident[i]));
+                LOG_ERROR(
+                    "The index database's record of {} does not match the one it "
+                    "saved; the database is discarded and the project indexed again",
+                    files.resolve(resident[i]));
                 damage = true;
                 break;
             }

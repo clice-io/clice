@@ -239,7 +239,6 @@ RequestResult<worker::CompileParams>
     auto compile_result = co_await async::queue(
         [&]() -> worker::CompileResult {
             CrashScope crash_scope(worker::crash_tag(params));
-            logging::set_project_roots({params.project_root});
             Timer timer;
 
             CompilationParams cp{
@@ -313,11 +312,11 @@ RequestResult<worker::CompileParams>
                 if(index_error) {
                     diags.push_back(feature::index_unavailable(*index_error));
                 }
-                LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
+                LOG_INFO("Compiled {} in {} ms: {} diagnostics{}",
                          params.path,
                          timer.ms(),
                          diags.size(),
-                         unit->fatal_error());
+                         unit->fatal_error() ? ", a fatal error among them" : "");
                 result.diagnostics = std::move(diags);
                 doc->unit = std::move(unit);
                 doc->pch_mapping = std::move(pch_mapping);
@@ -331,10 +330,10 @@ RequestResult<worker::CompileParams>
                 if(unit->setup_fail()) {
                     result.diagnostics = feature::diagnostics(*unit);
                 }
-                LOG_WARN("Compile incomplete: path={}, {}ms, setup_fail={}",
+                LOG_WARN("The compile of {} stopped after {} ms: {}",
                          params.path,
                          timer.ms(),
-                         unit->setup_fail());
+                         unit->setup_fail() ? "clang cannot start it" : "it was cancelled");
                 // An incomplete unit can never serve a query, yet it pins
                 // the consumed PCHs and PCMs — on Windows a mapped PCH cannot
                 // be replaced on disk, so holding it would block the
@@ -476,7 +475,7 @@ int run_stateful_worker_mode() {
 
     auto transport_result = ipc::StreamTransport::open_stdio(loop);
     if(!transport_result) {
-        LOG_ERROR("Failed to open stdio transport");
+        LOG_ERROR("Cannot talk to the master over stdin and stdout");
         return 1;
     }
     (*transport_result)->set_remote_max_payload(ipc::default_max_payload);

@@ -21,7 +21,7 @@ stderr = "warning: Cannot ask the compiler for its default settings: Cannot find
 exit = 0
 
 [test."$ clice command src/main.cpp"]
-stderr = "error: No compilation database lists ${WS}/src/main.cpp"
+stderr = "error: No compilation database lists src/main.cpp"
 exit = 1
 
 [test."$ clice command project/src/main.cpp"]

@@ -390,13 +390,13 @@ private:
     std::shared_ptr<const llvm::MemoryBuffer> text;
 };
 
-}  // namespace
-
-static std::unexpected<FileError> failed(FileError::Operation operation,
-                                         llvm::StringRef path,
-                                         std::error_code code) {
+std::unexpected<FileError> failed(FileError::Operation operation,
+                                  llvm::StringRef path,
+                                  std::error_code code) {
     return std::unexpected(FileError{.operation = operation, .path = path.str(), .code = code});
 }
+
+}  // namespace
 
 std::expected<std::string, FileError> read_bytes(llvm::StringRef path) {
     std::string bytes;

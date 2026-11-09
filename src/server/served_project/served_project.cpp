@@ -1,7 +1,3 @@
-module;
-
-#include "version.h"
-
 module clice;
 
 import :command.table;
@@ -19,10 +15,11 @@ import :server.served_project;
 import :settings.rules;
 import :settings.settings;
 import :support.logging;
+import :support.version;
 import :vfs.cache_store;
 import :vfs.path;
-import :worker.test_hooks;
 import :worker.protocol;
+import :worker.test_hooks;
 
 namespace clice {
 
@@ -68,11 +65,31 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
 
 ServedProject::~ServedProject() = default;
 
+namespace {
+
 /// Where a problem of the settings is, as compilers name a place, its file
 /// spelled `file`.
-static std::string place(llvm::StringRef file, const SettingsIssue& issue) {
+std::string place(llvm::StringRef file, const SettingsIssue& issue) {
     return issue.line == 0 ? file.str() : std::format("{}:{}:{}", file, issue.line, issue.column);
 }
+
+/// Whether the project has its build to open before a document of it
+/// opens: a database to index, one its rules name or one discovery finds,
+/// or the index an earlier session built.
+bool has_build(const Project& project, llvm::StringRef configuration) {
+    Rules rules(project.settings, project.root, configuration);
+    if(rules.declares_sources() || !discovered_databases(project.root).empty()) {
+        return true;
+    }
+    auto& cache_dir = project.settings.project.cache_dir;
+    if(cache_dir.empty()) {
+        return false;
+    }
+    auto store = CacheStore::open(cache_dir, cache_format_version, /*read_only=*/true);
+    return store && index::database_exists(*store, rules.database_key(rules.resolved_databases()));
+}
+
+}  // namespace
 
 void ServedProject::configure(const std::optional<codec::dyn::Value>& init_options,
                               llvm::ArrayRef<CanonicalPath> taken_cache_dirs) {
@@ -126,22 +143,6 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
     }
 }
 
-/// Whether the project has its build to open before a document of it
-/// opens: a database to index, one its rules name or one discovery finds,
-/// or the index an earlier session built.
-static bool has_build(const Project& project, llvm::StringRef configuration) {
-    Rules rules(project.settings, project.root, configuration);
-    if(rules.declares_sources() || !discovered_databases(project.root).empty()) {
-        return true;
-    }
-    auto& cache_dir = project.settings.project.cache_dir;
-    if(cache_dir.empty()) {
-        return false;
-    }
-    auto store = CacheStore::open(cache_dir, cache_format_version, /*read_only=*/true);
-    return store && index::database_exists(*store, rules.database_key(rules.resolved_databases()));
-}
-
 void ServedProject::start() {
     if(!project.root.empty() && !broken() && documents.empty() &&
        !has_build(project, configuration)) {
@@ -154,11 +155,11 @@ void ServedProject::start() {
 void ServedProject::open() {
     waiting = false;
     started = true;
+    server.log_into(*this);
     if(broken()) {
         return;
     }
     if(!project.root.empty()) {
-        server.log_into(*this);
         llvm::SmallVector<CanonicalPath> open;
         for(auto& [path_id, document]: documents) {
             open.emplace_back(project.file_table.resolve(path_id));
@@ -372,6 +373,7 @@ bool ServedProject::look_for_database(bool force) {
         return false;
     }
     open();
+    server.update_owners();
     return true;
 }
 
