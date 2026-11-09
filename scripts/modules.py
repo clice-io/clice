@@ -103,7 +103,6 @@ def partition(output_base, clice):
         "kotatsu+",
         "croaring+",
         "tomlplusplus+",
-        "spdlog+",
         "lmdb+",
     ):
         deps += repo(external, name)

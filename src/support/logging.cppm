@@ -29,7 +29,7 @@ import :support.prelude;
 ///   classify them structurally (has_user_errors, dispatch_errc) and log
 ///   them as warn/error instead.
 ///
-/// The macros are in support/logging.macros.h. Each decides whether its line
+/// The macros are in support/macros.h. Each decides whether its line
 /// is written before it evaluates its arguments: they must not carry side
 /// effects the caller needs.
 ///
@@ -41,11 +41,11 @@ import :support.prelude;
 ///   compile/index results, command decision logs. This is the default
 ///   level; an info-level session log must be enough to reconstruct what
 ///   the server did and why.
-/// - warn: something went wrong but was handled or is expected in operation
+/// - warning: something went wrong but was handled or is expected in operation
 ///   (user-code compile errors, worker-down windows, cancelled requests).
-/// - err: an operation failed and its result is lost or wrong; the server
+/// - error: an operation failed and its result is lost or wrong; the server
 ///   keeps running.
-/// - critical (LOG_FATAL): unrecoverable; flushes the log and aborts.
+/// - fatal (LOG_FATAL): unrecoverable; logs and aborts.
 ///
 /// ## Perf lines — LOG_PERF(topic, ...)
 /// Greppable measurements for profiling on real codebases, rendered as
@@ -73,7 +73,7 @@ import :support.prelude;
 /// best-effort: clients are expected to drain stderr (editors do), and
 /// one that stops reading costs log lines, never liveness — once the
 /// pipe fills, lines are dropped and the gap is reported when the client
-/// drains again (see support/log_sinks.cppm). Workers log ONLY to
+/// drains again (see PipeOutput). Workers log ONLY to
 /// their own <session>/<worker>.log (mirror_stderr = false): a worker's
 /// stderr is reserved for unexpected third-party output — assertion
 /// failures, sanitizer reports — which the pool relays line-by-line into the
@@ -83,19 +83,27 @@ import :support.prelude;
 /// trace goes only to its own log file, none without a log dir.
 namespace clice::logging {
 
-using Level = spdlog::level::level_enum;
+enum class Level : std::uint8_t {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+    Fatal,
+    Off,
+};
 
 struct Options {
     /// Lines below it are written nowhere.
-    Level level = Level::info;
+    Level level = Level::Info;
 
     /// Lines below it are written to the log file alone: a session log keeps
     /// what a terminal reader does not want to see.
-    Level stderr_level = Level::info;
+    Level stderr_level = Level::Info;
 
     /// stderr's reader is an editor, which must not be able to block the
     /// server: lines it does not take are buffered, then dropped (see
-    /// StderrSink). Every other process writes stderr blocking, as any
+    /// PipeOutput). Every other process writes stderr blocking, as any
     /// command-line tool does — its reader is a terminal, a pipeline, or
     /// the master's drain.
     bool never_block_stderr = false;
@@ -107,10 +115,132 @@ struct Options {
 
 extern Options options;
 
+/// How switching an fd to non-blocking writes went.
+enum class PipeSwitch : std::uint8_t {
+    /// Switched, or the fd needs no switch.
+    Done,
+    /// Windows refuses while the pipe holds bytes its reader has not taken
+    /// yet (ERROR_PIPE_BUSY); the switch can succeed once it has.
+    Busy,
+    /// The fd needs the treatment but cannot have it: writing to it could
+    /// still wedge the caller, so every line is shed without touching it.
+    Refused,
+};
+
+/// Lines written to stderr that an editor reads: buffered, then dropped —
+/// never blocking.
+///
+/// fd 2's reader is the editor/client. Every client we support drains it,
+/// but the server's liveness must not depend on that: once the 64KB pipe
+/// fills, a plain write(2) parks the calling thread — the event loop —
+/// until the client feels like reading, wedging the whole server. So when
+/// stderr is a pipe it is switched to non-blocking, and what the pipe
+/// refuses goes into a bounded in-memory buffer flushed by later writes: a
+/// slow reader loses nothing, torn lines cannot happen. Only a reader that
+/// stays stuck past the buffer budget costs lines — whole oldest lines are
+/// evicted and a summary line reports the gap once writes flow again. The
+/// file log stays complete regardless — stderr is only a mirror.
+///
+/// Terminals and regular files are left in blocking mode: they cannot
+/// exert client-controlled backpressure, and O_NONBLOCK on a tty is
+/// shared with the parent shell's own file description.
+///
+/// Windows refuses the switch while the pipe holds bytes the reader has
+/// not taken yet, as at process start when something wrote to stderr
+/// first (mimalloc writes a newline). Lines then wait in the buffer and
+/// the switch is retried before each write, until the reader catches up.
+struct PipeOutput {
+    int fd = 2;
+
+    /// Bounds the backpressure buffer: enough to ride out a busy editor's
+    /// pauses, small enough that a dead reader cannot turn the mirror into
+    /// a leak. Tests shrink it to exercise eviction.
+    std::size_t capacity = 256 * 1024;
+
+    PipeSwitch pipe = PipeSwitch::Done;
+
+    /// Gap report in flight, held OUTSIDE the backlog: eviction can never
+    /// lose the count, and it is delivered ahead of everything — the gap
+    /// is older than any survivor. note_sent tracks partial delivery.
+    std::string note;
+    std::size_t note_sent = 0;
+
+    /// Bytes the pipe refused, flushed ahead of fresh content.
+    std::string pending;
+
+    /// The backlog's front continues a line whose head already reached
+    /// the pipe: eviction must not cut it, or the torn line the buffer
+    /// exists to prevent reappears.
+    bool front_partial = false;
+
+    /// Lines dropped so far because the pipe was full, and of those the ones
+    /// no gap report told yet.
+    std::size_t dropped = 0;
+    std::size_t unreported = 0;
+};
+
+/// A PipeOutput writing to `fd`, a pipe switched to non-blocking.
+PipeOutput pipe_output(int fd, std::size_t capacity = 256 * 1024);
+
+/// Writes `text`, then pushes the note and backlog as far as the pipe
+/// allows.
+void write(PipeOutput& output, std::string_view text);
+
+/// Lines written straight through to a file descriptor — the session log
+/// file, or stderr in every process but the serving master (whose stderr
+/// reader is an editor, see PipeOutput). Writes block, as any command-line
+/// tool's do, but never take the process down: a full disk under the log
+/// directory or a stderr reader that went away is no reason to die. A line
+/// that cannot be written is dropped, and the count with the error is
+/// written ahead of the first line that gets through again.
+struct FileOutput {
+    int fd = -1;
+
+    /// The bytes written to it.
+    std::uint64_t size = 0;
+
+    /// Lines dropped so far because a write failed, and of those the ones
+    /// no gap report told yet, with the last error.
+    std::size_t dropped = 0;
+    std::size_t unreported = 0;
+    std::error_code last_error;
+
+    /// A failed write left part of a line behind and nothing followed it
+    /// yet: the gap report starts on a line of its own.
+    bool torn = false;
+};
+
+void write(FileOutput& output, std::string_view text);
+
+/// Log the process's lines to stderr, under `name`, which its log file
+/// takes (file_logger); lines no log file takes yet are kept for it. Called
+/// from main, before any other thread starts.
 void stderr_logger(std::string_view name);
 
-/// The name stderr_logger gave the process's log.
-std::string_view log_name();
+/// The lines the calling thread logs write paths under these project roots
+/// relative to them: to the one root, or for several to the deepest
+/// directory holding them all, the folders' names leading the paths (none
+/// when that is the file system's root). Each thread sets the roots of the
+/// work it does.
+void set_project_roots(llvm::ArrayRef<std::string> roots);
+
+/// A new session's log directory under `logging_dir`, named by the local
+/// start time and the pid, so a run is found by the clock on the wall.
+/// The sessions there but the latest 20 go, unless their process still
+/// runs.
+std::string start_session_log(std::string_view logging_dir);
+
+/// Make the session logging in `session_dir`, under another project's
+/// logging directory, found under `logging_dir` too: a link to it, or where
+/// the system makes none (Windows without the right), a `.txt` naming it.
+void link_session_log(std::string_view logging_dir, std::string_view session_dir);
+
+/// Log to <dir>/<name>.log, the name stderr_logger took, starting with the
+/// lines kept since. With mirror_stderr, every line is also written to
+/// stderr — the master uses this so editors can show its log; workers must
+/// pass false (their stderr is reserved for crash output, relayed by the
+/// pool). Returns false when the log directory or file cannot be set up.
+bool file_logger(std::string_view dir, bool mirror_stderr = true);
 
 /// Write a crash's stack trace where `options` says: from main, before any
 /// other thread starts.
@@ -120,46 +250,11 @@ void handle_crashes();
 /// own lines first; async-signal-safe.
 void write_crash(const sys::Crash& crash) noexcept;
 
-/// The per-session log directory under `logging_dir`: the local start
-/// time and the pid, so a run is found by the clock on the wall.
-std::string session_log_directory(std::string_view logging_dir);
+/// The LOG_* macros' line.
+void log(Level level, std::source_location location, std::string text);
 
-/// Log to <dir>/<name>.log, replaying lines buffered by stderr_logger.
-/// With mirror_stderr, every line is also written to stderr through the
-/// sink stderr_logger chose — the master uses this so editors can show its
-/// log; workers must pass false (their stderr is reserved for crash output,
-/// relayed by the pool).
-/// Returns false when the log directory or file cannot be set up — logging
-/// then stays on the previously installed sinks.
-bool file_logger(std::string_view name, std::string_view dir, bool mirror_stderr = true);
-
-template <typename... Args>
-void log(Level level,
-         std::source_location location,
-         std::format_string<Args...> fmt,
-         Args&&... args) {
-    spdlog::source_loc loc{
-        location.file_name(),
-        static_cast<int>(location.line()),
-        location.function_name(),
-    };
-    using spdlog_fmt = spdlog::format_string_t<Args...>;
-    if constexpr(std::same_as<spdlog_fmt, std::string_view>) {
-        spdlog::log(loc, level, fmt.get(), std::forward<Args>(args)...);
-    } else {
-        spdlog::log(loc, level, fmt, std::forward<Args>(args)...);
-    }
-}
-
-/// Log at critical level, flush the log and abort.
-template <typename... Args>
-[[noreturn]] void fatal(std::source_location location,
-                        std::format_string<Args...> fmt,
-                        Args&&... args) {
-    logging::log(Level::critical, location, fmt, std::forward<Args>(args)...);
-    spdlog::shutdown();
-    std::abort();
-}
+/// LOG_FATAL's line, then abort.
+[[noreturn]] void fatal(std::source_location location, std::string text);
 
 /// Stable identifiers for anomalies — internal states that should be
 /// unreachable when clice works correctly. Reaching one indicates a bug in
@@ -189,6 +284,9 @@ enum class AnomalyId : std::uint8_t {
     /// A freshness check answered from an earlier look at a file that the
     /// disk contradicts (reported only while shadow checks run).
     StaleTrust,
+    /// What the index built, or wrote under its own writer lock, does not
+    /// read back.
+    IndexReadBack,
 
     /// Number of ids, not a reportable anomaly — keep last.
     Count,
@@ -204,15 +302,15 @@ constexpr inline std::uint32_t anomaly_report_limit = 8;
 /// reached.
 bool should_report(AnomalyId id);
 
-/// Log "[anomaly:<name>] <message>" at err level, forward it to the notify
-/// hook, then trap: Debug builds abort (after flushing the log) unless the
+/// Log "[anomaly:<name>] <message>" at error level, forward it to the notify
+/// hook, then trap: Debug builds abort unless the
 /// trap is overridden for tests or CLICE_ANOMALY_NO_TRAP is set in the
 /// environment; Release builds continue.
 void report_anomaly(AnomalyId id, std::source_location location, std::string_view message);
 
-/// Log "[guidance] <message>" at warn level and forward the message to the
-/// notify hook (master process: `window/showMessage`). For user-actionable
-/// situations that are not clice bugs (missing CDB, invalid configuration,
+/// Log the message at warn level and forward it to the notify hook (master process:
+/// `window/showMessage`). For user-actionable situations that are not clice bugs (missing CDB,
+/// invalid configuration,
 /// ...).
 void report_guidance(std::source_location location, std::string_view message);
 

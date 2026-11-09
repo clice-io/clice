@@ -102,7 +102,7 @@ ZEST_CASE(SuppressedArgsNotEvaluated) {
 
 ZEST_CASE(LevelGateSkipsEvaluation) {
     AnomalyCapture capture;
-    logging::options.level = logging::Level::off;
+    logging::options.level = logging::Level::Off;
 
     int evaluations = 0;
     auto observe = [&evaluations] {
@@ -130,7 +130,7 @@ ZEST_CASE(GuidanceKind) {
 
 ZEST_CASE(GuidanceLazyAtLevel) {
     AnomalyCapture capture;
-    logging::options.level = logging::Level::off;
+    logging::options.level = logging::Level::Off;
 
     int evaluations = 0;
     auto observe = [&evaluations] {
@@ -156,6 +156,7 @@ ZEST_CASE(MarkerNamesStable) {
     LOG_ANOMALY(WorkerSpawnFail, "x");
     LOG_ANOMALY(PositionMapFail, "x");
     LOG_ANOMALY(StaleTrust, "x");
+    LOG_ANOMALY(IndexReadBack, "x");
 
     ZASSERT(capture.notified.size() == logging::anomaly_id_count);
     const char* expected[] = {
@@ -167,6 +168,7 @@ ZEST_CASE(MarkerNamesStable) {
         "WorkerSpawnFail",
         "PositionMapFail",
         "StaleTrust",
+        "IndexReadBack",
     };
     for(std::size_t i = 0; i < logging::anomaly_id_count; ++i) {
         ZEXPECT(capture.notified[i].second == std::format("[anomaly:{}] x", expected[i]));

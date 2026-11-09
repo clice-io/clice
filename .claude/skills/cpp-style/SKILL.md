@@ -145,7 +145,8 @@ defending against ghosts.
   `LOG_ERROR` macros (`std::format` syntax, source location captured
   automatically); `LOG_FATAL` logs and aborts, `LOG_ANOMALY` and
   `LOG_GUIDANCE` are the bug and user-setup channels (all in
-  `support/logging.macros.h`). Never call spdlog directly, never print
+  `support/macros.h`). Never write to the outputs of
+  `support/logging` directly, never print
   diagnostics to stdout/stderr.
 
 ## Naming Conventions

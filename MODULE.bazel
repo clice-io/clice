@@ -15,7 +15,6 @@ bazel_dep(name = "croaring", version = "5.5.5.clice.1")
 bazel_dep(name = "lmdb", version = "0.9.36.clice.1")
 bazel_dep(name = "mimalloc", version = "3.5.3.clice.1")
 bazel_dep(name = "simdjson", version = "5.1.1.clice.1")
-bazel_dep(name = "spdlog", version = "1.17.0.clice.1")
 
 # The C++ toolchain on every platform and the LLVM/Clang libraries clice
 # links, both from one xclang release: libclang's ThinLTO bitcode needs the
