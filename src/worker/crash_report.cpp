@@ -32,9 +32,9 @@ thread_local std::size_t running_size = 0;
 /// The tags of the scopes open in the process, a slot each: a crash on a
 /// thread no scope is open on, as the one clang continues a deep parse on
 /// (clang::runWithSufficientStackSpace), names the request when it is the
-/// only one running. Scopes open on libuv's pool threads and the compile
-/// thread, far fewer than the slots.
-std::array<std::atomic<const std::string*>, 64> open_tags = {};
+/// only one running. Scopes open on libuv's pool threads, at most 1024
+/// (thread_pool_size), or a stateless worker's one compile thread.
+std::array<std::atomic<const std::string*>, 1024> open_tags = {};
 
 /// Set as a crash is reported: a scope closing from then on waits for the
 /// process to end, rather than free the tag the report may be reading.
