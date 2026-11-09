@@ -122,7 +122,7 @@ public:
     explicit Unifier(clang::ASTContext& context,
                      unsigned depth,
                      unsigned size,
-                     llvm::ArrayRef<const clang::Expr*> open,
+                     llvm::function_ref<bool(const clang::Expr*)> open,
                      bool ordering) :
         context(context), depth(depth), bindings(size), open(open), ordering(ordering) {}
 
@@ -181,7 +181,7 @@ private:
     clang::ASTContext& context;
     unsigned depth;
     llvm::SmallVector<clang::TemplateArgument, 4> bindings;
-    llvm::ArrayRef<const clang::Expr*> open;
+    llvm::function_ref<bool(const clang::Expr*)> open;
     bool ordering;
     llvm::SmallVector<Deferred, 1> deferred_checks;
     bool undecided_match = false;
@@ -975,7 +975,7 @@ bool Unifier::unify(const clang::TemplateArgument& pattern,
                 auto expr = argument.getAsExpr();
                 if(expr->isValueDependent()) {
                     bool undecided = !ordering && (pattern.getIntegralType()->isBooleanType() ||
-                                                   ranges::contains(open, expr));
+                                                   (open && open(expr)));
                     undecided_match |= undecided;
                     return undecided;
                 }

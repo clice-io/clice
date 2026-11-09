@@ -173,11 +173,11 @@ llvm::SmallVector<clang::ClassTemplateSpecializationDecl*, 2>
     if(!names_unknown_value(arguments)) {
         return {};
     }
-    auto undecided = undecided_among<clang::ClassTemplateSpecializationDecl>(
-        context,
-        explicit_specializations(CTD),
-        arguments,
-        {.open = open_defaults.getArrayRef()});
+    auto undecided =
+        undecided_among<clang::ClassTemplateSpecializationDecl>(context,
+                                                                explicit_specializations(CTD),
+                                                                arguments,
+                                                                {.open = open_default_reader()});
     drop_unseen(undecided);
     return undecided;
 }
@@ -188,11 +188,11 @@ llvm::SmallVector<clang::VarTemplateSpecializationDecl*, 2>
     if(!names_unknown_value(arguments)) {
         return {};
     }
-    auto undecided = undecided_among<clang::VarTemplateSpecializationDecl>(
-        context,
-        explicit_specializations(VTD),
-        arguments,
-        {.open = open_defaults.getArrayRef()});
+    auto undecided =
+        undecided_among<clang::VarTemplateSpecializationDecl>(context,
+                                                              explicit_specializations(VTD),
+                                                              arguments,
+                                                              {.open = open_default_reader()});
     drop_unseen(undecided);
     return undecided;
 }
@@ -235,7 +235,10 @@ clang::VarDecl* PseudoInstantiator::select_pattern(clang::VarTemplateDecl* VTD,
 }
 
 bool PseudoInstantiator::satisfies_pattern(const clang::ASTTemplateArgumentListInfo* written) {
+    /// Past the nesting limit the pattern is taken as satisfiable, an
+    /// answer the limit cut short.
     if(probing > 4) {
+        give_up(Trouble::Depth);
         return true;
     }
 

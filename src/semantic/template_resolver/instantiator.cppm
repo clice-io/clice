@@ -233,6 +233,10 @@ struct StepRecording {
 
     llvm::SmallVector<const clang::Expr*, 0> open_defaults;
 
+    /// The defaults it asked whether they fold, beside those it found not
+    /// to fold itself, and what it found (default_open).
+    llvm::SmallVector<std::pair<const clang::Expr*, bool>, 0> defaults_read;
+
     unsigned lowest_read = std::numeric_limits<unsigned>::max();
 
     /// The declarations judged and the parameters found free already: a
@@ -251,6 +255,15 @@ struct StepRecording {
         for(auto& check: checked) {
             if(judged.insert(check.decl).second) {
                 checks.push_back(check);
+            }
+        }
+    }
+
+    void read_defaults(llvm::ArrayRef<std::pair<const clang::Expr*, bool>> read) {
+        for(auto& entry: read) {
+            if(!ranges::contains(open_defaults, entry.first) &&
+               !ranges::contains(defaults_read, entry)) {
+                defaults_read.push_back(entry);
             }
         }
     }
@@ -278,6 +291,8 @@ struct KeptStep {
     llvm::SmallVector<InstantiationStack::Frame, 0> frames;
 
     llvm::SmallVector<const clang::Expr*, 0> open_defaults;
+
+    llvm::SmallVector<std::pair<const clang::Expr*, bool>, 0> defaults_read;
 
     llvm::SmallVector<VisibilityCheck, 0> checks;
 
@@ -1076,6 +1091,7 @@ private:
         return llvm::make_scope_exit([this, &step, outer = std::exchange(recording, &step)] {
             recording = outer;
             if(outer) {
+                outer->read_defaults(step.defaults_read);
                 outer->open_defaults.append(step.open_defaults);
                 outer->judge(step.checks);
                 outer->found_free(step.free);
@@ -1107,6 +1123,7 @@ private:
             }
             judged_visibility(known.checks);
             if(recording) {
+                recording->read_defaults(known.defaults_read);
                 recording->found_free(known.free);
             }
             return known.result;
@@ -1124,6 +1141,7 @@ private:
                     .result = result,
                     .frames = {stack.frames().begin() + base, stack.frames().end()},
                     .open_defaults = std::move(step.open_defaults),
+                    .defaults_read = std::move(step.defaults_read),
                     .checks = std::move(step.checks),
                     .free = std::move(step.free),
                     .view = view(),
@@ -1133,12 +1151,16 @@ private:
     }
 
     /// Whether a kept step holds for the query: it finds every parameter the
-    /// step found free free, and judges every declaration the step judged
-    /// alike, as one from the view kept beside them did; that view updated.
+    /// step found free free and every default the step asked about folding
+    /// as the step did, and judges every declaration the step judged alike,
+    /// as one from the view kept beside them did; that view updated.
     template <typename Result>
     bool holds(KeptStep<Result>& known) {
         if(!ranges::all_of(known.free,
-                           [&](const ParameterRef& parameter) { return free(parameter); })) {
+                           [&](const ParameterRef& parameter) { return free(parameter); }) ||
+           !ranges::all_of(known.defaults_read, [&](const auto& entry) {
+               return open_defaults.contains(entry.first) == entry.second;
+           })) {
             return false;
         }
         auto current = view();
@@ -1158,6 +1180,25 @@ private:
     /// Visibility limits it to a place.
     std::uint32_t view() const {
         return visibility ? visibility->view() : 0;
+    }
+
+    /// Whether the default `expr` did not fold, noted for the step being
+    /// kept (kept_step).
+    bool default_open(const clang::Expr* expr) {
+        bool open = open_defaults.contains(expr);
+        if(recording) {
+            recording->read_defaults({
+                {expr, open}
+            });
+        }
+        return open;
+    }
+
+    /// default_open, for deduction to ask (DeductionOptions::open).
+    auto open_default_reader() {
+        return [this](const clang::Expr* expr) {
+            return default_open(expr);
+        };
     }
 
     /// Note that the default `expr` did not fold, for the step being kept

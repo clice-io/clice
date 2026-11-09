@@ -44,9 +44,9 @@ enum class Deduction : std::uint8_t {
 /// against `array<T, N>`), are special cases instead: they do not match,
 /// and the primary template stands for the rest.
 struct DeductionOptions {
-    /// Value arguments that may hold any value — defaults that do not fold:
-    /// a value pattern meeting one is undecided whatever its type.
-    llvm::ArrayRef<const clang::Expr*> open;
+    /// Whether a value argument may hold any value — a default that does
+    /// not fold: a value pattern meeting one is undecided whatever its type.
+    llvm::function_ref<bool(const clang::Expr*)> open;
 
     /// Leave a parameter the match binds nothing to null rather than fail
     /// the deduction: a function template's defaults fill it after the

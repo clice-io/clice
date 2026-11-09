@@ -259,7 +259,7 @@ Deduction PseudoInstantiator::push_deduction(clang::Decl* decl,
                                       patterns,
                                       arguments,
                                       deduced,
-                                      {.open = open_defaults.getArrayRef()});
+                                      {.open = open_default_reader()});
     if(deduction == Deduction::Failed) {
         return deduction;
     }
@@ -488,8 +488,7 @@ llvm::SmallVector<clang::TemplateArgument, 4>
                         written,
                         types,
                         deduced,
-                        {.open = open_defaults.getArrayRef(), .partial = true}) ==
-       Deduction::Failed) {
+                        {.open = open_default_reader(), .partial = true}) == Deduction::Failed) {
         return {};
     }
     return deduced;
