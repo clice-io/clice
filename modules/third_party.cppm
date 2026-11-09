@@ -6883,6 +6883,7 @@ using ::kotatsu::sys::set_priority;
 using ::kotatsu::sys::set_process_name;
 using ::kotatsu::sys::set_process_title;
 using ::kotatsu::sys::set_thread_priority;
+using ::kotatsu::sys::shows_colors;
 using ::kotatsu::sys::sighup;
 using ::kotatsu::sys::sigkill;
 using ::kotatsu::sys::signal_name;
@@ -6894,6 +6895,7 @@ using ::kotatsu::sys::temp_dir;
 using ::kotatsu::sys::unset_env;
 using ::kotatsu::sys::uptime;
 using ::kotatsu::sys::user_name;
+using ::kotatsu::sys::utc_offset;
 using ::kotatsu::sys::write_console;
 using ::kotatsu::sys::write_console_some;
 using ::kotatsu::sys::write_stacktrace;
@@ -10384,6 +10386,7 @@ export using ::MultiByteToWideChar;
 export using ::WideCharToMultiByte;
 
 export namespace kotatsu::fs::windows {
+using ::kotatsu::fs::windows::descriptor_handle;
 using ::kotatsu::fs::windows::from_native;
 using ::kotatsu::fs::windows::last_error;
 using ::kotatsu::fs::windows::to_error_code;

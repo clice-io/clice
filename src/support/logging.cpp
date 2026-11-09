@@ -1,11 +1,3 @@
-module;
-
-#ifdef _WIN32
-#include <io.h>
-#else
-#include <unistd.h>
-#endif
-
 module clice;
 
 import :support.logging;
@@ -73,14 +65,8 @@ std::atomic<int> crash_fd = -1;
 
 /// `time` on the local clock.
 chrono::sys_time<chrono::milliseconds> local(chrono::system_clock::time_point time) {
-    auto seconds = chrono::floor<chrono::seconds>(time);
-    if(auto tm = sys::local_time(seconds)) {
-        auto day = chrono::sys_days(chrono::year(tm->tm_year + 1900) /
-                                    chrono::month(static_cast<unsigned>(tm->tm_mon + 1)) /
-                                    chrono::day(static_cast<unsigned>(tm->tm_mday)));
-        auto as_utc = day + chrono::hours(tm->tm_hour) + chrono::minutes(tm->tm_min) +
-                      chrono::seconds(tm->tm_sec);
-        utc_offset.store((as_utc - seconds).count(), std::memory_order_relaxed);
+    if(auto offset = sys::utc_offset(time)) {
+        utc_offset.store(offset->count(), std::memory_order_relaxed);
     }
     return chrono::floor<chrono::milliseconds>(time) +
            chrono::seconds(utc_offset.load(std::memory_order_relaxed));
@@ -176,36 +162,26 @@ void shed_over_capacity(PipeOutput& output) {
     pending.erase(start, cut - start);
 }
 
-/// Opens the log file at `path` to append to: its descriptor, and the bytes
-/// it holds.
-std::expected<FileOutput, std::error_code> open_log(llvm::StringRef path) {
-    auto opened = fs::File::open(path, {.append = true, .create = true});
-    if(!opened) {
-        return std::unexpected(opened.error());
+/// Lines go to `fresh` from now on, under the log's descriptor number: a
+/// crash's trace written meanwhile on another thread goes to one file or
+/// the other, and the file before is closed, so that one rotated out frees
+/// its space.
+std::error_code log_to(fs::File fresh) {
+    auto size = fresh.status().transform([](const fs::Status& status) { return status.size; });
+    if(file) {
+        if(auto error = std::move(fresh).into_descriptor(file->fd)) {
+            return error;
+        }
+        file->size = size.value_or(0);
+        return {};
     }
-    auto size = opened->status().transform([](const fs::Status& status) { return status.size; });
-    return std::move(*opened).into_descriptor().transform(
-        [&](int fd) { return FileOutput{.fd = fd, .size = size.value_or(0)}; });
-}
-
-/// Lines go to `fresh` from now on, under the descriptor number the file
-/// before had: a crash's trace written meanwhile on another thread goes to
-/// one file or the other, and the one before is closed, so that a file
-/// rotated out frees its space.
-void log_to(FileOutput fresh) {
-    if(!file) {
-        file = fresh;
-        crash_fd = fresh.fd;
-        return;
+    auto fd = std::move(fresh).into_descriptor();
+    if(!fd) {
+        return fd.error();
     }
-#ifdef _WIN32
-    ::_dup2(fresh.fd, file->fd);
-    ::_close(fresh.fd);
-#else
-    ::dup2(fresh.fd, file->fd);
-    ::close(fresh.fd);
-#endif
-    file->size = fresh.size;
+    file = FileOutput{.fd = *fd, .size = size.value_or(0)};
+    crash_fd = *fd;
+    return {};
 }
 
 /// The log file moves to `<name>.1.log`, the one before going, and a fresh
@@ -218,13 +194,12 @@ void rotate() {
         file->last_error = error;
         return;
     }
-    auto fresh = open_log(file_path);
-    if(!fresh) {
-        file->last_error = fresh.error();
+    auto fresh = fs::File::open(file_path, {.append = true, .create = true});
+    if(auto error = fresh ? log_to(std::move(*fresh)) : fresh.error()) {
+        file->last_error = error;
         fs::rename(older, file_path);
         return;
     }
-    log_to(*fresh);
     write(*file, std::format("[logging] the lines before are in {}\n", fs::path::filename(older)));
 }
 
@@ -448,11 +423,7 @@ void stderr_logger(std::string_view name) {
         process_name = name;
         if(!options.never_block_stderr) {
             console = FileOutput{.fd = 2};
-#ifndef _WIN32
-            // A Windows console shows escape sequences as they are unless
-            // asked to read them.
-            color = sys::is_console(2) && !env_string("NO_COLOR");
-#endif
+            color = sys::shows_colors(2);
             return;
         }
         editor = pipe_output({.fd = 2});
@@ -518,13 +489,13 @@ bool file_logger(std::string_view dir, bool mirror_stderr) {
     }
     std::string path(dir);
     fs::path::push(path, std::format("{}.log", process_name));
-    auto opened = open_log(path);
-    if(!opened) {
-        LOG_ERROR("Cannot open the log file {}: {}", path, opened.error().message());
+    auto opened = fs::File::open(path, {.append = true, .create = true});
+    std::unique_lock lock(mutex);
+    if(auto error = opened ? log_to(std::move(*opened)) : opened.error()) {
+        lock.unlock();
+        LOG_ERROR("Cannot open the log file {}: {}", path, error.message());
         return false;
     }
-    std::lock_guard lock(mutex);
-    log_to(*opened);
     file_path = std::move(path);
     max_file_bytes = env_integer("CLICE_TEST_LOG_FILE_BYTES").value_or(std::uint64_t{64} << 20);
     for(auto& line: early) {
