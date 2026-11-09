@@ -7,8 +7,9 @@
 -- clice/internal/sync. Every vim.wait bound only fails a hang.
 -- Starts clice through the shipped LSP config (../lsp/clice.lua), opens
 -- the fixture's main.cpp, waits for diagnostics, then checks that
--- hover, definition and completion respond with well-formed results, and
--- on a header that the compilation context commands work.
+-- hover, definition and completion respond with well-formed results, that
+-- the compilation context shows, and on a header that switching and
+-- resetting it work.
 
 local clice_path = arg[1]
 local fixture_dir = arg[2]
@@ -42,6 +43,7 @@ local scenarios = {
         symbol = 'add(1, 2)',
         index_symbol = 'add(int a, int b)',
         definition_file = 'main.cpp',
+        shown = 'picked automatically.*its command: database$',
         restart = true,
     },
     imported_symbol = {
@@ -49,11 +51,13 @@ local scenarios = {
         symbol = 'magic_number()',
         index_symbol = 'magic_number()',
         definition_file = 'defs.cppm',
+        shown = 'picked automatically.*its command: database$',
     },
     two_hosts = {
         file = 'shared.h',
         symbol = 'VALUE_TYPE',
         index_symbol = 'get_value()',
+        shown = 'int_host.cpp.*picked automatically.*its command: host from .*int_host.cpp',
         context = 'int_host.cpp',
     },
 }
@@ -193,6 +197,22 @@ if not items or #items == 0 then
     fail 'completion returned no items'
 end
 
+local notified
+vim.notify = function(msg)
+    io.stdout:write('notify: ' .. msg .. '\n')
+    notified = msg
+end
+step 'show context'
+vim.cmd.LspCliceShowContext()
+if not vim.wait(60000, function()
+    return notified ~= nil
+end, 50) then
+    fail 'LspCliceShowContext showed nothing'
+end
+if not notified:find(scenario.shown) then
+    fail('LspCliceShowContext showed: ' .. notified)
+end
+
 if scenario.context then
     -- A context command ends in a request of the plugin's own: once it is
     -- answered, a sync waits out the compile it started.
@@ -221,22 +241,6 @@ if scenario.context then
         return current.automatic == automatic
             and type(current.context) == 'table'
             and vim.fs.basename(vim.uri_to_fname(current.context.uri)) == scenario.context
-    end
-
-    local notified
-    vim.notify = function(msg)
-        io.stdout:write('notify: ' .. msg .. '\n')
-        notified = msg
-    end
-    step 'show context'
-    vim.cmd.LspCliceShowContext()
-    if not vim.wait(60000, function()
-        return notified ~= nil
-    end, 50) then
-        fail 'LspCliceShowContext showed nothing'
-    end
-    if not notified:find(scenario.context .. '.*picked automatically.*its command: host from .*' .. scenario.context) then
-        fail('LspCliceShowContext showed: ' .. notified)
     end
 
     step 'switch context'
