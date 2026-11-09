@@ -205,6 +205,8 @@ void LSPClient::register_editing() {
                     return open;
                 },
             .scope = scope,
+            .query = project.query(),
+            .documentation = settings.documentation,
         });
         if(std::holds_alternative<feature::NoCompletion>(start)) {
             co_return codec::raw_value{"[]"};

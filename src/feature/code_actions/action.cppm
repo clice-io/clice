@@ -1,5 +1,3 @@
-module;
-
 /// The inside of the code action layer: what an action reads, how the
 /// table anchors it, and the floor every action stands on. An action is a
 /// function from a selection to CodeAction values, computed to completion

@@ -10,13 +10,14 @@ namespace {
 constexpr std::string_view slash_prefixes[] = {"/", "-"};
 
 /// The families an own option is written by: every one, Intel's icpx and
-/// icx elsewhere, and Intel's drivers that read cl's options (icx-cl,
-/// dpcpp-cl and icx on Windows, read as clang-cl: driver_family).
+/// icx elsewhere, Intel's drivers that read cl's options (icx-cl, dpcpp-cl
+/// and icx on Windows, read as clang-cl: driver_family), and cl.
 namespace families {
 
 constexpr std::uint32_t all = ~0u;
 constexpr std::uint32_t intel = family_bit(CompilerFamily::Intel);
 constexpr std::uint32_t intel_cl = family_bit(CompilerFamily::ClangCL);
+constexpr std::uint32_t msvc = family_bit(CompilerFamily::MSVC);
 
 }  // namespace families
 

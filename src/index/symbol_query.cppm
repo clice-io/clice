@@ -1,5 +1,3 @@
-module;
-
 /// The one grammar every symbol lookup speaks: the locators the clice
 /// commands take, and workspace/symbol.
 ///

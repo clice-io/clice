@@ -1,5 +1,3 @@
-module;
-
 /// The inside of code completion its two sides share: what a compile
 /// completes (compile.cpp) and what the server completes without one
 /// (project.cpp) match, rank and spell their items alike.

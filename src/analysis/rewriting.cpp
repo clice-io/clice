@@ -1,5 +1,6 @@
 module clice;
 
+import :analysis.module_graph;
 import :analysis.rewriting;
 import :analysis.text;
 import :syntax.lexer;
@@ -9,8 +10,6 @@ import :vfs.path;
 namespace clice::analysis {
 
 namespace {
-
-constexpr std::uint32_t none = ~0u;
 
 constexpr auto posix = path::Style::Posix;
 
@@ -85,6 +84,61 @@ std::string assemble(llvm::ArrayRef<std::string> lines,
         text.pop_back();
     }
     return text;
+}
+
+/// A scoped file as a unit of its module, what rewriting it reads.
+struct Unit {
+    enum class Kind : std::uint8_t {
+        Source,
+        Fragment,
+        /// A header only its own module's sources reach, directly or through
+        /// other such headers: an implementation partition.
+        Internal,
+        Interface,
+    };
+
+    Kind kind = Kind::Source;
+
+    /// The files providing the entities it names, the fragments it pastes
+    /// counted as its own text; itself apart.
+    std::vector<std::uint32_t> names;
+
+    /// The files defining the macros it expands or tests; itself apart.
+    std::vector<std::uint32_t> macros;
+};
+
+/// Every scoped file as a unit of its module, by file id.
+std::vector<Unit> module_units(const Facts& facts, const Partition& partition) {
+    Graph graph(facts, partition);
+    auto pasted = facts.pasted_fragments();
+
+    std::vector<Unit> result(facts.files.size());
+    for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
+        auto& info = facts.files[file];
+        auto& unit = result[file];
+        unit.kind = info.source            ? Unit::Kind::Source
+                    : info.fragment        ? Unit::Kind::Fragment
+                    : graph.internal[file] ? Unit::Kind::Internal
+                                           : Unit::Kind::Interface;
+        for(auto named: llvm::concat<const std::uint32_t>(llvm::ArrayRef(file), pasted[file])) {
+            for(auto [uses, owners]: {
+                    std::pair{&facts.uses[named],       &unit.names },
+                    std::pair{&facts.macro_uses[named], &unit.macros}
+            }) {
+                for(auto& use: *uses) {
+                    auto owner = facts.entities[use.entity].owner;
+                    if(owner != file) {
+                        owners->push_back(owner);
+                    }
+                }
+            }
+        }
+        for(auto* owners: {&unit.names, &unit.macros}) {
+            ranges::sort(*owners);
+            owners->erase(ranges::unique(*owners).begin(), owners->end());
+        }
+    }
+    return result;
 }
 
 enum class Action : std::uint8_t {
@@ -309,8 +363,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         plan.moved.push_back(std::format("{}={}", path, partition.modules[*modules.begin()]));
     }
 
-    Annotations annotations;
-    auto units = Report{.facts = facts, .partition = partition, .annotations = annotations}.units();
+    auto units = module_units(facts, partition);
     Rewriter rewriter{.facts = facts, .partition = partition, .units = units};
     for(std::uint32_t module = 0; module < interfaces.size(); module += 1) {
         if(partition.kinds[module] == ModuleKind::Wrapped) {

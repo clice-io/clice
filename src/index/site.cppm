@@ -1,5 +1,3 @@
-module;
-
 /// Positions in a text version and the sites index entries resolve to.
 
 module clice:index.site;

@@ -7,9 +7,9 @@ import :index.indexer;
 import :index.instantiation_shard;
 import :index.shard;
 import :index.symbol;
+import :semantic.comment;
 import :semantic.decls;
 import :semantic.display;
-import :semantic.documentation;
 import :semantic.identity;
 import :semantic.semantics;
 import :semantic.template_resolver;
@@ -641,7 +641,7 @@ public:
             auto* index = file_index(fid);
             if(!index)
                 return;
-            auto hash = unit.get<EntityTable>().module_entity(name);
+            auto hash = EntityTable::module_entity(name);
 
             index->occurrences.emplace_back(range, hash);
             Relation relation{

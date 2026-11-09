@@ -597,6 +597,18 @@ tests/code_completion/modules/09_nearest_modules
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**模块文档**
+
+`import` 之后补全的模块会显示其接口单元中模块声明上方的注释
+
+```case
+tests/code_completion/modules/14_module_documentation
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 过滤

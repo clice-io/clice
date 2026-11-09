@@ -1,5 +1,3 @@
-module;
-
 /// The name search index: the project's symbols laid out for lookup by
 /// name — quality-ordered entries, a posting list per name token (the
 /// matcher's paths through a name, see support/fuzzy_matcher.cppm), and

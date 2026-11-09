@@ -107,6 +107,20 @@ tests/modules/units/08_indexed_by_its_build
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**由 cl 构建的模块单元**
+
+对于借助 CMake 或 MSBuild 用 cl 构建的项目，clice 会像对待其他项目一样构建其模块，`.ixx` 接口也不例外
+
+单元属于哪一种由其模块声明决定，与扩展名无关；cl 写出和读取的接口文件则交给构建处理。
+
+```case
+tests/modules/units/14_cl_module_commands
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 编辑

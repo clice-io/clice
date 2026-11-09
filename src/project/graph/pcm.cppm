@@ -6,6 +6,7 @@ import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :support.failure;
 import :support.prelude;
+import :vfs.file_table;
 import :vfs.ids;
 
 namespace clice {
@@ -26,6 +27,10 @@ struct ModuleBuildFailed {
     /// The PCM of the import whose build failed, or that closed a cycle back
     /// to the unit; none when the unit's own build failed.
     std::optional<NodeId> import;
+
+    /// An import's PCM left the disk under the build: the failure says
+    /// nothing of the module, and the next wait builds both again.
+    bool import_lost = false;
 };
 
 /// The PCM of a C++20 module unit under one of its commands, shared across
@@ -64,6 +69,9 @@ struct Imports {
 
     /// The unit declares a module.
     bool module_unit = false;
+
+    /// What the scan read: what the import list stands on.
+    Inputs inputs;
 
     /// The PCMs of `declared`: what a consumer waits on.
     llvm::SmallVector<NodeId> resolved() const;

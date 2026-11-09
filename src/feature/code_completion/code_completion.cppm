@@ -238,24 +238,6 @@ auto directive_completion(const CompletionName& completing,
                           const CodeCompletionOptions& options,
                           const CompletionClient& client) -> protocol::CompletionList;
 
-/// The modules an `import` or a module declaration being typed
-/// (`completing`) in `text`, the file `file` at `path`, may name: the unit's
-/// own partitions first, then the modules whose interface lies nearest the
-/// file — the fewest directories up from it to one holding the interface.
-/// The other open units provide what their buffers declare (`open`), the
-/// file what its text does.
-auto module_completion(const CompletionName& completing,
-                       llvm::StringRef text,
-                       const PositionMap& map,
-                       PositionEncoding encoding,
-                       Fid file,
-                       llvm::StringRef path,
-                       const DependencyGraph& graph,
-                       std::vector<OpenModule> open,
-                       FileTable& files,
-                       llvm::function_ref<ScanResult(llvm::StringRef)> declared_module,
-                       std::uint32_t limit) -> protocol::CompletionList;
-
 /// A completion request as the server has it before any compile.
 struct CompletionInputs {
     /// The file completed in, its path and text, and the point completed at
@@ -293,6 +275,11 @@ struct CompletionInputs {
     /// module name is completed.
     llvm::function_ref<std::vector<OpenModule>()> open_modules;
     vfs::Scope& scope;
+
+    /// The project's index, which documents the modules a module name
+    /// completes with.
+    const index::IndexQuery& query;
+    const DocumentationOptions& documentation;
 };
 
 /// A trigger character opened nothing to complete: the client gets no

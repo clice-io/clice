@@ -10,6 +10,15 @@ import :vfs.file_table;
 
 namespace clice {
 
+/// How far a provider of a module lies from `importer`: the directories up
+/// from the importer to one holding it, its own directory counting one.
+std::uint32_t module_distance(const FileTable& files, Fid provider, Fid importer);
+
+/// The provider an import in `importer` resolves to among several of one
+/// name: the nearest (module_distance), and the first by path among equally
+/// near ones.
+Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> providers, Fid importer);
+
 /// One include edge: the included file and whether the directive sits
 /// inside a preprocessor conditional (#if/#ifdef).
 struct IncludeEdge {

@@ -1,0 +1,89 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 3 translation units in #s: 6 file shards (# KB), 7 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules"]
+stdout = '''
+{
+  "annotations": [],
+  "files": 6,
+  "modules": [
+    {
+      "name": "ast",
+      "headers": 1,
+      "sources": 1,
+      "lines": 8,
+      "layer": 0
+    },
+    {
+      "name": "common",
+      "headers": 1,
+      "sources": 0,
+      "lines": 7,
+      "layer": 0
+    },
+    {
+      "name": "sema",
+      "headers": 1,
+      "sources": 2,
+      "lines": 11,
+      "layer": 0
+    }
+  ],
+  "edges": [],
+  "cycles": [],
+  "cyclicModules": 0,
+  "partitionCycles": [],
+  "internalHeaders": 2,
+  "deepestChain": [
+    "ast"
+  ],
+  "totals": {
+    "baseline": 9,
+    "partitioned": 9
+  },
+  "hotspots": [
+    {
+      "path": "common/omp.inc",
+      "baseline": 3,
+      "partitioned": 3,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "sema/check.h",
+      "baseline": 2,
+      "partitioned": 2,
+      "churn": null,
+      "internal": true
+    },
+    {
+      "path": "ast/clause.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": true
+    }
+  ],
+  "moves": [],
+  "splits": [],
+  "obstacles": {
+    "variantHeaders": 0,
+    "contextMacros": 0,
+    "borrowedMacros": 0,
+    "internalUses": 0,
+    "crossModuleRedeclarations": 0,
+    "foreignDeclarations": 0,
+    "splitDefinitions": 0,
+    "duplicateDefinitions": 0,
+    "configuringMacros": 0,
+    "implicitProviders": 0,
+    "specializations": 0
+  }
+}
+'''
+stderr = "warning: no churn annotation: Process git ended with exit code 128"
+exit = 0

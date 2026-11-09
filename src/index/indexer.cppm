@@ -1,5 +1,3 @@
-module;
-
 /// The index of one compiled unit: its AST, semantic map and preprocessor
 /// directives projected into the entries of each file it indexes, the
 /// symbols they name and what its instantiations and macro expansions

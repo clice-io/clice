@@ -1,0 +1,55 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 4 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules edge util core"]
+stdout = '''
+{
+  "from": "util",
+  "to": "core",
+  "entities": [
+    {
+      "id": "#478ec97a46ae1c6f",
+      "entity": "Str",
+      "owner": "core/str.h",
+      "users": [
+        "util/clock.tpp:1"
+      ],
+      "interface": true
+    },
+    {
+      "id": "#4e67905093bba55a",
+      "entity": "length",
+      "owner": "core/str.h",
+      "users": [
+        "util/clock.tpp:1"
+      ],
+      "interface": true
+    }
+  ]
+}
+'''
+exit = 0
+
+[test."$ clice analyze modules edge util core --move-entity Clock=core/clock.h"]
+stdout = '''
+{
+  "from": "util",
+  "to": "core",
+  "entities": []
+}
+'''
+exit = 0
+
+[test."$ clice analyze modules edge util core --move-entity Clock=core/clock.h --move-entity Clock=meta/clock.h"]
+stdout = '''
+{
+  "from": "util",
+  "to": "core",
+  "entities": []
+}
+'''
+exit = 0

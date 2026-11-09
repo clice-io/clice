@@ -273,7 +273,12 @@ bool is_discarded_option(unsigned id) {
         case OPT_fmodule_output_EQ:
         case OPT_fmodules_embed_all_files:
         case OPT_fmodules_embed_file_EQ:
-        case OPT_fprebuilt_module_path: return true;
+        case OPT_fprebuilt_module_path:
+        case OPT__SLASH_reference:
+        case OPT__SLASH_headerUnit:
+        case OPT__SLASH_headerUnitAngle:
+        case OPT__SLASH_headerUnitQuote:
+        case OPT__SLASH_translateInclude: return true;
 
         default: return false;
     }

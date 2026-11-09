@@ -2,9 +2,8 @@ module clice;
 
 import :feature.semantic_tokens.stream;
 import :feature.semantic_tokens;
+import :semantic.comment;
 import :semantic.token_class;
-import :syntax.doc_comment;
-import :syntax.documentation;
 import :syntax.source_text;
 import :syntax.token;
 
@@ -759,7 +758,7 @@ private:
             doc_commands.end_run();
         }
         comment_end = range.end;
-        if(!is_doc_comment(text)) {
+        if(!is_doxygen_comment(text)) {
             doc_commands.end_run();
             emit(range, {{.kind = Kind::Comment}, false});
             return;

@@ -1347,16 +1347,7 @@ void §(global)global();
 }
 
 ZEST_CASE(ModuleEntity) {
-    add_focus("main.cpp", "int x;");
-    ZASSERT(compile());
-    Tester other;
-    other.add_focus("main.cpp", "int y;");
-    ZASSERT(other.compile());
-
-    ZEXPECT(unit->get<EntityTable>().module_entity("foo") ==
-            other.unit->get<EntityTable>().module_entity("foo"));
-    ZEXPECT(unit->get<EntityTable>().module_entity("foo") !=
-            unit->get<EntityTable>().module_entity("foo:part"));
+    ZEXPECT(EntityTable::module_entity("foo") != EntityTable::module_entity("foo:part"));
 }
 
 };  // ZEST_SUITE(identity)

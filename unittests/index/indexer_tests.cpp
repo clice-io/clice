@@ -1008,7 +1008,7 @@ ZEST_CASE(ModuleName) {
     auto& index = tu_index.focus_file_index;
     auto occurrences = select("m");
     ZASSERT(!occurrences.empty());
-    ZASSERT(occurrences.front().target == unit->get<EntityTable>().module_entity("foo"));
+    ZASSERT(occurrences.front().target == EntityTable::module_entity("foo"));
     ZASSERT(symbol_named("foo").second.kind.value() == SymbolKind(SymbolKind::Module).value());
 
     auto it = index.relations.find(occurrences.front().target);

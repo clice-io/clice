@@ -1,0 +1,66 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 4 translation units in #s: 4 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules impact"]
+stdout = '''
+[
+  {
+    "path": "core/str.h",
+    "baseline": 2,
+    "partitioned": 2,
+    "churn": null,
+    "internal": false
+  },
+  {
+    "path": "util/fmt.h",
+    "baseline": 0,
+    "partitioned": 0,
+    "churn": null,
+    "internal": true
+  },
+  {
+    "path": "util/fmt.tpp",
+    "baseline": 0,
+    "partitioned": 0,
+    "churn": null,
+    "internal": false
+  }
+]
+'''
+stderr = "warning: no churn annotation: Process git ended with exit code 128"
+exit = 0
+
+[test."$ clice analyze modules edge util core"]
+stdout = '''
+{
+  "from": "util",
+  "to": "core",
+  "entities": [
+    {
+      "id": "#478ec97a46ae1c6f",
+      "entity": "Str",
+      "owner": "core/str.h",
+      "users": [
+        "util/clock.cpp:2",
+        "util/fmt.tpp:1"
+      ],
+      "interface": false
+    },
+    {
+      "id": "#4e67905093bba55a",
+      "entity": "length",
+      "owner": "core/str.h",
+      "users": [
+        "util/clock.cpp:2",
+        "util/fmt.tpp:1"
+      ],
+      "interface": false
+    }
+  ]
+}
+'''
+exit = 0

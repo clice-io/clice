@@ -1,0 +1,22 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "${WS}/greeting.cppm",
+    "arguments": ["cl-missing.exe", "/nologo", "/TP", "-std:c++20", "@${WS}/greeting.cppm.obj.modmap", "/Fogreeting.cppm.obj", "-c", "${WS}/greeting.cppm"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "${WS}/detail.cpp",
+    "arguments": ["cl-missing.exe", "/nologo", "/TP", "-std:c++20", "@${WS}/detail.cpp.obj.modmap", "/Fodetail.cpp.obj", "-c", "${WS}/detail.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "${WS}/util.ixx",
+    "arguments": ["cl-missing.exe", "/nologo", "/std:c++20", "/interface", "/ifcOutput", "${WS}/util.ifc", "/Foutil.obj", "/c", "${WS}/util.ixx"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "${WS}/main.cpp",
+    "arguments": ["cl-missing.exe", "/nologo", "/TP", "-std:c++20", "@${WS}/main.cpp.obj.modmap", "/Fomain.cpp.obj", "-c", "${WS}/main.cpp"]
+  }
+]

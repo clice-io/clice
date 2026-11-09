@@ -1,1 +1,2 @@
+/// Beta.
 export module beta;

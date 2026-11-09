@@ -1,5 +1,3 @@
-module;
-
 /// Sema-free structural unification of template argument lists, replacing
 /// `Sema::DeduceTemplateArguments` and `Sema::getMoreSpecializedPartialSpecialization`
 /// for pseudo-instantiation, and the folding of the constant expressions it
