@@ -706,6 +706,62 @@ ZEST_CASE(PCHKeepsModuleImports) {
                             [](auto& diag) { return diag.id.level >= DiagnosticLevel::Error; }));
 }
 
+ZEST_CASE(ModulesEmbedNoSources) {
+    // A module embedding its sources would override them in a compile
+    // importing it, where a precompiled header holding the same file then
+    // refuses to load: the build reads them on disk whatever it is asked.
+    TempDir tmp;
+    tmp.touch("shared.h", "#pragma once\ninline int shared() { return 1; }\n");
+    tmp.touch("b.cppm", R"(module;
+#include "shared.h"
+export module B;
+export int b() { return shared(); }
+)");
+    llvm::StringRef content = R"(#include "shared.h"
+int before();
+import B;
+int use() { return b() + shared(); }
+)";
+    tmp.touch("main.cpp", content);
+
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase cdb{file_table, commands};
+    Toolchain toolchain{commands, file_table};
+
+    for(auto embedding: {std::string("-fmodules-embed-all-files"),
+                         "-fmodules-embed-file=" + tmp.path("shared.h")}) {
+        CompilationParams module_params;
+        module_params.kind = CompilationKind::ModuleInterface;
+        module_params.input.arguments = cxx20_command(cdb, toolchain, tmp, "b.cppm");
+        module_params.input.arguments.insert(module_params.input.arguments.end() - 1,
+                                             {"-Xclang", embedding});
+        auto pcm_path = precompiled_path("pcm");
+        module_params.output_file = pcm_path;
+        ZASSERT(clice::compile(std::move(module_params))->has_output());
+
+        CompilationParams preamble;
+        preamble.kind = CompilationKind::Preamble;
+        preamble.input.arguments = cxx20_command(cdb, toolchain, tmp, "main.cpp");
+        auto pch_path = precompiled_path("pch");
+        preamble.output_file = pch_path;
+        auto bound = preamble_bound(content);
+
+        CompilationParams params{.kind = CompilationKind::Content, .input = preamble.input};
+        params.input.pch = {pch_path, bound};
+        params.input.pcms.try_emplace("B", pcm_path);
+
+        preamble.input.add_remapped_file(tmp.path("main.cpp"), content, bound);
+        ZASSERT(clice::compile(std::move(preamble))->has_output());
+
+        auto unit = clice::compile(std::move(params));
+        ZASSERT(unit->completed());
+        ZEXPECT(ranges::none_of(unit->diagnostics(), [](auto& diag) {
+            return diag.id.level >= DiagnosticLevel::Error;
+        }));
+    }
+}
+
 ZEST_CASE(PCHWithoutModule) {
     TempDir tmp;
     tmp.touch("b.pcm", "not a module file");
