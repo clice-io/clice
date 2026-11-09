@@ -1,0 +1,6 @@
+# The database lists the header as a unit of its own, beside its two
+# includers.
+[units]
+"app/main.cpp" = []
+"util/clock.cpp" = []
+"core/str.h" = []

@@ -660,9 +660,12 @@ Obstacles Report::obstacles() const {
             }
             continue;
         }
-        auto named = ranges::any_of(facts.uses[redeclaration.file], [&](const Use& use) {
-            return use.entity == redeclaration.entity;
-        });
+        // A friend declaration grants access, which needs the entity's
+        // declaration, whether or not the file names it.
+        auto named = redeclaration.friend_declaration ||
+                     ranges::any_of(facts.uses[redeclaration.file], [&](const Use& use) {
+                         return use.entity == redeclaration.entity;
+                     });
         result.cross_module_redeclarations.push_back({
             .entity = info.name,
             .owner = facts.files[info.owner].path,

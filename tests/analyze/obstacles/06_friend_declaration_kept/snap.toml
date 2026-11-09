@@ -1,0 +1,43 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules obstacles --scope \"core/**\" --scope \"util/**\" --scope \"feature/**\" --scope \"app/**\""]
+stdout = '''
+{
+  "variantHeaders": [],
+  "contextMacros": [],
+  "borrowedMacros": [],
+  "internalUses": [],
+  "crossModuleRedeclarations": [
+    {
+      "entity": "Widget",
+      "owner": "feature/widget.h",
+      "file": "core/inspect.h",
+      "line": 2,
+      "friendDeclaration": false,
+      "unused": false,
+      "onCycle": false
+    },
+    {
+      "entity": "core::inspect",
+      "owner": "core/inspect.h",
+      "file": "feature/widget.h",
+      "line": 4,
+      "friendDeclaration": true,
+      "unused": false,
+      "onCycle": false
+    }
+  ],
+  "foreignDeclarations": [],
+  "splitDefinitions": [],
+  "duplicateDefinitions": [],
+  "configuringMacros": [],
+  "implicitProviders": [],
+  "specializations": []
+}
+'''
+exit = 0

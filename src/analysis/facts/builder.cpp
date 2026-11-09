@@ -109,6 +109,11 @@ void FactsBuilder::list_files() {
         fids.push_back(fid);
     };
     index.for_each_unit([&](Fid tu) {
+        // A header the database lists has a manifest too, though no build
+        // compiles it on its own: its includers' units are its units.
+        if(is_header_path(display(tu))) {
+            return;
+        }
         if(auto manifest = index.manifest(tu)) {
             manifests.emplace_back(tu, std::move(*manifest));
         }
@@ -986,8 +991,9 @@ void FactsBuilder::read_uses() {
         ranges::sort(facts.files[id].specializes);
     }
 
-    // Each use relation inside a definition the file provides belongs to the
-    // innermost such definition: what moves with it.
+    // Each use relation inside a definition the file provides, or a fragment
+    // it pastes in holds, belongs to the innermost such definition: what
+    // moves with it.
     struct Extent {
         std::uint32_t begin = 0;
         std::uint32_t end = 0;
@@ -1000,9 +1006,12 @@ void FactsBuilder::read_uses() {
         if(entity == none) {
             continue;
         }
+        auto owner = facts.entities[entity].owner;
         for(auto& site: list) {
             if(site.definition && site.extent.end > site.extent.begin &&
-               facts.entities[entity].owner == site.file) {
+               (site.file == owner ||
+                (facts.files[site.file].fragment &&
+                 ranges::contains(facts.including_files(site.file, true), owner)))) {
                 extents[site.file].push_back({site.extent.begin, site.extent.end, entity});
             }
         }
@@ -1044,8 +1053,8 @@ void FactsBuilder::read_uses() {
         ranges::sort(owned_uses);
         for(auto& [entity, used]: owned_uses) {
             auto& body = facts.entities[entity].body;
-            if(body.empty() || body.back().entity != used) {
-                body.push_back({.entity = used});
+            if(body.empty() || body.back().file != id || body.back().entity != used) {
+                body.push_back({.file = id, .entity = used});
             }
             body.back().count += 1;
         }

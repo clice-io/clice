@@ -60,35 +60,51 @@ std::uint32_t FactsBuilder::owner_of(index::SymbolHash hash,
         return none;
     }
 
-    auto pick = [&](bool header, bool definition) {
+    // A friend declaration grants access to what another declaration
+    // provides: it provides the entity only when no other header declares
+    // it, as a hidden friend's, which argument dependent lookup reaches
+    // through its class.
+    auto befriends = [&](const Site& site) {
+        return !site.definition && friend_site(site, identity.name);
+    };
+    auto header = [&](const Site& site) {
+        return !facts.files[site.file].source;
+    };
+    auto pick = [&](auto takes) {
         auto owner = none;
         for(auto& site: scoped) {
-            if(facts.files[site.file].source == header || site.definition != definition) {
-                continue;
-            }
-            if(owner == none || facts.files[site.file].path < facts.files[owner].path) {
+            if(takes(site) &&
+               (owner == none || facts.files[site.file].path < facts.files[owner].path)) {
                 owner = site.file;
             }
         }
         return owner;
     };
-    constexpr std::pair<bool, bool> preference[] = {
-        {true,  true },
-        {true,  false},
-        {false, true },
-        {false, false},
-    };
-    for(auto [header, definition]: preference) {
-        if(owner == none) {
-            owner = pick(header, definition);
+    if(owner == none) {
+        owner = pick([&](const Site& site) { return header(site) && site.definition; });
+    }
+    // Defined in no header, it belongs to the header of its first
+    // declaration, not to whichever forward declaration sorts first.
+    if(owner == none && canonical.valid()) {
+        if(auto id = id_of(canonical);
+           id != none && !facts.files[id].source && ranges::any_of(scoped, [&](const Site& site) {
+               return site.file == id && !befriends(site);
+           })) {
+            owner = id;
         }
-        // Defined in no header, it belongs to the header of its first
-        // declaration, not to whichever forward declaration sorts first.
-        if(owner == none && header && definition && canonical.valid()) {
-            if(auto id = id_of(canonical); id != none && !facts.files[id].source) {
-                owner = id;
-            }
-        }
+    }
+    if(owner == none) {
+        owner = pick(
+            [&](const Site& site) { return header(site) && !site.definition && !befriends(site); });
+    }
+    if(owner == none) {
+        owner = pick([&](const Site& site) { return header(site) && befriends(site); });
+    }
+    if(owner == none) {
+        owner = pick([&](const Site& site) { return !header(site) && site.definition; });
+    }
+    if(owner == none) {
+        owner = pick([&](const Site& site) { return !header(site) && !site.definition; });
     }
     return owner;
 }
@@ -238,11 +254,12 @@ std::expected<void, std::string> move_entities(Facts& facts,
         }
     };
 
-    // (old owner, entity) -> the times the moved definitions name it.
+    // (the old owner or a fragment it pastes in, entity) -> the times the
+    // moved definitions written there name it.
     std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> carried;
     for(auto entity: moved) {
         for(auto& use: facts.entities[entity].body) {
-            carried[{facts.entities[entity].owner, use.entity}] += use.count;
+            carried[{use.file, use.entity}] += use.count;
         }
     }
     // What stays behind is named from the target instead of the old owner.

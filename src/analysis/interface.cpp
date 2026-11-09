@@ -490,7 +490,7 @@ std::vector<Interface> interfaces(const Facts& facts, const Partition& partition
         }
         llvm::DenseSet<std::uint32_t> used, passed;
         llvm::SmallVector<std::uint32_t> pending;
-        auto use = [&](const Use& named) {
+        auto use = [&](const BodyUse& named) {
             auto entity = named.entity;
             auto& info = facts.entities[entity];
             if(emitted(entity)) {

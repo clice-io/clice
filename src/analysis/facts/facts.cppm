@@ -91,6 +91,13 @@ struct Use {
     std::uint32_t line = 0;
 };
 
+/// What a definition names, in the file it is written in.
+struct BodyUse {
+    std::uint32_t file = 0;
+    std::uint32_t entity = 0;
+    std::uint32_t count = 0;
+};
+
 /// An entity a scoped file provides to the files naming it.
 struct Entity {
     index::SymbolHash hash = 0;
@@ -125,10 +132,10 @@ struct Entity {
     /// only a fragment the owner pastes in does, or the owner is supposed.
     std::uint32_t self_line = 0;
 
-    /// What its definition in the owner names, nested definitions apart,
-    /// itself and the owner's other entities included: the uses that move
-    /// with it.
-    std::vector<Use> body;
+    /// What its definitions in the owner and in the fragments the owner
+    /// pastes in name, nested definitions apart, itself and the owner's
+    /// other entities included: the uses that move with it.
+    std::vector<BodyUse> body;
 
     /// A variable declared const or constexpr: a value, no state of its
     /// own per unit.

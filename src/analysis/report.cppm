@@ -263,8 +263,9 @@ struct RedeclarationEntry {
 
     bool friend_declaration = false;
 
-    /// The file never names it beyond declaring it: deleting the
-    /// declaration resolves the entry.
+    /// A forward declaration the file never names beyond declaring it:
+    /// deleting the declaration resolves the entry. A friend declaration,
+    /// which grants access, is never unused.
     bool unused = false;
 
     /// The edge it implies lies on a cycle: replacing it with an import of
