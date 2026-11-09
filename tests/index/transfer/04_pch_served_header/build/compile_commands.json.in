@@ -1,0 +1,26 @@
+[
+  {
+    "directory": "${WS}/build",
+    "command": "clang++ -I${WS}/include -std=c++20 -fpch-instantiate-templates -Xclang -emit-pch -Xclang -include -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx -x c++-header -o CMakeFiles/app.dir/cmake_pch.hxx.pch -c ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx.cxx",
+    "file": "${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx.cxx",
+    "output": "CMakeFiles/app.dir/cmake_pch.hxx.pch"
+  },
+  {
+    "directory": "${WS}/build",
+    "command": "clang++ -I${WS}/include -std=c++20 -Winvalid-pch -Xclang -include-pch -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx.pch -Xclang -include -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx -o CMakeFiles/app.dir/src/a.cpp.o -c ${WS}/src/a.cpp",
+    "file": "${WS}/src/a.cpp",
+    "output": "CMakeFiles/app.dir/src/a.cpp.o"
+  },
+  {
+    "directory": "${WS}/build",
+    "command": "clang++ -I${WS}/include -std=c++20 -Winvalid-pch -Xclang -include-pch -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx.pch -Xclang -include -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx -o CMakeFiles/app.dir/src/b.cpp.o -c ${WS}/src/b.cpp",
+    "file": "${WS}/src/b.cpp",
+    "output": "CMakeFiles/app.dir/src/b.cpp.o"
+  },
+  {
+    "directory": "${WS}/build",
+    "command": "clang++ -I${WS}/include -std=c++20 -Winvalid-pch -Xclang -include-pch -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx.pch -Xclang -include -Xclang ${WS}/build/CMakeFiles/app.dir/cmake_pch.hxx -o CMakeFiles/app.dir/src/c.cpp.o -c ${WS}/src/c.cpp",
+    "file": "${WS}/src/c.cpp",
+    "output": "CMakeFiles/app.dir/src/c.cpp.o"
+  }
+]
