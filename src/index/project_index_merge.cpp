@@ -75,6 +75,26 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         consumed_hashes[local_id] = content_hash;
         return true;
     };
+    // The hash of what the unit read of a path. The section's own record
+    // wins: for a hashless path it is the only hash naming the bytes the
+    // index describes. A file the unit reads through its precompiled header
+    // or a module has no buffer in the parse to hash: the unit read the copy
+    // their build read, whose hash the build's inputs record.
+    llvm::DenseMap<Fid, std::uint64_t> precompiled_reads;
+    for(auto& dep: imports) {
+        if(dep.version.valid()) {
+            precompiled_reads.try_emplace(dep.file, files.version(dep.version).content_hash);
+        }
+    }
+    auto read_hash = [&](std::uint32_t local_id) -> std::uint64_t {
+        if(consumed_hashes[local_id] != 0) {
+            return consumed_hashes[local_id];
+        }
+        if(auto hash = view.content_hash(local_id)) {
+            return hash;
+        }
+        return precompiled_reads.lookup(file_ids_map[local_id]);
+    };
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         auto local_id = view.section_path(section);
         auto blob_hash = view.section_hash(section);
@@ -158,25 +178,12 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         .unit = unit_hash(tu_path_id),
         .run = static_cast<std::uint64_t>(view.built_at()),
     };
-    // A file the unit reads through its precompiled header or a module has
-    // no buffer in the parse to hash: the unit read the copy their build
-    // read, whose hash the build's inputs record.
-    llvm::DenseMap<Fid, std::uint64_t> precompiled_reads;
-    for(auto& dep: imports) {
-        if(dep.version.valid()) {
-            precompiled_reads.try_emplace(dep.file, files.version(dep.version).content_hash);
-        }
-    }
     llvm::SmallVector<std::pair<Fid, InstantiationShard>> instantiation_replacements;
     llvm::DenseMap<Fid, std::pair<std::uint32_t, UseHash>> unit_uses;
     for(std::uint32_t section = 0; section < view.instantiation_count(); section += 1) {
         auto local_id = view.instantiation_path(section);
         auto global_id = file_ids_map[local_id];
-        auto generation = consumed_hashes[local_id] != 0 ? consumed_hashes[local_id]
-                                                         : view.content_hash(local_id);
-        if(generation == 0) {
-            generation = precompiled_reads.lookup(global_id);
-        }
+        auto generation = read_hash(local_id);
         const InstantiationShard* stored = instantiation_shard(global_id);
         if(stored && stored->content_hash() != generation) {
             stored = nullptr;
@@ -292,12 +299,10 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     version_of.resize_for_overwrite(view.path_count());
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         llvm::StringRef path = view.path(i);
-        // The section's own record wins: for a hashless path (behind a
-        // PCM) it is the only hash naming the bytes the index describes.
-        auto hash = consumed_hashes[i] != 0 ? consumed_hashes[i] : view.content_hash(i);
+        auto hash = read_hash(i);
 
         // The worker had no buffer to hash a file behind a PCM, and no
-        // shard recorded one.
+        // shard or build recorded one.
         if(hash != 0) {
             files.disk.consumed(file_ids_map[i], hash);
         } else if(auto status = fs::status(path)) {
