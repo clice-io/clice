@@ -11,6 +11,7 @@ import :support.logging;
 import :support.process;
 import :syntax.header_context;
 import :syntax.lexical_scan;
+import :syntax.position;
 import :syntax.preamble;
 
 namespace clice {
@@ -880,12 +881,13 @@ CompilationStatus CompilationUnit::run() {
         auto focus = focus_file();
         auto& point = params.completion.offset;
         point = std::min(point, static_cast<std::uint32_t>(focus.content().size()));
-        /// Clang reads the completion point as its own line and column,
-        /// which count a byte order mark among the first line's bytes.
+        auto position = focus.positions().position(point, PositionEncoding::UTF8);
+        assert(position && "clamped completion offset must be mappable");
+        /// Clang completion locations are 1-based.
         auto& at = instance->getFrontendOpts().CodeCompletionAt;
         at.FileName = SM().getFileEntryRefForID(focus.file())->getName().str();
-        at.Line = SM().getLineNumber(focus.file(), point);
-        at.Column = SM().getColumnNumber(focus.file(), point);
+        at.Line = position->line + 1;
+        at.Column = position->character + 1;
         instance->setCodeCompletionConsumer(params.completion.consumer(*this).release());
     }
 

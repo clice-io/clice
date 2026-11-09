@@ -48,8 +48,8 @@ export interface Location {
     range: Range;
 }
 
-/// A file's text as an editor shows and sends it: without a leading byte
-/// order mark.
+/// A file's text as an editor shows and sends it, and clice addresses it:
+/// without a leading byte order mark.
 export function withoutBom(text: string): string {
     return text.startsWith("\uFEFF") ? text.slice(1) : text;
 }
@@ -71,8 +71,7 @@ function lineAt(starts: readonly number[], offset: number): number {
 }
 
 /// A file as answers address it: lines split at "\n", a trailing "\r"
-/// belonging to the line ending. A leading byte order mark is no part of
-/// `text`, as the editor shows it, but `clice inspect`'s bytes count it.
+/// belonging to the line ending.
 export class SourceText {
     readonly path: string;
     readonly text: string;
@@ -80,15 +79,12 @@ export class SourceText {
     private readonly raw: readonly string[];
     private readonly starts: readonly number[];
     private readonly byteStarts: readonly number[];
-    /// The bytes of the byte order mark before `text`.
-    private readonly bomBytes: number;
     private byView: ReadonlyMap<string, readonly number[]> | undefined;
 
     constructor(path: string, text: string) {
         this.path = path;
-        this.text = withoutBom(text);
-        this.bomBytes = this.text === text ? 0 : Buffer.byteLength("\uFEFF");
-        const raw = this.text.split("\n");
+        this.text = text;
+        const raw = text.split("\n");
         this.raw = raw;
         this.lines = raw.map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
         const starts: number[] = [];
@@ -119,20 +115,14 @@ export class SourceText {
         return { line, character: offset - (this.starts[line] ?? 0) };
     }
 
-    /// The position of a byte of the file, which is how `clice inspect`
-    /// addresses it.
+    /// The position of a UTF-8 byte offset, which is how `clice inspect`
+    /// addresses the file.
     positionAtByte(byteOffset: number): Position {
-        const local = Math.max(byteOffset - this.bomBytes, 0);
-        const line = lineAt(this.byteStarts, local);
+        const line = lineAt(this.byteStarts, byteOffset);
         const prefix = Buffer.from(this.raw[line] ?? "", "utf8")
-            .subarray(0, local - (this.byteStarts[line] ?? 0))
+            .subarray(0, byteOffset - (this.byteStarts[line] ?? 0))
             .toString("utf8");
         return { line, character: prefix.length };
-    }
-
-    /// The byte of the file a UTF-16 offset into the text is at.
-    byteAt(offset: number): number {
-        return this.bomBytes + Buffer.byteLength(this.text.slice(0, offset), "utf8");
     }
 
     /// A position counted in `encoding` as answers take it. A column

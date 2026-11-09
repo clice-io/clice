@@ -8,37 +8,6 @@ int user3()
 '''
 range = "int ⟦user3⟧() {"
 
-["first line".folds]
-folding_ranges = [
-    { kind = "compoundStmt", at = "auto answer = []⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
-]
-
-[["first line".auto.code_actions]]
-kind = "refactor.rewrite.expandDeducedType"
-title = "Replace 'auto' with 'int'"
-compiles = true
-
-["first line".auto.code_actions.edits]
-"first.cpp" = '''
--auto answer = []{
-+int answer = []{
-     return 42;
- }();
-'''
-
-["first line".completion.completion]
-items = [
-    { label = "auto", kind = "Keyword", replace = "⟦auto⟧ answer = []{", insert_range = "⟦aut⟧o answer = []{" },
-]
-
-[formatting."first.cpp"]
-formatting = '''
--auto answer = []{
--    return 42;
--}();
-+auto answer = [] { return 42; }();
-'''
-
 [navigation.shared_fn]
 definition = ["a.h │ int ⟦shared_fn⟧();"]
 
@@ -50,19 +19,4 @@ workspace_symbols = [
 ["marked host keeps the context"."utils.h"]
 contexts = [
     { label = "main.cpp", description = "${WS}/main.cpp", host = "main.cpp" },
-]
-
-["saves move the mark".marked]
-document_symbols = [
-    { name = "user3", kind = "Function", at = "int ⟦user3⟧() {" },
-]
-
-["saves move the mark".unmarked]
-document_symbols = [
-    { name = "user3", kind = "Function", at = "int ⟦user3⟧() {" },
-]
-
-["saves move the mark"."marked again"]
-document_symbols = [
-    { name = "user3", kind = "Function", at = "int ⟦user3⟧() {" },
 ]

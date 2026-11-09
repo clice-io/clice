@@ -241,15 +241,4 @@ describe("byte order mark", () => {
         expect(withoutBom("\uFEFFint x;\n")).toBe("int x;\n");
         expect(withoutBom("int x; // \uFEFF\n")).toBe("int x; // \uFEFF\n");
     });
-
-    test("the text leaves the mark out, the file's bytes count it", () => {
-        const marked = new SourceText("m.cpp", "\uFEFFint é;\nint y;\n");
-        expect(marked.text).toBe("int é;\nint y;\n");
-        expect(marked.line(0)).toBe("int é;");
-        expect(marked.byteAt(0)).toBe(3);
-        expect(marked.byteAt(marked.text.indexOf("y"))).toBe(15);
-        expect(marked.positionAtByte(0)).toEqual({ line: 0, character: 0 });
-        expect(marked.positionAtByte(3)).toEqual({ line: 0, character: 0 });
-        expect(marked.positionAtByte(15)).toEqual({ line: 1, character: 4 });
-    });
 });

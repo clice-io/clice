@@ -6,7 +6,6 @@ import :feature.query;
 import :feature.rename;
 import :index.symbol_query;
 import :project.project;
-import :support.text;
 import :vfs.file_system;
 
 namespace clice::driver {
@@ -62,7 +61,7 @@ std::expected<std::vector<feature::query::RenameRequest>, std::string>
     parse_renames(llvm::StringRef text) {
     std::vector<feature::query::RenameRequest> requests;
     llvm::SmallVector<llvm::StringRef> lines;
-    without_bom(text).split(lines, '\n');
+    text.split(lines, '\n');
     for(std::size_t i = 0; i < lines.size(); i += 1) {
         auto line = lines[i].trim();
         if(line.empty() || line.starts_with("//")) {
@@ -151,7 +150,8 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
         if(auto error = status ? fs::read_file(content, path) : status.error()) {
             return std::unexpected(std::format("cannot read {}: {}", site.path, error.message()));
         }
-        auto renamed = feature::apply_renames(content, plan, file);
+        auto text = vfs::without_bom(content);
+        auto renamed = feature::apply_renames(text, plan, file);
         if(!renamed) {
             return std::unexpected(
                 std::format("{} changed since it was indexed; run with --fresh", site.path));
@@ -159,7 +159,7 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
         rewrites.push_back({
             .path = std::move(path),
             .stamp = vfs::Stamp::of(*status),
-            .text = std::move(*renamed),
+            .text = content.substr(0, content.size() - text.size()) + *renamed,
         });
     }
     for(std::size_t i = 0; i < rewrites.size(); i += 1) {

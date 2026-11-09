@@ -12,7 +12,6 @@ import :index.symbol;
 import :semantic.symbol;
 import :semantic.token_class;
 import :support.fuzzy_matcher;
-import :support.text;
 import :syntax.completion;
 import :syntax.dependency_graph;
 import :syntax.include_pragmas;
@@ -424,7 +423,7 @@ auto module_completion(const CompletionName& completing,
         // scan stops before the import being typed: the scanner
         // rejects a buffer with an unclosed directive whole. Its
         // lexer needs the NUL terminator a copy provides.
-        auto declared = text.take_front(line_begin(text, completing.replace.begin)).str();
+        auto declared = text.take_front(text.rfind('\n', completing.replace.begin) + 1).str();
         auto unit = scan_quick(declared);
         if(unit.need_preprocess) {
             // The fragment `module;` opened lasts unless the preprocessor

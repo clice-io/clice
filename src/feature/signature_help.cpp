@@ -1187,7 +1187,10 @@ auto dependent_call_at(CompilationUnit& unit, std::uint32_t offset)
     -> std::optional<DependentCall> {
     auto focus = unit.focus_file();
     auto content = focus.content();
-    auto typed = word_at(content, offset).begin;
+    auto typed = offset;
+    while(typed > 0 && is_identifier_char(content[typed - 1])) {
+        typed -= 1;
+    }
     auto stop = focus.location(typed < offset && llvm::isDigit(content[typed]) ? offset : typed);
     RecoveryFinder finder(stop);
     for(auto* decl: unit.tu()->noload_decls()) {

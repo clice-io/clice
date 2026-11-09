@@ -3,7 +3,6 @@ module clice;
 import :compile.compilation;
 import :compile.diagnostic;
 import :compile.tidy;
-import :support.text;
 
 namespace clice {
 
@@ -130,7 +129,8 @@ public:
                 // A fix removing whole lines (a duplicate include from the
                 // end of the line before) underlines the caret's line.
                 auto text = unit.file_content(fid);
-                local->begin = std::max(local->begin, line_begin(text, offset));
+                auto line = text.take_front(offset).rfind('\n') + 1;
+                local->begin = std::max(local->begin, static_cast<std::uint32_t>(line));
                 while(local->end > offset + 1 &&
                       (text[local->end - 1] == '\n' || text[local->end - 1] == '\r')) {
                     local->end -= 1;

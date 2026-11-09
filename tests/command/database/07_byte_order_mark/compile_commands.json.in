@@ -1,7 +1,0 @@
-[
-  {
-    "directory": "${WS}",
-    "file": "a.cpp",
-    "arguments": ["missing-clang++", "-std=c++20", "a.cpp"]
-  }
-]

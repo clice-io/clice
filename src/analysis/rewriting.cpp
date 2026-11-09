@@ -2,7 +2,6 @@ module clice;
 
 import :analysis.rewriting;
 import :analysis.text;
-import :support.text;
 import :syntax.lexer;
 import :vfs.file_system;
 import :vfs.path;
@@ -699,10 +698,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 return std::unexpected(*taken);
             }
         }
-        result.files.push_back({
-            .path = path,
-            .content = leading_bom(contents[file]).str() + assemble(lines, verbatim),
-        });
+        result.files.push_back({.path = path, .content = assemble(lines, verbatim)});
         if(!module_unit) {
             plan.importers.push_back(path);
             continue;
@@ -803,10 +799,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         if(auto taken = reserve(path, facts.files[defining].path)) {
             return std::unexpected(*taken);
         }
-        result.files.push_back({
-            .path = path,
-            .content = leading_bom(contents[defining]).str() + assemble(lines),
-        });
+        result.files.push_back({.path = path, .content = assemble(lines)});
         plan.macros.push_back(std::move(path));
     }
     for(auto* list: {&plan.importers, &plan.macros, &plan.removed, &plan.warnings}) {

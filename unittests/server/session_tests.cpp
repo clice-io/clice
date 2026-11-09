@@ -75,38 +75,6 @@ ZEST_CASE(WholeDocumentReplace) {
     ZASSERT(session.text() == "brand\nnew\n");
 }
 
-ZEST_CASE(SetBomFollowsDisk) {
-    Session session(Fid{1}, "int a;\n", 1);
-
-    ZASSERT(session.set_bom(true));
-    ZASSERT(session.text() == "\xEF\xBB\xBFint a;\n");
-    ZASSERT(session.generation == 1u);
-    ZASSERT(!session.set_bom(true));
-    ZASSERT(session.generation == 1u);
-
-    ZASSERT(session.set_bom(false));
-    ZASSERT(session.text() == "int a;\n");
-    ZASSERT(session.generation == 2u);
-}
-
-ZEST_CASE(EditsKeepTheBom) {
-    // The editor's positions and texts leave the mark out.
-    Session session(Fid{1}, "int a;\n", 1);
-    session.set_bom(true);
-
-    session.edit(partial_change(0, 0, 0, 3, "long"), 2, PositionEncoding::UTF16);
-    ZASSERT(session.text() == "\xEF\xBB\xBFlong a;\n");
-
-    protocol::TextDocumentContentChangeEvent same =
-        protocol::TextDocumentContentChangeWholeDocument{.text = "long a;\n"};
-    ZASSERT(!session.edit(same, 3, PositionEncoding::UTF16));
-
-    protocol::TextDocumentContentChangeEvent whole =
-        protocol::TextDocumentContentChangeWholeDocument{.text = "int b;\n"};
-    ZASSERT(session.edit(whole, 4, PositionEncoding::UTF16));
-    ZASSERT(session.text() == "\xEF\xBB\xBFint b;\n");
-}
-
 ZEST_CASE(InvertedRangeSpans) {
     Session session(Fid{1}, "ab\ncd\n", 1);
 

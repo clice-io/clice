@@ -9,7 +9,6 @@ import :server.served_project;
 import :server.session;
 import :support.logging;
 import :support.prelude;
-import :support.text;
 import :syntax.position;
 import :vfs.disk_state;
 import :worker.pool;
@@ -214,10 +213,9 @@ public:
         llvm::SmallVector<SecondName, 1> second_names;
 
         /// Whether the text of `second`, one of its second names, parted
-        /// from the document's own, as the editor shows them: without the
-        /// byte order mark, which only the document's buffer follows.
+        /// from the document's own.
         bool diverged(const SecondName& second) const {
-            return without_bom(session->text()) != without_bom(second.buffer.text());
+            return session->text() != second.buffer.text();
         }
     };
 

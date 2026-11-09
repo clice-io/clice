@@ -24,11 +24,21 @@ struct Prefix {
 
     static auto from(llvm::StringRef content, std::uint32_t offset) -> Prefix {
         assert(offset <= content.size());
-        auto whole = word_at(content, offset);
+
+        auto start = offset;
+        while(start > 0 && is_identifier_char(content[start - 1])) {
+            start -= 1;
+        }
+
+        auto end = offset;
+        while(end < content.size() && is_identifier_char(content[end])) {
+            end += 1;
+        }
+
         return Prefix{
-            .typed = LocalSourceRange(whole.begin, offset),
-            .whole = whole,
-            .spelling = content.slice(whole.begin, offset),
+            .typed = LocalSourceRange(start, offset),
+            .whole = LocalSourceRange(start, end),
+            .spelling = content.substr(start, offset - start),
         };
     }
 };

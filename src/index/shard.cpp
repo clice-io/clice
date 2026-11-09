@@ -435,7 +435,7 @@ CheckResult line_table_ok(const Root& root) {
     if(utf8_cursor != utf8_lines.size()) {
         return std::unexpected("non-ASCII lines are not ascending lines of the table");
     }
-    if(line_sum + (root.bom ? utf8_bom.size() : 0) != root.content_size) {
+    if(line_sum != root.content_size) {
         return std::unexpected("line lengths do not add up to the content size");
     }
     return {};
@@ -1095,11 +1095,10 @@ std::span<const std::uint32_t> Shard::line_starts() const {
 
 PositionMap Shard::positions() const {
     if(!buffer) {
-        return {0, false, {}, {}};
+        return {0, {}, {}};
     }
     auto& root = view_of(buffer->getBuffer());
     return {content_size(),
-            root.bom,
             line_starts(),
             root.crlf_lines,
             root.utf8_lines,
@@ -1340,7 +1339,6 @@ std::vector<StoredGroup> relation_groups(const RelationTable& table) {
 struct ContentInfo {
     std::uint64_t hash = 0;
     std::uint32_t size = 0;
-    bool bom = false;
     std::vector<std::uint8_t> line_lengths;
     std::vector<std::uint32_t> long_lines;
     std::vector<std::uint32_t> long_line_lengths;
@@ -1357,7 +1355,6 @@ ContentInfo content_info_of(const Root& root) {
     return {
         .hash = root.content_hash,
         .size = root.content_size,
-        .bom = root.bom,
         .line_lengths = copy(root.line_lengths),
         .long_lines = copy(root.long_lines),
         .long_line_lengths = copy(root.long_line_lengths),
@@ -1372,24 +1369,22 @@ ContentInfo content_info_of(llvm::StringRef content) {
     ContentInfo info;
     info.hash = llvm::xxh3_64bits(content);
     info.size = static_cast<std::uint32_t>(content.size());
-    auto text = without_bom(content);
-    info.bom = text.size() != content.size();
 
-    auto starts = lsp::line_starts({text.data(), text.size()});
+    auto starts = lsp::line_starts({content.data(), content.size()});
     info.line_lengths.reserve(starts.size());
     for(std::uint32_t i = 0; i < starts.size(); i += 1) {
         auto last = i + 1 == starts.size();
-        auto next = last ? static_cast<std::uint32_t>(text.size()) : starts[i + 1];
+        auto next = last ? info.size : starts[i + 1];
         auto length = next - starts[i];
-        auto crlf = !last && length >= 2 && text[next - 2] == '\r';
+        auto crlf = !last && length >= 2 && content[next - 2] == '\r';
         if(crlf) {
             info.crlf_lines.resize(i / 64 + 1);
             info.crlf_lines[i / 64] |= std::uint64_t(1) << (i % 64);
         }
-        auto line = text.slice(starts[i], next - (last ? 0 : crlf ? 2 : 1));
-        if(!lsp::is_ascii({line.data(), line.size()})) {
+        auto text = content.slice(starts[i], next - (last ? 0 : crlf ? 2 : 1));
+        if(!lsp::is_ascii({text.data(), text.size()})) {
             info.utf8_lines.push_back(i);
-            info.utf8_text += line;
+            info.utf8_text += text;
             info.utf8_text_ends.push_back(static_cast<std::uint32_t>(info.utf8_text.size()));
         }
         if(length >= length_escape) {
@@ -1510,7 +1505,6 @@ std::vector<std::byte> emit_blob(const MergedEntries<MaskT>& merged,
     blob.format_version = index_format_version;
     blob.content_hash = content.hash;
     blob.content_size = content.size;
-    blob.bom = content.bom;
     blob.utf8_lines = content.utf8_lines;
     blob.utf8_text = content.utf8_text;
     blob.utf8_text_ends = content.utf8_text_ends;

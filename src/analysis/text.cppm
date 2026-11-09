@@ -55,10 +55,13 @@ struct Text {
         if(content.ends_with("\n")) {
             lines.pop_back();
         }
+        std::uint32_t offset = 0;
         // A byte order mark the lexer skips, and generated lines would leave
         // in the middle of the file.
-        auto offset = static_cast<std::uint32_t>(leading_bom(content).size());
-        lines.front() = lines.front().drop_front(offset);
+        if(!lines.empty() && lines.front().starts_with("\xEF\xBB\xBF")) {
+            lines.front() = lines.front().drop_front(3);
+            offset = 3;
+        }
         for(auto line: lines) {
             starts.push_back(offset);
             offset += static_cast<std::uint32_t>(line.size()) + 1;

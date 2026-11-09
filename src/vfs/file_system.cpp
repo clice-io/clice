@@ -1,13 +1,70 @@
 module clice;
 
 import :support.logging;
-import :support.text;
 import :vfs.file_system;
 import :vfs.path;
 
 namespace clice::vfs {
 
 namespace {
+
+/// The text of an open file (see without_bom).
+llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> load_text(const fs::File& file,
+                                                             const llvm::Twine& name) {
+    auto buffer = llvm::MemoryBuffer::getOpenFile(file.native_handle(),
+                                                  name,
+                                                  /*FileSize=*/-1,
+                                                  /*RequiresNullTerminator=*/true,
+                                                  /*IsVolatile=*/true);
+    if(!buffer) {
+        return buffer;
+    }
+    auto text = without_bom((*buffer)->getBuffer());
+    if(text.size() == (*buffer)->getBufferSize()) {
+        return buffer;
+    }
+    return llvm::MemoryBuffer::getMemBufferCopy(text, (*buffer)->getBufferIdentifier());
+}
+
+bool read_starts_with_bom(llvm::StringRef path) {
+    auto file = fs::File::open(path);
+    if(!file) {
+        return false;
+    }
+    char head[3];
+    auto read = file->read(head);
+    return read && *read == 3 && without_bom(llvm::StringRef(head, 3)).empty();
+}
+
+/// Whether the file a stamp describes starts with the mark, peeked once
+/// per stamp: adding or removing the mark changes the size, so a result
+/// holds as long as clang's own size-and-mtime check of what it read.
+bool starts_with_bom(const Stamp& stamp, llvm::StringRef path) {
+    using Key = std::tuple<std::uint64_t,
+                           std::uint64_t,
+                           std::uint64_t,
+                           std::uint64_t,
+                           std::int64_t,
+                           std::int64_t>;
+    static std::mutex mutex;
+    static llvm::DenseMap<Key, bool> results;
+    Key key{stamp.id.device,
+            stamp.id.file,
+            stamp.id.file_high,
+            stamp.size,
+            stamp.mtime_ns,
+            stamp.ctime_ns};
+    {
+        std::lock_guard lock(mutex);
+        if(auto it = results.find(key); it != results.end()) {
+            return it->second;
+        }
+    }
+    auto has_bom = read_starts_with_bom(path);
+    std::lock_guard lock(mutex);
+    results.try_emplace(key, has_bom);
+    return has_bom;
+}
 
 #ifdef _WIN32
 
@@ -312,11 +369,7 @@ private:
             return {};
         }
         auto before = file.status();
-        auto loaded = llvm::MemoryBuffer::getOpenFile(file.native_handle(),
-                                                      name,
-                                                      /*FileSize=*/-1,
-                                                      /*RequiresNullTerminator=*/true,
-                                                      /*IsVolatile=*/true);
+        auto loaded = load_text(file, name);
         if(!loaded) {
             return loaded.getError();
         }
@@ -344,17 +397,8 @@ std::expected<std::string, std::error_code> read_text(llvm::StringRef path) {
     if(auto error = fs::read_file(text, path)) {
         return std::unexpected(error);
     }
+    text.erase(0, text.size() - without_bom(text).size());
     return text;
-}
-
-bool starts_with_bom(llvm::StringRef path) {
-    auto file = fs::File::open(path);
-    if(!file) {
-        return false;
-    }
-    char head[utf8_bom.size()];
-    auto read = file->read(head);
-    return read && llvm::StringRef(head, *read) == utf8_bom;
 }
 
 std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path,
@@ -379,6 +423,7 @@ std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path,
     if(auto error = file->read_to_end(result.text)) {
         return std::unexpected(error);
     }
+    result.text.erase(0, result.text.size() - without_bom(result.text).size());
     result.obs.hash = llvm::xxh3_64bits(result.text);
 
     auto after = file->status();
@@ -477,7 +522,12 @@ llvm::ErrorOr<llvm::vfs::Status> View::status(const llvm::Twine& path) {
     if(!status) {
         return status.error();
     }
-    return to_llvm(*status, path.str());
+    auto result = to_llvm(*status, path.str());
+    if(status->type != fs::FileType::Regular || status->size < 3 ||
+       !starts_with_bom(Stamp::of(*status), absolute)) {
+        return result;
+    }
+    return llvm::vfs::Status::copyWithNewSize(result, status->size - 3);
 }
 
 llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::openFileForRead(const llvm::Twine& path) {

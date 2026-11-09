@@ -343,7 +343,7 @@ void LSPClient::register_lifecycle() {
         for(auto& [path_id, document]: srv.documents) {
             auto* owner = document.owner;
             auto& session = *document.session;
-            if(owner && owner->current(path_id) && owner->latest_at(session)) {
+            if(owner && owner->current(path_id) && owner->latest_at(path_id, session.version)) {
                 this->push_output(*owner, session, /*compiled=*/true);
             }
         }

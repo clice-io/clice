@@ -212,6 +212,10 @@ const LSP_INLAY_KIND: Record<string, "Type" | "Parameter"> = {
     BlockEnd: "Type",
 };
 
+function byteOf(text: string, offset: number): number {
+    return Buffer.byteLength(text.slice(0, offset), "utf8");
+}
+
 /// A module import, which a file compiled alone cannot resolve; one in an
 /// inactive branch counts too.
 const MODULE_IMPORT = /^[ \t]*(?:export[ \t]+)?import(?:[ \t]+\w|[ \t]*(?:[<"]|:(?!:)))/m;
@@ -275,7 +279,7 @@ export class Inspect extends Client {
     }
 
     protected context(): AnswerContext {
-        return new AnswerContext(this.root, (file) => this.read(file), "utf-16");
+        return new AnswerContext(this.root, (file) => this.text(file), "utf-16");
     }
 
     /// The errors of every source but an importer and of every file
@@ -423,12 +427,9 @@ export class Inspect extends Client {
         edits: ReadonlyMap<string, readonly TextEdit[]>,
     ): Promise<string[]> {
         const context = this.context();
-        const originals = new Map<string, string>();
+        const originals = new Map([...edits.keys()].map((rel) => [rel, this.text(rel)]));
         for (const [rel, list] of edits) {
-            const original = this.read(rel);
-            originals.set(rel, original);
-            const bom = original.slice(0, original.length - withoutBom(original).length);
-            fs.writeFileSync(path.join(this.root, rel), bom + applyEdits(context.file(rel), list));
+            fs.writeFileSync(path.join(this.root, rel), applyEdits(context.file(rel), list));
         }
         try {
             return [...((await this.run("folding-range", file)).diagnostics ?? [])].sort();
@@ -463,7 +464,7 @@ export class Inspect extends Client {
 
     protected async fetchTokens(file: string): Promise<Token[]> {
         const source = this.context().file(file);
-        const size = source.byteAt(source.text.length);
+        const size = Buffer.byteLength(source.text, "utf8");
         const tokens = async (index: boolean): Promise<Token[]> =>
             ((await this.document("semantic-tokens", file, index)) as RawToken[])
                 .filter((raw) => raw.range.begin < raw.range.end && raw.range.end <= size)
@@ -583,13 +584,8 @@ export class Inspect extends Client {
         );
     }
 
-    /// The file as the disk holds it, a byte order mark included.
-    private read(file: string): string {
-        return fs.readFileSync(path.join(this.root, file), "utf8");
-    }
-
     private text(file: string): string {
-        return withoutBom(this.read(file));
+        return withoutBom(fs.readFileSync(path.join(this.root, file), "utf8"));
     }
 
     private range(source: SourceText, raw: RawRange): Range {
@@ -648,14 +644,14 @@ export class Inspect extends Client {
     /// A point feature's answer at `at`, from the run that asked at every
     /// marker of its file.
     private atPoint(feature: string, at: Anchor): Promise<unknown> {
-        const source = this.context().file(at.path);
-        const point = source.byteAt(locate(source.text, at));
+        const text = this.text(at.path);
+        const point = byteOf(text, locate(text, at));
         const batch = (): Places => ({
             points: Object.fromEntries(
                 this.marks
                     .filter((mark) => mark.path === at.path)
                     .map((mark) => {
-                        const byte = source.byteAt(mark.begin);
+                        const byte = byteOf(text, mark.begin);
                         return [String(byte), byte];
                     }),
             ),
@@ -671,8 +667,8 @@ export class Inspect extends Client {
     private overRange(feature: string, file: string, range: Range): Promise<unknown> {
         const source = this.context().file(file);
         const span = {
-            begin: source.byteAt(source.offsetAt(range.start)),
-            end: source.byteAt(source.offsetAt(range.end)),
+            begin: byteOf(source.text, source.offsetAt(range.start)),
+            end: byteOf(source.text, source.offsetAt(range.end)),
         };
         const batch = (): Places => ({
             ranges: Object.fromEntries(
@@ -680,8 +676,8 @@ export class Inspect extends Client {
                     .filter((mark) => mark.path === file)
                     .map((mark) => {
                         const marked = {
-                            begin: source.byteAt(mark.begin),
-                            end: source.byteAt(mark.end),
+                            begin: byteOf(source.text, mark.begin),
+                            end: byteOf(source.text, mark.end),
                         };
                         return [rangeKey(marked), marked];
                     }),

@@ -71,9 +71,3 @@ diagnostics = [
         code = "err_undeclared_var_use",
     },
 ]
-
-["a marked second name".second]
-diagnostics = []
-
-["a marked second name"."second saved"]
-diagnostics = []

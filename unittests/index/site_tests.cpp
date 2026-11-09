@@ -12,7 +12,7 @@ ZEST_SUITE(LineColumn) {
 ZEST_CASE(AsciiColumnsAgree) {
     // "ab\ncd\n" known by its size: byte columns are UTF-16 columns.
     std::vector<std::uint32_t> starts = {0, 3, 6};
-    PositionMap map(6, false, starts, {});
+    PositionMap map(6, starts, {});
 
     auto position = index::line_column(map, 4);
     ZASSERT(position);

@@ -7,7 +7,6 @@ import :command.toolchains.gcc;
 import :command.toolchains.nvcc;
 import :command.toolchains.own_options;
 import :support.logging;
-import :support.text;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -485,10 +484,8 @@ std::vector<std::string> Normalizer::expand_response_files(kotatsu::string_list_
                 LOG_WARN("Cannot read nvcc options file {}", name);
                 continue;
             }
-            spliced.append_range(expand_response_files(split_command(without_bom(text), quoting),
-                                                       directory,
-                                                       family,
-                                                       depth + 1));
+            spliced.append_range(
+                expand_response_files(split_command(text, quoting), directory, family, depth + 1));
         }
     }
     return spliced;

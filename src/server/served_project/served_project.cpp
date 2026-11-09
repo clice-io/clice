@@ -228,12 +228,10 @@ std::shared_ptr<const DocumentCompile> ServedProject::latest(Fid path_id) const 
     return document ? document->latest : nullptr;
 }
 
-std::shared_ptr<const DocumentCompile> ServedProject::latest_at(const Session& session) const {
-    auto compiled = latest(session.path_id);
-    return compiled && compiled->output && compiled->output->version == session.version &&
-                   compiled->output->text == session.source
-               ? compiled
-               : nullptr;
+std::shared_ptr<const DocumentCompile> ServedProject::latest_at(Fid path_id, int version) const {
+    auto compiled = latest(path_id);
+    return compiled && compiled->output && compiled->output->version == version ? compiled
+                                                                                : nullptr;
 }
 
 bool ServedProject::current(Fid path_id) const {

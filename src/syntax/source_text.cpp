@@ -1,6 +1,5 @@
 module clice;
 
-import :support.text;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 import :syntax.position;
@@ -27,7 +26,7 @@ auto SourceText::hash() -> std::uint64_t {
 
 auto SourceText::positions() -> PositionMap {
     if(!lines) {
-        std::string_view text(without_bom(content));
+        std::string_view text(content);
         lines = LineTables{
             .starts = lsp::line_starts(text),
             .non_ascii = lsp::non_ascii_lines(text),

@@ -125,10 +125,8 @@ namespace clice::index {
 /// argument is a reference there and a pasted one at the expansion,
 /// directives record the macro names no definition resolves, the overloads
 /// a name certainly stands for are Candidates apart from the resolver's
-/// Guesses, and an instantiation confirming a guess is recorded; v61: the
-/// content is the file's bytes, a byte order mark included, and a shard
-/// records the mark, which its lines leave out.
-constexpr inline std::uint32_t index_format_version = 61;
+/// Guesses, and an instantiation confirming a guess is recorded.
+constexpr inline std::uint32_t index_format_version = 60;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it, so one past it stops the
@@ -317,10 +315,6 @@ struct ShardBlobOf {
 
     /// Size of the consumed content; bounds every stored range.
     std::uint32_t content_size = 0;
-
-    /// The content starts with a UTF-8 byte order mark, which no line
-    /// holds: the line table describes the text after it.
-    bool bom = false;
 
     /// The lines holding non-ASCII bytes, ascending, and their text without
     /// the line end, back to back: all UTF-16 and UTF-32 position mapping

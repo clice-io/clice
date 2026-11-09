@@ -10,7 +10,7 @@ stdout = '''
 file ${WS}/util.h
   blob=# B  content size=82  content hash=#bd785b7e65624dac
   variants=1
-    #3a15ae8fc54d07be  contributed by 1 unit
+    #3c92198480d9919b  contributed by 1 unit
       ${WS}/main.cpp
   symbols=5  local symbols=2  occurrences=7  relations=10
     Callee=1

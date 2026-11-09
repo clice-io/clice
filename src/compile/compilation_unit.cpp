@@ -6,6 +6,7 @@ import :syntax.lexical_scan;
 import :syntax.preamble;
 import :syntax.scan;
 import :syntax.source_text;
+import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -693,9 +694,10 @@ std::vector<ReportedInput> CompilationUnit::deps() {
     /// single annotation token). Processing the directive loaded the file
     /// into the SourceManager's content cache, so this looks up the very
     /// buffer the build consumed; only an existence-only check whose
-    /// content was never read loads it here instead. An unreadable file
-    /// hashes as 0 and the snapshot capture falls back to a
-    /// started_at-guarded disk hash.
+    /// content was never read loads it here instead. An embedded file's
+    /// buffer holds its bytes, hashed as text like every dependency. An
+    /// unreadable file hashes as 0 and the snapshot capture falls back to
+    /// a started_at-guarded disk hash.
     auto add_file = [&](clang::OptionalFileEntryRef file) {
         if(!file) {
             return;
@@ -707,7 +709,7 @@ std::vector<ReportedInput> CompilationUnit::deps() {
         auto it = deps.try_emplace(path, 0).first;
         if(it->second == 0) {
             if(auto buffer = SM().getMemoryBufferForFileOrNone(*file)) {
-                it->second = llvm::xxh3_64bits(buffer->getBuffer());
+                it->second = llvm::xxh3_64bits(vfs::without_bom(buffer->getBuffer()));
             }
         }
     };

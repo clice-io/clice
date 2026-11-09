@@ -4,7 +4,7 @@
   "subtopic": "encoding",
   "title": "Byte order marks",
   "summary": "Files saved as UTF-8 with a byte order mark work like any other",
-  "prose": "Positions on the first line skip the mark, as the editor shows it, and data a file embeds keeps its bytes. Saving an open file with the mark or without it changes nothing the editor shows.",
+  "prose": "Positions on the first line skip the mark, as the editor shows it, and data a file embeds keeps its bytes.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -19,16 +19,6 @@
       "markers": []
     },
     {
-      "path": "checked.cpp",
-      "text": "#if !__has_embed(\"data.bin\")\n#error data.bin cannot be embedded\n#endif\n\nconstexpr unsigned char checked[] = {\n#embed \"data.bin\"\n};\n\nstatic_assert(sizeof(checked) == 5);\n",
-      "markers": []
-    },
-    {
-      "path": "codes.cpp",
-      "text": "﻿enum class Code {\n#define ERROR(name, value) name = value,\n#include \"errors.def\"\n#undef ERROR\n};\n",
-      "markers": []
-    },
-    {
       "path": "data.bin",
       "text": "﻿AB",
       "markers": []
@@ -36,16 +26,6 @@
     {
       "path": "embed.cpp",
       "text": "constexpr unsigned char data[] = {\n#embed \"data.bin\"\n};\n\nstatic_assert(sizeof(data) == 5);\n",
-      "markers": []
-    },
-    {
-      "path": "errors.def",
-      "text": "ERROR(NotFound, 404)\nERROR(Forbidden, 403)\n",
-      "markers": []
-    },
-    {
-      "path": "first.cpp",
-      "text": "﻿auto answer = []{\n    return 42;\n}();\n",
       "markers": []
     },
     {
@@ -88,98 +68,6 @@
                 }
               }
             }
-          }
-        },
-        {
-          "label": "folds",
-          "value": {
-            "folding_ranges": [
-              {
-                "kind": "compoundStmt",
-                "at": {
-                  "$place": "auto answer = []⟦{ … }⟧ (3 lines)",
-                  "path": "first.cpp",
-                  "range": {
-                    "start": {
-                      "line": 0,
-                      "character": 16
-                    },
-                    "end": {
-                      "line": 2,
-                      "character": 1
-                    }
-                  }
-                },
-                "collapsed": "{...}"
-              }
-            ]
-          }
-        },
-        {
-          "label": "auto",
-          "value": {
-            "code_actions": [
-              {
-                "kind": "refactor.rewrite.expandDeducedType",
-                "title": "Replace 'auto' with 'int'",
-                "compiles": true,
-                "edits": {
-                  "first.cpp": "-auto answer = []{\n+int answer = []{\n     return 42;\n }();"
-                }
-              }
-            ]
-          }
-        },
-        {
-          "label": "completion",
-          "value": {
-            "completion": {
-              "items": [
-                {
-                  "label": "auto",
-                  "kind": "Keyword",
-                  "replace": {
-                    "$place": "⟦auto⟧ answer = []{",
-                    "path": "first.cpp",
-                    "range": {
-                      "start": {
-                        "line": 0,
-                        "character": 0
-                      },
-                      "end": {
-                        "line": 0,
-                        "character": 4
-                      }
-                    }
-                  },
-                  "insert_range": {
-                    "$place": "⟦aut⟧o answer = []{",
-                    "path": "first.cpp",
-                    "range": {
-                      "start": {
-                        "line": 0,
-                        "character": 0
-                      },
-                      "end": {
-                        "line": 0,
-                        "character": 3
-                      }
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "formatting",
-      "blocks": [
-        {
-          "label": "first.cpp",
-          "value": {
-            "formatting": "-auto answer = []{\n-    return 42;\n-}();\n+auto answer = [] { return 42; }();"
           }
         }
       ]
@@ -255,86 +143,6 @@
     {
       "name": "embedded data keeps the mark",
       "blocks": []
-    },
-    {
-      "name": "saves move the mark",
-      "blocks": [
-        {
-          "label": "marked",
-          "value": {
-            "document_symbols": [
-              {
-                "name": "user3",
-                "kind": "Function",
-                "at": {
-                  "$place": "int ⟦user3⟧() {",
-                  "path": "c.cpp",
-                  "range": {
-                    "start": {
-                      "line": 0,
-                      "character": 4
-                    },
-                    "end": {
-                      "line": 0,
-                      "character": 9
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        },
-        {
-          "label": "unmarked",
-          "value": {
-            "document_symbols": [
-              {
-                "name": "user3",
-                "kind": "Function",
-                "at": {
-                  "$place": "int ⟦user3⟧() {",
-                  "path": "c.cpp",
-                  "range": {
-                    "start": {
-                      "line": 0,
-                      "character": 4
-                    },
-                    "end": {
-                      "line": 0,
-                      "character": 9
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        },
-        {
-          "label": "marked again",
-          "value": {
-            "document_symbols": [
-              {
-                "name": "user3",
-                "kind": "Function",
-                "at": {
-                  "$place": "int ⟦user3⟧() {",
-                  "path": "c.cpp",
-                  "range": {
-                    "start": {
-                      "line": 0,
-                      "character": 4
-                    },
-                    "end": {
-                      "line": 0,
-                      "character": 9
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        }
-      ]
     }
   ]
 }

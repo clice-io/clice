@@ -89,7 +89,7 @@ A file works the same whatever its byte order mark or line endings.
 
 Files saved as UTF-8 with a byte order mark work like any other
 
-Positions on the first line skip the mark, as the editor shows it, and data a file embeds keeps its bytes. Saving an open file with the mark or without it changes nothing the editor shows.
+Positions on the first line skip the mark, as the editor shows it, and data a file embeds keeps its bytes.
 
 ```case
 tests/compile/encoding/01_byte_order_mark

@@ -1,2 +1,0 @@
-ERROR(NotFound, 404)
-ERROR(Forbidden, 403)
