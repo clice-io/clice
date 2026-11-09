@@ -4,9 +4,9 @@ import { test } from "@clice/tools/testing";
 // The pages after the first come from the listing the first page computed.
 // Between them s10.cpp's index arrives: it enters the unguarded header
 // twice, which lists it twice, yet the epoch stays, and the second page
-// still answers from the listing of eleven. The next pass lists twelve.
-// s10.cpp's index is held before the units join the database, so no run
-// merges it first.
+// still answers from the listing of eleven; a new listing has twelve.
+// s10.cpp's index is held before the units join the database, so it cannot
+// merge first.
 test(async (t) => {
     t.disk.database({});
     const s = await t.start();
@@ -25,5 +25,10 @@ test(async (t) => {
         first.epoch,
     ]);
     expect((await s.contexts("common.h")).total).toBe(12);
-    await t.show("next pass, second page", s.contexts("common.h", { offset: 10 }));
+    await t.show("a new listing's second page", s.contexts("common.h", { offset: 10 }));
+    // The second page's s10.cpp, listed without a place, is its first.
+    s.open("common.h");
+    await s.sync();
+    expect((await s.switchContext("common.h", "s10.cpp")).success).toBe(true);
+    await t.show("switched", s.currentContext("common.h"));
 });

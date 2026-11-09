@@ -238,9 +238,10 @@ struct ListedContext {
     std::optional<std::string> command_hash;
 
     /// Whether `other` lists the same context: the same file, place and
-    /// command, however each shows it.
+    /// command, however each shows it. An item without a place stands for
+    /// the first, as a choice without one does.
     bool same_context(const ListedContext& other) const {
-        return file == other.file && occurrence == other.occurrence &&
+        return file == other.file && occurrence.value_or(0) == other.occurrence.value_or(0) &&
                command_hash == other.command_hash;
     }
 };

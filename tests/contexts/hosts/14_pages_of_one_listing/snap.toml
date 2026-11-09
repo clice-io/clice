@@ -3,8 +3,16 @@ contexts = [
     { label = "s10.cpp", description = "${WS}/s10.cpp", host = "s10.cpp" },
 ]
 
-[test."next pass, second page"]
+[test."a new listing's second page"]
 contexts = [
     { label = "s10.cpp (#1)", description = "${WS}/s10.cpp", host = "s10.cpp" },
     { label = "s10.cpp (#2)", description = "${WS}/s10.cpp", host = "s10.cpp" },
 ]
+
+[test.switched.current_context]
+automatic = false
+
+[test.switched.current_context.context]
+label = "s10.cpp (#1)"
+description = "${WS}/s10.cpp"
+host = "s10.cpp"
