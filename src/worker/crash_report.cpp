@@ -29,17 +29,37 @@ namespace {
 thread_local const char* running_tag = nullptr;
 thread_local std::size_t running_size = 0;
 
-/// The scopes open in the process, and the tag of the one opened last: a
-/// crash on a thread no scope is open on, as the one clang continues a deep
-/// parse on (clang::runWithSufficientStackSpace), names the request when it
-/// is the only one running.
-std::atomic<std::size_t> open_scopes = 0;
-std::atomic<const std::string*> last_opened = nullptr;
+/// The tags of the scopes open in the process, a slot each: a crash on a
+/// thread no scope is open on, as the one clang continues a deep parse on
+/// (clang::runWithSufficientStackSpace), names the request when it is the
+/// only one running, which waits for that thread and keeps its tag. Scopes
+/// open on libuv's pool threads and the compile thread, far fewer than the
+/// slots.
+std::array<std::atomic<const std::string*>, 64> open_tags = {};
+
+/// The event loop's thread runs no request's work but between them, as
+/// dropping a document's old AST or sending a reply: a crash there names
+/// no request.
+thread_local bool runs_event_loop = false;
+
+/// The tag of the scope open alone, or null.
+const std::string* only_open_tag() {
+    const std::string* only = nullptr;
+    for(auto& slot: open_tags) {
+        if(auto* tag = slot.load()) {
+            if(only) {
+                return nullptr;
+            }
+            only = tag;
+        }
+    }
+    return only;
+}
 
 void report_crash() {
     std::string_view tag(running_tag, running_size);
-    if(!running_tag && open_scopes.load() == 1) {
-        if(auto* only = last_opened.load()) {
+    if(!running_tag && !runs_event_loop) {
+        if(auto* only = only_open_tag()) {
             tag = *only;
         }
     }
@@ -56,21 +76,32 @@ void report_crash() {
 CrashScope::CrashScope(std::string tag) : tag(std::move(tag)) {
     running_tag = this->tag.data();
     running_size = this->tag.size();
-    open_scopes += 1;
-    last_opened = &this->tag;
+    [[maybe_unused]] bool slotted = false;
+    for(auto& slot: open_tags) {
+        const std::string* empty = nullptr;
+        if(slot.compare_exchange_strong(empty, &this->tag)) {
+            slotted = true;
+            break;
+        }
+    }
+    assert(slotted && "more scopes open than open_tags holds");
 
     run_test_hooks(this->tag);
 }
 
 CrashScope::~CrashScope() {
-    const std::string* own = &tag;
-    last_opened.compare_exchange_strong(own, nullptr);
-    open_scopes -= 1;
+    for(auto& slot: open_tags) {
+        const std::string* own = &tag;
+        if(slot.compare_exchange_strong(own, nullptr)) {
+            break;
+        }
+    }
     running_tag = nullptr;
     running_size = 0;
 }
 
 void install_crash_report() {
+    runs_event_loop = true;
     [[maybe_unused]] auto error = sys::on_crash([](const sys::Crash& crash) noexcept {
         report_crash();
         logging::write_crash(crash);

@@ -25,17 +25,18 @@ namespace clice::testing {
 
 namespace {
 
-/// What a crash runs now: SIGSEGV's action, or Windows' unhandled
-/// exception filter.
-std::uintptr_t crash_action() {
+/// What LLVM's signal handling takes over as it is set up: SIGUSR1, its
+/// info signal, which nothing else in the process handles, or Windows'
+/// unhandled exception filter.
+std::uintptr_t llvm_signal_target() {
 #ifdef _WIN32
     auto filter = ::SetUnhandledExceptionFilter(nullptr);
     ::SetUnhandledExceptionFilter(filter);
     return reinterpret_cast<std::uintptr_t>(filter);
 #else
     struct sigaction action = {};
-    ::sigaction(SIGSEGV, nullptr, &action);
-    return reinterpret_cast<std::uintptr_t>(action.sa_sigaction);
+    ::sigaction(SIGUSR1, nullptr, &action);
+    return reinterpret_cast<std::uintptr_t>(action.sa_handler);
 #endif
 }
 
@@ -703,7 +704,12 @@ ZEST_CASE(OutputsLeaveCrashesAlone) {
     CompilationDatabase cdb{file_table, commands};
     Toolchain toolchain{commands, file_table};
 
-    auto before = crash_action();
+    auto before = llvm_signal_target();
+#ifndef _WIN32
+    // Set up once per process, by an earlier test it would leave nothing to
+    // see here.
+    ZEXPECT(before == reinterpret_cast<std::uintptr_t>(SIG_DFL));
+#endif
 
     CompilationParams module_params;
     module_params.kind = CompilationKind::ModuleInterface;
@@ -717,7 +723,7 @@ ZEST_CASE(OutputsLeaveCrashesAlone) {
     pch_params.output_file = precompiled_path("pch");
     ZASSERT(clice::compile(std::move(pch_params))->has_output());
 
-    ZEXPECT(crash_action() == before);
+    ZEXPECT(llvm_signal_target() == before);
 }
 
 ZEST_CASE(PCHKeepsModuleImports) {

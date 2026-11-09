@@ -27,6 +27,16 @@ struct Clice {
 
 }  // namespace clice::driver
 
+#if __has_feature(address_sanitizer)
+/// ASan's handlers of these faults would run after sys::on_crash's, which
+/// passes a fault on to the handler before it: the crash would be reported
+/// twice and end with exit code 1, not by its signal as in a release build.
+/// ASan still reports the memory errors its checks find.
+extern "C" [[gnu::used, gnu::visibility("default")]] const char* __asan_default_options() {
+    return "handle_segv=0:handle_sigbus=0:handle_sigfpe=0";
+}
+#endif
+
 extern "C++" int main(int argc, const char** argv) {
     // A process without a window is background work to Windows: it is
     // throttled (EcoQoS) onto the efficiency cores of a hybrid CPU, which

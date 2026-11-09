@@ -23,7 +23,8 @@ function checkTrace(logs: Map<string, string>, prefix: string): void {
     const section = report.slice(report.indexOf("=== CRASH STACK TRACE ===")).split(/\r?\n/);
     expect(section[1]).toMatch(/^clice \S+ \S+$/);
     const frames = section.slice(2).filter((line) => FRAME.test(line));
-    expect(frames.length).toBeGreaterThan(2);
+    // The trace starts at the frame the crash interrupted, the only one marked.
+    expect(frames[0]?.endsWith(" (interrupted)")).toBe(true);
     expect(frames.filter((line) => line.endsWith(" (interrupted)")).length).toBe(1);
 }
 
@@ -58,7 +59,7 @@ for (const { name, kind } of KINDS) {
         const logs = readLogs(t);
         checkTrace(logs, "SF-");
         const master = logs.get("master.log") ?? "";
-        expect(master).not.toMatch(/Stack dump|CRASH STACK TRACE/);
+        expect(master).not.toMatch(/CRASH STACK TRACE/);
         expect(master).toMatch(
             /\[anomaly:WorkerCrash\] Worker SF-\d+ (?:killed by signal \d+ \(SIG\w+\)|terminated by exception 0x[0-9A-F]+)/,
         );

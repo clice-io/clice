@@ -19,8 +19,13 @@ test("crash in a command", async (t) => {
     command.stderr.on("data", (chunk: Buffer) => {
         stderr += chunk.toString();
     });
-    const [code] = (await once(command, "close")) as [number | null, NodeJS.Signals | null];
-    expect(code).not.toBe(0);
+    const [code, signal] = (await once(command, "close")) as [number | null, NodeJS.Signals | null];
+    if (process.platform === "win32") {
+        // The NTSTATUS of the exception the trap raised.
+        expect(code !== null && code >= 0x8000_0000).toBe(true);
+    } else {
+        expect(["SIGILL", "SIGTRAP"]).toContain(signal);
+    }
     expect(stderr).toMatch(/=== CRASH STACK TRACE ===\r?\nclice \S+ \S+\r?\n/);
     expect(stderr).toMatch(
         /^0x[0-9a-fA-F]+, .+\(0x[0-9a-fA-F]+\) \+ 0x[0-9a-fA-F]+ byte\(s\) \(interrupted\)\r?$/m,

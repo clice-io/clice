@@ -8682,32 +8682,18 @@ using ::llvm::support::endian::writeNext;
 }
 
 export namespace llvm::sys {
-using ::llvm::sys::AddSignalHandler;
 using ::llvm::sys::ChangeStdinMode;
 using ::llvm::sys::ChangeStdinToBinary;
 using ::llvm::sys::ChangeStdoutMode;
 using ::llvm::sys::ChangeStdoutToBinary;
-using ::llvm::sys::CleanupOnSignal;
-using ::llvm::sys::DefaultOneShotPipeSignalHandler;
-using ::llvm::sys::DisableSystemDialogsOnCrash;
-using ::llvm::sys::DontRemoveFileOnSignal;
 using ::llvm::sys::DynamicLibrary;
 using ::llvm::sys::ExecuteAndWait;
 using ::llvm::sys::ExecuteNoWait;
 using ::llvm::sys::Mutex;
-using ::llvm::sys::PrintStackTrace;
-using ::llvm::sys::PrintStackTraceOnErrorSignal;
 using ::llvm::sys::Process;
 using ::llvm::sys::ProcessInfo;
 using ::llvm::sys::ProcessStatistics;
-using ::llvm::sys::RemoveFileOnSignal;
-using ::llvm::sys::RunInterruptHandlers;
-using ::llvm::sys::RunSignalHandlers;
 using ::llvm::sys::ScopedLock;
-using ::llvm::sys::SetInfoSignalFunction;
-using ::llvm::sys::SetInterruptFunction;
-using ::llvm::sys::SetOneShotPipeSignalFunction;
-using ::llvm::sys::SignalHandlerCallback;
 using ::llvm::sys::SmartMutex;
 using ::llvm::sys::SmartScopedLock;
 using ::llvm::sys::TimePoint;
@@ -8730,7 +8716,6 @@ using ::llvm::sys::swapByteOrder;
 using ::llvm::sys::toTimePoint;
 using ::llvm::sys::toTimeT;
 using ::llvm::sys::toUtcTime;
-using ::llvm::sys::unregisterHandlers;
 using ::llvm::sys::writeFileWithEncoding;
 using enum ::llvm::sys::WindowsEncodingMethod;
 }
@@ -10522,7 +10507,6 @@ using enum ::llvm::InitStatus;
 }
 
 export namespace llvm::sys {
-using ::llvm::sys::CallOneShotPipeSignalHandler;
 using ::llvm::sys::CompareAndSwap;
 using ::llvm::sys::MemoryFence;
 using ::llvm::sys::cas_flag;

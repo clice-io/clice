@@ -25,7 +25,8 @@ private:
 };
 
 /// Write the crash line before the crash's trace (logging::write_crash),
-/// and from the sanitizer's death callback. Call once, at worker startup.
+/// and from the sanitizer's death callback. Call once, at worker startup,
+/// on the thread that runs the event loop.
 void install_crash_report();
 
 }  // namespace clice
