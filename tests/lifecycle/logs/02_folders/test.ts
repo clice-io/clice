@@ -19,7 +19,9 @@ test(async (t) => {
     expect(fs.readdirSync(path.join(t.root, "beta/.clice/logs"))).toEqual([session]);
     // A Windows junction names its target with the drive as clice spells it.
     const real = (dir: string) =>
-        fs.realpathSync(path.join(t.root, dir, session)).replace(/^[A-Z]:/, (drive) => drive.toLowerCase());
+        fs
+            .realpathSync(path.join(t.root, dir, session))
+            .replace(/^[A-Z]:/, (drive) => drive.toLowerCase());
     expect(real("beta/.clice/logs")).toBe(real(".clice/logs"));
     const text = t.disk.read(logs[0] ?? "");
     for (const file of ["alpha/main.cpp", "beta/main.cpp"]) {

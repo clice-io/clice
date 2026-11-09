@@ -12,7 +12,6 @@ import :server.client;
 import :server.control;
 import :server.master;
 import :server.served_project;
-import :settings.rules;
 import :settings.settings;
 import :support.logging;
 import :support.version;
@@ -76,9 +75,8 @@ std::string place(llvm::StringRef file, const SettingsIssue& issue) {
 /// Whether the project has its build to open before a document of it
 /// opens: a database to index, one its rules name or one discovery finds,
 /// or the index an earlier session built.
-bool has_build(const Project& project, llvm::StringRef configuration) {
-    Rules rules(project.settings, project.root, configuration);
-    if(rules.declares_sources() || !discovered_databases(project.root).empty()) {
+bool has_build(const Project& project) {
+    if(project.rules.declares_sources() || !discovered_databases(project.root).empty()) {
         return true;
     }
     auto& cache_dir = project.settings.project.cache_dir;
@@ -86,7 +84,7 @@ bool has_build(const Project& project, llvm::StringRef configuration) {
         return false;
     }
     auto store = CacheStore::open(cache_dir, cache_format_version, /*read_only=*/true);
-    return store && index::database_exists(*store, rules.database_key(rules.resolved_databases()));
+    return store && index::database_exists(*store, project.database_key);
 }
 
 }  // namespace
@@ -144,10 +142,12 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
 }
 
 void ServedProject::start() {
-    if(!project.root.empty() && !broken() && documents.empty() &&
-       !has_build(project, configuration)) {
-        waiting = true;
-        return;
+    if(!broken()) {
+        project.use_configuration(configuration);
+        if(!project.root.empty() && documents.empty() && !has_build(project)) {
+            waiting = true;
+            return;
+        }
     }
     open();
 }
@@ -369,7 +369,7 @@ bool ServedProject::look_for_database(bool force) {
         }
         next_look = now + poll;
     }
-    if(!has_build(project, configuration)) {
+    if(!has_build(project)) {
         return false;
     }
     open();

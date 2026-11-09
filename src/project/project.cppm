@@ -150,8 +150,9 @@ struct Project {
 
     CompilationDatabase cdb{file_table, commands};
 
-    /// The rules of clice.toml under the configuration open() activated;
-    /// those of the settings a Project is born with until then.
+    /// The rules of clice.toml under the configuration use_configuration()
+    /// chose (open() chooses one); those of the settings a Project is born
+    /// with until then.
     Rules rules{settings, root, {}};
 
     /// The commands the rules write by hand, and the builtin ones.
@@ -387,6 +388,10 @@ struct Project {
     /// outdated (ProjectIndex::stale_units). A run reading the index without
     /// the build binds its tables alone, fetched on first use.
     Opened open(const OpenOptions& options);
+
+    /// The rules of `configuration` over the settings, and the databases
+    /// they resolve to: what a project waiting to open already answers by.
+    void use_configuration(llvm::StringRef configuration);
 
     /// What a reader says of an index database the index reports damaged: a
     /// writer discards one only when it meets the damage itself, which may sit

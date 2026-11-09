@@ -256,16 +256,20 @@ std::string Project::damaged_index_error() const {
         index::database_directory(*store, database_key));
 }
 
+void Project::use_configuration(llvm::StringRef configuration) {
+    rules = Rules(settings, root, configuration);
+    resolved_databases = rules.resolved_databases();
+    database_key = rules.database_key(resolved_databases);
+}
+
 Project::Opened Project::open(const OpenOptions& options) {
     using Load = OpenOptions::Load;
     using Cache = OpenOptions::Cache;
     Opened opened;
     index.project_root = root;
     commands.set_project_root(root);
-    rules = Rules(settings, root, options.configuration);
+    use_configuration(options.configuration);
     freshness.options = options.freshness;
-    resolved_databases = rules.resolved_databases();
-    database_key = rules.database_key(resolved_databases);
     if(database_key.configuration != options.configuration) {
         LOG_INFO("The databases of configuration {} resolve to those of {}; sharing its index",
                  options.configuration,
