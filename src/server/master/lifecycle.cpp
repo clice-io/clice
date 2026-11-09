@@ -87,6 +87,20 @@ void MasterServer::log_settings(const ServedProject& project) const {
     }
 }
 
+void MasterServer::log_into(const ServedProject& project) {
+    auto& logging_dir = project.project.settings.project.logging_dir;
+    if(!log_dir.empty() || logging_dir.empty()) {
+        return;
+    }
+    auto dir = logging::session_log_directory(logging_dir);
+    if(!logging::file_logger("master", dir)) {
+        return;
+    }
+    LOG_INFO("Session log directory: {}", dir);
+    log_dir = dir;
+    pool.log_to(std::move(dir));
+}
+
 void MasterServer::initialize() {
     for(auto& root: project_roots()) {
         projects.push_back(make_project(std::move(root)));
@@ -96,8 +110,7 @@ void MasterServer::initialize() {
     for(auto& project: projects) {
         project->configure(init_options, taken_cache_dirs());
     }
-    // One pool serves every project, sized for the most demanding one;
-    // the first project names the log directory.
+    // One pool serves every project, sized for the most demanding one.
     WorkerPoolOptions pool_opts;
     pool_opts.stateful_count = 0;
     pool_opts.stateless_count = 0;
@@ -128,14 +141,6 @@ void MasterServer::initialize() {
             chrono::milliseconds(*ms);
     }
 
-    auto& first = projects.front()->project.settings.project;
-    if(!first.logging_dir.empty()) {
-        auto dir = logging::session_log_directory(first.logging_dir);
-        if(logging::file_logger("master", dir)) {
-            LOG_INFO("Session log directory: {}", dir);
-            pool_opts.log_dir = std::move(dir);
-        }
-    }
     for(auto& project: projects) {
         log_settings(*project);
     }
@@ -187,6 +192,11 @@ async::task<> MasterServer::poll_task() {
                    project->reload_databases(false)) {
                     hooks.happened(LoopEvent::DatabaseChange);
                 }
+            }
+        }
+        for(auto& project: projects) {
+            if(project->look_for_database()) {
+                hooks.happened(LoopEvent::DatabaseChange);
             }
         }
         look_at_settings();

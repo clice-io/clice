@@ -8,11 +8,13 @@ import :command.table;
 import :index.project_index;
 import :index.writer_lock;
 import :project.background;
+import :project.discovery;
 import :project.graph.task_graph;
 import :server.client;
 import :server.control;
 import :server.master;
 import :server.served_project;
+import :settings.rules;
 import :settings.settings;
 import :support.logging;
 import :vfs.path;
@@ -126,12 +128,26 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
     }
 }
 
+/// Whether the folder has a database to index: one its rules name, or one
+/// discovery finds.
+static bool lists_database(const Project& project, llvm::StringRef configuration) {
+    return Rules(project.settings, project.root, configuration).declares_sources() ||
+           !discovered_databases(project.root).empty();
+}
+
 void ServedProject::start() {
+    if(!project.root.empty() && !broken() && documents.empty() &&
+       !lists_database(project, configuration)) {
+        waiting = true;
+        return;
+    }
+    waiting = false;
     started = true;
     if(broken()) {
         return;
     }
     if(!project.root.empty()) {
+        server.log_into(*this);
         auto opened = project.open({
             .configuration = configuration,
             .cache = Project::OpenOptions::Cache::Write,
@@ -277,6 +293,10 @@ void ServedProject::adopt(Fid path_id) {
     // What the disk holds under the buffer: a later save or outside
     // write is then a change from it, even for a file nothing else knew.
     project.file_table.disk.current(path_id);
+    if(waiting) {
+        start();
+        return;
+    }
     if(!started || broken()) {
         return;
     }
@@ -316,6 +336,20 @@ void ServedProject::decide_compiling(Fid path_id) {
     } else {
         start_compiling(path_id);
     }
+}
+
+bool ServedProject::look_for_database() {
+    auto poll = chrono::seconds(project.settings.tracker.workspace_poll_seconds);
+    auto now = chrono::steady_clock::now();
+    if(!waiting || poll.count() == 0 || now < next_look) {
+        return false;
+    }
+    next_look = now + poll;
+    if(!lists_database(project, configuration)) {
+        return false;
+    }
+    start();
+    return true;
 }
 
 void ServedProject::release(Fid path_id) {

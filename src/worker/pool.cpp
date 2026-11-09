@@ -302,6 +302,18 @@ std::optional<Residency::Assignment> WorkerPool::assign_worker(std::uint32_t pat
     return residency.assign(path_id, *fewest, path);
 }
 
+void WorkerPool::log_to(std::string dir) {
+    options.log_dir = std::move(dir);
+    for(auto stateful: {false, true}) {
+        for(auto& w: workers(stateful)) {
+            if(w.state == SlotState::Alive) {
+                w.log_offset = 0;
+                w.peer->send_notification(worker::LogParams{options.log_dir});
+            }
+        }
+    }
+}
+
 void WorkerPool::forget_document(std::uint32_t path_id) {
     if(auto eviction = residency.forget(path_id)) {
         send_evict(std::move(*eviction));

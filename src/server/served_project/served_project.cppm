@@ -350,7 +350,15 @@ public:
     /// the context choices it saved, and start its store-lifetime services;
     /// then watch its databases and files. Documents adopted before have
     /// it decided now whether they compile. A broken project starts nothing.
+    /// A folder with no database to index and no open document keeps
+    /// nothing on disk — no cache directory, no index lock, no log — until
+    /// a document of it opens or a database appears (look_for_database).
     void start();
+
+    /// A project start() left waiting starts once a database appears in
+    /// its folder, looked for as often as the folder is polled; whether it
+    /// did.
+    bool look_for_database();
 
     /// Quiesce the compiles, then the project's own shutdown: the background
     /// index stops, the final state is persisted and the store closes.
@@ -924,6 +932,13 @@ private:
     /// start() ran: documents adopted from now on have it decided at once
     /// whether they compile.
     bool started = false;
+
+    /// start() found nothing to open the project for: no database and no
+    /// document.
+    bool waiting = false;
+
+    /// When look_for_database looks next.
+    chrono::steady_clock::time_point next_look;
 
     /// The build configuration the project activates (LoadedSettings).
     std::string configuration;

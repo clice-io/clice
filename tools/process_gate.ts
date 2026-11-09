@@ -26,16 +26,29 @@ export function serverEnv(): NodeJS.ProcessEnv {
     return { ...process.env, CLICE_SHADOW_FRESHNESS: "1" };
 }
 
+/// Every session log of the projects at `root` and in the folders below
+/// it: a session logs under the first project that opened its files,
+/// whichever folder's that is.
 export function logFiles(root: string): string[] {
-    const logsDir = path.join(root, ".clice", "logs");
-    if (!fs.existsSync(logsDir)) {
-        return [];
+    const projects = [root];
+    if (fs.existsSync(root)) {
+        for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+            if (entry.isDirectory() && !entry.name.startsWith(".")) {
+                projects.push(path.join(root, entry.name));
+            }
+        }
     }
-    return fs
-        .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
-        .filter((name) => name.endsWith(".log"))
-        .sort()
-        .map((name) => path.join(logsDir, name));
+    return projects.flatMap((project) => {
+        const logsDir = path.join(project, ".clice", "logs");
+        if (!fs.existsSync(logsDir)) {
+            return [];
+        }
+        return fs
+            .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
+            .filter((name) => name.endsWith(".log"))
+            .sort()
+            .map((name) => path.join(logsDir, name));
+    });
 }
 
 export function anomaliesInLogFiles(root: string): string[] {

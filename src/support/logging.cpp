@@ -128,6 +128,10 @@ void stderr_logger(std::string_view name) {
     }
 }
 
+std::string_view log_name() {
+    return spdlog::default_logger_raw()->name();
+}
+
 std::string session_log_directory(std::string_view logging_dir) {
     auto local = sys::local_time(chrono::system_clock::now()).value_or(std::tm{});
     char timestamp[32];

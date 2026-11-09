@@ -31,6 +31,14 @@ inline std::shared_ptr<const llvm::MemoryBuffer>
     return vfs::keep_mapped(pch.first);
 }
 
+/// Log into the directory the master names once it knows where the
+/// session logs (worker::LogParams).
+inline void log_where_told(ipc::BincodePeer& peer) {
+    peer.on_notification([](const worker::LogParams& params) {
+        logging::file_logger(logging::log_name(), params.dir, /*mirror_stderr=*/false);
+    });
+}
+
 /// The largest index blob a worker reply carries inline. The transport
 /// refuses a frame past 64 MiB (kotatsu's limit) and the whole reply is
 /// lost with it; the margin leaves room for the rest of the reply. Tests

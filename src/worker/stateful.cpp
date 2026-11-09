@@ -482,6 +482,7 @@ int run_stateful_worker_mode() {
 
     ipc::BincodePeer peer(loop, std::move(*transport_result));
     install_test_hooks(peer, loop);
+    log_where_told(peer);
 
     StatefulWorker worker(peer);
     worker.register_handlers();

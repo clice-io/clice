@@ -729,6 +729,7 @@ int run_stateless_worker_mode() {
 
     ipc::BincodePeer peer(loop, std::move(*transport_result));
     install_test_hooks(peer, loop);
+    log_where_told(peer);
 
     const worker::PrecompiledBuildResult cancelled_build{.success = false,
                                                          .error = "Build cancelled"};

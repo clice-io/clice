@@ -91,8 +91,8 @@ export class Workspace {
     }
 
     /// The text of every log file named `name` ("master.log", "SF-0.log")
-    /// the servers wrote under .clice/logs, one session directory each;
-    /// empty when none was written.
+    /// the servers wrote (logFiles), one session directory each; empty when
+    /// none was written.
     log(name: string): string {
         return logFiles(this.root)
             .filter((file) => path.basename(file) === name)

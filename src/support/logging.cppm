@@ -109,6 +109,9 @@ extern Options options;
 
 void stderr_logger(std::string_view name);
 
+/// The name stderr_logger gave the process's log.
+std::string_view log_name();
+
 /// Write a crash's stack trace where `options` says: from main, before any
 /// other thread starts.
 void handle_crashes();

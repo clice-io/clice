@@ -274,6 +274,10 @@ public:
         residency.used(path_id);
     }
 
+    /// The workers log into `dir` from now on: those running are told, those
+    /// started later are given it.
+    void log_to(std::string dir);
+
     /// The document closed or moved to another project: its worker drops
     /// its AST, and a compile of it still running leaves none behind.
     void forget_document(std::uint32_t path_id);
