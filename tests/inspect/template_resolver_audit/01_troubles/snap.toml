@@ -6,7 +6,7 @@ stdout = '''
     "main.cpp": {
       "result": {
         "queries": 4,
-        "steps": 20,
+        "steps": 22,
         "troubles": {
           "AmbiguousBase": 1,
           "Cycle": 1,
@@ -27,7 +27,7 @@ stdout = '''
             "node": "TypeLoc",
             "text": "typename both<T>::value_type",
             "queries": 1,
-            "steps": 11,
+            "steps": 13,
             "troubles": {
               "AmbiguousBase": 1
             }
