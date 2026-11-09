@@ -187,7 +187,7 @@ void handle_crashes() {
                                    version,
                                    target);
     crash_header_size = std::min(static_cast<std::size_t>(header.size), crash_header.size());
-    [[maybe_unused]] auto error = sys::on_crash(write_crash);
+    sys::on_crash(write_crash);
 }
 
 void write_crash(const sys::Crash& crash) noexcept {

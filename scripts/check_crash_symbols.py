@@ -62,7 +62,6 @@ def main() -> int:
             / "bin"
             / ("clice.exe" if os.name == "nt" else "clice")
         )
-        executable.chmod(0o755)
         symbols = next((root / "symbols").rglob("*.gsym"), None)
         if symbols is None:
             sys.exit("error: no .gsym in the symbol package")
@@ -78,8 +77,6 @@ def main() -> int:
             text=True,
             timeout=300,
         )
-        log = root / "crash.log"
-        log.write_text(crashed.stderr)
         if "=== CRASH STACK TRACE ===" not in crashed.stderr:
             print(crashed.stderr)
             sys.exit(
@@ -90,10 +87,11 @@ def main() -> int:
             [
                 sys.executable,
                 str(Path(__file__).with_name("symbolize.py")),
-                str(log),
+                "-",
                 "--symbols",
                 str(symbols),
             ],
+            input=crashed.stderr,
             capture_output=True,
             text=True,
             check=True,

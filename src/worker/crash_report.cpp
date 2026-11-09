@@ -113,7 +113,7 @@ CrashScope::~CrashScope() {
 
 void install_crash_report() {
     runs_event_loop = true;
-    [[maybe_unused]] auto error = sys::on_crash([](const sys::Crash& crash) noexcept {
+    sys::on_crash([](const sys::Crash& crash) noexcept {
         report_crash();
         logging::write_crash(crash);
     });
