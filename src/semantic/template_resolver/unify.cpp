@@ -122,7 +122,7 @@ public:
     explicit Unifier(clang::ASTContext& context,
                      unsigned depth,
                      unsigned size,
-                     llvm::ArrayRef<const clang::Expr*> open,
+                     llvm::function_ref<bool(const clang::Expr*)> open,
                      bool ordering) :
         context(context), depth(depth), bindings(size), open(open), ordering(ordering) {}
 
@@ -181,7 +181,7 @@ private:
     clang::ASTContext& context;
     unsigned depth;
     llvm::SmallVector<clang::TemplateArgument, 4> bindings;
-    llvm::ArrayRef<const clang::Expr*> open;
+    llvm::function_ref<bool(const clang::Expr*)> open;
     bool ordering;
     llvm::SmallVector<Deferred, 1> deferred_checks;
     bool undecided_match = false;
@@ -592,6 +592,27 @@ bool Unifier::collect(unsigned index, const clang::TemplateArgument& argument) {
     return true;
 }
 
+clang::QualType injected_specialization(clang::ASTContext& context,
+                                        const clang::CXXRecordDecl* record) {
+    if(auto* partial = llvm::dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(record)) {
+        llvm::SmallVector<clang::TemplateArgument, 4> arguments;
+        for(auto& written: partial->getTemplateArgsAsWritten()->arguments()) {
+            arguments.push_back(written.getArgument());
+        }
+        return context.getTemplateSpecializationType(
+            clang::ElaboratedTypeKeyword::None,
+            clang::TemplateName(partial->getSpecializedTemplate()),
+            arguments,
+            /*CanonicalArgs=*/{});
+    }
+    auto* CTD = record->getDescribedClassTemplate();
+    return context.getTemplateSpecializationType(
+        clang::ElaboratedTypeKeyword::None,
+        clang::TemplateName(CTD),
+        CTD->getTemplateParameters()->getInjectedTemplateArgs(context),
+        /*CanonicalArgs=*/{});
+}
+
 bool Unifier::template_id(clang::QualType type,
                           clang::TemplateName& name,
                           TemplateArguments& arguments) const {
@@ -599,7 +620,7 @@ bool Unifier::template_id(clang::QualType type,
     type = peel(type, quals);
 
     if(auto ICNT = llvm::dyn_cast<clang::InjectedClassNameType>(type)) {
-        type = ICNT->getDecl()->getCanonicalTemplateSpecializationType(context);
+        type = injected_specialization(context, ICNT->getDecl());
     }
 
     if(auto TST = llvm::dyn_cast<clang::TemplateSpecializationType>(type)) {
@@ -954,7 +975,7 @@ bool Unifier::unify(const clang::TemplateArgument& pattern,
                 auto expr = argument.getAsExpr();
                 if(expr->isValueDependent()) {
                     bool undecided = !ordering && (pattern.getIntegralType()->isBooleanType() ||
-                                                   ranges::contains(open, expr));
+                                                   (open && open(expr)));
                     undecided_match |= undecided;
                     return undecided;
                 }
@@ -1091,7 +1112,16 @@ bool Unifier::unify(TemplateArguments patterns, TemplateArguments arguments) {
         if(i >= flat.size()) {
             return false;
         }
-        if(!unify(pattern, flat[i])) {
+        /// An expansion whose length is not known (`conjunction<is_empty<_Types>...>`
+        /// against `conjunction<_First, _Rest...>`) may be as long as the
+        /// patterns need or shorter: taken as one element, its pattern, the
+        /// match holds for some lengths only.
+        auto argument = flat[i];
+        if(argument.isPackExpansion() && !ordering) {
+            undecided_match = true;
+            argument = argument.getPackExpansionPattern();
+        }
+        if(!unify(pattern, argument)) {
             return false;
         }
         i += 1;

@@ -307,7 +307,11 @@ bool PseudoInstantiator::rewrite_arguments(TemplateArguments arguments,
 std::optional<llvm::SmallVector<clang::TemplateArgument, 4>>
     PseudoInstantiator::expand_pack_pattern(clang::QualType pattern, Policy policy) {
     auto packs = packs_in(clang::TemplateArgument(pattern));
-    if(packs.empty()) {
+    /// Packs their own template leaves bound to themselves expand as
+    /// written: rewritten whole, the pattern reads no binding of theirs.
+    if(ranges::all_of(packs, [&](const PackParameter& pack) {
+           return pack.decl && free({pack.decl, pack.depth, pack.index});
+       })) {
         return std::nullopt;
     }
 
@@ -319,6 +323,21 @@ std::optional<llvm::SmallVector<clang::TemplateArgument, 4>>
             return std::nullopt;
         }
         auto& bound = stack.slot(*handle);
+        if(auto* target = pack.decl ? renaming_target(bound, pack.decl) : nullptr) {
+            if(recording) {
+                recording->renamed(
+                    {
+                        .parameter = {pack.decl, pack.depth, pack.index},
+                        .target = target
+                },
+                    handle->first);
+                recording->found_free({
+                    {target, target->getDepth(), target->getIndex()}
+                });
+            }
+        } else {
+            read_frame(handle->first);
+        }
         if(bound.getKind() != clang::TemplateArgument::Pack ||
            (!slots.empty() && bound.pack_size() != length)) {
             return std::nullopt;
@@ -332,23 +351,28 @@ std::optional<llvm::SmallVector<clang::TemplateArgument, 4>>
     auto saved = ranges::to<llvm::SmallVector<clang::TemplateArgument, 2>>(
         views::transform(slots, [&](auto handle) { return stack.slot(handle); }));
 
-    /// While narrowed, node-pointer-keyed caches are bypassed: the same
-    /// pattern node resolves differently per element, and a cached first
-    /// element would silently repeat for every later one.
-    pack_narrowing += 1;
     bool ok = true;
     llvm::SmallVector<clang::TemplateArgument, 4> expanded;
     for(unsigned k = 0; k < length && ok; k += 1) {
+        /// An element that is itself an expansion (a pack bound to the
+        /// caller's `Ts...`) stands for elements of a length not known: the
+        /// pattern expands over its pattern in turn.
+        bool expansion = false;
         for(auto [handle, pack]: views::zip(slots, saved)) {
-            stack.slot(handle) = pack.pack_begin()[k];
+            auto element = pack.pack_begin()[k];
+            if(element.isPackExpansion()) {
+                element = element.getPackExpansionPattern();
+                expansion = true;
+            }
+            stack.slot(handle) = element;
         }
         auto element = rewrite(pattern, policy);
-        ok = element != pattern && !element->containsUnexpandedParameterPack();
+        ok = element != pattern && element->containsUnexpandedParameterPack() == expansion;
         if(ok) {
-            expanded.emplace_back(element);
+            expanded.emplace_back(expansion ? context.getPackExpansionType(element, std::nullopt)
+                                            : element);
         }
     }
-    pack_narrowing -= 1;
 
     for(auto [handle, pack]: views::zip(slots, saved)) {
         stack.slot(handle) = pack;

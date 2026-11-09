@@ -72,66 +72,43 @@ struct InstantiationStack {
     /// append and the walk never outlives the frames below it.
     using Slot = std::pair<unsigned, unsigned>;
 
-    /// Look up a template parameter's binding, innermost frame first.
+    /// The innermost frame holding the template of a parameter, bound or
+    /// not.
     ///
-    /// When the parameter's declaration is known, only the frame whose
-    /// parameter list actually contains that declaration matches — unrelated
-    /// templates that merely share the same depth (e.g. `test` and
-    /// `__alloc_traits`, both at depth 0) never capture each other's
-    /// parameters. If no frame owns the declaration, the parameter is left
-    /// unsubstituted rather than guessed.
+    /// When the parameter's declaration is known, only a frame whose
+    /// parameter list holds that declaration matches — unrelated templates
+    /// that merely share the same depth (e.g. `test` and `__alloc_traits`,
+    /// both at depth 0) never capture each other's parameters.
     ///
     /// Canonical parameters carry no declaration; those fall back to matching
     /// the frame's parameter list depth.
-    std::optional<Slot> find_slot(const clang::NamedDecl* decl,
-                                  unsigned depth,
-                                  unsigned index) const {
-        if(decl) {
-            for(unsigned f = data.size(); f > 0; f -= 1) {
-                const auto& frame = data[f - 1];
-                if(frame.params && index < frame.params->size() &&
-                   frame.params->getParam(index) == decl) {
-                    if(index < frame.arguments.size()) {
-                        return Slot{f - 1, index};
-                    }
-                    return std::nullopt;
-                }
-            }
-            return std::nullopt;
-        }
-
+    std::optional<unsigned> holder(const clang::NamedDecl* decl,
+                                   unsigned depth,
+                                   unsigned index) const {
         for(unsigned f = data.size(); f > 0; f -= 1) {
-            const auto& frame = data[f - 1];
-            if(frame.params && frame.params->getDepth() == depth) {
-                if(index < frame.arguments.size()) {
-                    return Slot{f - 1, index};
-                }
-                return std::nullopt;
+            const auto* params = data[f - 1].params;
+            if(params && (decl ? index < params->size() && params->getParam(index) == decl
+                               : params->getDepth() == depth)) {
+                return f - 1;
             }
         }
         return std::nullopt;
     }
 
-    /// Whether a frame holds the parameter's template, bound or not.
-    bool owns(const clang::NamedDecl* decl, unsigned depth) const {
-        return ranges::any_of(data, [&](const Frame& frame) {
-            if(!frame.params) {
-                return false;
-            }
-            return decl ? ranges::contains(frame.params->asArray(), decl)
-                        : frame.params->getDepth() == depth;
-        });
+    /// Where a parameter's binding is, in the innermost frame holding its
+    /// template; none when no frame does, or that one leaves it unbound.
+    std::optional<Slot> find_slot(const clang::NamedDecl* decl,
+                                  unsigned depth,
+                                  unsigned index) const {
+        auto frame = holder(decl, depth, index);
+        if(!frame || index >= data[*frame].arguments.size()) {
+            return std::nullopt;
+        }
+        return Slot{*frame, index};
     }
 
     clang::TemplateArgument& slot(Slot handle) {
         return data[handle.first].arguments[handle.second];
-    }
-
-    const clang::TemplateArgument* find_argument(const clang::NamedDecl* decl,
-                                                 unsigned depth,
-                                                 unsigned index) const {
-        auto handle = find_slot(decl, depth, index);
-        return handle ? &data[handle->first].arguments[handle->second] : nullptr;
     }
 };
 
@@ -227,55 +204,208 @@ struct VisibilityCheck {
     bool seen;
 };
 
-/// What a step read of its query beside its operands, and left in it for
-/// the steps after it, the frames of its lookups aside: the value defaults
-/// it found not to fold (deduce_arguments), the declarations whose
-/// visibility it judged (drop_unseen).
-struct StepEffects {
-    llvm::SmallVector<const clang::Expr*, 1> open_defaults;
+/// A template parameter: its declaration, null for a canonical one, which
+/// goes by its depth and index alone.
+struct ParameterRef {
+    const clang::NamedDecl* decl;
 
-    llvm::SmallVector<VisibilityCheck, 0> checks;
+    unsigned depth;
+
+    unsigned index;
+
+    bool operator==(const ParameterRef&) const = default;
 };
 
-/// A dependent name or specialization resolved, and the declarations whose
-/// visibility its resolution judged.
-struct ResolvedType {
-    clang::QualType type;
+/// A binding that renames a parameter to another template's free one:
+/// `variant`'s `_Types` as a function template's `_Types...`. What a step
+/// finds under it holds wherever the parameter is renamed alike.
+struct Renaming {
+    ParameterRef parameter;
 
-    llvm::SmallVector<VisibilityCheck, 0> checks;
+    const clang::TemplateTypeParmDecl* target;
+
+    bool operator==(const Renaming&) const = default;
 };
 
-/// What a step gave with no template parameter bound, and what it left for
-/// the steps after it: the frames of the lookups it ended in, its effects.
+/// What a step read of its query beside its input while it runs, and left
+/// in it for the steps after it: the declarations whose visibility it judged,
+/// the parameters it found nothing binding, the value defaults it found not
+/// to fold (deduce_arguments), the bindings below it that only rename a
+/// parameter, and the lowest frame whose other binding it read.
+struct StepRecording {
+    /// The frame count when the step started: a binding read below it is
+    /// the caller's.
+    unsigned base;
+
+    llvm::SmallVector<VisibilityCheck, 0> checks;
+
+    llvm::SmallVector<ParameterRef, 0> free;
+
+    llvm::SmallVector<const clang::Expr*, 0> open_defaults;
+
+    /// The defaults it asked whether they fold, beside those it found not
+    /// to fold itself, and what it found (default_open).
+    llvm::SmallVector<std::pair<const clang::Expr*, bool>, 0> defaults_read;
+
+    unsigned lowest_read = std::numeric_limits<unsigned>::max();
+
+    /// The renamings below `base` it read, with the frame holding each.
+    llvm::SmallVector<std::pair<Renaming, unsigned>, 0> renamings;
+
+    /// The declarations judged and the parameters found free already: a
+    /// query finds one alike each time.
+    llvm::SmallPtrSet<const clang::NamedDecl*, 8> judged;
+
+    llvm::SmallPtrSet<const clang::NamedDecl*, 4> found;
+
+    /// Whether the step read only what it bound itself: what it found then
+    /// holds for any caller that leaves its free parameters free.
+    bool read_no_binding() const {
+        return lowest_read >= base;
+    }
+
+    void judge(llvm::ArrayRef<VisibilityCheck> checked) {
+        for(auto& check: checked) {
+            if(judged.insert(check.decl).second) {
+                checks.push_back(check);
+            }
+        }
+    }
+
+    void read_defaults(llvm::ArrayRef<std::pair<const clang::Expr*, bool>> read) {
+        for(auto& entry: read) {
+            if(!ranges::contains(open_defaults, entry.first) &&
+               !ranges::contains(defaults_read, entry)) {
+                defaults_read.push_back(entry);
+            }
+        }
+    }
+
+    void found_free(llvm::ArrayRef<ParameterRef> parameters) {
+        for(auto& parameter: parameters) {
+            if(parameter.decl ? found.insert(parameter.decl).second
+                              : !ranges::contains(free, parameter)) {
+                free.push_back(parameter);
+            }
+        }
+    }
+
+    /// Note `renaming`, read from `frame`: one the step bound itself is no
+    /// caller's.
+    void renamed(const Renaming& renaming, unsigned frame) {
+        if(frame < base &&
+           !ranges::contains(renamings, renaming, [](const auto& entry) { return entry.first; })) {
+            renamings.push_back({renaming, frame});
+        }
+    }
+};
+
+/// A step kept for the queries of a unit: what it gave, the frames of the
+/// lookups it ended in, and what it read and left (StepRecording). A later
+/// query takes it where it judges every declaration alike, finds every
+/// parameter it found free free too and every one it found renamed renamed
+/// alike (PseudoInstantiator::kept_step).
 template <typename Result>
-struct UnboundResult {
+struct KeptStep {
+    using Value = Result;
+
     Result result;
 
-    llvm::SmallVector<InstantiationStack::Frame, 1> frames;
+    llvm::SmallVector<InstantiationStack::Frame, 0> frames;
 
-    StepEffects effects;
+    llvm::SmallVector<const clang::Expr*, 0> open_defaults;
+
+    llvm::SmallVector<std::pair<const clang::Expr*, bool>, 0> defaults_read;
+
+    llvm::SmallVector<VisibilityCheck, 0> checks;
+
+    llvm::SmallVector<ParameterRef, 0> free;
+
+    llvm::SmallVector<Renaming, 0> renamings;
+
+    /// The view (Visibility::view) a query last judged its checks alike in.
+    std::uint32_t view;
 };
 
-/// What the queries of one unit keep for each other.
+/// What `name` finds as a member of an object, and its type in the terms the
+/// object is written in (PseudoInstantiator::member_of).
+struct Member {
+    const clang::Decl* decl = nullptr;
+
+    clang::QualType type;
+};
+
+/// What the queries of one unit keep for each other: the steps that read
+/// none of their caller's bindings but renamings
+/// (PseudoInstantiator::kept_step), by what they were given.
 struct UnitCache {
-    /// Resolved dependent types, keyed by AST node pointer. This is safe
-    /// because a given AST node (DependentNameType*, etc.) has a unique
-    /// identity within the TU — the same pointer always refers to the same
-    /// syntactic occurrence. Different syntactic occurrences of the "same"
-    /// type have different AST node pointers.
-    llvm::DenseMap<const void*, ResolvedType> resolved;
+    /// Rewrites of the types that look a name up or fold an expression (rewrite), by
+    /// the type and the policy.
+    llvm::DenseMap<std::pair<const void*, unsigned>, KeptStep<clang::QualType>> rewrites;
 
-    /// The steps taken with nothing bound (PseudoInstantiator::unbound_result):
-    /// rewrites by the type and the policy, types of expressions by the
-    /// expression and whether it is read through its object (type_of), values
-    /// of expressions, candidates of calls.
-    llvm::DenseMap<std::pair<const void*, unsigned>, UnboundResult<clang::QualType>> rewrites;
+    /// Dependent names resolved to a type naming no template parameter, or
+    /// to nothing (a null type), by their canonical node, where they name no
+    /// parameter anything binds: the sugar of one name differs by the path
+    /// that wrote it, and such an answer carries none of it.
+    llvm::DenseMap<const void*, KeptStep<clang::QualType>> canonical_names;
 
-    llvm::DenseMap<std::pair<const clang::Expr*, unsigned>, UnboundResult<clang::QualType>> types;
+    /// Types of expressions by the expression and whether it is read
+    /// through its object (type_of), values of expressions, candidates of
+    /// calls.
+    llvm::DenseMap<std::pair<const clang::Expr*, unsigned>, KeptStep<clang::QualType>> types;
 
-    llvm::DenseMap<const clang::Expr*, UnboundResult<std::optional<llvm::APSInt>>> values;
+    llvm::DenseMap<const clang::Expr*, KeptStep<std::optional<llvm::APSInt>>> values;
 
-    llvm::DenseMap<const clang::CallExpr*, UnboundResult<Callees>> calls;
+    llvm::DenseMap<const clang::CallExpr*, KeptStep<Callees>> calls;
+
+    /// Members by the resolved object and the name (member_of).
+    llvm::DenseMap<std::pair<const void*, const void*>, KeptStep<Member>> members;
+
+    /// Values of dependent members by their class, resolved and canonical,
+    /// and their name (PseudoInstantiator::member_value): every member type
+    /// of `allocator_traits<A>` reads `_Is_default_allocator<A>::value`, and
+    /// every overload set of a container the same iterator traits.
+    llvm::DenseMap<std::pair<const void*, void*>, KeptStep<std::optional<llvm::APSInt>>>
+        member_values;
+
+    /// Whether a type, the bindings substituted, cannot form, by the type
+    /// (PseudoInstantiator::unformable): the overloads of a container take
+    /// the same iterator types at every call.
+    llvm::DenseMap<const void*, KeptStep<bool>> unformable;
+
+    /// Members found alike in every alternative of a condition not known,
+    /// by the condition's `type` and the name (lookup_through_alternatives):
+    /// each of MSVC's special member layers reaches the layer below from
+    /// all three of its choices, twelve layers deep under `std::variant`.
+    llvm::DenseMap<std::pair<const void*, const void*>, KeptStep<clang::DeclContext::lookup_result>>
+        alternatives;
+
+    /// Values of variable templates by the template and its arguments, when
+    /// they are all types or templates (PseudoInstantiator::value_of):
+    /// `is_empty_v<_Alloc>` decides the layout of every MSVC container.
+    std::map<std::vector<const void*>, KeptStep<std::optional<llvm::APSInt>>> variable_values;
+
+    /// The template parameters each type names (names_only_free_parameters).
+    llvm::DenseMap<const clang::Type*, llvm::SmallVector<ParameterRef, 2>> named_parameters;
+
+    /// The explicit specializations of each class and variable template
+    /// (PseudoInstantiator::explicit_specializations).
+    llvm::DenseMap<const clang::Decl*, llvm::SmallVector<clang::NamedDecl*, 0>>
+        explicit_specializations;
+};
+
+/// Where a query's folding of a dependent member's value was cut short by
+/// the nesting limits (PseudoInstantiator::cut_values): how deep the
+/// evaluations and the rewrites nested there.
+struct CutFolding {
+    unsigned evaluating;
+
+    unsigned depth;
+
+    /// Whether folding it where the nesting is as given is cut too.
+    bool holds_at(unsigned evaluating, unsigned depth) const {
+        return evaluating >= this->evaluating && depth >= this->depth;
+    }
 };
 
 /// The core pseudo-instantiation engine, one query's state. Resolves
@@ -303,11 +433,21 @@ public:
     using lookup_result = clang::DeclContext::lookup_result;
 
     /// Without `visibility`, the query sees the whole unit.
+    /// What the query cost goes to `audits` when it ends; nowhere when null.
     PseudoInstantiator(clang::ASTContext& context,
                        UnitCache& cache,
                        const ResolverOptions& options,
-                       Visibility* visibility) :
-        context(context), cache(cache), options(options), visibility(visibility) {}
+                       Visibility* visibility,
+                       std::vector<QueryAudit>* audits = nullptr) :
+        context(context), cache(cache), options(options), visibility(visibility), audits(audits) {}
+
+    PseudoInstantiator(const PseudoInstantiator&) = delete;
+
+    ~PseudoInstantiator() {
+        if(audits) {
+            audits->push_back({.steps = steps, .troubles = troubles});
+        }
+    }
 
     /// The declarations the overload set `expr` names that the query sees
     /// (TemplateResolver::overloads).
@@ -437,6 +577,23 @@ private:
 
     clang::QualType resolve_dependent_name(const clang::DependentNameType* DNT);
 
+    /// What resolve_dependent_name finds for `DNT`, by its rule or its
+    /// lookup; `DNT` itself when nothing.
+    clang::QualType resolve_name(const clang::DependentNameType* DNT);
+
+    /// Whether `NNS` reaches a template type parameter nothing binds through
+    /// members of members (`typename _Traits::allocator_type::template
+    /// rebind<U>::other` with `_Traits` free): no lookup into it finds
+    /// anything, whatever the rest names.
+    bool unbound_root(clang::NestedNameSpecifier NNS);
+
+    /// Whether every template parameter `type` names is free, neither a
+    /// frame nor its function's only instantiation binding it; then noted
+    /// free for the step being kept. Only then does a step on `type` answer
+    /// for its canonical form, which any template's parameters at the same
+    /// places share.
+    bool names_only_free_parameters(const clang::Type* type);
+
     /// Resolve a specialization whose template is a dependent name
     /// (`T::template rebind<U>`) to a concrete TST when lookup finds the
     /// template.
@@ -480,14 +637,50 @@ private:
 
     clang::NestedNameSpecifier rewrite_specifier(clang::NestedNameSpecifier NNS, Policy policy);
 
-    /// The argument the template parameter `param`, `index` in its list at
-    /// `depth`, is bound to: by the frame holding its template when a frame
-    /// does — the query names a specialization of it or calls it —, else,
-    /// for a parameter of the template the query is inside of, by the
-    /// template's only instantiation. Null when unbound.
+    /// What binds a template parameter (binding).
+    struct Binding {
+        /// The argument; null when unbound.
+        const clang::TemplateArgument* argument = nullptr;
+
+        /// Whether a frame holds the parameter's template, bound or not.
+        bool held = false;
+    };
+
+    /// What binds the template parameter `param`, `index` in its list at
+    /// `depth`: the frame holding its template when a frame does — the
+    /// query names a specialization of it or calls it —, else, for a
+    /// parameter of the template the query is inside of, the template's
+    /// only instantiation. Every read of a binding goes through here: the
+    /// step being kept notes what it read (StepRecording), a parameter bound
+    /// to itself as free.
+    Binding binding(const clang::NamedDecl* param, unsigned depth, unsigned index);
+
+    /// The argument binding() finds; null when unbound.
     const clang::TemplateArgument* bound_argument(const clang::NamedDecl* param,
                                                   unsigned depth,
-                                                  unsigned index) const;
+                                                  unsigned index) {
+        return binding(param, depth, index).argument;
+    }
+
+    /// Whether nothing binds `parameter` but itself: no frame holds its
+    /// template, or one holding it binds it to itself, as inside the
+    /// template; nor does its function's only instantiation.
+    bool free(const ParameterRef& parameter) const;
+
+    /// The free parameter of another template the binding of `parameter`
+    /// renames it to (Renaming); null for any other binding.
+    const clang::TemplateTypeParmDecl* renamed_to(const ParameterRef& parameter) const;
+
+    /// renamed_to, of the argument `argument` bound to `parameter`.
+    const clang::TemplateTypeParmDecl* renaming_target(const clang::TemplateArgument& argument,
+                                                       const clang::NamedDecl* parameter) const;
+
+    /// Note that the step being kept read the frame `frame`.
+    void read_frame(unsigned frame) {
+        if(recording) {
+            recording->lowest_read = std::min(recording->lowest_read, frame);
+        }
+    }
 
     /// The argument a function template's parameter took in the template's
     /// only instantiation: a generic lambda's `auto` parameter stands for
@@ -613,6 +806,33 @@ private:
                                      TemplateArguments arguments,
                                      clang::DeclarationName name);
 
+    /// `DNT`, the `type` of a standard library class template's
+    /// specialization, answered by the standard's rule for it (std.cpp)
+    /// rather than by reading the library's definition: the type; `DNT`
+    /// itself when the rule tells the answer waits for what is not known
+    /// (`remove_reference<T>` of a parameter); none where no rule applies.
+    std::optional<clang::QualType> std_type(const clang::DependentNameType* DNT);
+
+    /// The `value` of `scope`, a standard library class template's
+    /// specialization, by the standard's rule for it (std.cpp): the value,
+    /// or none inside when it waits for what is not known; none where no
+    /// rule applies.
+    std::optional<std::optional<llvm::APSInt>> std_value(clang::QualType scope,
+                                                         clang::DeclarationName name);
+
+    /// What `DNT`, a `conditional<B, T, F>::type` whose condition is not
+    /// known, may be: `T` and `F`; none for any other type.
+    llvm::SmallVector<clang::QualType, 2> std_alternatives(const clang::DependentNameType* DNT);
+
+    /// The condition a standard library template takes as its argument.
+    std::optional<bool> std_condition(const clang::TemplateArgument& argument);
+
+    /// `name` in each alternative of `DNT` (std_alternatives), when every
+    /// one finds it alike, kept for the unit; nothing for a `DNT` with no
+    /// alternatives. The frames of the last lookup stay.
+    lookup_result lookup_through_alternatives(const clang::DependentNameType* DNT,
+                                              clang::DeclarationName name);
+
     /// The partial specializations whose pattern deduces against
     /// `arguments` and survives the pseudo-SFINAE probe (see member_absent).
     llvm::SmallVector<PartialMatch<clang::ClassTemplatePartialSpecializationDecl>, 4>
@@ -644,6 +864,22 @@ private:
 
     llvm::SmallVector<clang::VarTemplateSpecializationDecl*, 2>
         undecided_specializations(clang::VarTemplateDecl* VTD, TemplateArguments arguments);
+
+    /// The explicit specializations of `TD`, kept for the unit: what it
+    /// instantiated beside them, which a match would walk through each
+    /// time, runs to hundreds.
+    template <typename Template>
+    llvm::SmallVector<clang::NamedDecl*, 2> explicit_specializations(Template* TD) {
+        auto [found, added] = cache.explicit_specializations.try_emplace(TD);
+        if(added) {
+            for(auto* specialization: TD->specializations()) {
+                if(specialization->isExplicitSpecialization()) {
+                    found->second.push_back(specialization);
+                }
+            }
+        }
+        return {found->second.begin(), found->second.end()};
+    }
 
     /// Pseudo-SFINAE: decide whether a partial specialization's dependent
     /// pattern constraints (e.g. the `void_t<typename A::rebind<U>::other>`
@@ -698,6 +934,19 @@ private:
     std::optional<llvm::APSInt> value_of(clang::VarTemplateDecl* VTD,
                                          llvm::ArrayRef<clang::TemplateArgumentLoc> written);
 
+    /// The value of `VTD<arguments>`, the arguments resolved.
+    std::optional<llvm::APSInt> value_of(clang::VarTemplateDecl* VTD,
+                                         llvm::ArrayRef<clang::TemplateArgument> arguments);
+
+    /// The value of the member `name` of `scope`, a class resolved; kept for
+    /// the unit by the class's canonical form when it names only free
+    /// parameters.
+    std::optional<llvm::APSInt> member_value(clang::QualType scope, clang::DeclarationName name);
+
+    /// The value of `decl`, a variable or an enumerator, under the current
+    /// bindings.
+    std::optional<llvm::APSInt> declared_value(const clang::Decl* decl);
+
     /// The value `var`'s initializer folds to, converted to its type.
     std::optional<llvm::APSInt> initial_value(const clang::VarDecl* var);
 
@@ -710,6 +959,17 @@ private:
     /// `through_object`: the expression's type carries the cv-qualifiers of
     /// the object it is accessed through. Null for forms that name nothing.
     clang::QualType type_of(const clang::Expr* expr, bool through_object = false);
+
+    /// What `name` finds as a member of `object`, with its type substituted
+    /// under the bindings of the lookup. A resolved object names one
+    /// specialization whatever bound the parameters it was written in, so
+    /// the answer is kept for the unit by it (kept_step): MSVC reaches its
+    /// containers' state through the same `_Mypair._Myval2` everywhere.
+    Member member_of(clang::QualType object, clang::DeclarationName name);
+
+    /// The type an expression naming `value` has, under the current
+    /// bindings: a variable's deduced, a pack's pattern.
+    clang::QualType value_type(const clang::ValueDecl* value);
 
     /// `declared` with its `auto` deduced from `init`.
     clang::QualType deduce(clang::QualType declared, const clang::Expr* init);
@@ -821,6 +1081,15 @@ private:
                       llvm::ArrayRef<CallArgument> arguments,
                       bool member_call);
 
+    /// Whether `type`, the bindings substituted, names a member certainly
+    /// absent, as written or through its aliases (`void_t<...>` holds its
+    /// probe as written, `enable_if_t<...>` in what it aliases).
+    bool member_absent(clang::QualType type);
+
+    /// member_absent for a type naming no parameter of the template being
+    /// called, kept for the unit by the type (kept_step).
+    bool unformable(clang::QualType type);
+
     /// Overloads that differ only in their object parameter — its cv- and
     /// ref-qualifiers, `front()` and `front() const`, `value() &` and
     /// `value() &&` — are told apart by the object, an lvalue unless
@@ -847,6 +1116,17 @@ private:
         return std::string(indent * 2, ' ');
     }
 
+    /// Cut the work short for `trouble`: what it answers is not conclusive.
+    void give_up(Trouble trouble) {
+        inconclusive = true;
+        note(trouble);
+    }
+
+    /// Count `trouble` for the query's record.
+    void note(Trouble trouble) {
+        troubles[static_cast<std::size_t>(trouble)] += 1;
+    }
+
     /// Clear `inconclusive` for the work up to the end of the scope, and
     /// merge it back with what came before then.
     auto own_conclusion() {
@@ -854,81 +1134,145 @@ private:
             [this, outer = std::exchange(inconclusive, false)] { inconclusive |= outer; });
     }
 
-    /// Record the effects of the work up to the end of the scope in
-    /// `effects` too, for a step being kept.
-    auto record_effects(StepEffects& effects) {
-        return llvm::make_scope_exit([this, &effects, outer = std::exchange(recording, &effects)] {
+    /// Record what the work up to the end of the scope reads and leaves in
+    /// `step` too, for a step being kept; merged into the step around it.
+    auto record_effects(StepRecording& step) {
+        return llvm::make_scope_exit([this, &step, outer = std::exchange(recording, &step)] {
             recording = outer;
             if(outer) {
-                outer->open_defaults.append(effects.open_defaults);
-                outer->checks.append(effects.checks);
+                outer->read_defaults(step.defaults_read);
+                outer->open_defaults.append(step.open_defaults);
+                outer->judge(step.checks);
+                outer->found_free(step.free);
+                for(auto& [renaming, frame]: step.renamings) {
+                    outer->renamed(renaming, frame);
+                }
+                outer->lowest_read = std::min(outer->lowest_read, step.lowest_read);
             }
         });
     }
 
-    /// What `compute` gives for `key`. With no template parameter bound, the
-    /// state every query starts in, a step reads of the query that asked it
-    /// only what the query found before it — the open defaults, the folded
-    /// member values — which bears on it rarely enough, and what the query
-    /// sees: what an earlier query concluded there is taken as it is when
-    /// this one judges every declaration it judged alike, the frames and the
-    /// effects it left restored.
-    template <typename Key, typename Result, typename Compute>
-    Result unbound_result(llvm::DenseMap<Key, UnboundResult<Result>>& results,
-                          const std::type_identity_t<Key>& key,
-                          Compute&& compute) {
-        if(!stack.empty()) {
-            return compute();
-        }
-        if(auto found = results.find(key);
-           found != results.end() && sees_alike(found->second.effects.checks)) {
+    /// What `compute` gives for `key`, kept for the unit. A step that read
+    /// no binding of its caller's frames but renamings gives the same for any
+    /// query that judges every declaration it judged alike, finds every
+    /// parameter it found free free too and every one it found renamed
+    /// renamed alike: an earlier query's is taken then, the frames and
+    /// the effects it left restored. The frames it leaves are those above
+    /// where it started.
+    /// Of what it gives, `keep` tells what may be kept; all of it without.
+    template <typename Results, typename Compute>
+    auto kept_step(Results& results,
+                   const typename Results::key_type& key,
+                   Compute&& compute,
+                   llvm::function_ref<bool(const typename Results::mapped_type::Value&)> keep = {})
+        -> typename Results::mapped_type::Value {
+        using Result = typename Results::mapped_type::Value;
+        auto base = stack.size();
+        if(auto found = results.find(key); found != results.end() && holds(found->second)) {
             auto& known = found->second;
+            if(recording) {
+                for(auto& renaming: known.renamings) {
+                    auto& parameter = renaming.parameter;
+                    recording->renamed(
+                        renaming,
+                        *stack.holder(parameter.decl, parameter.depth, parameter.index));
+                }
+            }
             stack.frames().append(known.frames.begin(), known.frames.end());
-            for(auto* expr: known.effects.open_defaults) {
+            for(auto* expr: known.open_defaults) {
                 open_default(expr);
             }
-            judged_visibility(known.effects.checks);
+            judged_visibility(known.checks);
+            if(recording) {
+                recording->read_defaults(known.defaults_read);
+                recording->found_free(known.free);
+            }
             return known.result;
         }
         auto judged = own_conclusion();
-        StepEffects effects;
+        StepRecording step{.base = base};
         Result result = [&] {
-            auto recorder = record_effects(effects);
+            auto recorder = record_effects(step);
             return compute();
         }();
-        if(!inconclusive) {
-            results.insert_or_assign(key,
-                                     UnboundResult<Result>{
-                                         .result = result,
-                                         .frames = {stack.frames().begin(), stack.frames().end()},
-                                         .effects = std::move(effects),
+        if(!inconclusive && step.read_no_binding() && (!keep || keep(result))) {
+            results.insert_or_assign(
+                key,
+                KeptStep<Result>{
+                    .result = result,
+                    .frames = {stack.frames().begin() + base, stack.frames().end()},
+                    .open_defaults = std::move(step.open_defaults),
+                    .defaults_read = std::move(step.defaults_read),
+                    .checks = std::move(step.checks),
+                    .free = std::move(step.free),
+                    .renamings = ranges::to<llvm::SmallVector<Renaming, 0>>(
+                        views::transform(step.renamings,
+                                         [](const auto& entry) { return entry.first; }
+                      )),
+                    .view = view(),
             });
         }
         return result;
     }
 
-    /// Whether the query judges the visibility of every declaration
-    /// `checks` judged alike.
-    bool sees_alike(llvm::ArrayRef<VisibilityCheck> checks) {
-        return ranges::all_of(checks, [&](const VisibilityCheck& check) {
-            return (!visibility || visibility->sees(check.decl)) == check.seen;
-        });
+    /// Whether a kept step holds for the query: it finds every parameter the
+    /// step found free free, every one the step found renamed renamed alike
+    /// and every default the step asked about folding as the step did, and
+    /// judges every declaration the step judged alike, as one from the view
+    /// kept beside them did; that view updated.
+    template <typename Result>
+    bool holds(KeptStep<Result>& known) {
+        if(!ranges::all_of(known.free,
+                           [&](const ParameterRef& parameter) { return free(parameter); }) ||
+           !ranges::all_of(known.renamings,
+                           [&](const Renaming& renaming) {
+                               return renamed_to(renaming.parameter) == renaming.target;
+                           }) ||
+           !ranges::all_of(known.defaults_read, [&](const auto& entry) {
+               return open_defaults.contains(entry.first) == entry.second;
+           })) {
+            return false;
+        }
+        auto current = view();
+        if(known.view == current) {
+            return true;
+        }
+        if(!ranges::all_of(known.checks, [&](const VisibilityCheck& check) {
+               return (!visibility || visibility->sees(check.decl)) == check.seen;
+           })) {
+            return false;
+        }
+        known.view = current;
+        return true;
     }
 
-    /// What an earlier query resolved `node`, a dependent name or
-    /// specialization, to, when this one judges alike what it saw; its
-    /// judgements noted again.
-    std::optional<clang::QualType> kept_resolution(const void* node) {
-        auto found = cache.resolved.find(node);
-        if(found == cache.resolved.end() || !sees_alike(found->second.checks)) {
-            return std::nullopt;
+    /// Where the query is answered from (Visibility::view); 0 when no
+    /// Visibility limits it to a place.
+    std::uint32_t view() const {
+        return visibility ? visibility->view() : 0;
+    }
+
+    /// Whether the default `expr` did not fold, noted for the step being
+    /// kept (kept_step).
+    bool default_open(const clang::Expr* expr) {
+        bool open = open_defaults.contains(expr);
+        if(recording) {
+            recording->read_defaults({
+                {expr, open}
+            });
         }
-        judged_visibility(found->second.checks);
-        return found->second.type;
+        return open;
+    }
+
+    /// default_open, for deduction to ask (DeductionOptions::open).
+    auto open_default_reader() {
+        return [this](const clang::Expr* expr) {
+            return default_open(expr);
+        };
     }
 
     /// Note that the default `expr` did not fold, for the step being kept
-    /// too (unbound_result).
+    /// too (kept_step).
     void open_default(const clang::Expr* expr) {
         open_defaults.insert(expr);
         if(recording) {
@@ -937,27 +1281,30 @@ private:
     }
 
     /// Note `checks`, judgements of visibility, for the step being kept
-    /// (unbound_result, the unit's resolved types).
+    /// (kept_step).
     void judged_visibility(llvm::ArrayRef<VisibilityCheck> checks) {
         if(recording) {
-            recording->checks.append(checks.begin(), checks.end());
+            recording->judge(checks);
         }
+    }
+
+    /// Whether the query sees `decl`, the judgement noted.
+    bool sees(const clang::NamedDecl* decl) {
+        if(!visibility) {
+            return true;
+        }
+        bool seen = visibility->sees(decl);
+        judged_visibility({
+            {decl, seen}
+        });
+        return seen;
     }
 
     /// `found`, what an unqualified or namespace-qualified name finds or the
     /// specializations of a template, without what the query does not see.
     template <typename Decl>
     void drop_unseen(llvm::SmallVectorImpl<Decl*>& found) {
-        if(!visibility) {
-            return;
-        }
-        llvm::SmallVector<VisibilityCheck, 4> checks;
-        llvm::erase_if(found, [&](const clang::NamedDecl* decl) {
-            bool seen = visibility->sees(decl);
-            checks.push_back({decl, seen});
-            return !seen;
-        });
-        judged_visibility(checks);
+        llvm::erase_if(found, [&](const clang::NamedDecl* decl) { return !sees(decl); });
     }
 
     /// The partial specializations of a template the query sees.
@@ -994,35 +1341,36 @@ private:
 
     llvm::SmallPtrSet<const clang::VarDecl*, 4> deducing;
 
-    /// What the dependent members this query read (`Trait<T>::value`) fold
-    /// to, by their class, resolved, and their name: every member type of
-    /// `allocator_traits<A>` reads `_Is_default_allocator<A>::value`. The
-    /// class is keyed canonically, as the sugar of one `A` differs by the
-    /// path that reached it; what parameters it still names are unbound
-    /// alike. Only a conclusive answer is kept.
-    llvm::DenseMap<std::pair<const void*, void*>, std::optional<llvm::APSInt>> member_values;
+    /// The dependent members' values this query found cut short, by their
+    /// class, resolved, and their name (member_value): met again no
+    /// shallower, they are cut alike, and folding them again costs each
+    /// path through `<ratio>`'s values with their operands unknown the
+    /// whole tree below it.
+    llvm::DenseMap<std::pair<const void*, void*>, CutFolding> cut_values;
 
     /// The defaults of value parameters that did not fold, which may hold
     /// any value (deduce_arguments).
     llvm::SmallSetVector<const clang::Expr*, 4> open_defaults;
 
-    /// Where the step unbound_result is keeping records its effects.
-    StepEffects* recording = nullptr;
+    /// Where the step kept_step is keeping records what it reads and leaves.
+    StepRecording* recording = nullptr;
 
     /// Where the query is answered from; the whole unit when null.
     Visibility* visibility;
 
     unsigned depth = 0;
 
-    unsigned steps = 0;
+    std::uint32_t steps = 0;
+
+    /// How often each Trouble struck the query (give_up, note).
+    std::array<std::uint32_t, 6> troubles = {};
+
+    /// Where the query's cost goes when it ends.
+    std::vector<QueryAudit>* audits;
 
     unsigned probing = 0;
 
     unsigned evaluating = 0;
-
-    /// Non-zero while a pack element rewrite has a Pack binding narrowed to
-    /// one element; node-pointer-keyed caches are bypassed for the duration.
-    unsigned pack_narrowing = 0;
 
     /// Some answer came back empty or partial because a lookup or the
     /// deduction of a variable was already in progress (a recursive chain
@@ -1037,11 +1385,14 @@ private:
 
     /// Hard ceiling on rewrite steps per query; bounds the total work
     /// including pseudo-SFINAE probes over rejected branches.
-    constexpr static unsigned step_budget = 4096;
+    constexpr static unsigned step_budget = 2048;
 
-    /// Hard ceiling on nested rewrites. What an expression in a type
-    /// evaluates to nests inside it: the iterator MSVC's `std::map::begin()`
-    /// returns, through its `conditional_t`s, runs past 16 under a pointer.
+    /// Hard ceiling on nested resolving rewrites. What an expression in a
+    /// type evaluates to nests inside it: the iterator MSVC's
+    /// `std::map::begin()` returns, through its `conditional_t`s, runs past 16
+    /// under a pointer. Substituting walks what the type is built of, as deep
+    /// as it is written (twelve layers of conditions under MSVC's
+    /// `std::variant`), and nests no deeper.
     constexpr static unsigned depth_limit = 32;
 
     unsigned indent = 0;

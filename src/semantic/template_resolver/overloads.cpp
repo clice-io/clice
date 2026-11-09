@@ -415,10 +415,11 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
                 return std::nullopt;
             }
             stack.push(FTD, FTD->getTemplateParameters(), deduced);
-            /// `void_t<...>` holds its probe as written, `enable_if_t<...>`
-            /// in what it aliases.
+            /// One still naming a parameter deduction left free reads its
+            /// default where the template's frame holds it.
             auto cannot_form = [&](clang::QualType type) {
-                return member_absent(type, 0) || member_absent(type.getCanonicalType(), 0);
+                return mentions_parameters(type, FTD->getTemplateParameters()) ? member_absent(type)
+                                                                               : unformable(type);
             };
             /// A default deduction leaves decides whether the template is a
             /// candidate (`class = typename U::type`, `enable_if_t<B, int> =
@@ -577,6 +578,14 @@ void PseudoInstantiator::prefer_exact(llvm::SmallVectorImpl<const clang::NamedDe
     }
 }
 
+bool PseudoInstantiator::member_absent(clang::QualType type) {
+    return member_absent(type, 0) || member_absent(type.getCanonicalType(), 0);
+}
+
+bool PseudoInstantiator::unformable(clang::QualType type) {
+    return kept_step(cache.unformable, type.getAsOpaquePtr(), [&] { return member_absent(type); });
+}
+
 void
     PseudoInstantiator::select_by_object(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
                                          clang::QualType object,
@@ -659,7 +668,7 @@ Callees PseudoInstantiator::call_candidates(const clang::CallExpr* expr) {
     if(llvm::isa<clang::CXXOperatorCallExpr>(expr)) {
         return {};
     }
-    return unbound_result(cache.calls, expr, [&] {
+    return kept_step(cache.calls, expr, [&] {
         llvm::ArrayRef<const clang::Expr*> arguments(expr->getArgs(), expr->getNumArgs());
         bool pack = expands_pack(arguments);
         auto callees =
