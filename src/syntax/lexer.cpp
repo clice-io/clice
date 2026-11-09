@@ -83,6 +83,19 @@ TokenKind lexed_kind(const Token& token,
 
 static clang::SourceLocation fake_loc = clang::SourceLocation::getFromRawEncoding(1);
 
+LocalSourceRange identifier_at(llvm::StringRef text, std::uint32_t offset) {
+    auto begin = logical_line_begin(text, offset);
+    auto line = text.substr(begin);
+    Lexer lexer(line, dialect_of());
+    for(auto token = lexer.advance(); !token.is_eof() && begin + token.range.begin <= offset;
+        token = lexer.advance()) {
+        if(token.is_identifier() && begin + token.range.end >= offset) {
+            return {begin + token.range.begin, begin + token.range.end};
+        }
+    }
+    return {offset, offset};
+}
+
 Lexer::Lexer(llvm::StringRef content, const clang::LangOptions& dialect, Options options) :
     content(content),
     lexer(new clang::Lexer(fake_loc, dialect, content.begin(), content.begin(), content.end())) {

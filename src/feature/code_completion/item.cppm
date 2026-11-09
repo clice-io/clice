@@ -7,7 +7,6 @@ module;
 module clice:feature.code_completion.item;
 
 import :support.prelude;
-import :support.text;
 import :syntax.lexer;
 import :syntax.token;
 
@@ -23,25 +22,14 @@ struct Prefix {
 
     llvm::StringRef spelling;
 
+    /// `content` is a whole buffer, a NUL after it.
     static auto from(llvm::StringRef content, std::uint32_t offset) -> Prefix {
         assert(offset <= content.size());
-
-        // The bytes of a byte order mark would read as an identifier's.
-        auto text_begin = leading_bom(content).size();
-        auto start = offset;
-        while(start > text_begin && is_identifier_char(content[start - 1])) {
-            start -= 1;
-        }
-
-        auto end = offset;
-        while(end < content.size() && is_identifier_char(content[end])) {
-            end += 1;
-        }
-
+        auto whole = identifier_at(content, offset);
         return Prefix{
-            .typed = LocalSourceRange(start, offset),
-            .whole = LocalSourceRange(start, end),
-            .spelling = content.substr(start, offset - start),
+            .typed = LocalSourceRange(whole.begin, offset),
+            .whole = whole,
+            .spelling = content.slice(whole.begin, offset),
         };
     }
 };
