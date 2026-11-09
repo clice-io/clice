@@ -388,7 +388,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     }
 
     std::map<std::uint32_t, std::string> contents;
-    llvm::DenseSet<std::uint32_t> marked;
+    llvm::DenseSet<std::uint32_t> with_bom;
     std::map<std::uint32_t, Draft> drafts;
     for(auto file: files) {
         auto& info = facts.files[file];
@@ -399,7 +399,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 std::format("cannot read {}: {}", path, content.error().message()));
         }
         if(vfs::starts_with_bom(path)) {
-            marked.insert(file);
+            with_bom.insert(file);
         }
         auto& draft = drafts[file];
         Text text(contents[file] = std::move(*content));
@@ -705,7 +705,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         result.files.push_back({
             .path = path,
             .content = assemble(lines, verbatim),
-            .bom = marked.contains(file),
+            .bom = with_bom.contains(file),
         });
         if(!module_unit) {
             plan.importers.push_back(path);
@@ -810,7 +810,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         result.files.push_back({
             .path = path,
             .content = assemble(lines),
-            .bom = marked.contains(defining),
+            .bom = with_bom.contains(defining),
         });
         plan.macros.push_back(std::move(path));
     }

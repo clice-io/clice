@@ -830,26 +830,31 @@ struct SystemHeaderPragma : clang::PragmaHandler {
 
 /// `#embed` reads a file through the one content clang keeps for it, which
 /// the file system serves as text, without its byte order mark, when an
-/// earlier lookup found the file without opening it. After `__has_embed`,
-/// a file with the mark gets its bytes as that content while nothing has
-/// read it yet; what an `#include` entered keeps its text.
+/// earlier lookup found the file without opening it. After `__has_embed`, a
+/// file with the mark that nothing has read or included, here or in the
+/// PCH, gets its bytes as that content, which a later `#include` of it
+/// reads too.
 class EmbeddedBytes : public clang::PPCallbacks {
 public:
-    explicit EmbeddedBytes(clang::SourceManager& sources) : sources(sources) {}
+    explicit EmbeddedBytes(clang::Preprocessor& pp) : pp(pp) {}
 
     void HasEmbed(clang::SourceLocation,
                   llvm::StringRef,
                   bool,
                   clang::OptionalFileEntryRef file) override {
-        if(!file) {
+        // Reading a pipe or a device would wait on it, or take a worker's
+        // standard input.
+        if(!file || file->isNamedPipe() || file->isDeviceFile()) {
             return;
         }
         auto path = file->getFileEntry().tryGetRealPathName();
-        if(path.empty() || !vfs::starts_with_bom(path)) {
+        if(!vfs::starts_with_bom(path) || pp.alreadyIncluded(*file)) {
             return;
         }
-        auto contents = llvm::make_range(sources.fileinfo_begin(), sources.fileinfo_end());
-        if(llvm::any_of(contents, [&](const auto& entry) { return entry.first == *file; })) {
+        auto& sources = pp.getSourceManager();
+        if(ranges::any_of(sources.fileinfo_begin(), sources.fileinfo_end(), [&](const auto& entry) {
+               return entry.first == *file;
+           })) {
             return;
         }
         if(auto bytes = sources.getFileManager().getVirtualFileSystem().getBufferForFile(
@@ -863,7 +868,7 @@ public:
     }
 
 private:
-    clang::SourceManager& sources;
+    clang::Preprocessor& pp;
 };
 
 }  // namespace
@@ -967,7 +972,8 @@ CompilationStatus CompilationUnit::run() {
 
     /// Add PPCallbacks to collect preprocessing information.
     instance->getPreprocessor().addPPCallbacks(directive_recorder());
-    instance->getPreprocessor().addPPCallbacks(std::make_unique<EmbeddedBytes>(SM()));
+    instance->getPreprocessor().addPPCallbacks(
+        std::make_unique<EmbeddedBytes>(instance->getPreprocessor()));
     handle_system_header_pragmas(instance->getPreprocessor());
 
     // Past the end of the focus file clang instantiates the templates the
