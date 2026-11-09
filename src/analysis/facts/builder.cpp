@@ -145,6 +145,8 @@ void FactsBuilder::list_files() {
 }
 
 void FactsBuilder::read_includes() {
+    /// (scoped includer, scoped file) -> the first directive line naming it.
+    llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> include_lines;
     for(auto& [tu, manifest]: manifests) {
         auto unit = id_of(tu);
         llvm::DenseSet<std::uint32_t> entered;
@@ -432,10 +434,11 @@ void FactsBuilder::read_instantiations() {
     // A dependent call by a qualified name (`ops::clamp(value)`) looks its
     // overloads up where the template is defined, as a non-dependent name
     // does: the one an instantiation runs is the file's to see, even when
-    // only the including unit declared it. What argument dependent lookup
-    // or a dependent type's member brings is the instantiating unit's,
-    // which a module defining the template never imports. An instantiation
-    // running a candidate the file's own entries name records nothing.
+    // only the including unit declared it. What argument dependent lookup,
+    // a dependent type's member or a specialization for the arguments
+    // brings is the instantiating unit's, which a module defining the
+    // template never imports. An instantiation running a candidate the
+    // file's own entries name records nothing.
     for(std::uint32_t id = 0; id < facts.files.size(); id += 1) {
         auto* instantiations = index.instantiation_shard(fids[id]);
         auto* shard = index.shard(fids[id]);
@@ -449,7 +452,8 @@ void FactsBuilder::read_instantiations() {
             auto identity = find_symbol(record.target, shard);
             auto parent = identity && identity->parent != 0 ? find_symbol(identity->parent, shard)
                                                             : std::nullopt;
-            if(!identity || (parent && parent->kind != SymbolKind::Namespace)) {
+            if(!identity || index::has_flag(identity->flags, index::SymbolFlags::Specialization) ||
+               (parent && parent->kind != SymbolKind::Namespace)) {
                 return true;
             }
             auto& tokens = text_of(id).tokens;

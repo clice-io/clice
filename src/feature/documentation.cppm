@@ -2,6 +2,7 @@ module clice:feature.documentation;
 
 import :compile.compilation;
 import :index.query;
+import :index.site;
 import :index.symbol;
 import :support.markup;
 import :support.prelude;
@@ -49,6 +50,13 @@ auto documentation(const index::IndexQuery& query,
                    index::SymbolHash hash,
                    Fid anchor,
                    const DocumentationOptions& options) -> Documentation;
+
+/// The same of a module, from one of its interface units: the comment
+/// above the module declaration whose name is `declaration`
+/// (index::module_comment).
+auto module_documentation(const index::IndexQuery& query,
+                          const index::Site& declaration,
+                          const DocumentationOptions& options) -> Documentation;
 
 /// Add what a card shows of a documentation first: that the entity is
 /// deprecated, with the message of its attribute (`attribute`) or of its

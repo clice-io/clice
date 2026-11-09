@@ -144,8 +144,6 @@ auto module_hover(const index::IndexQuery& query,
     HoverInfo hover;
     hover.name = module.name;
     hover.kind = SymbolKind::Module;
-    hover.documentation =
-        feature::documentation(query, module.hash, cursor.site.file, documentation);
     auto units =
         query.gather(module.hash,
                      cursor.site.file,
@@ -153,6 +151,7 @@ auto module_hover(const index::IndexQuery& query,
                          return from.sites(named, cursor.site.file, RelationKind::Definition);
                      });
     if(!units.empty()) {
+        hover.documentation = module_documentation(query, units.front(), documentation);
         hover.file = query.file_table().display_identity(units.front().path);
     }
     hover.symbol_range = cursor.site.range;

@@ -169,7 +169,6 @@ void LSPClient::register_editing() {
         auto resolved = std::string(files.resolve(path_id));
         auto positions = session->positions();
         vfs::Scope scope(files.dirs);
-        auto query = project.query();
         auto start = feature::start_completion({
             .file = path_id,
             .path = resolved,
@@ -206,7 +205,7 @@ void LSPClient::register_editing() {
                     return open;
                 },
             .scope = scope,
-            .query = query,
+            .query = project.query(),
             .documentation = settings.documentation,
         });
         if(std::holds_alternative<feature::NoCompletion>(start)) {

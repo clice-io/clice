@@ -5,13 +5,11 @@ module clice:analysis.facts.builder;
 
 import :analysis.facts;
 import :analysis.text;
-import :index.instantiation_shard;
 import :index.project_index;
 import :index.shard;
 import :index.symbol;
 import :index.tu_manifest;
 import :project.project;
-import :semantic.symbol;
 import :support.prelude;
 import :syntax.token;
 import :vfs.file_table;
@@ -196,9 +194,6 @@ struct FactsBuilder {
 
     /// (includer, directive line) -> the file the directive includes.
     llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, Fid> include_at;
-
-    /// (scoped includer, scoped file) -> the first directive line naming it.
-    llvm::DenseMap<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> include_lines;
 
     struct Source {
         std::string content;

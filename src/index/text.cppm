@@ -28,10 +28,13 @@ std::optional<DeclaredText>
 /// as the compiled unit's doc_comment reads it: of its declarations,
 /// then its definitions, in first-hit order, the first a Doxygen comment
 /// documents, else the first any comment documents. With `inherit`, a
-/// method overriding another without one takes that method's. A module's
-/// is the one above the declaration of its interface unit, a partition's
-/// own unit for a partition.
+/// method overriding another without one takes that method's.
 std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bool inherit);
+
+/// The text (comment_text) of the comment documenting a module: the one
+/// above the module declaration whose name is `declaration`, in an
+/// interface unit of the module.
+std::string module_comment(const IndexQuery& index, const Site& declaration);
 
 /// The source line each site lies on, for previews, each file read
 /// once; empty when the text is unavailable (see declared_text on the

@@ -1,4 +1,4 @@
-// What an implementation unit says of itself documents no module.
+/// What an implementation unit says of itself documents no module.
 module shapes;
 
 double unit_circle() {

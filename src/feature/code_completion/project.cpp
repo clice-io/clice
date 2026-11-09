@@ -9,6 +9,7 @@ import :feature.documentation;
 import :feature.protocol;
 import :index.query;
 import :index.search;
+import :index.site;
 import :index.symbol;
 import :semantic.identity;
 import :semantic.symbol;
@@ -460,11 +461,16 @@ static auto module_completion(const CompletionName& completing, const Completion
         }
         return up;
     };
+    // The module a name completes to and the unit providing it an import
+    // resolves to, the nearest.
+    auto module_of = [&](llvm::StringRef name) {
+        return name.starts_with(":") ? own_module + name.str() : name.str();
+    };
+    auto nearest = [&](llvm::StringRef name) {
+        return ranges::min(providers.modules.find(module_of(name))->getValue(), {}, up_to);
+    };
     auto distance = [&](llvm::StringRef name) {
-        if(name.starts_with(":")) {
-            return std::uint32_t(0);
-        }
-        return ranges::min(providers.modules.find(name)->getValue() | views::transform(up_to));
+        return name.starts_with(":") ? std::uint32_t(0) : up_to(nearest(name));
     };
     std::vector<protocol::CompletionItem> items;
     items.reserve(module_names.size());
@@ -481,11 +487,15 @@ static auto module_completion(const CompletionName& completing, const Completion
     }
     auto list = completion_list(std::move(items), limit);
     for(auto& item: list.items) {
-        auto module = item.label.starts_with(":") ? own_module + item.label : item.label;
-        auto doc = feature::documentation(inputs.query,
-                                          EntityTable::module_entity(module),
-                                          inputs.file,
-                                          inputs.documentation);
+        auto provider = nearest(item.label);
+        auto declarations = inputs.query.sites(EntityTable::module_entity(module_of(item.label)),
+                                               provider,
+                                               RelationKind::Definition);
+        auto declaration = ranges::find(declarations, provider, &index::Site::file);
+        if(declaration == declarations.end()) {
+            continue;
+        }
+        auto doc = module_documentation(inputs.query, *declaration, inputs.documentation);
         if(doc.empty()) {
             continue;
         }

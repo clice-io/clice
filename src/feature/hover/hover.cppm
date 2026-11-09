@@ -188,9 +188,9 @@ auto hover_info(const index::IndexQuery& query,
                 const index::IndexQuery::Cursor& cursor,
                 const DocumentationOptions& documentation) -> std::optional<HoverInfo>;
 
-/// A module name's card: the module, the comment above its interface
-/// unit's declaration and that unit, named the way the user knows the file.
-/// Only the index knows the defining unit, across files.
+/// A module name's card: the module, the unit defining it, named the way
+/// the user knows the file, and the comment above that unit's module
+/// declaration. Only the index knows the defining unit, across files.
 auto module_hover(const index::IndexQuery& query,
                   const index::IndexQuery::Cursor& cursor,
                   const index::SymbolInfo& module,

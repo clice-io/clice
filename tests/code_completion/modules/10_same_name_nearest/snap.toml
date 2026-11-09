@@ -1,5 +1,5 @@
 [answers.names.completion]
 items = [
-    { label = "util", kind = "Module", insert = "util;", replace = "import ⟦⟧" },
-    { label = "beta", kind = "Module", insert = "beta;", replace = "import ⟦⟧" },
+    { label = "util", kind = "Module", insert = "util;", replace = "import ⟦⟧", documentation = "The utilities of z." },
+    { label = "beta", kind = "Module", insert = "beta;", replace = "import ⟦⟧", documentation = "Beta." },
 ]

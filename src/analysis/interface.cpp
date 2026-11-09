@@ -5,6 +5,7 @@ import :analysis.module_graph;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 import :syntax.token;
+import :vfs.path;
 
 namespace clice::analysis {
 

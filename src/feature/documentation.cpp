@@ -115,6 +115,12 @@ auto documentation(const index::IndexQuery& query,
     return symbol_documentation(query, hash, anchor, options, 0);
 }
 
+auto module_documentation(const index::IndexQuery& query,
+                          const index::Site& declaration,
+                          const DocumentationOptions& options) -> Documentation {
+    return read(index::module_comment(query, declaration), options, nothing_copied);
+}
+
 namespace {
 
 /// Write after an entry — a parameter, a return value, an exception — what

@@ -4,6 +4,7 @@ import :analysis.impact;
 import :analysis.interface;
 import :analysis.module_graph;
 import :analysis.report;
+import :index.symbol_query;
 
 namespace clice::analysis {
 

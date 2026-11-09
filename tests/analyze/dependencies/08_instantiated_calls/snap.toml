@@ -1,6 +1,6 @@
 [test."$ clice index"]
 stdout = '''
-Indexed 1 translation unit in #s: 7 file shards (# KB), 11 symbols.
+Indexed 1 translation unit in #s: 11 file shards (# KB), 16 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
@@ -17,6 +17,15 @@ stdout = '''
       "owner": "core/clamp.h",
       "users": [
         "util/clamped.h:5"
+      ],
+      "interface": true
+    },
+    {
+      "id": "#d32eceb1b7b75ad6",
+      "entity": "ops::convert",
+      "owner": "core/convert.h",
+      "users": [
+        "util/converted.h:6"
       ],
       "interface": true
     },
@@ -53,6 +62,71 @@ stdout = '''
   "affinity": [
     {
       "module": "app",
+      "entities": 1
+    }
+  ]
+}
+'''
+stderr = "warning: no churn annotation: Process git ended with exit code 128"
+exit = 0
+
+[test."$ clice analyze modules file util/made.h"]
+stdout = '''
+{
+  "path": "util/made.h",
+  "module": "util",
+  "source": false,
+  "annotations": [],
+  "uses": [],
+  "usedBy": [
+    {
+      "module": "app",
+      "entities": [
+        "made"
+      ]
+    }
+  ],
+  "affinity": [
+    {
+      "module": "app",
+      "entities": 1
+    }
+  ]
+}
+'''
+stderr = "warning: no churn annotation: Process git ended with exit code 128"
+exit = 0
+
+[test."$ clice analyze modules file util/converted.h"]
+stdout = '''
+{
+  "path": "util/converted.h",
+  "module": "util",
+  "source": false,
+  "annotations": [],
+  "uses": [
+    {
+      "module": "core",
+      "entities": [
+        "ops::convert"
+      ]
+    }
+  ],
+  "usedBy": [
+    {
+      "module": "app",
+      "entities": [
+        "converted"
+      ]
+    }
+  ],
+  "affinity": [
+    {
+      "module": "app",
+      "entities": 1
+    },
+    {
+      "module": "core",
       "entities": 1
     }
   ]

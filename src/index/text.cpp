@@ -73,10 +73,6 @@ std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bo
     };
     DocCommentChoice choice;
     for(auto relation_kind: {RelationKind::Declaration, RelationKind::Definition}) {
-        // An implementation unit declares its module too.
-        if(kind == SymbolKind::Module && relation_kind == RelationKind::Declaration) {
-            continue;
-        }
         index.for_each_relation(
             hash,
             anchor,
@@ -113,6 +109,23 @@ std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bo
         }
     }
     return std::move(choice).take();
+}
+
+std::string module_comment(const IndexQuery& index, const Site& declaration) {
+    auto source = index.serving(declaration.file);
+    std::string kept;
+    auto read = source ? index.source_text(*source, kept) : std::nullopt;
+    if(!read || declaration.range.end > read->size()) {
+        return {};
+    }
+    // Only what precedes the declaration can document it. Owned: the lexer
+    // reads past the end of what it lexes.
+    SourceText text(read->take_front(declaration.range.end).str());
+    text.set_dialect(raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26));
+    auto content = text.text();
+    return comment_text(
+        content,
+        documenting_comments(content, text.comments(), {.range = declaration.range}));
 }
 
 auto copied_doc_targets(const IndexQuery& index, SymbolHash hash, Fid anchor, llvm::StringRef name)

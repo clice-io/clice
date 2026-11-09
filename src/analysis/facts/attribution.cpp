@@ -298,6 +298,19 @@ std::expected<void, std::string> move_entities(Facts& facts,
     for(auto entity: moved) {
         facts.entities[entity].owner = target;
     }
+    // The files naming what moved include the header it moved to: the units
+    // entering them enter it.
+    auto& entering = facts.files[target].units;
+    for(std::uint32_t file = 0; file < facts.uses.size(); file += 1) {
+        if(ranges::any_of(facts.uses[file],
+                          [&](const Use& use) { return ranges::contains(moved, use.entity); })) {
+            entering.insert(entering.end(),
+                            facts.files[file].units.begin(),
+                            facts.files[file].units.end());
+        }
+    }
+    ranges::sort(entering);
+    entering.erase(ranges::unique(entering).begin(), entering.end());
     return {};
 }
 
