@@ -148,6 +148,13 @@ std::unique_ptr<clang::CompilerInvocation>
     front_opts.SkipFunctionBodies = params.skip_bodies ||
                                     params.kind == CompilationKind::Completion ||
                                     params.instantiating.has_value();
+    // A precompiled header or module embedding its sources overrides them in
+    // every compile reading it, where another holding the same files then
+    // refuses to load. clice reads the files on disk and checks them for
+    // changes itself: what a compile read through one is the copy its build
+    // read there.
+    front_opts.ModulesEmbedAllFiles = false;
+    front_opts.ModulesEmbedFiles.clear();
 
     /// Compiler flags (like gcc/clang's -M, -MD, -MMD, -H, or msvc's /showIncludes)
     /// can generate dependency files or print included headers to stdout/stderr.
