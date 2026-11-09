@@ -20,8 +20,6 @@ range = "import ⟦licensed⟧;"
 markdown = '''
 **module** `adjacent`
 
-Copyright 2026 The Adjacent Authors. SPDX-License-Identifier: MIT
-
 `${WS}/adjacent.cppm`
 '''
 range = "import ⟦adjacent⟧;"

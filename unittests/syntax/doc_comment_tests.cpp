@@ -85,6 +85,15 @@ ZEST_CASE(StylesDoNotMerge) {
     ZEXPECT(documenting("// One.\n/* Two. */\nint f();\n", "int f()") == "One.\nTwo.");
 }
 
+ZEST_CASE(LicenceNotice) {
+    ZEXPECT(documenting("// Copyright 2026 The Authors.\n// SPDX-License-Identifier: MIT\n"
+                        "export module m;\n",
+                        "module m") == "");
+    ZEXPECT(documenting("/* SPDX-License-Identifier: MIT */\nint f();\n", "int f()") == "");
+    ZEXPECT(documenting("/// Keeps the copyright notice.\nint f();\n", "int f()") ==
+            "Keeps the copyright notice.");
+}
+
 };  // ZEST_SUITE(DocComment)
 
 ZEST_SUITE(CommentText) {

@@ -35,8 +35,10 @@ bool is_doc_comment(llvm::StringRef text);
 /// `template <` — except that a plain `//` or `/* */` comment a blank line
 /// separates documents nothing; else an unmarked comment after it. A
 /// comment following code on its line documents only that code. The run
-/// takes in the comments of the same style on the lines next to it. Empty
-/// when no comment documents the declaration.
+/// takes in the comments of the same style on the lines next to it. A
+/// licence notice above it, a run a line of which opens with `Copyright` or
+/// `SPDX-License-Identifier`, documents nothing. Empty when no comment
+/// documents the declaration.
 llvm::ArrayRef<LexicalInfo::Comment>
     documenting_comments(llvm::StringRef content,
                          llvm::ArrayRef<LexicalInfo::Comment> comments,

@@ -84,6 +84,19 @@ bool separates(llvm::StringRef gap) {
     return !open.empty();
 }
 
+/// Whether a run of comments is a licence notice: a line of its text opens
+/// with `Copyright` or `SPDX-License-Identifier`.
+bool is_licence(llvm::StringRef content, llvm::ArrayRef<Comment> run) {
+    auto text = comment_text(content, run);
+    for(auto line: llvm::split(text, '\n')) {
+        line = line.ltrim();
+        if(line.starts_with("Copyright") || line.starts_with("SPDX-License-Identifier")) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// A line made only of the characters banners are drawn with.
 bool is_banner(llvm::StringRef line) {
     return !line.trim().empty() && line.find_first_not_of("=-*_/#+ \t") == llvm::StringRef::npos;
@@ -158,7 +171,8 @@ llvm::ArrayRef<LexicalInfo::Comment>
         }
         first -= 1;
     }
-    return comments.slice(first, at - first);
+    auto run = comments.slice(first, at - first);
+    return is_licence(content, run) ? trailing : run;
 }
 
 bool DocCommentChoice::offer(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Comment> run) {
