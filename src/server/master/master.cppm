@@ -523,18 +523,11 @@ private:
     std::uint64_t context_generation = 0;
     std::pair<std::uint64_t, std::uint64_t> context_seen;
 
-    /// The latest listing of a file, which the later pages read while the
-    /// epoch holds: a header with thousands of hosts takes long to list, in
-    /// hundreds of pages.
-    struct ContextListing {
-        Fid file;
-
-        std::uint64_t epoch = 0;
-
-        std::vector<ListedContext> items;
-    };
-
-    std::optional<ContextListing> listing;
+    /// The latest listing of each file, which its later pages read while
+    /// the epoch they were listed at holds: a header with thousands of
+    /// hosts takes long to list, in hundreds of pages.
+    llvm::DenseMap<Fid, std::vector<ListedContext>> listings;
+    std::uint64_t listings_epoch = 0;
 
     /// Advances with every change of the projects served.
     std::uint64_t projects_generation = 0;

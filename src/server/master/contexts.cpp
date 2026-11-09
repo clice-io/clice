@@ -114,9 +114,15 @@ ext::QueryContextResult MasterServer::query_contexts(Fid path_id,
     constexpr std::size_t page_size = 10;
     auto epoch = context_epoch();
     auto offset = static_cast<std::size_t>(std::max(0, params.offset.value_or(0)));
-    if(offset == 0 || !listing || listing->file != path_id || listing->epoch != epoch) {
+    if(epoch != listings_epoch) {
+        listings.clear();
+        listings_epoch = epoch;
+    }
+    auto [it, inserted] = listings.try_emplace(path_id);
+    auto& items = it->second;
+    if(offset == 0 || inserted) {
         auto& owner = owner_of(path_id);
-        auto items = owner.project.list_contexts(path_id);
+        items = owner.project.list_contexts(path_id);
         for(auto& project: projects) {
             if(project.get() == &owner) {
                 continue;
@@ -129,9 +135,7 @@ ext::QueryContextResult MasterServer::query_contexts(Fid path_id,
                 }
             }
         }
-        listing = {.file = path_id, .epoch = epoch, .items = std::move(items)};
     }
-    auto& items = listing->items;
     ext::QueryContextResult result{.total = static_cast<int>(items.size()), .epoch = epoch};
     for(auto i = offset; i < std::min(offset + page_size, items.size()); i += 1) {
         result.contexts.push_back(to_item(files, items[i]));
