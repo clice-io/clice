@@ -792,6 +792,31 @@ ZEST_CASE(StandardConditionalBaseDiffers) {
     ZEXPECT(resolver.lookup(nodes.members.back()).empty());
 }
 
+ZEST_CASE(OperatorCallFoldsAsBuiltin) {
+    /// With an `operator&&` in scope, clang leaves `&&` on dependent operands
+    /// a call; its operands' values fold it as the builtin one.
+    add_focus("main.cpp", R"code(
+        struct S {};
+        bool operator&&(S, S);
+        template <class T> struct is_int { static constexpr bool value = false; };
+        template <> struct is_int<int> { static constexpr bool value = true; };
+        template <bool B> struct pick { using type = long; };
+        template <> struct pick<true> { using type = int; };
+        template <class T> void f() {
+            typename pick<is_int<T>::value && !is_int<T*>::value>::type x;
+        }
+        void g() { f<int>(); }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* x = nodes.named<clang::VarDecl>("x");
+    ZASSERT(x);
+    auto resolved = unit->get<types::TemplateResolver>().resolve(x->getType());
+    ZASSERT(!resolved.isNull());
+    ZEXPECT(resolved.getCanonicalType() == unit->context().IntTy);
+}
+
 ZEST_CASE(UnknownOperandOfAnd) {
     /// `false` decides `&&` on either side of an operand not known.
     add_focus("main.cpp", R"code(
