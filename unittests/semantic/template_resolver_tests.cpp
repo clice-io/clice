@@ -248,6 +248,39 @@ ZEST_CASE(ProbeBindingsStayInProbe) {
     ZEXPECT(primary.getCanonicalType() == unit->context().LongTy);
 }
 
+ZEST_CASE(QualifiedBindingIsNoParameter) {
+    /// Inside `iter<N>`, `other` binds `N` to `const N`: what its `node`
+    /// reads under that binding is no answer for `iter<N>`'s own.
+    add_focus("main.cpp", R"code(
+        template <class N> struct iter {
+            N* node;
+            using other = iter<const N>;
+            void f() {
+                auto a = other{}.node;
+                auto b = this->node;
+            }
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* a = nodes.named<clang::VarDecl>("a");
+    ZASSERT(a);
+    auto* b = nodes.named<clang::VarDecl>("b");
+    ZASSERT(b);
+    auto* N = nodes.named<clang::TemplateTypeParmDecl>("N");
+    ZASSERT(N);
+    auto& context = unit->context();
+    auto parameter = context.getTypeDeclType(N);
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto other = resolver.deduce(a);
+    ZASSERT(!other.isNull());
+    ZEXPECT(context.hasSameType(other, context.getPointerType(parameter.withConst())));
+    auto own = resolver.deduce(b);
+    ZASSERT(!own.isNull());
+    ZEXPECT(context.hasSameType(own, context.getPointerType(parameter)));
+}
+
 ZEST_CASE(KeptCallBindings) {
     /// A later query takes a call's candidates as an earlier one found them,
     /// with the bindings of the lookup that found them: the type of the

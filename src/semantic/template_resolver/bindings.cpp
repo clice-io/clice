@@ -507,7 +507,8 @@ bool names_itself(const clang::TemplateArgument& argument, const clang::NamedDec
                 type = expansion->getPattern();
             }
             auto* TTPT = type->getAs<clang::TemplateTypeParmType>();
-            return TTPT && TTPT->getDecl() == param;
+            return TTPT && TTPT->getDecl() == param &&
+                   !type.getCanonicalType().hasLocalQualifiers();
         }
         case clang::TemplateArgument::Expression: {
             auto* expr = argument.getAsExpr();
