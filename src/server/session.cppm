@@ -64,7 +64,8 @@ public:
     /// Give the buffer the byte order mark the file on disk starts with, or
     /// take it away: the editor's text leaves the mark out, and the buffer
     /// stands for the file in every compile. Returns whether the text
-    /// changed, which bumps the generation.
+    /// changed, which like an edit bumps the generation and is a change of
+    /// the document's inputs (changed).
     bool set_bom(bool bom);
 
     /// Apply a didChange: fold the content changes into the buffer (ranges

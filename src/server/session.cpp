@@ -22,6 +22,7 @@ bool Session::set_bom(bool bom) {
     auto body = text().drop_front(held.size());
     set_text((bom ? utf8_bom.str() : std::string()) + body.str());
     generation += 1;
+    changed(Clock::now());
     return true;
 }
 

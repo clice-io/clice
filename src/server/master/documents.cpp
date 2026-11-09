@@ -5,6 +5,7 @@ import :server.client;
 import :server.master;
 import :server.served_project;
 import :support.logging;
+import :support.text;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -65,8 +66,11 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
     if(document.session) {
         end_session(document);
     }
+    // The editor's text leaves out the byte order mark the file starts with.
+    if(vfs::starts_with_bom(files.resolve(path_id))) {
+        text.insert(0, utf8_bom);
+    }
     document.session = std::make_shared<Session>(path_id, std::move(text), version);
-    document.session->set_bom(vfs::starts_with_bom(files.resolve(path_id)));
     if(projects.empty()) {
         return;
     }
