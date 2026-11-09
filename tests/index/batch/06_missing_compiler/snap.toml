@@ -3,5 +3,5 @@ stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
-stderr = "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable"
+stderr = "warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands"
 exit = 0

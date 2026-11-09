@@ -88,13 +88,14 @@ stdout = '''
 ]
 '''
 stderr = '''
-error: Invalid compilation database in ${WS}/compile_commands.json. Skipping item at index 0: 'directory' key is missing.
-error: Invalid compilation database in ${WS}/compile_commands.json. Skipping item at index 1: 'file' key is missing.
-error: Invalid compilation database in ${WS}/compile_commands.json. Skipping item at index 2: neither 'arguments' nor 'command' key is present.
-error: Invalid compilation database in ${WS}/compile_commands.json. Skipping item at index 5: item is not an object.
-error: Toolchain query failed: Cannot find driver: missing-clang++
-error: Toolchain query failed: Cannot find driver: missing-clang++
-error: Toolchain query failed: Cannot find driver: missing-clang++
-error: 4 of the entries stay driver commands: the errors above say why
+warning: Skipping entry 0 of the compilation database ${WS}/compile_commands.json: it has no "directory"
+warning: Skipping entry 1 of the compilation database ${WS}/compile_commands.json: it has no "file"
+warning: Skipping entry 2 of the compilation database ${WS}/compile_commands.json: it has neither "arguments" nor "command"
+warning: Skipping entry 5 of the compilation database ${WS}/compile_commands.json: it is not an object
+warning: 4 entries of the compilation database ${WS}/compile_commands.json are skipped; the log names them
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
+error: 4 of the entries stay driver commands: the warnings above say why
 '''
 exit = 1

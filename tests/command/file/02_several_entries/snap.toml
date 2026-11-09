@@ -13,8 +13,8 @@ ${WS}/compile_commands.json:
   error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
 '''
 stderr = '''
-error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
-error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+warning: Cannot ask the compiler for its default settings: Driver ${WS}/missing-cc not found or not executable; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: Driver ${WS}/missing-cc not found or not executable; clang's own driver reads its commands
 '''
 exit = 0
 
@@ -82,7 +82,7 @@ stdout = '''
 }
 '''
 stderr = '''
-error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
-error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+warning: Cannot ask the compiler for its default settings: Driver ${WS}/missing-cc not found or not executable; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: Driver ${WS}/missing-cc not found or not executable; clang's own driver reads its commands
 '''
 exit = 0

@@ -1,12 +1,11 @@
 import { test } from "@clice/tools/testing";
 
-const MISSING = "Toolchain query failed: Driver .*missing-cc not found or not executable";
 const UNCONVERTED_ENTRIES = "of the entries stay driver commands";
 
 // Each entry becomes the command clice compiles its file with; the
 // assembler source, which clice does not compile, stays as written. The
 // compiler does not exist, so the run fails after printing the database.
-test("each entry", { errors: [MISSING, UNCONVERTED_ENTRIES] }, async (t) => {
+test("each entry", { errors: [UNCONVERTED_ENTRIES] }, async (t) => {
     await t.cli("command convert compile_commands.json");
 });
 

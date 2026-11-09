@@ -239,6 +239,7 @@ RequestResult<worker::CompileParams>
     auto compile_result = co_await async::queue(
         [&]() -> worker::CompileResult {
             CrashScope crash_scope(worker::crash_tag(params));
+            logging::set_project_roots({params.project_root});
             Timer timer;
 
             CompilationParams cp{
@@ -357,7 +358,7 @@ void StatefulWorker::register_handlers() {
     peer.on_request(
         [this](RequestContext& ctx,
                const worker::CompileParams& params) -> RequestResult<worker::CompileParams> {
-            LOG_INFO("Compile request: path={}, version={}", params.path, params.version);
+            LOG_DEBUG("Compiling {} (version {})", params.path, params.version);
             CompileGuard guard(get_or_create(params.path));
             return serve_compile(std::move(guard), next_request, params);
         });

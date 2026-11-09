@@ -427,6 +427,9 @@ struct PrecompiledBuildResult {
     /// why it did not build.
     std::string first_error;
 
+    /// How many errors the build met.
+    std::uint32_t error_count = 0;
+
     /// The tmp path the PCH or PCM was written to.
     std::string output_path;
 

@@ -271,9 +271,9 @@ async::task<> ProjectIndex::update_search(SearchRebuild rebuild) {
     auto replaced = full ? search.run_count() : folded;
     drop_search_runs(full ? static_cast<std::uint32_t>(header.search_run_ends.size()) : folded);
     if(!search.replace(replaced, std::move(buffers))) {
-        LOG_ERROR(
-            "The built search index does not load; searches scan the records until a "
-            "full build");
+        LOG_ANOMALY(IndexReadBack,
+                    "The built search index does not load; searches scan the records until a "
+                    "full build");
         search.clear();
         drop_search_runs(static_cast<std::uint32_t>(header.search_run_ends.size()));
         co_return;
@@ -647,8 +647,10 @@ async::task<bool> ProjectIndex::rebind_views(BlobDatabase& db,
             }
             auto blob = db.read(kind, file_key(resident[i]));
             if(!blob || !it->second.rebind(std::move(blob.buffer))) {
-                LOG_ERROR("Index blob for {} diverged during snapshot migration",
-                          files.resolve(resident[i]));
+                LOG_ANOMALY(IndexReadBack,
+                            "The index of {} changed while the index database moved to its "
+                            "latest save",
+                            files.resolve(resident[i]));
                 damage = true;
                 break;
             }

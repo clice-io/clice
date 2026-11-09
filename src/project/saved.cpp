@@ -225,8 +225,8 @@ void Project::reconcile_index(index::IndexReport& report) {
     // leave every following session unable to tell a removed unit.
     auto* persisted = saved_members.persisted();
     if(saved_members.unreadable()) {
-        LOG_ERROR(
-            "Index cache at {} cannot tell which databases listed its files; keeping every "
+        LOG_WARN(
+            "The index at {} cannot tell which databases listed its files; it keeps every "
             "unit the build no longer compiles",
             std::string_view(settings.project.cache_dir));
     }

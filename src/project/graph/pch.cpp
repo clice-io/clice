@@ -131,7 +131,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     }
 
     if(!project.store) {
-        LOG_WARN("PCH build skipped: cache store is unavailable");
+        LOG_WARN("No PCH for {}: the cache directory cannot be used", request.params.file);
         co_return Result::Failed;
     }
     if(refused(project, pch_key, request.params.file)) {
@@ -241,14 +241,14 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         }
     });
     if(!pch_path) {
-        LOG_WARN("Failed to commit PCH for {}", bp.file);
+        LOG_WARN("Cannot store the PCH of {}", bp.file);
         co_return Result::Failed;
     }
     if(pending_idx && !loaded) {
         if(!index_path) {
-            LOG_WARN("Failed to commit pch.idx envelope for {}", bp.file);
+            LOG_WARN("Cannot store the index of the PCH of {}", bp.file);
         } else {
-            LOG_WARN("Freshly committed pch.idx envelope for {} is unreadable", bp.file);
+            LOG_WARN("The index of the PCH of {}, just stored, does not read", bp.file);
         }
         // The commit job discarded the new pair, and the previous one is
         // stale (that is why it was rebuilt): drop it rather than let it
@@ -321,7 +321,7 @@ std::shared_ptr<index::TUIndex> PCHEntry::load_index() {
         // Unreadable blob: clear the path so queries don't retry the
         // mmap + verification on every call. The pair now looks
         // incomplete and the next acquisition rebuilds it.
-        LOG_WARN("Failed to open pch.idx envelope {}", index_path);
+        LOG_WARN("Cannot open the PCH index {}", index_path);
         index_path.clear();
     }
     index = loaded;
@@ -672,7 +672,7 @@ std::shared_ptr<index::TUIndex> Project::preamble_index(llvm::StringRef pch_key)
         // would be served to every session for the rest of the store's
         // life. Discard it now; the entry itself stays until the next acquisition
         // re-checks the store and rebuilds the pair.
-        LOG_WARN("Discarding PCH pair {} with unreadable pch.idx envelope", pch_key);
+        LOG_WARN("Dropping the PCH {}, whose index does not read", pch_key);
         store->invalidate("pch", entry.blob);
     }
     return loaded;

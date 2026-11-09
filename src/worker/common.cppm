@@ -35,7 +35,7 @@ inline std::shared_ptr<const llvm::MemoryBuffer>
 /// session logs (worker::LogParams).
 inline void log_where_told(ipc::BincodePeer& peer) {
     peer.on_notification([](const worker::LogParams& params) {
-        logging::file_logger(logging::log_name(), params.dir, /*mirror_stderr=*/false);
+        logging::file_logger(params.dir, /*mirror_stderr=*/false);
     });
 }
 

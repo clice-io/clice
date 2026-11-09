@@ -421,9 +421,7 @@ export class Serve extends Client {
         }
         return this.steps.run(`crashes in ${fault.request} ${fault.file}`, async () => {
             await this.sync();
-            return this.workspace.workerCrashes(
-                `${fault.request} ${this.workspace.displayPath(fault.file)}`,
-            );
+            return this.workspace.workerCrashes(`${fault.request} ${fault.file}`);
         });
     }
 
@@ -1538,7 +1536,7 @@ export function gateLogs(workspace: Workspace, declared: Declared, failed: boole
     const expected = [...(declared.errors ?? [])];
     if (crashes.length + kills.length + killed > 0) {
         expected.push(
-            /\[anomaly:WorkerCrash\] |Worker \S+ lost|Last (stderr|output) of crashed worker/,
+            /\[anomaly:WorkerCrash\] |Worker \S+ lost|Last (stderr|output) of crashed worker|\[fatal\] clice crashed$/,
         );
     }
     const logs = readLogs(workspace.root);
@@ -1554,9 +1552,11 @@ export function gateLogs(workspace: Workspace, declared: Declared, failed: boole
         .filter((line) => SUPERVISOR_LOGS.has(line.file))
         .flatMap((line) => {
             const match = CRASHED_IN.exec(line.text);
-            return match === null ? [] : [`${match[1] ?? ""} ${match[2] ?? ""}`];
+            return match === null
+                ? []
+                : [`${match[1] ?? ""} ${(match[2] ?? "").replaceAll("\\", "/")}`];
         });
-    const named = crashes.map((crash) => `${crash.request} ${workspace.displayPath(crash.file)}`);
+    const named = crashes.map((crash) => `${crash.request} ${crash.file}`);
     const stray = crashedIn.filter((crash) => !named.includes(crash));
     if (stray.length > 0) {
         errors.push(new Error(`worker crashes nothing declared:\n${stray.join("\n")}`));

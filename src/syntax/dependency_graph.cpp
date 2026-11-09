@@ -771,9 +771,9 @@ struct FullScan {
                 unique_dirs.insert(dir.path);
             }
         }
-        LOG_INFO("Config extracted: {} groups, {:.1f}ms",
-                 graph.groups().size(),
-                 lookup.precise_ms());
+        LOG_DEBUG("Dependency scan: {} kinds of command to search includes for, {:.1f} ms",
+                  graph.groups().size(),
+                  lookup.precise_ms());
         for(auto& entry: cdb.entries()) {
             unique_dirs.insert(files.spelling(entry.file).parent().str());
         }
@@ -839,7 +839,7 @@ struct FullScan {
         async::task_group<> listings;
         auto listed = list_directories(listings);
         co_await listings.join();
-        LOG_INFO("Pre-populated dir cache: {} directories", listed);
+        LOG_DEBUG("Dependency scan: listed {} include directories ahead", listed);
 
         while(!wave->files.empty()) {
             Timer wave_timer;
@@ -870,12 +870,14 @@ struct FullScan {
                 }
             }
 
-            LOG_INFO("Wave {}: {} files | wait={}ms record={}ms | next={}",
-                     report.waves,
-                     wave->files.size(),
-                     waited,
-                     wave_timer.ms() - waited,
-                     next->files.size());
+            LOG_DEBUG(
+                "Dependency scan, wave {}: {} files, {} ms waiting for reads, {} ms "
+                "recording, {} files next",
+                report.waves,
+                wave->files.size(),
+                waited,
+                wave_timer.ms() - waited,
+                next->files.size());
             wave = std::move(next);
             report.waves += 1;
         }

@@ -90,7 +90,7 @@ void clear_dead_readers(MDB_env* env) {
     int dead = 0;
     mdb_reader_check(env, &dead);
     if(dead != 0) {
-        LOG_INFO("Cleared {} stale index database readers", dead);
+        LOG_DEBUG("Freed {} reader slots that exited processes left in the index database", dead);
     }
 }
 
@@ -414,7 +414,7 @@ public:
         mdb_env_info(env, &info);
         auto grown = std::max<std::size_t>(info.me_mapsize * 2, lmdb_small_mapsize);
         if(auto refused = growth_refused(env, grown - info.me_mapsize)) {
-            LOG_ERROR(
+            LOG_GUIDANCE(
                 "The index database cannot grow to {}: {}; the index is not saved until "
                 "that changes",
                 format_bytes(grown),
@@ -772,7 +772,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
     if(read_only) {
         open_lock = OpenLock::acquire(path, OpenLock::Kind::Shared, /*wait=*/true);
         if(!open_lock) {
-            LOG_WARN("Cannot lock the index database at {} for reading ({}-open)", path, path);
+            LOG_WARN("Cannot lock {}-open for reading", path);
             return nullptr;
         }
     } else {

@@ -32,7 +32,7 @@ Linted 1 translation unit in #s: 2 findings.
 1 translation unit failed to run (see the log); the report is partial.
 '''
 stderr = '''
-warning: cannot read ${WS}/ghost.cpp: No such file or directory; its includes are not scanned
-warning: Lint failed for ${WS}/ghost.cpp: error reading '${WS}/ghost.cpp': No such file or directory
+warning: cannot read ghost.cpp: No such file or directory; its includes are not scanned
+warning: Lint failed for ghost.cpp: error reading 'ghost.cpp': No such file or directory
 '''
 exit = 2

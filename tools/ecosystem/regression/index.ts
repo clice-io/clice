@@ -55,20 +55,27 @@ const HANG_MS = 30 * 60_000;
 /// six hours: the slowest part takes under two.
 const INDEX_MS = 3 * 60 * 60_000;
 
-/// How the session log ends a unit's attempt (src/project/background_index.cpp).
-const ENDED =
-    /\] (?:Index failed for|Index dropped for removed file|Index failure for outdated content of|Index giving up on|Worker died while indexing|Index requeued for) (\S+?)[:;]?(?:\s|$)/;
+/// How the session log ends a unit's attempt (src/project/background/background.cpp).
+const ENDED = [
+    /progress=\d+\/\d+ file=(\S+)/,
+    /\] Cannot index (\S+?):/,
+    /\] Not indexing (\S+) again/,
+    /\] The worker indexing (\S+) died/,
+    /\] (\S+) (?:was removed while|changed while|is indexed again later|does not fit in memory)/,
+];
 
 /// The units the session log shows begun and whose attempt has not ended.
 export function unitsInFlight(log: string): string[] {
     const started = new Set<string>();
     for (const line of log.split(/\r?\n/)) {
         const begun = /\] Indexing (\S+)$/.exec(line);
-        const done = /progress=\d+\/\d+ file=(\S+)/.exec(line) ?? ENDED.exec(line);
+        const done = ENDED.map((pattern) => pattern.exec(line)?.[1]).find(
+            (unit) => unit !== undefined,
+        );
         if (begun?.[1] !== undefined) {
             started.add(begun[1]);
-        } else if (done?.[1] !== undefined) {
-            started.delete(done[1]);
+        } else if (done !== undefined) {
+            started.delete(done);
         }
     }
     return [...started].sort();

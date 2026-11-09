@@ -5,7 +5,7 @@ hover = {}
 hover = {}
 
 ["switch to another project".crashes]
-value = 1
+value = 2
 
 ["switch to another project".pushes]
 pushes = [
@@ -24,4 +24,4 @@ pushes = [
 hover = {}
 
 ["switch to another project"."crashes after the switch"]
-value = 2
+value = 4

@@ -38,6 +38,9 @@ export function logFiles(root: string): string[] {
             }
         }
     }
+    // A project's logging directory links the session of a server that
+    // serves it from another's: each file is read once.
+    const seen = new Set<string>();
     return projects.flatMap((project) => {
         const logsDir = path.join(project, ".clice", "logs");
         if (!fs.existsSync(logsDir)) {
@@ -47,7 +50,13 @@ export function logFiles(root: string): string[] {
             .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
             .filter((name) => name.endsWith(".log"))
             .sort()
-            .map((name) => path.join(logsDir, name));
+            .map((name) => path.join(logsDir, name))
+            .filter((file) => {
+                const real = fs.realpathSync(file);
+                const fresh = !seen.has(real);
+                seen.add(real);
+                return fresh;
+            });
     });
 }
 
@@ -91,8 +100,9 @@ export function serverStderrExcerpt(stderrText: string): string {
         .split("\n")
         .filter(
             (line) =>
-                line.includes("[warn]") ||
+                line.includes("[warning]") ||
                 line.includes("[error]") ||
+                line.includes("[fatal]") ||
                 line.includes("Sanitizer") ||
                 line.includes("==ERROR:") ||
                 line.includes("runtime error:") ||

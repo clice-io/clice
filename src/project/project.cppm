@@ -298,6 +298,10 @@ struct Project {
     /// What each unit's compiles in this session showed.
     llvm::DenseMap<Fid, UnitHistory> unit_history;
 
+    /// The hash of each file's command as resolve_command last logged it:
+    /// a file's command is logged again when it changed.
+    llvm::DenseMap<Fid, std::uint64_t> logged_commands;
+
     /// The include-tree runs on the worker pool, by tree: a second asker
     /// waits for the first (take_tree).
     llvm::DenseMap<UnitCommand, std::shared_ptr<async::event>> tree_runs;
@@ -640,8 +644,7 @@ struct Project {
 
     /// A file's final compile command: select_command, then the context
     /// restoring the includer's preprocessor state of a header that needs
-    /// it, rendered. Emits a per-file decision log (tiers tried, tier hit,
-    /// command hash).
+    /// it, rendered. Logs where the command came from, once per change.
     Resolution resolve_command(Fid file, const CommandRequest& request = {});
 
     /// resolve_command until the host search it runs misses no include

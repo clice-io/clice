@@ -178,7 +178,7 @@ void look_at_database(Project& project, WatchedDatabase& database, bool force, C
     if(!diff) {
         return;
     }
-    LOG_INFO("Reloaded CDB from {}: {} added, {} removed, {} changed",
+    LOG_INFO("Reloaded the compilation database {}: {} added, {} removed, {} changed",
              cdb.source_path(database.id),
              diff->added.size(),
              diff->removed.size(),
@@ -362,7 +362,7 @@ std::string Project::why_no_members(llvm::StringRef root) const {
         if(cdb.loaded(SourceID(i))) {
             empty.push_back(path.str());
         } else if(fs::exists(path)) {
-            return std::format("{} cannot be read; the error above says why.", path.str());
+            return std::format("{} cannot be read; the warning above says why.", path.str());
         } else {
             return std::format("{} does not exist yet; the build writes it.", path.str());
         }

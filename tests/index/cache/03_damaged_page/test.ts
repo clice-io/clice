@@ -46,7 +46,7 @@ test("damaged page", { errors: ["The index database at .* is damaged"] }, async 
 // the database, names the directory to delete.
 test(
     "damaged records",
-    { errors: ["The index database's record .* fails its checks"] },
+    { errors: ["The index database's \\w+ record .* fails its checks"] },
     async (t) => {
         await t.cli("index");
         const { file, bytes } = database(t);

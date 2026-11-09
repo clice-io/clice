@@ -42,13 +42,13 @@ int run_worker(Worker& worker) {
     }
     // The pool relays each line of a worker's stderr as a warning: one
     // with no log file to write keeps its lower levels out of it.
-    logging::options.stderr_level = logging::Level::warn;
+    logging::options.stderr_level = logging::Level::Warn;
     logging::options.stderr_crash_trace = false;
     logging::stderr_logger(worker.worker_name);
     if(!worker.log_dir.empty()) {
         // File only: worker stderr is reserved for crash/unexpected output,
         // which the master relays into its own log (see logging taxonomy).
-        logging::file_logger(worker.worker_name, worker.log_dir, /*mirror_stderr=*/false);
+        logging::file_logger(worker.log_dir, /*mirror_stderr=*/false);
     }
     // See WorkerPool::launch.
     if(auto error = sys::exit_with_parent()) {

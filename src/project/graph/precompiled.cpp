@@ -93,7 +93,9 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
         co_return std::move(result.value());
     }
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
-        LOG_INFO("{} build preempted for {}, will retry", what, label);
+        LOG_INFO("The {} build of {} was stopped for more urgent work; it runs again later",
+                 what,
+                 label);
         co_return std::unexpected(Result::Stale);
     }
     // A build is expected to fail on the user's errors, or for an operational
@@ -102,7 +104,15 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
                                        : worker::is_operational_error(result.error());
     auto& message = result.has_value() ? result.value().error : result.error().message;
     if(expected) {
-        LOG_WARN("{} build failed for {}: {}", what, label, message);
+        std::string shown = message;
+        if(result.has_value() && result.value().has_user_errors && result.value().error_count > 1) {
+            auto more = result.value().error_count - 1;
+            shown = std::format("{} (and {} more {}, all in the worker's log)",
+                                result.value().first_error,
+                                more,
+                                more == 1 ? "error" : "errors");
+        }
+        LOG_WARN("The {} build of {} failed: {}", what, label, shown);
         if(result.has_value()) {
             fail(failed_build({}, result.value().first_error),
                  project.read_inputs(result.value(), before));

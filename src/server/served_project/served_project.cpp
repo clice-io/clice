@@ -101,18 +101,13 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
             if(issue.severity == SettingsIssue::Severity::Warning) {
                 LOG_GUIDANCE("{}", issue.message);
             } else {
-                LOG_ERROR("{}", issue.message);
                 LOG_GUIDANCE("{}. {} is served until they are fixed and clice restarts",
                              issue.message,
                              unserved);
             }
             continue;
         }
-        if(issue.severity == SettingsIssue::Severity::Error) {
-            LOG_ERROR("Invalid clice.toml {}: {}", place(issue.file, issue), issue.message);
-        } else {
-            LOG_WARN("clice.toml {}: {}", place(issue.file, issue), issue.message);
-        }
+        LOG_WARN("clice.toml {}: {}", place(issue.file, issue), issue.message);
         if(!first || (first->severity != issue.severity &&
                       issue.severity == SettingsIssue::Severity::Error)) {
             first = &issue;

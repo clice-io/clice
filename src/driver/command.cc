@@ -420,7 +420,7 @@ int convert_database(Project& project, const Spelling& path) {
         return 1;
     }
     if(!cdb.load_source(source)) {
-        LOG_ERROR("{} cannot be loaded; the error above says why", database);
+        LOG_ERROR("{} cannot be loaded; the warning above says why", database);
         return 1;
     }
     if(!written->loaded_by(cdb, source)) {
@@ -475,7 +475,8 @@ int convert_database(Project& project, const Spelling& path) {
     }
     print_json(converted);
     if(unconverted != 0) {
-        LOG_ERROR("{} of the entries stay driver commands: the errors above say why", unconverted);
+        LOG_ERROR("{} of the entries stay driver commands: the warnings above say why",
+                  unconverted);
         return 1;
     }
     return 0;

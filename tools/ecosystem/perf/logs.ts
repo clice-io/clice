@@ -19,7 +19,7 @@ import { parseArgs } from "node:util";
 /// line carried one (stderr mirrors and log files do). `pid`/`tid` are the
 /// trace lanes: the caller assigns one `pid` per source log (master and
 /// each worker are separate processes), `tid` is the line's `[thread N]`
-/// value; both default to 1 for stderr-only sources.
+/// value, 0 on the main thread, whose lines name none.
 export interface PerfEvent {
     topic: string;
     ts: number | null;
@@ -28,9 +28,9 @@ export interface PerfEvent {
     values: Record<string, string | number>;
 }
 
-/// `[2026-08-14 12:34:56.789] [info] [thread 1] [file.cpp:42] [perf:x] k=v`
+/// `2026-08-14 12:34:56.789 [info] [thread 1] file.cpp:42 [perf:x] k=v`
 const LINE_PATTERN =
-    /^(?:\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\] )?.*?\[perf:([\w-]+)\] (.*)$/;
+    /^(?:(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) )?.*?\[perf:([\w-]+)\] (.*)$/;
 
 const THREAD_PATTERN = /\[thread (\d+)\]/;
 
@@ -66,7 +66,7 @@ export function parsePerfLines(text: string, pid = 1): PerfEvent[] {
             // time, which is what the producing process used.
             ts: timestamp !== undefined ? Date.parse(timestamp.replace(" ", "T")) : null,
             pid,
-            tid: thread?.[1] !== undefined ? Number(thread[1]) : 1,
+            tid: thread?.[1] !== undefined ? Number(thread[1]) : 0,
             values,
         });
     }

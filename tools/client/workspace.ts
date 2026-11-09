@@ -101,7 +101,7 @@ export class Workspace {
     }
 
     /// The workers that crashed on requests whose tag starts with `tag`
-    /// ("compile /abs/path"), counted from the crash lines the master logs
+    /// ("compile src/main.cpp"), counted from the crash lines the master logs
     /// with the worker's name in front (the crash report repeats them bare).
     workerCrashes(tag: string): number {
         return (

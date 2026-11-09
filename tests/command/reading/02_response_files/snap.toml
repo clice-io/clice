@@ -1,7 +1,7 @@
 [expanded."$ clice command convert -- missing-clang++ @flags.rsp main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++23 -D FROM_RSP=1 ${WS}/main.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -9,7 +9,7 @@ exit = 1
 [expanded."$ clice command convert -- missing-clang++ @mode.rsp main.cpp"]
 stdout = "missing-clang++ --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} --driver-mode=cl /TP ${WS}/main.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -17,7 +17,7 @@ exit = 1
 [expanded."$ clice command convert -- missing-clang++ @bom.rsp main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++23 -D FROM_BOM=1 ${WS}/main.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -41,7 +41,7 @@ stdout = '''
 }
 '''
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1

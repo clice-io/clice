@@ -5,11 +5,15 @@ Linted 1 translation unit in #s: 1 finding.
 1 translation unit failed to run (see the log); the report is partial.
 '''
 stderr = '''
-warning: [SL-0] clice worker crashed in: clice/worker/compileUnit ${WS}/poison.cpp
+warning: [SL-0] clice worker crashed in: clice/worker/compileUnit poison.cpp
 error: Last stderr of crashed worker SL-0:
-clice worker crashed in: clice/worker/compileUnit ${WS}/poison.cpp
+clice worker crashed in: clice/worker/compileUnit poison.cpp
 error: Last output of crashed worker SL-0:
+#time.785 [info] stateless.cpp:723 Starting stateless worker
+#time.785 [info] stateless.cpp:761 Stateless worker ready, waiting for requests
+#time.805 [info] [thread 2] stateless.cpp:540 [perf:build] kind=compile_unit file=healthy.cpp bytes=0 findings=1 compile_ms=2 index_ms=0 teardown_ms=0 total_ms=2
+#time.808 [fatal] clice crashed
 error: [anomaly:WorkerCrash] Worker SL-0 ${CRASH} (crash streak: 0)
-warning: Lint gave up on ${WS}/poison.cpp: it crashed the worker: ${CRASH}
+warning: Lint gave up on poison.cpp: it crashed the worker: ${CRASH}
 '''
 exit = 2

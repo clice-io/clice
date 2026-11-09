@@ -31,7 +31,9 @@ inline std::expected<std::pair<Spelling, LoadedSettings>, ProjectError>
         return std::unexpected(ProjectError{.message = std::move(root.error()), .exit_code = 2});
     }
     options.configuration = where.build.configuration;
-    auto loaded = load_settings(CanonicalPath(*root), options);
+    CanonicalPath canonical(*root);
+    logging::set_project_roots({canonical.str()});
+    auto loaded = load_settings(canonical, options);
     std::vector<std::string> errors;
     for(auto& issue: loaded.issues) {
         auto text = location(issue.file, issue.line, issue.column) + issue.message;
@@ -254,7 +256,7 @@ inline void show_path(FileTable& files, std::string& path) {
 
 /// Batch startup: the command's settings with the run's overrides
 /// (`workers` for the project's), the session file logger, and the worker
-/// pool. `log_tag` names the log files after the subcommand.
+/// pool. `log_tag` names the run's log after the subcommand.
 inline bool start_batch(BatchRun& run,
                         const BatchProject& batch,
                         std::uint32_t workers,
@@ -271,9 +273,10 @@ inline bool start_batch(BatchRun& run,
         cfg.max_stateless_worker_count = workers;
     }
 
+    logging::stderr_logger(log_tag);
     if(!cfg.logging_dir.empty()) {
-        auto session_log_dir = logging::session_log_directory(cfg.logging_dir);
-        if(logging::file_logger(log_tag, session_log_dir)) {
+        auto session_log_dir = logging::start_session_log(cfg.logging_dir);
+        if(logging::file_logger(session_log_dir)) {
             LOG_INFO("Session log directory: {}", session_log_dir);
             run.log_dir = std::move(session_log_dir);
         }

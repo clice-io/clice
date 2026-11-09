@@ -106,12 +106,13 @@ int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
     logging::options.never_block_stderr = true;
     logging::stderr_logger("master");
 
-    LOG_INFO("clice master starting: version={}, target={}, pid={}, mode={}, workspace={}",
+    LOG_INFO("clice {} ({}) starting, pid {}, over {}{}",
              clice::version,
              clice::target,
              sys::pid(),
-             opts.mode == ServerMode::Pipe ? "pipe" : "socket",
-             opts.workspace.empty() ? "<from LSP initialize>" : opts.workspace);
+             opts.mode == ServerMode::Pipe ? "stdio" : "a socket",
+             opts.workspace.empty() ? std::string()
+                                    : std::format(", for the workspace {}", opts.workspace));
 
     if(opts.mode == ServerMode::Socket && (opts.port <= 0 || opts.port > 65535)) {
         LOG_ERROR("--port must be between 1 and 65535 in socket mode");

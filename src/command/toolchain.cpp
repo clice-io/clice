@@ -603,9 +603,9 @@ std::expected<Toolchain::ResolvedCommand, std::string> Toolchain::resolve(Comman
     if(admission.kind == QueryAdmission::Kind::Ready) {
         bool runs_compiler = commands.get(id).query_toolchain;
         if(runs_compiler) {
-            LOG_WARN("Toolchain query miss: driver={} kind={}",
-                     commands.get(id).driver,
-                     input.value);
+            LOG_DEBUG("Asking {} for its settings for {}, not asked at the start",
+                      commands.get(id).driver,
+                      input.value);
         }
 
         auto [ended] = async::run(query_one(admission.spec));
@@ -679,7 +679,7 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     }
 
     auto total = pending.size();
-    LOG_INFO("Warming toolchain cache: {} unique queries", total);
+    LOG_DEBUG("Asking {} compilers for their default settings", total);
 
     // Run the queries concurrently on a local event loop. The interface
     // stays synchronous: block until all complete, then fill the cache here.
@@ -717,14 +717,17 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
         if(o.result) {
             succeeded += 1;
         } else if(o.chosen) {
-            LOG_ERROR("Toolchain query failed: {}", o.result.error());
+            LOG_GUIDANCE(
+                "Cannot ask the compiler for its default settings: {}; clang's own "
+                "driver reads its commands",
+                o.result.error());
         } else {
-            LOG_WARN("Toolchain query of the builtin command failed: {}", o.result.error());
+            LOG_WARN("Cannot ask clice's default compiler for its settings: {}", o.result.error());
         }
         commit_query(o.key, o.command, o.result);
     }
 
-    LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);
+    LOG_INFO("Asked {} compilers for their default settings; {} failed", total, total - succeeded);
 }
 
 Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
@@ -732,7 +735,7 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
                                              const RenderOptions& opts) {
     auto resolution = resolve(ref.command, ref.language);
     if(!resolution) {
-        LOG_WARN("Toolchain resolve failed for {}: {}",
+        LOG_WARN("Cannot read the command of {} as its compiler does: {}",
                  files.resolve(ref.file),
                  resolution.error());
         return {.argv = render_for_clang(ref, path, opts)};

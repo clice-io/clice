@@ -95,17 +95,17 @@ struct LogLevelOption {
     void apply() const {
         auto level = [&] {
             switch(log_level) {
-                case LogLevel::Trace: return logging::Level::trace;
-                case LogLevel::Debug: return logging::Level::debug;
-                case LogLevel::Info: return logging::Level::info;
-                case LogLevel::Warn: return logging::Level::warn;
-                case LogLevel::Error: return logging::Level::err;
-                case LogLevel::Off: return logging::Level::off;
+                case LogLevel::Trace: return logging::Level::Trace;
+                case LogLevel::Debug: return logging::Level::Debug;
+                case LogLevel::Info: return logging::Level::Info;
+                case LogLevel::Warn: return logging::Level::Warn;
+                case LogLevel::Error: return logging::Level::Error;
+                case LogLevel::Off: return logging::Level::Off;
             }
             std::unreachable();
         }();
         logging::options.stderr_level = level;
-        logging::options.level = std::min(level, logging::Level::info);
+        logging::options.level = std::min(level, logging::Level::Info);
     }
 };
 

@@ -480,7 +480,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
     auto& entry = project.pcms[node];
     if(!committed.has_value()) {
         entry.retire(&*project.store, "pcm");
-        LOG_WARN("Failed to commit PCM for module {}", module_name);
+        LOG_WARN("Cannot store the PCM of module {}", module_name);
         co_return Result::Failed;
     }
     entry.publish(&*project.store,
@@ -750,13 +750,18 @@ async::task<std::optional<BuiltImports>> Project::build_imports(Fid file,
         waited.push_back(module);
     }
     auto waits = co_await wait_modules(options.attempt, waited, [&](NodeId module) {
-        LOG_INFO("Import {} of {} failed to build; the parse reports it",
-                 file_table.resolve(module.file()),
-                 file_table.resolve(file));
         built.failed.push_back(module);
     });
     if(waits == Result::Stale) {
         co_return std::nullopt;
+    }
+    if(!built.failed.empty()) {
+        LOG_INFO("Imports of {} failed to build: {}; the parse reports them",
+                 file_table.resolve(file),
+                 llvm::join(llvm::map_range(
+                                built.failed,
+                                [&](NodeId module) { return dep_graph.module_of(module.file()); }),
+                            ", "));
     }
     co_return built;
 }

@@ -3,5 +3,8 @@ stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
-stderr = "error: Invalid compilation database in ${WS}/compile_commands.json. Skipping item at index 0 (a.cpp): it holds bytes that are not UTF-8."
+stderr = '''
+warning: Skipping entry 0 of the compilation database compile_commands.json: a.cpp holds bytes that are not UTF-8
+warning: 1 entries of the compilation database compile_commands.json are skipped; the log names them
+'''
 exit = 0

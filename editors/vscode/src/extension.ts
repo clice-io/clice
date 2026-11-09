@@ -14,6 +14,7 @@ import {
     StreamInfo,
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
+import { serverOutput } from "./log";
 import { exitsWithin, retire } from "./process";
 import { getSetting, Setting, variable, workspaceDirectory } from "./setting";
 import { registerAliasRedirect } from "./feature/aliases";
@@ -351,6 +352,7 @@ export async function activate(context: ExtensionContext) {
             vscode.workspace.getConfiguration("clice").get<object>("initializationOptions"),
         outputChannel: channel,
         traceOutputChannel: traceChannel,
+        stdioOptions: serverOutput,
         middleware: {
             provideDocumentSemanticTokens: inactive.full,
             provideDocumentSemanticTokensEdits: inactive.edits,

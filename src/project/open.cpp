@@ -82,7 +82,9 @@ void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
     }
     for(auto id: sources) {
         if(auto loaded = project.cdb.load_source(id)) {
-            LOG_INFO("Loaded CDB from {} with {} entries", project.cdb.source_path(id), *loaded);
+            LOG_INFO("Loaded the compilation database {} ({} entries)",
+                     project.cdb.source_path(id),
+                     *loaded);
             entries += *loaded;
         } else if(!fs::exists(project.cdb.source_path(id))) {
             LOG_WARN("Compilation database {} does not exist yet", project.cdb.source_path(id));
@@ -122,8 +124,8 @@ void load_members(Project& project,
     double accuracy =
         found > 0 ? 100.0 * static_cast<double>(scan.includes_resolved) / found : 100.0;
     LOG_INFO(
-        "Dependency scan: {}ms, {} files ({} source + {} header, {} reused), "
-        "{}/{} includes resolved ({:.1f}%), {} waves",
+        "Scanned the includes of {1} files in {0} ms ({2} sources, {3} headers, {4} unchanged): "
+        "{5} of {6} includes found ({7:.1f}%), in {8} waves",
         scan.elapsed_ms,
         scan.total_files,
         scan.source_files,

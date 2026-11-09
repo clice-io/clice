@@ -66,34 +66,66 @@ MasterServer::~MasterServer() {
     logging::set_notify_hook(nullptr);
 }
 
+/// The values of `actual` that `defaults` does not have, as `a.b = <JSON>`.
+static void differing(simdjson::dom::element actual,
+                      simdjson::dom::element defaults,
+                      const std::string& prefix,
+                      std::vector<std::string>& out) {
+    simdjson::dom::object fields, default_fields;
+    if(!actual.get_object().get(fields) && !defaults.get_object().get(default_fields)) {
+        for(auto [key, value]: fields) {
+            auto name = prefix.empty() ? std::string(key) : std::format("{}.{}", prefix, key);
+            simdjson::dom::element default_value;
+            if(default_fields[key].get(default_value)) {
+                out.push_back(std::format("{} = {}", name, simdjson::minify(value)));
+            } else {
+                differing(value, default_value, name, out);
+            }
+        }
+        return;
+    }
+    auto text = simdjson::minify(actual);
+    if(text != simdjson::minify(defaults)) {
+        out.push_back(std::format("{} = {}", prefix, text));
+    }
+}
+
 void MasterServer::log_settings(const ServedProject& project) const {
-    if(project.settings_file.empty()) {
-        LOG_INFO("Configuration file: Missing (project {})", project.project.root);
-    } else {
-        auto text = vfs::read_text(project.settings_file);
-        LOG_INFO("Configuration file {}:\n{}",
-                 project.settings_file,
-                 text.value_or("<unreadable>"));
+    llvm::SmallVector<std::string_view> sources;
+    if(!project.settings_file.empty()) {
+        sources.push_back("clice.toml");
     }
-    if(!init_options) {
-        LOG_INFO("initializationOptions: Missing");
-    } else if(auto json = json::to_string(*init_options)) {
-        auto pretty = json::prettify(*json);
-        LOG_INFO("initializationOptions:\n{}", pretty ? *pretty : *json);
+    if(init_options) {
+        sources.push_back("initializationOptions");
     }
-    if(auto json = json::to_string(project.project.settings)) {
-        auto pretty = json::prettify(*json);
-        LOG_INFO("Effective configuration:\n{}", pretty ? *pretty : *json);
+    auto actual = json::to_string(project.project.settings);
+    auto defaults = json::to_string(Settings{});
+    simdjson::dom::parser actual_parser, defaults_parser;
+    simdjson::dom::element actual_root, defaults_root;
+    std::vector<std::string> changed;
+    if(actual && defaults && !actual_parser.parse(*actual).get(actual_root) &&
+       !defaults_parser.parse(*defaults).get(defaults_root)) {
+        differing(actual_root, defaults_root, "", changed);
     }
+    LOG_INFO("Settings of the project at {}, from {}: {}",
+             project.project.root,
+             sources.empty() ? "the defaults alone" : llvm::join(sources, " and "),
+             changed.empty() ? "the defaults" : llvm::join(changed, ", "));
 }
 
 void MasterServer::log_into(const ServedProject& project) {
     auto& logging_dir = project.project.settings.project.logging_dir;
-    if(!log_dir.empty() || logging_dir.empty()) {
+    if(logging_dir.empty()) {
         return;
     }
-    auto dir = logging::session_log_directory(logging_dir);
-    if(!logging::file_logger("master", dir)) {
+    if(!log_dir.empty()) {
+        if(fs::path::parent(log_dir) != std::string_view(logging_dir)) {
+            logging::link_session_log(logging_dir, log_dir);
+        }
+        return;
+    }
+    auto dir = logging::start_session_log(logging_dir);
+    if(!logging::file_logger(dir)) {
         return;
     }
     LOG_INFO("Session log directory: {}", dir);
@@ -101,11 +133,22 @@ void MasterServer::log_into(const ServedProject& project) {
     pool.log_to(std::move(dir));
 }
 
+void MasterServer::show_paths_relative() const {
+    std::vector<std::string> roots;
+    for(auto& project: projects) {
+        if(!project->project.root.empty()) {
+            roots.push_back(project->project.root.str());
+        }
+    }
+    logging::set_project_roots(roots);
+}
+
 void MasterServer::initialize() {
     for(auto& root: project_roots()) {
         projects.push_back(make_project(std::move(root)));
     }
     projects_generation += 1;
+    show_paths_relative();
     watch_settings();
     for(auto& project: projects) {
         project->configure(init_options, taken_cache_dirs());
@@ -145,7 +188,7 @@ void MasterServer::initialize() {
         log_settings(*project);
     }
 
-    LOG_INFO("Server ready (projects={}, stateful={}, stateless={})",
+    LOG_INFO("Server ready: {} projects, {} stateful and {} stateless workers",
              projects.size(),
              pool_opts.stateful_count,
              pool_opts.stateless_count);

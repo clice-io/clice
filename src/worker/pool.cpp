@@ -233,7 +233,7 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
 
     worker_tasks.spawn(monitor_loop());
 
-    LOG_INFO("WorkerPool started: {} stateless, {} stateful workers keeping {} documents compiled",
+    LOG_INFO("Worker pool started: {} stateless, {} stateful workers keeping {} documents compiled",
              stateless_workers.size(),
              stateful_workers.size(),
              max_resident);
@@ -241,7 +241,7 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
 }
 
 async::task<> WorkerPool::stop() {
-    LOG_INFO("WorkerPool stopping...");
+    LOG_DEBUG("Stopping the worker pool");
     stop_scope.cancel();
     fail_pending_requests();
     capacity_returned.set();
@@ -267,13 +267,13 @@ async::task<> WorkerPool::stop() {
     watchdog.cancel();
     co_await watchdog.join();
 
-    LOG_INFO("WorkerPool stopped");
+    LOG_DEBUG("Worker pool stopped");
 }
 
 async::task<> WorkerPool::kill_stragglers() {
     // Time is the feature: the grace a worker gets after SIGTERM.
     co_await async::sleep(chrono::milliseconds(5000), loop);
-    LOG_WARN("Workers still alive 5s after SIGTERM; sending SIGKILL");
+    LOG_WARN("Workers still running 5 s after being asked to stop; killing them");
     for(bool stateful: {false, true}) {
         for(auto& w: workers(stateful)) {
             if(w.state == SlotState::Alive) {
@@ -395,7 +395,7 @@ async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     // processing.
     if(!stateful && stateless_workers[index].scaling_down) {
         auto& w = stateless_workers[index];
-        LOG_INFO("Worker {} scaled down", w.name);
+        LOG_DEBUG("Worker {} stopped", w.name);
         w.state = SlotState::ScaledDown;
         w.scaling_down = false;
         w.generation += 1;
@@ -425,7 +425,7 @@ async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         // The pool killed this worker on purpose; the work it lost was
         // signalled to its sender. Bring the capacity back immediately,
         // without touching the crash budget.
-        LOG_INFO("Worker {} killed on purpose, respawning", w.name);
+        LOG_DEBUG("Worker {} was stopped by clice; starting it again", w.name);
         w.state = SlotState::Respawning;
         mark_done.death->done.set();
         worker_tasks.spawn(respawn_after(index, stateful, chrono::milliseconds(0)));
@@ -552,9 +552,9 @@ bool WorkerPool::process_crash(std::size_t index,
     }
 
     if(w.crash_streak > options.max_crash_streak) {
-        LOG_ERROR("Worker {} exceeded crash budget ({} consecutive), giving up",
-                  w.name,
-                  options.max_crash_streak);
+        LOG_WARN("Worker {} crashed more than {} times in a row; not started again",
+                 w.name,
+                 options.max_crash_streak);
         give_up_slot(index, stateful);
         return false;
     }
@@ -623,7 +623,7 @@ async::task<> WorkerPool::respawn_after(std::size_t index,
                                         chrono::milliseconds delay) {
     while(true) {
         if(delay.count() > 0) {
-            LOG_INFO("Worker {} respawn delayed by {}ms (crash streak {})",
+            LOG_INFO("Worker {} starts again in {} ms ({} crashes in a row)",
                      slot(index, stateful).name,
                      delay.count(),
                      slot(index, stateful).crash_streak);
@@ -635,7 +635,7 @@ async::task<> WorkerPool::respawn_after(std::size_t index,
 
         auto& w = slot(index, stateful);
         if(launch(index, stateful)) {
-            LOG_INFO("Worker {} started (crash streak {})", w.name, w.crash_streak);
+            LOG_INFO("Worker {} started again ({} crashes in a row)", w.name, w.crash_streak);
             co_return;
         }
 
@@ -643,7 +643,7 @@ async::task<> WorkerPool::respawn_after(std::size_t index,
         // treat it like another crash in the streak and back off harder.
         w.crash_streak += 1;
         if(w.crash_streak > options.max_crash_streak) {
-            LOG_ERROR("Worker {} respawn failed permanently, giving up", w.name);
+            LOG_WARN("Worker {} cannot be started; not tried again", w.name);
             give_up_slot(index, stateful);
             co_return;
         }
@@ -684,7 +684,7 @@ void WorkerPool::revive_due() {
             // A fresh budget, not a pardon: if the workload that killed the
             // slot is still around, the budget bounds the damage again and
             // the next revival is one cooldown away.
-            LOG_INFO("Worker {} reviving after cooldown", w.name);
+            LOG_INFO("Worker {} starts again after its pause", w.name);
             w.fresh_budget();
             w.state = SlotState::Respawning;
             worker_tasks.spawn(
@@ -826,7 +826,7 @@ void WorkerPool::scale_down_worker(std::size_t index) {
     w.scaling_down = true;
     w.peer->close_output();
     w.proc.kill(SIGTERM);
-    LOG_INFO("Scaling down worker {}", w.name);
+    LOG_DEBUG("Stopping worker {}: there is less work", w.name);
 }
 
 async::task<> WorkerPool::monitor_loop() {
@@ -935,7 +935,7 @@ void WorkerPool::scale_up_worker() {
     auto& w = stateless_workers[index];
     w.fresh_budget();
     w.state = SlotState::Respawning;
-    LOG_INFO("Scaling up: {}", w.name);
+    LOG_DEBUG("Starting worker {}: there is more work", w.name);
     worker_tasks.spawn(respawn_after(index, false, chrono::milliseconds(0)));
 }
 

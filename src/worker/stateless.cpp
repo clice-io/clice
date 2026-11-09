@@ -76,8 +76,8 @@ static std::optional<std::string> write_preamble_index(llvm::StringRef blob,
                                                        llvm::StringRef output_path) {
     if(auto error = fs::write_file(output_path, blob)) {
         auto message =
-            std::format("failed writing pch.idx envelope {}: {}", output_path, error.message());
-        LOG_ERROR("BuildPCH: {}", message);
+            std::format("cannot write the PCH index {}: {}", output_path, error.message());
+        LOG_ERROR("{}", message);
         return message;
     }
     return std::nullopt;
@@ -144,6 +144,7 @@ static worker::PrecompiledBuildResult finish_precompiled(worker::PrecompiledBuil
     if(result.has_user_errors) {
         result.first_error = errors.front();
     }
+    result.error_count = static_cast<std::uint32_t>(errors.size());
     return result;
 }
 
@@ -417,7 +418,7 @@ static std::vector<worker::LocatedMessage> located_errors(CompilationUnit& unit)
 static worker::IncludeTreeResult
     handle_include_tree(const worker::IncludeTreeParams& params,
                         const std::shared_ptr<std::atomic_bool>& stop) {
-    LOG_INFO("IncludeTree request: file={}", params.file);
+    LOG_DEBUG("Include tree of {}", params.file);
     Timer timer;
     auto unit = compile({
         .kind = CompilationKind::Preprocess,
@@ -448,7 +449,7 @@ static worker::IncludeTreeResult
 static worker::CompileUnitResult
     handle_compile_unit(const worker::CompileUnitParams& params,
                         const std::shared_ptr<std::atomic_bool>& stop) {
-    LOG_INFO("Unit compile request: file={}", params.file);
+    LOG_DEBUG("Compiling the unit {}", params.file);
     Timer timer;
 
     // One parse serves every product of the plan. The command-affecting
@@ -701,6 +702,9 @@ static void
                     // faults, so it opens on the thread that runs the work.
                     auto work = [&] {
                         CrashScope crash_scope(worker::crash_tag(params));
+                        if constexpr(requires { params.project_root; }) {
+                            logging::set_project_roots({params.project_root});
+                        }
                         return handler(params, stop);
                     };
                     OwnMemoryPeak memory;

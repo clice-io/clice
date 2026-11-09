@@ -5,7 +5,7 @@ import { expect, test } from "vitest";
 import { computeStats, parsePerfLines, summarize, toChromeTrace } from "./logs.ts";
 
 const LINE =
-    "[2026-08-14 10:00:01.500] [info] [thread 7] [indexer.cpp:793] " +
+    "2026-08-14 10:00:01.500 [info] [thread 7] indexer.cpp:793 " +
     "[perf:index] progress=3/10 file=/w/a.cpp bytes=1024 index_ms=12.5 merge_ms=3";
 
 test("perf line parsing", () => {
@@ -87,11 +87,11 @@ test("stats percentiles", () => {
 
 test("trace lanes preserve process and thread identity", () => {
     const master = parsePerfLines(
-        "[2026-08-14 10:00:00.000] [info] [thread 1] [f:1] [perf:request] kind=Hover total_ms=4\n",
+        "2026-08-14 10:00:00.000 [info] f:1 [perf:request] kind=Hover total_ms=4\n",
         1,
     );
     const worker = parsePerfLines(
-        "[2026-08-14 10:00:00.050] [info] [thread 9] [f:2] [perf:query] kind=Hover total_ms=2\n",
+        "2026-08-14 10:00:00.050 [info] [thread 9] f:2 [perf:query] kind=Hover total_ms=2\n",
         2,
     );
     const trace = JSON.parse(toChromeTrace([...master, ...worker], { 2: "worker.log" })) as {
@@ -102,7 +102,7 @@ test("trace lanes preserve process and thread identity", () => {
     expect(meta?.args.name).toBe("worker.log");
     const spans = trace.traceEvents.filter((e) => e.ph === "X");
     expect(spans.map((e) => [e.pid, e.tid])).toEqual([
-        [1, 1],
+        [1, 0],
         [2, 9],
     ]);
 });
@@ -110,9 +110,9 @@ test("trace lanes preserve process and thread identity", () => {
 test("chrome trace reconstructs spans", () => {
     const events = parsePerfLines(
         [
-            "[2026-08-14 10:00:00.000] [info] [t] [f:1] [perf:startup] phase=dep_scan elapsed_ms=40",
+            "2026-08-14 10:00:00.000 [info] f:1 [perf:startup] phase=dep_scan elapsed_ms=40",
             // No total_ms/elapsed_ms duration — not representable as a span.
-            "[2026-08-14 10:00:00.100] [info] [t] [f:2] [perf:cache] ns=pch event=hit key=k",
+            "2026-08-14 10:00:00.100 [info] f:2 [perf:cache] ns=pch event=hit key=k",
             // No timestamp — cannot be placed on the timeline.
             "[perf:startup] phase=index_load elapsed_ms=5",
         ].join("\n"),
