@@ -589,7 +589,7 @@ private:
 
     clang::NestedNameSpecifier rewrite_specifier(clang::NestedNameSpecifier NNS, Policy policy);
 
-    /// What binds a template parameter (bound_argument).
+    /// What binds a template parameter (binding).
     struct Binding {
         /// The argument; null when unbound.
         const clang::TemplateArgument* argument = nullptr;

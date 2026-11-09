@@ -27,7 +27,7 @@ stdout = '''
             "node": "TypeLoc",
             "text": "typename both<T>::value_type",
             "queries": 1,
-            "steps": 12,
+            "steps": 11,
             "troubles": {
               "AmbiguousBase": 1
             }
@@ -46,7 +46,7 @@ stdout = '''
             "node": "TypeLoc",
             "text": "typename traits<F>::result",
             "queries": 1,
-            "steps": 6,
+            "steps": 7,
             "troubles": {
               "Cycle": 1
             }
