@@ -102,6 +102,8 @@ CrashScope::~CrashScope() {
     }
     if(reporting.load()) {
         for(;;) {
+            // No event: the end of the process, as the crash being reported
+            // ends it.
             this_thread::sleep_for(chrono::hours(1));
         }
     }

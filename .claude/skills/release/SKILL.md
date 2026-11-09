@@ -127,6 +127,10 @@ download that release's `*.symbols.tar.xz` (`.zip` for Windows; GSYM) and run:
 python scripts/symbolize.py crash.log --symbols clice.gsym
 ```
 
+Every packaged CI leg runs this path on its own package: the package's clice
+crashes on purpose and its trace symbolizes against the symbol package
+(`scripts/check_crash_symbols.py`).
+
 For core-dump-level debugging, fetch the full DWARF from the `debug-info-*`
 artifact of the main CI run that built the release (90-day retention; find
 it via the commit hash in the release notes). If the log predates the
