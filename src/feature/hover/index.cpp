@@ -119,7 +119,7 @@ auto hover_info(const index::IndexQuery& query,
         return std::nullopt;
     }
     if(info->kind == SymbolKind::Module) {
-        return module_hover(query, cursor, *info);
+        return module_hover(query, cursor, *info, documentation);
     }
     std::string definition;
     auto text = index::declared_text(query, symbol, cursor.site.file, RelationKind::Definition);
@@ -139,10 +139,13 @@ auto hover_info(const index::IndexQuery& query,
 
 auto module_hover(const index::IndexQuery& query,
                   const index::IndexQuery::Cursor& cursor,
-                  const index::SymbolInfo& module) -> HoverInfo {
+                  const index::SymbolInfo& module,
+                  const DocumentationOptions& documentation) -> HoverInfo {
     HoverInfo hover;
     hover.name = module.name;
     hover.kind = SymbolKind::Module;
+    hover.documentation =
+        feature::documentation(query, module.hash, cursor.site.file, documentation);
     auto units =
         query.gather(module.hash,
                      cursor.site.file,

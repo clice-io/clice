@@ -5,10 +5,12 @@ import :command.search_config;
 import :feature.code_actions;
 import :feature.code_completion.item;
 import :feature.code_completion;
+import :feature.documentation;
 import :feature.protocol;
 import :index.query;
 import :index.search;
 import :index.symbol;
+import :semantic.identity;
 import :semantic.symbol;
 import :semantic.token_class;
 import :support.fuzzy_matcher;
@@ -400,23 +402,24 @@ auto directive_completion(const CompletionName& completing,
     return completion_list(std::move(items), options.limit);
 }
 
-auto module_completion(const CompletionName& completing,
-                       llvm::StringRef text,
-                       const PositionMap& map,
-                       PositionEncoding encoding,
-                       Fid file,
-                       llvm::StringRef path,
-                       const DependencyGraph& graph,
-                       std::vector<OpenModule> open,
-                       FileTable& files,
-                       llvm::function_ref<ScanResult(llvm::StringRef)> declared_module,
-                       std::uint32_t limit) -> protocol::CompletionList {
+/// The modules an `import` or a module declaration being typed
+/// (`completing`) may name, each with its documentation: the unit's own
+/// partitions first, then the modules whose interface lies nearest the
+/// file — the fewest directories up from it to one holding the interface.
+/// The other open units provide what their buffers declare, the file what
+/// its text does.
+static auto module_completion(const CompletionName& completing, const CompletionInputs& inputs)
+    -> protocol::CompletionList {
+    auto& text = inputs.text;
+    auto limit = inputs.options.limit;
+    auto open = inputs.open_modules();
     std::vector<std::string> module_names;
     ModuleProviders providers;
+    std::string own_module;
     if(completing.kind == CompletionName::Kind::ModuleDeclaration) {
         // The declaration being typed provides nothing yet.
-        open.push_back({.file = file});
-        providers = module_providers(graph, open);
+        open.push_back({.file = inputs.file});
+        providers = module_providers(inputs.graph, open);
         module_names = complete_module_declaration(providers, completing.prefix);
     } else {
         // The module declaration precedes every import, and the
@@ -429,7 +432,7 @@ auto module_completion(const CompletionName& completing,
             // The fragment `module;` opened lasts unless the preprocessor
             // reads a declaration after it.
             bool opened = unit.in_global_fragment;
-            unit = declared_module(declared);
+            unit = inputs.declared_module(declared);
             unit.in_global_fragment = opened && unit.module_name.empty();
         }
         if(unit.in_global_fragment) {
@@ -437,17 +440,18 @@ auto module_completion(const CompletionName& completing,
             return completion_list({}, limit);
         }
         open.push_back({
-            .file = file,
+            .file = inputs.file,
             .name = unit.provided_module().str(),
             .internal = unit.is_internal_partition(),
         });
-        providers = module_providers(graph, open);
+        providers = module_providers(inputs.graph, open);
         module_names = complete_module_import(providers, completing.prefix, unit);
+        own_module = llvm::StringRef(unit.module_name).split(':').first.str();
     }
-    auto directory = path::parent(path);
+    auto directory = path::parent(inputs.path);
     auto up_to = [&](Fid provider) {
         std::uint32_t up = 0;
-        auto interface = llvm::StringRef(files.resolve(provider));
+        auto interface = llvm::StringRef(inputs.files.resolve(provider));
         for(auto dir: path::ancestors(directory)) {
             up += 1;
             if(path::is_within(interface, dir)) {
@@ -470,12 +474,29 @@ auto module_completion(const CompletionName& completing,
         item.kind = protocol::CompletionItemKind::Module;
         item.sort_text = std::format("{:05}", distance(name));
         item.text_edit = protocol::TextEdit{
-            .range = *map.range(completing.replace, encoding),
+            .range = *inputs.positions.range(completing.replace, inputs.encoding),
             .new_text = completing.closed ? name : name + ";",
         };
         items.push_back(std::move(item));
     }
-    return completion_list(std::move(items), limit);
+    auto list = completion_list(std::move(items), limit);
+    for(auto& item: list.items) {
+        auto module = item.label.starts_with(":") ? own_module + item.label : item.label;
+        auto doc = feature::documentation(inputs.query,
+                                          EntityTable::module_entity(module),
+                                          inputs.file,
+                                          inputs.documentation);
+        if(doc.empty()) {
+            continue;
+        }
+        auto shown = present(doc);
+        item.documentation = protocol::MarkupContent{
+            .kind = inputs.client.markdown ? protocol::MarkupKind::Markdown
+                                           : protocol::MarkupKind::PlainText,
+            .value = inputs.client.markdown ? shown.as_markdown() : shown.as_plain_text(),
+        };
+    }
+    return list;
 }
 
 auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
@@ -522,17 +543,7 @@ auto start_completion(const CompletionInputs& inputs) -> CompletionStart {
                                           limit);
             case CompletionName::Kind::Import:
             case CompletionName::Kind::ModuleDeclaration:
-                return module_completion(completing,
-                                         text,
-                                         inputs.positions,
-                                         inputs.encoding,
-                                         inputs.file,
-                                         inputs.path,
-                                         inputs.graph,
-                                         inputs.open_modules(),
-                                         inputs.files,
-                                         inputs.declared_module,
-                                         limit);
+                return module_completion(completing, inputs);
             default: break;
         }
     }

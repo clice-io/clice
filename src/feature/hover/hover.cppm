@@ -188,12 +188,13 @@ auto hover_info(const index::IndexQuery& query,
                 const index::IndexQuery::Cursor& cursor,
                 const DocumentationOptions& documentation) -> std::optional<HoverInfo>;
 
-/// A module name's card: the module and the unit defining it, named the
-/// way the user knows the file. Only the index knows the defining unit,
-/// across files.
+/// A module name's card: the module, the comment above its interface
+/// unit's declaration and that unit, named the way the user knows the file.
+/// Only the index knows the defining unit, across files.
 auto module_hover(const index::IndexQuery& query,
                   const index::IndexQuery::Cursor& cursor,
-                  const index::SymbolInfo& module) -> HoverInfo;
+                  const index::SymbolInfo& module,
+                  const DocumentationOptions& documentation) -> HoverInfo;
 
 /// Whether `offset` of `text`, lexed in `dialect`, is on a directive's
 /// line, where a card may be the directive's (directive_hover).

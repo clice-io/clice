@@ -73,6 +73,10 @@ std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bo
     };
     DocCommentChoice choice;
     for(auto relation_kind: {RelationKind::Declaration, RelationKind::Definition}) {
+        // An implementation unit declares its module too.
+        if(kind == SymbolKind::Module && relation_kind == RelationKind::Declaration) {
+            continue;
+        }
         index.for_each_relation(
             hash,
             anchor,

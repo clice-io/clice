@@ -28,7 +28,9 @@ std::optional<DeclaredText>
 /// as the compiled unit's doc_comment reads it: of its declarations,
 /// then its definitions, in first-hit order, the first a Doxygen comment
 /// documents, else the first any comment documents. With `inherit`, a
-/// method overriding another without one takes that method's.
+/// method overriding another without one takes that method's. A module's
+/// is the one above the declaration of its interface unit, a partition's
+/// own unit for a partition.
 std::string doc_comment(const IndexQuery& index, SymbolHash hash, Fid anchor, bool inherit);
 
 /// The source line each site lies on, for previews, each file read

@@ -1,0 +1,47 @@
+[answers.shapes.hover]
+markdown = '''
+**module** `shapes`
+
+Shapes and their areas.
+
+`${WS}/shapes.cppm`
+'''
+range = "import ⟦shapes⟧;"
+
+[answers.licensed.hover]
+markdown = '''
+**module** `licensed`
+
+`${WS}/licensed.cppm`
+'''
+range = "import ⟦licensed⟧;"
+
+[answers.adjacent.hover]
+markdown = '''
+**module** `adjacent`
+
+Copyright 2026 The Adjacent Authors. SPDX-License-Identifier: MIT
+
+`${WS}/adjacent.cppm`
+'''
+range = "import ⟦adjacent⟧;"
+
+[answers.declared.hover]
+markdown = '''
+**module** `shapes`
+
+Shapes and their areas.
+
+`${WS}/shapes.cppm`
+'''
+range = "export module ⟦shapes⟧;"
+
+[answers.partition.hover]
+markdown = '''
+**module** `shapes:circle`
+
+The circle and its area.
+
+`${WS}/shapes-circle.cppm`
+'''
+range = "export import :⟦circle⟧;"

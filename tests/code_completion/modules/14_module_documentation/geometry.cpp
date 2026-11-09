@@ -1,0 +1,2 @@
+module geometry;
+import :§(partition)

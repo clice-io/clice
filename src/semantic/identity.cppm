@@ -39,7 +39,7 @@ public:
     static std::uint64_t unresolved_macro(llvm::StringRef name);
 
     /// The entity of a named module, from its full name.
-    std::uint64_t module_entity(llvm::StringRef name);
+    static std::uint64_t module_entity(llvm::StringRef name);
 
     /// The entity of the symbol a declaration is named in — its enclosing
     /// named namespace, class, enum or function, normalized like an

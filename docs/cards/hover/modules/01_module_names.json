@@ -3,7 +3,7 @@
   "topic": "hover",
   "subtopic": "modules",
   "title": "Module names",
-  "summary": "A module name shows the file of its interface unit, in an `import` and in the module declaration",
+  "summary": "A module name shows the comment above its interface unit's module declaration and the file of that unit, in an `import` and in the module declaration",
   "prose": "",
   "status": "supported",
   "issues": [],
@@ -22,12 +22,12 @@
     },
     {
       "path": "math.cppm",
-      "text": "export module math;\n\nexport int double_it(int value) {\n    return value * 2;\n}\n",
+      "text": "/// Integer arithmetic.\nexport module math;\n\nexport int double_it(int value) {\n    return value * 2;\n}\n",
       "markers": [
         {
           "name": "declared_name",
-          "begin": 14,
-          "end": 14,
+          "begin": 38,
+          "end": 38,
           "range": false
         }
       ]
@@ -42,7 +42,7 @@
           "marker": "import_name",
           "value": {
             "hover": {
-              "markdown": "**module** `math`\n\n`${WS}/math.cppm`",
+              "markdown": "**module** `math`\n\nInteger arithmetic.\n\n`${WS}/math.cppm`",
               "range": {
                 "$place": "import ⟦math⟧;",
                 "path": "main.cpp",
@@ -65,17 +65,17 @@
           "marker": "declared_name",
           "value": {
             "hover": {
-              "markdown": "**module** `math`\n\n`${WS}/math.cppm`",
+              "markdown": "**module** `math`\n\nInteger arithmetic.\n\n`${WS}/math.cppm`",
               "range": {
                 "$place": "export module ⟦math⟧;",
                 "path": "math.cppm",
                 "range": {
                   "start": {
-                    "line": 0,
+                    "line": 1,
                     "character": 14
                   },
                   "end": {
-                    "line": 0,
+                    "line": 1,
                     "character": 18
                   }
                 }

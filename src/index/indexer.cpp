@@ -636,7 +636,7 @@ public:
             auto* index = file_index(fid);
             if(!index)
                 return;
-            auto hash = unit.get<EntityTable>().module_entity(name);
+            auto hash = EntityTable::module_entity(name);
 
             index->occurrences.emplace_back(range, hash);
             Relation relation{
