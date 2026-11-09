@@ -691,8 +691,11 @@ clang::QualType PseudoInstantiator::resolve_dependent_name(const clang::Dependen
         resolving.erase(DNT);
         LOG_DEBUG("{}→ '{}' (standard rule)", pad(), by_rule->getAsString());
         indent -= 1;
-        if(*by_rule != clang::QualType(DNT, 0) && cacheable && !inconclusive) {
+        if(cacheable && !inconclusive) {
             keep_resolution(cache.resolved, DNT, *by_rule, step);
+            if(by_canonical && *by_rule == clang::QualType(DNT, 0)) {
+                keep_resolution(cache.canonical_resolved, canonical, clang::QualType(), step);
+            }
         }
         return *by_rule;
     }

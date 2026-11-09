@@ -585,6 +585,38 @@ ZEST_CASE(StandardConditionalBase) {
     ZEXPECT(found.isSingleResult());
 }
 
+ZEST_CASE(StandardConditionalBasesNested) {
+    /// Each layer is chosen by a condition not known, between the layer
+    /// below and a class over it (MSVC's special member layers): looking
+    /// through every choice at every layer would double the work per layer.
+    add_focus("main.cpp", R"code(
+        namespace std {
+        template <bool B, class T, class F> struct conditional { using type = T; };
+        template <class T, class F> struct conditional<false, T, F> { using type = F; };
+        template <class T> constexpr bool trivial = __is_trivially_destructible(T);
+        template <class... Ts> struct base { void reset(); };
+        template <class B> struct over : B {};
+        template <class B, class... Ts>
+        using pick = typename conditional<(trivial<Ts> && ...), B, over<B>>::type;
+        template <class B, class... Ts>
+        using pick3 = pick<pick<pick<B, Ts...>, Ts...>, Ts...>;
+        template <class... Ts>
+        struct variant : pick3<pick3<pick3<pick3<base<Ts...>, Ts...>, Ts...>, Ts...>, Ts...> {
+            void f() { this->reset(); }
+        };
+        }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    ZASSERT(!nodes.members.empty());
+    types::TemplateResolver resolver(*unit, {.audit = true});
+    resolver.lookup(nodes.members.back());
+    ZASSERT(resolver.audits().size() == 1);
+    auto& audit = resolver.audits().front();
+    ZEXPECT(audit.troubles[static_cast<std::size_t>(types::Trouble::Steps)] == 0);
+}
+
 ZEST_CASE(StandardTypeRules) {
     /// The standard's traits answer by rule. One of a parameter that may be
     /// anything waits for it.

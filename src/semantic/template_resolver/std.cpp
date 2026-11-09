@@ -235,6 +235,16 @@ llvm::SmallVector<clang::QualType, 2>
 PseudoInstantiator::lookup_result
     PseudoInstantiator::lookup_through_alternatives(llvm::ArrayRef<clang::QualType> alternatives,
                                                     clang::DeclarationName name) {
+    /// Alternatives inside an alternative multiply: MSVC's special member
+    /// layers nest a conditional base in each of three choices, four deep.
+    /// Past the first, a condition not known leaves the member unfound, as
+    /// the library's definition does.
+    if(through_alternatives) {
+        give_up(Trouble::Undecided);
+        return lookup_result();
+    }
+    through_alternatives = true;
+    auto outermost = llvm::make_scope_exit([&] { through_alternatives = false; });
     auto frames = stack.size();
     std::optional<Found> common;
     for(auto [index, alternative]: views::enumerate(alternatives)) {

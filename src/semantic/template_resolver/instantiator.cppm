@@ -1264,6 +1264,10 @@ private:
     /// one element (may_keep_resolution).
     unsigned pack_narrowing = 0;
 
+    /// Whether a lookup is looking through the alternatives of a condition
+    /// not known (lookup_through_alternatives).
+    bool through_alternatives = false;
+
     /// Some answer came back empty or partial because a lookup or the
     /// deduction of a variable was already in progress (a recursive chain
     /// such as `callback_traits<F> : callback_traits<decltype(&F::operator())>`)
