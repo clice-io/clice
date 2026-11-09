@@ -193,7 +193,11 @@ ZEST_CASE(ModuleEmbeddingDiscarded) {
     database.add_command("/fake",
                          "b.cppm",
                          "clang++ -std=c++20 -fmodules-embed-all-files b.cppm"sv);
-    for(auto file: {"a.cppm", "b.cppm"}) {
+    database.add_command("/fake",
+                         "c.cppm",
+                         "clang++ -std=c++20 -Xclang -fmodules-embed-file=c.h c.cppm"sv);
+    database.add_command("/fake", "d.cppm", "clang++ -std=c++20 -fmodules-embed-file=d.h d.cppm"sv);
+    for(auto file: {"a.cppm", "b.cppm", "c.cppm", "d.cppm"}) {
         auto argv = render_entry(database, fake(file));
         ZASSERT(argv.size() == 3U);
         ZEXPECT(argv[1] == "-std=c++20"sv);
