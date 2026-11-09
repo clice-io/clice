@@ -1186,7 +1186,9 @@ struct RecoveryFinder : clang::RecursiveASTVisitor<RecoveryFinder> {
 auto dependent_call_at(CompilationUnit& unit, std::uint32_t offset)
     -> std::optional<DependentCall> {
     auto focus = unit.focus_file();
-    auto stop = focus.location(identifier_at(focus.content(), offset).begin);
+    auto content = focus.content();
+    auto typed = word_at(content, offset).begin;
+    auto stop = focus.location(typed < offset && llvm::isDigit(content[typed]) ? offset : typed);
     RecoveryFinder finder(stop);
     for(auto* decl: unit.tu()->noload_decls()) {
         if(focus.offset(decl->getBeginLoc())) {

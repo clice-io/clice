@@ -25,7 +25,7 @@ struct Prefix {
     /// `content` is a whole buffer, a NUL after it.
     static auto from(llvm::StringRef content, std::uint32_t offset) -> Prefix {
         assert(offset <= content.size());
-        auto whole = identifier_at(content, offset);
+        auto whole = word_at(content, offset);
         return Prefix{
             .typed = LocalSourceRange(whole.begin, offset),
             .whole = whole,

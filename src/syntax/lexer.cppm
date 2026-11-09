@@ -49,10 +49,10 @@ inline bool is_identifier_char(char c) {
            static_cast<unsigned char>(c) >= 0x80;
 }
 
-/// The identifier `offset` is in or ends, by the lexer: a keyword's
-/// spelling is one, a number's is not; an empty range at `offset` for none.
+/// The identifier or number `offset` is in or ends, by the lexer, a
+/// keyword's spelling an identifier; an empty range at `offset` for none.
 /// `text` is a whole buffer, a NUL after it.
-LocalSourceRange identifier_at(llvm::StringRef text, std::uint32_t offset);
+LocalSourceRange word_at(llvm::StringRef text, std::uint32_t offset);
 
 struct LexerOptions {
     /// Emit comment tokens instead of dropping them.
