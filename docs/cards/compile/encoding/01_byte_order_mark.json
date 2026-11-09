@@ -14,6 +14,11 @@
       "markers": []
     },
     {
+      "path": "answer.h",
+      "text": "﻿#define ANSWER 42\n",
+      "markers": []
+    },
+    {
       "path": "c.cpp",
       "text": "﻿int user3() {\n    return 3;\n}\n\n#include \"a.h\"\n",
       "markers": []
@@ -31,6 +36,11 @@
     {
       "path": "embed.cpp",
       "text": "constexpr unsigned char data[] = {\n#embed \"data.bin\"\n};\n\nstatic_assert(sizeof(data) == 5);\n",
+      "markers": []
+    },
+    {
+      "path": "entered.cpp",
+      "text": "#include \"answer.h\"\n\n#if __has_embed(\"answer.h\")\nstatic_assert(ANSWER == 42);\n#endif\n",
       "markers": []
     },
     {
