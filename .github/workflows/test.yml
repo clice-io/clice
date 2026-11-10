@@ -70,6 +70,7 @@ jobs:
       os: windows-2025
       target: x86_64-w64-mingw32
       asset_name: clice.x86_64-w64-mingw32.zip
+      editor: true
       compat: true
 
   windows-arm64:

@@ -184,67 +184,70 @@ suite("server environment setting", function () {
     });
 });
 
-// Symlinks need a privilege Windows runners lack.
-if (process.platform !== "win32") {
-    suite("second names", function () {
-        test("an editor on a second name moves to the open document", async function () {
-            this.timeout(90 * 1000);
-            const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-alias-"));
-            fs.mkdirSync(path.join(root, "real"));
-            fs.writeFileSync(path.join(root, "real", "a.cpp"), "int a() { return 0; }\n");
-            fs.symlinkSync(path.join(root, "real"), path.join(root, "link"));
-            const secondUri = vscode.Uri.file(path.join(root, "link", "a.cpp"));
-            // Activated first, the extension hears of the second name's editor
-            // first; then the host stays busy while the selection the open
-            // asked for arrives, as a loaded CI runner's does.
-            await vscode.extensions.getExtension("clice-io.clice")?.activate();
-            const busy = vscode.window.onDidChangeActiveTextEditor((editor) => {
-                if (editor?.document.uri.toString() === secondUri.toString()) {
-                    const until = Date.now() + 500;
-                    while (Date.now() < until) {
-                        // Busy.
-                    }
-                }
-            });
-            try {
-                const first = await vscode.workspace.openTextDocument(
-                    vscode.Uri.file(path.join(root, "real", "a.cpp")),
-                );
-                await vscode.window.showTextDocument(first);
-                const second = await vscode.workspace.openTextDocument(secondUri);
-                await vscode.window.showTextDocument(second, {
-                    selection: new vscode.Range(0, 4, 0, 5),
-                    preview: false,
-                });
-                const tabs = () =>
-                    vscode.window.tabGroups.all
-                        .flatMap((group) => group.tabs)
-                        .filter((tab) => tab.input instanceof vscode.TabInputText)
-                        .map((tab) => (tab.input as vscode.TabInputText).uri.toString());
-                // The redirect shows the first document, then closes the
-                // second name's tab.
-                await until<unknown>(
-                    [
-                        vscode.window.tabGroups.onDidChangeTabs,
-                        vscode.window.onDidChangeActiveTextEditor,
-                    ],
-                    () =>
-                        !tabs().includes(second.uri.toString()) &&
-                        vscode.window.activeTextEditor?.document === first,
-                    "redirect to the open document",
-                );
-                const active = vscode.window.activeTextEditor;
-                assert.ok(active);
-                assert.deepStrictEqual(active.selection.start, new vscode.Position(0, 4));
-            } finally {
-                busy.dispose();
-                await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-                fs.rmSync(root, { recursive: true, force: true });
-            }
-        });
-    });
+/// A folder the test made, removed: VS Code lets go of the folder of a
+/// document outside the workspace a moment after its editor closes, and
+/// Windows removes no folder in use, so Node retries the removal.
+function removeFolder(root: string): void {
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10 });
 }
 
+suite("second names", function () {
+    test("an editor on a second name moves to the open document", async function () {
+        this.timeout(90 * 1000);
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-alias-"));
+        fs.mkdirSync(path.join(root, "real"));
+        fs.writeFileSync(path.join(root, "real", "a.cpp"), "int a() { return 0; }\n");
+        fs.symlinkSync(path.join(root, "real"), path.join(root, "link"));
+        const secondUri = vscode.Uri.file(path.join(root, "link", "a.cpp"));
+        // Activated first, the extension hears of the second name's editor
+        // first; then the host stays busy while the selection the open
+        // asked for arrives, as a loaded CI runner's does.
+        await vscode.extensions.getExtension("clice-io.clice")?.activate();
+        const busy = vscode.window.onDidChangeActiveTextEditor((editor) => {
+            if (editor?.document.uri.toString() === secondUri.toString()) {
+                const until = Date.now() + 500;
+                while (Date.now() < until) {
+                    // Busy.
+                }
+            }
+        });
+        try {
+            const first = await vscode.workspace.openTextDocument(
+                vscode.Uri.file(path.join(root, "real", "a.cpp")),
+            );
+            await vscode.window.showTextDocument(first);
+            const second = await vscode.workspace.openTextDocument(secondUri);
+            await vscode.window.showTextDocument(second, {
+                selection: new vscode.Range(0, 4, 0, 5),
+                preview: false,
+            });
+            const tabs = () =>
+                vscode.window.tabGroups.all
+                    .flatMap((group) => group.tabs)
+                    .filter((tab) => tab.input instanceof vscode.TabInputText)
+                    .map((tab) => (tab.input as vscode.TabInputText).uri.toString());
+            // The redirect shows the first document, then closes the
+            // second name's tab.
+            await until<unknown>(
+                [
+                    vscode.window.tabGroups.onDidChangeTabs,
+                    vscode.window.onDidChangeActiveTextEditor,
+                ],
+                () =>
+                    !tabs().includes(second.uri.toString()) &&
+                    vscode.window.activeTextEditor?.document === first,
+                "redirect to the open document",
+            );
+            const active = vscode.window.activeTextEditor;
+            assert.ok(active);
+            assert.deepStrictEqual(active.selection.start, new vscode.Position(0, 4));
+        } finally {
+            busy.dispose();
+            await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+            removeFolder(root);
+        }
+    });
+});
 // A previous server must be gone before the next one starts: it holds the
 // workspace's index lock until it has saved.
 suite("server retirement", function () {
@@ -360,18 +363,6 @@ suite("clice E2E", function () {
             await vscode.workspace
                 .getConfiguration("clice")
                 .update("executable", path.resolve(executable), vscode.ConfigurationTarget.Global);
-        }
-    });
-
-    suiteTeardown(function () {
-        if (bundled) {
-            const extension = vscode.extensions.getExtension("clice-io.clice");
-            if (extension) {
-                fs.rmSync(path.join(extension.extensionPath, "clice"), {
-                    recursive: true,
-                    force: true,
-                });
-            }
         }
     });
 
@@ -565,7 +556,14 @@ suite("clice E2E", function () {
         assert.strictEqual(shown?.uri.scheme, "clice-command");
         const text = shown.getText();
         assert.ok(text.startsWith(`# The command clice compiles ${scenario.file} with:`), text);
-        assert.ok(text.includes(document.uri.fsPath), "the command names the file");
+        // As the database spells it, which on Windows may write the drive
+        // and the separators otherwise than VS Code does.
+        const spelled = (file: string) =>
+            process.platform === "win32" ? file.replaceAll("\\", "/").toLowerCase() : file;
+        assert.ok(
+            spelled(text).includes(spelled(document.uri.fsPath)),
+            "the command names the file",
+        );
         await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
     });
 
@@ -697,7 +695,7 @@ suite("clice E2E", function () {
             );
         } finally {
             await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
-            fs.rmSync(root, { recursive: true, force: true });
+            removeFolder(root);
         }
     });
 
@@ -761,7 +759,7 @@ suite("clice E2E", function () {
             await listed(() => problems() > 0, "problems back with the tab");
         } finally {
             await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-            fs.rmSync(root, { recursive: true, force: true });
+            removeFolder(root);
         }
     });
 });

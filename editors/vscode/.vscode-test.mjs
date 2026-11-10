@@ -54,9 +54,15 @@ function stageBundledServer(from) {
 // Bundled-server variant: CLICE_EXECUTABLE is cleared so the extension takes the
 // clice/ fallback; a dedicated user-data-dir isolates it from the clice.executable
 // setting the other variants write. CLICE_E2E_BUNDLED_FROM flags the variant for
-// the test (which clears the staged dir on teardown).
+// the test. The staged server goes when this process exits, once VS Code has:
+// Windows deletes no program while something holds it, and a runner's own
+// process watching the programs it saw run holds the server as long as VS
+// Code runs.
 if (process.env.CLICE_EXECUTABLE) {
     stageBundledServer(process.env.CLICE_EXECUTABLE);
+    process.on("exit", () => {
+        fs.rmSync(path.join(extensionRoot, "clice"), { recursive: true, force: true });
+    });
     configs.push({
         label: "bundled-hello_world",
         files: "out/test/**/*.test.js",
