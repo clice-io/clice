@@ -231,12 +231,21 @@ void add_frontend_dirs(Job& job, llvm::ArrayRef<GCCSearchDir> printed, llvm::Str
     }
     auto args = ranges::to<std::vector>(parsed_args | views::transform(&LocalArg::view));
     auto base = cwd.empty() ? Spelling::cwd() : Spelling::absolute(cwd);
+    // A directory searched for frameworks is not the same search as for
+    // plain headers.
+    auto key = [](llvm::StringRef path, bool framework) {
+        auto key = lexical(path);
+        if(framework) {
+            key += '\0';
+        }
+        return key;
+    };
     llvm::StringSet<> named;
     for(auto& dir: extract_search_config(args, base).dirs) {
-        named.insert(lexical(dir.path));
+        named.insert(key(dir.path, dir.framework));
     }
     for(auto& dir: printed) {
-        if(!named.contains(lexical(Spelling(dir.path, base)))) {
+        if(!named.contains(key(Spelling(dir.path, base), dir.framework))) {
             job.args.insert(
                 job.args.end(),
                 {dir.framework ? "-internal-iframework" : "-internal-isystem", dir.path});
