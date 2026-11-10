@@ -864,7 +864,12 @@ public:
         }
 
         if(auto* OME = node.get<clang::ObjCMessageExpr>()) {
-            call(decls::objc_message_target(*OME), OME->getSelectorStartLoc());
+            // A property's accessor clang declares is no function the code
+            // has.
+            if(const auto* method = decls::objc_message_target(*OME);
+               method && !method->isImplicit()) {
+                call(method, OME->getSelectorStartLoc());
+            }
             return;
         }
 

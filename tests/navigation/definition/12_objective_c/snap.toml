@@ -8,7 +8,7 @@ definition = ["@synthesize x = ⟦_x⟧;"]
 definition = ["shape.h │ int ⟦_generation⟧;"]
 
 [answers.auto_ivar]
-definition = []
+definition = ["@property(nonatomic, copy) NSString *⟦name⟧;"]
 
 [answers.message]
 definition = ["- (void)⟦setX⟧:(int)x y:(int)y {"]

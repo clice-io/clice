@@ -1333,8 +1333,8 @@ auto this_hover(const clang::CXXThisExpr& expr,
     return info;
 }
 
-/// The card of an expression: `this`, `__func__`, a literal, or one whose
-/// value is known at compile time.
+/// The card of an expression: `this` or `self`, `__func__`, a literal, or
+/// one whose value is known at compile time.
 auto expr_hover(const SelectionTree::Node& node, const clang::Expr& expr, const Request& request)
     -> std::optional<HoverInfo> {
     auto& context = request.unit.context();
@@ -1356,6 +1356,12 @@ auto expr_hover(const SelectionTree::Node& node, const clang::Expr& expr, const 
     }
     if(const auto* this_expr = llvm::dyn_cast<clang::CXXThisExpr>(&expr)) {
         return this_hover(*this_expr, context, request.display);
+    }
+    if(expr.isObjCSelfExpr()) {
+        HoverInfo info;
+        info.name = "self";
+        info.definition = shown_type(context, expr.getType(), request.display).text;
+        return info;
     }
     if(const auto* predefined = llvm::dyn_cast<clang::PredefinedExpr>(&expr)) {
         return predefined_hover(*predefined, context, request.display);

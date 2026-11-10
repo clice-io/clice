@@ -29,7 +29,7 @@ SemanticTokenKind kind_of(const clang::NamedDecl* decl) {
     if(llvm::isa<clang::ConceptDecl>(decl)) {
         return Concept;
     }
-    if(llvm::isa<clang::BuiltinTemplateDecl>(decl)) {
+    if(llvm::isa<clang::BuiltinTemplateDecl, clang::ObjCCompatibleAliasDecl>(decl)) {
         return TypeAlias;
     }
     if(llvm::isa<clang::ObjCTypeParamDecl>(decl)) {
@@ -215,7 +215,7 @@ bool is_callable(clang::QualType type) {
     }
     type = type.getNonReferenceType();
     if(type->isFunctionPointerType() || type->isMemberFunctionPointerType() ||
-       type->isFunctionType()) {
+       type->isFunctionType() || type->isBlockPointerType()) {
         return true;
     }
     const auto* record = type->getAsCXXRecordDecl();

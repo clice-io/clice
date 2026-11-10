@@ -43,6 +43,8 @@ SymbolKind SymbolKind::from(const clang::Decl* decl) {
         return SymbolKind::Method;
     } else if(llvm::isa<clang::ObjCPropertyDecl>(decl)) {
         return SymbolKind::Property;
+    } else if(llvm::isa<clang::ObjCCompatibleAliasDecl>(decl)) {
+        return SymbolKind::Type;
     } else {
         return SymbolKind::Invalid;
     }

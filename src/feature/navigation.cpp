@@ -223,9 +223,10 @@ std::vector<Highlight>
     for(auto symbol: symbols) {
         auto kind = kind_of(symbol);
         // Only a variable is read or written; any other symbol is named.
-        bool accessed = kind && ranges::contains(std::array<SymbolKind, 3>{SymbolKind::Variable,
+        bool accessed = kind && ranges::contains(std::array<SymbolKind, 4>{SymbolKind::Variable,
                                                                            SymbolKind::Field,
-                                                                           SymbolKind::Parameter},
+                                                                           SymbolKind::Parameter,
+                                                                           SymbolKind::Property},
                                                  *kind);
         auto used = accessed ? HighlightKind::Read : HighlightKind::Text;
         add(symbol, RelationKind::Declaration, HighlightKind::Text);
@@ -337,8 +338,8 @@ std::vector<index::Site> references(const index::IndexQuery& index,
             }
         }
         if(index::name_form(info->flags) == index::NameForm::Selector) {
-            for(auto& peer: index::selector_peers(index, *info)) {
-                add(peer.symbol.hash, peer.site.file, {RelationKind::Candidate});
+            for(auto& other: index::same_selector_methods(index, *info)) {
+                add(other.symbol.hash, other.site.file, {RelationKind::Candidate});
             }
         }
         // Its constructors are named by the class's name; the name in a

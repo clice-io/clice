@@ -268,6 +268,22 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
         return std::unexpected(std::format("every declaration of `{}` is spelled by a macro",
                                            root.symbol.display_name()));
     }
+    // `@synthesize width;` binds the instance variable by its property's
+    // name: one token names both.
+    if(root.symbol.kind == SymbolKind::Field) {
+        for(auto& site: query.sites(root.symbol.hash, root.site.file, RelationKind::Reference)) {
+            auto named = query.symbol_at(site.file, site.range.begin);
+            if(named && ranges::any_of(named->symbols, [&](index::SymbolHash symbol) {
+                   auto info = query.symbol_info(symbol, site.file);
+                   return info && info->kind == SymbolKind::Property;
+               })) {
+                return std::unexpected(
+                    std::format("an `@synthesize` binds `{0}` by the name of its property, which a "
+                                "rename would change too; write `@synthesize {0} = {0};` first",
+                                root.symbol.name));
+            }
+        }
+    }
 
     RenameTarget target{.symbol = root};
     llvm::DenseSet<index::SymbolHash> seen;

@@ -64,6 +64,10 @@ struct OutlineEntry {
     /// The name is a presentation, `(anonymous struct)`.
     bool unnamed = false;
 
+    /// An Objective-C method or property, whose parent is its class
+    /// whichever container declares it: a category's member is no friend.
+    bool objc_member = false;
+
     /// The name comes out of a macro's body or a token paste and is
     /// written nowhere: the selection range is the macro invocation's.
     bool from_macro = false;

@@ -1047,11 +1047,16 @@ auto folding_ranges(SourceText& source,
             continue;
         }
 
+        // An Objective-C container closes with `@end`, past its last
+        // method's body: no block of its own.
+        if(content.slice(decl.extent.begin, decl.extent.end).rtrim().ends_with("@end")) {
+            continue;
+        }
+
         // The block keeps the name and signature visible like the AST
-        // folds do. It closes the declaration: an Objective-C container
-        // closes with `@end`, past its last method's body.
+        // folds do.
         auto group = last_brace_group(braces, decl.extent);
-        if(!group || group->end != decl.extent.end) {
+        if(!group) {
             continue;
         }
 

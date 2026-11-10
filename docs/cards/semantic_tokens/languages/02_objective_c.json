@@ -2125,6 +2125,26 @@
               },
               {
                 "at": {
+                  "$place": "void render(id thing, ⟦id⟧<Drawable> drawable, Shape *shape) {",
+                  "path": "main.m",
+                  "range": {
+                    "start": {
+                      "line": 54,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 54,
+                      "character": 24
+                    }
+                  }
+                },
+                "type": "typeAlias",
+                "modifiers": [
+                  "global"
+                ]
+              },
+              {
+                "at": {
                   "$place": "void render(id thing, id⟦<⟧Drawable> drawable, Shape *shape) {",
                   "path": "main.m",
                   "range": {
@@ -2138,7 +2158,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "bracket"
               },
               {
                 "at": {
@@ -2175,7 +2195,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "bracket"
               },
               {
                 "at": {
@@ -2397,6 +2417,7 @@
                 },
                 "type": "class",
                 "modifiers": [
+                  "modification",
                   "global"
                 ]
               },
@@ -2418,6 +2439,7 @@
                 "type": "field",
                 "modifiers": [
                   "static",
+                  "modification",
                   "member"
                 ]
               },
@@ -2585,7 +2607,8 @@
                 "type": "variable",
                 "modifiers": [
                   "definition",
-                  "local"
+                  "local",
+                  "callable"
                 ]
               },
               {
@@ -2696,7 +2719,8 @@
                 },
                 "type": "variable",
                 "modifiers": [
-                  "local"
+                  "local",
+                  "callable"
                 ]
               },
               {

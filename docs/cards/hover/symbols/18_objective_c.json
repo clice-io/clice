@@ -49,6 +49,12 @@
           "range": false
         },
         {
+          "name": "self",
+          "begin": 569,
+          "end": 569,
+          "range": false
+        },
+        {
           "name": "property_use",
           "begin": 584,
           "end": 584,
@@ -266,6 +272,13 @@
           }
         },
         {
+          "label": "self",
+          "marker": "self",
+          "value": {
+            "hover": {}
+          }
+        },
+        {
           "label": "property_use",
           "marker": "property_use",
           "value": {
@@ -293,7 +306,7 @@
           "marker": "untyped",
           "value": {
             "hover": {
-              "markdown": "**method** `draw` · protocol `Drawable`\n\nSomething that can be drawn.\n\n```cpp\n- (void)draw;\n```",
+              "markdown": "**method** `draw` · protocol `Drawable`\n\n```cpp\n- (void)draw;\n```",
               "range": {
                 "$place": "[thing ⟦draw⟧];",
                 "path": "main.m",

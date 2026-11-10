@@ -116,7 +116,8 @@ ZEST_CASE(ObjectiveCDialects) {
     const auto& objcxx = dialect_of("shape.mm", std::nullopt, "c11");
     ZEXPECT(objcxx.ObjC == 1U);
     ZEXPECT(objcxx.CPlusPlus == 1U);
-    ZEXPECT(objcxx.LangStd != clang::LangStandard::lang_c11);
+    ZEXPECT(objcxx.LangStd ==
+            clang::getDefaultLanguageStandard(clang::Language::CXX, llvm::Triple()));
     ZEXPECT(dialect_of("shape.h", clang::Language::ObjC).ObjC == 1U);
     ZEXPECT(dialect_of("shape.c").ObjC == 0U);
 }

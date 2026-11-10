@@ -107,6 +107,16 @@ auto objc_class(const clang::DeclContext* context) -> const clang::ObjCInterface
 /// selector names it instead.
 auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::ObjCMethodDecl*;
 
+/// The property an Objective-C instance variable stores when it
+/// synthesizes the variable with no @synthesize written; null otherwise.
+auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::ObjCPropertyDecl*;
+
+/// Where `@compatibility_alias Quill Pen;` writes the alias and the class:
+/// clang locates the declaration at its `@` alone. Invalid when a macro
+/// writes them.
+auto objc_alias_names(const clang::ObjCCompatibleAliasDecl& alias)
+    -> std::pair<clang::SourceLocation, clang::SourceLocation>;
+
 /// The nearest superclass method an Objective-C method overrides, null for
 /// none; getOverriddenMethods leaves out one only an @implementation or a
 /// category declares.

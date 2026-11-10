@@ -16,3 +16,8 @@ highlights = [
     { at = "[shape ⟦setX⟧:x y:0];", kind = "text" },
     { at = "[self ⟦setX⟧:self.x + 1 y:0];", kind = "text" },
 ]
+
+[answers.class_property]
+highlights = [
+    { at = "Shape.⟦count⟧ = 2;", kind = "write" },
+]

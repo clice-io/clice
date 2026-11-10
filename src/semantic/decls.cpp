@@ -463,8 +463,7 @@ auto normalize(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
 }
 
 auto objc_defined(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
-    if(const auto* implementation = llvm::dyn_cast<clang::ObjCImplementationDecl>(decl);
-       implementation && implementation->getClassInterface()) {
+    if(const auto* implementation = llvm::dyn_cast<clang::ObjCImplementationDecl>(decl)) {
         return implementation->getClassInterface();
     }
     if(const auto* implementation = llvm::dyn_cast<clang::ObjCCategoryImplDecl>(decl);
@@ -527,6 +526,33 @@ auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::
         }
     }
     return method;
+}
+
+auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::ObjCPropertyDecl* {
+    const auto* implementation =
+        llvm::dyn_cast<clang::ObjCImplementationDecl>(ivar.getDeclContext());
+    if(!ivar.getSynthesize() || !implementation) {
+        return nullptr;
+    }
+    const auto* synthesis = implementation->FindPropertyImplIvarDecl(ivar.getIdentifier());
+    return synthesis && synthesis->getBeginLoc().isInvalid() ? synthesis->getPropertyDecl()
+                                                             : nullptr;
+}
+
+auto objc_alias_names(const clang::ObjCCompatibleAliasDecl& alias)
+    -> std::pair<clang::SourceLocation, clang::SourceLocation> {
+    auto& context = alias.getASTContext();
+    auto after = [&](clang::SourceLocation location) -> clang::SourceLocation {
+        if(location.isInvalid()) {
+            return {};
+        }
+        auto token = clang::Lexer::findNextToken(location,
+                                                 context.getSourceManager(),
+                                                 context.getLangOpts());
+        return token ? token->getLocation() : clang::SourceLocation();
+    };
+    auto name = after(after(alias.getLocation()));
+    return {name, after(name)};
 }
 
 auto objc_overridden(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl* {

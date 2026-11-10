@@ -56,7 +56,7 @@ void render(id thing, id<Drawable> drawable, Shape *shape) {
     [thing draw];
     [drawable draw];
     [shape draw];
-    Shape.count = 2;
+    Shape.§(class_property)count = 2;
     SEL selector = @selector(setX:y:);
     void (^block)(void) = ^{
       [shape wobble];

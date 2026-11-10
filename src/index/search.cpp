@@ -5,6 +5,7 @@ import :index.query;
 import :index.search;
 import :index.search_index;
 import :index.tu_index;
+import :semantic.token_class;
 import :support.logging;
 
 namespace clice::index {
@@ -447,15 +448,18 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
     return results;
 }
 
-std::vector<IndexQuery::Located> selector_peers(const IndexQuery& index, const SymbolInfo& method) {
-    auto peers = locate(
+std::vector<IndexQuery::Located> same_selector_methods(const IndexQuery& index,
+                                                       const SymbolInfo& method) {
+    auto methods = locate(
         index,
         {.mode = SymbolQuery::Mode::Exact, .pattern = method.name, .kinds = {SymbolKind::Method}});
-    std::erase_if(peers, [&](const IndexQuery::Located& peer) {
-        return peer.symbol.hash == method.hash || peer.symbol.name != method.name ||
-               name_form(peer.symbol.flags) != NameForm::Selector;
+    std::erase_if(methods, [&](const IndexQuery::Located& other) {
+        return other.symbol.hash == method.hash ||
+               name_form(other.symbol.flags) != NameForm::Selector ||
+               other.symbol.token_class.has(SemanticTokenModifier::Static) !=
+                   method.token_class.has(SemanticTokenModifier::Static);
     });
-    return peers;
+    return methods;
 }
 
 }  // namespace clice::index

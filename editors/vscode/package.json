@@ -390,7 +390,11 @@
     ],
     "semanticTokenScopes": [
       {
+        "language": "c",
         "scopes": {
+          "keyword": [
+            "keyword.other"
+          ],
           "struct.global": [
             "entity.name.type.struct"
           ],
@@ -411,6 +415,9 @@
           ],
           "keyword.literal": [
             "constant.language"
+          ],
+          "keyword.documentation": [
+            "storage.type.class.doxygen"
           ],
           "primitive": [
             "storage.type.built-in.primitive"
@@ -451,6 +458,12 @@
           "bracket": [
             "punctuation.section.angle-brackets"
           ],
+          "comment.documentation": [
+            "comment.block.documentation"
+          ],
+          "parameter.documentation": [
+            "variable.parameter"
+          ],
           "templateParameter": [
             "variable.other.constant"
           ],
@@ -466,36 +479,91 @@
         }
       },
       {
-        "language": "c",
-        "scopes": {
-          "keyword": [
-            "keyword.other"
-          ],
-          "keyword.documentation": [
-            "storage.type.class.doxygen"
-          ],
-          "comment.documentation": [
-            "comment.block.documentation"
-          ],
-          "parameter.documentation": [
-            "variable.parameter"
-          ]
-        }
-      },
-      {
         "language": "cpp",
         "scopes": {
           "keyword": [
             "keyword.other"
           ],
+          "struct.global": [
+            "entity.name.type.struct"
+          ],
+          "struct.member": [
+            "entity.name.type.struct"
+          ],
+          "struct.local": [
+            "entity.name.type.struct"
+          ],
+          "struct.internal": [
+            "entity.name.type.struct"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control"
+          ],
+          "keyword.operator": [
+            "keyword.operator.wordlike"
+          ],
+          "keyword.literal": [
+            "constant.language"
+          ],
           "keyword.documentation": [
             "storage.type.class.doxygen"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive"
+          ],
+          "operator.userDefined": [
+            "entity.name.function.operator"
+          ],
+          "operator.declarator": [
+            "storage.modifier"
+          ],
+          "escape": [
+            "constant.character.escape"
+          ],
+          "formatSpecifier": [
+            "constant.other.placeholder"
+          ],
+          "number.affix": [
+            "keyword.other.unit.suffix"
+          ],
+          "number.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "string.affix": [
+            "storage.type.string"
+          ],
+          "string.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "character.affix": [
+            "storage.type.string"
+          ],
+          "directive": [
+            "keyword.control.directive"
+          ],
+          "header": [
+            "string.quoted.other.lt-gt.include"
+          ],
+          "bracket": [
+            "punctuation.section.angle-brackets"
           ],
           "comment.documentation": [
             "comment.block.documentation"
           ],
           "parameter.documentation": [
             "variable.parameter"
+          ],
+          "templateParameter": [
+            "variable.other.constant"
+          ],
+          "label": [
+            "entity.name.label"
+          ],
+          "attribute": [
+            "entity.other.attribute"
+          ],
+          "variable.constexpr": [
+            "variable.other.constant"
           ]
         }
       },
@@ -505,14 +573,86 @@
           "keyword": [
             "keyword.other"
           ],
+          "struct.global": [
+            "entity.name.type.struct"
+          ],
+          "struct.member": [
+            "entity.name.type.struct"
+          ],
+          "struct.local": [
+            "entity.name.type.struct"
+          ],
+          "struct.internal": [
+            "entity.name.type.struct"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control"
+          ],
+          "keyword.operator": [
+            "keyword.operator.wordlike"
+          ],
+          "keyword.literal": [
+            "constant.language"
+          ],
           "keyword.documentation": [
             "storage.type.class.doxygen"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive"
+          ],
+          "operator.userDefined": [
+            "entity.name.function.operator"
+          ],
+          "operator.declarator": [
+            "storage.modifier"
+          ],
+          "escape": [
+            "constant.character.escape"
+          ],
+          "formatSpecifier": [
+            "constant.other.placeholder"
+          ],
+          "number.affix": [
+            "keyword.other.unit.suffix"
+          ],
+          "number.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "string.affix": [
+            "storage.type.string"
+          ],
+          "string.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "character.affix": [
+            "storage.type.string"
+          ],
+          "directive": [
+            "keyword.control.directive"
+          ],
+          "header": [
+            "string.quoted.other.lt-gt.include"
+          ],
+          "bracket": [
+            "punctuation.section.angle-brackets"
           ],
           "comment.documentation": [
             "comment.block.documentation"
           ],
           "parameter.documentation": [
             "variable.parameter"
+          ],
+          "templateParameter": [
+            "variable.other.constant"
+          ],
+          "label": [
+            "entity.name.label"
+          ],
+          "attribute": [
+            "entity.other.attribute"
+          ],
+          "variable.constexpr": [
+            "variable.other.constant"
           ]
         }
       },
@@ -522,14 +662,86 @@
           "keyword": [
             "keyword.other"
           ],
+          "struct.global": [
+            "entity.name.type.struct"
+          ],
+          "struct.member": [
+            "entity.name.type.struct"
+          ],
+          "struct.local": [
+            "entity.name.type.struct"
+          ],
+          "struct.internal": [
+            "entity.name.type.struct"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control"
+          ],
+          "keyword.operator": [
+            "keyword.operator.wordlike"
+          ],
+          "keyword.literal": [
+            "constant.language"
+          ],
           "keyword.documentation": [
             "storage.type.class.doxygen"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive"
+          ],
+          "operator.userDefined": [
+            "entity.name.function.operator"
+          ],
+          "operator.declarator": [
+            "storage.modifier"
+          ],
+          "escape": [
+            "constant.character.escape"
+          ],
+          "formatSpecifier": [
+            "constant.other.placeholder"
+          ],
+          "number.affix": [
+            "keyword.other.unit.suffix"
+          ],
+          "number.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "string.affix": [
+            "storage.type.string"
+          ],
+          "string.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "character.affix": [
+            "storage.type.string"
+          ],
+          "directive": [
+            "keyword.control.directive"
+          ],
+          "header": [
+            "string.quoted.other.lt-gt.include"
+          ],
+          "bracket": [
+            "punctuation.section.angle-brackets"
           ],
           "comment.documentation": [
             "comment.block.documentation"
           ],
           "parameter.documentation": [
             "variable.parameter"
+          ],
+          "templateParameter": [
+            "variable.other.constant"
+          ],
+          "label": [
+            "entity.name.label"
+          ],
+          "attribute": [
+            "entity.other.attribute"
+          ],
+          "variable.constexpr": [
+            "variable.other.constant"
           ]
         }
       },
@@ -539,14 +751,86 @@
           "keyword": [
             "keyword.other"
           ],
+          "struct.global": [
+            "entity.name.type.struct"
+          ],
+          "struct.member": [
+            "entity.name.type.struct"
+          ],
+          "struct.local": [
+            "entity.name.type.struct"
+          ],
+          "struct.internal": [
+            "entity.name.type.struct"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control"
+          ],
+          "keyword.operator": [
+            "keyword.operator.wordlike"
+          ],
+          "keyword.literal": [
+            "constant.language"
+          ],
           "keyword.documentation": [
             "storage.type.class.doxygen"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive"
+          ],
+          "operator.userDefined": [
+            "entity.name.function.operator"
+          ],
+          "operator.declarator": [
+            "storage.modifier"
+          ],
+          "escape": [
+            "constant.character.escape"
+          ],
+          "formatSpecifier": [
+            "constant.other.placeholder"
+          ],
+          "number.affix": [
+            "keyword.other.unit.suffix"
+          ],
+          "number.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "string.affix": [
+            "storage.type.string"
+          ],
+          "string.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "character.affix": [
+            "storage.type.string"
+          ],
+          "directive": [
+            "keyword.control.directive"
+          ],
+          "header": [
+            "string.quoted.other.lt-gt.include"
+          ],
+          "bracket": [
+            "punctuation.section.angle-brackets"
           ],
           "comment.documentation": [
             "comment.block.documentation"
           ],
           "parameter.documentation": [
             "variable.parameter"
+          ],
+          "templateParameter": [
+            "variable.other.constant"
+          ],
+          "label": [
+            "entity.name.label"
+          ],
+          "attribute": [
+            "entity.other.attribute"
+          ],
+          "variable.constexpr": [
+            "variable.other.constant"
           ]
         }
       }

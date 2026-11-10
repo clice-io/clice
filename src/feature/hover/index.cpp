@@ -31,6 +31,15 @@ static std::optional<llvm::StringRef> before_body(const std::string& text) {
     return written.take_front(body->begin).rtrim();
 }
 
+/// The head of an Objective-C container, which closes with `@end`:
+/// `@interface Shape : Object <Drawable>`.
+static std::optional<llvm::StringRef> objc_head(llvm::StringRef text) {
+    if(!text.rtrim().ends_with("@end")) {
+        return std::nullopt;
+    }
+    return text.take_until([](char c) { return c == '{' || c == '\n'; }).rtrim();
+}
+
 auto hover_info(const index::SymbolInfo& info,
                 llvm::ArrayRef<index::SymbolInfo> scopes,
                 llvm::StringRef definition_text,
@@ -92,10 +101,13 @@ auto hover_info(const index::SymbolInfo& info,
             break;
         }
         case SymbolKind::Class:
+        case SymbolKind::Protocol:
         case SymbolKind::Struct:
         case SymbolKind::Union:
         case SymbolKind::Enum: {
-            if(auto head = before_body(hover.definition)) {
+            if(auto head = objc_head(hover.definition)) {
+                hover.definition = head->str() + " ... @end";
+            } else if(auto head = before_body(hover.definition)) {
                 hover.definition = head->str() + " { ... }";
             }
             break;

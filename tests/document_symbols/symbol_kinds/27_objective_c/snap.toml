@@ -206,7 +206,15 @@ document_symbols = [
             },
         ],
     },
-    { name = "Extras", kind = "Class", at = "@interface Shape (⟦Extras⟧)", detail = "category" },
+    {
+        name = "Extras",
+        kind = "Class",
+        at = "@interface Shape (⟦Extras⟧)",
+        detail = "category",
+        children = [
+            { name = "wobble", kind = "Method", at = "- (void)⟦wobble⟧;", detail = "-(void)" },
+        ],
+    },
 ]
 
 [answers."shape.h extents"]
@@ -286,5 +294,8 @@ document_symbols = [
         kind = "Class",
         at = "@interface Shape (⟦Extras⟧)",
         range = "⟦@interface Shape (Extras) … @end⟧ (3 lines)",
+        children = [
+            { name = "wobble", kind = "Method", at = "- (void)⟦wobble⟧;", range = "⟦- (void)wobble;⟧" },
+        ],
     },
 ]

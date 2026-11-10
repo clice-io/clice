@@ -645,7 +645,7 @@ auto outline(std::vector<OutlineEntry> entries,
         // A friend declaration names an entity of the enclosing scope; only
         // a hidden friend's definition lives nowhere else in the outline.
         if(parent && is_record(parent->entry.kind) && !node.entry.definition &&
-           node.entry.parent != parent->entry.entity) {
+           !node.entry.objc_member && node.entry.parent != parent->entry.entity) {
             continue;
         }
         (parent ? parent->children : roots).push_back(index);
@@ -767,6 +767,9 @@ private:
             name_range = category->getCategoryNameLoc();
         } else if(llvm::isa<clang::ObjCInterfaceDecl, clang::ObjCPropertyDecl>(named)) {
             definition = false;
+        } else if(const auto* alias = llvm::dyn_cast<clang::ObjCCompatibleAliasDecl>(named)) {
+            name_range = decls::objc_alias_names(*alias).first;
+            definition = false;
         }
 
         // A fragment's members outline at its top level.
@@ -808,6 +811,7 @@ private:
             .parent = entities.parent(&named),
             .definition = definition,
             .unnamed = symbol_name.unnamed,
+            .objc_member = llvm::isa<clang::ObjCMethodDecl, clang::ObjCPropertyDecl>(named),
             .from_macro = from_macro,
         });
         return true;
@@ -1114,6 +1118,8 @@ auto document_symbols(SourceText& source,
             .parent = info->parent,
             .definition = decl.definition,
             .unnamed = unnamed,
+            .objc_member = index::name_form(info->flags) == index::NameForm::Selector ||
+                           info->kind == SymbolKind::Property,
             .from_macro = !written.contains({decl.range.begin, decl.symbol}),
         });
     };

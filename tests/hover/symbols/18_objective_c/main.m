@@ -39,7 +39,7 @@ static int shapes;
 
 @implementation Shape (Extras)
 - (void)wobble {
-    [self setX:self.§(property_use)x + 1 y:0];
+    [§(self)self setX:self.§(property_use)x + 1 y:0];
 }
 @end
 

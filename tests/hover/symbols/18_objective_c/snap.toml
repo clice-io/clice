@@ -70,6 +70,9 @@ Moves the shape.
 '''
 range = "[shape setX:x ⟦y⟧:0];"
 
+[answers.self]
+hover = {}
+
 [answers.property_use.hover]
 markdown = '''
 **property** `x` · class `Shape`
@@ -83,8 +86,6 @@ range = "[self setX:self.⟦x⟧ + 1 y:0];"
 [answers.untyped.hover]
 markdown = '''
 **method** `draw` · protocol `Drawable`
-
-Something that can be drawn.
 
 ```cpp
 - (void)draw;

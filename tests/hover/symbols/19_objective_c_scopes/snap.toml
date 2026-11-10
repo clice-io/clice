@@ -1,0 +1,29 @@
+[answers.type_param.hover]
+markdown = '''
+**type** `ObjectType` · class `Box`
+
+```cpp
+typedef id ObjectType
+```
+'''
+range = "- (⟦ObjectType⟧)first;"
+
+[answers.tidy.hover]
+markdown = '''
+**method** `tidy` · class `Object(Extras)`
+
+```cpp
+- (void)tidy;
+```
+'''
+range = "- (void)⟦tidy⟧;"
+
+[answers.param.hover]
+markdown = '''
+**parameter** `x` · method `-[Pen :tail:]`
+
+```cpp
+int x
+```
+'''
+range = "width = ⟦x⟧ + y;"

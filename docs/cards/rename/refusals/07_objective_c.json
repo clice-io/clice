@@ -54,7 +54,7 @@
           "marker": "auto_ivar",
           "value": {
             "prepare_rename": {
-              "error": "`_name` has no declaration in the index to rename"
+              "error": "renaming the Objective-C property `name` is not supported: its accessors and the instance variable it synthesizes would have to change with it"
             }
           }
         },

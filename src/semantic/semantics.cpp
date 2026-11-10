@@ -1115,11 +1115,13 @@ void refer_selector(References& out,
         return;
     }
     auto selector = method->getSelector();
+    bool later = false;
     for(auto [index, piece]: views::enumerate(pieces)) {
         if(selector.getNameForSlot(static_cast<unsigned>(index)).empty()) {
             continue;
         }
-        out.push_back({.decl = method, .kind = kind, .location = piece, .later_piece = index != 0});
+        out.push_back({.decl = method, .kind = kind, .location = piece, .later_piece = later});
+        later = true;
     }
 }
 
@@ -1206,17 +1208,37 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
     }
 
     /// @synthesize name = _name;
-    ///             ^~~~   ^~~~~ definition of the ivar it names apart
+    ///             ^~~~   ^~~~~ the instance variable: a definition of one
+    ///             |            it synthesizes, a reference to one declared
     ///             reference to the property
-    /// What a property synthesizes with no @synthesize written is nowhere.
+    /// `@synthesize name;` binds the instance variable `name`, a reference
+    /// at the property's when the class declares it. What a property
+    /// synthesizes with no @synthesize written is nowhere.
     if(auto* PID = llvm::dyn_cast<clang::ObjCPropertyImplDecl>(D)) {
         if(PID->getBeginLoc().isInvalid()) {
             return true;
         }
         refer(out, PID->getPropertyDecl(), RelationKind::Reference, PID->getLocation());
-        if(auto location = PID->getPropertyIvarDeclLoc();
-           location.isValid() && location != PID->getLocation()) {
-            refer(out, PID->getPropertyIvarDecl(), RelationKind::Definition, location);
+        const auto* ivar = PID->getPropertyIvarDecl();
+        auto location = PID->getPropertyIvarDeclLoc();
+        if(ivar && location.isValid() &&
+           (location != PID->getLocation() || !ivar->getSynthesize())) {
+            refer(out,
+                  ivar,
+                  ivar->getSynthesize() ? RelationKind::Definition : RelationKind::Reference,
+                  location);
+        }
+        return true;
+    }
+
+    /// @compatibility_alias Quill Pen;
+    ///                      ^~~~~ ^~~ reference to the class
+    ///                      declaration
+    if(auto* CAD = llvm::dyn_cast<clang::ObjCCompatibleAliasDecl>(D)) {
+        auto [alias, name] = decls::objc_alias_names(*CAD);
+        if(name.isValid()) {
+            refer(out, CAD, RelationKind::Declaration, alias);
+            refer(out, CAD->getClassInterface(), RelationKind::Reference, name);
         }
         return true;
     }
@@ -1499,24 +1521,25 @@ void type_loc_references(clang::TypeLoc TL, References& out, types::TemplateReso
         return;
     }
     if(auto OOTL = TL.getAs<clang::ObjCObjectTypeLoc>()) {
-        for(unsigned index = 0; index < OOTL.getNumProtocols(); index += 1) {
-            refer(out,
-                  OOTL.getProtocol(index),
-                  RelationKind::Reference,
-                  OOTL.getProtocolLoc(index));
+        /// `id<Drawable>` and `Class<Drawable>` spell the typedef a bare
+        /// `id` or `Class` names.
+        if(OOTL.getNumProtocols() != 0) {
+            auto& context = OOTL.getProtocol(0)->getASTContext();
+            const auto* type = OOTL.getTypePtr();
+            const clang::NamedDecl* base = type->isObjCQualifiedId() ? context.getObjCIdDecl()
+                                           : type->isObjCQualifiedClass()
+                                               ? context.getObjCClassDecl()
+                                               : nullptr;
+            refer(out, base, RelationKind::Reference, OOTL.getBaseLoc().getBeginLoc());
         }
+        refer_protocols(out, OOTL.getTypePtr()->getProtocols(), OOTL.getProtocolLocs());
         return;
     }
     /// @interface Box<ObjectType> - (ObjectType)first;
     ///                                ^~~~ reference
     if(auto OTPTL = TL.getAs<clang::ObjCTypeParamTypeLoc>()) {
         refer(out, OTPTL.getDecl(), RelationKind::Reference, OTPTL.getNameLoc());
-        for(unsigned index = 0; index < OTPTL.getNumProtocols(); index += 1) {
-            refer(out,
-                  OTPTL.getProtocol(index),
-                  RelationKind::Reference,
-                  OTPTL.getProtocolLoc(index));
-        }
+        refer_protocols(out, OTPTL.getTypePtr()->getProtocols(), OTPTL.getProtocolLocs());
         return;
     }
 
@@ -1678,10 +1701,15 @@ void stmt_references(const clang::Stmt* S,
         bool untyped =
             receiver && !receiver->isObjCSelfExpr() &&
             (receiver->getType()->isObjCIdType() || receiver->getType()->isObjCClassType());
-        refer_selector(out,
-                       decls::objc_message_target(*OME),
-                       untyped ? RelationKind::Candidate : RelationKind::Reference,
-                       pieces);
+        auto kind = untyped ? RelationKind::Candidate : RelationKind::Reference;
+        const auto* method = decls::objc_message_target(*OME);
+        // An accessor clang declares for a property is written nowhere: the
+        // message names the property.
+        if(method && method->isImplicit()) {
+            refer(out, method->findPropertyDecl(), kind, pieces.front());
+            return;
+        }
+        refer_selector(out, method, kind, pieces);
         return;
     }
 
@@ -1712,9 +1740,14 @@ void stmt_references(const clang::Stmt* S,
     }
 
     /// _generation += 1;
-    /// ^~~~ reference
+    /// ^~~~ reference; to the property too of one the property synthesizes
+    /// with no @synthesize written, which no code declares
     if(auto* OIRE = llvm::dyn_cast<clang::ObjCIvarRefExpr>(S)) {
         refer(out, OIRE->getDecl(), RelationKind::Reference, OIRE->getLocation());
+        refer(out,
+              decls::objc_unwritten_property(*OIRE->getDecl()),
+              RelationKind::Reference,
+              OIRE->getLocation());
         return;
     }
 
@@ -2141,8 +2174,10 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semant
 bool is_written(const Semantics& semantics, std::uint32_t index) {
     auto& entry = semantics.node(index);
     auto* expr = entry.node.get<clang::Expr>();
-    if(!llvm::isa_and_present<clang::DeclRefExpr, clang::MemberExpr, clang::ObjCIvarRefExpr>(
-           expr)) {
+    if(!llvm::isa_and_present<clang::DeclRefExpr,
+                              clang::MemberExpr,
+                              clang::ObjCIvarRefExpr,
+                              clang::ObjCPropertyRefExpr>(expr)) {
         return false;
     }
 

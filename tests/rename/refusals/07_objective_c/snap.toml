@@ -1,5 +1,5 @@
 [answers.auto_ivar.prepare_rename]
-error = "`_name` has no declaration in the index to rename"
+error = "renaming the Objective-C property `name` is not supported: its accessors and the instance variable it synthesizes would have to change with it"
 
 [answers.untyped.prepare_rename]
 error = "renaming the Objective-C method `draw` is not supported: every method its messages may reach would have to change with it"

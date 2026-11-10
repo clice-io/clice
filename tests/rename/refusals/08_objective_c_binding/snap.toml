@@ -1,0 +1,2 @@
+[answers.width.prepare_rename]
+error = "an `@synthesize` binds `width` by the name of its property, which a rename would change too; write `@synthesize width = width;` first"

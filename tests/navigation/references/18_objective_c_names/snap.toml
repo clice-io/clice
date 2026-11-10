@@ -1,0 +1,34 @@
+[answers.writing_write]
+references = ["- (void)⟦write⟧; @+0"]
+
+[answers.width]
+references = ["int ⟦width⟧;", "@synthesize ⟦width⟧;", "⟦width⟧ = x + y;", "_ink = ⟦width⟧;"]
+
+[answers.ink]
+references = [
+    "@property(nonatomic) int ⟦ink⟧;",
+    "⟦_ink⟧ = width;",
+    "[quill ⟦setInk⟧:[quill ink] + 1];",
+    "[quill setInk:[quill ⟦ink⟧] + 1];",
+]
+
+[answers.tail]
+references = ["- (void):(int)x ⟦tail⟧:(int)y;", "- (void):(int)x ⟦tail⟧:(int)y {", "[quill :1 ⟦tail⟧:2];"]
+
+[answers.class_draw]
+references = ["+ (void)⟦draw⟧;", "+ (void)⟦draw⟧ {", "[kind ⟦draw⟧];"]
+
+[answers.instance_draw]
+references = ["- (void)⟦draw⟧;", "- (void)⟦draw⟧ {", "[thing ⟦draw⟧];"]
+
+[answers.pen]
+references = [
+    "@class ⟦Pen⟧;",
+    "@interface ⟦Pen⟧ : Object {",
+    "@interface ⟦Pen⟧ (Extras) <Writing>",
+    "@compatibility_alias Quill ⟦Pen⟧;",
+    "@implementation ⟦Pen⟧ : Object",
+    "@implementation ⟦Pen⟧ (Extras)",
+    "void use(⟦Quill⟧ *quill, Class kind, id thing, Box<Pen *> *box) {",
+    "void use(Quill *quill, Class kind, id thing, Box<⟦Pen⟧ *> *box) {",
+]
