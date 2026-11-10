@@ -75,6 +75,20 @@ test("summarize discriminates by kind and keeps only durations", () => {
     expect(Object.keys(summary).every((name) => name.endsWith("_ms"))).toBe(true);
 });
 
+test("a request's kind spelled as an older baseline spelled it joins its series", () => {
+    const summary = summarize(
+        parsePerfLines(
+            [
+                "[perf:request] kind=SemanticTokens file=/w/a.cpp total_ms=4",
+                "[perf:request] kind=semantic_tokens file=/w/a.cpp total_ms=6",
+                "[perf:query] kind=PCH path=/w/a.cpp total_ms=2",
+            ].join("\n"),
+        ),
+    );
+    expect(summary["request.semantic_tokens.total_ms"]?.count).toBe(2);
+    expect(summary["query.pch.total_ms"]?.count).toBe(1);
+});
+
 test("stats percentiles", () => {
     const stats = computeStats([5, 1, 3, 2, 4]);
     expect(stats?.count).toBe(5);
@@ -87,11 +101,11 @@ test("stats percentiles", () => {
 
 test("trace lanes preserve process and thread identity", () => {
     const master = parsePerfLines(
-        "[2026-08-14 10:00:00.000] [info] [thread 1] [f:1] [perf:request] kind=Hover total_ms=4\n",
+        "[2026-08-14 10:00:00.000] [info] [f:1] [perf:request] kind=hover total_ms=4\n",
         1,
     );
     const worker = parsePerfLines(
-        "[2026-08-14 10:00:00.050] [info] [thread 9] [f:2] [perf:query] kind=Hover total_ms=2\n",
+        "[2026-08-14 10:00:00.050] [info] [thread 9] [f:2] [perf:query] kind=hover total_ms=2\n",
         2,
     );
     const trace = JSON.parse(toChromeTrace([...master, ...worker], { 2: "worker.log" })) as {
@@ -102,7 +116,7 @@ test("trace lanes preserve process and thread identity", () => {
     expect(meta?.args.name).toBe("worker.log");
     const spans = trace.traceEvents.filter((e) => e.ph === "X");
     expect(spans.map((e) => [e.pid, e.tid])).toEqual([
-        [1, 1],
+        [1, 0],
         [2, 9],
     ]);
 });
@@ -110,9 +124,9 @@ test("trace lanes preserve process and thread identity", () => {
 test("chrome trace reconstructs spans", () => {
     const events = parsePerfLines(
         [
-            "[2026-08-14 10:00:00.000] [info] [t] [f:1] [perf:startup] phase=dep_scan elapsed_ms=40",
+            "[2026-08-14 10:00:00.000] [info] [f:1] [perf:startup] phase=dep_scan elapsed_ms=40",
             // No total_ms/elapsed_ms duration — not representable as a span.
-            "[2026-08-14 10:00:00.100] [info] [t] [f:2] [perf:cache] ns=pch event=hit key=k",
+            "[2026-08-14 10:00:00.100] [info] [f:2] [perf:cache] ns=pch event=hit key=k",
             // No timestamp — cannot be placed on the timeline.
             "[perf:startup] phase=index_load elapsed_ms=5",
         ].join("\n"),

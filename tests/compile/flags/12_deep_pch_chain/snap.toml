@@ -45,7 +45,7 @@ Indexed 3 translation units in #s: 3 file shards (# KB), 7 symbols.
     and 2 more errors
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
-stderr = "warning: PCH build failed for ${WS}/include/beta.h: unknown type name 'Alpha'; use of undeclared identifier 'alpha_value'"
+stderr = "warning: The PCH build of include/beta.h failed: unknown type name 'Alpha' (and 1 more error, all in the worker's log)"
 exit = 0
 
 [index."$ clice query references Alpha::a --include-declaration"]

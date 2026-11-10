@@ -7,21 +7,25 @@ import { test, type TestContext, type WorkerFault } from "@clice/tools/testing";
 // the worker ends as the crash would have ended it; and the crashed worker's
 // own log holds a backtrace with what offline symbolization
 // (scripts/symbolize.py) needs, the version and target line and each frame's
-// module with its load base, from the frame the crash interrupted. The
-// master's log never holds it.
+// module with its load base, from the frame the crash interrupted, which
+// the master's log quotes so that log alone tells how the worker died.
 
 const FRAME =
     /^0x[0-9a-fA-F]+(?:, .+\(0x[0-9a-fA-F]+\) \+ 0x[0-9a-fA-F]+ byte\(s\)| <unknown module>)( \(interrupted\))?$/;
 
-/// The crash's trace, in the one log that holds one: a worker's whose name
-/// starts with `prefix`.
+/// The crash's trace, in the one worker log that holds one: a worker's whose
+/// name starts with `prefix`.
 function checkTrace(logs: Map<string, string>, prefix: string): void {
-    const reports = [...logs].filter(([, text]) => text.includes("=== CRASH STACK TRACE ==="));
+    const reports = [...logs].filter(
+        ([name, text]) => name !== "master.log" && text.includes("=== CRASH STACK TRACE ==="),
+    );
     expect(reports.length).toBe(1);
     const [name, report] = reports[0] ?? ["", ""];
     expect(name.startsWith(prefix)).toBe(true);
     const section = report.slice(report.indexOf("=== CRASH STACK TRACE ===")).split(/\r?\n/);
-    expect(section[1]).toMatch(/^clice \S+ \S+$/);
+    expect(section[1]).toMatch(
+        /^clice \S+ \S+( https:\/\/github\.com\/clice-io\/clice\/tree\/[0-9a-f]{40})?$/,
+    );
     const frames = section.slice(2).filter((line) => FRAME.test(line));
     // The trace starts at the frame the crash interrupted, the only one marked.
     expect(frames[0]?.endsWith(" (interrupted)")).toBe(true);
@@ -42,7 +46,7 @@ function death(kind: WorkerFault["kind"]): string {
         return String.raw`killed by signal \d+ \(SIG\w+\)`;
     }
     return kind === "abort" || kind === "fatal"
-        ? "exited with code 3 "
+        ? String.raw`exited with code 3(?!\d)`
         : "terminated by exception 0x[0-9A-F]+";
 }
 
@@ -70,7 +74,7 @@ for (const { name, kind } of KINDS) {
         const logs = readLogs(t);
         checkTrace(logs, "SF-");
         const master = logs.get("master.log") ?? "";
-        expect(master).not.toMatch(/CRASH STACK TRACE/);
+        expect(master).toContain("    === CRASH STACK TRACE ===");
         expect(master).toMatch(
             new RegExp(String.raw`\[anomaly:WorkerCrash\] Worker SF-\d+ ` + death(kind)),
         );

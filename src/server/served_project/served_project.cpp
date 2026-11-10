@@ -1,23 +1,24 @@
-module;
-
-#include "version.h"
-
 module clice;
 
 import :command.table;
+import :index.database;
 import :index.project_index;
 import :index.writer_lock;
 import :project.background;
+import :project.discovery;
 import :project.graph.task_graph;
+import :project.project;
 import :server.client;
 import :server.control;
 import :server.master;
 import :server.served_project;
 import :settings.settings;
 import :support.logging;
+import :support.version;
+import :vfs.cache_store;
 import :vfs.path;
-import :worker.test_hooks;
 import :worker.protocol;
+import :worker.test_hooks;
 
 namespace clice {
 
@@ -63,11 +64,30 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
 
 ServedProject::~ServedProject() = default;
 
+namespace {
+
 /// Where a problem of the settings is, as compilers name a place, its file
 /// spelled `file`.
-static std::string place(llvm::StringRef file, const SettingsIssue& issue) {
+std::string place(llvm::StringRef file, const SettingsIssue& issue) {
     return issue.line == 0 ? file.str() : std::format("{}:{}:{}", file, issue.line, issue.column);
 }
+
+/// Whether the project has its build to open before a document of it
+/// opens: a database to index, one its rules name or one discovery finds,
+/// or the index an earlier session built.
+bool has_build(const Project& project) {
+    if(project.rules.declares_sources() || !discovered_databases(project.root).empty()) {
+        return true;
+    }
+    auto& cache_dir = project.settings.project.cache_dir;
+    if(cache_dir.empty()) {
+        return false;
+    }
+    auto store = CacheStore::open(cache_dir, cache_format_version, /*read_only=*/true);
+    return store && index::database_exists(*store, project.database_key);
+}
+
+}  // namespace
 
 void ServedProject::configure(const std::optional<codec::dyn::Value>& init_options,
                               llvm::ArrayRef<CanonicalPath> taken_cache_dirs) {
@@ -96,18 +116,13 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
             if(issue.severity == SettingsIssue::Severity::Warning) {
                 LOG_GUIDANCE("{}", issue.message);
             } else {
-                LOG_ERROR("{}", issue.message);
                 LOG_GUIDANCE("{}. {} is served until they are fixed and clice restarts",
                              issue.message,
                              unserved);
             }
             continue;
         }
-        if(issue.severity == SettingsIssue::Severity::Error) {
-            LOG_ERROR("Invalid clice.toml {}: {}", place(issue.file, issue), issue.message);
-        } else {
-            LOG_WARN("clice.toml {}: {}", place(issue.file, issue), issue.message);
-        }
+        LOG_WARN("clice.toml {}: {}", place(issue.file, issue), issue.message);
         if(!first || (first->severity != issue.severity &&
                       issue.severity == SettingsIssue::Severity::Error)) {
             first = &issue;
@@ -127,15 +142,33 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
 }
 
 void ServedProject::start() {
+    if(!broken()) {
+        project.use_configuration(configuration);
+        if(!project.root.empty() && documents.empty() && !has_build(project)) {
+            waiting = true;
+            return;
+        }
+    }
+    open();
+}
+
+void ServedProject::open() {
+    waiting = false;
     started = true;
+    server.log_into(*this);
     if(broken()) {
         return;
     }
     if(!project.root.empty()) {
+        llvm::SmallVector<CanonicalPath> open_files;
+        for(auto& [path_id, document]: documents) {
+            open_files.emplace_back(project.file_table.resolve(path_id));
+        }
         auto opened = project.open({
             .configuration = configuration,
             .cache = Project::OpenOptions::Cache::Write,
             .freshness = {.withhold = project.settings.project.enable_indexing},
+            .files = std::move(open_files),
         });
         if(project.store) {
             bg_tasks.spawn(checkpoint_task());
@@ -253,6 +286,23 @@ void ServedProject::update_latest(Fid path_id, llvm::function_ref<void(DocumentC
 }
 
 void ServedProject::adopt(Fid path_id) {
+    // Every invalidation from now on counts in the generation its compiles
+    // and its requests' PCH adoptions read, before its first compile too.
+    project.graph.add(ast_node(path_id));
+    documents[path_id] = {};
+    if(project.settings.project.readonly == ReadonlyMode::Off ||
+       server.own_context_only.contains(path_id)) {
+        start_compiling(path_id);
+    }
+    // What the disk holds under the buffer: a later save or outside
+    // write is then a change from it, even for a file nothing else knew.
+    project.file_table.disk.current(path_id);
+    // Its first document opens a project start() left waiting, and goes
+    // with the documents open() takes.
+    bool opening = waiting;
+    if(opening) {
+        open();
+    }
     // A database generated since the start counts: the poll, or the
     // discovery around this file, has loaded it by now. A provisional
     // member's command is a guess too.
@@ -266,18 +316,7 @@ void ServedProject::adopt(Fid path_id) {
             "https://docs.clice.io/clice/guide/quick-start#project-setup for setup.",
             why);
     }
-    // Every invalidation from now on counts in the generation its compiles
-    // and its requests' PCH adoptions read, before its first compile too.
-    project.graph.add(ast_node(path_id));
-    documents[path_id] = {};
-    if(project.settings.project.readonly == ReadonlyMode::Off ||
-       server.own_context_only.contains(path_id)) {
-        start_compiling(path_id);
-    }
-    // What the disk holds under the buffer: a later save or outside
-    // write is then a change from it, even for a file nothing else knew.
-    project.file_table.disk.current(path_id);
-    if(!started || broken()) {
+    if(opening || !started || broken()) {
         return;
     }
     if(project.record_provisional(path_id)) {
@@ -316,6 +355,26 @@ void ServedProject::decide_compiling(Fid path_id) {
     } else {
         start_compiling(path_id);
     }
+}
+
+bool ServedProject::look_for_database(bool force) {
+    if(!waiting || server.shutting_down()) {
+        return false;
+    }
+    if(!force) {
+        auto poll = chrono::seconds(project.settings.tracker.workspace_poll_seconds);
+        auto now = chrono::steady_clock::now();
+        if(poll.count() == 0 || now < next_look) {
+            return false;
+        }
+        next_look = now + poll;
+    }
+    if(!has_build(project)) {
+        return false;
+    }
+    open();
+    server.update_owners();
+    return true;
 }
 
 void ServedProject::release(Fid path_id) {

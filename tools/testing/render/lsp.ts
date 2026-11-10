@@ -480,7 +480,7 @@ export class AnswerContext {
 /// names it `${CRASH}`.
 export function elideCrash(text: string): string {
     return text.replace(
-        /killed by signal \d+ \(\w+\)|terminated by (?:exception )?0x[0-9A-Fa-f]+(?: \([^)]*\))?|exited with code -?\d+(?= \(crash streak)/g,
+        /killed by signal \d+ \(\w+\)|terminated by (?:exception )?0x[0-9A-Fa-f]+(?: \([^)]*\))?|(?<=Worker \S+ )exited with code -?\d+/g,
         "${CRASH}",
     );
 }

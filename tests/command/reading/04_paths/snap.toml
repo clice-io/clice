@@ -1,7 +1,7 @@
 ["include directories"."$ clice command convert -- missing-clang++ -Iinclude -isystem sys/inc -iquote ../src main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -I ${WS}/include -isystem ${WS}/sys/inc -iquote ${WS}/../src ${WS}/main.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -9,7 +9,7 @@ exit = 1
 ["include directories"."$ clice command convert -- missing-clang++ \"-I${WS}/vendor/include\" main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -I ${WS}/vendor/include ${WS}/main.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -17,8 +17,8 @@ exit = 1
 ["include directories"."$ clice command convert -- missing-clang++ -working-directory build -Iinclude main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -working-directory ${WS}/build -I ${WS}/build/include ${WS}/build/main.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
-warning: clang's driver, reading the command of missing-clang++: unable to set working directory: ${WS}/build
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
+warning: clang's driver, reading the command of missing-clang++: unable to set working directory: build
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -26,7 +26,7 @@ exit = 1
 [sysroot."$ clice command convert -- missing-clang++ \"--sysroot=${WS}/sdk\" -I=/usr/include/foo main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} --sysroot=${WS}/sdk -I =/usr/include/foo ${WS}/main.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -34,9 +34,9 @@ exit = 1
 [sysroot."$ clice command convert -- missing-clang++ -fsanitize-ignorelist=ignore.txt --config=x.cfg --sysroot sdk main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -fsanitize-ignorelist=${WS}/ignore.txt --config=x.cfg --sysroot ${WS}/sdk ${WS}/main.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 warning: clang's driver, reading the command of missing-clang++: configuration file 'x.cfg' cannot be found
-warning: clang's driver, reading the command of missing-clang++: no such file or directory: '${WS}/ignore.txt'
+warning: clang's driver, reading the command of missing-clang++: no such file or directory: 'ignore.txt'
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1

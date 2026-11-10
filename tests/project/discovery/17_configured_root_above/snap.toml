@@ -53,5 +53,4 @@ stdout = '''
   }
 }
 '''
-stderr = "warning: Toolchain query miss: driver=clang++ kind=c++"
 exit = 0

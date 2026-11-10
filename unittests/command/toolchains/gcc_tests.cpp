@@ -166,27 +166,31 @@ End of search list.)";
     ZEXPECT(output.standard == "gnu++14");
 }
 
-ZEST_CASE(IntelSYCLHostJob, skip = Windows) {
+ZEST_CASE(IntelSYCLHostJob) {
     // icpx's host job, printed after its device job, without the
     // integration header and footer the device job wrote to the query's
     // temporary directory.
-    auto driver = fake_gcc(
-        "icpx",
-        R"("/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" query.cpp
-"/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fsycl-is-host" "-include-internal-header" "/tmp/icpx/header.h" "-dependency-filter" "/tmp/icpx/header.h" "-include-internal-footer" "/tmp/icpx/footer.h" "-dependency-filter" "/tmp/icpx/footer.h" query.cpp)");
+    auto driver =
+        fake_gcc("icpx",
+                 std::format(
+                     R"("{0}" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" query.cpp
+"{0}" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fsycl-is-host" "-include-internal-header" "/tmp/icpx/header.h" "-dependency-filter" "/tmp/icpx/header.h" "-include-internal-footer" "/tmp/icpx/footer.h" "-dependency-filter" "/tmp/icpx/footer.h" query.cpp)",
+                     host_path("/opt/intel/oneapi/compiler/2026.2/bin/compiler/clang")));
     auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-fsycl", "-c"}));
     ZEXPECT(adjacent(argv, "-triple", "x86_64-unknown-linux-gnu"));
     ZEXPECT(!contains(argv, "-fsycl-is-device"));
     ZEXPECT(!contains(argv, "-include"));
 }
 
-ZEST_CASE(OldIntelSYCLHostJob, skip = Windows) {
+ZEST_CASE(OldIntelSYCLHostJob) {
     // Before oneAPI 2025.1 the host job includes them with -include and
     // -include-footer; the command's own forced include stays.
-    auto driver = fake_gcc(
-        "icpx",
-        R"("/opt/intel/oneapi/compiler/2025.0/bin/compiler/clang" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" query.cpp
-"/opt/intel/oneapi/compiler/2025.0/bin/compiler/clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-include" "/tmp/icpx/header.h" "-dependency-filter" "/tmp/icpx/header.h" "-include-footer" "/tmp/icpx/footer.h" "-dependency-filter" "/tmp/icpx/footer.h" "-fsycl-is-host" query.cpp)");
+    auto driver =
+        fake_gcc("icpx",
+                 std::format(
+                     R"("{0}" "-cc1" "-triple" "spir64-unknown-unknown" "-fsycl-is-device" query.cpp
+"{0}" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-include" "/tmp/icpx/header.h" "-dependency-filter" "/tmp/icpx/header.h" "-include-footer" "/tmp/icpx/footer.h" "-dependency-filter" "/tmp/icpx/footer.h" "-fsycl-is-host" query.cpp)",
+                     host_path("/opt/intel/oneapi/compiler/2025.0/bin/compiler/clang")));
     auto own = tmp.path("own.h");
     auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-fsycl", "-include", own.c_str(), "-c"}));
     ZEXPECT(!contains(argv, "/tmp/icpx/header.h"));
@@ -228,60 +232,65 @@ ZEST_CASE(RISCVTargetWidth) {
     ZEXPECT(wch.target == "riscv32-wch-elf");
 }
 
-ZEST_CASE(RISCVTargetFeatures, skip = Windows) {
-    auto driver = fake_driver("riscv-none-elf-gcc", R"(echo 'Target: riscv-none-elf' >&2
-echo ' /opt/xpack/libexec/gcc/riscv-none-elf/15.2.0/cc1 -E -quiet query.c -march=rv32imac_zicsr -mabi=ilp32 -dM' >&2
+ZEST_CASE(RISCVTargetFeatures) {
+    auto driver =
+        fake_driver("riscv-none-elf-gcc",
+                    std::format(R"(echo 'Target: riscv-none-elf' >&2
+echo ' {} -E -quiet query.c -march=rv32imac_zicsr -mabi=ilp32 -dM' >&2
 echo '#define __riscv_xlen 32'
-)");
+)",
+                                host_path("/opt/xpack/libexec/gcc/riscv-none-elf/15.2.0/cc1")));
     auto argv = f.resolve(add("a.c", {driver.c_str(), "-c"}));
     ZEXPECT(adjacent(argv, "-target-feature", "+a"));
     ZEXPECT(adjacent(argv, "-target-abi", "ilp32"));
 }
 
-ZEST_CASE(NoCompilerJob, skip = Windows) {
+ZEST_CASE(NoCompilerJob) {
     /// A driver that is neither GCC nor clang (Intel's icc).
     auto ref = add("a.cpp", {fake_driver("icc", "").c_str()});
     ZEXPECT(llvm::StringRef(f.failure(ref)).contains("runs no compiler job"));
 }
 
-ZEST_CASE(ClangJobKeepsStandard, skip = Windows) {
+ZEST_CASE(ClangJobKeepsStandard) {
     auto driver = fake_clang(clang_job);
     auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-std=c++23"}));
     ZEXPECT(contains(argv, "-std=c++23"));
     ZEXPECT(!contains(argv, "-std=gnu++14"));
 }
 
-ZEST_CASE(DeferralAskedThroughXclang, skip = Windows) {
+ZEST_CASE(DeferralAskedThroughXclang) {
     /// An MSVC target's default template deferral stays only when the
     /// command asks for it, to the driver or to cc1.
     auto driver = fake_clang(
-        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-pc-windows-msvc" "-fdelayed-template-parsing")");
+        clang_job_of(R"("-cc1" "-triple" "x86_64-pc-windows-msvc" "-fdelayed-template-parsing")"));
     ZEXPECT(!contains(f.resolve(add("a.cpp", {driver.c_str()})), "-fdelayed-template-parsing"));
     auto asked = f.resolve(add("b.cpp", {driver.c_str(), "-Xclang", "-fdelayed-template-parsing"}));
     ZEXPECT(contains(asked, "-fdelayed-template-parsing"));
 }
 
-ZEST_CASE(UniversalBuildFirstArch, skip = Windows) {
+ZEST_CASE(UniversalBuildFirstArch) {
     /// clang refuses to preprocess for two architectures at once.
-    auto driver = fake_driver("clang++", R"(case " $* " in
+    auto driver = fake_driver("clang++",
+                              std::format(R"(case " $* " in
 *" -arch "*" -arch "*)
   echo "clang++: error: cannot use 'cpp-output' output with multiple -arch options" >&2
   exit 1 ;;
 esac
-echo ' "/usr/bin/clang" "-cc1" "-triple" "arm64-apple-macosx15.0.0" "-E"' >&2
-)");
+echo ' "{}" "-cc1" "-triple" "arm64-apple-macosx15.0.0" "-E"' >&2
+)",
+                                          host_path("/usr/bin/clang")));
     auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-arch", "arm64", "-arch", "x86_64"}));
     ZEXPECT(adjacent(argv, "-triple", "arm64-apple-macosx15.0.0"));
 }
 
-ZEST_CASE(GCCSetsUpClang, skip = Windows) {
+ZEST_CASE(GCCSetsUpClang) {
     /// A GCC whose output names its target, a macro of its specs, a CPU
     /// clang does not know, and a search list with its private include
     /// directory and a framework directory.
     auto frameworks = tmp.path("sysroot/Frameworks");
     auto driver = fake_gcc("x86_64-linux-gnu-g++",
                            std::format(R"(Target: x86_64-linux-gnu
- /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -E -quiet -v -D_REENTRANT query.cpp -mtune=intel -march=x86-64 -dM
+ {5} -E -quiet -v -D_REENTRANT query.cpp -mtune=intel -march=x86-64 -dM
 #include <...> search starts here:
  {0}
  {1}
@@ -293,7 +302,8 @@ LIBRARY_PATH={4}/)",
                                        tmp.path("gcc/13/include"),
                                        tmp.path("sysroot/usr/include"),
                                        frameworks,
-                                       tmp.path("gcc/13")));
+                                       tmp.path("gcc/13"),
+                                       host_path("/usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus")));
     auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-c", "-g"}));
 
     ZEXPECT(adjacent(argv, "-triple", "x86_64-unknown-linux-gnu"));
@@ -323,7 +333,7 @@ LIBRARY_PATH={4}/)",
     ZEXPECT(adjacent(argv, "-internal-iframework", frameworks));
 }
 
-ZEST_CASE(GCCPrivateHeaders, skip = Windows) {
+ZEST_CASE(GCCPrivateHeaders) {
     /// GCC's private include directory holds headers only GCC has, among
     /// GCC's versions of clang's builtin headers. A header only GCC has is
     /// found there; GCC's stdatomic.h is not, and neither is the C
@@ -348,7 +358,7 @@ int load(void) {
     auto driver = fake_driver("riscv32-elf-gcc",
                               std::format(R"(cat >&2 <<'OUTPUT'
 Target: riscv32-elf
- /opt/libexec/gcc/riscv32-elf/13/cc1 -E -quiet -v query.c -march=rv32imac -mabi=ilp32 -dM
+ {3} -E -quiet -v query.c -march=rv32imac -mabi=ilp32 -dM
 #include <...> search starts here:
  {0}
  {1}
@@ -359,7 +369,8 @@ echo '#define __STDC_VERSION__ 201710L'
 )",
                                           tmp.path("gcc/13/include"),
                                           tmp.path("libc/include"),
-                                          tmp.path("gcc/13")));
+                                          tmp.path("gcc/13"),
+                                          host_path("/opt/libexec/gcc/riscv32-elf/13/cc1")));
     auto ref = add("a.c", {driver.c_str(), "-c"});
     ZASSERT(f.toolchain.resolve(ref.command, ref.language));
     auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
@@ -381,7 +392,8 @@ echo '#define __STDC_VERSION__ 201710L'
     vfs::Scope scope(cache);
     auto vendor = resolve_include("vendor_intrinsics.h", true, "", false, {}, search, scope);
     ZASSERT(vendor);
-    ZEXPECT(vendor->path.str() == tmp.path("gcc/13/include/vendor_intrinsics.h"));
+    ZEXPECT(fs::equivalent(vendor->path.str(), tmp.path("gcc/13/include/vendor_intrinsics.h"))
+                .value_or(false));
     auto atomic = resolve_include("stdatomic.h", true, "", false, {}, search, scope);
     ZASSERT(atomic);
     ZEXPECT(fs::equivalent(atomic->path.str(), path::join(resource_dir(), "include", "stdatomic.h"))
@@ -391,16 +403,18 @@ echo '#define __STDC_VERSION__ 201710L'
     ZASSERT(limits);
     auto next = resolve_include("limits.h", true, "", true, limits->found_dir_idx, search, scope);
     ZASSERT(next);
-    ZEXPECT(next->path.str() == tmp.path("libc/include/limits.h"));
+    ZEXPECT(fs::equivalent(next->path.str(), tmp.path("libc/include/limits.h")).value_or(false));
 }
 
-ZEST_CASE(GCCTargetNames, skip = Windows) {
+ZEST_CASE(GCCTargetNames) {
     auto render = [&](llvm::StringRef target, llvm::StringRef options) {
-        auto driver = fake_gcc(target.str() + "-g++",
-                               std::format(R"(Target: {0}
- /usr/libexec/gcc/{0}/13/cc1plus -E -quiet -v query.cpp {1} -dM)",
-                                           target,
-                                           options));
+        auto driver =
+            fake_gcc(target.str() + "-g++",
+                     std::format(R"(Target: {0}
+ {2} -E -quiet -v query.cpp {1} -dM)",
+                                 target,
+                                 options,
+                                 host_path(std::format("/usr/libexec/gcc/{}/13/cc1plus", target))));
         return f.resolve(add(target.str() + ".cpp", {driver.c_str(), "-c"}));
     };
 
@@ -447,22 +461,24 @@ ZEST_CASE(GCCTargetNames, skip = Windows) {
     ZEXPECT(adjacent(vendor, "-target-feature", "+zba"));
 }
 
-ZEST_CASE(GCCSeesWrittenAliases, skip = Windows) {
+ZEST_CASE(GCCSeesWrittenAliases) {
     /// clang reads these as aliases of options GCC names otherwise or not
     /// at all (`-G 8`, `-flto=full`, `-ftrigraphs`), which GCC rejects.
     auto args = tmp.path("args");
-    auto driver = fake_driver("riscv32-unknown-elf-gcc",
-                              std::format(R"(printf '%s\n' "$@" > '{}'
+    auto driver =
+        fake_driver("riscv32-unknown-elf-gcc",
+                    std::format(R"(printf '%s\n' "$@" > '{}'
 echo 'Target: riscv32-unknown-elf' >&2
-echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' >&2
+echo ' {} -E -quiet query.c -dM' >&2
 )",
-                                          args));
+                                args,
+                                host_path("/opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1")));
     std::vector<const char*> written = {"-msmall-data-limit=8", "-flto=auto", "-trigraphs"};
     auto command = written;
     command.insert(command.begin(), driver.c_str());
     command.push_back("-c");
     auto ref = add("a.c", command);
-    ZEXPECT(f.toolchain.resolve(ref.command, ref.language).has_value());
+    f.resolve(ref);
 
     auto passed = vfs::read_text(args);
     ZASSERT(passed);
@@ -479,7 +495,7 @@ echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' 
     };
     auto edited = ref;
     edited.command = apply_edits(f.commands, f.file_table, ref.command, {.edits = edits});
-    ZEXPECT(f.toolchain.resolve(edited.command, edited.language).has_value());
+    f.resolve(edited);
     passed = vfs::read_text(args);
     ZASSERT(passed);
     ZEXPECT(llvm::StringRef(*passed).contains("-msmall-data-limit=8\n"));
@@ -490,13 +506,16 @@ echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' 
     ZEXPECT(f.key(clang_name) != f.key(gcc_name));
 }
 
-ZEST_CASE(GCCMeaningsForClang, skip = Windows) {
+ZEST_CASE(GCCMeaningsForClang) {
     /// GCC's -fmodules is its C++20 modules, which clang's C++20 has; to
     /// clang it would mean header modules. Warnings GCC makes errors stay
     /// warnings: clang warns of what GCC does not.
-    auto driver = fake_driver("g++", R"(echo 'Target: x86_64-linux-gnu' >&2
-echo ' /usr/libexec/gcc/x86_64-linux-gnu/15/cc1plus -E -quiet query.cpp -fmodules -dM' >&2
-)");
+    auto driver =
+        fake_driver("g++",
+                    std::format(R"(echo 'Target: x86_64-linux-gnu' >&2
+echo ' {} -E -quiet query.cpp -fmodules -dM' >&2
+)",
+                                host_path("/usr/libexec/gcc/x86_64-linux-gnu/15/cc1plus")));
     auto argv = f.resolve(
         add("a.cpp",
             {driver.c_str(), "-std=c++20", "-fmodules", "-Werror", "-Werror=shadow", "-c"}));
@@ -510,19 +529,22 @@ echo ' /usr/libexec/gcc/x86_64-linux-gnu/15/cc1plus -E -quiet query.cpp -fmodule
     ZEXPECT(contains(argv, "-Werror"));
 }
 
-ZEST_CASE(CommandISAForClang, skip = Windows) {
+ZEST_CASE(CommandISAForClang) {
     /// The command's own -march, which GCC takes as written and clang
     /// without what LLVM does not know.
-    auto driver = fake_driver("riscv32-wch-elf-gcc", R"(echo 'Target: riscv32-wch-elf' >&2
-echo ' /opt/wch/libexec/gcc/riscv32-wch-elf/15/cc1 -E -quiet query.c -dM' >&2
-)");
+    auto driver =
+        fake_driver("riscv32-wch-elf-gcc",
+                    std::format(R"(echo 'Target: riscv32-wch-elf' >&2
+echo ' {} -E -quiet query.c -dM' >&2
+)",
+                                host_path("/opt/wch/libexec/gcc/riscv32-wch-elf/15/cc1")));
     auto argv = f.resolve(
         add("a.c", {driver.c_str(), "-march=rv32imc_zba_zbb_zbc_zbs_xw", "-mabi=ilp32", "-c"}));
     ZEXPECT(adjacent(argv, "-target-feature", "+m"));
     ZEXPECT(adjacent(argv, "-target-feature", "+zbs"));
 }
 
-ZEST_CASE(GCCErrorReported, skip = Windows) {
+ZEST_CASE(GCCErrorReported) {
     /// GCC rejects an option before `-v` prints its version, the last line.
     auto driver = fake_driver("riscv32-unknown-elf-gcc", R"(echo 'Using built-in specs.' >&2
 echo "riscv32-unknown-elf-gcc: error: unrecognized command-line option '-mclice-future'" >&2
@@ -537,7 +559,7 @@ exit 1
     ZEXPECT(!error.contains("gcc version"));
 }
 
-ZEST_CASE(GCCFailureRejected, skip = Windows) {
+ZEST_CASE(GCCFailureRejected) {
     /// GCC prints its job and search list before its compile fails, but
     /// LIBRARY_PATH and the macros only after it succeeds.
     auto driver = fake_driver("g++", R"(echo 'Target: x86_64-linux-gnu' >&2

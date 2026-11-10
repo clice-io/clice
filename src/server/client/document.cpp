@@ -120,7 +120,6 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
             auto ast = co_await served
                            ->ast_request(ticket,
                                          feature::RequestKind::SemanticTokens,
-                                         "SemanticTokens",
                                          worker::SemanticTokensParams{
                                              .settings = served->project.settings,
                                          },
@@ -257,7 +256,6 @@ void LSPClient::register_document_requests() {
             co_await project
                 .ast_request(ticket,
                              feature::RequestKind::Hover,
-                             "Hover",
                              worker::HoverParams{
                                  .offset = session->positions().offset_clamped(position, encoding),
                                  .settings = project.project.settings,
@@ -333,7 +331,6 @@ void LSPClient::register_document_requests() {
                     ->ast_request(
                         ticket,
                         feature::RequestKind::InlayHint,
-                        "InlayHint",
                         worker::InlayHintParams{
                             .range = session->positions().offset_range(params.range, encoding),
                             .settings = served->project.settings,
@@ -374,7 +371,6 @@ void LSPClient::register_document_requests() {
             auto folds = co_await served
                              ->ast_request(ticket,
                                            feature::RequestKind::FoldingRange,
-                                           "FoldingRange",
                                            worker::FoldingRangeParams{},
                                            ctx.cancellation)
                              .or_fail();
@@ -429,7 +425,6 @@ void LSPClient::register_document_requests() {
         auto chains = co_await served
                           ->ast_request(ticket,
                                         feature::RequestKind::SelectionRange,
-                                        "SelectionRange",
                                         worker::SelectionRangeParams{.offsets = offsets},
                                         ctx.cancellation)
                           .or_fail();
@@ -476,7 +471,6 @@ void LSPClient::register_document_requests() {
         auto symbols = co_await served
                            ->ast_request(ticket,
                                          feature::RequestKind::DocumentSymbol,
-                                         "DocumentSymbol",
                                          worker::DocumentSymbolParams{
                                              .settings = served->project.settings,
                                          },

@@ -16,7 +16,10 @@ import { elideCrash } from "../render/lsp.ts";
 import { resourceRoot } from "../render/paths.ts";
 import type { Table } from "../render/value.ts";
 
-const LOG_LINE = /^\[[^\]]+\] \[(\w+)\] \[thread \d+\] \[[^\]]+\] (.*)$/;
+/// A log line below warning, which the command's stderr shows under
+/// --log-level; or a line of a worker's log a crash report quotes, whose
+/// source lines and threads every change of the worker moves.
+const QUIET_LINE = /^(?:trace|debug|info): |^\s+\[/;
 
 function quote(word: string): string {
     return /^[\p{L}\p{N}_./:=@%+,-]+$/u.test(word) ? word : `"${word.replaceAll('"', '\\"')}"`;
@@ -112,7 +115,7 @@ function resourceless(text: string): string {
 export function normalize(text: string, root: string): string {
     return portable(text, root)
         .replace(/\b\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_\d+\b/g, "${SESSION}")
-        .replace(/\b\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\b/g, "#time")
+        .replace(/\b\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{3})?\b/g, "#time")
         .replace(/\b\d+(\.\d+)?(ms|s)\b/g, "#$2")
         .replace(/\b\d+(\.\d+)? (B|KB|MB|GB)\b/g, "# $2")
         .replace(/\(pid \d+\)/g, "(pid #)")
@@ -133,22 +136,15 @@ export function buildVersion(): string {
     return version;
 }
 
-/// Warnings and errors from stderr, the log decoration dropped; plain lines
-/// (a message the command prints itself) stay, progress lines go.
+/// Warnings, errors and the messages the command prints itself from stderr;
+/// progress lines and the lower log levels go.
 function stderrText(stderr: string): string {
     const out: string[] = [];
-    // A Windows log line ends in \r\r\n: the logger's \r\n through a
-    // text-mode stream.
     for (const line of stderr.split(/\r*\n/)) {
-        if (line.trim() === "" || line.startsWith("progress ")) {
+        if (line.trim() === "" || line.startsWith("progress ") || QUIET_LINE.test(line)) {
             continue;
         }
-        const log = LOG_LINE.exec(line);
-        if (log === null) {
-            out.push(line.trimEnd());
-        } else if (log[1] === "warning" || log[1] === "error" || log[1] === "critical") {
-            out.push(`${log[1]}: ${log[2] ?? ""}`);
-        }
+        out.push(line.trimEnd());
     }
     return out.join("\n");
 }
@@ -508,7 +504,7 @@ export async function runCommand(
     }
     const versioned = (text: string): string => text.replaceAll(buildVersion(), "${VERSION}");
     const stdout = stdoutText(resourceless(versioned(result.stdout)), root);
-    const stderr = stderrText(normalize(resourceless(versioned(result.stderr)), root));
+    const stderr = normalize(stderrText(resourceless(versioned(result.stderr))), root);
     const files = written(before, contents(root));
     return {
         label: [

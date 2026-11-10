@@ -89,20 +89,22 @@ TRIPLES = {
 ) for setting in TRIPLES]
 
 # Stamped from bazel/workspace_status.mjs: the one source whose compile a new
-# version reruns (src/version.h).
+# version reruns (src/support/version.cppm).
 genrule(
     name = "version_cpp",
     outs = ["version.cpp"],
     cmd = select({
         ":" + setting: """
 version=$$(sed -n 's/^STABLE_CLICE_VERSION //p' bazel-out/stable-status.txt)
+commit=$$(sed -n 's/^STABLE_CLICE_COMMIT //p' bazel-out/stable-status.txt)
 cat > $@ <<EOF
-#include "version.h"
+#include <string_view>
 
 namespace clice {
 
-const std::string_view version = "$$version";
-const std::string_view target = "%s";
+extern const std::string_view version = "$$version";
+extern const std::string_view commit = "$$commit";
+extern const std::string_view target = "%s";
 
 }  // namespace clice
 EOF

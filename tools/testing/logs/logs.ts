@@ -11,9 +11,9 @@ export interface LogLine {
     text: string;
 }
 
-/// A log line's level, from the `[level]` field after its timestamp.
+/// A log line's level, from the `[level]` field after its date and time.
 function levelOf(text: string): string | undefined {
-    return /^\[[^\]]*\] \[(\w+)\]/.exec(text)?.[1];
+    return /^\[[^\]]+\] \[(\w+)\]/.exec(text)?.[1];
 }
 
 export function readLogs(workspace: string, files = logFiles(workspace)): LogLine[] {
@@ -35,7 +35,7 @@ export function undeclaredErrors(
 ): LogLine[] {
     return lines.filter((line) => {
         const level = levelOf(line.text);
-        if (level !== "error" && level !== "critical") {
+        if (level !== "error" && level !== "fatal") {
             return false;
         }
         return !expected.some((pattern) => pattern.test(line.text));
@@ -46,7 +46,7 @@ export function undeclaredErrors(
 export function failureExcerpt(lines: readonly LogLine[], limit = 60): string {
     const picked = lines.filter((line) => {
         const level = levelOf(line.text);
-        return level === "warning" || level === "error" || level === "critical";
+        return level === "warning" || level === "error" || level === "fatal";
     });
     return picked
         .slice(-limit)

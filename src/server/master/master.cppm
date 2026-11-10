@@ -83,6 +83,16 @@ public:
 
     // lifecycle.cpp
 
+    /// The session logs under the project's logging directory, unless an
+    /// earlier project's took them, which the project's then links to: the
+    /// first project to open its files on disk is the one whose file
+    /// started clice.
+    void log_into(const ServedProject& project);
+
+    /// The master's lines write paths under the projects' roots relative to
+    /// them.
+    void show_paths_relative() const;
+
     /// Start serving the projects of `folders` (see project_roots): load
     /// each project's settings, start the pool sized for all of them, and
     /// start the projects; the documents opened before go to the projects
@@ -352,6 +362,11 @@ public:
 
     /// The workers every project compiles and indexes on.
     WorkerPool pool;
+
+    /// The session's log directory, the master's and its workers', under
+    /// the logging directory of the first project that opened its files on
+    /// disk; empty until one did.
+    std::string session_dir;
 
     /// The connection to the editor: set by the client as it is made and
     /// cleared as it goes — a socket's client goes with its connection while

@@ -6,6 +6,7 @@ import :driver.run;
 import :project.graph.unit;
 import :project.project;
 import :support.logging;
+import :support.text;
 
 namespace clice::driver {
 
@@ -343,6 +344,11 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         result.exit_code = 2;
     }
     result.seconds = timer.ms() / 1000.0;
+    LOG_INFO("Linted {} in {} ms: {}, {} failed",
+             counted(result.checked_tus, "translation unit", "translation units"),
+             timer.ms(),
+             counted(result.findings.size(), "finding", "findings"),
+             result.failed_tus);
 }
 
 int run_lint(const ProjectOptions& where, std::uint32_t jobs, bool with_index, bool json) {
@@ -372,16 +378,13 @@ int run_lint(const ProjectOptions& where, std::uint32_t jobs, bool with_index, b
     if(!result.completed) {
         return result.exit_code;
     }
-    driver::println("Linted {} translation unit{} in {:.1f}s: {} finding{}.",
-                    result.checked_tus,
-                    plural_s(result.checked_tus),
+    driver::println("Linted {} in {:.1f}s: {}.",
+                    counted(result.checked_tus, "translation unit", "translation units"),
                     result.seconds,
-                    result.findings.size(),
-                    plural_s(result.findings.size()));
+                    counted(result.findings.size(), "finding", "findings"));
     if(result.failed_tus != 0) {
-        driver::println("{} translation unit{} failed to run (see the log); the report is partial.",
-                        result.failed_tus,
-                        plural_s(result.failed_tus));
+        driver::println("{} failed to run (see the log); the report is partial.",
+                        counted(result.failed_tus, "translation unit", "translation units"));
     }
     if(result.unsaved) {
         driver::println("Part of the index could not be persisted (see the log).");

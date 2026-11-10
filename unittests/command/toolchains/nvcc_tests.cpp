@@ -1132,15 +1132,20 @@ ZEST_CASE(WildcardRemovesQueryValue) {
 
 ZEST_SUITE(NVCCToolchainTests, ToolchainFixture) {
 
+// The tests of a GCC or icpc host skip Windows, whose nvcc takes cl alone
+// as its host compiler.
 ZEST_CASE(NVCCHostLanguage, skip = Windows) {
     /// nvcc runs its host compiler in the input's language: GCC's C++
     /// driver adds _GNU_SOURCE, its C driver does not.
-    auto host = fake_driver("g++", R"(echo 'Target: x86_64-linux-gnu' >&2
+    auto host = fake_driver("g++",
+                            std::format(R"(echo 'Target: x86_64-linux-gnu' >&2
 case " $* " in
-*" c++ "*) echo ' /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -E -quiet -D_GNU_SOURCE query.cpp -dM' >&2 ;;
-*) echo ' /usr/libexec/gcc/x86_64-linux-gnu/13/cc1 -E -quiet query.c -dM' >&2 ;;
+*" c++ "*) echo ' {0} -E -quiet -D_GNU_SOURCE query.cpp -dM' >&2 ;;
+*) echo ' {1} -E -quiet query.c -dM' >&2 ;;
 esac
-)");
+)",
+                                        host_path("/usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus"),
+                                        host_path("/usr/libexec/gcc/x86_64-linux-gnu/13/cc1")));
     auto nvcc = fake_nvcc(host);
     ZEXPECT(adjacent(f.resolve(add("a.cpp", {nvcc.c_str(), "-c"})), "-D", "_GNU_SOURCE"));
     ZEXPECT(!adjacent(f.resolve(add("b.c", {nvcc.c_str(), "-c"})), "-D", "_GNU_SOURCE"));
@@ -1149,11 +1154,13 @@ esac
 ZEST_CASE(NVCCHostSysroot, skip = Windows) {
     /// A cross host compiler's headers come from the sysroot the command
     /// hands it.
-    auto host = fake_driver("aarch64-linux-gnu-g++", R"(for arg in "$@"; do
+    auto host = fake_driver("aarch64-linux-gnu-g++",
+                            R"(for arg in "$@"; do
   case "$arg" in --sysroot=*) root="${arg#--sysroot=}" ;; esac
 done
 echo 'Target: aarch64-linux-gnu' >&2
-echo ' /usr/libexec/gcc/aarch64-linux-gnu/13/cc1plus -E -quiet query.cpp -dM' >&2
+echo ')" + host_path("/usr/libexec/gcc/aarch64-linux-gnu/13/cc1plus") +
+                                R"( -E -quiet query.cpp -dM' >&2
 echo '#include <...> search starts here:' >&2
 echo " $root/usr/include" >&2
 echo 'End of search list.' >&2
@@ -1171,10 +1178,11 @@ ZEST_CASE(NVCCHeaderDirs, skip = Windows) {
     /// host line; warnings the host makes errors stay warnings.
     auto host = fake_gcc("g++",
                          std::format(R"(Target: x86_64-linux-gnu
- /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -E -quiet query.cpp -dM
+ {} -E -quiet query.cpp -dM
 #include <...> search starts here:
  {}
 End of search list.)",
+                                     host_path("/usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus"),
                                      tmp.path("host/include")));
     auto nvcc = fake_driver(
         "nvcc",
@@ -1198,7 +1206,7 @@ End of search list.)",
     ZEXPECT(!contains(argv, "-Werror"));
 }
 
-ZEST_CASE(NVCCHostCL, skip = Windows) {
+ZEST_CASE(NVCCHostCL) {
     /// With a cl host, the dryrun, which Windows' nvcc prints on stdout,
     /// names cl's dialect and version: clang's driver in cl mode builds the
     /// job in them, with nvcc's macros and, in the host view, the C++

@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <signal.h>
 #include <strings.h>
-#include <sys/types.h>
+#include <unistd.h>
 #include <errno.h>
 #include <stdio.h>
 #include <arm_neon.h>
@@ -152,7 +152,7 @@ import std.compat;
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/RISCVISAInfo.h"
 #include "llvm/TargetParser/Triple.h"
-#include "roaring/roaring.hh"
+#include "simdjson.h"
 #include "kotatsu/async/async.h"
 #include "kotatsu/cli/cli.h"
 #include "kotatsu/cli/table.h"
@@ -212,9 +212,5 @@ import std.compat;
 #include "kotatsu/sys/windows.h"
 #include "kotatsu/zest/async.h"
 #include "kotatsu/zest/zest.h"
-#include "simdjson.h"
+#include "roaring/roaring.hh"
 #include "lmdb.h"
-#include "spdlog/details/log_msg.h"
-#include "spdlog/sinks/base_sink.h"
-#include "spdlog/sinks/ringbuffer_sink.h"
-#include "spdlog/spdlog.h"

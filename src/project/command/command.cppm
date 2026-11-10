@@ -316,9 +316,6 @@ struct SelectedCommand {
     /// What the check found; nullopt while no result stands: a compile
     /// under the arguments, without the includer's context, is the check.
     std::optional<bool> self_contained;
-
-    /// The tiers tried, the one selecting last.
-    llvm::SmallVector<llvm::StringRef, 6> tried;
 };
 
 /// A command as a compile runs it (Project::render).

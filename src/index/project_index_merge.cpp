@@ -23,7 +23,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // the TU index, and only genuinely new symbol names are materialized.
     auto view = TUIndex::from_bytes(tu_index);
     if(!view.loaded()) {
-        LOG_WARN("Ignoring TUIndex that failed verification");
+        LOG_WARN("An index result failed its checks; ignored");
         return std::unexpected(MergeError::Invalid);
     }
     auto focus_local_id = view.focus_file();
@@ -67,7 +67,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         auto compiled_hash = view.content_hash(local_id);
         if(compiled_hash != 0 && compiled_hash != content_hash) {
             LOG_WARN(
-                "Reject merge for {}: the entries for {} consumed other content than the compiler",
+                "The index of {} is not merged: the entries for {} consumed other content than the compiler",
                 tu_path,
                 files.resolve(file_ids_map[local_id]));
             return false;
@@ -117,7 +117,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
 
         auto bytes = view.section_blob(section);
         if(bytes.empty()) {
-            LOG_INFO("Rerun {}: {} stores no variant of the hash it names",
+            LOG_INFO("{} is indexed again: {} stores no variant of the hash it names",
                      tu_path,
                      files.resolve(global_id));
             return std::unexpected(MergeError::Outdated);
@@ -132,14 +132,14 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         // with this file's index missing or stale — reject the whole
         // result; nothing is committed yet.
         if(llvm::xxh3_64bits(bytes) != blob_hash) {
-            LOG_WARN("Reject merge for {}: the section for {} failed verification",
+            LOG_WARN("The index of {} is not merged: the section for {} failed verification",
                      tu_path,
                      files.resolve(global_id));
             return std::unexpected(MergeError::Invalid);
         }
         auto fresh = Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         if(!fresh.loaded()) {
-            LOG_WARN("Reject merge for {}: the entries for {} do not form a valid shard",
+            LOG_WARN("The index of {} is not merged: the entries for {} do not form a valid shard",
                      tu_path,
                      files.resolve(global_id));
             return std::unexpected(MergeError::Invalid);
@@ -193,7 +193,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         for(auto key: view.skipped_instantiations(section)) {
             auto found = stored ? stored->find_key(key) : std::nullopt;
             if(!found) {
-                LOG_INFO("Rerun {}: {} stores no instantiation it skipped",
+                LOG_INFO("{} is indexed again: {} stores no instantiation it skipped",
                          tu_path,
                          files.resolve(global_id));
                 return std::unexpected(MergeError::Outdated);
@@ -208,9 +208,10 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         if(!bytes.empty()) {
             fresh = InstantiationShard::from_bytes(bytes);
             if(!fresh->loaded()) {
-                LOG_WARN("Reject merge for {}: instantiations for {} do not form a valid blob",
-                         tu_path,
-                         files.resolve(global_id));
+                LOG_WARN(
+                    "The index of {} is not merged: instantiations for {} do not form a valid blob",
+                    tu_path,
+                    files.resolve(global_id));
                 return std::unexpected(MergeError::Invalid);
             }
             if(!record_consumed(local_id, fresh->content_hash())) {
@@ -220,7 +221,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
             // disk: text that moved on since that build read it is another
             // generation than the parse's.
             if(generation != 0 && fresh->content_hash() != generation) {
-                LOG_INFO("Rerun {}: {} changed while the unit read it",
+                LOG_INFO("{} is indexed again: {} changed while the unit read it",
                          tu_path,
                          files.resolve(global_id));
                 return std::unexpected(MergeError::Outdated);
@@ -277,7 +278,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     auto shared_locals = view.shared_locals(held);
     if(!shared_locals) {
         LOG_WARN(
-            "Reject merge for {}: a symbol below external scope names a file the unit holds "
+            "The index of {} is not merged: a symbol below external scope names a file the unit holds "
             "no entries of",
             tu_path);
         return std::unexpected(MergeError::Invalid);
@@ -416,12 +417,12 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         outdated.erase(it);
     }
 
-    LOG_INFO("Merged TUIndex: {} paths, {} sections ({} hits, {} appended, {} rebuilt)",
-             view.path_count(),
-             view.section_count(),
-             hits,
-             appended,
-             rebuilt_ids.size());
+    LOG_DEBUG("Merged an index: {} paths, {} sections ({} hits, {} appended, {} rebuilt)",
+              view.path_count(),
+              view.section_count(),
+              hits,
+              appended,
+              rebuilt_ids.size());
 
     return report;
 }

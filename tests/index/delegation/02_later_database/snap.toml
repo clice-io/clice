@@ -1,12 +1,21 @@
-[test."$ clice index"]
-stderr = "error: request failed: nothing to index: the running clice server's build has no translation units"
-exit = 1
-
-[test."$ clice index #2"]
+["none at first"."$ clice index"]
 stdout = "Indexed through the running clice server (pid #)."
 exit = 0
 
-[test.symbols]
+["none at first".symbols]
+workspace_symbols = [
+    { name = "compute()", kind = "Function", at = "main.cpp │ int ⟦compute⟧() { return add(1, 2); }" },
+]
+
+["empty at first"."$ clice index"]
+stderr = "error: request failed: nothing to index: the running clice server's build has no translation units"
+exit = 1
+
+["empty at first"."$ clice index #2"]
+stdout = "Indexed through the running clice server (pid #)."
+exit = 0
+
+["empty at first".symbols]
 workspace_symbols = [
     { name = "compute()", kind = "Function", at = "main.cpp │ int ⟦compute⟧() { return add(1, 2); }" },
 ]

@@ -8,7 +8,6 @@ xclang_resource_dir(name = "resource_dir")
 cc_library(
     name = "version",
     srcs = ["//bazel:version_cpp"],
-    hdrs = ["src/version.h"],
     copts = COPTS,
 )
 
@@ -148,12 +147,23 @@ cc_binary(
     ],
 )
 
+# The compiler drivers of the toolchain tests on Windows, which runs their
+# shell scripts through it (unittests/utils/toolchain_fixture.cppm).
+cc_binary(
+    name = "bin/fake_driver",
+    srcs = ["unittests/utils/fake_driver.cc"],
+    target_compatible_with = ["@platforms//os:windows"],
+)
+
 filegroup(
     name = "dist",
     srcs = [
         ":bin/clice",
         ":bin/unittests",
-    ],
+    ] + select({
+        "@platforms//os:windows": [":bin/fake_driver"],
+        "//conditions:default": [],
+    }),
 )
 
 release_packages()

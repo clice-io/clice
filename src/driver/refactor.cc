@@ -105,8 +105,7 @@ std::expected<std::vector<feature::query::RenameRequest>, std::string>
     }
     auto text = vfs::read_text(spec);
     if(!text) {
-        return std::unexpected(
-            std::format("cannot read {}: {}", spec.str(), text.error().message()));
+        return std::unexpected(std::format("{}", text.error()));
     }
     return parse_renames(*text);
 }
@@ -168,8 +167,8 @@ std::expected<void, std::string> apply(FileTable& files, const feature::BatchPla
         std::string failure;
         if(!status || vfs::Stamp::of(*status) != rewrite.stamp) {
             failure = std::format("{} changed while the rename was being written", rewrite.path);
-        } else if(auto error = fs::write_file(rewrite.path, rewrite.text)) {
-            failure = std::format("cannot write {}: {}", rewrite.path, error.message());
+        } else if(auto written = vfs::write_file(rewrite.path, rewrite.text); !written) {
+            failure = std::format("{}", written.error());
         } else {
             continue;
         }

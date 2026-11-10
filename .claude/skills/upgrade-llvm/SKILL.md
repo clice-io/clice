@@ -19,7 +19,7 @@ The toolchain and the libraries are built in the xclang repository, by its own p
 gh release view <VERSION> -R clice-io/xclang --json assets --jq '.assets[].name' | grep libclang
 ```
 
-Every target clice builds needs its `libclang-<VERSION>-<triple>.tar.xz`, and the Debug legs (x86_64 Linux, arm64 macOS) their `-asan` archives.
+Every target clice builds needs its `libclang-<VERSION>-<triple>.tar.xz`, and the Debug builds (x86_64 Linux, arm64 macOS) their `-asan` archives.
 
 ## Step 2: A clice to Regenerate With
 

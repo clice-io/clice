@@ -8,6 +8,7 @@ import :support.prelude;
 import :unittests.utils.temp_dir;
 import :vfs.file_system;
 import :vfs.file_table;
+import :vfs.path;
 
 namespace clice::testing {
 
@@ -37,9 +38,20 @@ struct ToolchainEntries {
         return toolchain.query_key_for(ref.command, ref.language);
     }
 
-    /// The command clice compiles `ref` with, resolved through the query.
+    /// The command clice compiles `ref` with, resolved through the query,
+    /// which answered: a failed one renders the command too, without the
+    /// compiler's say the test is about.
     std::vector<const char*> resolve(const CommandRef& ref) {
-        ZASSERT(toolchain.resolve(ref.command, ref.language));
+        auto resolution = toolchain.resolve(ref.command, ref.language);
+        ZASSERT(resolution);
+        ZEXPECT(resolution->query_failure == "");
+        return toolchain.render(ref, db.spelling(ref.file)).argv;
+    }
+
+    /// The command clice compiles `ref` with when its compiler could not be
+    /// queried: clang's own driver read it.
+    std::vector<const char*> read_as_clang(const CommandRef& ref) {
+        failure(ref);
         return toolchain.render(ref, db.spelling(ref.file)).argv;
     }
 
@@ -68,11 +80,21 @@ struct ToolchainFixture {
     }
 
     /// An executable shell script `name` in the temp directory, standing in
-    /// for a compiler driver.
+    /// for a compiler driver. Windows runs `name`.exe, the fake_driver built
+    /// beside the tests, which runs the script as `name`.sh.
     std::string fake_driver(llvm::StringRef name, llvm::StringRef script) {
+#ifdef _WIN32
+        name.consume_back(".exe");
+        auto driver = tmp.path(name.str() + ".exe");
+        ZASSERT(!fs::write_file(tmp.path(name.str() + ".sh"), script));
+        std::string tests;
+        ZASSERT(!sys::executable_path(tests));
+        ZASSERT(!fs::copy_file(path::join(path::parent(tests), "fake_driver.exe"), driver));
+#else
         auto driver = tmp.path(name);
         ZASSERT(!fs::write_file(driver, "#!/bin/sh\n" + script.str()));
         ZASSERT(!fs::set_permissions(driver, 0555));
+#endif
         return driver;
     }
 
@@ -113,9 +135,33 @@ echo '#define __cplusplus 201402L'
     }
 };
 
-/// A clang job as `-v` prints it.
-constexpr inline llvm::StringRef clang_job =
-    R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-std=c++23")";
+/// `path` as a compiler of the host names a program in its output: with a
+/// drive on Windows, where one without names a Cygwin or MSYS2 compiler's,
+/// which only that runtime's mount table maps.
+inline std::string host_path(llvm::StringRef path) {
+#ifdef _WIN32
+    return "C:" + path.str();
+#else
+    return path.str();
+#endif
+}
+
+/// A clang job as `-v` prints it: `program`, then `options`, with their
+/// backslashes escaped, as clang prints a Windows path's.
+inline std::string clang_job_of(llvm::StringRef options,
+                                llvm::StringRef program = host_path("/usr/bin/clang-22")) {
+    std::string job;
+    for(auto c: std::format(R"( "{}" {})", program, options)) {
+        if(c == '\\') {
+            job += c;
+        }
+        job += c;
+    }
+    return job;
+}
+
+const inline std::string clang_job =
+    clang_job_of(R"("-cc1" "-triple" "x86_64-unknown-linux-gnu" "-std=c++23")");
 
 /// Whether `argv` holds `first` directly followed by `second`.
 inline bool adjacent(llvm::ArrayRef<const char*> argv,

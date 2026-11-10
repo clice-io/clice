@@ -219,7 +219,6 @@ void LSPClient::register_editing() {
         auto result = co_await project
                           .stateless_request(ticket,
                                              feature::RequestKind::Completion,
-                                             "Completion",
                                              positions.offset_clamped(params.position, encoding),
                                              worker::CompletionParams{
                                                  .client = completion_client,
@@ -276,7 +275,6 @@ void LSPClient::register_editing() {
             co_return co_await project.stateless_request(
                 ticket,
                 feature::RequestKind::SignatureHelp,
-                "SignatureHelp",
                 session->positions().offset_clamped(params.position, server.position_encoding),
                 worker::SignatureHelpParams{.selected = selected},
                 ctx.cancellation);
@@ -349,7 +347,6 @@ void LSPClient::register_editing() {
                     .ast_request(
                         ticket,
                         feature::RequestKind::CodeAction,
-                        "CodeAction",
                         worker::CodeActionParams{
                             .range = session->positions().offset_range(params.range, encoding),
                         },

@@ -134,7 +134,7 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     auto& batch = options.project;
     bool started =
         start_batch(run, batch, batch.workers != 0 ? batch.workers : sys::parallelism(), "index");
-    result.log_dir = run.log_dir;
+    result.session_dir = run.session_dir;
     if(!started) {
         result.exit_code = 1;
         // A failed later spawn leaves earlier workers and their I/O tasks
@@ -229,6 +229,10 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
         result.exit_code = 1;
     }
     result.seconds = timer.ms() / 1000.0;
+    LOG_INFO("Indexed {} in {} ms, {} failed",
+             counted(result.indexed_tus, "translation unit", "translation units"),
+             timer.ms(),
+             result.failed.size() + result.too_big.size());
 }
 
 int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) {
@@ -269,11 +273,8 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
         }
         driver::println("Indexed through the running clice server (pid {}).", server->pid);
         if(!failed.empty()) {
-            driver::println(
-                "{} translation unit{} failed to index (see the server log); the index is "
-                "partial:",
-                failed.size(),
-                plural_s(failed.size()));
+            driver::println("{} failed to index (see the server log); the index is partial:",
+                            counted(failed.size(), "translation unit", "translation units"));
             for(auto& path: failed) {
                 driver::println("  {}", path);
             }
@@ -297,34 +298,29 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
         return result.exit_code;
     }
     if(!result.completed) {
-        if(!result.log_dir.empty()) {
-            driver::println("Session log: {}", result.log_dir);
+        if(!result.session_dir.empty()) {
+            driver::println("Session log: {}", result.session_dir);
         }
         return result.exit_code;
     }
     if(result.damaged) {
         driver::println(
-            "Indexed {} translation unit{} in {:.1f}s, but the index database is damaged (see the "
+            "Indexed {} in {:.1f}s, but the index database is damaged (see the "
             "log): it is discarded, and the next `clice index` rebuilds the index.",
-            result.indexed_tus,
-            plural_s(result.indexed_tus),
+            counted(result.indexed_tus, "translation unit", "translation units"),
             result.seconds);
     } else {
-        driver::println(
-            "Indexed {} translation unit{} in {:.1f}s: {} file shard{} ({}), {} symbol{}.",
-            result.indexed_tus,
-            plural_s(result.indexed_tus),
-            result.seconds,
-            result.shard_count,
-            plural_s(result.shard_count),
-            format_bytes(result.shard_bytes),
-            result.symbol_count,
-            plural_s(result.symbol_count));
+        driver::println("Indexed {} in {:.1f}s: {} ({}), {}.",
+                        counted(result.indexed_tus, "translation unit", "translation units"),
+                        result.seconds,
+                        counted(result.shard_count, "file shard", "file shards"),
+                        format_bytes(result.shard_bytes),
+                        counted(result.symbol_count, "symbol", "symbols"));
     }
     if(!result.compiled_with_errors.empty()) {
-        driver::println("{} translation unit{} compiled with errors; the index holds what parsed:",
-                        result.compiled_with_errors.size(),
-                        plural_s(result.compiled_with_errors.size()));
+        driver::println(
+            "{} compiled with errors; the index holds what parsed:",
+            counted(result.compiled_with_errors.size(), "translation unit", "translation units"));
         for(auto& [unit, errors]: result.compiled_with_errors) {
             auto& first = errors.front();
             driver::println("  {}", unit);
@@ -332,26 +328,21 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
                             location(first.file, first.line, first.column),
                             first.message);
             if(errors.size() > 1) {
-                driver::println("    and {} more error{}",
-                                errors.size() - 1,
-                                plural_s(errors.size() - 1));
+                driver::println("    and {}",
+                                counted(errors.size() - 1, "more error", "more errors"));
             }
         }
     }
     if(!result.failed.empty()) {
-        driver::println(
-            "{} translation unit{} failed to index (see the log); the index is partial:",
-            result.failed.size(),
-            plural_s(result.failed.size()));
+        driver::println("{} failed to index (see the log); the index is partial:",
+                        counted(result.failed.size(), "translation unit", "translation units"));
         for(auto& path: result.failed) {
             driver::println("  {}", path);
         }
     }
     if(!result.too_big.empty()) {
-        driver::println(
-            "{} translation unit{} did not fit in memory, even run alone; the index is partial:",
-            result.too_big.size(),
-            plural_s(result.too_big.size()));
+        driver::println("{} did not fit in memory, even run alone; the index is partial:",
+                        counted(result.too_big.size(), "translation unit", "translation units"));
         for(auto& [unit, memory]: result.too_big) {
             driver::println("  {} (reached {})", unit, format_bytes(memory));
         }
@@ -359,8 +350,8 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
     if(result.unsaved) {
         driver::println("Part of the index could not be persisted (see the log).");
     }
-    if(!result.log_dir.empty()) {
-        driver::println("Session log: {}", result.log_dir);
+    if(!result.session_dir.empty()) {
+        driver::println("Session log: {}", result.session_dir);
     }
     return result.exit_code;
 }
@@ -637,10 +628,9 @@ void print_stats(const Project& project, const StatsResult& stats, std::uint32_t
     driver::println("Global symbols: {}, file versions: {}",
                     project_index.symbol_count(),
                     project.file_table.versions.size());
-    driver::println("Search index: {} symbols in {} run{} ({}), {} merged since the newest run",
+    driver::println("Search index: {} symbols in {} ({}), {} merged since the newest run",
                     project.index.search_index().size(),
-                    project.index.search_index().run_count(),
-                    plural_s(project.index.search_index().run_count()),
+                    counted(project.index.search_index().run_count(), "run", "runs"),
                     format_bytes(stats.search_bytes),
                     project.index.search_pending().size());
     if(project_index.damaged()) {
@@ -933,10 +923,9 @@ int run_show_file(Project& project, llvm::StringRef argument) {
     for(auto hash: variants) {
         auto& units = contributors[hash];
         ranges::sort(units);
-        driver::println("    {}  contributed by {} unit{}",
+        driver::println("    {}  contributed by {}",
                         format_hash(hash),
-                        units.size(),
-                        plural_s(units.size()));
+                        counted(units.size(), "unit", "units"));
         for(auto& unit: units) {
             driver::println("      {}", unit);
         }
@@ -1010,9 +999,7 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
 
     // The include tree, children under their parent in node order; a
     // node's line is the directive's line in the file that includes it.
-    driver::println("  include tree ({} node{}):",
-                    manifest.nodes.size(),
-                    plural_s(manifest.nodes.size()));
+    driver::println("  include tree ({}):", counted(manifest.nodes.size(), "node", "nodes"));
     std::vector<std::vector<std::uint32_t>> children(manifest.nodes.size() + 1);
     for(std::uint32_t i = 0; i < manifest.nodes.size(); i += 1) {
         auto parent = manifest.nodes[i].parent;
@@ -1042,9 +1029,8 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
     // A manifest is accepted with in-range parents only; a cycle hangs off
     // no root and would otherwise vanish from the listing.
     if(printed != manifest.nodes.size()) {
-        driver::println("    {} node{} unreachable from the root (cyclic parents)",
-                        manifest.nodes.size() - printed,
-                        plural_s(manifest.nodes.size() - printed));
+        driver::println("    {} unreachable from the root (cyclic parents)",
+                        counted(manifest.nodes.size() - printed, "node", "nodes"));
         return 1;
     }
     return 0;

@@ -1,7 +1,7 @@
 [macros."$ clice command convert -- missing-clang++ --output=main.o -D A -D B=0 joined.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D B=0 ${WS}/joined.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -9,7 +9,7 @@ exit = 1
 [macros."$ clice command convert -- missing-clang++ --output=main.o -D A -D B=0 separate.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D B=0 ${WS}/separate.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -17,7 +17,7 @@ exit = 1
 [macros."$ clice command convert -- missing-clang++ --output=main.o -D A -D B=0 both.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/both.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -25,7 +25,7 @@ exit = 1
 [macros."$ clice command convert -- missing-clang++ --output=main.o -D A -D B=0 wildcard_joined.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/wildcard_joined.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -33,7 +33,7 @@ exit = 1
 [macros."$ clice command convert -- missing-clang++ --output=main.o -D A -D B=0 wildcard_separate.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/wildcard_separate.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -42,7 +42,7 @@ exit = 1
 stdout = "missing-clang -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wp,-DKEPT -D KEEP ${WS}/every.c"
 stderr = '''
 warning: A rule removes -sectcreate, which takes several values: write them
-error: Toolchain query failed: Cannot find driver: missing-clang
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang
 '''
 exit = 1
@@ -50,7 +50,7 @@ exit = 1
 ["every value"."$ clice command convert -- missing-clang++ -Iinc -I/opt/include includes_joined.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/includes_joined.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -58,7 +58,7 @@ exit = 1
 ["every value"."$ clice command convert -- missing-clang++ -Iinc -I/opt/include includes_separate.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/includes_separate.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1

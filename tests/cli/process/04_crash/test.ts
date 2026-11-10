@@ -26,7 +26,9 @@ test("crash in a command", async (t) => {
     } else {
         expect(["SIGILL", "SIGTRAP"]).toContain(signal);
     }
-    expect(stderr).toMatch(/=== CRASH STACK TRACE ===\r?\nclice \S+ \S+\r?\n/);
+    expect(stderr).toMatch(
+        /=== CRASH STACK TRACE ===\r?\nclice \S+ \S+( https:\/\/github\.com\/clice-io\/clice\/tree\/[0-9a-f]{40})?\r?\n/,
+    );
     expect(stderr).toMatch(
         /^0x[0-9a-fA-F]+, .+\(0x[0-9a-fA-F]+\) \+ 0x[0-9a-fA-F]+ byte\(s\) \(interrupted\)\r?$/m,
     );

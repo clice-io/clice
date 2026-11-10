@@ -1,10 +1,10 @@
 ["a broken configuration"."$ clice format"]
-stderr = "error: ${WS}/clice.toml:1:8: TOML parse error: Error while parsing table header: expected ']', saw '\\n'"
+stderr = "error: clice.toml:1:8: TOML parse error: Error while parsing table header: expected ']', saw '\\n'"
 exit = 2
 
 ["a broken compilation database"."$ clice format --check"]
 stderr = '''
-error: Invalid compilation database format in ${WS}/compile_commands.json: root element must be an array.
+warning: The compilation database compile_commands.json is not an array of entries
 ${WS}/compile_commands.json: the compilation database could not be loaded
 '''
 exit = 2

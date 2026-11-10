@@ -85,9 +85,41 @@ inline llvm::StringRef without_bom(llvm::StringRef bytes) {
     return text;
 }
 
-/// A file's text (see without_bom). Read, never mapped: Windows refuses an
-/// editor's save over a mapped file.
-std::expected<std::string, std::error_code> read_text(llvm::StringRef path);
+/// A file operation that failed, on the path it was given: formatted, the
+/// sentence a message about it needs, "cannot read <path>: <reason>".
+struct FileError {
+    enum class Operation : std::uint8_t {
+        Read,
+        List,
+        Write,
+        CreateDirectory,
+        Remove,
+    };
+
+    Operation operation = Operation::Read;
+
+    std::string path;
+
+    std::error_code code;
+};
+
+/// A file's bytes, a byte order mark kept. Read, never mapped: Windows
+/// refuses an editor's save over a mapped file.
+std::expected<std::string, FileError> read_bytes(llvm::StringRef path);
+
+/// A file's text (see without_bom), read as read_bytes reads it.
+std::expected<std::string, FileError> read_text(llvm::StringRef path);
+
+/// The names in a directory.
+std::expected<std::vector<std::string>, FileError> list_names(llvm::StringRef directory);
+
+std::expected<void, FileError> write_file(llvm::StringRef path, llvm::StringRef content);
+
+/// A directory and each missing one above it.
+std::expected<void, FileError> create_directories(llvm::StringRef path);
+
+/// A file, a symlink or an empty directory; nothing there is no error.
+std::expected<void, FileError> remove(llvm::StringRef path);
 
 /// A file's text read and hashed under the pairing discipline: open a
 /// handle, fstat it, read through it, fstat again. Equal fstats prove
@@ -98,8 +130,7 @@ std::expected<std::string, std::error_code> read_text(llvm::StringRef path);
 /// racing write can arrive within one mtime tick, so such a stat must not
 /// suppress future reads. Safe to call from any thread. `padding` bytes of
 /// room stay past the text, which a parser reading in wide blocks needs.
-std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path,
-                                                           std::size_t padding = 0);
+std::expected<ObservedFile, FileError> read_observed(llvm::StringRef path, std::size_t padding = 0);
 
 /// The file statuses of one operation (a dependency check, a compile). On
 /// Windows a directory asked about often enough within the operation is
@@ -189,3 +220,24 @@ private:
 }  // namespace vfs
 
 }  // namespace clice
+
+template <>
+struct std::formatter<clice::vfs::FileError> : std::formatter<std::string> {
+    template <typename FormatContext>
+    auto format(const clice::vfs::FileError& error, FormatContext& ctx) const {
+        using enum clice::vfs::FileError::Operation;
+        auto verb = [&] {
+            switch(error.operation) {
+                case Read: return "read";
+                case List: return "list";
+                case Write: return "write";
+                case CreateDirectory: return "create the directory";
+                case Remove: return "remove";
+            }
+            std::unreachable();
+        }();
+        return std::formatter<std::string>::format(
+            std::format("cannot {} {}: {}", verb, error.path, error.code.message()),
+            ctx);
+    }
+};

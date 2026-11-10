@@ -73,7 +73,6 @@ async::task<std::optional<feature::HoverInfo>, ipc::Error>
     co_return co_await served.ast_request(
         ticket,
         feature::RequestKind::Hover,
-        "Hover",
         worker::HoverParams{
             .offset = ticket.session->positions().offset_clamped(position, encoding),
             .settings = served.project.settings,
@@ -90,7 +89,6 @@ async::task<worker::CompletionResult, ipc::Error> ask_completion(ServedProject& 
     co_return co_await served.stateless_request(
         ticket,
         feature::RequestKind::Completion,
-        "Completion",
         ticket.session->positions().offset_clamped(position, encoding),
         worker::CompletionParams{.encoding = encoding},
         {});
@@ -1309,7 +1307,6 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
         auto tokens = [&]() -> async::task<> {
             auto result = co_await served.ast_request(ticket,
                                                       feature::RequestKind::SemanticTokens,
-                                                      "SemanticTokens",
                                                       worker::SemanticTokensParams{
                                                           .settings = served.project.settings,
                                                       },
@@ -1735,7 +1732,6 @@ ZEST_CASE(EvictedDocumentKeptAnswers) {
         co_return co_await served.ast_request(
             Ticket::take(a),
             feature::RequestKind::SemanticTokens,
-            "SemanticTokens",
             worker::SemanticTokensParams{.settings = served.project.settings},
             {});
     };
@@ -1743,7 +1739,6 @@ ZEST_CASE(EvictedDocumentKeptAnswers) {
         [&](LocalSourceRange range) -> async::task<std::vector<feature::InlayHint>, ipc::Error> {
         co_return co_await served.ast_request(Ticket::take(a),
                                               feature::RequestKind::InlayHint,
-                                              "InlayHint",
                                               worker::InlayHintParams{
                                                   .range = range,
                                                   .settings = served.project.settings,

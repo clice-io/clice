@@ -407,7 +407,7 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
             issues.push_back(
                 {.severity = Severity::Error,
                  .file = path,
-                 .message = std::format("cannot read it: {}", content.error().message())});
+                 .message = std::format("cannot read it: {}", content.error().code.message())});
             break;
         }
         auto table = codec::toml::parse_table(*content);

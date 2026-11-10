@@ -68,6 +68,11 @@ inline std::string unspliced(llvm::StringRef text) {
     return result;
 }
 
+/// `count` with the noun it counts, singular for one: "1 entry", "3 entries".
+inline std::string counted(std::size_t count, std::string_view one, std::string_view many) {
+    return std::format("{} {}", count, count == 1 ? one : many);
+}
+
 /// A size in bytes as the commands print it: B, KB or MB.
 inline std::string format_bytes(std::uint64_t bytes) {
     if(bytes >= 1024 * 1024) {

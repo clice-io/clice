@@ -1,13 +1,10 @@
-module;
-
-#include "version.h"
-
 module clice;
 
 import :server.client;
 import :server.master;
 import :support.logging;
 import :support.process;
+import :support.version;
 
 namespace clice {
 
@@ -103,15 +100,18 @@ async::task<> accept_peers(async::tcp::acceptor acceptor,
 }
 
 int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
-    logging::options.never_block_stderr = true;
-    logging::stderr_logger("master");
+    logging::stderr_logger("master", logging::StderrReader::Editor);
 
-    LOG_INFO("clice master starting: version={}, target={}, pid={}, mode={}, workspace={}",
+    LOG_INFO("clice {} ({}) starting, pid {}, over {}{}",
              clice::version,
              clice::target,
              sys::pid(),
-             opts.mode == ServerMode::Pipe ? "pipe" : "socket",
-             opts.workspace.empty() ? "<from LSP initialize>" : opts.workspace);
+             opts.mode == ServerMode::Pipe ? "stdio" : "a socket",
+             opts.workspace.empty() ? std::string()
+                                    : std::format(", for the project root {}", opts.workspace));
+    if(auto source = built_from(); !source.empty()) {
+        LOG_INFO("{}", source);
+    }
 
     if(opts.mode == ServerMode::Socket && (opts.port <= 0 || opts.port > 65535)) {
         LOG_ERROR("--port must be between 1 and 65535 in socket mode");

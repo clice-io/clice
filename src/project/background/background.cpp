@@ -40,6 +40,7 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
     if(content_changed ||
        (compiled_by != CompiledBy::Document && (diagnostics || !project.index_holds(path_id)))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
+        Timer timer;
         // A build compiling the unit indexes it but brings no such
         // diagnostics: only a booking asking for them compiles it for them.
         bool wants_skipped =
@@ -75,6 +76,7 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                                         .diagnostics = std::move(result->skipped_diagnostics)};
                 }
                 indexed_units += 1;
+                LOG_INFO("[{}/{}] Indexed {} in {} ms", index, total, file_path, timer.ms());
                 LOG_PERF("index",
                          "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
                          index,
@@ -89,7 +91,7 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                 break;
             }
             case Status::Failed: {
-                LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, result->error);
+                LOG_WARN("[{}/{}] Cannot index {}: {}", index, total, file_path, result->error);
                 record(path_id, {.failed = true});
                 break;
             }
@@ -112,17 +114,19 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                                                                 : Preempted;
                 switch(reindexes.on_dispatch_failure(taken, failure)) {
                     case ReindexQueue::FailureDecision::Dropped: {
-                        LOG_INFO("[{}/{}] Index dropped for removed file {}",
+                        LOG_INFO("[{}/{}] {} was removed while it was indexed",
                                  index,
                                  total,
                                  file_path);
                         break;
                     }
                     case ReindexQueue::FailureDecision::Outdated: {
-                        LOG_INFO("[{}/{}] Index failure for outdated content of {}",
-                                 index,
-                                 total,
-                                 file_path);
+                        LOG_INFO(
+                            "[{}/{}] {} or a file it includes changed while it was indexed; "
+                            "the result is dropped",
+                            index,
+                            total,
+                            file_path);
                         break;
                     }
                     case ReindexQueue::FailureDecision::GaveUp: {
@@ -138,7 +142,7 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                         if(result->status == Status::TooBig) {
                             LOG_WARN(
                                 "[{}/{}] {} does not fit in memory: its worker reached {} MiB "
-                                "alone; its cross-file data stays stale until it changes",
+                                "alone; what other files know of it stays stale until it changes",
                                 index,
                                 total,
                                 file_path,
@@ -147,7 +151,7 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                             break;
                         }
                         LOG_WARN(
-                            "[{}/{}] Index giving up on {} ({}); its cross-file data stays "
+                            "[{}/{}] Not indexing {} again ({}); what other files know of it stays "
                             "stale until it changes",
                             index,
                             total,
@@ -158,13 +162,14 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                     }
                     case ReindexQueue::FailureDecision::Requeued: {
                         if(failure == Lost) {
-                            LOG_WARN("[{}/{}] Worker died while indexing {}; requeued: {}",
-                                     index,
-                                     total,
-                                     file_path,
-                                     result->error);
+                            LOG_WARN(
+                                "[{}/{}] The worker indexing {} died; it is indexed again later: {}",
+                                index,
+                                total,
+                                file_path,
+                                result->error);
                         } else {
-                            LOG_INFO("[{}/{}] Index requeued for {}: {}",
+                            LOG_INFO("[{}/{}] Indexing {} again later: {}",
                                      index,
                                      total,
                                      file_path,

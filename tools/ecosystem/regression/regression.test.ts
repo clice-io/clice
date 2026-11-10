@@ -30,19 +30,25 @@ describe("confirm", () => {
 describe("index", () => {
     test("the units in flight are those begun and not finished", () => {
         const log = [
-            "[t] [info] [x] [1/3] Indexing /p/a.cpp",
-            "[t] [info] [x] [2/3] Indexing /p/b.cpp",
-            "[t] [info] [x] [perf:index] progress=1/3 file=/p/a.cpp bytes=1",
-            "[t] [info] [x] [3/3] Indexing /p/c.cpp",
-            "[t] [warning] [x] [3/3] Index failed for /p/c.cpp: no",
-            "[t] [info] [x] [1/2] Indexing /p/d.cpp",
-            "[t] [warning] [x] [1/2] Worker died while indexing /p/d.cpp; requeued: x",
-            "[t] [info] [x] [2/2] Indexing /p/e.cpp",
-            "[t] [warning] [x] [2/2] Index giving up on /p/e.cpp (crashed); its data stays",
-            "[t] [info] [x] [1/1] Indexing /p/f.cpp",
-            "[t] [info] [x] [1/1] Index dropped for removed file /p/f.cpp",
+            "[t] [info] [1/4] Indexing a.cpp",
+            "[t] [info] [2/4] Indexing b.cpp",
+            "[t] [info] [1/4] Indexed a.cpp in 12 ms",
+            "[t] [info] [3/4] Indexing c.cpp",
+            "[t] [warning] [3/4] Cannot index c.cpp: no",
+            "[t] [info] [4/4] Indexing g.cpp",
+            "[t] [warning] [4/4] g.cpp does not fit in memory: its worker reached 9 MiB alone",
+            "[t] [info] [1/2] Indexing d.cpp",
+            "[t] [warning] [1/2] The worker indexing d.cpp died; it is indexed again later: x",
+            "[t] [info] [2/2] Indexing e.cpp",
+            "[t] [warning] [2/2] Not indexing e.cpp again (crashed); what other files know",
+            "[t] [info] [1/1] Indexing f.cpp",
+            "[t] [info] [1/1] f.cpp was removed while it was indexed",
+            "[t] [info] [1/2] Indexing h.cpp",
+            "[t] [info] [1/2] Indexing h.cpp again later: more urgent work came first",
+            "[t] [info] [2/2] Indexing i.cpp",
+            "[t] [info] [2/2] i.cpp or a file it includes changed while it was indexed; the result is dropped",
         ].join("\n");
-        expect(unitsInFlight(log)).toEqual(["/p/b.cpp"]);
+        expect(unitsInFlight(log)).toEqual(["b.cpp"]);
     });
 });
 

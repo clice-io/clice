@@ -142,8 +142,10 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
 std::uint32_t IncludeTree::node_of(clang::FileID fid) const {
     auto it = file_nodes.find(fid);
     if(it == file_nodes.end()) [[unlikely]] {
-        LOG_WARN("IncludeTree: fid {} missing from file table, attributing to focus file",
-                 fid.getHashValue());
+        LOG_WARN(
+            "The include tree has no file {} of the compile; its entries go to the "
+            "focus file",
+            fid.getHashValue());
         return no_node;
     }
     return it->second;

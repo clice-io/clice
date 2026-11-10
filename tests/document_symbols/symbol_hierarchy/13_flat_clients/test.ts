@@ -29,21 +29,17 @@ test("tree in the first kinds", async (t) => {
 // A second spelling of an open file is served by the first one's document;
 // its flat symbols still sit in the document the request names, which the
 // rendered paths, resolving links, cannot tell apart.
-test(
-    "flat at the spelling asked",
-    { except: { win32: "a symlink on Windows needs a privilege the CI runners lack" } },
-    async (t) => {
-        t.disk.symlink("alias.cpp", "main.cpp");
-        const s = await t.start({ capabilities: FLAT });
-        s.open("main.cpp");
-        s.open("alias.cpp");
-        await s.sync();
-        const reply = await s.request<proto.SymbolInformation[]>(
-            "textDocument/documentSymbol",
-            "alias.cpp",
-        );
-        expect(new Set(reply.map((symbol) => s.spelling(symbol.location.uri)))).toEqual(
-            new Set(["alias.cpp"]),
-        );
-    },
-);
+test("flat at the spelling asked", async (t) => {
+    t.disk.symlink("alias.cpp", "main.cpp");
+    const s = await t.start({ capabilities: FLAT });
+    s.open("main.cpp");
+    s.open("alias.cpp");
+    await s.sync();
+    const reply = await s.request<proto.SymbolInformation[]>(
+        "textDocument/documentSymbol",
+        "alias.cpp",
+    );
+    expect(new Set(reply.map((symbol) => s.spelling(symbol.location.uri)))).toEqual(
+        new Set(["alias.cpp"]),
+    );
+});

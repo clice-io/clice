@@ -90,7 +90,7 @@ void clear_dead_readers(MDB_env* env) {
     int dead = 0;
     mdb_reader_check(env, &dead);
     if(dead != 0) {
-        LOG_INFO("Cleared {} stale index database readers", dead);
+        LOG_DEBUG("Freed {} reader slots that exited processes left in the index database", dead);
     }
 }
 
@@ -414,7 +414,7 @@ public:
         mdb_env_info(env, &info);
         auto grown = std::max<std::size_t>(info.me_mapsize * 2, lmdb_small_mapsize);
         if(auto refused = growth_refused(env, grown - info.me_mapsize)) {
-            LOG_ERROR(
+            LOG_GUIDANCE(
                 "The index database cannot grow to {}: {}; the index is not saved until "
                 "that changes",
                 format_bytes(grown),
@@ -693,10 +693,15 @@ enum class MetaCheck : std::uint8_t {
     Transient,
 };
 
+/// The corruption a read of the database met: LMDB's return code.
+struct Corruption {
+    int rc = 0;
+};
+
 /// Validates the meta record under the resident transaction; initializes
-/// it first on a fresh (provably empty) writable database. The error is
-/// the corruption the read of the record met.
-std::expected<MetaCheck, int> check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
+/// it first on a fresh (provably empty) writable database.
+std::expected<MetaCheck, Corruption>
+    check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     auto mk = to_val(meta_key);
     MDB_val value;
     int rc = mdb_get(txn, dbi, &mk, &value);
@@ -708,7 +713,7 @@ std::expected<MetaCheck, int> check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn
     }
     if(rc != MDB_NOTFOUND) {
         if(is_corruption(rc)) {
-            return std::unexpected(rc);
+            return std::unexpected(Corruption{rc});
         }
         return MetaCheck::Transient;
     }
@@ -746,7 +751,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
     // pages, which a read-only open cannot.
     if(read_only) {
         if(auto status = fs::status(path); status && status->size == 0) {
-            LOG_WARN("Index database at {} is empty; run `clice index` to repair it", path);
+            LOG_WARN("Index database at {} is empty; run `clice index` to build it", path);
             return nullptr;
         }
     }
@@ -767,7 +772,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
     if(read_only) {
         open_lock = OpenLock::acquire(path, OpenLock::Kind::Shared, /*wait=*/true);
         if(!open_lock) {
-            LOG_WARN("Cannot lock the index database at {} for reading ({}-open)", path, path);
+            LOG_WARN("Cannot lock {}-open for reading", path);
             return nullptr;
         }
     } else {
@@ -901,7 +906,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
         auto meta = check_meta(env, dbi, txn, read_only);
         if(!meta) {
             mdb_txn_abort(txn);
-            if(fail(meta.error(), "meta")) {
+            if(fail(meta.error().rc, "meta")) {
                 continue;
             }
             return nullptr;

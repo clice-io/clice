@@ -1,7 +1,3 @@
-module;
-
-#include "version.h"
-
 module clice;
 
 import :server.client;
@@ -10,6 +6,8 @@ import :server.served_project;
 import :settings.settings;
 import :support.logging;
 import :support.process;
+import :support.text;
+import :support.version;
 import :vfs.disk_state;
 import :vfs.file_system;
 import :vfs.path;
@@ -66,25 +64,86 @@ MasterServer::~MasterServer() {
     logging::set_notify_hook(nullptr);
 }
 
+/// The values of `actual` that `defaults` does not have, as `a.b = <JSON>`.
+static void differing(simdjson::dom::element actual,
+                      simdjson::dom::element defaults,
+                      llvm::StringRef prefix,
+                      std::vector<std::string>& out) {
+    simdjson::dom::object fields, default_fields;
+    if(!actual.get_object().get(fields) && !defaults.get_object().get(default_fields)) {
+        for(auto [key, value]: fields) {
+            auto name = prefix.empty() ? std::string(key) : std::format("{}.{}", prefix, key);
+            simdjson::dom::element default_value;
+            if(default_fields[key].get(default_value)) {
+                out.push_back(std::format("{} = {}", name, simdjson::minify(value)));
+            } else {
+                differing(value, default_value, name, out);
+            }
+        }
+        return;
+    }
+    auto text = simdjson::minify(actual);
+    if(text != simdjson::minify(defaults)) {
+        out.push_back(std::format("{} = {}", prefix, text));
+    }
+}
+
 void MasterServer::log_settings(const ServedProject& project) const {
-    if(project.settings_file.empty()) {
-        LOG_INFO("Configuration file: Missing (project {})", project.project.root);
-    } else {
-        auto text = vfs::read_text(project.settings_file);
-        LOG_INFO("Configuration file {}:\n{}",
-                 project.settings_file,
-                 text.value_or("<unreadable>"));
+    llvm::SmallVector<std::string_view> sources;
+    if(!project.settings_file.empty()) {
+        sources.push_back("clice.toml");
     }
-    if(!init_options) {
-        LOG_INFO("initializationOptions: Missing");
-    } else if(auto json = json::to_string(*init_options)) {
-        auto pretty = json::prettify(*json);
-        LOG_INFO("initializationOptions:\n{}", pretty ? *pretty : *json);
+    if(init_options) {
+        sources.push_back("initializationOptions");
     }
-    if(auto json = json::to_string(project.project.settings)) {
-        auto pretty = json::prettify(*json);
-        LOG_INFO("Effective configuration:\n{}", pretty ? *pretty : *json);
+    // Against the defaults as the project's root derives them: its cache
+    // and logging directories are no setting of the user's.
+    Settings unset;
+    unset.finalize(project.project.root);
+    auto actual = json::to_string(project.project.settings);
+    auto defaults = json::to_string(unset);
+    simdjson::dom::parser actual_parser, defaults_parser;
+    simdjson::dom::element actual_root, defaults_root;
+    if(!actual || !defaults || actual_parser.parse(*actual).get(actual_root) ||
+       defaults_parser.parse(*defaults).get(defaults_root)) {
+        return;
     }
+    std::vector<std::string> changed;
+    differing(actual_root, defaults_root, "", changed);
+    LOG_INFO("Settings of the project at {}, from {}: {}",
+             project.project.root,
+             sources.empty() ? "the defaults alone" : llvm::join(sources, " and "),
+             changed.empty() ? "the defaults" : llvm::join(changed, ", "));
+}
+
+void MasterServer::log_into(const ServedProject& project) {
+    auto& logging_dir = project.project.settings.project.logging_dir;
+    if(logging_dir.empty()) {
+        return;
+    }
+    if(!session_dir.empty()) {
+        if(fs::path::parent(session_dir) != std::string_view(logging_dir)) {
+            logging::link_session_log(logging_dir, session_dir);
+        }
+        return;
+    }
+    auto dir = logging::start_session_log(logging_dir);
+    if(!logging::file_logger(dir)) {
+        return;
+    }
+    LOG_INFO("Session log directory: {}", dir);
+    session_dir = dir;
+    pool.log_to(std::move(dir));
+}
+
+void MasterServer::show_paths_relative() const {
+    std::vector<std::string> roots;
+    for(auto& project: projects) {
+        if(!project->project.root.empty()) {
+            roots.push_back(project->project.root.str());
+        }
+    }
+    logging::set_project_roots(roots);
 }
 
 void MasterServer::initialize() {
@@ -92,12 +151,12 @@ void MasterServer::initialize() {
         projects.push_back(make_project(std::move(root)));
     }
     projects_generation += 1;
+    show_paths_relative();
     watch_settings();
     for(auto& project: projects) {
         project->configure(init_options, taken_cache_dirs());
     }
-    // One pool serves every project, sized for the most demanding one;
-    // the first project names the log directory.
+    // One pool serves every project, sized for the most demanding one.
     WorkerPoolOptions pool_opts;
     pool_opts.stateful_count = 0;
     pool_opts.stateless_count = 0;
@@ -107,14 +166,18 @@ void MasterServer::initialize() {
     auto machine_resident = default_max_resident(memory_state({}).limit);
     std::size_t resident = 0;
     for(auto& project: projects) {
-        auto& cfg = project->project.settings.project;
-        pool_opts.stateful_count = std::max(pool_opts.stateful_count, cfg.stateful_worker_count);
-        pool_opts.stateless_count = std::max(pool_opts.stateless_count, cfg.stateless_worker_count);
-        pool_opts.min_stateless = std::max(pool_opts.min_stateless, cfg.min_stateless_worker_count);
-        pool_opts.max_stateless = std::max(pool_opts.max_stateless, cfg.max_stateless_worker_count);
+        auto& settings = project->project.settings.project;
+        pool_opts.stateful_count =
+            std::max(pool_opts.stateful_count, settings.stateful_worker_count);
+        pool_opts.stateless_count =
+            std::max(pool_opts.stateless_count, settings.stateless_worker_count);
+        pool_opts.min_stateless =
+            std::max(pool_opts.min_stateless, settings.min_stateless_worker_count);
+        pool_opts.max_stateless =
+            std::max(pool_opts.max_stateless, settings.max_stateless_worker_count);
         // 0 leaves the ceiling to the core count, the largest one.
-        unbounded = unbounded || cfg.max_stateless_worker_count == 0;
-        auto documents = cfg.max_resident_documents;
+        unbounded = unbounded || settings.max_stateless_worker_count == 0;
+        auto documents = settings.max_resident_documents;
         resident = std::max<std::size_t>(resident, documents == 0 ? machine_resident : documents);
     }
     pool_opts.max_resident = resident;
@@ -128,22 +191,9 @@ void MasterServer::initialize() {
             chrono::milliseconds(*ms);
     }
 
-    auto& first = projects.front()->project.settings.project;
-    if(!first.logging_dir.empty()) {
-        auto dir = logging::session_log_directory(first.logging_dir);
-        if(logging::file_logger("master", dir)) {
-            LOG_INFO("Session log directory: {}", dir);
-            pool_opts.log_dir = std::move(dir);
-        }
-    }
     for(auto& project: projects) {
         log_settings(*project);
     }
-
-    LOG_INFO("Server ready (projects={}, stateful={}, stateless={})",
-             projects.size(),
-             pool_opts.stateful_count,
-             pool_opts.stateless_count);
 
     if(projects.front()->project.settings.project.test_hooks) {
         pool.hooks = &hooks;
@@ -153,6 +203,7 @@ void MasterServer::initialize() {
         for(auto& project: projects) {
             project->start();
         }
+        LOG_INFO("Server ready: {}", counted(projects.size(), "project", "projects"));
         polling.spawn(poll_task());
     } else {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
@@ -187,6 +238,11 @@ async::task<> MasterServer::poll_task() {
                    project->reload_databases(false)) {
                     hooks.happened(LoopEvent::DatabaseChange);
                 }
+            }
+        }
+        for(auto& project: projects) {
+            if(project->look_for_database(false)) {
+                hooks.happened(LoopEvent::DatabaseChange);
             }
         }
         look_at_settings();

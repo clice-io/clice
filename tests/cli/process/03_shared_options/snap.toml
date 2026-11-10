@@ -3,7 +3,7 @@ stderr = '''
 at argv[2]:
   index --log-level bogus
                     ^~~~~
-  invalid enum value: bogus (supported: trace, debug, info, warn, error, off)
+  invalid enum value: bogus (supported: trace, debug, info, warn, error, fatal, off)
 '''
 exit = 2
 

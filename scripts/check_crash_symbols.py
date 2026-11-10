@@ -10,7 +10,7 @@ that crashed, and the frames under it a function of clice's and main.
 Usage:
     python scripts/check_crash_symbols.py <directory>
 
-The directory holds what a packaged CI leg uploads: clice.tar.gz or
+The directory holds what a CI platform that packages uploads: clice.tar.gz or
 clice.zip, and clice-symbol.tar.xz or clice-symbol.zip.
 """
 

@@ -106,7 +106,17 @@ export class Disk {
     symlink(link: string, target: string): void {
         this.steps.note(`disk: link ${link} to ${target}`);
         fs.mkdirSync(path.dirname(this.path(link)), { recursive: true });
-        fs.symlinkSync(path.isAbsolute(target) ? target : this.path(target), this.path(link));
+        try {
+            fs.symlinkSync(path.isAbsolute(target) ? target : this.path(target), this.path(link));
+        } catch (error) {
+            if (process.platform === "win32" && (error as NodeJS.ErrnoException).code === "EPERM") {
+                throw new Error(
+                    "Windows refused to create a symlink: the tests need Developer Mode on, or an administrator's shell",
+                    { cause: error },
+                );
+            }
+            throw error;
+        }
     }
 
     /// Point a directory link at `target`, replacing the one there: a

@@ -60,7 +60,7 @@ approval like any release trigger.
 Every GitHub release, nightly or stable, is created as a draft and
 published by `publish-clice.yml` only once all six platform archives are
 attached: drafts are hidden from anyone without push access, so no user's
-editor extension ever installs from a half-uploaded release. A failed promote leg leaves
+editor extension ever installs from a half-uploaded release. A failed promote job leaves
 the draft behind; `gh run rerun <id> --failed` finishes and publishes it.
 
 The vsix packaging matrix runs in parallel, but release upload and
@@ -110,24 +110,25 @@ Every step that tags or publishes needs the maintainer's explicit approval first
 ## Plumbing changes
 
 There is no separate dry run: packaging runs on every CI build (the
-packaged legs of `test.yml` build `//:package` and `//:symbols`) and the vsix
+platforms of `test.yml` that package build `//:package` and `//:symbols`) and the vsix
 path runs as `instant-vscode`, so release plumbing is exercised by every
 code-touching PR. Only the promote/upload glue (`publish-clice.yml`,
 nightly orchestration) is release-time-only.
 
 ## Crash log support
 
-Ask the user for the log (worker `.log` from the session log directory —
-printed at startup in the editor's clice output panel, by default
-`~/.cache/clice/<workspace>-<hash>/logs/<session>/`, falling back to the
-workspace `.clice/logs/` when no home directory is available). The crash section starts with `clice <version> <target>` —
+Ask the user for the log (the crashed process's `.log` from the session
+directory, printed at startup in the editor's clice output panel; by
+default `.clice/logs/<session>/` in the project, under `logging_dir` when
+the settings name one). The crash section starts with `clice <version>
+<target>` and the link to the commit's source —
 download that release's `*.symbols.tar.xz` (`.zip` for Windows; GSYM) and run:
 
 ```bash
 python scripts/symbolize.py crash.log --symbols clice.gsym
 ```
 
-Every packaged CI leg runs this path on its own package: the package's clice
+Every CI platform that packages runs this path on its own package: the package's clice
 crashes on purpose and its trace symbolizes against the symbol package
 (`scripts/check_crash_symbols.py`).
 

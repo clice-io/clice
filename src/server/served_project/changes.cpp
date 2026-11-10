@@ -107,6 +107,9 @@ void ServedProject::recheck_choices() {
 }
 
 bool ServedProject::reload_databases(bool force) {
+    if(look_for_database(force)) {
+        return true;
+    }
     if(!watches_build()) {
         return false;
     }
@@ -146,6 +149,11 @@ async::task<bool> ServedProject::poll_sources() {
 }
 
 void ServedProject::discover_around(Fid path_id) {
+    // A file below it opens a project start() left waiting: the database
+    // found around the file is the project's.
+    if(waiting) {
+        open();
+    }
     if(!watches_build()) {
         return;
     }

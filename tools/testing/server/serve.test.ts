@@ -11,10 +11,10 @@ function logged(lines: readonly string[]): Workspace {
     return workspace;
 }
 
-function crash(workspace: Workspace, file: string): string[] {
+function crash(file: string): string[] {
     return [
-        `[t] [warning] [thread 1] [pool.cpp:39] [SF-0] clice worker crashed in: clice/worker/hover ${workspace.displayPath(file)}`,
-        "[t] [error] [thread 1] [pool.cpp:578] [anomaly:WorkerCrash] Worker SF-0 killed by signal 4 (SIGILL)",
+        `[t] [warning] [pool.cpp:39] [SF-0] clice worker crashed in: clice/worker/hover ${file}`,
+        "[t] [error] [pool.cpp:578] [anomaly:WorkerCrash] Worker SF-0 killed by signal 4 (SIGILL)",
     ];
 }
 
@@ -23,10 +23,7 @@ describe("gateLogs", () => {
 
     test("the declared crash passes", () => {
         const workspace = logged([]);
-        workspace.write(
-            ".clice/logs/session/master.log",
-            `${crash(workspace, "a.cpp").join("\n")}\n`,
-        );
+        workspace.write(".clice/logs/session/master.log", `${crash("a.cpp").join("\n")}\n`);
         expect(gateLogs(workspace, { servers: [hover] }, false)).toEqual([]);
         workspace.remove();
     });
@@ -35,7 +32,7 @@ describe("gateLogs", () => {
         const workspace = logged([]);
         workspace.write(
             ".clice/logs/session/master.log",
-            `${[...crash(workspace, "a.cpp"), ...crash(workspace, "b.cpp")].join("\n")}\n`,
+            `${[...crash("a.cpp"), ...crash("b.cpp")].join("\n")}\n`,
         );
         const [error] = gateLogs(workspace, { servers: [hover] }, false) as Error[];
         expect(error?.message).toMatch(/nothing declared/);
@@ -43,7 +40,7 @@ describe("gateLogs", () => {
     });
 
     test("a declared crash that never happened fails", () => {
-        const workspace = logged(["[t] [info] [thread 1] [x.cpp:1] nothing"]);
+        const workspace = logged(["[t] [info] [x.cpp:1] nothing"]);
         const [error] = gateLogs(
             workspace,
             { servers: [hover, { crash: { request: "hover", file: "b.cpp" } }] },
@@ -58,8 +55,8 @@ describe("gateLogs", () => {
         workspace.write(
             ".clice/logs/session/lint.log",
             `${[
-                `[t] [warning] [thread 1] [pool.cpp:39] [SL-0] clice worker crashed in: clice/worker/compileUnit ${workspace.displayPath("a.cpp")}`,
-                "[t] [error] [thread 1] [pool.cpp:575] [anomaly:WorkerCrash] Worker SL-0 killed by signal 4 (SIGILL) (crash streak: 0)",
+                `[t] [warning] [pool.cpp:39] [SL-0] clice worker crashed in: clice/worker/compileUnit a.cpp`,
+                "[t] [error] [pool.cpp:575] [anomaly:WorkerCrash] Worker SL-0 killed by signal 4 (SIGILL)",
             ].join("\n")}\n`,
         );
         expect(gateLogs(workspace, {}, false)).not.toEqual([]);
@@ -68,8 +65,24 @@ describe("gateLogs", () => {
         workspace.remove();
     });
 
+    test("a crash declared in a folder matches the path the log writes in it", () => {
+        const workspace = logged([]);
+        workspace.write(
+            ".clice/logs/session/master.log",
+            `${[
+                `[t] [warning] [pool.cpp:39] [SF-0] clice worker crashed in: clice/worker/hover main.cpp`,
+                "[t] [error] [pool.cpp:575] [anomaly:WorkerCrash] Worker SF-0 killed by signal 4 (SIGILL)",
+            ].join("\n")}\n`,
+        );
+        const hover = { crash: { request: "hover", file: "app/main.cpp" } };
+        expect(gateLogs(workspace, { servers: [hover] }, false)).toEqual([]);
+        const other = { crash: { request: "hover", file: "app/other.cpp" } };
+        expect(gateLogs(workspace, { servers: [other] }, false)).not.toEqual([]);
+        workspace.remove();
+    });
+
     test("undeclared error lines fail", () => {
-        const workspace = logged(["[t] [error] [thread 1] [x.cpp:1] something broke"]);
+        const workspace = logged(["[t] [error] [x.cpp:1] something broke"]);
         expect(gateLogs(workspace, {}, false)).toHaveLength(1);
         expect(gateLogs(workspace, { errors: [/something broke/] }, false)).toEqual([]);
         workspace.remove();
@@ -78,7 +91,7 @@ describe("gateLogs", () => {
 
 test("an anomaly nothing declared fails", () => {
     const workspace = logged([
-        "[t] [error] [thread 1] [pool.cpp:578] [anomaly:WorkerCrash] Worker SF-0 killed by signal 9 (SIGKILL)",
+        "[t] [error] [pool.cpp:578] [anomaly:WorkerCrash] Worker SF-0 killed by signal 9 (SIGKILL)",
     ]);
     const errors = gateLogs(workspace, { errors: [/anomaly/] }, false) as Error[];
     expect(errors.map((error) => error.message)).toEqual([

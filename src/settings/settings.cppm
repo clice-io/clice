@@ -253,8 +253,8 @@ struct ProjectSettings {
     KANNOTATE(&logging_dir,
               description =
                   "Directory for log files; empty derives `${cache_dir}/logs`. "
-                  "Each server session logs into its own timestamped "
-                  "subdirectory.")
+                  "Each server, `clice index` and `clice lint` run logs into a "
+                  "subdirectory of its own; the 20 latest are kept.")
     std::string logging_dir;
 
     KANNOTATE(&enable_indexing,

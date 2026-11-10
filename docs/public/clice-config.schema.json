@@ -149,7 +149,7 @@
                 },
                 "logging_dir": {
                     "type": "string",
-                    "description": "Directory for log files; empty derives `${cache_dir}/logs`. Each server session logs into its own timestamped subdirectory.",
+                    "description": "Directory for log files; empty derives `${cache_dir}/logs`. Each server, `clice index` and `clice lint` run logs into a subdirectory of its own; the 20 latest are kept.",
                     "default": ""
                 },
                 "enable_indexing": {

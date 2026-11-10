@@ -45,7 +45,7 @@ std::unique_ptr<clang::CompilerInvocation>
     CompilationUnit::create_invocation(clang::DiagnosticConsumer* consumer) {
     auto& input = params.input;
     if(input.arguments.empty()) {
-        LOG_ERROR("Fail to create invocation: empty argument list from database");
+        LOG_WARN("Cannot compile with an empty command");
         return nullptr;
     }
 
@@ -55,10 +55,6 @@ std::unique_ptr<clang::CompilerInvocation>
     clang::DiagnosticOptions options;
     llvm::IntrusiveRefCntPtr diagnostic_engine =
         clang::CompilerInstance::createDiagnostics(*input.vfs, options, consumer, false);
-    if(!diagnostic_engine) {
-        LOG_ERROR("Fail to create diagnostics engine");
-        return nullptr;
-    }
 
     std::vector<const char*> arguments;
     arguments.reserve(input.arguments.size());
@@ -69,7 +65,7 @@ std::unique_ptr<clang::CompilerInvocation>
     auto invocation =
         create_compiler_invocation(arguments, input.directory, input.vfs, diagnostic_engine);
     if(!invocation) {
-        LOG_ERROR(" Fail to create invocation, arguments list is: {}", join_command(arguments));
+        LOG_WARN("Clang cannot read the command {}", join_command(arguments));
         return nullptr;
     }
 

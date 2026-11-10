@@ -266,7 +266,7 @@ void ServedProject::request_compile(std::shared_ptr<Session> session) {
         co_await self.ensure_compiled(std::move(session));
     };
     if(!started_compiles.spawn(compile(*this, std::move(session)))) {
-        LOG_WARN("request_compile: task group stopped, dropping the compile");
+        LOG_DEBUG("The project stopped; a compile asked for is dropped");
     }
 }
 
@@ -490,7 +490,9 @@ struct ServedProject::CompileAttempt {
 
 async::task<Result> ServedProject::CompileAttempt::run() {
     using enum feature::RequestKind;
-    LOG_INFO("compile: starting path_id={} gen={}", path_id, ticket.generation);
+    LOG_DEBUG("Compiling {} (generation {})",
+              project.file_table.resolve(path_id),
+              ticket.generation);
     served.enter_phase(path_id, CompilePhase::Command);
     if(project.settings.diagnostics.clang_tidy &&
        project.rules.lintable(project.file_table.resolve(path_id))) {
@@ -542,10 +544,16 @@ async::task<Result> ServedProject::CompileAttempt::run() {
                 project.file_table.intern_version(path_id, session->source->hash()),
                 std::move(inputs));
             if(leans) {
-                LOG_INFO("Header {} needs includer context, re-compiling with prefix", file_path);
+                LOG_INFO("{} does not compile on its own; compiling it again in its host's context",
+                         file_path);
                 continue;
             }
         }
+        LOG_INFO("Compiled {} (version {}) in {} ms: {}",
+                 file_path,
+                 params.version,
+                 timer.ms(),
+                 counted(diagnostics.size(), "diagnostic", "diagnostics"));
         co_return commit(reply);
     }
     // Every arm of the two-send loop commits or returns; the check's
@@ -618,7 +626,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::modules() {
         session->succeeded(kind, ticket.generation);
     }
     if(!ticket.fresh()) {
-        LOG_INFO("compile: outdated before PCH for {}", file_path);
+        LOG_DEBUG("The compile of {} is outdated before its PCH; dropped", file_path);
         co_return Result::Stale;
     }
     co_return std::nullopt;
@@ -664,7 +672,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::pch() {
     params.pcms = project.imported_pcms(imports.imports.resolved());
 
     if(!ticket.fresh()) {
-        LOG_INFO("compile: outdated before send for {}", file_path);
+        LOG_DEBUG("The compile of {} is outdated before it is sent; dropped", file_path);
         co_return Result::Stale;
     }
 
@@ -704,6 +712,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
     // file dodge its stop by being edited between dispatch and the crash
     // response (contract 12).
     bool retry_without_suspect = false;
+    bool died = false;
     auto interrupt = std::make_unique<async::cancellation_source>();
     auto interrupt_token = interrupt->token();
     auto* own_interrupt = interrupt.get();
@@ -730,6 +739,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
             co_return co_await pool.send_stateful(path_id.raw, params, {.token = interrupt_token});
         },
         [&](const ipc::Error& error) {
+            died = true;
             retry_without_suspect =
                 served.attribute_crash(session, params.tidy.has_value(), built.loaded, error);
         });
@@ -738,13 +748,17 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
     }
 
     if(!ticket.fresh()) {
-        LOG_INFO("compile: outdated reply for {}", file_path);
+        LOG_DEBUG("The compile of {} is outdated by its reply; dropped", file_path);
         co_return Result::Stale;
     }
 
     if(!result.has_value()) {
-        if(worker::is_operational_error(result.error())) {
-            LOG_WARN("Compile did not complete for {}: {}", file_path, result.error().message);
+        if(served.server.shutting_down()) {
+            LOG_DEBUG("The compile of {} stopped with the server", file_path);
+        } else if(died) {
+            LOG_DEBUG("The compile of {} did not complete: {}", file_path, result.error().message);
+        } else if(worker::is_operational_error(result.error())) {
+            LOG_WARN("The compile of {} did not complete: {}", file_path, result.error().message);
         } else {
             // The worker accepts arbitrary user code; a non-operational
             // failure at this layer is IPC/worker breakage, never a
@@ -908,7 +922,7 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
             llvm::MemoryBuffer::getMemBufferCopy(as_chars(reply.tu_index_data))));
     }
 
-    LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.precise_ms());
+    LOG_PERF("request", "kind=compile file={} total_ms={:.2f}", file_path, timer.precise_ms());
     auto unconfirmed = params.skip_bodies ? feature::take_unconfirmed(diagnostics)
                                           : std::vector<feature::FileDiagnostic>();
     next->output = CompileOutput{

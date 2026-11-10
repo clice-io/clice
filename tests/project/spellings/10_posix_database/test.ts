@@ -111,16 +111,12 @@ test("a broken runtime ahead", { except: EXCEPT }, async (t) => {
 
 // `clice command convert` writes the Windows paths clice reads. The compiler
 // does not exist, so the run fails after printing the database.
-test(
-    "converted",
-    { except: EXCEPT, errors: ["Driver .*missing-cc not found", "stay driver commands"] },
-    async (t) => {
-        t.disk.write("compile_commands.json", database(t.root, path.join(t.root, "missing-cc")));
-        await t.cli("command convert compile_commands.json", {
-            env: { [PATH]: [GIT_RUNTIME, ...withoutRuntimes()].join(path.delimiter) },
-        });
-    },
-);
+test("converted", { except: EXCEPT, errors: ["stay driver commands"] }, async (t) => {
+    t.disk.write("compile_commands.json", database(t.root, path.join(t.root, "missing-cc")));
+    await t.cli("command convert compile_commands.json", {
+        env: { [PATH]: [GIT_RUNTIME, ...withoutRuntimes()].join(path.delimiter) },
+    });
+});
 
 // Without one, the database cannot be read and the user is told why. The
 // copy's POSIX spelling shows as ${WS} too.

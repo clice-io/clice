@@ -123,11 +123,11 @@ void MasterServer::change_document(Fid path_id,
     if(!document) {
         // Dropping is the only safe move: without the didOpen baseline
         // there is no buffer to fold the edits into.
-        LOG_ERROR("didChange for a document with no open session, dropping: {}", spelling);
+        LOG_WARN("didChange for {}, which is not open; dropped", spelling);
         return;
     }
     if(files.shown_as(path_id) != spelling) {
-        LOG_WARN("didChange for {}, never opened under that name, dropping", spelling);
+        LOG_WARN("didChange for {}, never opened under that name; dropped", spelling);
         return;
     }
     auto& session = *document->session;

@@ -13,7 +13,7 @@ async function answers(t: TestContext, host: string): Promise<void> {
 
 test("direct", (t) => answers(t, "real/main.cpp"));
 
-test("through a link", { except: { win32: "symbolic links need privileges" } }, async (t) => {
+test("through a link", async (t) => {
     t.disk.symlink("link", "real");
     await answers(t, "link/main.cpp");
 });
