@@ -7,4 +7,5 @@ items = [
 items = [
     { label = "FwSnap.h", kind = "File", insert = "FwSnap.h>", replace = "#include <FwSnap/⟦>⟧" },
     { label = "FwSnapCore", kind = "File", insert = "FwSnapCore>", replace = "#include <FwSnap/⟦>⟧" },
+    { label = "FwSnapUtil.h", kind = "File", insert = "FwSnapUtil.h>", replace = "#include <FwSnap/⟦>⟧" },
 ]
