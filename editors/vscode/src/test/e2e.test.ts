@@ -2,7 +2,9 @@ import * as assert from "assert";
 import * as cp from "child_process";
 import * as fs from "fs";
 import * as os from "os";
+import { once } from "events";
 import * as path from "path";
+import { PassThrough } from "stream";
 import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
@@ -17,6 +19,7 @@ import type {
 };
 
 import { inactiveSpans } from "../feature/inactive";
+import { serverOutput, TraceChannel } from "../log";
 import { exited, retire } from "../process";
 import { resolveExecutable, serverEnvironment } from "../setting";
 
@@ -269,6 +272,56 @@ suite("server retirement", function () {
         });
         assert.ok(exited(server));
         assert.strictEqual(lines.length, process.platform === "win32" ? 1 : 2);
+    });
+});
+
+suite("server output", function () {
+    test("each line at its level, a stack trace with the line before", async function () {
+        const shown: [string, string][] = [];
+        const record = (level: string) => (text: string) => shown.push([level, text]);
+        const channel = {
+            trace: record("trace"),
+            debug: record("debug"),
+            info: record("info"),
+            warn: record("warn"),
+            error: record("error"),
+        } as unknown as vscode.LogOutputChannel;
+        const input = new PassThrough();
+        serverOutput.stderr(input, channel);
+        input.end(
+            [
+                "[2026-11-10 03:28:05.123] [info] [compile.cpp:555] Compiled main.cpp",
+                "[2026-11-10 03:28:05.124] [warning] [thread 2] [pool.cpp:39] slow",
+                "[2026-11-10 03:28:05.125] [fatal] clice crashed",
+                "#0 0x1234 in main",
+                "",
+            ].join("\n"),
+        );
+        await once(input, "end");
+        assert.deepStrictEqual(shown, [
+            ["info", "[compile.cpp:555] Compiled main.cpp"],
+            ["warn", "[thread 2] [pool.cpp:39] slow"],
+            ["error", "clice crashed"],
+            ["error", "#0 0x1234 in main"],
+        ]);
+    });
+});
+
+suite("trace channel", function () {
+    test("traces as clice.trace.server says", async function () {
+        const settings = vscode.workspace.getConfiguration("clice");
+        const channel = new TraceChannel();
+        try {
+            assert.strictEqual(channel.logLevel, vscode.LogLevel.Off);
+            const changed = new Promise<vscode.LogLevel>((resolve) => {
+                channel.onDidChangeLogLevel(resolve);
+            });
+            await settings.update("trace.server", "verbose", vscode.ConfigurationTarget.Global);
+            assert.strictEqual(await changed, vscode.LogLevel.Trace);
+        } finally {
+            await settings.update("trace.server", undefined, vscode.ConfigurationTarget.Global);
+            channel.dispose();
+        }
     });
 });
 

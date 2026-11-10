@@ -14,7 +14,7 @@ import {
     StreamInfo,
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
-import { serverOutput } from "./log";
+import { serverOutput, TraceChannel } from "./log";
 import { exitsWithin, retire } from "./process";
 import { getSetting, Setting, variable, workspaceDirectory } from "./setting";
 import { registerAliasRedirect } from "./feature/aliases";
@@ -336,7 +336,7 @@ export async function activate(context: ExtensionContext) {
     // C, C++ or CUDA file is opened or a clice command is run there is no
     // server; accepted.
     const channel = window.createOutputChannel("clice", { log: true });
-    const traceChannel = window.createOutputChannel("clice (LSP trace)", { log: true });
+    const traceChannel = new TraceChannel();
     context.subscriptions.push(channel, traceChannel);
 
     const documentSelector = [
