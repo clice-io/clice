@@ -139,4 +139,3 @@ C++20 模块声明（`export module foo;`、`module foo:bar;`）通常出现在�
 - **宏形式的 include**：形如 `#include MACRO_NAME` 的 include 无法由快速扫描器解析——必须进行宏展开才能确定实际的头文件名。这种模式在实际项目中相对少见；受影响的文件会在精确编译期间得到正确处理。
 - **条件编译的精确性**：所有条件分支中的 include 都会被记录，因此 include 图会比实际情况更大。这对于宿主查找是安全的（不会遗漏），但可能导致相关性判断过于宽泛。
 - **大小写敏感性**：在大小写不敏感的文件系统（macOS、Windows）上，如果 include 中的大小写与文件名不一致，解析可能会失败。
-- **Framework 搜索路径**：尚不支持 macOS 的 Framework 目录（`-F`、`-iframework`）；形如 `<Foo/Bar.h>` 的 Framework include 无法正确解析。

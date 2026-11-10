@@ -518,7 +518,7 @@ tests/code_completion/include_path_completion/04_sibling_headers
 
 **Nearest headers first**
 
-Header names list the includer's directory first, then the quoted include directories, the others in order, the system's last; a name two directories hold is listed once, from the first
+Header names that match alike list the includer's directory first, then the quoted include directories, the others in order, the system's last; a name two directories hold is listed once, from the first
 
 ```case
 tests/code_completion/include_path_completion/09_header_order
@@ -534,6 +534,30 @@ A library's reserved names (`__algorithm/`, `_mingw.h`) come after the other nam
 
 ```case
 tests/code_completion/include_path_completion/11_reserved_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Framework headers**
+
+In a framework directory (`-F`, `-iframework`, the SDK's on macOS) the frameworks complete as directories, and past one their headers: `<Foo/Bar.h>` is `Foo.framework/Headers/Bar.h`
+
+```case
+tests/code_completion/include_path_completion/13_frameworks
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Words of names**
+
+A typed name matches a whole name first, then a prefix, then the words of a name, ahead of the order of the directories: `wsnap_view` lists the system's `wsnap_view`, then `wsnap_viewport.h`, then `old_wsnap_view.h`
+
+```case
+tests/code_completion/include_path_completion/14_name_words
 ```
 
 <!-- END CAPABILITY -->

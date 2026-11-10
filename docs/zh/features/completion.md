@@ -459,7 +459,7 @@ tests/code_completion/directives/01_directive_names
 
 ## 包含路径
 
-在 `#include` 之后会补全头文件名：引号形式先搜索包含方文件自身所在的目录，再搜索包含目录，系统目录排在最后。只有看起来像头文件的文件才会成为候选：任何目录下带头文件扩展名的文件，以及系统目录等存放此类头文件的位置中不带扩展名的文件。
+在 `#include` 之后会补全头文件名。输入的内容先与完整的名称匹配，其次是前缀，再次是名称中的单词（`view` 能找到 `string_view`）；匹配程度相同的名称中，引号形式先列出包含方文件自身所在目录中的，再列出包含目录中的，系统目录中的排在最后。看起来像头文件的文件排在其他文件之前：任何目录下带头文件扩展名的文件，以及系统目录等存放此类头文件的位置中不带扩展名的文件；源文件、文本文件，以及 clang 不允许直接包含的内置头文件（`<avxintrin.h>`）排在后面。framework 目录会列出其中的 framework，进入某个 framework 后再列出它的头文件。
 
 <!-- BEGIN GENERATED ITEMS: code_completion/include_path_completion -->
 
@@ -517,7 +517,7 @@ tests/code_completion/include_path_completion/04_sibling_headers
 
 **距离最近的头文件优先**
 
-头文件名先列出包含方文件所在目录中的头文件，再列出引号包含目录中的头文件，然后按顺序列出其他包含目录中的头文件，系统目录排在最后；两个目录都有的头文件名只列出一次，取自靠前的目录
+匹配程度相同的头文件名先列出包含方文件所在目录中的头文件，再列出引号包含目录中的头文件，然后按顺序列出其他包含目录中的头文件，系统目录排在最后；两个目录都有的头文件名只列出一次，取自靠前的目录
 
 ```case
 tests/code_completion/include_path_completion/09_header_order
@@ -533,6 +533,30 @@ tests/code_completion/include_path_completion/09_header_order
 
 ```case
 tests/code_completion/include_path_completion/11_reserved_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Framework 头文件**
+
+在 framework 目录（`-F`、`-iframework`，macOS 上还有 SDK 的 framework 目录）中，framework 作为目录补全，进入某个 framework 后再补全它的头文件：`<Foo/Bar.h>` 即 `Foo.framework/Headers/Bar.h`
+
+```case
+tests/code_completion/include_path_completion/13_frameworks
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**名称中的单词**
+
+输入的内容先与完整的名称匹配，其次是前缀，再次是名称中的单词，这一顺序先于目录的顺序：`wsnap_view` 先列出系统目录中的 `wsnap_view`，再列出 `wsnap_viewport.h`，最后列出 `old_wsnap_view.h`
+
+```case
+tests/code_completion/include_path_completion/14_name_words
 ```
 
 <!-- END CAPABILITY -->

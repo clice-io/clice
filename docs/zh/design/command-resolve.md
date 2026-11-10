@@ -151,7 +151,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 **GCC 风格的驱动程序**（gcc、clang、Apple clang、zig、emcc、交叉编译与裸机 GCC）：只询问驱动程序一次，让它带着命令自身的标志，以输入文件的语言预处理一个空文件，同时输出详细信息并打印宏（`-E -dM -v`）。这一次的回答就包含了 clice 需要的一切：
 
-- 驱动程序运行的任务（job）。clang 的任务原样就是 clice 要用的 cc1 命令。GCC 的任务则带有 GCC 的目标、它的头文件搜索列表，以及 GCC 驱动根据自身配置和 specs 添加的选项（目标默认值如 `-march=armv7-a+fp -mthumb`，宏如 `-D_REENTRANT`，加固选项如 `-fstack-protector-strong`）。随后由 Clang 自己的驱动构建 cc1 命令：固定为该目标，不带 Clang 自己的任何系统头文件（`-nostdinc`），并加上这些选项和命令自身的标志；GCC 的搜索列表按 GCC 的顺序排在后面，clang 的内置头文件紧挨在 GCC 的私有目录（`lib/gcc/<target>/<version>/include`）之前，遮蔽该目录。这个目录里既有 GCC 版本的 clang 内置头文件（clang 无法解析），也有只有 GCC 才有的头文件（`omp.h`、`quadmath.h`、厂商的 intrinsics 头文件）。clice 编译时看不到该目录中 clang 也有的头文件，所以其余头文件仍能在那里找到，clang 自己的 `stdatomic.h` 也无法经由 `#include_next` 进入 GCC 的版本。列表更靠后的位置若还有这类头文件的另一份副本，而 GCC 自己的那份并不 `#include_next` 到它，GCC 就永远读不到它，clice 编译时同样看不到：例如排在 GCC 版本之后的 newlib 的 `stdatomic.h`。编译看不到的文件也不进入 clice 自己的 include 搜索：依赖关系、`#include` 补全和文档链接都不会用到它们。
+- 驱动程序运行的任务（job）。clang 的任务原样就是 clice 要用的 cc1 命令，再加上驱动程序打印的头文件搜索列表中任务没有写出的目录：比 clice 所用版本更老的 clang 会在自己的前端里设置某些目标的一部分搜索列表——clang 21 之前 Darwin 的 framework 目录（Xcode 26 之前的 Apple clang），16 之前 FreeBSD 的全部搜索列表，21 之前 Cygwin 的，23 之前 Hexagon 的——而 clice 的前端把这部分交给驱动程序设置。这些目录排在任务自己的目录之后，与那个前端添加它们的位置一致。GCC 的任务则带有 GCC 的目标、它的头文件搜索列表，以及 GCC 驱动根据自身配置和 specs 添加的选项（目标默认值如 `-march=armv7-a+fp -mthumb`，宏如 `-D_REENTRANT`，加固选项如 `-fstack-protector-strong`）。随后由 Clang 自己的驱动构建 cc1 命令：固定为该目标，不带 Clang 自己的任何系统头文件（`-nostdinc`），并加上这些选项和命令自身的标志；GCC 的搜索列表按 GCC 的顺序排在后面，其中 clang 的驱动程序对该目标按 framework 目录搜索的目录，同样按 framework 目录搜索（macOS 上的 GCC 把 SDK 的 `System/Library/Frameworks` 列为普通目录），clang 的内置头文件紧挨在 GCC 的私有目录（`lib/gcc/<target>/<version>/include`）之前，遮蔽该目录。这个目录里既有 GCC 版本的 clang 内置头文件（clang 无法解析），也有只有 GCC 才有的头文件（`omp.h`、`quadmath.h`、厂商的 intrinsics 头文件）。clice 编译时看不到该目录中 clang 也有的头文件，所以其余头文件仍能在那里找到，clang 自己的 `stdatomic.h` 也无法经由 `#include_next` 进入 GCC 的版本。列表更靠后的位置若还有这类头文件的另一份副本，而 GCC 自己的那份并不 `#include_next` 到它，GCC 就永远读不到它，clice 编译时同样看不到：例如排在 GCC 版本之后的 newlib 的 `stdatomic.h`。编译看不到的文件也不进入 clice 自己的 include 搜索：依赖关系、`#include` 补全和文档链接都不会用到它们。
 - 语言标准，从 `__cplusplus` 或 `__STDC_VERSION__` 读出，命令没有指定时用它补上 `-std`：GCC 15 默认按 C23 编译 C，Apple clang 默认按 C++14 编译 C++。
 
 询问时带着命令自身的标志，并按命令原本的写法给出，所以驱动程序回答的就是这条命令，而 GCC 只在这次编译成功时才会给出回答：关闭某项默认设置的标志（`-fno-stack-protector`）、`--sysroot` 或 `--specs` 文件都会体现在回答中。询问失败时，日志会写出它的报错和 clice 运行的命令。clang 不认识的 CPU 和 ABI 名称（GCC 的 `-mtune=intel`、Darwin 上的 `-mabi=lp64`）会从 cc1 命令中去掉，GCC 的双核写法 `-mcpu=cortex-a72.cortex-a53` 只保留第一个核。RISC-V 的 `-march` 会去掉 LLVM 不认识的扩展（WCH 的 `_xw`）和它不认识的版本（较老 GCC 的 `i2p0`）：否则 clang 会丢掉整个字符串，连同所有特性宏。通用构建（`-arch arm64 -arch x86_64`）按其中第一个架构读取。
@@ -174,7 +174,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 ### 搜索路径提取
 
-工具链查询得到 cc1 参数后，搜索路径提取会遍历这些参数，按类型将 include 路径选项分入四个层级。所有路径都会解析为绝对路径并规范化（消除 `.` 和 `..`）。
+工具链查询得到 cc1 参数后，搜索路径提取会遍历这些参数，按类型将 include 路径选项分入四个层级。所有路径都会解析为绝对路径并规范化（消除 `.` 和 `..`）。System 层级内部的顺序与 clang 一致：`-isystem` 和 `-iwithsysroot`（在其绝对路径前拼接 sysroot）、`-iframework`、`-cxx-isystem`（仅 C++）、驱动程序自己的目录、驱动程序的 framework 目录。framework 目录（Angled 层级中的 `-F`、`-iframework`、驱动程序的 `-internal-iframework`）像 clang 那样把 `<Foo/Bar.h>` 找成 `Foo.framework/Headers/Bar.h`，找不到时再找 `Foo.framework/PrivateHeaders/Bar.h`，clice 的依赖关系和它添加的 include 都按此查找；`#include` 补全会列出其中的 framework，进入某个 framework 后再列出它的 `Headers/`。
 
 `-iprefix` / `-iwithprefix` / `-iwithprefixbefore` 三个选项必须按出现顺序配合处理：`-iprefix` 设置前缀，后续的 `-iwithprefix` 将前缀添加到其路径之前，并将结果放入 After 层级；`-iwithprefixbefore` 则将结果放入 Angled 层级。
 
@@ -230,7 +230,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 - **写给其他工具的命令略去了 clice 从中隐藏了文件的目录。** `clice command convert` 写出的是 clice 编译时所用的命令，但去掉了 GCC 的私有 include 目录和另一个 clang 的内置头文件目录：若保留它们，读取命令的工具会看到其中的所有文件，clang 自己的内置头文件也会经由 `#include_next` 进入它们的同名版本（另一个 clang 的 `stdint.h` 会让这条链在到达 C 库的版本之前就终止）。因此，读取转换后命令的工具找不到只有那个编译器才有的头文件（`omp.h`）。`clice command --json` 给出完整的命令，并列出每个目录中被隐藏的文件（`hidden`）：需要这些头文件的工具可以重新搜索该目录，再用自己的文件系统覆盖层（overlay）隐藏列出的文件，例如 clang 的 `-ivfsoverlay`。
 
-- **SearchConfig 不支持所有搜索路径选项。** `-cxx-isystem`（仅 C++ 模式生效的系统目录）、`-iwithsysroot`（在路径前拼接 sysroot）和 HeaderMap 支持尚未实现。这些选项在实际项目中不常见，但可能出现在某些 Apple 工具链或交叉编译工具链中。
+- **不读取头文件映射（header map）。** 指向头文件映射的 `-I`（`foo.hmap`，由 Xcode 自己的构建写出）会为编译重新映射 include 名称，但不作用于 clice 自己的 include 搜索：依赖关系、`#include` 补全和文档链接。这一搜索也不会进入伞形 framework（umbrella framework）的子 framework（`Carbon.framework/Frameworks/HIToolbox.framework`）。
 
 - **配置规则的全局影响。** `clice.toml` 中的 `[[rules]]` 可以向编译命令追加或移除选项。如果用户修改了影响所有文件的规则（例如追加一个全局的 `-I`），所有文件的编译配置都会改变，可能触发全量重索引。目前没有机制检测哪些规则变更实际影响了哪些文件。
 
