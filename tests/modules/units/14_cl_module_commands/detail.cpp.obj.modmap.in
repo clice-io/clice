@@ -1,0 +1,3 @@
+-ifcOutput
+"${WS}/greeting-detail.ifc"
+-internalPartition

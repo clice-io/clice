@@ -1,5 +1,3 @@
-module;
-
 /// The index vocabulary: entry and symbol types shared by every layer —
 /// builders accumulate them, blob readers hand them out, the project
 /// table stores them.

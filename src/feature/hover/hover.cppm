@@ -4,11 +4,11 @@ import :compile.compilation;
 import :feature.documentation;
 import :index.query;
 import :index.symbol;
+import :semantic.comment;
 import :semantic.display;
 import :semantic.symbol;
 import :support.markup;
 import :support.prelude;
-import :syntax.documentation;
 import :syntax.position;
 import :vfs.file_table;
 
@@ -188,12 +188,14 @@ auto hover_info(const index::IndexQuery& query,
                 const index::IndexQuery::Cursor& cursor,
                 const DocumentationOptions& documentation) -> std::optional<HoverInfo>;
 
-/// A module name's card: the module and the unit defining it, named the
-/// way the user knows the file. Only the index knows the defining unit,
-/// across files.
+/// A module name's card: the module, the unit defining it — of several, the
+/// one an import here resolves to — named the way the user knows the file,
+/// and the comment above that unit's module declaration. Only the index
+/// knows the defining unit, across files.
 auto module_hover(const index::IndexQuery& query,
                   const index::IndexQuery::Cursor& cursor,
-                  const index::SymbolInfo& module) -> HoverInfo;
+                  const index::SymbolInfo& module,
+                  const DocumentationOptions& documentation) -> HoverInfo;
 
 /// Whether `offset` of `text`, lexed in `dialect`, is on a directive's
 /// line, where a card may be the directive's (directive_hover).

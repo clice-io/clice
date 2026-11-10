@@ -1,0 +1,100 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"lib/**\" --partition partition.json --out wrap"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [],
+    "modules": [],
+    "mirrors": [],
+    "macros": "macros.h",
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [
+      {
+        "name": "lib",
+        "primary": "lib/module.cppm",
+        "interfaces": [],
+        "partitions": [
+          "lib/str.cppm",
+          "lib/unused.cppm"
+        ],
+        "sources": [
+          "lib/clock.cpp",
+          "lib/main.cpp"
+        ],
+        "imports": []
+      }
+    ],
+    "importers": [],
+    "macros": [],
+    "removed": [
+      "lib/str.h",
+      "lib/unused.h"
+    ],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"lib/**\" --partition partition.json --out wrap".files]
+"lib/clock.cpp" = '''
++module lib;
++
+ int tick() {
+     return 1;
+'''
+"lib/main.cpp" = '''
+-#include "lib/str.h"
+-#include "lib/unused.h"
++module lib;
+
+-int main() {
++import :str;
++import :unused;
++
++extern "C++" int main() {
+     return Str{1}.n;
+ }
+'''
+"lib/module.cppm" = "+export module lib;"
+"lib/str.cppm" = '''
++module lib:str;
++
++struct Str {
++    int n;
++};
+'''
+"lib/str.h" = "(removed)"
+"lib/unused.cppm" = '''
++module lib:unused;
++
++import :str;
++
++inline int unused_length(Str s) {
++    return s.n;
++}
+'''
+"lib/unused.h" = "(removed)"
+"wrap/.modularize" = '''
++macros.h
++prelude.h
+'''
+"wrap/macros.h" = '''
++#pragma once
++
+'''
+"wrap/prelude.h" = '''
++#pragma once
++
++#include "macros.h"
+'''

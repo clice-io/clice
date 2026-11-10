@@ -1,5 +1,3 @@
-module;
-
 /// Parts of this file (only_instantiation) are ported from clangd's AST.cpp
 /// (llvmorg-21.1.8), and resolve_forwarding_params follows clangd's
 /// resolveForwardingParameters;

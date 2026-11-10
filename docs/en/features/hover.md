@@ -890,7 +890,7 @@ tests/hover/documentation/25_system_headers
 
 ## Modules
 
-A module name shows the file of its interface unit, and a declaration from a module shows whether it is exported and the documentation its interface gives it.
+A module name shows the comment above its interface unit's module declaration and that unit's file, and a declaration from a module shows whether it is exported and the documentation its interface gives it.
 
 <!-- BEGIN GENERATED ITEMS: hover/modules -->
 
@@ -898,7 +898,7 @@ A module name shows the file of its interface unit, and a declaration from a mod
 
 **Module names**
 
-A module name shows the file of its interface unit, in an `import` and in the module declaration
+A module name shows the comment above its interface unit's module declaration and the file of that unit, in an `import` and in the module declaration
 
 ```case
 tests/hover/modules/01_module_names

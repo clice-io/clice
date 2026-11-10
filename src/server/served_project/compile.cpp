@@ -195,7 +195,7 @@ void ServedProject::each_input(Fid path_id, llvm::function_ref<void(const Inputs
         }
     }
     for(auto module: imported_modules(project.graph, ast_node(path_id))) {
-        if(auto* inputs = project.module_inputs(module)) {
+        for(auto* inputs: project.module_inputs(module)) {
             visit(*inputs);
         }
     }

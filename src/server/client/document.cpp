@@ -238,7 +238,10 @@ void LSPClient::register_document_requests() {
             auto query = project.query_all();
             auto info = query.symbol_info(cursor->symbols.front(), cursor->site.file);
             if(info && info->kind == SymbolKind::Module) {
-                co_return card(feature::module_hover(query, *cursor, *info));
+                co_return card(feature::module_hover(query,
+                                                     *cursor,
+                                                     *info,
+                                                     project.project.settings.documentation));
             }
         }
 

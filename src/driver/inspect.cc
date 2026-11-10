@@ -27,6 +27,7 @@ import :index.shard;
 import :index.tu_index;
 import :project.project;
 import :semantic.selection;
+import :semantic.semantics;
 import :semantic.symbol;
 import :semantic.template_resolver;
 import :settings.settings;
@@ -168,15 +169,17 @@ struct FeatureParams {
     LocalSourceRange range;
 };
 
-/// A feature: its operation and line of help, what it is asked about, and
-/// what --index runs instead, for one the index answers too. `run` gives
-/// nullopt when its answer does not serialize.
+/// A feature: its operation and line of help, what it is asked about, what
+/// --index runs instead, for one the index answers too, and what --audit
+/// runs instead, for one that audits its work. `run` gives nullopt when its
+/// answer does not serialize.
 struct FeatureSpec {
     std::string_view name;
     std::string_view description;
     Shape shape = Shape::File;
     std::optional<codec::raw_value> (*run)(const FeatureParams&) = nullptr;
     const FeatureSpec* index = nullptr;
+    const FeatureSpec* audit = nullptr;
 };
 
 /// The unit's own TU index, standing in for the server's index of a file
@@ -447,6 +450,90 @@ std::optional<codec::raw_value> run_template_resolver(const FeatureParams& param
     return to_raw_json(out);
 }
 
+/// One place of the focus file the resolver worked on (run_template_resolver_audit).
+struct RawAuditPlace {
+    protocol::Range range;
+
+    /// The node's kind, and its text's first line.
+    std::string node;
+
+    std::string text;
+
+    std::uint32_t queries = 0;
+
+    std::uint32_t steps = 0;
+
+    /// How often each Trouble struck its queries.
+    std::map<std::string, std::uint32_t> troubles;
+};
+
+struct RawAudit {
+    std::uint32_t queries = 0;
+
+    std::uint32_t steps = 0;
+
+    std::map<std::string, std::uint32_t> troubles;
+
+    /// Costliest first.
+    std::vector<RawAuditPlace> places;
+};
+
+/// What the resolver costs each place of the file the indexer asks it about,
+/// and where its work was cut short or a choice left open.
+std::optional<codec::raw_value> run_template_resolver_audit(const FeatureParams& params) {
+    auto& unit = params.unit;
+    auto focus = unit.focus_file();
+    auto semantics = Semantics::build(unit);
+    types::TemplateResolver resolver(unit, {.only_instantiation = false, .audit = true});
+    auto entries = semantics.node_entries();
+    RawAudit out;
+    auto add = [](std::map<std::string, std::uint32_t>& counts, const types::QueryAudit& audit) {
+        for(auto [kind, count]: views::enumerate(audit.troubles)) {
+            if(count != 0) {
+                counts[std::string(meta::enum_name(static_cast<types::Trouble>(kind)))] += count;
+            }
+        }
+    };
+    for(std::uint32_t i = 0; i < entries.size(); i += 1) {
+        auto& node = entries[i].node;
+        auto range = node.is_ast() ? focus.produced_range(node.source_range()) : std::nullopt;
+        auto position =
+            range ? focus.positions().range(*range, PositionEncoding::UTF16) : std::nullopt;
+        if(!position) {
+            continue;
+        }
+        auto before = resolver.audits().size();
+        resolve_occurrences(semantics, i, &resolver);
+        auto audits = resolver.audits().drop_front(before);
+        if(audits.empty()) {
+            continue;
+        }
+        RawAuditPlace place{
+            .range = *position,
+            .node = std::string(meta::enum_name(node.kind())),
+            .text = focus.content()
+                        .slice(range->begin, range->end)
+                        .split('\n')
+                        .first.trim()
+                        .take_front(80)
+                        .str(),
+            .queries = static_cast<std::uint32_t>(audits.size()),
+        };
+        for(auto& audit: audits) {
+            place.steps += audit.steps;
+            add(place.troubles, audit);
+            add(out.troubles, audit);
+        }
+        out.queries += place.queries;
+        out.steps += place.steps;
+        if(place.steps != 0 || !place.troubles.empty()) {
+            out.places.push_back(std::move(place));
+        }
+    }
+    ranges::stable_sort(out.places, std::greater{}, &RawAuditPlace::steps);
+    return to_raw_json(out);
+}
+
 std::optional<codec::raw_value> run_selection_range(const FeatureParams& params) {
     return to_raw_json(feature::selection_ranges(params.unit, {params.range.begin}).front());
 }
@@ -571,24 +658,26 @@ constexpr FeatureSpec folding_ranges_from_index{.name = "folding-range",
                                                 .run = run_folding_ranges_from_index};
 constexpr FeatureSpec semantic_tokens_from_index{.name = "semantic-tokens",
                                                  .run = run_semantic_tokens_from_index};
+constexpr FeatureSpec template_resolver_audit{.name = "template-resolver",
+                                              .run = run_template_resolver_audit};
 
 constexpr std::array features = {
     FeatureSpec{.name = "code-action",
                 .description = "The code actions on a selection",
                 .shape = Shape::Selections,
-                .run = run_code_action               },
+                .run = run_code_action},
     FeatureSpec{.name = "code-completion",
                 .description = "The completions at a point",
                 .shape = Shape::Points,
-                .run = run_code_completion           },
+                .run = run_code_completion},
     FeatureSpec{.name = "document-highlight",
                 .description = "The places naming the symbol at a point",
                 .shape = Shape::Points,
-                .run = run_document_highlight        },
+                .run = run_document_highlight},
     FeatureSpec{.name = "document-links",
                 .description = "The file's links",
                 .run = run_document_links,
-                .index = &document_links_from_index  },
+                .index = &document_links_from_index},
     FeatureSpec{.name = "document-symbols",
                 .description = "The file's outline",
                 .run = run_document_symbols,
@@ -596,31 +685,32 @@ constexpr std::array features = {
     FeatureSpec{.name = "folding-range",
                 .description = "The file's folding ranges",
                 .run = run_folding_ranges,
-                .index = &folding_ranges_from_index  },
+                .index = &folding_ranges_from_index},
     FeatureSpec{.name = "hover",
                 .description = "The hover card at a point",
                 .shape = Shape::Points,
-                .run = run_hover                     },
+                .run = run_hover},
     FeatureSpec{.name = "inlay-hint",
                 .description = "The inlay hints over a range, else the file",
                 .shape = Shape::Ranges,
-                .run = run_inlay_hints               },
+                .run = run_inlay_hints},
     FeatureSpec{.name = "selection-range",
                 .description = "The selection ranges at a point",
                 .shape = Shape::Points,
-                .run = run_selection_range           },
+                .run = run_selection_range},
     FeatureSpec{.name = "semantic-tokens",
                 .description = "The file's semantic tokens",
                 .run = run_semantic_tokens,
-                .index = &semantic_tokens_from_index },
+                .index = &semantic_tokens_from_index},
     FeatureSpec{.name = "signature-help",
                 .description = "The signature help at a point",
                 .shape = Shape::Points,
-                .run = run_signature_help            },
+                .run = run_signature_help},
     FeatureSpec{.name = "template-resolver",
                 .description = "What the template resolver answers at a point",
                 .shape = Shape::Points,
-                .run = run_template_resolver         },
+                .run = run_template_resolver,
+                .audit = &template_resolver_audit},
 };
 
 /// The inspected file, with the markers --markers places in it.
@@ -977,6 +1067,20 @@ struct IndexedFeature {
     LogLevelOption log;
 };
 
+/// The options of features[I], which audits its work.
+template <std::size_t I>
+struct AuditedFeature {
+    Options inspect;
+
+    KANNOTATE(&audit,
+              description =
+                  "Where the work goes in the whole file, and where it gives up or "
+                  "leaves a choice open")
+    bool audit = false;
+
+    LogLevelOption log;
+};
+
 template <std::size_t I>
 consteval auto __kotatsu__type_annotation(std::type_identity<Feature<I>>) {
     return meta::make_annotation(codec::dsl::description = features[I].description);
@@ -988,6 +1092,11 @@ consteval auto __kotatsu__type_annotation(std::type_identity<IndexedFeature<I>>)
 }
 
 template <std::size_t I>
+consteval auto __kotatsu__type_annotation(std::type_identity<AuditedFeature<I>>) {
+    return meta::make_annotation(codec::dsl::description = features[I].description);
+}
+
+template <std::size_t I>
 int run(Feature<I>& feature) {
     return run_inspect(feature.inspect, features[I]);
 }
@@ -995,6 +1104,11 @@ int run(Feature<I>& feature) {
 template <std::size_t I>
 int run(IndexedFeature<I>& feature) {
     return run_inspect(feature.inspect, feature.index ? *features[I].index : features[I]);
+}
+
+template <std::size_t I>
+int run(AuditedFeature<I>& feature) {
+    return run_inspect(feature.inspect, feature.audit ? *features[I].audit : features[I]);
 }
 
 KANNOTATE_TYPE(struct ConfigSchema, description = "The JSON schema of the clice configuration");
@@ -1027,8 +1141,10 @@ struct Inspect {
 [[maybe_unused]] const bool added = [] {
     []<std::size_t... I>(std::index_sequence<I...>) {
         (cli::add_command<Operations>(
-             dispatch<
-                 std::conditional_t<features[I].index != nullptr, IndexedFeature<I>, Feature<I>>>,
+             dispatch<std::conditional_t<
+                 features[I].index != nullptr,
+                 IndexedFeature<I>,
+                 std::conditional_t<features[I].audit != nullptr, AuditedFeature<I>, Feature<I>>>>,
              {.name = features[I].name}),
          ...);
     }(std::make_index_sequence<features.size()>{});

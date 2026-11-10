@@ -109,6 +109,20 @@ tests/modules/units/08_indexed_by_its_build
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Module units built by cl**
+
+A project built by cl, with CMake or MSBuild, gets its modules built like any other, its `.ixx` interfaces included
+
+What a unit is comes from its module declaration, whatever its suffix; the interface files cl writes and reads are left to the build.
+
+```case
+tests/modules/units/14_cl_module_commands
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Edits

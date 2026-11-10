@@ -1,0 +1,5 @@
+# cl's module commands: CMake's, whose module flags come in a response file
+# of each unit (its modmap), and MSBuild's, which compiles an `.ixx`. What
+# each unit is comes from its text; the interfaces the build writes and
+# reads are not clice's.
+databases = {}

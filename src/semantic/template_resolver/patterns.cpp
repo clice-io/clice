@@ -26,30 +26,32 @@ clang::ClassTemplateDecl* member_pattern(const clang::ClassTemplateDecl* CTD) {
 
 namespace {
 
-/// The explicit specializations among `specializations` that `arguments`
-/// may name without certainly naming one. Only a value not known leaves
-/// matching their concrete arguments undecided.
-template <typename Specialization>
-llvm::SmallVector<Specialization*, 2>
-    undecided_among(clang::ASTContext& context,
-                    auto specializations,
-                    llvm::ArrayRef<clang::TemplateArgument> arguments,
-                    const DeductionOptions& options) {
+/// Whether one of `arguments` is a value not known, the only one leaving
+/// matching an explicit specialization's concrete arguments undecided.
+bool names_unknown_value(llvm::ArrayRef<clang::TemplateArgument> arguments) {
     auto unknown = [](const clang::TemplateArgument& argument) {
         return argument.getKind() == clang::TemplateArgument::Expression &&
                argument.getAsExpr()->isValueDependent();
     };
+    return ranges::any_of(arguments, [&](const clang::TemplateArgument& argument) {
+        return argument.getKind() == clang::TemplateArgument::Pack
+                   ? ranges::any_of(argument.pack_elements(), unknown)
+                   : unknown(argument);
+    });
+}
+
+/// The explicit specializations among `specializations` that `arguments`
+/// may name without certainly naming one.
+template <typename Specialization>
+llvm::SmallVector<Specialization*, 2>
+    undecided_among(clang::ASTContext& context,
+                    llvm::ArrayRef<clang::NamedDecl*> specializations,
+                    llvm::ArrayRef<clang::TemplateArgument> arguments,
+                    const DeductionOptions& options) {
     llvm::SmallVector<Specialization*, 2> undecided;
-    if(ranges::none_of(arguments, [&](const clang::TemplateArgument& argument) {
-           return argument.getKind() == clang::TemplateArgument::Pack
-                      ? ranges::any_of(argument.pack_elements(), unknown)
-                      : unknown(argument);
-       })) {
-        return undecided;
-    }
-    for(auto* specialization: specializations) {
-        if(specialization->isExplicitSpecialization() &&
-           may_name(context, specialization->getTemplateArgs().asArray(), arguments, options)) {
+    for(auto* decl: specializations) {
+        auto* specialization = llvm::cast<Specialization>(decl);
+        if(may_name(context, specialization->getTemplateArgs().asArray(), arguments, options)) {
             undecided.push_back(specialization);
         }
     }
@@ -168,11 +170,14 @@ PartialChoice<clang::VarTemplatePartialSpecializationDecl>
 llvm::SmallVector<clang::ClassTemplateSpecializationDecl*, 2>
     PseudoInstantiator::undecided_specializations(clang::ClassTemplateDecl* CTD,
                                                   TemplateArguments arguments) {
-    auto undecided = undecided_among<clang::ClassTemplateSpecializationDecl>(
-        context,
-        CTD->specializations(),
-        arguments,
-        {.open = open_defaults.getArrayRef()});
+    if(!names_unknown_value(arguments)) {
+        return {};
+    }
+    auto undecided =
+        undecided_among<clang::ClassTemplateSpecializationDecl>(context,
+                                                                explicit_specializations(CTD),
+                                                                arguments,
+                                                                {.open = open_default_reader()});
     drop_unseen(undecided);
     return undecided;
 }
@@ -180,11 +185,14 @@ llvm::SmallVector<clang::ClassTemplateSpecializationDecl*, 2>
 llvm::SmallVector<clang::VarTemplateSpecializationDecl*, 2>
     PseudoInstantiator::undecided_specializations(clang::VarTemplateDecl* VTD,
                                                   TemplateArguments arguments) {
-    auto undecided = undecided_among<clang::VarTemplateSpecializationDecl>(
-        context,
-        VTD->specializations(),
-        arguments,
-        {.open = open_defaults.getArrayRef()});
+    if(!names_unknown_value(arguments)) {
+        return {};
+    }
+    auto undecided =
+        undecided_among<clang::VarTemplateSpecializationDecl>(context,
+                                                              explicit_specializations(VTD),
+                                                              arguments,
+                                                              {.open = open_default_reader()});
     drop_unseen(undecided);
     return undecided;
 }
@@ -227,7 +235,10 @@ clang::VarDecl* PseudoInstantiator::select_pattern(clang::VarTemplateDecl* VTD,
 }
 
 bool PseudoInstantiator::satisfies_pattern(const clang::ASTTemplateArgumentListInfo* written) {
+    /// Past the nesting limit the pattern is taken as satisfiable, an
+    /// answer the limit cut short.
     if(probing > 4) {
+        give_up(Trouble::Depth);
         return true;
     }
 
@@ -345,12 +356,17 @@ bool PseudoInstantiator::any_specialization_declares(clang::ClassTemplateDecl* C
                (!definition->lookup(name).empty() || !lookup_in_bases(definition, name).empty());
     };
 
+    if(ranges::any_of(seen_partials(CTD), declares)) {
+        return true;
+    }
+    /// What the unit instantiated runs to hundreds (`enable_if`): the
+    /// visibility of those that declare it alone decides.
     llvm::SmallVector<clang::ClassTemplateSpecializationDecl*, 4> specializations(
         CTD->specializations().begin(),
         CTD->specializations().end());
-    drop_unseen(specializations);
-    return ranges::any_of(seen_partials(CTD), declares) ||
-           ranges::any_of(specializations, declares);
+    return ranges::any_of(specializations, [&](clang::ClassTemplateSpecializationDecl* spec) {
+        return declares(spec) && sees(spec);
+    });
 }
 
 bool PseudoInstantiator::scope_lacks(clang::NestedNameSpecifier scope,

@@ -1,0 +1,9 @@
+[answers.partition.completion]
+items = [
+    { label = ":angles", kind = "Module", insert = ":angles;", documentation = "Angles in radians." },
+]
+
+[answers.module.completion]
+items = [
+    { label = "geometry", kind = "Module", insert = "geometry;", documentation = "Points on the plane." },
+]

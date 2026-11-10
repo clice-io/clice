@@ -1,5 +1,3 @@
-module;
-
 /// Shared utilities for stateful and stateless worker processes.
 
 module clice:worker.common;

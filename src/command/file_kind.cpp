@@ -5,11 +5,20 @@ import :vfs.path;
 
 namespace clice {
 
-clang::driver::types::ID suffix_type(llvm::StringRef path) {
+clang::driver::types::ID driver_type(llvm::StringRef path) {
     namespace types = clang::driver::types;
     llvm::StringRef ext = path::extension(path);
     ext.consume_front(".");
     return ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
+}
+
+clang::driver::types::ID suffix_type(llvm::StringRef path) {
+    namespace types = clang::driver::types;
+    auto ext = path::extension(path);
+    if(ext == ".ixx" || ext == ".mxx" || ext == ".mpp") {
+        return types::TY_CXX;
+    }
+    return driver_type(path);
 }
 
 llvm::StringRef extension_language(llvm::StringRef path, bool cxx) {
@@ -56,18 +65,9 @@ bool is_c_family_type(clang::driver::types::ID type) {
 }
 
 bool is_c_family_file(llvm::StringRef filename) {
-    namespace types = clang::driver::types;
-    llvm::StringRef ext = path::extension(filename);
-    if(ext.empty()) {
-        return false;
-    }
     /// CUDA's header convention is missing from clang's extension table
     /// (classifying one needs -x cuda), but it is C-family.
-    if(ext == ".cuh") {
-        return true;
-    }
-    /// Drop the leading dot: ".cpp" -> "cpp".
-    return is_c_family_type(types::lookupTypeForExtension(ext.drop_front()));
+    return path::extension(filename) == ".cuh" || is_c_family_type(suffix_type(filename));
 }
 
 /// Whether `type` is C++ or a C++ module unit: the two share flags, so

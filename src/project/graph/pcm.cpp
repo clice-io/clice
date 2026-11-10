@@ -10,6 +10,7 @@ import :project.graph.task_graph;
 import :project.graph.unit;
 import :project.project;
 import :support.logging;
+import :syntax.dependency_graph;
 import :syntax.header_context;
 import :syntax.preamble;
 import :syntax.scan;
@@ -27,26 +28,6 @@ namespace {
 /// so a blob or a record an older clice stored is not taken for the new
 /// one.
 constexpr llvm::StringRef pcm_version = "7";
-
-/// The provider an import in `importer` resolves to among several of one
-/// name: the nearest — the fewest directories up from the importer to one
-/// holding it — and the first by path among equally near ones.
-Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> providers, Fid importer) {
-    if(providers.size() == 1) {
-        return providers.front();
-    }
-    auto distance = [&](Fid provider) {
-        std::uint32_t up = 0;
-        path::walk_ancestors(files.resolve(importer).parent(), [&](CanonicalRef dir) {
-            up += 1;
-            return !path::is_within(files.resolve(provider), dir);
-        });
-        return up;
-    };
-    return *ranges::min_element(providers, {}, [&](Fid provider) {
-        return std::pair(distance(provider), llvm::StringRef(files.resolve(provider)));
-    });
-}
 
 /// The entry's PCM, or the PCH it was built over, left the disk: forget it,
 /// so the module's next attempt builds again. Returns whether it had.
@@ -100,6 +81,23 @@ FailedChain failed_chain(const Project& project, NodeId module) {
     }
 }
 
+/// Whether a wait takes the module's last failure as it stands, building
+/// nothing: its own build's, a crash's, one an import's standing failure
+/// caused, or a cycle of imports, while what every failure along the chain
+/// stands on holds — an importer edited to drop the failing import builds
+/// again before the change is noticed. One that says nothing of the module,
+/// an import's PCM leaving the disk under the build, is built again.
+bool failure_stands(Project& project, NodeId module) {
+    auto chain = failed_chain(project, module);
+    auto* last = chain.last;
+    if(!chain.cycle && !(last && last->failure && !last->failure->result.import_lost)) {
+        return false;
+    }
+    return ranges::all_of(chain.modules, [&](NodeId failed) {
+        return project.pcms.find(failed)->second.standing_failure(project.file_table) != nullptr;
+    });
+}
+
 /// The modules a compile importing `modules` reads, once it waited on them:
 /// they and, below each that built, the modules it imports in turn — clang
 /// loads every module below an import, and a built module's imports are
@@ -131,7 +129,9 @@ llvm::StringRef revalidate(Project& project, NodeId module, llvm::StringRef pcm_
     }
     auto& entry = it->second;
     llvm::StringRef miss;
-    if(entry.key != pcm_key) {
+    if(entry.key.empty()) {
+        miss = entry.failure ? "the last one failed" : "none was built";
+    } else if(entry.key != pcm_key) {
         miss = "its command, an import or its PCH changed";
     } else if(!inputs_hold(project.file_table, entry.inputs)) {
         miss = "a file it read changed";
@@ -339,7 +339,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
             entry.retire(project.store ? &*project.store : nullptr, "pcm");
             entry.key.clear();
             entry.pch.clear();
-            entry.failure = {{.import = failed_import}, {}};
+            entry.failure = {{.import = failed_import}, std::move(imports.inputs)};
             co_return Result::Failed;
         }
     }
@@ -450,14 +450,15 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
             // missing file: the next wait builds them again, and the module
             // with them.
             auto key = pcm_key;
-            if(!record.crashed() && lost_import(bp)) {
+            bool lost = !record.crashed() && lost_import(bp);
+            if(lost) {
                 key.clear();
                 record.cause = "an import's module file left the cache during the build";
             }
             // An attempt overtaken in flight records its inputs all the same:
             // they no longer match, and its successor rebuilds.
             project.pcms[node].failure = {
-                {.key = std::move(key), .record = std::move(record)},
+                {.key = std::move(key), .record = std::move(record), .import_lost = lost},
                 std::move(inputs)
             };
         });
@@ -559,10 +560,12 @@ async::task<Imports> Project::scan_imports(Fid path_id,
     // for it.
     auto& scans = content ? buffer_scans : disk_scans;
     ImportScan scan;
+    Inputs read;
     if(auto* memo = scans.lookup(file_table, path_id, content ? path_id : Fid{});
        memo && memo->result.directives == directives && memo->result.bound == bound &&
        memo->result.arguments == arguments_hash) {
         scan = memo->result;
+        read = memo->inputs;
     } else {
         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs =
             llvm::makeIntrusiveRefCnt<vfs::View>(resolution.hidden);
@@ -619,9 +622,9 @@ async::task<Imports> Project::scan_imports(Fid path_id,
             std::erase_if(scanned.deps,
                           [&](const ReportedInput& input) { return memory.contains(input.path); });
         }
-        auto inputs = intern_inputs(file_table, scanned.deps, started_at);
-        inputs.append(resolution.inputs.begin(), resolution.inputs.end());
-        scans.commit(path_id, scan, std::move(inputs));
+        read = intern_inputs(file_table, scanned.deps, started_at);
+        read.append(resolution.inputs.begin(), resolution.inputs.end());
+        scans.commit(path_id, scan, read);
     }
 
     // Every scanned name goes into the edge set, resolved or not: an
@@ -630,7 +633,8 @@ async::task<Imports> Project::scan_imports(Fid path_id,
     // ordinary cascade later — no side bookkeeping of who failed against it.
     Imports imports{
         .offsets = {scan.offsets.begin(), scan.offsets.end()},
-        .module_unit = scan.module_unit
+        .module_unit = scan.module_unit,
+        .inputs = std::move(read),
     };
     for(auto& name: scan.imports) {
         auto providers = dep_graph.lookup_module(name);
@@ -648,6 +652,7 @@ Work Project::module_work(NodeId module) {
         .run = [this, module](Attempt& attempt) { return build_module(*this, attempt, module); },
         .check = [this,
                   module] { return imports_present(module) ? Check::Holds : Check::ProductGone; },
+        .failure_stands = [this, module] { return failure_stands(*this, module); },
     };
 }
 
@@ -808,20 +813,21 @@ async::task<Result> Project::wait_modules(Attempt* attempt,
     co_return Result::Failed;
 }
 
-const Inputs* Project::module_inputs(NodeId module) const {
-    auto chain = failed_chain(*this, module);
-    if(chain.cycle || !chain.last) {
-        return nullptr;
+llvm::SmallVector<const Inputs*> Project::module_inputs(NodeId module) const {
+    llvm::SmallVector<const Inputs*> inputs;
+    for(auto failed: failed_chain(*this, module).modules) {
+        if(auto it = pcms.find(failed); it != pcms.end()) {
+            auto& entry = it->second;
+            inputs.push_back(entry.failure ? &entry.failure->inputs : &entry.inputs);
+        }
     }
-    return chain.last->failure ? &chain.last->failure->inputs : &chain.last->inputs;
+    return inputs;
 }
 
 Inputs Project::module_inputs(llvm::ArrayRef<NodeId> modules) const {
     llvm::SmallVector<const Inputs*> parts;
     for(auto module: modules) {
-        if(auto* inputs = module_inputs(module)) {
-            parts.push_back(inputs);
-        }
+        parts.append(module_inputs(module));
     }
     Inputs inputs;
     merge_inputs(inputs, parts);

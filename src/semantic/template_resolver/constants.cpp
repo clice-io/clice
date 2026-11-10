@@ -48,29 +48,31 @@ struct Folder {
         }
 
         if(auto* unary = llvm::dyn_cast<clang::UnaryOperator>(expr)) {
-            auto value = fold(unary->getSubExpr());
-            if(!value) {
-                return std::nullopt;
-            }
-            *value = promoted(*value, unary->getType());
-            switch(unary->getOpcode()) {
-                case clang::UO_Plus: break;
-                case clang::UO_Minus: {
-                    if(value->isSigned() && value->isMinSignedValue()) {
-                        return std::nullopt;
-                    }
-                    *value = -*value;
-                    break;
-                }
-                case clang::UO_Not: *value = ~*value; break;
-                case clang::UO_LNot: *value = truth(value->isZero()); break;
-                default: return std::nullopt;
-            }
-            return typed(*value, unary->getType());
+            return fold_unary(unary->getOpcode(), unary->getSubExpr(), unary->getType());
         }
-
         if(auto* binary = llvm::dyn_cast<clang::BinaryOperator>(expr)) {
-            return fold_binary(binary);
+            return fold_binary(binary->getOpcode(),
+                               binary->getLHS(),
+                               binary->getRHS(),
+                               binary->getType());
+        }
+        /// An operator on dependent operands that clang left to overload
+        /// resolution, an `operator&&` in scope making `A::value && B::value`
+        /// a call, folds as the builtin one on the values of its operands.
+        if(auto* call = llvm::dyn_cast<clang::CXXOperatorCallExpr>(expr)) {
+            if(call->isInfixBinaryOp()) {
+                return fold_binary(clang::BinaryOperator::getOverloadedOpcode(call->getOperator()),
+                                   call->getArg(0),
+                                   call->getArg(1),
+                                   call->getType());
+            }
+            if(call->getNumArgs() == 1) {
+                return fold_unary(
+                    clang::UnaryOperator::getOverloadedOpcode(call->getOperator(), false),
+                    call->getArg(0),
+                    call->getType());
+            }
+            return std::nullopt;
         }
 
         if(auto* conditional = llvm::dyn_cast<clang::ConditionalOperator>(expr)) {
@@ -109,16 +111,51 @@ struct Folder {
         return value ? typed(*value, expr->getType()) : std::nullopt;
     }
 
-    std::optional<llvm::APSInt> fold_binary(const clang::BinaryOperator* binary) {
-        auto op = binary->getOpcode();
-        auto lhs = fold(binary->getLHS());
-        auto rhs = fold(binary->getRHS());
+    std::optional<llvm::APSInt> fold_unary(clang::UnaryOperatorKind op,
+                                           const clang::Expr* operand,
+                                           clang::QualType type) {
+        auto value = fold(operand);
+        if(!value) {
+            return std::nullopt;
+        }
+        *value = promoted(*value, type);
+        switch(op) {
+            case clang::UO_Plus: break;
+            case clang::UO_Minus: {
+                if(value->isSigned() && value->isMinSignedValue()) {
+                    return std::nullopt;
+                }
+                *value = -*value;
+                break;
+            }
+            case clang::UO_Not: *value = ~*value; break;
+            case clang::UO_LNot: *value = truth(value->isZero()); break;
+            default: return std::nullopt;
+        }
+        return typed(*value, type);
+    }
 
+    std::optional<llvm::APSInt> fold_binary(clang::BinaryOperatorKind op,
+                                            const clang::Expr* left,
+                                            const clang::Expr* right,
+                                            clang::QualType type) {
         /// An operand that does not fold may stand for a substitution
         /// failure, which leaves the whole expression false: `false` decides
         /// `&&` regardless, `true` decides `||` only beside a known operand.
-        if(op == clang::BO_LAnd && ((lhs && lhs->isZero()) || (rhs && rhs->isZero()))) {
-            return typed(truth(false), binary->getType());
+        /// Any other operator is unknown past its first unknown operand,
+        /// and the second is not folded: recursive values (`<ratio>`'s
+        /// `__static_gcd<_Yp, _Xp % _Yp>`) would fold both down to the
+        /// nesting limit.
+        auto lhs = fold(left);
+        if(op == clang::BO_LAnd && lhs && lhs->isZero()) {
+            return typed(truth(false), type);
+        }
+        if(!lhs && op != clang::BO_LAnd) {
+            return std::nullopt;
+        }
+        auto rhs = fold(right);
+        if(op == clang::BO_LAnd && rhs && rhs->isZero()) {
+            return typed(truth(false), type);
         }
         if(!lhs || !rhs) {
             return std::nullopt;
@@ -126,10 +163,10 @@ struct Folder {
         if(op == clang::BO_LAnd || op == clang::BO_LOr) {
             return typed(truth(op == clang::BO_LAnd ? lhs->getBoolValue() && rhs->getBoolValue()
                                                     : lhs->getBoolValue() || rhs->getBoolValue()),
-                         binary->getType());
+                         type);
         }
-        lhs = promoted(*lhs, binary->getType());
-        rhs = promoted(*rhs, binary->getType());
+        lhs = promoted(*lhs, type);
+        rhs = promoted(*rhs, type);
 
         if(op == clang::BO_Shl || op == clang::BO_Shr) {
             if(rhs->isNegative() || rhs->uge(lhs->getBitWidth())) {
@@ -137,7 +174,7 @@ struct Folder {
             }
             auto amount = static_cast<unsigned>(rhs->getZExtValue());
             auto result = op == clang::BO_Shl ? *lhs << amount : *lhs >> amount;
-            return typed(result, binary->getType());
+            return typed(result, type);
         }
 
         /// Sema has already brought both operands to their common type; a
@@ -189,7 +226,7 @@ struct Folder {
         if(overflow) {
             return std::nullopt;
         }
-        return typed(result, binary->getType());
+        return typed(result, type);
     }
 };
 

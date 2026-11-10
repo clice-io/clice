@@ -2,6 +2,8 @@
 markdown = '''
 **module** `math`
 
+Integer arithmetic.
+
 `${WS}/math.cppm`
 '''
 range = "import ⟦math⟧;"
@@ -9,6 +11,8 @@ range = "import ⟦math⟧;"
 [answers.declared_name.hover]
 markdown = '''
 **module** `math`
+
+Integer arithmetic.
 
 `${WS}/math.cppm`
 '''

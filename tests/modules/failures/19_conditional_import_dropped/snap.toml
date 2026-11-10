@@ -1,0 +1,10 @@
+[test.before]
+errors = [
+    {
+        at = "import ⟦A;⟧",
+        severity = "error",
+        message = "could not build module 'A': could not build module 'B': use of undeclared identifier 'broken_in_b'",
+        source = "clang",
+        code = "err_module_not_built",
+    },
+]

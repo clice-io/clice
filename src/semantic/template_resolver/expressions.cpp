@@ -48,7 +48,7 @@ std::optional<llvm::APSInt> PseudoInstantiator::evaluate(const clang::Expr* expr
     /// Initializers can refer back to each other (or a parameter be
     /// bound to itself); nesting is bounded instead of tracked.
     if(evaluating > 8) {
-        inconclusive = true;
+        give_up(Trouble::Evaluation);
         return std::nullopt;
     }
     evaluating += 1;
@@ -59,7 +59,7 @@ std::optional<llvm::APSInt> PseudoInstantiator::evaluate(const clang::Expr* expr
 }
 
 std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr) {
-    return unbound_result(cache.values, expr, [&]() -> std::optional<llvm::APSInt> {
+    return kept_step(cache.values, expr, [&]() -> std::optional<llvm::APSInt> {
         /// A trait asks of the type its operand names: `typename
         /// allocator<T>::_From_primary` is an `allocator<T>`.
         if(auto trait = type_trait(context, expr, [&](clang::QualType operand) {
@@ -86,47 +86,68 @@ std::optional<llvm::APSInt> PseudoInstantiator::value_of(const clang::Expr* expr
 
         auto judged = own_conclusion();
         auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(expr);
-        std::optional<std::pair<const void*, void*>> key;
-        clang::QualType scope;
-        if(DSDRE && DSDRE->getQualifier().getKind() == clang::NestedNameSpecifier::Kind::Type &&
-           pack_narrowing == 0) {
-            scope =
-                resolve_object(substitute(clang::QualType(DSDRE->getQualifier().getAsType(), 0)));
-            key.emplace(scope.getCanonicalType().getAsOpaquePtr(),
-                        DSDRE->getDeclName().getAsOpaquePtr());
-            if(auto known = member_values.find(*key); known != member_values.end()) {
-                return known->second;
-            }
+        if(DSDRE && DSDRE->getQualifier().getKind() == clang::NestedNameSpecifier::Kind::Type) {
+            return member_value(
+                resolve_object(substitute(clang::QualType(DSDRE->getQualifier().getAsType(), 0))),
+                DSDRE->getDeclName());
         }
 
         auto frames = stack.size();
         const clang::Decl* decl = nullptr;
-        if(key) {
-            decl = preferred(lookup(scope, DSDRE->getDeclName()));
-        } else if(DSDRE) {
+        if(DSDRE) {
             decl = preferred(lookup(DSDRE->getQualifier(), DSDRE->getDeclName()));
         } else if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(expr)) {
             decl = DRE->getDecl();
         }
-
-        std::optional<llvm::APSInt> value;
-        if(auto* var = llvm::dyn_cast_or_null<clang::VarDecl>(decl)) {
-            value = initial_value(var);
-        } else if(auto* enumerator = llvm::dyn_cast_or_null<clang::EnumConstantDecl>(decl)) {
-            /// Sema leaves the enumerators of an enumeration inside a
-            /// template uncomputed.
-            if(!enumerator->getType()->isDependentType()) {
-                value = enumerator->getInitVal();
-            } else if(auto* init = enumerator->getInitExpr()) {
-                value = evaluate(init);
-            }
-        }
+        auto value = declared_value(decl);
         stack.truncate(frames);
-        if(key && !inconclusive) {
-            member_values.try_emplace(*key, value);
-        }
         return value;
     });
+}
+
+std::optional<llvm::APSInt> PseudoInstantiator::member_value(clang::QualType scope,
+                                                             clang::DeclarationName name) {
+    if(auto by_rule = std_value(scope, name)) {
+        return *by_rule;
+    }
+    std::pair key{scope.getCanonicalType().getAsOpaquePtr(), name.getAsOpaquePtr()};
+    if(auto cut = cut_values.find(key);
+       cut != cut_values.end() && cut->second.holds_at(evaluating, depth)) {
+        inconclusive = true;
+        return std::nullopt;
+    }
+    auto cycles = troubles[static_cast<std::size_t>(Trouble::Cycle)];
+    auto fold = [&] {
+        auto frames = stack.size();
+        auto value = declared_value(preferred(lookup(scope, name)));
+        stack.truncate(frames);
+        return value;
+    };
+    auto value = names_only_free_parameters(scope.getTypePtr())
+                     ? kept_step(cache.member_values, key, fold)
+                     : fold();
+    /// Where a cycle was cut, what is in progress decides, not the nesting.
+    if(!value && inconclusive && troubles[static_cast<std::size_t>(Trouble::Cycle)] == cycles) {
+        cut_values.insert_or_assign(key, CutFolding{.evaluating = evaluating, .depth = depth});
+    }
+    return value;
+}
+
+std::optional<llvm::APSInt> PseudoInstantiator::declared_value(const clang::Decl* decl) {
+    if(auto* var = llvm::dyn_cast_or_null<clang::VarDecl>(decl)) {
+        return initial_value(var);
+    }
+    auto* enumerator = llvm::dyn_cast_or_null<clang::EnumConstantDecl>(decl);
+    if(!enumerator) {
+        return std::nullopt;
+    }
+    /// Sema leaves the enumerators of an enumeration inside a template
+    /// uncomputed.
+    if(!enumerator->getType()->isDependentType()) {
+        return enumerator->getInitVal();
+    }
+    auto* init = enumerator->getInitExpr();
+    return init ? evaluate(init) : std::nullopt;
 }
 
 std::optional<llvm::APSInt> PseudoInstantiator::initial_value(const clang::VarDecl* var) {
@@ -177,6 +198,24 @@ std::optional<llvm::APSInt>
             argument = clang::TemplateArgument(resolve(argument.getAsType()));
         }
     }
+    /// Types and templates, resolved, hold all the caller's bindings say of
+    /// them; a value written as an expression reads them still.
+    std::vector<const void*> key{VTD};
+    for(auto& argument: rewritten) {
+        if(argument.getKind() == clang::TemplateArgument::Type) {
+            key.push_back(argument.getAsType().getAsOpaquePtr());
+        } else if(argument.getKind() == clang::TemplateArgument::Template) {
+            key.push_back(argument.getAsTemplate().getAsVoidPointer());
+        } else {
+            return value_of(VTD, rewritten);
+        }
+    }
+    return kept_step(cache.variable_values, key, [&] { return value_of(VTD, rewritten); });
+}
+
+std::optional<llvm::APSInt>
+    PseudoInstantiator::value_of(clang::VarTemplateDecl* VTD,
+                                 llvm::ArrayRef<clang::TemplateArgument> rewritten) {
     llvm::SmallVector<clang::TemplateArgument, 4> arguments;
     if(!fill_defaults(VTD, rewritten, arguments)) {
         return std::nullopt;
@@ -240,7 +279,7 @@ std::optional<llvm::APSInt>
 
 clang::QualType PseudoInstantiator::type_of(const clang::Expr* expr, bool through_object) {
     expr = expr->IgnoreParenImpCasts();
-    return unbound_result(cache.types, std::pair{expr, static_cast<unsigned>(through_object)}, [&] {
+    return kept_step(cache.types, std::pair{expr, static_cast<unsigned>(through_object)}, [&] {
         auto frames = stack.size();
         clang::QualType type;
         unsigned object_quals = 0;
@@ -258,27 +297,19 @@ clang::QualType PseudoInstantiator::type_of(const clang::Expr* expr, bool throug
                 if(through_object && !object.isNull()) {
                     object_quals = resolve_object(object).getCVRQualifiers();
                 }
-                decl = preferred(lookup_member(object, DSME->getMember()));
+                auto member = member_of(object, DSME->getMember());
+                decl = member.decl;
+                type = member.type;
             } else {
                 decl = referenced_decl(expr);
+                if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(decl)) {
+                    type = value_type(value);
+                }
             }
-
-            if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(decl)) {
-                type = value->getType();
-                /// A function parameter pack (`Box<Ts>... boxes`) is declared
-                /// with the expansion; a use of it has the pattern's type.
-                if(auto* PET = type->getAs<clang::PackExpansionType>()) {
-                    type = PET->getPattern();
-                }
-                auto* var = llvm::dyn_cast<clang::VarDecl>(value);
-                type = var && (var->getInit() || var->isCXXForRangeDecl()) && undeduced(type)
-                           ? deduce_auto(var)
-                           : substitute(type);
-                if(auto* field = llvm::dyn_cast<clang::FieldDecl>(value); !field) {
-                    object_quals = 0;
-                } else if(field->isMutable()) {
-                    object_quals &= ~clang::Qualifiers::Const;
-                }
+            if(auto* field = llvm::dyn_cast_or_null<clang::FieldDecl>(decl); !field) {
+                object_quals = 0;
+            } else if(field->isMutable()) {
+                object_quals &= ~clang::Qualifiers::Const;
             }
         }
         stack.truncate(frames);
@@ -294,6 +325,37 @@ clang::QualType PseudoInstantiator::type_of(const clang::Expr* expr, bool throug
     });
 }
 
+Member PseudoInstantiator::member_of(clang::QualType object, clang::DeclarationName name) {
+    auto resolved = object.isNull() ? object : resolve_object(object);
+    if(resolved.isNull()) {
+        return {};
+    }
+    return kept_step(cache.members,
+                     std::pair{resolved.getAsOpaquePtr(), name.getAsOpaquePtr()},
+                     [&] {
+                         auto frames = stack.size();
+                         Member member{.decl = preferred(lookup_member(resolved, name))};
+                         if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(member.decl)) {
+                             member.type = value_type(value);
+                         }
+                         stack.truncate(frames);
+                         return member;
+                     });
+}
+
+clang::QualType PseudoInstantiator::value_type(const clang::ValueDecl* value) {
+    auto type = value->getType();
+    /// A function parameter pack (`Box<Ts>... boxes`) is declared with the
+    /// expansion; a use of it has the pattern's type.
+    if(auto* PET = type->getAs<clang::PackExpansionType>()) {
+        type = PET->getPattern();
+    }
+    auto* var = llvm::dyn_cast<clang::VarDecl>(value);
+    return var && (var->getInit() || var->isCXXForRangeDecl()) && undeduced(type)
+               ? deduce_auto(var)
+               : substitute(type);
+}
+
 clang::QualType PseudoInstantiator::expr_type(const clang::Expr* expr) {
     auto type = expr->getType();
     return unevaluated(type) ? type_of(expr, /*through_object=*/true) : type;
@@ -304,7 +366,7 @@ clang::QualType PseudoInstantiator::deduce_auto(const clang::VarDecl* var) {
     /// specialization (`Depth<N>::value` initialized from
     /// `Depth<N - 1>::value`).
     if(!deducing.insert(var).second) {
-        inconclusive = true;
+        give_up(Trouble::Cycle);
         return clang::QualType();
     }
 

@@ -7,8 +7,28 @@ import :syntax.include_resolver;
 import :syntax.scan;
 import :vfs.file_system;
 import :vfs.file_table;
+import :vfs.path;
 
 namespace clice {
+
+std::uint32_t module_distance(const FileTable& files, Fid provider, Fid importer) {
+    std::uint32_t up = 0;
+    path::walk_ancestors(files.resolve(importer).parent(), [&](CanonicalRef dir) {
+        up += 1;
+        return !path::is_within(files.resolve(provider), dir);
+    });
+    return up;
+}
+
+Fid nearest_provider(const FileTable& files, llvm::ArrayRef<Fid> providers, Fid importer) {
+    if(providers.size() == 1) {
+        return providers.front();
+    }
+    return *ranges::min_element(providers, {}, [&](Fid provider) {
+        return std::pair(module_distance(files, provider, importer),
+                         llvm::StringRef(files.resolve(provider)));
+    });
+}
 
 // DependencyGraph implementation
 

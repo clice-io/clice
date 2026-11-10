@@ -1,0 +1,127 @@
+{
+  "id": "modules/units/14_cl_module_commands",
+  "topic": "modules",
+  "subtopic": "units",
+  "title": "Module units built by cl",
+  "summary": "A project built by cl, with CMake or MSBuild, gets its modules built like any other, its `.ixx` interfaces included",
+  "prose": "What a unit is comes from its module declaration, whatever its suffix; the interface files cl writes and reads are left to the build.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "compile_commands.json",
+      "text": "[\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/greeting.cppm\",\n    \"arguments\": [\"cl-missing.exe\", \"/nologo\", \"/TP\", \"-std:c++20\", \"@${WS}/greeting.cppm.obj.modmap\", \"/Fogreeting.cppm.obj\", \"-c\", \"${WS}/greeting.cppm\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/detail.cpp\",\n    \"arguments\": [\"cl-missing.exe\", \"/nologo\", \"/TP\", \"-std:c++20\", \"@${WS}/detail.cpp.obj.modmap\", \"/Fodetail.cpp.obj\", \"-c\", \"${WS}/detail.cpp\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/util.ixx\",\n    \"arguments\": [\"cl-missing.exe\", \"/nologo\", \"/std:c++20\", \"/interface\", \"/ifcOutput\", \"${WS}/util.ifc\", \"/Foutil.obj\", \"/c\", \"${WS}/util.ixx\"]\n  },\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/main.cpp\",\n    \"arguments\": [\"cl-missing.exe\", \"/nologo\", \"/TP\", \"-std:c++20\", \"@${WS}/main.cpp.obj.modmap\", \"/Fomain.cpp.obj\", \"-c\", \"${WS}/main.cpp\"]\n  }\n]\n",
+      "markers": []
+    },
+    {
+      "path": "detail.cpp",
+      "text": "module greeting:detail;\n\nint detail() {\n    return 42;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "detail.cpp.obj.modmap",
+      "text": "-ifcOutput\n\"${WS}/greeting-detail.ifc\"\n-internalPartition\n",
+      "markers": []
+    },
+    {
+      "path": "greeting.cppm",
+      "text": "export module greeting;\nimport :detail;\n\nexport int greet() {\n    return detail();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "greeting.cppm.obj.modmap",
+      "text": "-reference\n\"greeting:detail=${WS}/greeting-detail.ifc\"\n-ifcOutput\n\"${WS}/greeting.ifc\"\n-interface\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "import greeting;\nimport util;\n\nint main() {\n    return twice(greet());\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp.obj.modmap",
+      "text": "-reference\n\"greeting=${WS}/greeting.ifc\"\n-reference\n\"util=${WS}/util.ifc\"\n",
+      "markers": []
+    },
+    {
+      "path": "util.ixx",
+      "text": "export module util;\n\nexport int twice(int value) {\n    return 2 * value;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "greeting.cppm",
+          "value": {
+            "errors": []
+          }
+        },
+        {
+          "label": "detail.cpp",
+          "value": {
+            "errors": []
+          }
+        },
+        {
+          "label": "util.ixx",
+          "value": {
+            "errors": []
+          }
+        },
+        {
+          "label": "main.cpp",
+          "value": {
+            "errors": []
+          }
+        },
+        {
+          "label": "greet",
+          "value": {
+            "hover": {
+              "markdown": "**function** `greet`\n\n```cpp\nexport int greet()\n```",
+              "range": {
+                "$place": "return twice(⟦greet⟧());",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 22
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "twice",
+          "value": {
+            "hover": {
+              "markdown": "**function** `twice`\n\n```cpp\nexport int twice(int value)\n```",
+              "range": {
+                "$place": "return ⟦twice⟧(greet());",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 16
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

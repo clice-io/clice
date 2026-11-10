@@ -1,3 +1,4 @@
+/// Integer arithmetic.
 export module §(declared_name)math;
 
 export int double_it(int value) {

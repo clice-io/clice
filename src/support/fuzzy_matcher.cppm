@@ -1,5 +1,3 @@
-module;
-
 /// Name matching for symbol search and completion: how identifiers split
 /// into words, the matcher that scores a typed pattern against a name,
 /// and the tokens a search index keys names by. The three are one

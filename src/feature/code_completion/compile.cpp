@@ -8,13 +8,13 @@ import :feature.code_completion.whole_buffer;
 import :feature.code_completion;
 import :feature.documentation;
 import :index.search;
+import :semantic.comment;
 import :semantic.display;
 import :semantic.identity;
 import :semantic.template_resolver;
 import :support.fuzzy_matcher;
 import :support.markup;
 import :syntax.completion;
-import :syntax.documentation;
 import :syntax.lexer;
 
 namespace clice::feature {

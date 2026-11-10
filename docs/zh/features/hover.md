@@ -885,7 +885,7 @@ tests/hover/documentation/25_system_headers
 
 ## 模块
 
-模块名称处会显示其接口单元所在的文件，来自模块的声明处会显示该声明是否已导出，以及模块接口为其提供的文档。
+模块名称处会显示其接口单元中模块声明上方的注释以及该单元所在的文件，来自模块的声明处会显示该声明是否已导出，以及模块接口为其提供的文档。
 
 <!-- BEGIN GENERATED ITEMS: hover/modules -->
 
@@ -893,7 +893,7 @@ tests/hover/documentation/25_system_headers
 
 **模块名称**
 
-在 `import` 和模块声明中，模块名称处都会显示其接口单元所在的文件
+在 `import` 和模块声明中，模块名称处都会显示其接口单元中模块声明上方的注释，以及该单元所在的文件
 
 ```case
 tests/hover/modules/01_module_names

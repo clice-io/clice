@@ -1,5 +1,3 @@
-module;
-
 /// The persisted index format: every blob layout the index writes, to the
 /// database or between processes, and the version gating them. Writers,
 /// load-time validation and the hand-built blobs of corruption tests share

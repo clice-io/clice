@@ -1,5 +1,3 @@
-module;
-
 /// Parts of this file are ported from clangd's AST.cpp, Hover.cpp,
 /// InlayHints.cpp and CodeCompletionStrings.cpp (llvmorg-21.1.8), part of
 /// the LLVM project, licensed under Apache License v2.0 with LLVM

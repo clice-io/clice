@@ -1,5 +1,3 @@
-module;
-
 /// The names a completion's compile reads of the files it loads — a
 /// precompiled preamble, the modules it imports — where a name is typed.
 

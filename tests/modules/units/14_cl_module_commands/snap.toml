@@ -1,0 +1,31 @@
+[test."greeting.cppm"]
+errors = []
+
+[test."detail.cpp"]
+errors = []
+
+[test."util.ixx"]
+errors = []
+
+[test."main.cpp"]
+errors = []
+
+[test.greet.hover]
+markdown = '''
+**function** `greet`
+
+```cpp
+export int greet()
+```
+'''
+range = "return twice(⟦greet⟧());"
+
+[test.twice.hover]
+markdown = '''
+**function** `twice`
+
+```cpp
+export int twice(int value)
+```
+'''
+range = "return ⟦twice⟧(greet());"

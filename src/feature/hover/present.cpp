@@ -1,12 +1,12 @@
 module clice;
 
 import :feature.documentation;
-import :feature.hover;
 import :feature.hover.card;
+import :feature.hover;
+import :semantic.comment;
 import :semantic.display;
 import :semantic.symbol;
 import :support.markup;
-import :syntax.documentation;
 
 namespace clice::feature {
 

@@ -1,7 +1,9 @@
 module clice;
 
 import :analysis.annotation;
-import :analysis.module_graph;
+import :analysis.facts;
+import :analysis.partition;
+import :analysis.report;
 import :analysis.wrapping;
 import :driver.driver;
 import :driver.run;

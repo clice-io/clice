@@ -35,3 +35,23 @@ export function padded(text: string, bytes: number): string {
     const missing = Math.max(bytes - Buffer.byteLength(text), 0);
     return text + line.repeat(Math.ceil(missing / line.length));
 }
+
+/// `depth` layers of two modules, `layer_<n>_a` and `layer_<n>_b`, each
+/// importing both modules of the layer below, down to the module `base`,
+/// which the caller writes; `main.cpp` imports the top layer. There are
+/// 2^depth import paths from main.cpp to `base`.
+export function moduleLayers(depth: number): Record<string, string> {
+    const files: Record<string, string> = {};
+    let below = ["base"];
+    for (let level = 1; level <= depth; level++) {
+        const n = numbered(level, depth + 1);
+        const names = [`layer_${n}_a`, `layer_${n}_b`];
+        for (const name of names) {
+            const imports = below.map((module) => `import ${module};\n`).join("");
+            files[`${name}.cppm`] = `export module ${name};\n${imports}export int ${name}();\n`;
+        }
+        below = names;
+    }
+    files["main.cpp"] = `${below.map((module) => `import ${module};\n`).join("")}int main() {}\n`;
+    return files;
+}

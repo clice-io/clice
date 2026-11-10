@@ -21,6 +21,18 @@ OWN_OPTION("-fprofile-note=", Joined, INVALID, all)
 OWN_OPTION("-aux-info", Separate, INVALID, all)
 OWN_OPTION("-index-unit-output-path", Separate, INVALID, all)
 
+// cl's C++ modules: what a unit is (an interface of any suffix, an internal
+// partition), the module interfaces it writes and where it finds those
+// built before it. clice reads what a unit is from its text and builds its
+// modules itself, as it does with GCC's mapper.
+OWN_OPTION("/interface", Flag, INVALID, msvc)
+OWN_OPTION("/internalPartition", Flag, INVALID, msvc)
+OWN_OPTION("/ifcOutput", JoinedOrSeparate, INVALID, msvc)
+OWN_OPTION("/ifcSearchDir", JoinedOrSeparate, INVALID, msvc)
+OWN_OPTION("/ifcMap", JoinedOrSeparate, INVALID, msvc)
+OWN_OPTION("/stdIfcDir", JoinedOrSeparate, INVALID, msvc)
+OWN_OPTION("/scanDependencies", JoinedOrSeparate, INVALID, msvc)
+
 // Intel's OpenMP, whose _OPENMP clang's -fopenmp defines alike. icx in cl
 // mode ignores the GCC-style spellings.
 OWN_OPTION("-qopenmp", Flag, fopenmp, intel)

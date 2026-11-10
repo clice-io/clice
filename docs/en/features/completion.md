@@ -598,6 +598,18 @@ tests/code_completion/modules/09_nearest_modules
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Module documentation**
+
+A module offered after `import` shows the comment above its interface unit's module declaration
+
+```case
+tests/code_completion/modules/14_module_documentation
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Filtering

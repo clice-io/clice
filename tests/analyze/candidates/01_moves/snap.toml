@@ -112,14 +112,14 @@ stdout = '''
   "cycles": [],
   "cyclicModules": 0,
   "partitionCycles": [],
-  "internalHeaders": 1,
+  "internalHeaders": 2,
   "deepestChain": [
     "util",
     "core"
   ],
   "totals": {
     "baseline": 17,
-    "partitioned": 26
+    "partitioned": 24
   },
   "hotspots": [
     {
@@ -151,13 +151,6 @@ stdout = '''
       "internal": false
     },
     {
-      "path": "util/other.h",
-      "baseline": 1,
-      "partitioned": 3,
-      "churn": null,
-      "internal": false
-    },
-    {
       "path": "util/strops.h",
       "baseline": 1,
       "partitioned": 3,
@@ -184,6 +177,13 @@ stdout = '''
       "partitioned": 1,
       "churn": null,
       "internal": false
+    },
+    {
+      "path": "util/other.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": true
     }
   ],
   "moves": [
@@ -341,14 +341,14 @@ stdout = '''
   "cycles": [],
   "cyclicModules": 0,
   "partitionCycles": [],
-  "internalHeaders": 1,
+  "internalHeaders": 2,
   "deepestChain": [
     "util",
     "core"
   ],
   "totals": {
     "baseline": 17,
-    "partitioned": 26
+    "partitioned": 24
   },
   "hotspots": [
     {

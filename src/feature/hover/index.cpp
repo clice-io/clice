@@ -4,11 +4,13 @@ import :feature.documentation;
 import :feature.hover.card;
 import :feature.hover;
 import :index.query;
+import :index.site;
 import :index.symbol;
 import :index.text;
+import :semantic.comment;
 import :semantic.symbol;
 import :support.text;
-import :syntax.documentation;
+import :syntax.dependency_graph;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 import :vfs.file_table;
@@ -119,7 +121,7 @@ auto hover_info(const index::IndexQuery& query,
         return std::nullopt;
     }
     if(info->kind == SymbolKind::Module) {
-        return module_hover(query, cursor, *info);
+        return module_hover(query, cursor, *info, documentation);
     }
     std::string definition;
     auto text = index::declared_text(query, symbol, cursor.site.file, RelationKind::Definition);
@@ -139,7 +141,8 @@ auto hover_info(const index::IndexQuery& query,
 
 auto module_hover(const index::IndexQuery& query,
                   const index::IndexQuery::Cursor& cursor,
-                  const index::SymbolInfo& module) -> HoverInfo {
+                  const index::SymbolInfo& module,
+                  const DocumentationOptions& documentation) -> HoverInfo {
     HoverInfo hover;
     hover.name = module.name;
     hover.kind = SymbolKind::Module;
@@ -149,8 +152,15 @@ auto module_hover(const index::IndexQuery& query,
                      [&](const index::IndexQuery& from, index::SymbolHash named) {
                          return from.sites(named, cursor.site.file, RelationKind::Definition);
                      });
-    if(!units.empty()) {
-        hover.file = query.file_table().display_identity(units.front().path);
+    // A unit's own declaration names the unit itself.
+    auto providers = ranges::to<std::vector>(units | views::transform(&index::Site::file));
+    if(!providers.empty()) {
+        auto provider = ranges::contains(providers, cursor.site.file)
+                            ? cursor.site.file
+                            : nearest_provider(query.file_table(), providers, cursor.site.file);
+        auto& unit = *ranges::find(units, provider, &index::Site::file);
+        hover.documentation = module_documentation(query, unit, documentation);
+        hover.file = query.file_table().display_identity(unit.path);
     }
     hover.symbol_range = cursor.site.range;
     return hover;

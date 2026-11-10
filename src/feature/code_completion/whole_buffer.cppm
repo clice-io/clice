@@ -1,5 +1,3 @@
-module;
-
 /// A completion's look at the code after its point, which its own compile,
 /// stopping there, does not read.
 

@@ -6,15 +6,15 @@ import :feature.documentation;
 import :feature.formatting;
 import :feature.hover.card;
 import :feature.hover;
+import :semantic.comment;
 import :semantic.decls;
 import :semantic.display;
-import :semantic.template_resolver;
 import :semantic.selection;
 import :semantic.semantics;
 import :semantic.symbol;
+import :semantic.template_resolver;
 import :semantic.types;
 import :support.text;
-import :syntax.documentation;
 import :syntax.lexical_scan;
 
 namespace clice::feature {

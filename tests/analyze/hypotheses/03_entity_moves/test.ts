@@ -43,3 +43,10 @@ test("repeated moves", async (t) => {
         "kind:struct,class Clock=core/clock.h",
     ]);
 });
+
+// The source naming a declaration moved to a new header includes it: an edit
+// there rebuilds that source.
+test("moved into a new header", async (t) => {
+    await t.cli("index");
+    await t.cli("analyze modules impact --move-entity twice=core/twice.h");
+});

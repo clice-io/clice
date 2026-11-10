@@ -1,5 +1,3 @@
-module;
-
 /// Declaration identity: the entity hash that keys the symbol index, equal
 /// across translation units and processes for declarations the compiler
 /// would merge as one entity (ASTContext::isSameEntity), and different for
@@ -41,7 +39,7 @@ public:
     static std::uint64_t unresolved_macro(llvm::StringRef name);
 
     /// The entity of a named module, from its full name.
-    std::uint64_t module_entity(llvm::StringRef name);
+    static std::uint64_t module_entity(llvm::StringRef name);
 
     /// The entity of the symbol a declaration is named in — its enclosing
     /// named namespace, class, enum or function, normalized like an

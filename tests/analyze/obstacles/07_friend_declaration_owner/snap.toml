@@ -1,0 +1,72 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 3 translation units in #s: 6 file shards (# KB), 7 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules obstacles --scope \"core/**\" --scope \"app/**\""]
+stdout = '''
+{
+  "variantHeaders": [],
+  "contextMacros": [],
+  "borrowedMacros": [],
+  "internalUses": [],
+  "crossModuleRedeclarations": [
+    {
+      "entity": "answer",
+      "owner": "core/api.h",
+      "file": "app/access.h",
+      "line": 3,
+      "friendDeclaration": true,
+      "unused": false,
+      "onCycle": false
+    }
+  ],
+  "foreignDeclarations": [],
+  "splitDefinitions": [],
+  "duplicateDefinitions": [],
+  "configuringMacros": [],
+  "implicitProviders": [],
+  "specializations": []
+}
+'''
+exit = 0
+
+[test."$ clice analyze modules edge app core"]
+stdout = '''
+{
+  "from": "app",
+  "to": "core",
+  "entities": [
+    {
+      "id": "#8a698d5da2dd2556",
+      "entity": "Token",
+      "owner": "core/token.h",
+      "users": [
+        "app/main.cpp:4"
+      ],
+      "interface": false
+    },
+    {
+      "id": "#513a472a96b08792",
+      "entity": "answer",
+      "owner": "core/api.h",
+      "users": [
+        "app/main.cpp:4"
+      ],
+      "interface": false
+    },
+    {
+      "id": "#41d7d6ad69d3eccd",
+      "entity": "same",
+      "owner": "core/token.h",
+      "users": [
+        "app/main.cpp:4"
+      ],
+      "interface": false
+    }
+  ]
+}
+'''
+exit = 0

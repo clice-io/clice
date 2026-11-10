@@ -2,8 +2,8 @@ module clice;
 
 import :compile.compilation;
 import :feature.selection_ranges;
+import :semantic.comment;
 import :semantic.decls;
-import :semantic.documentation;
 import :semantic.selection;
 import :semantic.semantics;
 import :support.text;
@@ -843,9 +843,10 @@ void add_ast(CompilationUnit& unit,
                     extent = hull(extent, *whole);
                 }
             }
-            if(auto comments = doc_comment_range(unit, decl);
-               comments && comments->first == focus) {
-                steps.add_loose(hull(extent, comments->second));
+            if(auto found = attached_comments(unit, decl);
+               !found.comments.empty() && found.file == focus) {
+                steps.add_loose(
+                    hull(hull(extent, found.comments.front().range), found.comments.back().range));
             }
         }
     }

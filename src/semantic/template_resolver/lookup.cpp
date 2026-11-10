@@ -33,6 +33,9 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::QualType typ
                                                              clang::DeclarationName name) {
     auto written = type;
     type = resolve_object(type);
+    if(auto* DNT = type->getAs<clang::DependentNameType>()) {
+        return lookup_through_alternatives(DNT, name);
+    }
 
     if(auto* record = type->getAsCXXRecordDecl()) {
         /// A member class reached through a dependent name
@@ -80,9 +83,10 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::QualType typ
 
     clang::Decl* TD = TST->getTemplateName().getAsTemplateDecl();
     if(auto dependent = !TD ? TST->getTemplateName().getAsDependentTemplateName() : nullptr) {
-        // If this dependent specialization was already resolved (possibly to
-        // itself when unresolvable), skip the redundant lookup.
-        if(pack_narrowing == 0 && kept_resolution(TST)) {
+        /// Resolving the object kept it as it is when no lookup finds its
+        /// template: looking again finds nothing either.
+        if(auto kept = cache.rewrites.find({TST, static_cast<unsigned>(Policy::Resolve)});
+           kept != cache.rewrites.end() && holds(kept->second)) {
             return lookup_result();
         }
 
@@ -101,7 +105,7 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::QualType typ
         /// X<T>::template alias<U>`): each expansion nests, against the
         /// limit rewrites nest against.
         if(depth > depth_limit) {
-            inconclusive = true;
+            give_up(Trouble::Depth);
             return lookup_result();
         }
         if(deduce_template_arguments(TATD, TST->template_arguments()) != Deduction::Failed) {
@@ -204,6 +208,7 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup_in_bases(clang::CXX
                 "'{}' is ambiguous among the bases",
                 pad(),
                 name.getAsString());
+            note(Trouble::AmbiguousBase);
             stack.truncate(frames);
             return lookup_result();
         }
@@ -287,7 +292,7 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::ClassTemplat
     if(!looking_up.insert(key).second) {
         /// The empty result here means "already in progress", not "absent";
         /// the pseudo-SFINAE probe must not read it as a proof of absence.
-        inconclusive = true;
+        give_up(Trouble::Cycle);
         return lookup_result();
     }
     auto done = llvm::make_scope_exit([&] { looking_up.erase(key); });
@@ -315,6 +320,9 @@ PseudoInstantiator::lookup_result PseudoInstantiator::lookup(clang::ClassTemplat
             "no certain partial; looking through each",
             pad());
         auto members = lookup_through_any(CTD, arguments, name);
+        if(members.empty()) {
+            note(Trouble::Undecided);
+        }
         indent -= 1;
         return members;
     }

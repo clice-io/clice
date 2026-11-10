@@ -1044,10 +1044,11 @@ struct Project {
         imported_pcms(llvm::ArrayRef<NodeId> modules) const;
 
     /// What decides whether the module's last PCM build still holds: what it
-    /// read, or — for a build an import failed — what the import's failure
-    /// rests on, down to the module whose own build failed. Null for a module
-    /// never built and for a cycle of imports failing each other.
-    const Inputs* module_inputs(NodeId module) const;
+    /// read, or — for a build an import failed — what each failure along the
+    /// chain rests on, what the module's import scan read among them, down to the module
+    /// whose own build failed or around a cycle of imports failing each
+    /// other. Empty for a module never built.
+    llvm::SmallVector<const Inputs*> module_inputs(NodeId module) const;
 
     /// The module_inputs of `modules`, each once: what their PCMs were built
     /// from, their imports' inputs included, or what keeps them failing.

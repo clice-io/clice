@@ -1008,7 +1008,7 @@ ZEST_CASE(ModuleName) {
     auto& index = tu_index.focus_file_index;
     auto occurrences = select("m");
     ZASSERT(!occurrences.empty());
-    ZASSERT(occurrences.front().target == unit->get<EntityTable>().module_entity("foo"));
+    ZASSERT(occurrences.front().target == EntityTable::module_entity("foo"));
     ZASSERT(symbol_named("foo").second.kind.value() == SymbolKind(SymbolKind::Module).value());
 
     auto it = index.relations.find(occurrences.front().target);
@@ -2551,6 +2551,43 @@ ZEST_CASE(SynthesizedCallsKeepRelations) {
                 {"s",                SymbolKind::Variable,  {RelationKind::Reference, RelationKind::Write} },
                 {"__noop",           SymbolKind::Function,  {RelationKind::Reference, RelationKind::Caller}},
     });
+}
+
+ZEST_CASE(LibraryTemplatesUnresolved) {
+    // `h.fill()` names `holder::fill` once resolved: in the user's header
+    // and in a library's text the focus file holds, not in a library header.
+    constexpr llvm::StringLiteral templates = R"(
+        template <typename T>
+        struct holder { void fill(); };
+        template <typename T>
+        void refill(holder<T>& h) { h.fill(); }
+    )";
+    auto fills = [&](const DecodedShard& shard) {
+        return ranges::count_if(shard.occurrences, [&](const index::Occurrence& occurrence) {
+            return tu_index.symbols[occurrence.target].name == "fill";
+        });
+    };
+    auto fills_in = [&](llvm::StringRef file) -> std::ptrdiff_t {
+        for(auto& [path, shard]: tu_index.file_indices) {
+            if(tu_index.view.path(path).ends_with(file)) {
+                return fills(shard);
+            }
+        }
+        return -1;
+    };
+
+    kind = CompilationKind::Whole;
+    add_file("lib", std::format("#pragma GCC system_header\nnamespace lib {{{}}}", templates));
+    add_file("own.h", std::format("namespace own {{{}}}", templates));
+    build_index("#include \"lib\"\n#include \"own.h\"\n");
+    ZEXPECT(fills_in("own.h") == 2);
+    ZEXPECT(fills_in("lib") == 1);
+
+    clear();
+    add_focus("main.ii", std::format("# 1 \"/usr/include/lib.h\" 1 3\n{}", templates));
+    ZASSERT(compile());
+    decode_index(index::build_tu_index(*unit));
+    ZEXPECT(fills(tu_index.focus_file_index) == 2);
 }
 
 };  // ZEST_SUITE(Indexer)

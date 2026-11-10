@@ -24,7 +24,9 @@ struct BuildOptions {
 
 /// A build that failed with what it stands on (see Memo): what a failed
 /// build read, or for a crash, which reports nothing it read, the inputs
-/// known before it ran. It stands while they hold.
+/// known before it ran, or for a module an import's failure failed, what
+/// its import scan read, which names the imports. It stands while they
+/// hold.
 template <typename Result>
 struct Failed {
     Result result;

@@ -14,7 +14,7 @@ Language Server Protocol features available when using clice as an editor backen
 
 | Feature                                   | Status                                   |
 | ----------------------------------------- | ---------------------------------------- |
-| [Code Completion](./completion.md)        | 48 supported                             |
+| [Code Completion](./completion.md)        | 49 supported                             |
 | [Hover](./hover.md)                       | 71 supported                             |
 | [Signature Help](./signature-help.md)     | 21 supported · 1 partial · 2 unsupported |
 | [Code Navigation](./navigation.md)        | 114 supported · 8 unsupported            |
@@ -28,7 +28,7 @@ Language Server Protocol features available when using clice as an editor backen
 | [Folding Ranges](./folding-ranges.md)     | 24 supported                             |
 | [Selection Ranges](./selection-ranges.md) | 14 supported                             |
 | [Formatting](./formatting.md)             | 4 supported                              |
-| [C++20 Modules](./modules.md)             | 8 supported                              |
+| [C++20 Modules](./modules.md)             | 9 supported                              |
 | [Header Contexts](./header-contexts.md)   | 6 supported                              |
 | [Compilation](./compilation.md)           | 8 supported                              |
 

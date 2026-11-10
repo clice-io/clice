@@ -181,39 +181,119 @@ ZEST_CASE(StandardScan) {
 }
 
 ZEST_CASE(ScopedBindingStaysLocal) {
-    add_focus("main.cpp", R"code(
-        template <typename T>
-        struct Holder {
-            template <typename U>
-            struct Inner {
-                using type = T;
+    /// `Inner<U>::type` is `int` under `Holder<int>`'s binding and stays
+    /// dependent without it, whichever the resolver meets first.
+    for(bool deduce_first: {true, false}) {
+        clear();
+        add_focus("main.cpp", R"code(
+            template <typename T>
+            struct Holder {
+                template <typename U>
+                struct Inner {
+                    using type = T;
+                };
+
+                template <typename U>
+                void reset() {
+                    auto first = typename Inner<U>::type();
+                    using input = typename Inner<U>::type;
+                }
             };
 
-            template <typename U>
-            void reset() {
-                auto first = typename Inner<U>::type();
-                using input = typename Inner<U>::type;
-            }
-        };
+            template struct Holder<int>;
+        )code");
+        ZASSERT(compile());
 
-        template struct Holder<int>;
+        Nodes nodes(unit->context());
+        auto* first = nodes.named<clang::VarDecl>("first");
+        ZASSERT(first);
+        auto* input = nodes.named<clang::TypedefNameDecl>("input");
+        ZASSERT(input);
+
+        auto& resolver = unit->get<types::TemplateResolver>();
+        auto check_deduced = [&] {
+            auto deduced = resolver.deduce(first);
+            ZASSERT(!deduced.isNull());
+            ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);
+        };
+        auto check_resolved = [&] {
+            auto resolved = resolver.resolve(input->getUnderlyingType());
+            ZASSERT(!resolved.isNull());
+            ZEXPECT(resolved->isDependentType());
+        };
+        if(deduce_first) {
+            check_deduced();
+            check_resolved();
+        } else {
+            check_resolved();
+            check_deduced();
+        }
+    }
+}
+
+ZEST_CASE(ProbeBindingsStayInProbe) {
+    /// Choosing `has_inner`'s pattern resolves `T::inner` once with `T`
+    /// bound to `box<U>`, once to `bare<U>`, whose `inner` has no `type`.
+    add_focus("main.cpp", R"code(
+        template <class...> using void_t = void;
+        template <class T> struct box { struct inner { using type = int; }; };
+        template <class T> struct bare { struct inner {}; };
+        template <class T, class = void> struct has_inner { using result = long; };
+        template <class T> struct has_inner<T, void_t<typename T::inner::type>> {
+            using result = int;
+        };
+        template <class U> struct user {
+            using boxed = typename has_inner<box<U>>::result;
+            using plain = typename has_inner<bare<U>>::result;
+        };
     )code");
     ZASSERT(compile());
 
     Nodes nodes(unit->context());
-    auto* first = nodes.named<clang::VarDecl>("first");
-    ZASSERT(first);
-    auto* input = nodes.named<clang::TypedefNameDecl>("input");
-    ZASSERT(input);
-
+    auto* boxed = nodes.named<clang::TypedefNameDecl>("boxed");
+    ZASSERT(boxed);
+    auto* plain = nodes.named<clang::TypedefNameDecl>("plain");
+    ZASSERT(plain);
     auto& resolver = unit->get<types::TemplateResolver>();
-    auto deduced = resolver.deduce(first);
-    ZASSERT(!deduced.isNull());
-    ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);
+    auto chosen = resolver.resolve(boxed->getUnderlyingType());
+    ZASSERT(!chosen.isNull());
+    ZEXPECT(chosen.getCanonicalType() == unit->context().IntTy);
+    auto primary = resolver.resolve(plain->getUnderlyingType());
+    ZASSERT(!primary.isNull());
+    ZEXPECT(primary.getCanonicalType() == unit->context().LongTy);
+}
 
-    auto resolved = resolver.resolve(input->getUnderlyingType());
-    ZASSERT(!resolved.isNull());
-    ZEXPECT(resolved->isDependentType());
+ZEST_CASE(QualifiedBindingIsNoParameter) {
+    /// Inside `iter<N>`, `other` binds `N` to `const N`: what its `node`
+    /// reads under that binding is no answer for `iter<N>`'s own.
+    add_focus("main.cpp", R"code(
+        template <class N> struct iter {
+            N* node;
+            using other = iter<const N>;
+            void f() {
+                auto a = other{}.node;
+                auto b = this->node;
+            }
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* a = nodes.named<clang::VarDecl>("a");
+    ZASSERT(a);
+    auto* b = nodes.named<clang::VarDecl>("b");
+    ZASSERT(b);
+    auto* N = nodes.named<clang::TemplateTypeParmDecl>("N");
+    ZASSERT(N);
+    auto& context = unit->context();
+    auto parameter = context.getTypeDeclType(N);
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto other = resolver.deduce(a);
+    ZASSERT(!other.isNull());
+    ZEXPECT(context.hasSameType(other, context.getPointerType(parameter.withConst())));
+    auto own = resolver.deduce(b);
+    ZASSERT(!own.isNull());
+    ZEXPECT(context.hasSameType(own, context.getPointerType(parameter)));
 }
 
 ZEST_CASE(KeptCallBindings) {
@@ -372,6 +452,581 @@ ZEST_CASE(UsingDeclarationPerView) {
     auto& resolver = unit->get<types::TemplateResolver>();
     resolver.see_from(call->getBeginLoc());
     ZEXPECT(resolver.callees(call).size() == 1);
+}
+
+ZEST_CASE(InjectedClassKeepsParameters) {
+    /// Through its own name the class reads its parameters as written. The
+    /// canonical form names one by depth and index alone, which `all`'s own
+    /// parameter at the same place would be taken for, `wrap<Ts>` nested
+    /// into itself.
+    add_focus("main.cpp", R"code(
+        template <class T> struct wrap {};
+        template <class... Ts> struct all {};
+        template <class F, class... R> struct all<F, R...> { using type = F; };
+        template <class... Ts> struct holder {
+            using first = typename all<wrap<Ts>...>::type;
+        };
+        template <class... Ts> struct user : holder<Ts...> {
+            void f() { typename user::first x; }
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* x = nodes.named<clang::VarDecl>("x");
+    ZASSERT(x);
+
+    auto resolved = unit->get<types::TemplateResolver>().resolve(x->getType());
+    auto* wrap = resolved.isNull() ? nullptr : resolved->getAs<clang::TemplateSpecializationType>();
+    ZASSERT(wrap);
+    ZASSERT(wrap->template_arguments().size() == 1);
+    auto argument = wrap->template_arguments()[0].getAsType();
+    if(auto* expansion = argument->getAs<clang::PackExpansionType>()) {
+        argument = expansion->getPattern();
+    }
+    auto* parameter = argument->getAs<clang::TemplateTypeParmType>();
+    ZASSERT(parameter);
+    ZEXPECT(parameter->getDecl() != nullptr);
+}
+
+ZEST_CASE(ExpansionOfCallerPack) {
+    /// A pack bound to the caller's own `Ts...` stands for elements of a
+    /// length not known: what expands over it expands over `Ts` in turn.
+    add_focus("main.cpp", R"code(
+        template <class T> struct wrap {};
+        template <class... Ts> struct list {};
+        template <class... Us> struct each { using type = list<wrap<Us>...>; };
+        template <class... Ts> struct user {
+            using wrapped = typename each<Ts...>::type;
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* alias = nodes.named<clang::TypedefNameDecl>("wrapped");
+    ZASSERT(alias);
+    auto resolved = unit->get<types::TemplateResolver>().resolve(alias->getUnderlyingType());
+    auto* list = resolved.isNull() ? nullptr : resolved->getAs<clang::TemplateSpecializationType>();
+    ZASSERT(list);
+    ZASSERT(list->template_arguments().size() == 1);
+    auto* expansion = list->template_arguments()[0].getAsType()->getAs<clang::PackExpansionType>();
+    ZASSERT(expansion);
+    auto* wrap = expansion->getPattern()->getAs<clang::TemplateSpecializationType>();
+    ZASSERT(wrap);
+    ZASSERT(wrap->template_arguments().size() == 1);
+    ZEXPECT(wrap->template_arguments()[0].getAsType()->getAs<clang::TemplateTypeParmType>() !=
+            nullptr);
+}
+
+ZEST_CASE(InjectedPartialKeepsParameters) {
+    /// A partial specialization names its own parameters as written too.
+    add_focus("main.cpp", R"code(
+        template <class T> struct wrap {};
+        template <class... Ts> struct all {};
+        template <class F, class... R> struct all<F, R...> { using type = F; };
+        template <class... Ts> struct holder {
+            using first = typename all<wrap<Ts>...>::type;
+        };
+        template <class... Ts> struct user;
+        template <class... Ts> struct user<int, Ts...> : holder<Ts...> {
+            void f() { typename user::first x; }
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* x = nodes.named<clang::VarDecl>("x");
+    ZASSERT(x);
+
+    auto resolved = unit->get<types::TemplateResolver>().resolve(x->getType());
+    auto* wrap = resolved.isNull() ? nullptr : resolved->getAs<clang::TemplateSpecializationType>();
+    ZASSERT(wrap);
+    ZASSERT(wrap->template_arguments().size() == 1);
+    auto argument = wrap->template_arguments()[0].getAsType();
+    if(auto* expansion = argument->getAs<clang::PackExpansionType>()) {
+        argument = expansion->getPattern();
+    }
+    auto* parameter = argument->getAs<clang::TemplateTypeParmType>();
+    ZASSERT(parameter);
+    ZEXPECT(parameter->getDecl() != nullptr);
+}
+
+ZEST_CASE(ViewsBetweenIncludes) {
+    /// A header sees the partial specialization extra.h declares only past
+    /// its include; one name asked from both places answers each alike.
+    add_file("lib.h", R"code(
+        #pragma once
+        namespace ns {
+        template <class T> struct traits { using type = int; };
+        }
+    )code");
+    add_file("extra.h", R"code(
+        #pragma once
+        #include "lib.h"
+        namespace ns {
+        template <class T> struct traits<T*> { using type = long; };
+        }
+    )code");
+    add_file("util.h", R"code(
+        #pragma once
+        #include "lib.h"
+        template <class C> using kind = typename ns::traits<C*>::type;
+        #include "extra.h"
+        template <class C> struct after {};
+    )code");
+    add_focus("main.cpp", R"code(
+        #include "util.h"
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* kind = nodes.named<clang::TypeAliasDecl>("kind");
+    ZASSERT(kind);
+    auto* after = nodes.named<clang::ClassTemplateDecl>("after");
+    ZASSERT(after);
+
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto& context = unit->context();
+    for(auto from: {kind->getLocation(), after->getLocation(), kind->getLocation()}) {
+        resolver.see_from(from);
+        auto resolved = resolver.resolve(kind->getUnderlyingType());
+        ZASSERT(!resolved.isNull());
+        bool past = from == after->getLocation();
+        ZEXPECT(resolved.getCanonicalType() == (past ? context.LongTy : context.IntTy));
+    }
+}
+
+ZEST_CASE(CanonicalNamesKeepTheirBindings) {
+    /// `C::value_type` and `T::value_type` share their canonical form; the
+    /// only instantiation binds `C` alone.
+    add_focus("main.cpp", R"code(
+        template <class X> struct box { using value_type = int; };
+        template <class C> void sum(const C&) { typename C::value_type total{}; }
+        template <class T> struct wrapper { typename T::value_type held; };
+        void use() { sum(box<int>{}); }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* total = nodes.named<clang::VarDecl>("total");
+    ZASSERT(total);
+    auto* held = nodes.named<clang::FieldDecl>("held");
+    ZASSERT(held);
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto resolved = resolver.resolve(total->getType());
+    ZASSERT(!resolved.isNull());
+    ZEXPECT(resolved.getCanonicalType() == unit->context().IntTy);
+    auto free = resolver.resolve(held->getType());
+    ZASSERT(!free.isNull());
+    ZEXPECT(free->getAs<clang::DependentNameType>() != nullptr);
+}
+
+ZEST_CASE(MemberValueUnderBindings) {
+    /// A value argument written in the caller's parameters (`is_int<B>`)
+    /// folds under the caller's bindings.
+    add_focus("main.cpp", R"code(
+        template <class T> struct is_int { static constexpr bool value = false; };
+        template <> struct is_int<int> { static constexpr bool value = true; };
+        template <bool B> struct flag { static constexpr bool value = B; };
+        template <bool B> struct pick { using type = long; };
+        template <> struct pick<true> { using type = int; };
+        template <class A, class B> struct traits {
+            static constexpr bool ok = flag<is_int<B>::value>::value;
+        };
+        template <class T> struct user {
+            using t = typename pick<traits<T, int>::ok>::type;
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* t = nodes.named<clang::TypedefNameDecl>("t");
+    ZASSERT(t);
+    auto resolved = unit->get<types::TemplateResolver>().resolve(t->getUnderlyingType());
+    ZASSERT(!resolved.isNull());
+    ZEXPECT(resolved.getCanonicalType() == unit->context().IntTy);
+}
+
+ZEST_CASE(DefaultUnderBindings) {
+    /// The default of `put`'s second parameter reads the class's `A`, bound
+    /// to `float` by the object: it cannot form, and `put` is no candidate.
+    add_focus("main.cpp", R"code(
+        template <class T> struct is_int { static constexpr bool value = false; };
+        template <> struct is_int<int> { static constexpr bool value = true; };
+        template <bool B, class R = void> struct enable_if {};
+        template <class R> struct enable_if<true, R> { using type = R; };
+        template <class A, class B> struct holder {
+            template <class U, class = typename enable_if<is_int<A>::value>::type> int put(U);
+            template <class U> long put(U, int = 0);
+        };
+        template <class T> void use(holder<float, T> h) { h.put(1); }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* call = nodes.call_through<clang::CXXDependentScopeMemberExpr>();
+    ZASSERT(call);
+    ZEXPECT(unit->get<types::TemplateResolver>().callees(call).size() == 1);
+}
+
+ZEST_CASE(StandardConditionalBase) {
+    /// A base chosen by `conditional` whose condition is not known (MSVC's
+    /// variant) has a member both choices give alike.
+    add_focus("main.cpp", R"code(
+        namespace std {
+        template <bool B, class T, class F> struct conditional { using type = T; };
+        template <class T, class F> struct conditional<false, T, F> { using type = F; };
+        template <class T> constexpr bool trivial = __is_trivially_destructible(T);
+        template <class... Ts> struct base { void reset(); };
+        template <class... Ts> struct layer : base<Ts...> {};
+        template <class... Ts>
+        struct variant : conditional<(trivial<Ts> && ...), base<Ts...>, layer<Ts...>>::type {
+            void f() { this->reset(); }
+        };
+        }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    ZASSERT(!nodes.members.empty());
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto found = resolver.lookup(nodes.members.back());
+    ZEXPECT(found.isSingleResult());
+}
+
+ZEST_CASE(StandardConditionalBasesNested) {
+    /// Each layer is chosen by conditions not known among the layer below
+    /// and two classes over it (MSVC's special member layers): looking
+    /// through every choice at every layer would triple the work per layer.
+    add_focus("main.cpp", R"code(
+        namespace std {
+        template <bool B, class T, class F> struct conditional { using type = T; };
+        template <class T, class F> struct conditional<false, T, F> { using type = F; };
+        template <bool B, class T, class F>
+        using conditional_t = typename conditional<B, T, F>::type;
+        template <class T> constexpr bool trivial = __is_trivially_destructible(T);
+        template <class T> constexpr bool movable = __is_constructible(T, T&&);
+        template <class... Ts> struct base { void reset(); };
+        template <class B> struct over : B {};
+        template <class B> struct deleted : B {};
+        template <class B, class... Ts>
+        using pick = conditional_t<(trivial<Ts> && ...), B,
+                                   conditional_t<(movable<Ts> && ...), over<B>, deleted<B>>>;
+        template <class B, class... Ts>
+        using pick3 = pick<pick<pick<B, Ts...>, Ts...>, Ts...>;
+        template <class... Ts>
+        struct variant : pick3<pick3<pick3<pick3<base<Ts...>, Ts...>, Ts...>, Ts...>, Ts...> {
+            void f() { this->reset(); }
+        };
+        }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    ZASSERT(!nodes.members.empty());
+    types::TemplateResolver resolver(*unit, {.audit = true});
+    auto found = resolver.lookup(nodes.members.back());
+    ZASSERT(found.isSingleResult());
+    ZEXPECT(found.front()->getName() == "reset");
+    ZASSERT(resolver.audits().size() == 1);
+    auto& audit = resolver.audits().front();
+    ZEXPECT(audit.troubles[static_cast<std::size_t>(types::Trouble::Steps)] == 0);
+}
+
+ZEST_CASE(StandardConditionalBasesRenamed) {
+    /// The layers looked up from a function template's object bind the
+    /// class's parameters to the function's own: each layer is still kept,
+    /// for the same function.
+    add_focus("main.cpp", R"code(
+        namespace std {
+        template <bool B, class T, class F> struct conditional { using type = T; };
+        template <class T, class F> struct conditional<false, T, F> { using type = F; };
+        template <bool B, class T, class F>
+        using conditional_t = typename conditional<B, T, F>::type;
+        template <class T> constexpr bool trivial = __is_trivially_destructible(T);
+        template <class T> constexpr bool movable = __is_constructible(T, T&&);
+        template <class... Ts> struct base { void reset(); };
+        template <class B> struct over : B {};
+        template <class B> struct deleted : B {};
+        template <class B, class... Ts>
+        using pick = conditional_t<(trivial<Ts> && ...), B,
+                                   conditional_t<(movable<Ts> && ...), over<B>, deleted<B>>>;
+        template <class B, class... Ts>
+        using pick3 = pick<pick<pick<B, Ts...>, Ts...>, Ts...>;
+        template <class... Ts>
+        struct variant : pick3<pick3<pick3<pick3<base<Ts...>, Ts...>, Ts...>, Ts...>, Ts...> {};
+        }
+        template <class... Us>
+        void use(std::variant<Us...>& v) { v.reset(); }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    ZASSERT(!nodes.members.empty());
+    types::TemplateResolver resolver(*unit, {.audit = true});
+    auto found = resolver.lookup(nodes.members.back());
+    ZASSERT(found.isSingleResult());
+    ZEXPECT(found.front()->getName() == "reset");
+    ZASSERT(resolver.audits().size() == 1);
+    auto& audit = resolver.audits().front();
+    ZEXPECT(audit.troubles[static_cast<std::size_t>(types::Trouble::Steps)] == 0);
+}
+
+ZEST_CASE(StandardTypeRules) {
+    /// The standard's traits answer by rule. One of a parameter that may be
+    /// anything waits for it.
+    add_focus("main.cpp", R"code(
+        namespace std {
+        template <class T> struct remove_reference { using type = T; };
+        template <class T> struct decay { using type = T; };
+        template <bool B, class T, class F> struct conditional { using type = T; };
+        template <bool B, class T = void> struct enable_if {};
+        template <class T> struct enable_if<true, T> { using type = T; };
+        template <class T> struct type_identity { using type = T; };
+        template <class T> struct add_lvalue_reference { using type = T&; };
+        template <class T> struct remove_const { using type = T; };
+        template <class T> struct remove_cvref { using type = T; };
+        template <class T> struct remove_pointer { using type = T; };
+        template <class T> struct add_pointer { using type = T*; };
+        template <class T> struct add_const { using type = const T; };
+        }
+        template <class T> struct uses {
+            using stripped = typename std::remove_reference<T&>::type;
+            using decayed = typename std::decay<const T[3]>::type;
+            using chosen = typename std::conditional<true, T, int>::type;
+            using enabled = typename std::enable_if<sizeof(T) == 4, T*>::type;
+            using waiting = typename std::remove_reference<T>::type;
+            using identity = typename std::type_identity<T>::type;
+            using void_ref = typename std::add_lvalue_reference<
+                typename std::conditional<true, void, T>::type>::type;
+            using unconst = typename std::remove_const<const T[3]>::type;
+            using unwritten = typename std::remove_const<T[3]>::type;
+            using bare = typename std::remove_cvref<const T&>::type;
+            using pointee = typename std::remove_pointer<T*>::type;
+            using pointer = typename std::add_pointer<T&>::type;
+            using reference = typename std::add_const<T&>::type;
+            using constant = typename std::add_const<T*>::type;
+            using function = typename std::decay<void(T)>::type;
+            using alike = typename std::conditional<sizeof(T) == 4, T, T>::type;
+            using disabled = typename std::enable_if<false, T>::type;
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* T = nodes.named<clang::TemplateTypeParmDecl>("T");
+    ZASSERT(T);
+    auto& context = unit->context();
+    auto parameter = context.getTypeDeclType(T);
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto resolve = [&](llvm::StringRef name) {
+        auto* alias = nodes.named<clang::TypedefNameDecl>(name);
+        return alias ? resolver.resolve(alias->getUnderlyingType()) : clang::QualType();
+    };
+    auto same = [&](clang::QualType lhs, clang::QualType rhs) {
+        return !lhs.isNull() && context.hasSameType(lhs, rhs);
+    };
+    ZEXPECT(same(resolve("stripped"), parameter));
+    ZEXPECT(same(resolve("decayed"), context.getPointerType(parameter.withConst())));
+    ZEXPECT(same(resolve("chosen"), parameter));
+    ZEXPECT(same(resolve("enabled"), context.getPointerType(parameter)));
+    auto waiting = resolve("waiting");
+    ZASSERT(!waiting.isNull());
+    ZEXPECT(waiting->getAs<clang::DependentNameType>() != nullptr);
+    ZEXPECT(same(resolve("identity"), parameter));
+    ZEXPECT(same(resolve("void_ref"), context.VoidTy));
+    ZEXPECT(same(resolve("unconst"),
+                 context.getConstantArrayType(parameter,
+                                              llvm::APInt(64, 3),
+                                              nullptr,
+                                              clang::ArraySizeModifier::Normal,
+                                              0)));
+    auto unwritten = resolve("unwritten");
+    ZASSERT(!unwritten.isNull());
+    ZEXPECT(unwritten->getAs<clang::DependentNameType>() != nullptr);
+    ZEXPECT(same(resolve("bare"), parameter));
+    ZEXPECT(same(resolve("pointee"), parameter));
+    ZEXPECT(same(resolve("pointer"), context.getPointerType(parameter)));
+    ZEXPECT(same(resolve("reference"), context.getLValueReferenceType(parameter)));
+    ZEXPECT(same(resolve("constant"), context.getPointerType(parameter).withConst()));
+    auto function = resolve("function");
+    ZASSERT(!function.isNull());
+    ZEXPECT(function->isFunctionPointerType());
+    ZEXPECT(same(resolve("alike"), parameter));
+    /// Where `enable_if` holds no `type`, the library's definition says so.
+    auto disabled = resolve("disabled");
+    ZASSERT(!disabled.isNull());
+    ZEXPECT(disabled->getAs<clang::DependentNameType>() != nullptr);
+}
+
+ZEST_CASE(StandardValueRules) {
+    /// An argument known false decides a conjunction whatever the others
+    /// are, one known true a disjunction; the library's partial
+    /// specializations wait on the first argument.
+    add_focus("main.cpp", R"code(
+        namespace std {
+        template <bool V> struct bool_constant { static constexpr bool value = V; };
+        using true_type = bool_constant<true>;
+        using false_type = bool_constant<false>;
+        template <bool B, class T, class F> struct conditional { using type = T; };
+        template <class T, class F> struct conditional<false, T, F> { using type = F; };
+        template <bool, class First, class...> struct _Conjunction { using type = First; };
+        template <class True, class Next, class... Rest>
+        struct _Conjunction<true, True, Next, Rest...> {
+            using type = typename _Conjunction<Next::value, Next, Rest...>::type;
+        };
+        template <class... Traits> struct conjunction : true_type {};
+        template <class First, class... Rest>
+        struct conjunction<First, Rest...> : _Conjunction<First::value, First, Rest...>::type {};
+        template <class... Traits> struct disjunction : false_type {};
+        template <class First, class... Rest>
+        struct disjunction<First, Rest...>
+            : conditional<First::value, First, disjunction<Rest...>>::type {};
+        template <class T> struct negation : bool_constant<!T::value> {};
+        }
+        template <class T> struct trait : std::bool_constant<sizeof(T) == 4> {};
+        template <class T> struct box {
+            using none = typename std::conditional<
+                std::conjunction<trait<T>, std::false_type>::value, T*, T&>::type;
+            using some = typename std::conditional<
+                std::disjunction<trait<T>, std::true_type>::value, T*, T&>::type;
+            using negated = typename std::conditional<
+                std::negation<std::disjunction<trait<T>, std::true_type>>::value, T*, T&>::type;
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* T = nodes.named<clang::TemplateTypeParmDecl>("T");
+    ZASSERT(T);
+    auto& context = unit->context();
+    auto parameter = context.getTypeDeclType(T);
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto resolve = [&](llvm::StringRef name) {
+        auto* alias = nodes.named<clang::TypedefNameDecl>(name);
+        return alias ? resolver.resolve(alias->getUnderlyingType()) : clang::QualType();
+    };
+    auto same = [&](clang::QualType lhs, clang::QualType rhs) {
+        return !lhs.isNull() && context.hasSameType(lhs, rhs);
+    };
+    ZEXPECT(same(resolve("none"), context.getLValueReferenceType(parameter)));
+    ZEXPECT(same(resolve("some"), context.getPointerType(parameter)));
+    ZEXPECT(same(resolve("negated"), context.getLValueReferenceType(parameter)));
+}
+
+ZEST_CASE(StandardConditionalBaseDiffers) {
+    /// Where the two bases a `conditional` may choose give different
+    /// members, the member is neither.
+    add_focus("main.cpp", R"code(
+        namespace std {
+        template <bool B, class T, class F> struct conditional { using type = T; };
+        template <class T> constexpr bool trivial = __is_trivially_destructible(T);
+        template <class... Ts> struct base { void reset(); };
+        template <class... Ts> struct layer : base<Ts...> { void reset(); };
+        template <class... Ts>
+        struct variant : conditional<(trivial<Ts> && ...), base<Ts...>, layer<Ts...>>::type {
+            void f() { this->reset(); }
+        };
+        }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    ZASSERT(!nodes.members.empty());
+    auto& resolver = unit->get<types::TemplateResolver>();
+    ZEXPECT(resolver.lookup(nodes.members.back()).empty());
+}
+
+ZEST_CASE(OperatorCallFoldsAsBuiltin) {
+    /// With an `operator&&` in scope, clang leaves `&&` on dependent operands
+    /// a call; its operands' values fold it as the builtin one.
+    add_focus("main.cpp", R"code(
+        struct S {};
+        bool operator&&(S, S);
+        template <class T> struct is_int { static constexpr bool value = false; };
+        template <> struct is_int<int> { static constexpr bool value = true; };
+        template <bool B> struct pick { using type = long; };
+        template <> struct pick<true> { using type = int; };
+        template <class T> void f() {
+            typename pick<is_int<T>::value && !is_int<T*>::value>::type x;
+        }
+        void g() { f<int>(); }
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* x = nodes.named<clang::VarDecl>("x");
+    ZASSERT(x);
+    auto resolved = unit->get<types::TemplateResolver>().resolve(x->getType());
+    ZASSERT(!resolved.isNull());
+    ZEXPECT(resolved.getCanonicalType() == unit->context().IntTy);
+}
+
+ZEST_CASE(UnknownOperandOfAnd) {
+    /// `false` decides `&&` on either side of an operand not known.
+    add_focus("main.cpp", R"code(
+        template <bool B, class T, class F> struct choose { using type = T; };
+        template <class T, class F> struct choose<false, T, F> { using type = F; };
+        template <class T> struct both {
+            using left = typename choose<(sizeof(T) > 4) && false, int, char>::type;
+            using right = typename choose<false && (sizeof(T) > 4), int, char>::type;
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto& context = unit->context();
+    for(auto name: {"left", "right"}) {
+        auto* alias = nodes.named<clang::TypedefNameDecl>(name);
+        ZASSERT(alias);
+        auto resolved = resolver.resolve(alias->getUnderlyingType());
+        ZASSERT(!resolved.isNull());
+        ZEXPECT(context.hasSameType(resolved, context.CharTy));
+    }
+}
+
+ZEST_CASE(UnknownLengthExpansion) {
+    /// An expansion whose length is not known may hold none of the elements
+    /// a partial specialization needs: the patterns disagree on `type`.
+    add_focus("main.cpp", R"code(
+        template <class... Ts> struct pick { using type = void; };
+        template <class T, class... Rest> struct pick<T, Rest...> { using type = T; };
+        template <class... Ts> struct user { using first = typename pick<Ts...>::type; };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* first = nodes.named<clang::TypedefNameDecl>("first");
+    ZASSERT(first);
+    auto& resolver = unit->get<types::TemplateResolver>();
+    auto resolved = resolver.resolve(first->getUnderlyingType());
+    ZASSERT(!resolved.isNull());
+    ZEXPECT(resolved->getAs<clang::DependentNameType>() != nullptr);
+}
+
+ZEST_CASE(RecursiveValueUnknown) {
+    /// A recursive value whose operands are not known folds down a chain per
+    /// argument, not a tree: past an unknown operand the other is not folded.
+    add_focus("main.cpp", R"code(
+        template <long X, long Y> constexpr long gcd = gcd<Y, X % Y>;
+        template <long X> constexpr long gcd<X, 0> = X;
+        template <bool B, class T = void> struct enable_if {};
+        template <class T> struct enable_if<true, T> { using type = T; };
+        template <class R> struct reduced {
+            using type = typename enable_if<gcd<R::num, R::den> != 0, int>::type;
+        };
+    )code");
+    ZASSERT(compile());
+
+    Nodes nodes(unit->context());
+    auto* type = nodes.named<clang::TypedefNameDecl>("type");
+    ZASSERT(type);
+    types::TemplateResolver resolver(*unit, {.audit = true});
+    resolver.resolve(type->getUnderlyingType());
+    ZASSERT(resolver.audits().size() == 1);
+    auto& audit = resolver.audits().front();
+    ZEXPECT(audit.troubles[static_cast<std::size_t>(types::Trouble::Evaluation)] < 32);
 }
 
 };  // ZEST_SUITE(TemplateResolver)
