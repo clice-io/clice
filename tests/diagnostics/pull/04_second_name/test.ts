@@ -10,7 +10,7 @@ const REFRESH = "workspace/diagnostic/refresh";
 // One file open under two names: while the texts agree the second name
 // shares the first's answer, once they part it gets a note instead, and
 // when the first closes it compiles on its own.
-test({ except: { win32: "symbolic links need privileges" } }, async (t) => {
+test(async (t) => {
     t.disk.symlink("link", "real");
     const s = await t.start({ capabilities: PULL });
     s.open("real/main.cpp");

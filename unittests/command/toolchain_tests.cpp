@@ -153,7 +153,7 @@ ZEST_CASE(BareDriverSharesKey) {
     ZEXPECT(f.key(relative) != f.key(elsewhere));
 }
 
-ZEST_CASE(FailedQueryCooldown, skip = Windows) {
+ZEST_CASE(FailedQueryCooldown) {
     // A failed query is cached: within the cooldown the driver is not
     // spawned again, so removing it changes nothing.
     auto driver = fake_driver("clang", "exit 1\n");
@@ -166,7 +166,7 @@ ZEST_CASE(FailedQueryCooldown, skip = Windows) {
     ZEXPECT(f.failure(ref) == first);
 }
 
-ZEST_CASE(FailedQueryRetries, skip = Windows) {
+ZEST_CASE(FailedQueryRetries) {
     // A transient driver failure must not poison the key for the session:
     // past the cooldown, resolve() and warm() query the driver again.
     f.toolchain.set_failed_retry(chrono::seconds(0));
@@ -249,7 +249,7 @@ ZEST_CASE(ReadAsClangUnknownNames) {
     ZEXPECT(!contains(argv, "-mabi=ilp64x"));
 }
 
-ZEST_CASE(WarmPartialFailure, skip = Windows) {
+ZEST_CASE(WarmPartialFailure) {
     auto driver = fake_clang(clang_job);
     auto good = add("a.cpp", {driver.c_str()});
     auto bad = add("b.cpp", {"clice-nonexistent-driver"});
@@ -267,7 +267,7 @@ ZEST_CASE(WarmPartialFailure, skip = Windows) {
     ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
 }
 
-ZEST_CASE(WarmDedupesQueries, skip = Windows) {
+ZEST_CASE(WarmDedupesQueries) {
     auto driver = fake_clang(clang_job);
     auto a = add("a.cpp", {driver.c_str(), "-std=c++23"});
     auto b = add("b.cpp", {driver.c_str(), "-std=c++23"});
@@ -282,7 +282,7 @@ ZEST_CASE(WarmDedupesQueries, skip = Windows) {
     ZEXPECT(f.toolchain.resolve(a.command, a.language).has_value());
 }
 
-ZEST_CASE(WarmBoundsDrivers, skip = Windows) {
+ZEST_CASE(WarmBoundsDrivers) {
     // Each driver records how many drivers run beside it: twice as many
     // queries as the process has CPUs never run more drivers than CPUs.
     tmp.mkdir("running");
@@ -318,7 +318,7 @@ echo '{2}' >&2
     }
 }
 
-ZEST_CASE(ClangJobCleaned, skip = Windows) {
+ZEST_CASE(ClangJobCleaned) {
     /// What only the query asked for goes — zig's dependency output among
     /// it —, and so does what the linked cc1 cannot take: a newer clang's
     /// flag with its value, a codegen flag's newer value, a CPU name the
@@ -351,7 +351,7 @@ ZEST_CASE(ClangJobCleaned, skip = Windows) {
     ZEXPECT(contains(argv, "-std=gnu++14"));
 }
 
-ZEST_CASE(UserContentAttached, skip = Windows) {
+ZEST_CASE(UserContentAttached) {
     // The query never sees user content; the render puts it back on the
     // driver's cc1 line.
     auto driver = fake_clang(clang_job);
@@ -361,7 +361,7 @@ ZEST_CASE(UserContentAttached, skip = Windows) {
     ZEXPECT(adjacent(argv, "-D", "FOO=1"));
 }
 
-ZEST_CASE(XclangAfterUserContent, skip = Windows) {
+ZEST_CASE(XclangAfterUserContent) {
     // As CMake builds a target's PCH: the driver passes the -Xclang values
     // on after the command's own -include, which the PCH header needs first.
     auto driver = fake_clang(
@@ -381,7 +381,7 @@ ZEST_CASE(XclangAfterUserContent, skip = Windows) {
     ZEXPECT(at("/src/global.h") < at("/build/cmake_pch.hxx"));
 }
 
-ZEST_CASE(PrecompileFullBMI, skip = Windows) {
+ZEST_CASE(PrecompileFullBMI) {
     auto driver = fake_clang(
         R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fmodules-reduced-bmi")");
 
@@ -403,7 +403,7 @@ ZEST_CASE(PrecompileFullBMI, skip = Windows) {
     ZEXPECT(reduced({"--precompile-reduced-bmi"}));
 }
 
-ZEST_CASE(ResourceDirBecomesOurs, skip = Windows) {
+ZEST_CASE(ResourceDirBecomesOurs) {
     // The external driver's resource dir and its builtin headers become
     // ours, a trailing separator or not, and so does a builtin header the
     // command forces; the ignorelist under its share/ has no counterpart in
@@ -421,7 +421,7 @@ ZEST_CASE(ResourceDirBecomesOurs, skip = Windows) {
         "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22//share/asan_ignorelist.txt"));
 }
 
-ZEST_CASE(OtherBuiltinHeadersStay, skip = Windows) {
+ZEST_CASE(OtherBuiltinHeadersStay) {
     /// Another clang's builtin headers stay right after ours: a header only
     /// it has is found there, one ours have as well stays hidden.
     tmp.touch("clang-22/include/stddef.h");
@@ -449,7 +449,7 @@ ZEST_CASE(OtherBuiltinHeadersStay, skip = Windows) {
     ZEXPECT(adjacent(converted.argv, "-internal-isystem", builtin_headers));
 }
 
-ZEST_CASE(AliasedBuiltinHeaders, skip = Windows) {
+ZEST_CASE(AliasedBuiltinHeaders) {
     /// Directories of builtin headers the job names twice, by a symlink as
     /// well (CPATH's -I): clice's own, and another clang's, whose files
     /// clang's own have stay hidden.
@@ -471,7 +471,7 @@ ZEST_CASE(AliasedBuiltinHeaders, skip = Windows) {
     ZEXPECT(hidden.hides(path::join(theirs, "stddef.h")));
 }
 
-ZEST_CASE(MinGWKeepsResourceDir, skip = Windows) {
+ZEST_CASE(MinGWKeepsResourceDir) {
     // A matched LLVM-MinGW installation keeps the resource tree it derives
     // (the query hands it none), also when warmed (the driver gone, only the
     // warmed cache can resolve); another target's tree becomes ours.
@@ -501,7 +501,7 @@ echo '{}' >&2
     ZEXPECT(adjacent(f.resolve(add("b.cpp", {other.c_str()})), "-resource-dir", resource_dir()));
 }
 
-ZEST_CASE(ForeignBuiltinHeaders, skip = Windows) {
+ZEST_CASE(ForeignBuiltinHeaders) {
     /// Another clang's builtin headers, named by the command itself.
     tmp.touch("clang-23/include/__stddef_max_align_t.h");
     auto foreign = tmp.path("clang-23/include");

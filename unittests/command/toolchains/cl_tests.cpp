@@ -53,7 +53,7 @@ llvm::StringRef last_standard(llvm::ArrayRef<const char*> argv) {
     return {};
 }
 
-ZEST_CASE(CLStandardAndVersion, skip = Windows) {
+ZEST_CASE(CLStandardAndVersion) {
     // `/std:c++latest` means the compiler's newest standard, not the linked
     // clang's: C++26 to cl 19.44, whose version the job takes too. cl hears
     // the standard alone: the command's other flags are spelled for clang.
@@ -63,7 +63,7 @@ ZEST_CASE(CLStandardAndVersion, skip = Windows) {
     ZEXPECT(contains(argv, "-fms-compatibility-version=19.44.35207"));
 }
 
-ZEST_CASE(CLKeepsClangSpellings, skip = Windows) {
+ZEST_CASE(CLKeepsClangSpellings) {
     // A standard and a version set in clang's spelling stay clang's reading.
     auto cl = fake_cl();
     auto argv = f.resolve(add("a.cpp",
@@ -75,7 +75,7 @@ ZEST_CASE(CLKeepsClangSpellings, skip = Windows) {
     ZEXPECT(!contains(argv, "-fms-compatibility-version=19.44.35207"));
 }
 
-ZEST_CASE(CLWarningsStayWarnings, skip = Windows) {
+ZEST_CASE(CLWarningsStayWarnings) {
     // clang warns of what cl does not: cl's /WX makes no errors of those.
     // clang-cl's stays.
     auto cl = fake_cl();
@@ -106,7 +106,7 @@ ZEST_CASE(CLPromptHeaders) {
     ZEXPECT(!adjacent(argv, "-internal-isystem", path::join(toolset, "include")));
 }
 
-ZEST_CASE(ClangCLOwnVersion, skip = Windows) {
+ZEST_CASE(ClangCLOwnVersion) {
     // clang-cl's version is the toolset its flags select, which the job
     // finds as clang-cl does; its standard is still its own to tell.
     auto clang_cl = fake_cl("clang-cl");
@@ -115,7 +115,7 @@ ZEST_CASE(ClangCLOwnVersion, skip = Windows) {
     ZEXPECT(!contains(argv, "-fms-compatibility-version=19.44.35207"));
 }
 
-ZEST_CASE(ClangCLBuiltinHeaders, skip = Windows) {
+ZEST_CASE(ClangCLBuiltinHeaders) {
     // clang-cl's own builtin headers, in the resource directory its job
     // names, stay right after clice's.
     tmp.touch("llvm/lib/clang/20/include/xray/xray_interface.h");
@@ -135,7 +135,7 @@ echo 'msc_full_ver 194435207'
     ZEXPECT(ours[2] == tmp.path("llvm/lib/clang/20/include"));
 }
 
-ZEST_CASE(IntelCLHostJob, skip = Windows) {
+ZEST_CASE(IntelCLHostJob) {
     // icx-cl takes cl's options, and its SYCL compilation reads as the
     // host job, built after the device's.
     auto icx = fake_cl("icx-cl");
@@ -146,7 +146,7 @@ ZEST_CASE(IntelCLHostJob, skip = Windows) {
     ZEXPECT(contains(argv, "-fcxx-exceptions"));
 }
 
-ZEST_CASE(UnqueriedCLRunsNothing, skip = Windows) {
+ZEST_CASE(UnqueriedCLRunsNothing) {
     // Nor is cl asked its standard: clang's own cl mode reads the command.
     auto ran = tmp.path("ran");
     auto cl = fake_driver("cl", std::format("touch '{}'\n", ran));

@@ -5,9 +5,7 @@ import { refusal, test } from "@clice/tools/testing";
 // once they diverge, never edits the first document's buffer, and takes
 // over when the first closes.
 
-const POSIX = { except: { win32: "symlinks need privileges on Windows" } };
-
-test("a second name", POSIX, async (t) => {
+test("a second name", async (t) => {
     t.disk.write("real/main.cpp", t.disk.read("main.cpp"));
     t.disk.rm("main.cpp");
     const s = await t.start();
@@ -31,7 +29,7 @@ test("a second name", POSIX, async (t) => {
     await t.show("sessions", (await s.stats()).sessions);
 });
 
-test("the second takes over", POSIX, async (t) => {
+test("the second takes over", async (t) => {
     t.disk.write("real/main.cpp", t.disk.read("main.cpp"));
     t.disk.rm("main.cpp");
     const s = await t.start();

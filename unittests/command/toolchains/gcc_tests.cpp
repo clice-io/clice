@@ -166,7 +166,7 @@ End of search list.)";
     ZEXPECT(output.standard == "gnu++14");
 }
 
-ZEST_CASE(IntelSYCLHostJob, skip = Windows) {
+ZEST_CASE(IntelSYCLHostJob) {
     // icpx's host job, printed after its device job, without the
     // integration header and footer the device job wrote to the query's
     // temporary directory.
@@ -180,7 +180,7 @@ ZEST_CASE(IntelSYCLHostJob, skip = Windows) {
     ZEXPECT(!contains(argv, "-include"));
 }
 
-ZEST_CASE(OldIntelSYCLHostJob, skip = Windows) {
+ZEST_CASE(OldIntelSYCLHostJob) {
     // Before oneAPI 2025.1 the host job includes them with -include and
     // -include-footer; the command's own forced include stays.
     auto driver = fake_gcc(
@@ -228,7 +228,7 @@ ZEST_CASE(RISCVTargetWidth) {
     ZEXPECT(wch.target == "riscv32-wch-elf");
 }
 
-ZEST_CASE(RISCVTargetFeatures, skip = Windows) {
+ZEST_CASE(RISCVTargetFeatures) {
     auto driver = fake_driver("riscv-none-elf-gcc", R"(echo 'Target: riscv-none-elf' >&2
 echo ' /opt/xpack/libexec/gcc/riscv-none-elf/15.2.0/cc1 -E -quiet query.c -march=rv32imac_zicsr -mabi=ilp32 -dM' >&2
 echo '#define __riscv_xlen 32'
@@ -238,20 +238,20 @@ echo '#define __riscv_xlen 32'
     ZEXPECT(adjacent(argv, "-target-abi", "ilp32"));
 }
 
-ZEST_CASE(NoCompilerJob, skip = Windows) {
+ZEST_CASE(NoCompilerJob) {
     /// A driver that is neither GCC nor clang (Intel's icc).
     auto ref = add("a.cpp", {fake_driver("icc", "").c_str()});
     ZEXPECT(llvm::StringRef(f.failure(ref)).contains("runs no compiler job"));
 }
 
-ZEST_CASE(ClangJobKeepsStandard, skip = Windows) {
+ZEST_CASE(ClangJobKeepsStandard) {
     auto driver = fake_clang(clang_job);
     auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-std=c++23"}));
     ZEXPECT(contains(argv, "-std=c++23"));
     ZEXPECT(!contains(argv, "-std=gnu++14"));
 }
 
-ZEST_CASE(DeferralAskedThroughXclang, skip = Windows) {
+ZEST_CASE(DeferralAskedThroughXclang) {
     /// An MSVC target's default template deferral stays only when the
     /// command asks for it, to the driver or to cc1.
     auto driver = fake_clang(
@@ -261,7 +261,7 @@ ZEST_CASE(DeferralAskedThroughXclang, skip = Windows) {
     ZEXPECT(contains(asked, "-fdelayed-template-parsing"));
 }
 
-ZEST_CASE(UniversalBuildFirstArch, skip = Windows) {
+ZEST_CASE(UniversalBuildFirstArch) {
     /// clang refuses to preprocess for two architectures at once.
     auto driver = fake_driver("clang++", R"(case " $* " in
 *" -arch "*" -arch "*)
@@ -274,7 +274,7 @@ echo ' "/usr/bin/clang" "-cc1" "-triple" "arm64-apple-macosx15.0.0" "-E"' >&2
     ZEXPECT(adjacent(argv, "-triple", "arm64-apple-macosx15.0.0"));
 }
 
-ZEST_CASE(GCCSetsUpClang, skip = Windows) {
+ZEST_CASE(GCCSetsUpClang) {
     /// A GCC whose output names its target, a macro of its specs, a CPU
     /// clang does not know, and a search list with its private include
     /// directory and a framework directory.
@@ -323,7 +323,7 @@ LIBRARY_PATH={4}/)",
     ZEXPECT(adjacent(argv, "-internal-iframework", frameworks));
 }
 
-ZEST_CASE(GCCPrivateHeaders, skip = Windows) {
+ZEST_CASE(GCCPrivateHeaders) {
     /// GCC's private include directory holds headers only GCC has, among
     /// GCC's versions of clang's builtin headers. A header only GCC has is
     /// found there; GCC's stdatomic.h is not, and neither is the C
@@ -394,7 +394,7 @@ echo '#define __STDC_VERSION__ 201710L'
     ZEXPECT(next->path.str() == tmp.path("libc/include/limits.h"));
 }
 
-ZEST_CASE(GCCTargetNames, skip = Windows) {
+ZEST_CASE(GCCTargetNames) {
     auto render = [&](llvm::StringRef target, llvm::StringRef options) {
         auto driver = fake_gcc(target.str() + "-g++",
                                std::format(R"(Target: {0}
@@ -447,7 +447,7 @@ ZEST_CASE(GCCTargetNames, skip = Windows) {
     ZEXPECT(adjacent(vendor, "-target-feature", "+zba"));
 }
 
-ZEST_CASE(GCCSeesWrittenAliases, skip = Windows) {
+ZEST_CASE(GCCSeesWrittenAliases) {
     /// clang reads these as aliases of options GCC names otherwise or not
     /// at all (`-G 8`, `-flto=full`, `-ftrigraphs`), which GCC rejects.
     auto args = tmp.path("args");
@@ -490,7 +490,7 @@ echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' 
     ZEXPECT(f.key(clang_name) != f.key(gcc_name));
 }
 
-ZEST_CASE(GCCMeaningsForClang, skip = Windows) {
+ZEST_CASE(GCCMeaningsForClang) {
     /// GCC's -fmodules is its C++20 modules, which clang's C++20 has; to
     /// clang it would mean header modules. Warnings GCC makes errors stay
     /// warnings: clang warns of what GCC does not.
@@ -510,7 +510,7 @@ echo ' /usr/libexec/gcc/x86_64-linux-gnu/15/cc1plus -E -quiet query.cpp -fmodule
     ZEXPECT(contains(argv, "-Werror"));
 }
 
-ZEST_CASE(CommandISAForClang, skip = Windows) {
+ZEST_CASE(CommandISAForClang) {
     /// The command's own -march, which GCC takes as written and clang
     /// without what LLVM does not know.
     auto driver = fake_driver("riscv32-wch-elf-gcc", R"(echo 'Target: riscv32-wch-elf' >&2
@@ -522,7 +522,7 @@ echo ' /opt/wch/libexec/gcc/riscv32-wch-elf/15/cc1 -E -quiet query.c -dM' >&2
     ZEXPECT(adjacent(argv, "-target-feature", "+zbs"));
 }
 
-ZEST_CASE(GCCErrorReported, skip = Windows) {
+ZEST_CASE(GCCErrorReported) {
     /// GCC rejects an option before `-v` prints its version, the last line.
     auto driver = fake_driver("riscv32-unknown-elf-gcc", R"(echo 'Using built-in specs.' >&2
 echo "riscv32-unknown-elf-gcc: error: unrecognized command-line option '-mclice-future'" >&2
@@ -537,7 +537,7 @@ exit 1
     ZEXPECT(!error.contains("gcc version"));
 }
 
-ZEST_CASE(GCCFailureRejected, skip = Windows) {
+ZEST_CASE(GCCFailureRejected) {
     /// GCC prints its job and search list before its compile fails, but
     /// LIBRARY_PATH and the macros only after it succeeds.
     auto driver = fake_driver("g++", R"(echo 'Target: x86_64-linux-gnu' >&2

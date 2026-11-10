@@ -1132,7 +1132,7 @@ ZEST_CASE(WildcardRemovesQueryValue) {
 
 ZEST_SUITE(NVCCToolchainTests, ToolchainFixture) {
 
-ZEST_CASE(NVCCHostLanguage, skip = Windows) {
+ZEST_CASE(NVCCHostLanguage) {
     /// nvcc runs its host compiler in the input's language: GCC's C++
     /// driver adds _GNU_SOURCE, its C driver does not.
     auto host = fake_driver("g++", R"(echo 'Target: x86_64-linux-gnu' >&2
@@ -1146,7 +1146,7 @@ esac
     ZEXPECT(!adjacent(f.resolve(add("b.c", {nvcc.c_str(), "-c"})), "-D", "_GNU_SOURCE"));
 }
 
-ZEST_CASE(NVCCHostSysroot, skip = Windows) {
+ZEST_CASE(NVCCHostSysroot) {
     /// A cross host compiler's headers come from the sysroot the command
     /// hands it.
     auto host = fake_driver("aarch64-linux-gnu-g++", R"(for arg in "$@"; do
@@ -1165,7 +1165,7 @@ echo 'End of search list.' >&2
     ZEXPECT(adjacent(argv, "-internal-isystem", sysroot + "/usr/include"));
 }
 
-ZEST_CASE(NVCCHeaderDirs, skip = Windows) {
+ZEST_CASE(NVCCHeaderDirs) {
     /// The header directories nvcc gives its host compiler, CUDA 13's
     /// include/cccl among them, come before the host's own, as on nvcc's
     /// host line; warnings the host makes errors stay warnings.
@@ -1198,7 +1198,7 @@ End of search list.)",
     ZEXPECT(!contains(argv, "-Werror"));
 }
 
-ZEST_CASE(NVCCHostCL, skip = Windows) {
+ZEST_CASE(NVCCHostCL) {
     /// With a cl host, the dryrun, which Windows' nvcc prints on stdout,
     /// names cl's dialect and version: clang's driver in cl mode builds the
     /// job in them, with nvcc's macros and, in the host view, the C++
@@ -1229,7 +1229,7 @@ DRYRUN
     ZEXPECT(!contains(chosen, "-std=c++14"));
 }
 
-ZEST_CASE(NVCCUnknownHost, skip = Windows) {
+ZEST_CASE(NVCCUnknownHost) {
     /// A host compiler that is neither GCC nor clang.
     auto nvcc = fake_nvcc(fake_driver("icpc", ""));
     auto ref = add("a.cpp", {nvcc.c_str(), "-c"});

@@ -161,7 +161,7 @@ ZEST_CASE(FilePaths) {
     ZEXPECT(unit->file_path(unit->focus_file().file()) == TestVFS::path("proj/main.cpp"));
 }
 
-ZEST_CASE(FilePathResolvesLinks, skip = Windows) {
+ZEST_CASE(FilePathResolvesLinks) {
     TempDir tmp;
     tmp.touch("real/a.h", "extern int a;\n");
     ZASSERT(!fs::create_symlink(tmp.path("real/a.h"), tmp.path("link.h")));

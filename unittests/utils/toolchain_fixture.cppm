@@ -8,6 +8,7 @@ import :support.prelude;
 import :unittests.utils.temp_dir;
 import :vfs.file_system;
 import :vfs.file_table;
+import :vfs.path;
 
 namespace clice::testing {
 
@@ -68,11 +69,21 @@ struct ToolchainFixture {
     }
 
     /// An executable shell script `name` in the temp directory, standing in
-    /// for a compiler driver.
+    /// for a compiler driver. Windows runs `name`.exe, the fake_driver built
+    /// beside the tests, which runs the script as `name`.sh.
     std::string fake_driver(llvm::StringRef name, llvm::StringRef script) {
+#ifdef _WIN32
+        name.consume_back(".exe");
+        auto driver = tmp.path(name.str() + ".exe");
+        ZASSERT(!fs::write_file(tmp.path(name.str() + ".sh"), script));
+        std::string tests;
+        ZASSERT(!sys::executable_path(tests));
+        ZASSERT(!fs::copy_file(path::join(path::parent(tests), "fake_driver.exe"), driver));
+#else
         auto driver = tmp.path(name);
         ZASSERT(!fs::write_file(driver, "#!/bin/sh\n" + script.str()));
         ZASSERT(!fs::set_permissions(driver, 0555));
+#endif
         return driver;
     }
 
