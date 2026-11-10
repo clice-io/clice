@@ -534,9 +534,11 @@ bool WorkerPool::process_crash(std::size_t index,
             for(auto line: llvm::split(output, '\n')) {
                 quoted += std::format("\n    {}", line);
             }
-            LOG_ERROR("The last lines {} logged before it died (its stack trace is in {}.log):{}",
+            bool traced = llvm::StringRef(content).find("=== CRASH STACK TRACE ===",
+                                                        w.log_offset) != llvm::StringRef::npos;
+            LOG_ERROR("The last lines {} logged before it died{}:{}",
                       w.name,
-                      w.name,
+                      traced ? std::format(" (its stack trace is in {}.log)", w.name) : "",
                       quoted);
         }
     }
