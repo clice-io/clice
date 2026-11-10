@@ -994,11 +994,12 @@ ZEST_CASE(DeathTellsSignal) {
 
 ZEST_CASE(CrashQuotesOwnLog) {
     // The worker's log holds every incarnation of its slot: the crash
-    // quotes the dead one's lines, up to its stack trace.
+    // quotes the dead one's lines, up to the crash's own line.
     std::string log = "first incarnation\n";
     auto from = log.size();
     log +=
-        "second incarnation\nAssertion failed\n\n=== CRASH STACK TRACE ===\nclice 1 t\n0x1 frame\n";
+        "second incarnation\nAssertion failed\n[t] [fatal] clice crashed\n"
+        "=== CRASH STACK TRACE ===\nclice 1 t\n0x1 frame\n";
     ZEXPECT(WorkerPoolFixture::crash_output(log, from) == "second incarnation\nAssertion failed");
 
     // A long output keeps its last whole lines.

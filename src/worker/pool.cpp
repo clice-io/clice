@@ -576,7 +576,9 @@ llvm::StringRef WorkerPool::crash_output(llvm::StringRef log, std::size_t from) 
     auto output = log.substr(from <= log.size() ? from : 0);
     if(auto trace = output.find("=== CRASH STACK TRACE ==="); trace != llvm::StringRef::npos) {
         output = output.take_front(trace).rtrim();
-        output = output.take_front(output.rfind('\n') + 1);
+        if(output.ends_with("] [fatal] clice crashed")) {
+            output = output.take_front(output.rfind('\n') + 1);
+        }
     }
     output = output.rtrim();
 
