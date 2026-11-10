@@ -487,10 +487,18 @@ private:
                                   llvm::StringRef tag,
                                   codec::dyn::Value identity);
 
-    /// What of a crashed worker's log the master's log quotes: the lines the
-    /// dead incarnation wrote from `from` on, its last few kilobytes, up to
-    /// the crash's stack trace.
-    static llvm::StringRef crash_output(llvm::StringRef log, std::size_t from);
+    /// What of a crashed worker's log the master's log quotes, of what the
+    /// dead incarnation wrote from `from` on.
+    struct CrashOutput {
+        /// The last few kilobytes of its lines before the crash.
+        llvm::StringRef lines;
+
+        /// The crash's line and stack trace, their first kilobytes; empty
+        /// when it wrote none, as a killed process cannot.
+        llvm::StringRef trace;
+    };
+
+    static CrashOutput crash_output(llvm::StringRef log, std::size_t from);
 
     static SchedulerTime now() {
         return chrono::steady_clock::now();

@@ -1,7 +1,7 @@
 [test."$ clice lint --jobs 1"]
 stdout = "Linted 2 translation units in #s: 0 findings."
 stderr = '''
-error: The last lines SL-0 logged before it died (its stack trace is in SL-0.log):
+error: The last lines SL-0 logged before it died:
 error: [anomaly:WorkerCrash] Worker SL-0 ${CRASH} (1 crash in a row)
 '''
 exit = 0

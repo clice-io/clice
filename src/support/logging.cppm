@@ -83,7 +83,8 @@ import :support.prelude;
 /// master log (StderrReader). A crash's stack trace (handle_crashes, from LOG_FATAL and
 /// Debug anomaly traps too) is appended to the process's log file once
 /// file_logger opened it, and printed to stderr, but a worker's: its
-/// trace goes only to its own log file, none without a log dir.
+/// trace goes only to its own log file, which the pool quotes into the
+/// master's; none without a log dir.
 namespace clice::logging {
 
 enum class Level : std::uint8_t {

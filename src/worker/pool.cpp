@@ -522,24 +522,26 @@ bool WorkerPool::process_crash(std::size_t index,
         w.counted_deaths.push_back(w.generation - 1);
     }
 
-    // Relay the tail of the dead incarnation's own log into the master log
-    // so CI, which only sees the master's output, still gets the worker's
-    // final assert/error message: ahead of the anomaly report, which aborts
-    // Debug builds.
+    // Relay the tail of the dead incarnation's own log into the master log,
+    // so that log alone tells how a worker died: its last lines, and its
+    // stack trace at info — a command's terminal shows the death, the logs
+    // the frames. Ahead of the anomaly report, which aborts Debug builds.
     std::string content;
     if(!options.session_dir.empty() &&
        !fs::read_file(content, path::join(options.session_dir, w.name + ".log"))) {
-        if(auto output = crash_output(content, w.log_offset); !output.empty()) {
-            std::string quoted;
-            for(auto line: llvm::split(output, '\n')) {
-                quoted += std::format("\n    {}", line);
+        auto quoted = [](llvm::StringRef text) {
+            std::string out;
+            for(auto line: llvm::split(text, '\n')) {
+                out += std::format("\n    {}", line);
             }
-            bool traced = llvm::StringRef(content).find("=== CRASH STACK TRACE ===",
-                                                        w.log_offset) != llvm::StringRef::npos;
-            LOG_ERROR("The last lines {} logged before it died{}:{}",
-                      w.name,
-                      traced ? std::format(" (its stack trace is in {}.log)", w.name) : "",
-                      quoted);
+            return out;
+        };
+        auto output = crash_output(content, w.log_offset);
+        if(!output.lines.empty()) {
+            LOG_ERROR("The last lines {} logged before it died:{}", w.name, quoted(output.lines));
+        }
+        if(!output.trace.empty()) {
+            LOG_INFO("{}'s stack trace:{}", w.name, quoted(output.trace));
         }
     }
     auto streak = w.crash_streak == 0
@@ -572,26 +574,29 @@ bool WorkerPool::process_crash(std::size_t index,
     return true;
 }
 
-llvm::StringRef WorkerPool::crash_output(llvm::StringRef log, std::size_t from) {
-    // The crash's backtrace stays in the worker log: the master log carries
-    // the diagnosis, not the (noisy, non-portable) stack frames, nor the
-    // crash's line before them, which would read as the master's own.
+WorkerPool::CrashOutput WorkerPool::crash_output(llvm::StringRef log, std::size_t from) {
     // The log moved aside since the worker started: what the fresh one holds
     // is all its own.
-    auto output = log.substr(from <= log.size() ? from : 0);
-    if(auto trace = output.find("=== CRASH STACK TRACE ==="); trace != llvm::StringRef::npos) {
-        output = output.take_front(trace).rtrim();
-        if(output.ends_with("] [fatal] clice crashed")) {
-            output = output.take_front(output.rfind('\n') + 1);
+    auto own = log.substr(from <= log.size() ? from : 0);
+    CrashOutput output{.lines = own};
+    if(auto trace = own.find("=== CRASH STACK TRACE ==="); trace != llvm::StringRef::npos) {
+        // The crash's line, the time it died, heads the trace.
+        auto before = own.take_front(trace).rtrim();
+        auto start = before.ends_with("] [fatal] clice crashed") ? before.rfind('\n') + 1 : trace;
+        output.lines = own.take_front(start);
+        output.trace = own.drop_front(start).rtrim();
+        constexpr std::size_t max_trace = 16384;
+        if(output.trace.size() > max_trace) {
+            output.trace = output.trace.take_front(output.trace.take_front(max_trace).rfind('\n'));
         }
     }
-    output = output.rtrim();
+    output.lines = output.lines.rtrim();
 
-    constexpr std::size_t max_output = 4096;
-    if(output.size() > max_output) {
-        output = output.take_back(max_output);
-        if(auto nl = output.find('\n'); nl != llvm::StringRef::npos) {
-            output = output.drop_front(nl + 1);
+    constexpr std::size_t max_lines = 4096;
+    if(output.lines.size() > max_lines) {
+        output.lines = output.lines.take_back(max_lines);
+        if(auto nl = output.lines.find('\n'); nl != llvm::StringRef::npos) {
+            output.lines = output.lines.drop_front(nl + 1);
         }
     }
     return output;

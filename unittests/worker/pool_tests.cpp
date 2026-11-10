@@ -241,7 +241,7 @@ struct WorkerPoolFixture {
         pool.options.query_deadline = query;
     }
 
-    static llvm::StringRef crash_output(llvm::StringRef log, std::size_t from) {
+    static WorkerPool::CrashOutput crash_output(llvm::StringRef log, std::size_t from) {
         return WorkerPool::crash_output(log, from);
     }
 
@@ -994,20 +994,26 @@ ZEST_CASE(DeathTellsSignal) {
 
 ZEST_CASE(CrashQuotesOwnLog) {
     // The worker's log holds every incarnation of its slot: the crash
-    // quotes the dead one's lines, up to the crash's own line.
+    // quotes the dead one's lines, then its crash's line and stack trace.
     std::string log = "first incarnation\n";
     auto from = log.size();
     log +=
         "second incarnation\nAssertion failed\n[t] [fatal] clice crashed\n"
         "=== CRASH STACK TRACE ===\nclice 1 t\n0x1 frame\n";
-    ZEXPECT(WorkerPoolFixture::crash_output(log, from) == "second incarnation\nAssertion failed");
+    auto crashed = WorkerPoolFixture::crash_output(log, from);
+    ZEXPECT(crashed.lines == "second incarnation\nAssertion failed");
+    ZEXPECT(crashed.trace ==
+            "[t] [fatal] clice crashed\n=== CRASH STACK TRACE ===\nclice 1 t\n0x1 frame");
+
+    // A killed worker wrote no trace.
+    ZEXPECT(WorkerPoolFixture::crash_output("killed\n", 0).trace.empty());
 
     // A long output keeps its last whole lines.
     std::string lines;
     for(int i = 0; i < 1000; i += 1) {
         lines += std::format("line {}\n", i);
     }
-    auto output = WorkerPoolFixture::crash_output(lines, 0);
+    auto output = WorkerPoolFixture::crash_output(lines, 0).lines;
     ZEXPECT(output.size() <= 4096u);
     ZEXPECT(output.starts_with("line "));
     ZEXPECT(output.ends_with("line 999"));
