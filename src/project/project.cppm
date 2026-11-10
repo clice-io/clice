@@ -1115,7 +1115,8 @@ struct Project {
                            std::uint64_t command);
 
     /// Send a PCH or PCM build, `label` naming what it builds in the log (a
-    /// file, a module), and keep what did not build: a build that
+    /// file, a module) and `why` why the last build cannot serve, and keep
+    /// what did not build: a build that
     /// crashed its worker is recorded through `fail` on what it was known to
     /// read (`known`), and one that failed on the user's code on what it read
     /// (read_inputs over `before`); any other failure is clice's own breakage,
@@ -1129,6 +1130,7 @@ struct Project {
         send_precompiled(Attempt& attempt,
                          const worker::BuildPCHParams& params,
                          llvm::StringRef label,
+                         llvm::StringRef why,
                          Inputs known,
                          const Inputs& before,
                          llvm::function_ref<void(FailureRecord, Inputs)> fail);
@@ -1137,6 +1139,7 @@ struct Project {
         send_precompiled(Attempt& attempt,
                          const worker::BuildPCMParams& params,
                          llvm::StringRef label,
+                         llvm::StringRef why,
                          Inputs known,
                          const Inputs& before,
                          llvm::function_ref<void(FailureRecord, Inputs)> fail);

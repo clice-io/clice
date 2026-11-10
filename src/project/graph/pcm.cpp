@@ -127,17 +127,17 @@ llvm::SetVector<NodeId> module_closure(const Project& project, llvm::ArrayRef<No
 llvm::StringRef revalidate(Project& project, NodeId module, llvm::StringRef pcm_key) {
     auto it = project.pcms.find(module);
     if(it == project.pcms.end()) {
-        return "no_entry";
+        return "none was built";
     }
     auto& entry = it->second;
     llvm::StringRef miss;
     if(entry.key != pcm_key) {
-        miss = "key_changed";
+        miss = "its command, an import or its PCH changed";
     } else if(!inputs_hold(project.file_table, entry.inputs)) {
-        miss = "inputs_changed";
+        miss = "a file it read changed";
     } else if(entry.path.empty() || !project.store->lookup("pcm", entry.blob) ||
               !fs::exists(entry.path)) {
-        miss = "evicted";
+        miss = "the last one left the cache";
     } else {
         return {};
     }
@@ -402,18 +402,14 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
                                           import_keys,
                                           pch_blob}));
 
-    auto pcm_miss = revalidate(project, node, pcm_key);
-    if(pcm_miss.empty()) {
+    auto why = revalidate(project, node, pcm_key);
+    if(why.empty()) {
         LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
         // A record read back from the database names no PCH.
         project.pcms.find(node)->second.pch = std::move(bp.pch);
         co_return Result::Success;
     }
-    LOG_PERF("cache",
-             "ns=pcm event=miss reason={} key={} module={}",
-             pcm_miss,
-             pcm_key,
-             module_name);
+    LOG_PERF("cache", "ns=pcm event=miss key={} module={}", pcm_key, module_name);
 
     if(refused(project, node, pcm_key, module_name)) {
         co_return Result::Failed;
@@ -446,6 +442,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
         attempt,
         bp,
         std::format("module {} ({})", module_name, file_path),
+        why,
         std::move(known),
         before,
         [&](FailureRecord record, Inputs inputs) {

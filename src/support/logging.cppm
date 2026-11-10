@@ -53,7 +53,8 @@ import :support.prelude;
 /// environment sets CLICE_PERF (perf_lines()), as the ecosystem's
 /// measurements do: a log a reader opens says how long a step took in its
 /// own words. Topics in use: "index" (per-file and
-/// phase timings), "cache" (hit/miss with reason), "startup" (phase
+/// phase timings), "cache" (hits and misses; why a miss rebuilds is in
+/// the build's info line), "startup" (phase
 /// durations), "request" (per-request latency on the master: wait_ms =
 /// time until a worker was ready, total_ms = end-to-end), "query"
 /// (worker-side share of a request: acquire_ms = AST wait + strand lock,

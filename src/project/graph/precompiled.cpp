@@ -71,12 +71,13 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
                Attempt& attempt,
                const Params& params,
                llvm::StringRef label,
+               llvm::StringRef why,
                Inputs known,
                const Inputs& before,
                llvm::function_ref<void(FailureRecord, Inputs)> fail) {
     constexpr bool pch = std::same_as<Params, worker::BuildPCHParams>;
     constexpr llvm::StringRef what = pch ? "PCH" : "PCM";
-    LOG_INFO("Building the {} of {}", what, label);
+    LOG_INFO("Building the {} of {}: {}", what, label, why);
     Timer timer;
     auto result = co_await deliver(
         *project.pool,
@@ -132,20 +133,22 @@ async::task<std::expected<worker::PrecompiledBuildResult, Result>>
     Project::send_precompiled(Attempt& attempt,
                               const worker::BuildPCHParams& params,
                               llvm::StringRef label,
+                              llvm::StringRef why,
                               Inputs known,
                               const Inputs& before,
                               llvm::function_ref<void(FailureRecord, Inputs)> fail) {
-    return send_build(*this, attempt, params, label, std::move(known), before, fail);
+    return send_build(*this, attempt, params, label, why, std::move(known), before, fail);
 }
 
 async::task<std::expected<worker::PrecompiledBuildResult, Result>>
     Project::send_precompiled(Attempt& attempt,
                               const worker::BuildPCMParams& params,
                               llvm::StringRef label,
+                              llvm::StringRef why,
                               Inputs known,
                               const Inputs& before,
                               llvm::function_ref<void(FailureRecord, Inputs)> fail) {
-    return send_build(*this, attempt, params, label, std::move(known), before, fail);
+    return send_build(*this, attempt, params, label, why, std::move(known), before, fail);
 }
 
 }  // namespace clice

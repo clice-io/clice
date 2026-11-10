@@ -41,6 +41,10 @@ void forget_pairs(Project& project, llvm::StringRef pch_key) {
     }
 }
 
+/// Why a PCH registered under a key is rebuilt: its pairs went from the
+/// store or the disk.
+constexpr llvm::StringRef evicted = "the last one left the cache";
+
 /// Whether the PCH registered under the key can be adopted as it is, and
 /// why not: complete, in the store, on disk, a preamble's index readable —
 /// else it is gone, and builds again from what it read — and what it read
@@ -52,27 +56,27 @@ void forget_pairs(Project& project, llvm::StringRef pch_key) {
 std::pair<Check, llvm::StringRef> pair_state(Project& project, llvm::StringRef pch_key) {
     auto it = project.pchs.find(pch_key);
     if(it == project.pchs.end() || it->second.path.empty()) {
-        return {Check::ProductGone, "no_entry"};
+        return {Check::ProductGone, "none was built"};
     }
     auto& entry = it->second;
     if(!project.store || !project.store->lookup("pch", entry.blob) ||
        (!entry.whole_file && !project.store->lookup_aux("pch", entry.blob)) ||
        !fs::exists(entry.path)) {
-        return {Check::ProductGone, "evicted"};
+        return {Check::ProductGone, evicted};
     }
     // load_index() found the blob unreadable earlier; republish the pair
     // rather than serving a PCH with no index forever.
     if(!entry.whole_file && entry.index_path.empty()) {
-        return {Check::ProductGone, "idx_unreadable"};
+        return {Check::ProductGone, "the last one's index cannot be read"};
     }
     if(!entry.base.empty()) {
         auto* base = project.built_pch(entry.base);
         if(!base || base->blob != entry.base_blob) {
-            return {Check::InputsChanged, "base_rebuilt"};
+            return {Check::InputsChanged, "the PCH it extends was rebuilt"};
         }
     }
     if(!inputs_hold(project.file_table, entry.inputs)) {
-        return {Check::InputsChanged, "inputs_changed"};
+        return {Check::InputsChanged, "a file it read changed"};
     }
     return {Check::Holds, {}};
 }
@@ -116,17 +120,13 @@ bool refused(Project& project, llvm::StringRef pch_key, llvm::StringRef file) {
 async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest request) {
     const auto& pch_key = request.pch_key;
 
-    auto [state, pch_miss] = pair_state(project, pch_key);
+    auto [state, why] = pair_state(project, pch_key);
     if(state == Check::Holds) {
         LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, request.params.file);
         co_return Result::Success;
     }
-    LOG_PERF("cache",
-             "ns=pch event=miss reason={} key={} file={}",
-             pch_miss,
-             pch_key,
-             request.params.file);
-    if(pch_miss == "evicted") {
+    LOG_PERF("cache", "ns=pch event=miss key={} file={}", pch_key, request.params.file);
+    if(why == evicted) {
         forget_pairs(project, pch_key);
     }
 
@@ -192,6 +192,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         attempt,
         bp,
         bp.file,
+        why,
         std::move(known),
         before,
         [&](FailureRecord record, Inputs inputs) {
