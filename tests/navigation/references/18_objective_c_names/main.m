@@ -28,6 +28,7 @@ __attribute__((objc_root_class))
 - (int)size;
 + (void)§(class_draw)draw;
 - (void)§(instance_draw)draw;
+@property(class, nonatomic, readonly) int count;
 @end
 
 @interface Pen (Extras) <Writing>
@@ -58,6 +59,10 @@ __attribute__((objc_root_class))
 
 - (void)draw {
 }
+
++ (int)count {
+    return 0;
+}
 @end
 
 @implementation Pen (Extras)
@@ -79,6 +84,8 @@ void use(Quill *quill, Class kind, id thing, Box<Pen *> *box) {
     [thing ink];
     id writing = @protocol(Writing);
     [[box first] write];
+    int count = Quill.count;
     (void)writing;
     (void)size;
+    (void)count;
 }

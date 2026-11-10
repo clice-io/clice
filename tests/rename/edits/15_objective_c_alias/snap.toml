@@ -76,4 +76,11 @@
 +void use(Nib *quill, Class kind, id thing, Box<Pen *> *box) {
      [quill :1 tail:2];
      [quill setInk:[quill ink] + 1];
+…
+     id writing = @protocol(Writing);
+     [[box first] write];
+-    int count = Quill.count;
++    int count = Nib.count;
+     (void)writing;
+     (void)size;
 '''
