@@ -1,5 +1,6 @@
 import { defineConfig } from "@vscode/test-cli";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -18,11 +19,24 @@ const fixtures = ["hello_world", "imported_symbol", "two_hosts"];
 // clang++ has no C++20 modules.
 const keepEnv = "--force-disable-user-env";
 
+// The folders the tests make, and the server staged below, go when this
+// process exits, once VS Code has: Windows removes nothing in use, VS Code
+// watches the folder of a document outside the workspace a while after its
+// editor closes, and a runner's own process watching the programs it saw run
+// holds the staged server as long as VS Code runs.
+const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "clice-e2e-"));
+const staged = path.join(extensionRoot, "clice");
+process.on("exit", () => {
+    fs.rmSync(scratch, { recursive: true, force: true });
+    fs.rmSync(staged, { recursive: true, force: true });
+});
+
 const configs = fixtures.map((fixture) => ({
     label: fixture,
     files: "out/test/**/*.test.js",
     workspaceFolder: path.join(fixturesDir, fixture),
     mocha: { timeout: 300 * 1000, failZero: true },
+    env: { CLICE_E2E_SCRATCH: scratch },
     launchArgs: [keepEnv],
 }));
 
@@ -31,10 +45,9 @@ const configs = fixtures.map((fixture) => ({
 // Code launches, because the extension activates on startup and would take the
 // missing-bundle path if clice/ were staged only from inside the test.
 function stageBundledServer(from) {
-    const dir = path.join(extensionRoot, "clice");
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(staged, { recursive: true, force: true });
 
-    const binDir = path.join(dir, "bin");
+    const binDir = path.join(staged, "bin");
     fs.mkdirSync(binDir, { recursive: true });
     const name = process.platform === "win32" ? "clice.exe" : "clice";
     fs.copyFileSync(from, path.join(binDir, name));
@@ -44,7 +57,7 @@ function stageBundledServer(from) {
 
     fs.cpSync(
         path.resolve(path.dirname(from), "..", "lib", "clang"),
-        path.join(dir, "lib", "clang"),
+        path.join(staged, "lib", "clang"),
         {
             recursive: true,
         },
@@ -54,15 +67,9 @@ function stageBundledServer(from) {
 // Bundled-server variant: CLICE_EXECUTABLE is cleared so the extension takes the
 // clice/ fallback; a dedicated user-data-dir isolates it from the clice.executable
 // setting the other variants write. CLICE_E2E_BUNDLED_FROM flags the variant for
-// the test. The staged server goes when this process exits, once VS Code has:
-// Windows deletes no program while something holds it, and a runner's own
-// process watching the programs it saw run holds the server as long as VS
-// Code runs.
+// the test.
 if (process.env.CLICE_EXECUTABLE) {
     stageBundledServer(process.env.CLICE_EXECUTABLE);
-    process.on("exit", () => {
-        fs.rmSync(path.join(extensionRoot, "clice"), { recursive: true, force: true });
-    });
     configs.push({
         label: "bundled-hello_world",
         files: "out/test/**/*.test.js",
@@ -71,6 +78,7 @@ if (process.env.CLICE_EXECUTABLE) {
         env: {
             CLICE_EXECUTABLE: "",
             CLICE_E2E_BUNDLED_FROM: process.env.CLICE_EXECUTABLE,
+            CLICE_E2E_SCRATCH: scratch,
         },
         launchArgs: [
             keepEnv,

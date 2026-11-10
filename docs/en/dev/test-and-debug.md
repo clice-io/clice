@@ -47,7 +47,7 @@ pixi run test Debug          # all tests with debug build
 
 ## Editor E2E Tests
 
-Smoke tests that run real editors (headless Neovim and VSCode) against a locally built clice binary, covering startup, first diagnostics, hover, definition and completion, and on a header the commands that show and switch its compilation context. They run on copies of three cases — a single file, a C++20 modules project and a header with two hosts — that `editor-prepare` writes under `.cache/editors`. CI runs them on the Linux x64 and macOS arm64 legs with the latest stable editor releases, on purpose unpinned: the job exists to catch breakage caused by new editor versions.
+Smoke tests that run real editors (headless Neovim and VSCode) against a locally built clice binary, covering startup, first diagnostics, hover, definition and completion, and on a header the commands that show and switch its compilation context. They run on copies of three cases — a single file, a C++20 modules project and a header with two hosts — that `editor-prepare` writes under `.cache/editors`. CI runs them on Linux x64, macOS arm64 and Windows x64 (VS Code alone there) with the latest stable editor releases, on purpose unpinned: the job exists to catch breakage caused by new editor versions.
 
 ```bash
 $ pixi run build                  # build/RelWithDebInfo/bin/bin/clice

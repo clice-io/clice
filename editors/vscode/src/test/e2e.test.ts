@@ -1,7 +1,6 @@
 import * as assert from "assert";
 import * as cp from "child_process";
 import * as fs from "fs";
-import * as os from "os";
 import { once } from "events";
 import * as path from "path";
 import { PassThrough } from "stream";
@@ -184,17 +183,18 @@ suite("server environment setting", function () {
     });
 });
 
-/// A folder the test made, removed: VS Code lets go of the folder of a
-/// document outside the workspace a moment after its editor closes, and
-/// Windows removes no folder in use, so Node retries the removal.
-function removeFolder(root: string): void {
-    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10 });
+/// A new folder outside the workspace, which .vscode-test.mjs removes once
+/// VS Code has exited.
+function scratchFolder(prefix: string): string {
+    const scratch = process.env.CLICE_E2E_SCRATCH;
+    assert.ok(scratch, "CLICE_E2E_SCRATCH names the folder .vscode-test.mjs made");
+    return fs.mkdtempSync(path.join(scratch, prefix));
 }
 
 suite("second names", function () {
     test("an editor on a second name moves to the open document", async function () {
         this.timeout(90 * 1000);
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-alias-"));
+        const root = scratchFolder("clice-alias-");
         fs.mkdirSync(path.join(root, "real"));
         fs.writeFileSync(path.join(root, "real", "a.cpp"), "int a() { return 0; }\n");
         fs.symlinkSync(path.join(root, "real"), path.join(root, "link"));
@@ -244,7 +244,6 @@ suite("second names", function () {
         } finally {
             busy.dispose();
             await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-            removeFolder(root);
         }
     });
 });
@@ -667,7 +666,7 @@ suite("clice E2E", function () {
                 : [];
         assert.deepStrictEqual([...commands].sort(), [...advertised].sort());
 
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-refactor-"));
+        const root = scratchFolder("clice-refactor-");
         const file = path.join(root, "paint.cpp");
         fs.writeFileSync(
             file,
@@ -695,7 +694,6 @@ suite("clice E2E", function () {
             );
         } finally {
             await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
-            removeFolder(root);
         }
     });
 
@@ -739,7 +737,7 @@ suite("clice E2E", function () {
             this.skip();
         }
 
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-problems-"));
+        const root = scratchFolder("clice-problems-");
         const uri = vscode.Uri.file(path.join(root, "broken.cpp"));
         fs.writeFileSync(uri.fsPath, "int value = missing;\n");
         const problems = () => vscode.languages.getDiagnostics(uri).length;
@@ -759,7 +757,6 @@ suite("clice E2E", function () {
             await listed(() => problems() > 0, "problems back with the tab");
         } finally {
             await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-            removeFolder(root);
         }
     });
 });

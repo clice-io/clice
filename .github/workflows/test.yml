@@ -1,6 +1,6 @@
 name: test
 
-# Every target and build type CI builds, each a leg of its own (test-leg.yml).
+# Every target and build type CI builds, each a platform of its own (test-platform.yml).
 # The Windows targets build on Linux, whose runners build and link them several
 # times faster. The suites split further where the runners are slow: ASan
 # processes start slowly on macOS, and the Intel macOS and arm64 Windows
@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   linux-x64:
-    uses: ./.github/workflows/test-leg.yml
+    uses: ./.github/workflows/test-platform.yml
     with:
       os: ubuntu-24.04
       target: x86_64-unknown-linux-gnu
@@ -23,14 +23,14 @@ jobs:
       compat: true
 
   linux-x64-debug:
-    uses: ./.github/workflows/test-leg.yml
+    uses: ./.github/workflows/test-platform.yml
     with:
       os: ubuntu-24.04
       target: x86_64-unknown-linux-gnu
       build_type: Debug
 
   linux-arm64:
-    uses: ./.github/workflows/test-leg.yml
+    uses: ./.github/workflows/test-platform.yml
     with:
       build_os: ubuntu-24.04
       os: ubuntu-24.04-arm
@@ -38,7 +38,7 @@ jobs:
       asset_name: clice.aarch64-unknown-linux-gnu.tar.gz
 
   macos-arm64:
-    uses: ./.github/workflows/test-leg.yml
+    uses: ./.github/workflows/test-platform.yml
     with:
       os: macos-15
       target: aarch64-apple-darwin
@@ -47,7 +47,7 @@ jobs:
       compat: true
 
   macos-arm64-debug:
-    uses: ./.github/workflows/test-leg.yml
+    uses: ./.github/workflows/test-platform.yml
     with:
       os: macos-15
       target: aarch64-apple-darwin
@@ -55,7 +55,7 @@ jobs:
       cases_shards: "[1, 2, 3, 4, 5, 6, 7, 8]"
 
   macos-x64:
-    uses: ./.github/workflows/test-leg.yml
+    uses: ./.github/workflows/test-platform.yml
     with:
       build_os: macos-15
       os: macos-15-intel
@@ -64,7 +64,7 @@ jobs:
       cases_shards: "[1, 2, 3, 4]"
 
   windows-x64:
-    uses: ./.github/workflows/test-leg.yml
+    uses: ./.github/workflows/test-platform.yml
     with:
       build_os: ubuntu-24.04
       os: windows-2025
@@ -74,7 +74,7 @@ jobs:
       compat: true
 
   windows-arm64:
-    uses: ./.github/workflows/test-leg.yml
+    uses: ./.github/workflows/test-platform.yml
     with:
       build_os: ubuntu-24.04
       os: windows-11-arm

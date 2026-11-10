@@ -89,7 +89,7 @@ void LSPClient::register_navigation() {
                 co_return to_raw(result);
             }
 
-            // A closed file has no worker leg: the index's answer is the
+            // A closed file has no worker to ask: the index's answer is the
             // answer.
             if(!session) {
                 co_return codec::raw_value{"[]"};
@@ -99,7 +99,7 @@ void LSPClient::register_navigation() {
             // worker query implies, a document served under freshness clause
             // 4 (compiled, compile still in flight) already went to the
             // index, and a document whose compile a crash stops cannot reach
-            // a worker at all. What the worker leg covers — include
+            // a worker at all. What the worker's answer covers — include
             // directives, which have no symbol occurrence — the manifest
             // edges answer instead, under the same content gate as the
             // index's links: manifest lines are meaningless against a buffer

@@ -1,7 +1,7 @@
 name: compat-test
 
 # Real build systems and compilers (tests/compat) on one platform: with every
-# build, the leg's programs; on compat-release's schedule, the newest release
+# build, the platform's programs; on compat-release's schedule, the newest release
 # and the commit it was built from, so a compiler or build-tool release that
 # breaks command handling shows up without a code change.
 on:
