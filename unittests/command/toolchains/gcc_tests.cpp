@@ -415,21 +415,31 @@ End of search list.)",
 ZEST_CASE(CSystemDirs, skip = Windows) {
     /// clang's driver passes C_INCLUDE_PATH on as -c-isystem and
     /// CPLUS_INCLUDE_PATH as -cxx-isystem: a C file searches the first, as
-    /// the job's own directory.
+    /// the job's own directory, ahead of the driver's.
     auto driver = fake_gcc("clang",
                            std::format(R"(Target: x86_64-unknown-linux-gnu
- "/usr/bin/clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-E" "-c-isystem" "{0}" "-cxx-isystem" "{1}" "-x" "c" "query.c"
+ "/usr/bin/clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-E" "-internal-isystem" "{2}" "-c-isystem" "{0}" "-cxx-isystem" "{1}" "-x" "c" "query.c"
 #include <...> search starts here:
  {0}
+ {2}
 End of search list.)",
                                        tmp.path("c"),
-                                       tmp.path("cxx")));
+                                       tmp.path("cxx"),
+                                       tmp.path("libc")));
     auto ref = add("a.c", {driver.c_str(), "-c"});
     auto argv = f.resolve(ref);
     ZEXPECT(!adjacent(argv, "-internal-isystem", tmp.path("c")));
-    auto dirs = f.toolchain.search_config(ref).dirs | views::transform(&SearchDir::path);
-    ZEXPECT(ranges::contains(dirs, Spelling::absolute(tmp.path("c")).str()));
-    ZEXPECT(!ranges::contains(dirs, Spelling::absolute(tmp.path("cxx")).str()));
+    std::vector<std::string> dirs;
+    for(auto& dir: f.toolchain.search_config(ref).dirs) {
+        if(llvm::StringRef(dir.path).starts_with(Spelling::absolute(tmp.root).str())) {
+            dirs.push_back(dir.path);
+        }
+    }
+    std::vector<std::string> expected = {
+        Spelling::absolute(tmp.path("c")).str(),
+        Spelling::absolute(tmp.path("libc")).str(),
+    };
+    ZEXPECT(dirs == expected);
 }
 
 ZEST_CASE(GCCPrivateHeaders, skip = Windows) {
