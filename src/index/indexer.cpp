@@ -863,18 +863,23 @@ public:
             return;
         }
 
-        // A property's accessor clang declares is no function the code
-        // has.
+        // A property's accessor clang declares is one symbol with the method
+        // an @implementation, maybe in another unit, writes for it: a call
+        // to one nothing writes finds no callee.
         if(auto* OME = node.get<clang::ObjCMessageExpr>()) {
-            if(const auto* method = decls::objc_message_target(*OME);
-               method && !method->isImplicit()) {
-                call(method, OME->getSelectorStartLoc());
-            }
+            call(decls::objc_message_target(*OME), OME->getSelectorStartLoc());
             return;
         }
-        // `shape.count` calls the accessors the code writes, `+=` both;
-        // `super.count` the superclass's, never an override.
+        // `shape.count` calls its accessors, `+=` both; `super.count` the
+        // superclass's, never an override.
         if(auto* OPRE = node.get<clang::ObjCPropertyRefExpr>()) {
+            const clang::ObjCInterfaceDecl* receiver = nullptr;
+            if(OPRE->isClassReceiver()) {
+                receiver = OPRE->getClassReceiver();
+            } else if(const auto* pointer =
+                          OPRE->getReceiverType(context)->getAsObjCInterfacePointerType()) {
+                receiver = pointer->getInterfaceDecl();
+            }
             auto accessor = [&](bool getter) -> const clang::ObjCMethodDecl* {
                 if(OPRE->isImplicitProperty()) {
                     return getter ? OPRE->getImplicitPropertyGetter()
@@ -888,11 +893,11 @@ public:
                     continue;
                 }
                 if(const auto* method = accessor(getter)) {
-                    if(const auto* written = decls::objc_written(*method); !written->isImplicit()) {
-                        call(written, OPRE->getLocation());
-                        if(OPRE->isSuperReceiver()) {
-                            add_self_relation(written, RelationKind::Direct, OPRE->getLocation());
-                        }
+                    const auto* called =
+                        decls::objc_dispatched(receiver, *method, method->isInstanceMethod());
+                    call(called, OPRE->getLocation());
+                    if(OPRE->isSuperReceiver()) {
+                        add_self_relation(called, RelationKind::Direct, OPRE->getLocation());
                     }
                 }
             }

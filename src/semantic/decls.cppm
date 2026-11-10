@@ -99,17 +99,20 @@ auto objc_defined(const clang::NamedDecl* decl) -> const clang::NamedDecl*;
 /// protocol and for any other context.
 auto objc_class(const clang::DeclContext* context) -> const clang::ObjCInterfaceDecl*;
 
-/// An Objective-C method as the code writes it: an accessor clang declares
-/// for a property is the method its class's @implementation writes, if it
-/// does.
-auto objc_written(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl*;
-
-/// The method an Objective-C message runs as far as its receiver's static
-/// class tells. Clang names the declaration its lookup found, which for a
+/// The method of `method`'s selector a receiver of the Objective-C class
+/// `receiver` (null: any) runs as far as that class tells, as the code
+/// writes it. Clang names the declaration its lookup found, which for a
 /// method the class adopts from a protocol, or declares in its
 /// @implementation alone, is the protocol's or a superclass's: the class,
 /// or a superclass below the one declaring it, that has a method of the
-/// selector names it instead.
+/// selector names it instead; and an accessor clang declares for a
+/// property is the method an @implementation writes, if this unit sees it.
+auto objc_dispatched(const clang::ObjCInterfaceDecl* receiver,
+                     const clang::ObjCMethodDecl& method,
+                     bool instance) -> const clang::ObjCMethodDecl*;
+
+/// The method an Objective-C message runs as far as its receiver's static
+/// class tells (objc_dispatched).
 auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::ObjCMethodDecl*;
 
 /// The property an Objective-C instance variable stores when it
@@ -140,7 +143,7 @@ auto objc_selector_pieces(const clang::ObjCSelectorExpr& expr, const clang::ASTC
 
 /// What a name at `location` naming the Objective-C class `objc_class`
 /// writes: the class, or a `@compatibility_alias` of it.
-auto objc_class_name(const clang::ObjCInterfaceDecl& objc_class, clang::SourceLocation location)
+auto objc_class_name(const clang::ObjCInterfaceDecl* objc_class, clang::SourceLocation location)
     -> const clang::NamedDecl*;
 
 /// The nearest superclass method an Objective-C method overrides, null for

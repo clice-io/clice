@@ -11,6 +11,9 @@ __attribute__((objc_root_class))
 @property(nonatomic, readonly) int limit;
 @end
 
+@interface Leaf : Counter
+@end
+
 @implementation Base
 - (int)§(base_count)count {
     return 0;
@@ -26,6 +29,12 @@ __attribute__((objc_root_class))
 }
 
 - (int)§(count)count {
+    return super.count;
+}
+@end
+
+@implementation Leaf
+- (int)§(leaf_count)count {
     return super.count;
 }
 @end

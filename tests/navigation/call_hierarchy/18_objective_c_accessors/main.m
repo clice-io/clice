@@ -41,6 +41,11 @@ __attribute__((objc_root_class))
 @end
 
 @compatibility_alias Quill Pen;
+@compatibility_alias Stylus Quill;
+
+@interface Quill (Trim)
+- (void)trim;
+@end
 
 @implementation Pen : Object
 @synthesize width;

@@ -23,6 +23,10 @@
 
 -@compatibility_alias Quill Pen;
 +@compatibility_alias Quill Brush;
+ @compatibility_alias Stylus Quill;
+
+…
+ @end
 
 -@implementation Pen : Object
 +@implementation Brush : Object
@@ -66,9 +70,14 @@
  @end
 
 -@compatibility_alias Quill Pen;
+-@compatibility_alias Stylus Quill;
 +@compatibility_alias Nib Pen;
++@compatibility_alias Stylus Nib;
 
- @implementation Pen : Object
+-@interface Quill (Trim)
++@interface Nib (Trim)
+ - (void)trim;
+ @end
 …
  @end
 

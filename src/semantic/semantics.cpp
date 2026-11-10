@@ -1149,7 +1149,10 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
     ///                 ^~~~ definition of the class
     if(auto* IMD = llvm::dyn_cast<clang::ObjCImplementationDecl>(D)) {
         refer(out, IMD, RelationKind::Definition, IMD->getLocation());
-        refer(out, IMD->getSuperClass(), RelationKind::Reference, IMD->getSuperClassLoc());
+        refer(out,
+              decls::objc_class_name(IMD->getSuperClass(), IMD->getSuperClassLoc()),
+              RelationKind::Reference,
+              IMD->getSuperClassLoc());
         return true;
     }
 
@@ -1157,7 +1160,10 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
     ///            ^~~~ reference  ^~~~ declaration of the category; an
     /// extension, which has no name, is declared at its `(`
     if(auto* CD = llvm::dyn_cast<clang::ObjCCategoryDecl>(D)) {
-        refer(out, CD->getClassInterface(), RelationKind::Reference, CD->getLocation());
+        refer(out,
+              decls::objc_class_name(CD->getClassInterface(), CD->getLocation()),
+              RelationKind::Reference,
+              CD->getLocation());
         if(auto name =
                CD->IsClassExtension() ? decls::objc_extension_paren(*CD) : CD->getCategoryNameLoc();
            name.isValid()) {
@@ -1170,7 +1176,10 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
     /// @implementation Shape (Extras)
     ///                 ^~~~ reference  ^~~~ definition of the category
     if(auto* CID = llvm::dyn_cast<clang::ObjCCategoryImplDecl>(D)) {
-        refer(out, CID->getClassInterface(), RelationKind::Reference, CID->getLocation());
+        refer(out,
+              decls::objc_class_name(CID->getClassInterface(), CID->getLocation()),
+              RelationKind::Reference,
+              CID->getLocation());
         refer(out, CID, RelationKind::Definition, CID->getCategoryNameLoc());
         return true;
     }
@@ -1240,7 +1249,10 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
         auto [alias, name] = decls::objc_alias_names(*CAD);
         if(name.isValid()) {
             refer(out, CAD, RelationKind::Declaration, alias);
-            refer(out, CAD->getClassInterface(), RelationKind::Reference, name);
+            refer(out,
+                  decls::objc_class_name(CAD->getClassInterface(), name),
+                  RelationKind::Reference,
+                  name);
         }
         return true;
     }
@@ -1521,7 +1533,7 @@ void type_loc_references(clang::TypeLoc TL, References& out, types::TemplateReso
     /// a reference to the compatibility alias the name may write instead
     if(auto OITL = TL.getAs<clang::ObjCInterfaceTypeLoc>()) {
         refer(out,
-              decls::objc_class_name(*OITL.getIFaceDecl(), OITL.getNameLoc()),
+              decls::objc_class_name(OITL.getIFaceDecl(), OITL.getNameLoc()),
               RelationKind::Reference,
               OITL.getNameLoc());
         return;
@@ -1727,7 +1739,7 @@ void stmt_references(const clang::Stmt* S,
     if(auto* OPRE = llvm::dyn_cast<clang::ObjCPropertyRefExpr>(S)) {
         if(OPRE->isClassReceiver()) {
             refer(out,
-                  decls::objc_class_name(*OPRE->getClassReceiver(), OPRE->getReceiverLocation()),
+                  decls::objc_class_name(OPRE->getClassReceiver(), OPRE->getReceiverLocation()),
                   RelationKind::Reference,
                   OPRE->getReceiverLocation());
         }

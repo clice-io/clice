@@ -514,7 +514,9 @@ static auto own_method(const clang::ObjCInterfaceDecl& objc_class,
     return nullptr;
 }
 
-auto objc_written(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl* {
+/// An accessor clang declares for a property as its class's
+/// @implementation writes it, if it does.
+static auto objc_written(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl* {
     if(!method.isImplicit()) {
         return &method;
     }
@@ -525,21 +527,26 @@ auto objc_written(const clang::ObjCMethodDecl& method) -> const clang::ObjCMetho
     return own && !own->isImplicit() ? own : &method;
 }
 
-auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::ObjCMethodDecl* {
-    const auto* method = message.getMethodDecl();
-    if(!method) {
-        return nullptr;
-    }
-    const auto* declaring = objc_class(method->getDeclContext());
-    for(const auto* objc_class = message.getReceiverInterface();
+auto objc_dispatched(const clang::ObjCInterfaceDecl* receiver,
+                     const clang::ObjCMethodDecl& method,
+                     bool instance) -> const clang::ObjCMethodDecl* {
+    const auto* declaring = objc_class(method.getDeclContext());
+    for(const auto* objc_class = receiver;
         objc_class && objc_class != declaring && objc_class->hasDefinition();
         objc_class = objc_class->getSuperClass()) {
-        if(const auto* own =
-               own_method(*objc_class, message.getSelector(), message.isInstanceMessage())) {
+        if(const auto* own = own_method(*objc_class, method.getSelector(), instance)) {
             return objc_written(*own);
         }
     }
-    return objc_written(*method);
+    return objc_written(method);
+}
+
+auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::ObjCMethodDecl* {
+    const auto* method = message.getMethodDecl();
+    return method ? objc_dispatched(message.getReceiverInterface(),
+                                    *method,
+                                    message.isInstanceMessage())
+                  : nullptr;
 }
 
 auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::ObjCPropertyDecl* {
@@ -623,17 +630,20 @@ auto objc_selector_pieces(const clang::ObjCSelectorExpr& expr, const clang::ASTC
     return pieces;
 }
 
-auto objc_class_name(const clang::ObjCInterfaceDecl& objc_class, clang::SourceLocation location)
+auto objc_class_name(const clang::ObjCInterfaceDecl* objc_class, clang::SourceLocation location)
     -> const clang::NamedDecl* {
-    auto& context = objc_class.getASTContext();
+    if(!objc_class) {
+        return nullptr;
+    }
+    auto& context = objc_class->getASTContext();
     const auto& sources = context.getSourceManager();
     auto spelling = sources.getSpellingLoc(location);
     auto [file, offset] = sources.getDecomposedLoc(spelling);
     auto text = sources.getBufferData(file).drop_front(offset);
-    auto name = objc_class.getName();
+    auto name = objc_class->getName();
     if(text.starts_with(name) &&
        (text.size() == name.size() || !clang::isAsciiIdentifierContinue(text[name.size()]))) {
-        return &objc_class;
+        return objc_class;
     }
     auto written =
         text.take_front(clang::Lexer::MeasureTokenLength(spelling, sources, context.getLangOpts()));
@@ -642,7 +652,7 @@ auto objc_class_name(const clang::ObjCInterfaceDecl& objc_class, clang::SourceLo
             return alias;
         }
     }
-    return &objc_class;
+    return objc_class;
 }
 
 auto objc_overridden(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl* {

@@ -28,6 +28,8 @@ references = ["- (int)⟦ink⟧;", "[thing ⟦ink⟧];"]
 [answers.quill]
 references = [
     "@compatibility_alias ⟦Quill⟧ Pen;",
+    "@compatibility_alias Stylus ⟦Quill⟧;",
+    "@interface ⟦Quill⟧ (Trim)",
     "void use(⟦Quill⟧ *quill, Class kind, id thing, Box<Pen *> *box) {",
     "int count = ⟦Quill⟧.count;",
 ]

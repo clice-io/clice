@@ -8,7 +8,7 @@ incoming_calls = [
         kind = "Method",
         at = "- (int)⟦count⟧ { @+13",
         detail = "Counter::count",
-        sites = ["return super.⟦count⟧;"],
+        sites = ["return super.⟦count⟧; @+14"],
     },
 ]
 outgoing_calls = []
@@ -54,14 +54,37 @@ outgoing_calls = []
 call_hierarchy = [
     { name = "count", kind = "Method", at = "- (int)⟦count⟧ { @+0", detail = "Counter::count" },
 ]
-incoming_calls = []
+incoming_calls = [
+    {
+        name = "count",
+        kind = "Method",
+        at = "- (int)⟦count⟧ { @+6",
+        detail = "Leaf::count",
+        sites = ["return super.⟦count⟧; @+7"],
+    },
+]
 outgoing_calls = [
     {
         name = "count",
         kind = "Method",
         at = "- (int)⟦count⟧ { @-13",
         detail = "Base::count",
-        sites = ["return super.⟦count⟧;"],
+        sites = ["return super.⟦count⟧; @+1"],
+    },
+]
+
+[answers.leaf_count]
+call_hierarchy = [
+    { name = "count", kind = "Method", at = "- (int)⟦count⟧ { @+0", detail = "Leaf::count" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "count",
+        kind = "Method",
+        at = "- (int)⟦count⟧ { @-6",
+        detail = "Counter::count",
+        sites = ["return super.⟦count⟧; @+1"],
     },
 ]
 
