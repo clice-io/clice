@@ -37,14 +37,14 @@ std::vector<std::string> names_of(const std::vector<feature::ModuleCandidate>& c
     return ranges::to<std::vector>(candidates | views::transform(&feature::ModuleCandidate::name));
 }
 
-std::vector<std::string> complete_module_import(const feature::ModuleProviders& providers,
-                                                llvm::StringRef typed,
-                                                const ScanResult& unit) {
+std::vector<std::string> import_names(const feature::ModuleProviders& providers,
+                                      llvm::StringRef typed,
+                                      const ScanResult& unit) {
     return names_of(feature::complete_module_import(providers, typed, unit));
 }
 
-std::vector<std::string> complete_module_declaration(const feature::ModuleProviders& providers,
-                                                     llvm::StringRef typed) {
+std::vector<std::string> declaration_names(const feature::ModuleProviders& providers,
+                                           llvm::StringRef typed) {
     return names_of(feature::complete_module_declaration(providers, typed));
 }
 
@@ -428,7 +428,7 @@ ZEST_CASE(PrefixMatch) {
     modules.add_module("std.net", Fid{3});
     modules.add_module("my_lib", Fid{4});
 
-    auto results = complete_module_import(module_providers(modules), "std", {});
+    auto results = import_names(module_providers(modules), "std", {});
     ZEXPECT(results.size() == 3u);
     for(auto& name: results) {
         ZEXPECT(name.starts_with("std"));
@@ -440,7 +440,7 @@ ZEST_CASE(EmptyPrefix) {
     modules.add_module("std", Fid{1});
     modules.add_module("my_lib", Fid{2});
 
-    auto results = complete_module_import(module_providers(modules), "", {});
+    auto results = import_names(module_providers(modules), "", {});
     ZEXPECT(results.size() == 2u);
 }
 
@@ -449,13 +449,13 @@ ZEST_CASE(NoMatch) {
     modules.add_module("std", Fid{1});
     modules.add_module("my_lib", Fid{2});
 
-    auto results = complete_module_import(module_providers(modules), "xyz", {});
+    auto results = import_names(module_providers(modules), "xyz", {});
     ZEXPECT(results.empty());
 }
 
 ZEST_CASE(EmptyModules) {
     clice::DependencyGraph modules;
-    auto results = complete_module_import(module_providers(modules), "std", {});
+    auto results = import_names(module_providers(modules), "std", {});
     ZEXPECT(results.empty());
 }
 
@@ -466,7 +466,7 @@ ZEST_CASE(DottedPrefix) {
     modules.add_module("std.core", Fid{3});
     modules.add_module("boost.asio", Fid{4});
 
-    auto results = complete_module_import(module_providers(modules), "std.", {});
+    auto results = import_names(module_providers(modules), "std.", {});
     ZEXPECT(results.size() == 2u);
     for(auto& name: results) {
         ZEXPECT(name.starts_with("std."));
@@ -478,7 +478,7 @@ ZEST_CASE(PrefixIsFullName) {
     modules.add_module("std", Fid{1});
     modules.add_module("std.io", Fid{2});
 
-    auto results = complete_module_import(module_providers(modules), "std", {});
+    auto results = import_names(module_providers(modules), "std", {});
     ZEXPECT(results.size() == 2u);
 }
 
@@ -490,7 +490,7 @@ ZEST_CASE(WordsOfNames) {
     modules.add_module("compat", Fid{2});
     modules.add_module("boost", Fid{3});
 
-    auto names = complete_module_import(module_providers(modules), "compat", {});
+    auto names = import_names(module_providers(modules), "compat", {});
     ZEXPECT(names == std::vector<std::string>{"compat", "std.compat"});
 }
 
@@ -502,14 +502,12 @@ ZEST_CASE(OwnPartitionsOnly) {
     modules.add_module("bar", Fid{4});
     modules.add_module("bar:impl", Fid{5});
 
-    auto names = complete_module_import(module_providers(modules), "", {.module_name = "foo"});
+    auto names = import_names(module_providers(modules), "", {.module_name = "foo"});
     ZEXPECT(names == std::vector<std::string>{":core", ":utils", "bar"});
-    auto partitions =
-        complete_module_import(module_providers(modules), ":", {.module_name = "foo:utils"});
+    auto partitions = import_names(module_providers(modules), ":", {.module_name = "foo:utils"});
     ZEXPECT(partitions == std::vector<std::string>{":core"});
-    ZEXPECT(complete_module_import(module_providers(modules), ":", {}).empty());
-    ZEXPECT(
-        complete_module_import(module_providers(modules), "foo:", {.module_name = "foo"}).empty());
+    ZEXPECT(import_names(module_providers(modules), ":", {}).empty());
+    ZEXPECT(import_names(module_providers(modules), "foo:", {.module_name = "foo"}).empty());
 }
 
 ZEST_CASE(DottedModuleNames) {
@@ -520,7 +518,7 @@ ZEST_CASE(DottedModuleNames) {
     modules.add_module("a.b:q", Fid{4});
     modules.add_module("a:r", Fid{5});
 
-    auto names = complete_module_import(module_providers(modules), "", {.module_name = "a.b:q"});
+    auto names = import_names(module_providers(modules), "", {.module_name = "a.b:q"});
     ZEXPECT(names == std::vector<std::string>{":p", "a"});
 }
 
@@ -532,16 +530,14 @@ ZEST_CASE(InterfaceSkipsInternal) {
 
     std::vector<std::string> interface_only{":api"};
     std::vector<std::string> both{":api", ":detail"};
-    ZEXPECT(complete_module_import(module_providers(modules),
-                                   ":",
-                                   {.module_name = "m", .is_interface_unit = true}) ==
-            interface_only);
-    ZEXPECT(complete_module_import(module_providers(modules), ":", {.module_name = "m"}) == both);
-    ZEXPECT(complete_module_import(module_providers(modules), ":", {.module_name = "m:impl"}) ==
-            both);
-    ZEXPECT(complete_module_import(module_providers(modules),
-                                   ":",
-                                   {.module_name = "m:api", .is_interface_unit = true})
+    ZEXPECT(import_names(module_providers(modules),
+                         ":",
+                         {.module_name = "m", .is_interface_unit = true}) == interface_only);
+    ZEXPECT(import_names(module_providers(modules), ":", {.module_name = "m"}) == both);
+    ZEXPECT(import_names(module_providers(modules), ":", {.module_name = "m:impl"}) == both);
+    ZEXPECT(import_names(module_providers(modules),
+                         ":",
+                         {.module_name = "m:api", .is_interface_unit = true})
                 .empty());
 }
 
@@ -559,11 +555,10 @@ ZEST_CASE(OpenBuffersDeclare) {
                                           {.file = Fid{4}, .name = "fresh"   },
                                           {.file = Fid{3}, .name = "m:detail"},
     });
-    ZEXPECT(complete_module_import(providers, "", {}) ==
+    ZEXPECT(import_names(providers, "", {}) ==
             std::vector<std::string>{"fresh", "kept", "new_name"});
-    ZEXPECT(
-        complete_module_import(providers, ":", {.module_name = "m", .is_interface_unit = true}) ==
-        std::vector<std::string>{":detail"});
+    ZEXPECT(import_names(providers, ":", {.module_name = "m", .is_interface_unit = true}) ==
+            std::vector<std::string>{":detail"});
 }
 
 };  // ZEST_SUITE(CompleteModuleImport)
@@ -577,7 +572,7 @@ ZEST_CASE(PrimaryInterfacesOnly) {
     modules.add_module("matrix", Fid{3});
     modules.add_module("io", Fid{4});
 
-    ZEXPECT(complete_module_declaration(module_providers(modules), "ma") ==
+    ZEXPECT(declaration_names(module_providers(modules), "ma") ==
             std::vector<std::string>{"math", "matrix"});
 }
 

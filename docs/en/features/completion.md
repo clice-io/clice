@@ -566,7 +566,7 @@ tests/code_completion/include_path_completion/14_name_words
 
 ## Module Import
 
-After `import` or `export import`, module names complete: the unit's own partitions first, then the modules whose interface lies nearest the file.
+After `import` or `export import`, module names complete. A typed name matches a whole name first, then a prefix, then words of a name (`compat` finds `app.compat`); names that match alike list the unit's own partitions first, then the modules whose interface lies nearest the file.
 
 <!-- BEGIN GENERATED ITEMS: code_completion/modules -->
 
