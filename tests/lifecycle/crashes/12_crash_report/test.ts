@@ -21,7 +21,9 @@ function checkTrace(logs: Map<string, string>, prefix: string): void {
     const [name, report] = reports[0] ?? ["", ""];
     expect(name.startsWith(prefix)).toBe(true);
     const section = report.slice(report.indexOf("=== CRASH STACK TRACE ===")).split(/\r?\n/);
-    expect(section[1]).toMatch(/^clice \S+ \S+$/);
+    expect(section[1]).toMatch(
+        /^clice \S+ \S+( https:\/\/github\.com\/clice-io\/clice\/tree\/[0-9a-f]{40})?$/,
+    );
     const frames = section.slice(2).filter((line) => FRAME.test(line));
     // The trace starts at the frame the crash interrupted, the only one marked.
     expect(frames[0]?.endsWith(" (interrupted)")).toBe(true);
