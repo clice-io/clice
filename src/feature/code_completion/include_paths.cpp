@@ -12,14 +12,16 @@ import :vfs.path;
 
 namespace clice::feature {
 
+namespace {
+
 /// Whether a file looks like a header, by clang's own include-completion
 /// filter widened by the fragment extensions projects include (`.inl`,
 /// `.ipp`, `.def`, ...): a header extension anywhere, no extension (the
 /// standard library's, Qt's, frameworks') only where such headers live.
-static bool looks_like_header(llvm::StringRef name,
-                              llvm::StringRef dir,
-                              llvm::StringRef search_dir,
-                              bool system) {
+bool looks_like_header(llvm::StringRef name,
+                       llvm::StringRef dir,
+                       llvm::StringRef search_dir,
+                       bool system) {
     auto extension = llvm::StringRef(path::extension(name)).lower();
     if(ranges::contains(std::array{".h",
                                    ".hh",
@@ -45,6 +47,30 @@ static bool looks_like_header(llvm::StringRef name,
            dir.ends_with(".framework/Headers") || path::filename(search_dir) == "include";
 }
 
+/// Entry in the include path completion result.
+struct IncludeCandidate {
+    std::string name;
+    bool is_directory = false;
+
+    /// Its rank, ascending. A hidden name (`.git/`) follows all the others,
+    /// and a file no header would be named as (`README.md`, `main.cpp`), or
+    /// a builtin header that must not be included directly, the rest. Then
+    /// the better the typed name matches: the whole name, a prefix, words of
+    /// it (`v` finds `string_view`). Then where the search found it: the
+    /// includer's directory, the quoted then the angled search directories,
+    /// the system ones the command names, last the toolchain's own; in
+    /// search order within each, after the others of its group when the
+    /// name is reserved (`_`-led: a library's internals, libc++'s
+    /// `__algorithm/`, MinGW's `_mingw.h`).
+    std::uint64_t order = 0;
+};
+
+/// Return header and directory names matching the typed name in the given search paths.
+/// @param config        The command's search directories.
+/// @param includer_dir  Directory of the file being edited, searched first by "" includes.
+/// @param prefix        Partially-typed include path (e.g. "vec" or "sys/").
+/// @param angled        True for <> includes, false for "" includes.
+/// @param scope         The request's directory listings.
 std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
                                                     llvm::StringRef includer_dir,
                                                     llvm::StringRef prefix,
@@ -131,6 +157,8 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
 
     return results;
 }
+
+}  // namespace
 
 auto include_completion(const CompletionName& completing,
                         llvm::StringRef text,

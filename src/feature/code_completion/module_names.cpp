@@ -15,6 +15,17 @@ import :syntax.scan;
 
 namespace clice::feature {
 
+namespace {
+
+/// The modules the project provides and the units providing them: the
+/// graph's, an open unit's as its buffer declares it (`open`).
+struct ModuleProviders {
+    llvm::StringMap<llvm::SmallVector<Fid, 2>> modules;
+
+    /// The providers of internal partitions.
+    llvm::DenseSet<Fid> internal;
+};
+
 auto module_providers(const DependencyGraph& graph, llvm::ArrayRef<OpenModule> open)
     -> ModuleProviders {
     ModuleProviders providers;
@@ -41,16 +52,40 @@ auto module_providers(const DependencyGraph& graph, llvm::ArrayRef<OpenModule> o
     return providers;
 }
 
-/// Best match first, ties by name.
-static void rank(std::vector<ModuleCandidate>& candidates) {
-    ranges::sort(candidates, [](const ModuleCandidate& left, const ModuleCandidate& right) {
-        return std::tie(right.score, left.name) < std::tie(left.score, right.name);
-    });
-}
+/// Matches a module name being typed: up to its last `.`, as written; the
+/// rest by the words of a name, as an include path matches its directories
+/// and then its file name.
+class NameMatcher {
+public:
+    explicit NameMatcher(llvm::StringRef typed) :
+        scope(typed.take_front(typed.contains('.') ? typed.rfind('.') + 1 : 0)),
+        matcher(typed.drop_front(scope.size())) {}
 
+    std::optional<float> match(llvm::StringRef name) {
+        if(!name.starts_with(scope)) {
+            return std::nullopt;
+        }
+        return matcher.match(name.drop_front(scope.size()));
+    }
+
+private:
+    llvm::StringRef scope;
+
+    FuzzyMatcher matcher;
+};
+
+/// A module name a completion offers, with how well the name typed
+/// matches it (FuzzyMatcher's score).
+struct ModuleCandidate {
+    std::string name;
+    float score = 0;
+};
+
+/// The names an implementation unit's module declaration can take that
+/// `typed` matches: the modules the interfaces provide.
 std::vector<ModuleCandidate> complete_module_declaration(const ModuleProviders& providers,
                                                          llvm::StringRef typed) {
-    FuzzyMatcher matcher(typed);
+    NameMatcher matcher(typed);
     std::vector<ModuleCandidate> results;
     for(auto& entry: providers.modules) {
         auto name = entry.getKey();
@@ -61,15 +96,18 @@ std::vector<ModuleCandidate> complete_module_declaration(const ModuleProviders& 
             results.push_back({.name = name.str(), .score = *score});
         }
     }
-    rank(results);
     return results;
 }
 
+/// The names an `import` in the unit whose module declaration `unit`
+/// scanned can take that `typed` matches: the other provided modules, and
+/// the partitions of the unit's own module but its own, spelled
+/// `:partition` — in an interface unit, its interface partitions only.
 std::vector<ModuleCandidate> complete_module_import(const ModuleProviders& providers,
                                                     llvm::StringRef typed,
                                                     const ScanResult& unit) {
     auto [module, own_partition] = llvm::StringRef(unit.module_name).split(':');
-    FuzzyMatcher matcher(typed);
+    NameMatcher matcher(typed);
     std::vector<ModuleCandidate> results;
     for(auto& entry: providers.modules) {
         // A partition is imported by its own module alone, by the partition
@@ -92,9 +130,10 @@ std::vector<ModuleCandidate> complete_module_import(const ModuleProviders& provi
             results.push_back({.name = std::move(name), .score = *score});
         }
     }
-    rank(results);
     return results;
 }
+
+}  // namespace
 
 auto module_completion(const CompletionName& completing, const CompletionInputs& inputs)
     -> protocol::CompletionList {
