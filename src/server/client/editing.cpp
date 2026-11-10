@@ -12,7 +12,6 @@ import :server.master;
 import :server.served_project;
 import :support.json;
 import :syntax.include_resolver;
-import :syntax.scan;
 import :syntax.source_text;
 import :vfs.dir_cache;
 import :vfs.file_system;
@@ -159,44 +158,30 @@ void LSPClient::register_editing() {
         auto pause = ScopedPause(project.project.background_index);
 
         auto& settings = project.project.settings;
-        auto& files = project.project.file_table;
         auto encoding = server.position_encoding;
-        auto resolved = std::string(files.resolve(path_id));
         auto positions = session->positions();
-        vfs::Scope scope(files.dirs);
         auto answer = feature::code_complete({
             .file = path_id,
-            .path = resolved,
             .source = project.text_of(*session),
             .params = params,
             .encoding = encoding,
             .options = settings.code_completion,
             .client = completion_client,
             .graph = project.project.dep_graph,
-            .files = files,
             .search = [&] { return project.search_of(path_id); },
             .declared_module =
                 [&](llvm::StringRef text) { return project.declared_module(path_id, text); },
-            .open_modules =
+            .open_units =
                 [&] {
-                    std::vector<feature::OpenModule> open;
+                    std::vector<feature::OpenUnit> open;
                     for(auto& [file, opened]: server.documents) {
-                        if(file == path_id || opened.owner != &project ||
-                           !project.project.is_unit(file)) {
-                            continue;
-                        }
-                        auto unit = scan_quick(opened.session->text());
-                        if(!unit.need_preprocess) {
-                            open.push_back({
-                                .file = file,
-                                .name = unit.provided_module().str(),
-                                .internal = unit.is_internal_partition(),
-                            });
+                        if(file != path_id && opened.owner == &project &&
+                           project.project.is_unit(file)) {
+                            open.push_back({.file = file, .text = opened.session->text()});
                         }
                     }
                     return open;
                 },
-            .scope = scope,
             .query = project.query(),
             .documentation = settings.documentation,
         });
@@ -207,7 +192,6 @@ void LSPClient::register_editing() {
             co_return to_raw(*list);
         }
         auto& compile = std::get<feature::CompileCompletion>(answer);
-        feature::offer_names(project.query(), project.project.dep_graph, compile);
         auto result = co_await project
                           .stateless_request(ticket,
                                              feature::RequestKind::Completion,
@@ -233,8 +217,8 @@ void LSPClient::register_editing() {
                                                     project.query(),
                                                     project.project.dep_graph,
                                                     path_id,
+                                                    project.dialect(path_id),
                                                     project.search_of(path_id),
-                                                    scope,
                                                     settings.code_completion.limit));
     });
 

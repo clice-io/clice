@@ -10,16 +10,14 @@ namespace clice::feature {
 /// Of the files the compile loads, the names Sema lists where a name is
 /// typed: as it reads a namespace, the macros or a C translation unit's
 /// names, which live on their identifiers, the identifiers the typed name
-/// matches are read there, best first, until `limit` of them name
+/// matches are read there, best first, until scope_candidate_limit of them name
 /// something in the scopes read so far; the other names stay unread. Sema
 /// decides which scopes it reads, and reads everything else whole.
 class TypedNames final : public clang::MultiplexExternalSemaSource {
 public:
     /// Taking over the sources of `sema`'s AST, preprocessor and identifier
     /// table; none where the compile loads no AST file.
-    static llvm::IntrusiveRefCntPtr<TypedNames> open(clang::Sema& sema,
-                                                     llvm::StringRef typed,
-                                                     std::size_t limit);
+    static llvm::IntrusiveRefCntPtr<TypedNames> open(clang::Sema& sema, llvm::StringRef typed);
 
     void completeVisibleDeclsMap(const clang::DeclContext* context) override;
 
@@ -81,14 +79,13 @@ private:
     TypedNames(clang::Sema& sema,
                clang::ExternalSemaSource& reader,
                clang::IdentifierInfoLookup& identifiers,
-               llvm::StringRef typed,
-               std::size_t limit);
+               llvm::StringRef typed);
 
     /// The identifiers of the loaded files `typed` matches, best first,
     /// each once; read from their identifier tables at the first ask.
     llvm::ArrayRef<llvm::StringRef> matching();
 
-    /// Reads the matching identifiers in turn until `limit` of them name
+    /// Reads the matching identifiers in turn until scope_candidate_limit of them name
     /// something, by `names_something`; the names that do.
     std::vector<llvm::StringRef>
         read_matching(llvm::function_ref<bool(llvm::StringRef)> names_something);
@@ -102,8 +99,6 @@ private:
 
     std::string typed;
 
-    std::size_t limit;
-
     std::optional<Macros> macros;
 
     std::optional<Identifiers> identifiers;
@@ -113,7 +108,7 @@ private:
     /// The namespaces read.
     llvm::DenseSet<const clang::DeclContext*> read;
 
-    /// The names read, of every scope: a list shows `limit` items at most,
+    /// The names read, of every scope: a list shows scope_candidate_limit items at most,
     /// the innermost scope's first, as Sema reads it first.
     std::size_t found_total = 0;
 

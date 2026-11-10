@@ -112,11 +112,13 @@ auto finish_completion(protocol::CompletionList list,
                        const index::IndexQuery& query,
                        const DependencyGraph& graph,
                        Fid file,
+                       const clang::LangOptions& dialect,
                        const SearchConfig& search,
-                       vfs::Scope& scope,
                        std::uint32_t limit) -> protocol::CompletionList {
     IncludeInsertion insertion{.opens_fragment = include.opens_fragment};
+    vfs::Scope scope(query.file_table().dirs);
     IncludeArguments arguments(search, query.file_table().spelling(file), scope);
+    bool c = !dialect.CPlusPlus;
     // Read from the disk, once a header.
     llvm::DenseMap<Fid, IncludePragmas> pragmas;
     auto pragmas_of = [&](Fid header) -> const IncludePragmas& {
@@ -124,7 +126,7 @@ auto finish_completion(protocol::CompletionList list,
         if(inserted) {
             auto path = query.file_table().resolve(header);
             if(auto read = vfs::read_observed(path)) {
-                it->second = include_pragmas(read->text, dialect_of(path, include.c));
+                it->second = include_pragmas(read->text, dialect_of(path, c));
             }
         }
         return it->second;
@@ -139,7 +141,7 @@ auto finish_completion(protocol::CompletionList list,
             return each.symbol == *symbol;
         });
         assert(candidate != candidates.end() && "the worker names a candidate it was given");
-        auto header = include_for(query, graph, *candidate, include.c, file, arguments, pragmas_of);
+        auto header = include_for(query, graph, *candidate, c, file, arguments, pragmas_of);
         if(!header) {
             return true;
         }

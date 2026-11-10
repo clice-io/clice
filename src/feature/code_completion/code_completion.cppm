@@ -98,8 +98,10 @@ struct CodeCompletionOptions {
     std::uint32_t limit = 100;
 };
 
-/// What the client takes from a completion item, from its completion
-/// capabilities.
+/// What the editor's completion supports, read once from the LSP
+/// capabilities it sends at the handshake (`completionItem.snippetSupport`,
+/// `insertReplaceSupport`, `documentationFormat`), whose nested optionals
+/// the completion and the worker computing it need not read again.
 struct CompletionClient {
     /// Insert texts may carry placeholders.
     bool snippets = false;
@@ -149,9 +151,6 @@ struct IncludePlace {
 
     /// A module unit without a global module fragment opens one there.
     bool opens_fragment = false;
-
-    /// The file is C: a standard name's header is the C library's.
-    bool c = false;
 };
 
 /// A completion's reply before the server finishes it: an item whose
@@ -168,10 +167,6 @@ struct Completion {
 /// other scopes the index offers for the name typed (ScopeCandidate), and
 /// whether it holds more of them.
 struct CompileCompletion {
-    /// The name typed before the point, whose candidates offer_names takes;
-    /// none before its first character, in a number and in a directive.
-    std::optional<std::string> prefix;
-
     std::vector<ScopeCandidate> candidates;
     bool more_candidates = false;
 };
@@ -180,9 +175,9 @@ struct CompileCompletion {
 /// Sema reads the names the typed one matches where it lists names
 /// (TypedNames), and all of them where nothing is typed yet.
 auto code_complete(CompilationParams params,
-                   const CodeCompletionOptions& options = {},
-                   const DocumentationOptions& documentation = {},
-                   const CompletionClient& client = {},
+                   const CodeCompletionOptions& options,
+                   const DocumentationOptions& documentation,
+                   const CompletionClient& client,
                    PositionEncoding encoding = PositionEncoding::UTF16,
                    const CompileCompletion& names = {}) -> Completion;
 
@@ -190,41 +185,31 @@ auto code_complete(CompilationParams params,
 /// reads of the files its compile loads where a name is typed (TypedNames).
 constexpr inline std::size_t scope_candidate_limit = 100;
 
-/// The project's names the index offers for the name `compile` types
-/// (ScopeCandidate), with whether it holds more: those the file reaches,
-/// and those it reaches once it includes or imports what declares them.
-void offer_names(const index::IndexQuery& query,
-                 const DependencyGraph& graph,
-                 CompileCompletion& compile);
-
 /// A completion's reply finished (Completion): an item naming what the
-/// file does not include yet takes the `#include` of the header declaring
-/// it, at `include`; one whose header is unknown goes. The
-/// list is then cut to `limit`.
+/// file, read in `dialect`, does not include yet takes the `#include` of
+/// the header declaring it, at `include`; one whose header is unknown goes.
+/// The list is then cut to `limit`.
 auto finish_completion(protocol::CompletionList list,
                        const IncludePlace& include,
                        llvm::ArrayRef<ScopeCandidate> candidates,
                        const index::IndexQuery& query,
                        const DependencyGraph& graph,
                        Fid file,
+                       const clang::LangOptions& dialect,
                        const SearchConfig& search,
-                       vfs::Scope& scope,
                        std::uint32_t limit) -> protocol::CompletionList;
 
-/// The module an open unit's buffer declares (ScanResult::provided_module),
-/// which the graph learns once the file is saved.
-struct OpenModule {
+/// An open module unit's buffer, which may declare another module than the
+/// graph knows until the file is saved.
+struct OpenUnit {
     Fid file;
-    std::string name;
-    bool internal = false;
+    llvm::StringRef text;
 };
 
 /// A completion request as the server has it before any compile.
 struct CompletionInputs {
-    /// The file completed in, its path and its text, read in the file's
-    /// dialect.
+    /// The file completed in and its text, read in the file's dialect.
     Fid file;
-    llvm::StringRef path;
     SourceText& source;
 
     /// The request, its positions in `encoding`, the one the client and the
@@ -237,7 +222,6 @@ struct CompletionInputs {
 
     /// The project: the dependency graph names the modules.
     const DependencyGraph& graph;
-    FileTable& files;
 
     /// The header search of the file's command, asked only where an
     /// include path is completed.
@@ -248,13 +232,12 @@ struct CompletionInputs {
     /// a declaration a conditional holds.
     llvm::function_ref<ScanResult(llvm::StringRef)> declared_module;
 
-    /// The modules the other open units' buffers declare, asked where a
-    /// module name is completed.
-    llvm::function_ref<std::vector<OpenModule>()> open_modules;
-    vfs::Scope& scope;
+    /// The buffers of the other open module units, asked where a module
+    /// name is completed.
+    llvm::function_ref<std::vector<OpenUnit>()> open_units;
 
-    /// The project's index, which documents the modules a module name
-    /// completes with.
+    /// The project's index: the names it offers a compile, the
+    /// documentation of the modules a module name completes with.
     const index::IndexQuery& query;
     const DocumentationOptions& documentation;
 };
@@ -269,7 +252,9 @@ struct NoCompletion {};
 /// `import ` opens module suggestions, the others for include paths and
 /// member or scope access, and any other use of them completes nothing. A
 /// directive name, an include path and a module name are completed here;
-/// other code by a compile, which offer_names gives the index's names.
+/// other code by a compile, given the index's names for the name typed:
+/// those the file reaches, and those it reaches once it includes or imports
+/// what declares them.
 auto code_complete(const CompletionInputs& inputs)
     -> std::variant<NoCompletion, protocol::CompletionList, CompileCompletion>;
 

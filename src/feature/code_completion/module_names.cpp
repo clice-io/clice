@@ -11,10 +11,20 @@ import :support.fuzzy_matcher;
 import :syntax.dependency_graph;
 import :syntax.scan;
 import :syntax.source_text;
+import :vfs.file_table;
+import :vfs.ids;
 
 namespace clice::feature {
 
 namespace {
+
+/// The module an open unit's buffer declares (ScanResult::provided_module),
+/// which the graph learns once the file is saved.
+struct OpenModule {
+    Fid file;
+    std::string name;
+    bool internal = false;
+};
 
 /// The modules the project provides and the units providing them: the
 /// graph's, an open unit's as its buffer declares it (`open`).
@@ -139,7 +149,18 @@ auto module_completion(const CompletionName& completing, const CompletionInputs&
     auto text = inputs.source.text();
     auto positions = inputs.source.positions();
     auto limit = inputs.options.limit;
-    auto open = inputs.open_modules();
+    auto& files = inputs.query.file_table();
+    std::vector<OpenModule> open;
+    for(auto& [file, buffer]: inputs.open_units()) {
+        auto unit = scan_quick(buffer);
+        if(!unit.need_preprocess) {
+            open.push_back({
+                .file = file,
+                .name = unit.provided_module().str(),
+                .internal = unit.is_internal_partition(),
+            });
+        }
+    }
     std::vector<ModuleCandidate> candidates;
     ModuleProviders providers;
     std::string own_module;
@@ -181,13 +202,13 @@ auto module_completion(const CompletionName& completing, const CompletionInputs&
         return name.starts_with(":") ? own_module + name.str() : name.str();
     };
     auto nearest = [&](llvm::StringRef name) {
-        return nearest_provider(inputs.files,
+        return nearest_provider(files,
                                 providers.modules.find(module_of(name))->getValue(),
                                 inputs.file);
     };
     auto distance = [&](llvm::StringRef name) {
         return name.starts_with(":") ? std::uint32_t(0)
-                                     : module_distance(inputs.files, nearest(name), inputs.file);
+                                     : module_distance(files, nearest(name), inputs.file);
     };
     std::vector<protocol::CompletionItem> items;
     items.reserve(candidates.size());

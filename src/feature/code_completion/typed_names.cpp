@@ -1,6 +1,7 @@
 module clice;
 
 import :feature.code_completion.typed_names;
+import :feature.code_completion;
 import :support.fuzzy_matcher;
 
 namespace clice::feature {
@@ -28,13 +29,10 @@ static bool may_match(llvm::StringRef lower, llvm::StringRef name) {
 TypedNames::TypedNames(clang::Sema& sema,
                        clang::ExternalSemaSource& reader,
                        clang::IdentifierInfoLookup& identifiers,
-                       llvm::StringRef typed,
-                       std::size_t limit) :
-    sema(sema), reader(reader), identifier_reader(identifiers), typed(typed), limit(limit) {}
+                       llvm::StringRef typed) :
+    sema(sema), reader(reader), identifier_reader(identifiers), typed(typed) {}
 
-llvm::IntrusiveRefCntPtr<TypedNames> TypedNames::open(clang::Sema& sema,
-                                                      llvm::StringRef typed,
-                                                      std::size_t limit) {
+llvm::IntrusiveRefCntPtr<TypedNames> TypedNames::open(clang::Sema& sema, llvm::StringRef typed) {
     auto& ast = sema.getASTContext();
     auto& pp = sema.getPreprocessor();
     auto* reader = llvm::dyn_cast_or_null<clang::ExternalSemaSource>(ast.getExternalSource());
@@ -44,7 +42,7 @@ llvm::IntrusiveRefCntPtr<TypedNames> TypedNames::open(clang::Sema& sema,
         return nullptr;
     }
     llvm::IntrusiveRefCntPtr<TypedNames> names(
-        new TypedNames(sema, *reader, *identifier_reader, typed, limit));
+        new TypedNames(sema, *reader, *identifier_reader, typed));
     names->AddSource(reader);
     names->macros.emplace(*names, *macro_reader);
     ast.setExternalSource(names);
@@ -96,7 +94,7 @@ std::vector<llvm::StringRef>
     // of other namespaces. Those tried are bounded too.
     std::vector<llvm::StringRef> found;
     for(auto name: matching()) {
-        if(found_total == limit || tried_total == limit * 40) {
+        if(found_total == scope_candidate_limit || tried_total == scope_candidate_limit * 40) {
             cut = true;
             break;
         }

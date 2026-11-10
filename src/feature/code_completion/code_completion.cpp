@@ -9,80 +9,17 @@ import :semantic.symbol;
 import :semantic.token_class;
 import :syntax.dependency_graph;
 import :syntax.source_text;
+import :vfs.dir_cache;
+import :vfs.file_table;
 
 namespace clice::feature {
 
-auto code_complete(const CompletionInputs& inputs)
-    -> std::variant<NoCompletion, protocol::CompletionList, CompileCompletion> {
-    auto text = inputs.source.text();
-    auto& dialect = inputs.source.dialect();
-    auto positions = inputs.source.positions();
-    auto offset = positions.offset(inputs.params.position, inputs.encoding);
-    CompletionName completing;
-    if(offset) {
-        completing = completion_name(text, *offset, dialect);
-    }
-    llvm::StringRef trigger;
-    if(auto& context = inputs.params.context; context && context->trigger_character) {
-        trigger = *context->trigger_character;
-    }
-
-    // Anything else a trigger character is typed in — `template<`, a
-    // closing `>`, the dots of a pack ellipsis — is answered before any
-    // include scanning or completion build.
-    if(!trigger.empty()) {
-        bool served = trigger == " "
-                          ? completing.kind == CompletionName::Kind::Import ||
-                                completing.kind == CompletionName::Kind::ModuleDeclaration
-                          : completing.kind != CompletionName::Kind::None || !offset ||
-                                follows_access_operator(text, *offset, dialect);
-        if(!served) {
-            return NoCompletion{};
-        }
-    }
-
-    auto limit = inputs.options.limit;
-    if(offset) {
-        switch(completing.kind) {
-            case CompletionName::Kind::Directive:
-                return directive_completion(completing,
-                                            positions,
-                                            inputs.encoding,
-                                            dialect,
-                                            inputs.options,
-                                            inputs.client);
-            case CompletionName::Kind::IncludeQuoted:
-            case CompletionName::Kind::IncludeAngled:
-                return include_completion(completing,
-                                          text,
-                                          positions,
-                                          inputs.encoding,
-                                          inputs.path,
-                                          inputs.search(),
-                                          inputs.scope,
-                                          limit);
-            case CompletionName::Kind::Import:
-            case CompletionName::Kind::ModuleDeclaration:
-                return module_completion(completing, inputs);
-            default: break;
-        }
-    }
-
+/// The project's names the index offers for the name `typed`
+/// (ScopeCandidate), with whether it holds more.
+static auto offer_names(const index::IndexQuery& query,
+                        const DependencyGraph& graph,
+                        llvm::StringRef typed) -> CompileCompletion {
     CompileCompletion compile;
-    // A number names nothing.
-    if(auto typed = offset ? Prefix::from(text, *offset).spelling : llvm::StringRef();
-       completing.directive.empty() && !typed.empty() && !clang::isDigit(typed.front())) {
-        compile.prefix = typed.str();
-    }
-    return compile;
-}
-
-void offer_names(const index::IndexQuery& query,
-                 const DependencyGraph& graph,
-                 CompileCompletion& compile) {
-    if(!compile.prefix) {
-        return;
-    }
     auto kind_of = [](SymbolKind kind) {
         using Kind = protocol::CompletionItemKind;
         switch(kind) {
@@ -101,7 +38,7 @@ void offer_names(const index::IndexQuery& query,
     };
     namespace stdlib = clang::tooling::stdlib;
     bool builds_std = !graph.lookup_module("std").empty();
-    auto found = index::completables(query, *compile.prefix, scope_candidate_limit);
+    auto found = index::completables(query, typed, scope_candidate_limit);
     for(auto& [symbol, chain, declared]: found.names) {
         bool macro = symbol.kind == SymbolKind::Macro;
         ScopeCandidate candidate{
@@ -145,6 +82,70 @@ void offer_names(const index::IndexQuery& query,
         compile.candidates.push_back(std::move(candidate));
     }
     compile.more_candidates = !found.exhausted;
+    return compile;
+}
+
+auto code_complete(const CompletionInputs& inputs)
+    -> std::variant<NoCompletion, protocol::CompletionList, CompileCompletion> {
+    auto text = inputs.source.text();
+    auto& dialect = inputs.source.dialect();
+    auto positions = inputs.source.positions();
+    auto offset = positions.offset(inputs.params.position, inputs.encoding);
+    CompletionName completing;
+    if(offset) {
+        completing = completion_name(text, *offset, dialect);
+    }
+    llvm::StringRef trigger;
+    if(auto& context = inputs.params.context; context && context->trigger_character) {
+        trigger = *context->trigger_character;
+    }
+
+    // Anything else a trigger character is typed in — `template<`, a
+    // closing `>`, the dots of a pack ellipsis — is answered before any
+    // include scanning or completion build.
+    if(!trigger.empty()) {
+        bool served = trigger == " "
+                          ? completing.kind == CompletionName::Kind::Import ||
+                                completing.kind == CompletionName::Kind::ModuleDeclaration
+                          : completing.kind != CompletionName::Kind::None || !offset ||
+                                follows_access_operator(text, *offset, dialect);
+        if(!served) {
+            return NoCompletion{};
+        }
+    }
+
+    switch(completing.kind) {
+        case CompletionName::Kind::Directive:
+            return directive_completion(completing,
+                                        positions,
+                                        inputs.encoding,
+                                        dialect,
+                                        inputs.options,
+                                        inputs.client);
+        case CompletionName::Kind::IncludeQuoted:
+        case CompletionName::Kind::IncludeAngled: {
+            auto& files = inputs.query.file_table();
+            vfs::Scope scope(files.dirs);
+            return include_completion(completing,
+                                      text,
+                                      positions,
+                                      inputs.encoding,
+                                      std::string(files.resolve(inputs.file)),
+                                      inputs.search(),
+                                      scope,
+                                      inputs.options.limit);
+        }
+        case CompletionName::Kind::Import:
+        case CompletionName::Kind::ModuleDeclaration: return module_completion(completing, inputs);
+        default: break;
+    }
+
+    // A number names nothing.
+    if(auto typed = offset ? Prefix::from(text, *offset).spelling : llvm::StringRef();
+       completing.directive.empty() && !typed.empty() && !clang::isDigit(typed.front())) {
+        return offer_names(inputs.query, inputs.graph, typed);
+    }
+    return CompileCompletion{};
 }
 
 }  // namespace clice::feature

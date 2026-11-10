@@ -1052,9 +1052,9 @@ public:
             bool& more_names) :
         clang::CodeCompleteConsumer(sema_options(options)), unit(unit), focus(unit.focus_file()),
         text(focus.content()), offset(offset), encoding(encoding), output(output),
-        documented(documented), options(options), argument_style(options.arguments), client(client),
-        names(names), whole_buffer(whole_buffer), includes_pending(includes_pending),
-        more_names(more_names), info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
+        documented(documented), options(options), client(client), names(names),
+        whole_buffer(whole_buffer), includes_pending(includes_pending), more_names(more_names),
+        info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
         // Sema asks first thing in a completion, before it reads any name.
@@ -1063,7 +1063,7 @@ public:
         if(whole_buffer && !typed_names_open) {
             typed_names_open = true;
             if(auto typed = Prefix::from(text, offset).spelling; !typed.empty()) {
-                typed_names = TypedNames::open(unit.sema(), typed, scope_candidate_limit);
+                typed_names = TypedNames::open(unit.sema(), typed);
             }
         }
         return info.getAllocator();
@@ -1683,7 +1683,7 @@ public:
         auto insert_call =
             [&](Candidate& item, const clang::CodeCompletionString& ccs, bool called_here) {
                 if(arguments_follow(llvm::isa_and_present<clang::TemplateDecl>(item.documented)) ||
-                   !called_here || argument_style == CompletionArguments::None) {
+                   !called_here || options.arguments == CompletionArguments::None) {
                     return;
                 }
                 auto complete = item.label + "()";
@@ -1697,7 +1697,7 @@ public:
                 auto snippet = build_snippet(ccs);
                 if(snippet.empty()) {
                     item.insert = std::move(complete);
-                } else if(argument_style == CompletionArguments::Placeholders) {
+                } else if(options.arguments == CompletionArguments::Placeholders) {
                     item.insert = std::move(snippet);
                     item.snippet = true;
                 } else {
@@ -1847,7 +1847,7 @@ public:
                             preferred.isNull() ||
                                 (!result.isNull() && !preferred->isDependentType() &&
                                  initializes(sema.getASTContext(), result, preferred)));
-            } else if(argument_style != CompletionArguments::None && client.snippets &&
+            } else if(options.arguments != CompletionArguments::None && client.snippets &&
                       !arguments_follow(true) && !context.isUsingDeclaration() &&
                       llvm::isa<clang::ClassTemplateDecl,
                                 clang::TypeAliasTemplateDecl,
@@ -1857,7 +1857,7 @@ public:
                 // name alone does not name a type.
                 if(snippet.empty()) {
                     item.insert = item.label + "<>";
-                } else if(argument_style == CompletionArguments::Placeholders) {
+                } else if(options.arguments == CompletionArguments::Placeholders) {
                     item.insert = std::move(snippet);
                     item.snippet = true;
                 } else {
@@ -2381,7 +2381,7 @@ public:
                     item.bundle = item.label;
                 }
                 // Not knowing the parameters, a call takes its parentheses.
-                if(argument_style != CompletionArguments::None &&
+                if(options.arguments != CompletionArguments::None &&
                    !arguments_follow(candidate.is_template)) {
                     if(function && !expects_function(context.getPreferredType())) {
                         item.insert = client.snippets ? escape_snippet(item.label) + "($0)"
@@ -2545,8 +2545,6 @@ private:
 
     const CodeCompletionOptions& options;
 
-    CompletionArguments argument_style;
-
     const CompletionClient& client;
 
     const CompileCompletion& names;
@@ -2660,15 +2658,15 @@ auto code_complete(CompilationParams params,
         };
     }
 
-    Completion completion{.list = completion_list(std::move(items), limit)};
-    completion.list.is_incomplete = completion.list.is_incomplete || cut || more_names;
+    Completion completion{
+        .list = {.is_incomplete = cut || more_names, .items = std::move(items)},
+    };
     if(includes) {
         auto insertion = action::include_insertion(*unit);
         if(auto position = unit->focus_file().positions().position(insertion.offset, encoding)) {
             completion.include = IncludePlace{
                 .position = *position,
                 .opens_fragment = insertion.opens_fragment,
-                .c = !unit->lang_options().CPlusPlus,
             };
         }
     }
