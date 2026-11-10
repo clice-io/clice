@@ -5,3 +5,8 @@ items = [
 
 ["renamed in its own buffer".own.completion]
 items = []
+
+["exported in the buffer".exported.completion]
+items = [
+    { label = ":detail", kind = "Module", insert = ":detail;", replace = "import ⟦:⟧" },
+]
