@@ -445,7 +445,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
     auto built = co_await project.send_precompiled(
         attempt,
         bp,
-        std::format("module {}", module_name),
+        std::format("module {} ({})", module_name, file_path),
         std::move(known),
         before,
         [&](FailureRecord record, Inputs inputs) {
@@ -490,7 +490,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
                   project.read_inputs(*built, before));
     entry.key = std::move(pcm_key);
     entry.pch = std::move(bp.pch);
-    LOG_INFO("PCM built for module {}: {}", module_name, entry.path);
+    LOG_DEBUG("The PCM of module {} is stored at {}", module_name, entry.path);
 
     project.mark_precompiled_dirty();
 

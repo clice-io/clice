@@ -76,6 +76,8 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
                llvm::function_ref<void(FailureRecord, Inputs)> fail) {
     constexpr bool pch = std::same_as<Params, worker::BuildPCHParams>;
     constexpr llvm::StringRef what = pch ? "PCH" : "PCM";
+    LOG_INFO("Building the {} of {}", what, label);
+    Timer timer;
     auto result = co_await deliver(
         *project.pool,
         false,
@@ -90,6 +92,7 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
             fail(failed_build(worker::death_of(error), error.message), std::move(known));
         });
     if(result.has_value() && result.value().success) {
+        LOG_INFO("Built the {} of {} in {} ms", what, label, timer.ms());
         co_return std::move(result.value());
     }
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {

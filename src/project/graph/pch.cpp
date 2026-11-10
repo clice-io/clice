@@ -276,7 +276,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         entry.built_index = std::move(loaded);
     }
 
-    LOG_INFO("PCH built for {}: {}", bp.file, entry.path);
+    LOG_DEBUG("The PCH of {} is stored at {}", bp.file, entry.path);
 
     project.mark_precompiled_dirty();
 

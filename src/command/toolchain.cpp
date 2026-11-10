@@ -614,9 +614,8 @@ std::expected<Toolchain::ResolvedCommand, std::string> Toolchain::resolve(Comman
         if(!result) {
             if(runs_compiler) {
                 LOG_WARN(
-                    "The compiler {} could not be queried: {}; clang's own driver reads its "
-                    "command",
-                    commands.get(id).driver,
+                    "Cannot ask the compiler for its default settings: {}; clang's own "
+                    "driver reads its command",
                     result.error());
             }
             return read_unqueried(id, input, std::move(result.error()));
@@ -717,7 +716,7 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
         if(o.result) {
             succeeded += 1;
         } else if(o.chosen) {
-            LOG_GUIDANCE(
+            LOG_WARN(
                 "Cannot ask the compiler for its default settings: {}; clang's own "
                 "driver reads its commands",
                 o.result.error());

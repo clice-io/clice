@@ -120,21 +120,6 @@ void load_members(Project& project,
     auto scan = project.rebuild_dependency_graph().scan;
     opened.members = project.members();
 
-    auto found = scan.includes_resolved + scan.unresolved.size();
-    double accuracy =
-        found > 0 ? 100.0 * static_cast<double>(scan.includes_resolved) / found : 100.0;
-    LOG_INFO(
-        "Scanned the includes of {1} files in {0} ms ({2} sources, {3} headers, {4} unchanged): "
-        "{5} of {6} includes found ({7:.1f}%), in {8} waves",
-        scan.elapsed_ms,
-        scan.total_files,
-        scan.source_files,
-        scan.total_files - scan.source_files,
-        scan.scan_cache_hits,
-        scan.includes_resolved,
-        found,
-        accuracy,
-        scan.waves);
     LOG_PERF("startup",
              "phase=dep_scan files={} edges={} elapsed_ms={}",
              scan.total_files,
