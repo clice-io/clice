@@ -365,6 +365,10 @@ auto name_of(const clang::NamedDecl* decl, const Options& options) -> std::strin
 }
 
 auto symbol_name(const clang::NamedDecl* decl) -> SymbolName {
+    if(const auto* extension = llvm::dyn_cast<clang::ObjCCategoryDecl>(decl);
+       extension && extension->IsClassExtension() && extension->getClassInterface()) {
+        return {.text = extension->getClassInterface()->getName().str() + "()", .unnamed = true};
+    }
     // A deduction guide is listed under its label rather than the
     // template's name, which completion prefers for its candidates.
     if(llvm::isa<clang::CXXDeductionGuideDecl>(decl)) {

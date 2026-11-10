@@ -1,9 +1,3 @@
-[answers.class.rename]
-notice = '''
-Spellings of `Pen` left alone:
-  ${WS}/main.m:65: void use(Quill *quill, Class kind, id thing, Box<Pen *> *box) { (the name is written here as `Quill`)
-'''
-
 [answers.class.rename.edits]
 "main.m" = '''
 -@class Pen;
@@ -40,7 +34,7 @@ Spellings of `Pen` left alone:
 -@implementation Pen (Extras)
 +@implementation Brush (Extras)
  - (void)write {
- }
+     SEL action = @selector(draw);
 …
  @end
 
@@ -64,5 +58,22 @@ Spellings of `Pen` left alone:
 -@implementation Pen (Extras)
 +@implementation Pen (Motion)
  - (void)write {
- }
+     SEL action = @selector(draw);
+'''
+
+[answers.alias.rename.edits]
+"main.m" = '''
+ @end
+
+-@compatibility_alias Quill Pen;
++@compatibility_alias Nib Pen;
+
+ @implementation Pen : Object
+…
+ @end
+
+-void use(Quill *quill, Class kind, id thing, Box<Pen *> *box) {
++void use(Nib *quill, Class kind, id thing, Box<Pen *> *box) {
+     [quill :1 tail:2];
+     [quill setInk:[quill ink] + 1];
 '''

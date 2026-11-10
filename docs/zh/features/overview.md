@@ -4,7 +4,7 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节介绍已
 
 ## 语言
 
-clice 支持 C、C++ 和 CUDA；对 Objective-C 和 Objective-C++，则支持阅读代码：语义 Token、悬停、代码导航与查找引用、调用层次结构与类型层次结构、大纲、工作区符号以及 `clice query` 都认得其中的类、协议、分类（category）、方法、属性和实例变量，方法可以折叠，重命名也能处理类、协议、分类和实例变量。不支持重命名方法或属性，也不支持补全消息；Clang 的头文件模块（`-fmodules`、`@import`）同样不支持：文件会在不启用它们的情况下编译，clice 对此只提示一次。和所有项目一样，Objective-C 项目也需要编译数据库：CMake 的 Makefile 和 Ninja 生成器会生成，Xcode 和 CMake 的 Xcode 生成器都不会。
+clice 支持 C、C++ 和 CUDA；对 Objective-C 和 Objective-C++，则支持阅读代码：语义 Token、悬停、代码导航与查找引用、调用层次结构与类型层次结构、大纲、折叠范围、工作区符号以及 `clice query` 都认得其中的类、协议、分类（category）、方法、属性和实例变量，重命名也能处理类、协议、分类和实例变量。不支持重命名方法或属性，也不支持补全消息；Clang 的头文件模块（`-fmodules`、`@import`）同样不支持：文件会在不启用它们的情况下编译，clice 对此只提示一次。和所有项目一样，Objective-C 项目也需要编译数据库：CMake 的 Makefile 和 Ninja 生成器会生成，Xcode 和 CMake 的 Xcode 生成器都不会。
 
 ## 功能
 

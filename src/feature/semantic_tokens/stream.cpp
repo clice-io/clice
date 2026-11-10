@@ -401,6 +401,28 @@ private:
         }
         if(objc_keyword == token.range.begin) {
             emit(token.range, {{.kind = Kind::Keyword}, false});
+            if(spelling == "property" && source.kind(next()) == clang::tok::l_paren) {
+                property_attributes = depth + 1;
+            }
+            after(kind, false);
+            return;
+        }
+        // `@property(nonatomic, getter=isOn)`: the attributes are keywords,
+        // an accessor's name is not.
+        if(property_attributes && depth == *property_attributes) {
+            if(kind == clang::tok::r_paren) {
+                property_attributes.reset();
+            } else if(word && previous != clang::tok::equal) {
+                emit(token.range, {{.kind = Kind::Keyword}, false});
+                after(kind, false);
+                return;
+            }
+        }
+        // The `-` or `+` opening a method's declaration says which kind of
+        // method it is.
+        if(lang_opts.ObjC && (kind == clang::tok::minus || kind == clang::tok::plus) &&
+           token.is_at_start_of_line && depth == 0 && source.kind(next()) == clang::tok::l_paren) {
+            emit(token.range, {{.kind = Kind::Keyword}, false});
             after(kind, false);
             return;
         }
@@ -926,6 +948,9 @@ private:
     clang::tok::TokenKind previous = clang::tok::unknown;
     /// Where the word an Objective-C `@` makes a keyword starts.
     std::optional<std::uint32_t> objc_keyword;
+
+    /// The depth inside the parentheses of an `@property` list.
+    std::optional<std::uint32_t> property_attributes;
 
     struct AttributeList {
         /// The bracket depth of the names.

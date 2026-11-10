@@ -269,9 +269,13 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
                                            root.symbol.display_name()));
     }
     // `@synthesize width;` binds the instance variable by its property's
-    // name: one token names both.
+    // name: one token names both. An @implementation is in a .m or .mm file.
     if(root.symbol.kind == SymbolKind::Field) {
         for(auto& site: query.sites(root.symbol.hash, root.site.file, RelationKind::Reference)) {
+            auto path = llvm::StringRef(site.path);
+            if(!path.ends_with(".m") && !path.ends_with(".mm")) {
+                continue;
+            }
             auto named = query.symbol_at(site.file, site.range.begin);
             if(named && ranges::any_of(named->symbols, [&](index::SymbolHash symbol) {
                    auto info = query.symbol_info(symbol, site.file);

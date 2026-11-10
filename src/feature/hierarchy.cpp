@@ -261,7 +261,7 @@ CallGraph call_graph(const index::IndexQuery& index,
                 }
             }
             if(info && index::name_form(info->flags) == index::NameForm::Selector) {
-                for(auto& other: index::same_selector_methods(index, *info)) {
+                for(auto& other: index::reached_by_selector(index, *info)) {
                     add_calls(other.symbol.hash, other.site.file, RelationKind::Candidate, true);
                 }
             }

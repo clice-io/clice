@@ -863,12 +863,28 @@ public:
             return;
         }
 
+        // A property's accessor clang declares is no function the code
+        // has.
         if(auto* OME = node.get<clang::ObjCMessageExpr>()) {
-            // A property's accessor clang declares is no function the code
-            // has.
             if(const auto* method = decls::objc_message_target(*OME);
                method && !method->isImplicit()) {
                 call(method, OME->getSelectorStartLoc());
+            }
+            return;
+        }
+        // `shape.count` calls the accessor the code declares, if any.
+        if(auto* OPRE = node.get<clang::ObjCPropertyRefExpr>()) {
+            const clang::ObjCMethodDecl* accessor = nullptr;
+            if(OPRE->isImplicitProperty()) {
+                accessor = OPRE->isMessagingGetter() ? OPRE->getImplicitPropertyGetter()
+                                                     : OPRE->getImplicitPropertySetter();
+            } else {
+                const auto* property = OPRE->getExplicitProperty();
+                accessor = OPRE->isMessagingGetter() ? property->getGetterMethodDecl()
+                                                     : property->getSetterMethodDecl();
+            }
+            if(accessor && !accessor->isImplicit()) {
+                call(accessor, OPRE->getLocation());
             }
             return;
         }

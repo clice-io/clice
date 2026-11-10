@@ -731,13 +731,6 @@ private:
             return false;
         }
 
-        // An Objective-C class extension names nothing: its members list
-        // where it is written, as the index places them.
-        if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(decl);
-           category && category->IsClassExtension()) {
-            return true;
-        }
-
         const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
         if(!named || !outline_lists(SymbolKind::from(named),
                                     display::symbol_name(named).unnamed,
@@ -761,7 +754,11 @@ private:
         } else if(const auto* protocol = llvm::dyn_cast<clang::ObjCProtocolDecl>(named)) {
             definition = protocol->isThisDeclarationADefinition();
         } else if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(named)) {
-            name_range = category->getCategoryNameLoc();
+            name_range = category->IsClassExtension() ? decls::objc_extension_paren(*category)
+                                                      : category->getCategoryNameLoc();
+            if(name_range.isInvalid()) {
+                return true;
+            }
             definition = false;
         } else if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryImplDecl>(named)) {
             name_range = category->getCategoryNameLoc();
@@ -916,8 +913,8 @@ private:
             parts.push_back(std::move(text));
         } else if(llvm::isa<clang::ObjCImplementationDecl>(&decl)) {
             parts.push_back("class implementation");
-        } else if(llvm::isa<clang::ObjCCategoryDecl>(&decl)) {
-            parts.push_back("category");
+        } else if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(&decl)) {
+            parts.push_back(category->IsClassExtension() ? "class extension" : "category");
         } else if(llvm::isa<clang::ObjCCategoryImplDecl>(&decl)) {
             parts.push_back("category implementation");
         } else if(llvm::isa<clang::ObjCProtocolDecl>(&decl)) {

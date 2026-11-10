@@ -1155,11 +1155,13 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
 
     /// @interface Shape (Extras) <Drawable>   @interface Shape ()
     ///            ^~~~ reference  ^~~~ declaration of the category; an
-    /// extension has no name of its own
+    /// extension, which has no name, is declared at its `(`
     if(auto* CD = llvm::dyn_cast<clang::ObjCCategoryDecl>(D)) {
         refer(out, CD->getClassInterface(), RelationKind::Reference, CD->getLocation());
-        if(!CD->IsClassExtension()) {
-            refer(out, CD, RelationKind::Declaration, CD->getCategoryNameLoc());
+        if(auto name =
+               CD->IsClassExtension() ? decls::objc_extension_paren(*CD) : CD->getCategoryNameLoc();
+           name.isValid()) {
+            refer(out, CD, RelationKind::Declaration, name);
         }
         refer_protocols(out, CD->protocols(), CD->protocol_locs());
         return true;
@@ -1516,8 +1518,12 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
 void type_loc_references(clang::TypeLoc TL, References& out, types::TemplateResolver* resolver) {
     /// Shape *shape;  NSArray<id<Drawable>> *shapes;
     /// ^~~~ reference          ^~~~ reference to each protocol
+    /// a reference to the compatibility alias the name may write instead
     if(auto OITL = TL.getAs<clang::ObjCInterfaceTypeLoc>()) {
-        refer(out, OITL.getIFaceDecl(), RelationKind::Reference, OITL.getNameLoc());
+        refer(out,
+              decls::objc_class_name(*OITL.getIFaceDecl(), OITL.getNameLoc()),
+              RelationKind::Reference,
+              OITL.getNameLoc());
         return;
     }
     if(auto OOTL = TL.getAs<clang::ObjCObjectTypeLoc>()) {
@@ -2160,6 +2166,27 @@ llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
                 break;
             }
         }
+    }
+
+    /// @selector(setX:y:)
+    ///           ^~~~ ^ candidate reference to the methods of the selector:
+    /// clang resolves none, and names here the class around it has
+    if(const auto* selector =
+           llvm::dyn_cast_if_present<clang::ObjCSelectorExpr>(entry.node.get<clang::Stmt>())) {
+        References out;
+        for(auto parent = entry.parent; parent != Semantics::invalid;
+            parent = semantics.node(parent).parent) {
+            const auto* method = semantics.node(parent).node.get<clang::ObjCMethodDecl>();
+            const auto* objc_class = method ? decls::objc_class(method->getDeclContext()) : nullptr;
+            if(objc_class) {
+                refer_selector(out,
+                               decls::objc_selector_method(*objc_class, selector->getSelector()),
+                               RelationKind::Candidate,
+                               decls::objc_selector_pieces(*selector, method->getASTContext()));
+                break;
+            }
+        }
+        return out;
     }
 
     return resolve_references(entry.node, resolver);

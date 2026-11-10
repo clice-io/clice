@@ -2,7 +2,7 @@
 references = ["- (void)⟦write⟧; @+0"]
 
 [answers.width]
-references = ["int ⟦width⟧;", "@synthesize ⟦width⟧;", "⟦width⟧ = x + y;", "_ink = ⟦width⟧;"]
+references = ["int ⟦width⟧;", "@synthesize ⟦width⟧;", "⟦width⟧ = x + y;", "_ink = ⟦width⟧;", "return ⟦width⟧;"]
 
 [answers.ink]
 references = [
@@ -10,6 +10,7 @@ references = [
     "⟦_ink⟧ = width;",
     "[quill ⟦setInk⟧:[quill ink] + 1];",
     "[quill setInk:[quill ⟦ink⟧] + 1];",
+    "[thing ⟦ink⟧];",
 ]
 
 [answers.tail]
@@ -19,7 +20,13 @@ references = ["- (void):(int)x ⟦tail⟧:(int)y;", "- (void):(int)x ⟦tail⟧:
 references = ["+ (void)⟦draw⟧;", "+ (void)⟦draw⟧ {", "[kind ⟦draw⟧];"]
 
 [answers.instance_draw]
-references = ["- (void)⟦draw⟧;", "- (void)⟦draw⟧ {", "[thing ⟦draw⟧];"]
+references = ["- (void)⟦draw⟧;", "- (void)⟦draw⟧ {", "SEL action = @selector(⟦draw⟧);", "[thing ⟦draw⟧];"]
+
+[answers.object_ink]
+references = ["- (int)⟦ink⟧;", "[thing ⟦ink⟧];"]
+
+[answers.quill]
+references = ["@compatibility_alias ⟦Quill⟧ Pen;", "void use(⟦Quill⟧ *quill, Class kind, id thing, Box<Pen *> *box) {"]
 
 [answers.pen]
 references = [
@@ -29,6 +36,5 @@ references = [
     "@compatibility_alias Quill ⟦Pen⟧;",
     "@implementation ⟦Pen⟧ : Object",
     "@implementation ⟦Pen⟧ (Extras)",
-    "void use(⟦Quill⟧ *quill, Class kind, id thing, Box<Pen *> *box) {",
     "void use(Quill *quill, Class kind, id thing, Box<⟦Pen⟧ *> *box) {",
 ]

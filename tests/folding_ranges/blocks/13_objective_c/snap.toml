@@ -1,12 +1,20 @@
 [answers."main.m"]
 folding_ranges = [
+    {
+        kind = "class",
+        at = "@interface Shape ()⟦ … @property(nonatomic, copy) NSString *name;⟧ (2 lines)",
+        collapsed = "...",
+    },
+    { kind = "class", at = "@implementation Shape⟦ … }⟧ (31 lines)", collapsed = "..." },
     { kind = "functionBody", at = "+ (int)count ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "+ (void)setCount:(int)count ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "- (int)area ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "- (void)setX:(int)x y:(int)y ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "+ (instancetype)shapeWithX:(int)x ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "- (void)draw ⟦{ … }⟧ (2 lines)", collapsed = "{...}" },
+    { kind = "class", at = "@implementation Shape (Extras)⟦ … }⟧ (4 lines)", collapsed = "..." },
     { kind = "functionBody", at = "- (void)wobble ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "class", at = "@implementation Circle⟦ … }⟧ (4 lines)", collapsed = "..." },
     { kind = "functionBody", at = "- (void)draw ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
     {
         kind = "functionBody",
@@ -20,4 +28,17 @@ folding_ranges = [
 ]
 
 [answers."shape.h"]
-folding_ranges = []
+folding_ranges = [
+    {
+        kind = "protocol",
+        at = "@protocol Drawable⟦ … - (void)drawInWidth:(int)width height:(int)height;⟧ (4 lines)",
+        collapsed = "...",
+    },
+    { kind = "class", at = "@interface Object⟦ … - (instancetype)init;⟧ (3 lines)", collapsed = "..." },
+    {
+        kind = "class",
+        at = "@interface Shape : Object <Drawable> {⟦ … + (instancetype)shapeWithX:(int)x;⟧ (9 lines)",
+        collapsed = "...",
+    },
+    { kind = "class", at = "@interface Shape (Extras)⟦ … - (void)wobble;⟧ (2 lines)", collapsed = "..." },
+]

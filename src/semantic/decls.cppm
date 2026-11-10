@@ -117,6 +117,27 @@ auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::Ob
 auto objc_alias_names(const clang::ObjCCompatibleAliasDecl& alias)
     -> std::pair<clang::SourceLocation, clang::SourceLocation>;
 
+/// The `(` of an Objective-C class extension, `@interface Shape ()`, which
+/// clang does not locate; invalid when it does not follow the class's name
+/// (`@interface Box<T> ()`).
+auto objc_extension_paren(const clang::ObjCCategoryDecl& extension) -> clang::SourceLocation;
+
+/// A method of `selector` an Objective-C class answers: implemented or
+/// declared by it or a superclass, or by a protocol it adopts, an instance
+/// method before a class method; null for none.
+auto objc_selector_method(const clang::ObjCInterfaceDecl& objc_class, clang::Selector selector)
+    -> const clang::ObjCMethodDecl*;
+
+/// Where `@selector(setX:y:)` writes each piece of its selector, which
+/// clang does not locate: invalid for a piece with no name.
+auto objc_selector_pieces(const clang::ObjCSelectorExpr& expr, const clang::ASTContext& context)
+    -> llvm::SmallVector<clang::SourceLocation, 4>;
+
+/// What a name at `location` naming the Objective-C class `objc_class`
+/// writes: the class, or a `@compatibility_alias` of it.
+auto objc_class_name(const clang::ObjCInterfaceDecl& objc_class, clang::SourceLocation location)
+    -> const clang::NamedDecl*;
+
 /// The nearest superclass method an Objective-C method overrides, null for
 /// none; getOverriddenMethods leaves out one only an @implementation or a
 /// category declares.

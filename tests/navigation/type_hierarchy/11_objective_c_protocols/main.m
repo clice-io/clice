@@ -25,6 +25,7 @@ __attribute__((objc_root_class))
 @property(nonatomic) int width;
 @property(nonatomic) int ink;
 - (void):(int)x tail:(int)y;
+- (int)size;
 + (void)draw;
 - (void)draw;
 @end
@@ -35,6 +36,7 @@ __attribute__((objc_root_class))
 
 @interface Object (Extras)
 - (void)tidy;
+- (int)ink;
 @end
 
 @compatibility_alias Quill Pen;
@@ -47,6 +49,10 @@ __attribute__((objc_root_class))
     _ink = width;
 }
 
+- (int)size {
+    return width;
+}
+
 + (void)draw {
 }
 
@@ -56,6 +62,8 @@ __attribute__((objc_root_class))
 
 @implementation Pen (Extras)
 - (void)write {
+    SEL action = @selector(draw);
+    (void)action;
 }
 
 - (void)refill {
@@ -65,9 +73,12 @@ __attribute__((objc_root_class))
 void use(Quill *quill, Class kind, id thing, Box<Pen *> *box) {
     [quill :1 tail:2];
     [quill setInk:[quill ink] + 1];
+    int size = quill.size;
     [kind draw];
     [thing draw];
+    [thing ink];
     id writing = @protocol(Writing);
     [[box first] write];
     (void)writing;
+    (void)size;
 }

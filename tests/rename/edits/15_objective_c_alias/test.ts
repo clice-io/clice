@@ -6,4 +6,5 @@ import { answers } from "@clice/tools/testing";
 answers({ paths: { server: "clice inspect does not rename" }, indexing: true }, async (a) => {
     await a.show("class", a.rename(a.marker("pen"), "Brush"));
     await a.show("category", a.rename(a.marker("pen_extras"), "Motion"));
+    await a.show("alias", a.rename(a.marker("quill"), "Nib"));
 });

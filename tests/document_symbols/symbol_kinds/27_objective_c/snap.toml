@@ -1,6 +1,19 @@
 [answers."main.m"]
 document_symbols = [
-    { name = "name", kind = "Property", at = "@property(nonatomic, copy) NSString *⟦name⟧;", detail = "NSString *" },
+    {
+        name = "Shape()",
+        kind = "Class",
+        at = "@interface Shape ⟦(⟧)",
+        detail = "class extension",
+        children = [
+            {
+                name = "name",
+                kind = "Property",
+                at = "@property(nonatomic, copy) NSString *⟦name⟧;",
+                detail = "NSString *",
+            },
+        ],
+    },
     {
         name = "Shape",
         kind = "Class",
@@ -64,10 +77,18 @@ document_symbols = [
 [answers."main.m extents"]
 document_symbols = [
     {
-        name = "name",
-        kind = "Property",
-        at = "@property(nonatomic, copy) NSString *⟦name⟧;",
-        range = "⟦@property(nonatomic, copy) NSString *name⟧;",
+        name = "Shape()",
+        kind = "Class",
+        at = "@interface Shape ⟦(⟧)",
+        range = "⟦@interface Shape () … @end⟧ (3 lines)",
+        children = [
+            {
+                name = "name",
+                kind = "Property",
+                at = "@property(nonatomic, copy) NSString *⟦name⟧;",
+                range = "⟦@property(nonatomic, copy) NSString *name⟧;",
+            },
+        ],
     },
     {
         name = "Shape",

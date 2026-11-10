@@ -448,18 +448,35 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
     return results;
 }
 
-std::vector<IndexQuery::Located> same_selector_methods(const IndexQuery& index,
-                                                       const SymbolInfo& method) {
-    auto methods = locate(
+std::vector<IndexQuery::Located> reached_by_selector(const IndexQuery& index,
+                                                     const SymbolInfo& method) {
+    auto reached = locate(
         index,
         {.mode = SymbolQuery::Mode::Exact, .pattern = method.name, .kinds = {SymbolKind::Method}});
-    std::erase_if(methods, [&](const IndexQuery::Located& other) {
+    std::erase_if(reached, [&](const IndexQuery::Located& other) {
         return other.symbol.hash == method.hash ||
-               name_form(other.symbol.flags) != NameForm::Selector ||
-               other.symbol.token_class.has(SemanticTokenModifier::Static) !=
-                   method.token_class.has(SemanticTokenModifier::Static);
+               name_form(other.symbol.flags) != NameForm::Selector;
     });
-    return methods;
+    // The property a getter's selector names (`count`), or a setter's
+    // (`setCount:`), whose accessors clang declares itself.
+    llvm::StringRef selector = method.name;
+    std::string property = selector.str();
+    if(selector.consume_front("set") && selector.consume_back(":") && !selector.empty() &&
+       !selector.contains(':')) {
+        property = selector.str();
+        property.front() = static_cast<char>(llvm::toLower(property.front()));
+    }
+    if(!llvm::StringRef(property).contains(':')) {
+        reached.append_range(locate(index,
+                                    {.mode = SymbolQuery::Mode::Exact,
+                                     .pattern = property,
+                                     .kinds = {SymbolKind::Property}}));
+    }
+    std::erase_if(reached, [&](const IndexQuery::Located& other) {
+        return other.symbol.token_class.has(SemanticTokenModifier::Static) !=
+               method.token_class.has(SemanticTokenModifier::Static);
+    });
+    return reached;
 }
 
 }  // namespace clice::index

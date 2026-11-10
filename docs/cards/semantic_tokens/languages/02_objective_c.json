@@ -124,6 +124,40 @@
               },
               {
                 "at": {
+                  "$place": "@property(⟦nonatomic⟧, copy) NSString *name;",
+                  "path": "main.m",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "@property(nonatomic, ⟦copy⟧) NSString *name;",
+                  "path": "main.m",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 25
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
                   "$place": "@property(nonatomic, copy) ⟦NSString⟧ *name;",
                   "path": "main.m",
                   "range": {
@@ -383,7 +417,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -479,7 +513,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -631,7 +665,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -763,7 +797,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -1120,7 +1154,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -1490,7 +1524,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -1620,7 +1654,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -1950,7 +1984,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -3050,7 +3084,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -3122,7 +3156,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -3363,7 +3397,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -3422,7 +3456,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -3746,6 +3780,23 @@
               },
               {
                 "at": {
+                  "$place": "@property(⟦nonatomic⟧) int x;",
+                  "path": "shape.h",
+                  "range": {
+                    "start": {
+                      "line": 20,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 20,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
                   "$place": "@property(nonatomic) ⟦int⟧ x;",
                   "path": "shape.h",
                   "range": {
@@ -3794,6 +3845,40 @@
                     "end": {
                       "line": 21,
                       "character": 9
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "@property(⟦nonatomic⟧, readonly) int area;",
+                  "path": "shape.h",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 21,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "@property(nonatomic, ⟦readonly⟧) int area;",
+                  "path": "shape.h",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 21,
+                      "character": 29
                     }
                   }
                 },
@@ -3850,6 +3935,40 @@
                     "end": {
                       "line": 22,
                       "character": 9
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "@property(⟦class⟧, nonatomic) int count;",
+                  "path": "shape.h",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "@property(class, ⟦nonatomic⟧) int count;",
+                  "path": "shape.h",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 26
                     }
                   }
                 },
@@ -3929,7 +4048,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -4081,7 +4200,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {
@@ -4253,7 +4372,7 @@
                     }
                   }
                 },
-                "type": "operator"
+                "type": "keyword"
               },
               {
                 "at": {

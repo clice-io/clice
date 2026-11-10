@@ -555,6 +555,82 @@ auto objc_alias_names(const clang::ObjCCompatibleAliasDecl& alias)
     return {name, after(name)};
 }
 
+auto objc_extension_paren(const clang::ObjCCategoryDecl& extension) -> clang::SourceLocation {
+    auto& context = extension.getASTContext();
+    auto paren = clang::Lexer::findNextToken(extension.getLocation(),
+                                             context.getSourceManager(),
+                                             context.getLangOpts());
+    return paren && paren->is(clang::tok::l_paren) ? paren->getLocation() : clang::SourceLocation();
+}
+
+auto objc_selector_method(const clang::ObjCInterfaceDecl& objc_class, clang::Selector selector)
+    -> const clang::ObjCMethodDecl* {
+    if(!objc_class.hasDefinition()) {
+        return nullptr;
+    }
+    for(bool instance: {true, false}) {
+        if(const auto* method = objc_class.lookupPrivateMethod(selector, instance)) {
+            return method;
+        }
+        if(const auto* method = objc_class.lookupMethod(selector, instance)) {
+            return method;
+        }
+    }
+    return nullptr;
+}
+
+auto objc_selector_pieces(const clang::ObjCSelectorExpr& expr, const clang::ASTContext& context)
+    -> llvm::SmallVector<clang::SourceLocation, 4> {
+    const auto& sources = context.getSourceManager();
+    auto token_after = [&](clang::SourceLocation location) -> std::optional<clang::Token> {
+        return location.isValid()
+                   ? clang::Lexer::findNextToken(location, sources, context.getLangOpts())
+                   : std::nullopt;
+    };
+    // `@`, `selector`, `(`, then a name and a `:` per piece, a name alone
+    // for a selector with no argument.
+    auto selector = expr.getSelector();
+    auto token = token_after(expr.getAtLoc());
+    for(int skipped = 0; skipped < 2 && token; skipped += 1) {
+        token = token_after(token->getLocation());
+    }
+    llvm::SmallVector<clang::SourceLocation, 4> pieces;
+    for(unsigned slot = 0; slot < std::max(1U, selector.getNumArgs()) && token; slot += 1) {
+        if(token->is(clang::tok::raw_identifier) || token->is(clang::tok::identifier)) {
+            pieces.push_back(token->getLocation());
+            token = token_after(token->getLocation());
+        } else {
+            pieces.emplace_back();
+        }
+        if(selector.getNumArgs() != 0 && token && token->is(clang::tok::colon)) {
+            token = token_after(token->getLocation());
+        }
+    }
+    return pieces;
+}
+
+auto objc_class_name(const clang::ObjCInterfaceDecl& objc_class, clang::SourceLocation location)
+    -> const clang::NamedDecl* {
+    auto& context = objc_class.getASTContext();
+    const auto& sources = context.getSourceManager();
+    auto spelling = sources.getSpellingLoc(location);
+    auto [file, offset] = sources.getDecomposedLoc(spelling);
+    auto text = sources.getBufferData(file).drop_front(offset);
+    auto name = objc_class.getName();
+    if(text.starts_with(name) &&
+       (text.size() == name.size() || !clang::isAsciiIdentifierContinue(text[name.size()]))) {
+        return &objc_class;
+    }
+    auto written =
+        text.take_front(clang::Lexer::MeasureTokenLength(spelling, sources, context.getLangOpts()));
+    for(const auto* found: context.getTranslationUnitDecl()->lookup(&context.Idents.get(written))) {
+        if(const auto* alias = llvm::dyn_cast<clang::ObjCCompatibleAliasDecl>(found)) {
+            return alias;
+        }
+    }
+    return &objc_class;
+}
+
 auto objc_overridden(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl* {
     const auto* objc_class = decls::objc_class(method.getDeclContext());
     for(const auto* base = objc_class ? objc_class->getSuperClass() : nullptr;

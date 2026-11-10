@@ -338,7 +338,7 @@ std::vector<index::Site> references(const index::IndexQuery& index,
             }
         }
         if(index::name_form(info->flags) == index::NameForm::Selector) {
-            for(auto& other: index::same_selector_methods(index, *info)) {
+            for(auto& other: index::reached_by_selector(index, *info)) {
                 add(other.symbol.hash, other.site.file, {RelationKind::Candidate});
             }
         }
