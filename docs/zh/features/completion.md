@@ -565,7 +565,7 @@ tests/code_completion/include_path_completion/14_name_words
 
 ## 模块导入
 
-在 `import` 或 `export import` 之后会补全模块名：先列出当前单元所属模块自身的分区，再列出接口单元离当前文件最近的模块。
+在 `import` 或 `export import` 之后会补全模块名。输入的内容先与完整的名称匹配，其次是前缀，再次是名称中的单词（`compat` 能找到 `app.compat`）；匹配程度相同的名称中，先列出当前单元所属模块自身的分区，再列出接口单元离当前文件最近的模块。
 
 <!-- BEGIN GENERATED ITEMS: code_completion/modules -->
 
@@ -629,6 +629,18 @@ tests/code_completion/modules/09_nearest_modules
 
 ```case
 tests/code_completion/modules/14_module_documentation
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模块名中的单词**
+
+输入的内容先与完整的模块名匹配，其次是前缀，再次是名称中的单词，这一顺序先于接口单元的远近：`compat` 先列出较远的 `compat`，再列出较近的 `app.compat`
+
+```case
+tests/code_completion/modules/15_name_words
 ```
 
 <!-- END CAPABILITY -->
