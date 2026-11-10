@@ -9,6 +9,7 @@ import :project.saved;
 import :settings.settings;
 import :support.json;
 import :support.logging;
+import :support.text;
 import :syntax.dependency_graph;
 import :vfs.cache_store;
 import :vfs.file_table;
@@ -82,9 +83,9 @@ void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
     }
     for(auto id: sources) {
         if(auto loaded = project.cdb.load_source(id)) {
-            LOG_INFO("Loaded the compilation database {} ({} entries)",
+            LOG_INFO("Loaded the compilation database {} ({})",
                      project.cdb.source_path(id),
-                     *loaded);
+                     counted(*loaded, "entry", "entries"));
             entries += *loaded;
         } else if(!fs::exists(project.cdb.source_path(id))) {
             LOG_WARN("Compilation database {} does not exist yet", project.cdb.source_path(id));

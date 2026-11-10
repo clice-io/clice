@@ -11,6 +11,7 @@ import :command.toolchains.nvcc;
 import :support.failure;
 import :support.logging;
 import :support.process;
+import :support.text;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -678,7 +679,7 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     }
 
     auto total = pending.size();
-    LOG_DEBUG("Asking {} compilers for their default settings", total);
+    LOG_DEBUG("Asking {} for their default settings", counted(total, "compiler", "compilers"));
 
     // Run the queries concurrently on a local event loop. The interface
     // stays synchronous: block until all complete, then fill the cache here.
@@ -726,7 +727,9 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
         commit_query(o.key, o.command, o.result);
     }
 
-    LOG_INFO("Asked {} compilers for their default settings; {} failed", total, total - succeeded);
+    LOG_INFO("Asked {} for their default settings; {} failed",
+             counted(total, "compiler", "compilers"),
+             total - succeeded);
 }
 
 Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,

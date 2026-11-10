@@ -7,6 +7,7 @@ import :project.graph.pcm;
 import :project.graph.task_graph;
 import :project.project;
 import :support.logging;
+import :support.text;
 import :syntax.dependency_graph;
 import :vfs.file_table;
 
@@ -328,21 +329,19 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
     }
 
     auto found = report.includes_resolved + report.unresolved.size();
-    double accuracy =
-        found > 0 ? 100.0 * static_cast<double>(report.includes_resolved) / found : 100.0;
-    LOG_INFO(
-        "Scanned the includes of {1} files in {0} ms ({2} sources, {3} headers, {4} unchanged): "
-        "{5} of {6} includes found ({7:.1f}%), {8} {9}",
-        report.elapsed_ms,
-        report.total_files,
-        report.source_files,
-        report.total_files - report.source_files,
-        report.scan_cache_hits,
-        report.includes_resolved,
-        found,
-        accuracy,
-        modules,
-        modules == 1 ? "module" : "modules");
+    auto includes = found == 0 ? std::string("no includes")
+                               : std::format("{} of {} found ({:.1f}%)",
+                                             report.includes_resolved,
+                                             counted(found, "include", "includes"),
+                                             100.0 * report.includes_resolved / found);
+    LOG_INFO("Scanned {} in {} ms ({}, {}, {} unchanged): {}, {}",
+             counted(report.total_files, "file", "files"),
+             report.elapsed_ms,
+             counted(report.source_files, "source", "sources"),
+             counted(report.total_files - report.source_files, "header", "headers"),
+             report.scan_cache_hits,
+             includes,
+             counted(modules, "module", "modules"));
     changes.scan = std::move(report);
     return changes;
 }

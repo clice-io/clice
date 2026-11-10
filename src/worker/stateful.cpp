@@ -16,6 +16,7 @@ import :index.tu_index;
 import :support.json;
 import :support.logging;
 import :support.process;
+import :support.text;
 import :vfs.file_system;
 import :worker.common;
 import :worker.crash_report;
@@ -312,10 +313,10 @@ RequestResult<worker::CompileParams>
                 if(index_error) {
                     diags.push_back(feature::index_unavailable(*index_error));
                 }
-                LOG_INFO("Compiled {} in {} ms: {} diagnostics{}",
+                LOG_INFO("Compiled {} in {} ms: {}{}",
                          params.path,
                          timer.ms(),
-                         diags.size(),
+                         counted(diags.size(), "diagnostic", "diagnostics"),
                          unit->fatal_error() ? ", a fatal error among them" : "");
                 result.diagnostics = std::move(diags);
                 doc->unit = std::move(unit);

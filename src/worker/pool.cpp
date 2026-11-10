@@ -2,6 +2,7 @@ module clice;
 
 import :support.logging;
 import :support.process;
+import :support.text;
 import :vfs.path;
 import :worker.pool;
 import :worker.resources;
@@ -233,10 +234,10 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
 
     worker_tasks.spawn(monitor_loop());
 
-    LOG_INFO("Worker pool started: {} stateless, {} stateful workers keeping {} documents compiled",
+    LOG_INFO("Worker pool started: {} stateless, {} stateful workers keeping {} compiled",
              stateless_workers.size(),
              stateful_workers.size(),
-             max_resident);
+             counted(max_resident, "document", "documents"));
     return true;
 }
 
@@ -625,10 +626,10 @@ async::task<> WorkerPool::respawn_after(std::size_t index,
                                         chrono::milliseconds delay) {
     while(true) {
         if(delay.count() > 0) {
-            LOG_INFO("Worker {} starts again in {} ms ({} crashes in a row)",
+            LOG_INFO("Worker {} starts again in {} ms ({} in a row)",
                      slot(index, stateful).name,
                      delay.count(),
-                     slot(index, stateful).crash_streak);
+                     counted(slot(index, stateful).crash_streak, "crash", "crashes"));
             // Time is the feature: the crash streak's backoff.
             co_await async::with_token(async::sleep(delay, loop), stop_scope.token());
         }
@@ -637,7 +638,9 @@ async::task<> WorkerPool::respawn_after(std::size_t index,
 
         auto& w = slot(index, stateful);
         if(launch(index, stateful)) {
-            LOG_INFO("Worker {} started again ({} crashes in a row)", w.name, w.crash_streak);
+            LOG_INFO("Worker {} started again ({} in a row)",
+                     w.name,
+                     counted(w.crash_streak, "crash", "crashes"));
             co_return;
         }
 

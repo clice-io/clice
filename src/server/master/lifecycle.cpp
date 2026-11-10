@@ -6,6 +6,7 @@ import :server.served_project;
 import :settings.settings;
 import :support.logging;
 import :support.process;
+import :support.text;
 import :support.version;
 import :vfs.disk_state;
 import :vfs.file_system;
@@ -186,8 +187,8 @@ void MasterServer::initialize() {
         log_settings(*project);
     }
 
-    LOG_INFO("Server ready: {} projects, {} stateful and {} stateless workers",
-             projects.size(),
+    LOG_INFO("Server ready: {}, {} stateful and {} stateless workers",
+             counted(projects.size(), "project", "projects"),
              pool_opts.stateful_count,
              pool_opts.stateless_count);
 

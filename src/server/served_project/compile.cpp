@@ -548,11 +548,11 @@ async::task<Result> ServedProject::CompileAttempt::run() {
                 continue;
             }
         }
-        LOG_INFO("Compiled {} (version {}) in {} ms: {} diagnostics",
+        LOG_INFO("Compiled {} (version {}) in {} ms: {}",
                  file_path,
                  params.version,
                  timer.ms(),
-                 diagnostics.size());
+                 counted(diagnostics.size(), "diagnostic", "diagnostics"));
         co_return commit(reply);
     }
     // Every arm of the two-send loop commits or returns; the check's
