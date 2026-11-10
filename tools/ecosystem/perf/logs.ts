@@ -28,9 +28,9 @@ export interface PerfEvent {
     values: Record<string, string | number>;
 }
 
-/// `2026-08-14 12:34:56.789 [info] [thread 1] file.cpp:42 [perf:x] k=v`
+/// `[2026-08-14 12:34:56.789] [info] [thread 1] [file.cpp:42] [perf:x] k=v`
 const LINE_PATTERN =
-    /^(?:(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) )?.*?\[perf:([\w-]+)\] (.*)$/;
+    /^(?:\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\] )?.*?\[perf:([\w-]+)\] (.*)$/;
 
 const THREAD_PATTERN = /\[thread (\d+)\]/;
 

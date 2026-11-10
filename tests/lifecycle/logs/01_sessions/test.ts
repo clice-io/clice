@@ -50,7 +50,7 @@ test("a full log file moves aside", async (t) => {
 
 /// A log line: date and time, level, thread off the main one, source line.
 const LINE =
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \[(?:trace|debug|info|warning|error|fatal)\] (?:\[thread \d+\] )?[\w.-]+:\d+ \S/;
+    /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\] \[(?:trace|debug|info|warning|error|fatal)\] (?:\[thread \d+\] )?\[[\w.-]+:\d+\] \S/;
 
 // Every line of the server's log has the same shape; paths under the
 // project are relative to it, which a line naming the project still names
@@ -87,7 +87,7 @@ test("the server's lines", async (t) => {
         ),
     );
     expect(lines.filter((line) => under.some((prefix) => line.includes(prefix)))).toEqual([]);
-    expect(lines.filter((line) => line.includes("] resolve.cpp:"))).toEqual([
+    expect(lines.filter((line) => line.includes("[resolve.cpp:"))).toEqual([
         expect.stringContaining("Command of main.cpp: from its database entry"),
         expect.stringContaining("Command of main.cpp: from its database entry"),
     ]);

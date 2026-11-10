@@ -13,7 +13,7 @@ export interface LogLine {
 
 /// A log line's level, from the `[level]` field after its date and time.
 function levelOf(text: string): string | undefined {
-    return /^\S+ \S+ \[(\w+)\]/.exec(text)?.[1];
+    return /^\[[^\]]+\] \[(\w+)\]/.exec(text)?.[1];
 }
 
 export function readLogs(workspace: string, files = logFiles(workspace)): LogLine[] {

@@ -30,19 +30,19 @@ describe("confirm", () => {
 describe("index", () => {
     test("the units in flight are those begun and not finished", () => {
         const log = [
-            "t t [info] [1/4] Indexing a.cpp",
-            "t t [info] [2/4] Indexing b.cpp",
-            "t t [info] [perf:index] progress=1/4 file=a.cpp bytes=1",
-            "t t [info] [3/4] Indexing c.cpp",
-            "t t [warning] [3/4] Cannot index c.cpp: no",
-            "t t [info] [4/4] Indexing g.cpp",
-            "t t [warning] [4/4] g.cpp does not fit in memory: its worker reached 9 MiB alone",
-            "t t [info] [1/2] Indexing d.cpp",
-            "t t [warning] [1/2] The worker indexing d.cpp died; it is indexed again later: x",
-            "t t [info] [2/2] Indexing e.cpp",
-            "t t [warning] [2/2] Not indexing e.cpp again (crashed); what other files know",
-            "t t [info] [1/1] Indexing f.cpp",
-            "t t [info] [1/1] f.cpp was removed while it was indexed",
+            "[t] [info] [1/4] Indexing a.cpp",
+            "[t] [info] [2/4] Indexing b.cpp",
+            "[t] [info] [perf:index] progress=1/4 file=a.cpp bytes=1",
+            "[t] [info] [3/4] Indexing c.cpp",
+            "[t] [warning] [3/4] Cannot index c.cpp: no",
+            "[t] [info] [4/4] Indexing g.cpp",
+            "[t] [warning] [4/4] g.cpp does not fit in memory: its worker reached 9 MiB alone",
+            "[t] [info] [1/2] Indexing d.cpp",
+            "[t] [warning] [1/2] The worker indexing d.cpp died; it is indexed again later: x",
+            "[t] [info] [2/2] Indexing e.cpp",
+            "[t] [warning] [2/2] Not indexing e.cpp again (crashed); what other files know",
+            "[t] [info] [1/1] Indexing f.cpp",
+            "[t] [info] [1/1] f.cpp was removed while it was indexed",
         ].join("\n");
         expect(unitsInFlight(log)).toEqual(["b.cpp"]);
     });

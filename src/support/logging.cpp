@@ -311,20 +311,21 @@ void write_crash_header(int fd) noexcept {
     chrono::year_month_day date(day);
     chrono::hh_mm_ss clock(time - day);
     std::array<char, 256> header;
-    auto end = std::format_to_n(header.data(),
-                                header.size(),
-                                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03} [fatal] clice crashed\n"
-                                "=== CRASH STACK TRACE ===\nclice {} {}\n",
-                                static_cast<int>(date.year()),
-                                static_cast<unsigned>(date.month()),
-                                static_cast<unsigned>(date.day()),
-                                clock.hours().count(),
-                                clock.minutes().count(),
-                                clock.seconds().count(),
-                                clock.subseconds().count(),
-                                version,
-                                target)
-                   .out;
+    auto end =
+        std::format_to_n(header.data(),
+                         header.size(),
+                         "[{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}] [fatal] clice crashed\n"
+                         "=== CRASH STACK TRACE ===\nclice {} {}\n",
+                         static_cast<int>(date.year()),
+                         static_cast<unsigned>(date.month()),
+                         static_cast<unsigned>(date.day()),
+                         clock.hours().count(),
+                         clock.minutes().count(),
+                         clock.seconds().count(),
+                         clock.subseconds().count(),
+                         version,
+                         target)
+            .out;
     sys::write_console(fd, std::string_view(header.data(), end));
 }
 
@@ -511,7 +512,7 @@ void log(Level level, std::source_location location, std::string text) {
     constexpr std::string_view names[] = {"trace", "debug", "info", "warning", "error", "fatal"};
     auto name = names[std::to_underlying(level)];
     text = relative_paths(std::move(text));
-    auto line = std::format("{:%F %T} [{}] {}{}:{} {}\n",
+    auto line = std::format("[{:%F %T}] [{}] {}[{}:{}] {}\n",
                             local(chrono::system_clock::now()),
                             name,
                             this_thread == 0 ? "" : std::format("[thread {}] ", this_thread),

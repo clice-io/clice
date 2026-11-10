@@ -18,7 +18,7 @@ import type { Table } from "../render/value.ts";
 
 /// A log line below warning: one the command's stderr shows under
 /// --log-level, or one a worker logged that a crash report quotes.
-const QUIET_LINE = /^(?:trace|debug|info): |^\S+ \S+ \[(?:trace|debug|info)\] /;
+const QUIET_LINE = /^(?:trace|debug|info): |^\[[^\]]+\] \[(?:trace|debug|info)\] /;
 
 function quote(word: string): string {
     return /^[\p{L}\p{N}_./:=@%+,-]+$/u.test(word) ? word : `"${word.replaceAll('"', '\\"')}"`;

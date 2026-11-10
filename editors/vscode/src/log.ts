@@ -6,7 +6,7 @@ import type { StdioOptions } from "vscode-languageclient/node";
 type Level = "trace" | "debug" | "info" | "warning" | "error" | "fatal";
 
 /// A line of clice's log: its date, time and `[level]`, then the rest.
-const LINE = /^\S+ \S+ \[(trace|debug|info|warning|error|fatal)\] (.*)$/;
+const LINE = /^\[[^\]]+\] \[(trace|debug|info|warning|error|fatal)\] (.*)$/;
 
 function write(channel: LogOutputChannel, level: Level, text: string): void {
     switch (level) {
