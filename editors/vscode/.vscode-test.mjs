@@ -22,7 +22,7 @@ const configs = fixtures.map((fixture) => ({
     label: fixture,
     files: "out/test/**/*.test.js",
     workspaceFolder: path.join(fixturesDir, fixture),
-    mocha: { timeout: 300 * 1000 },
+    mocha: { timeout: 300 * 1000, failZero: true },
     launchArgs: [keepEnv],
 }));
 
@@ -61,7 +61,7 @@ if (process.env.CLICE_EXECUTABLE) {
         label: "bundled-hello_world",
         files: "out/test/**/*.test.js",
         workspaceFolder: path.join(fixturesDir, "hello_world"),
-        mocha: { timeout: 300 * 1000 },
+        mocha: { timeout: 300 * 1000, failZero: true },
         env: {
             CLICE_EXECUTABLE: "",
             CLICE_E2E_BUNDLED_FROM: process.env.CLICE_EXECUTABLE,

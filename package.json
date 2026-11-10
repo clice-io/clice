@@ -14,7 +14,7 @@
     "@bazel/bazelisk": "^1.28.1"
   },
   "overrides": {
-    "glob": "^11.1.0",
+    "glob": "^14.0.4",
     "minimatch": "^11.0.1",
     "mocha": {
       "diff": "^8.0.3",
