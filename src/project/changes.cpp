@@ -6,6 +6,8 @@ import :project.background;
 import :project.graph.pcm;
 import :project.graph.task_graph;
 import :project.project;
+import :support.logging;
+import :support.text;
 import :syntax.dependency_graph;
 import :vfs.file_table;
 
@@ -306,12 +308,13 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
     if(!changes.provisional.empty()) {
         report = scan();
     }
-    changes.scan = std::move(report);
 
+    std::size_t modules = 0;
     for(auto& entry: dep_graph.modules()) {
         if(entry.getValue().empty()) {
             continue;
         }
+        modules += 1;
         auto it = providers.find(entry.getKey());
         if(it == providers.end()) {
             changes.appeared.push_back(entry.getKey().str());
@@ -324,6 +327,22 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
             changes.replaced.append(it->second.begin(), it->second.end());
         }
     }
+
+    auto found = report.includes_resolved + report.unresolved.size();
+    auto includes = found == 0 ? std::string("no includes")
+                               : std::format("{} of {} found ({:.1f}%)",
+                                             report.includes_resolved,
+                                             counted(found, "include", "includes"),
+                                             100.0 * report.includes_resolved / found);
+    LOG_INFO("Scanned {} in {} ms ({}, {}, {} unchanged): {}, {}",
+             counted(report.total_files, "file", "files"),
+             report.elapsed_ms,
+             counted(report.source_files, "source", "sources"),
+             counted(report.total_files - report.source_files, "header", "headers"),
+             report.scan_cache_hits,
+             includes,
+             counted(modules, "module", "modules"));
+    changes.scan = std::move(report);
     return changes;
 }
 

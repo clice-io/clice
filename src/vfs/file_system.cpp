@@ -390,22 +390,70 @@ private:
     std::shared_ptr<const llvm::MemoryBuffer> text;
 };
 
+std::unexpected<FileError> failed(FileError::Operation operation,
+                                  llvm::StringRef path,
+                                  std::error_code code) {
+    return std::unexpected(FileError{.operation = operation, .path = path.str(), .code = code});
+}
+
 }  // namespace
 
-std::expected<std::string, std::error_code> read_text(llvm::StringRef path) {
-    std::string text;
-    if(auto error = fs::read_file(text, path)) {
-        return std::unexpected(error);
+std::expected<std::string, FileError> read_bytes(llvm::StringRef path) {
+    std::string bytes;
+    if(auto error = fs::read_file(bytes, path)) {
+        return failed(FileError::Operation::Read, path, error);
     }
-    text.erase(0, text.size() - without_bom(text).size());
+    return bytes;
+}
+
+std::expected<std::string, FileError> read_text(llvm::StringRef path) {
+    auto text = read_bytes(path);
+    if(text) {
+        text->erase(0, text->size() - without_bom(*text).size());
+    }
     return text;
 }
 
-std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path,
-                                                           std::size_t padding) {
+std::expected<std::vector<std::string>, FileError> list_names(llvm::StringRef directory) {
+    auto entries = fs::Directory::open(directory);
+    if(!entries) {
+        return failed(FileError::Operation::List, directory, entries.error());
+    }
+    std::vector<std::string> names;
+    for(auto& entry: *entries) {
+        if(!entry) {
+            return failed(FileError::Operation::List, directory, entry.error());
+        }
+        names.push_back(std::move(entry->name));
+    }
+    return names;
+}
+
+std::expected<void, FileError> write_file(llvm::StringRef path, llvm::StringRef content) {
+    if(auto error = fs::write_file(path, content)) {
+        return failed(FileError::Operation::Write, path, error);
+    }
+    return {};
+}
+
+std::expected<void, FileError> create_directories(llvm::StringRef path) {
+    if(auto made = fs::create_directories(path); !made) {
+        return failed(FileError::Operation::CreateDirectory, path, made.error());
+    }
+    return {};
+}
+
+std::expected<void, FileError> remove(llvm::StringRef path) {
+    if(auto removed = fs::remove(path); !removed) {
+        return failed(FileError::Operation::Remove, path, removed.error());
+    }
+    return {};
+}
+
+std::expected<ObservedFile, FileError> read_observed(llvm::StringRef path, std::size_t padding) {
     auto file = fs::File::open(path);
     if(!file) {
-        return std::unexpected(file.error());
+        return failed(FileError::Operation::Read, path, file.error());
     }
 
     auto before = file->status();
@@ -421,7 +469,7 @@ std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path,
                             padding);
     }
     if(auto error = file->read_to_end(result.text)) {
-        return std::unexpected(error);
+        return failed(FileError::Operation::Read, path, error);
     }
     result.text.erase(0, result.text.size() - without_bom(result.text).size());
     result.obs.hash = llvm::xxh3_64bits(result.text);

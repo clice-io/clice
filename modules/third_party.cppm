@@ -6883,6 +6883,7 @@ using ::kotatsu::sys::set_priority;
 using ::kotatsu::sys::set_process_name;
 using ::kotatsu::sys::set_process_title;
 using ::kotatsu::sys::set_thread_priority;
+using ::kotatsu::sys::shows_colors;
 using ::kotatsu::sys::sighup;
 using ::kotatsu::sys::sigkill;
 using ::kotatsu::sys::signal_name;
@@ -6894,6 +6895,7 @@ using ::kotatsu::sys::temp_dir;
 using ::kotatsu::sys::unset_env;
 using ::kotatsu::sys::uptime;
 using ::kotatsu::sys::user_name;
+using ::kotatsu::sys::utc_offset;
 using ::kotatsu::sys::write_console;
 using ::kotatsu::sys::write_console_some;
 using ::kotatsu::sys::write_stacktrace;
@@ -9825,96 +9827,6 @@ using ::simdjson::internal::escape_scalar::finder;
 using ::simdjson::internal::escape_scalar::write_string_escaped;
 }
 
-export namespace spdlog {
-namespace fmt_lib = ::std;
-using ::spdlog::apply_all;
-using ::spdlog::apply_logger_env_levels;
-using ::spdlog::color_mode;
-using ::spdlog::create;
-using ::spdlog::critical;
-using ::spdlog::debug;
-using ::spdlog::default_factory;
-using ::spdlog::default_logger;
-using ::spdlog::default_logger_raw;
-using ::spdlog::disable_backtrace;
-using ::spdlog::drop;
-using ::spdlog::drop_all;
-using ::spdlog::dump_backtrace;
-using ::spdlog::enable_backtrace;
-using ::spdlog::err_handler;
-using ::spdlog::error;
-using ::spdlog::file_event_handlers;
-using ::spdlog::filename_t;
-using ::spdlog::flush_every;
-using ::spdlog::flush_on;
-using ::spdlog::format_string_t;
-using ::spdlog::formatter;
-using ::spdlog::get;
-using ::spdlog::get_level;
-using ::spdlog::info;
-using ::spdlog::initialize_logger;
-using ::spdlog::is_convertible_to_any_format_string;
-using ::spdlog::is_convertible_to_basic_format_string;
-using ::spdlog::level_t;
-using ::spdlog::log;
-using ::spdlog::log_clock;
-using ::spdlog::logger;
-using ::spdlog::memory_buf_t;
-using ::spdlog::pattern_time_type;
-using ::spdlog::register_logger;
-using ::spdlog::register_or_replace;
-using ::spdlog::set_automatic_registration;
-using ::spdlog::set_default_logger;
-using ::spdlog::set_error_handler;
-using ::spdlog::set_formatter;
-using ::spdlog::set_level;
-using ::spdlog::set_pattern;
-using ::spdlog::should_log;
-using ::spdlog::shutdown;
-using ::spdlog::sink_ptr;
-using ::spdlog::sinks_init_list;
-using ::spdlog::source_loc;
-using ::spdlog::spdlog_ex;
-using ::spdlog::string_view_t;
-using ::spdlog::swap;
-using ::spdlog::synchronous_factory;
-using ::spdlog::throw_spdlog_ex;
-using ::spdlog::trace;
-using ::spdlog::warn;
-}
-
-export namespace spdlog::details {
-using ::spdlog::details::backtracer;
-using ::spdlog::details::circular_q;
-using ::spdlog::details::conditional_static_cast;
-using ::spdlog::details::enable_if_t;
-using ::spdlog::details::log_msg;
-using ::spdlog::details::log_msg_buffer;
-using ::spdlog::details::make_unique;
-using ::spdlog::details::null_atomic_int;
-using ::spdlog::details::null_mutex;
-using ::spdlog::details::periodic_worker;
-using ::spdlog::details::registry;
-using ::spdlog::details::thread_pool;
-using ::spdlog::details::to_string_view;
-}
-
-export namespace spdlog::level {
-using ::spdlog::level::from_str;
-using ::spdlog::level::level_enum;
-using ::spdlog::level::to_short_c_str;
-using ::spdlog::level::to_string_view;
-using enum ::spdlog::level::level_enum;
-}
-
-export namespace spdlog::sinks {
-using ::spdlog::sinks::base_sink;
-using ::spdlog::sinks::ringbuffer_sink;
-using ::spdlog::sinks::ringbuffer_sink_mt;
-using ::spdlog::sinks::ringbuffer_sink_st;
-using ::spdlog::sinks::sink;
-}
-
 export namespace std {
 using ::std::swap;
 }
@@ -10474,6 +10386,7 @@ export using ::MultiByteToWideChar;
 export using ::WideCharToMultiByte;
 
 export namespace kotatsu::fs::windows {
+using ::kotatsu::fs::windows::descriptor_handle;
 using ::kotatsu::fs::windows::from_native;
 using ::kotatsu::fs::windows::last_error;
 using ::kotatsu::fs::windows::to_error_code;

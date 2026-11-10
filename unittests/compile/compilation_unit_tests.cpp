@@ -161,7 +161,7 @@ ZEST_CASE(FilePaths) {
     ZEXPECT(unit->file_path(unit->focus_file().file()) == TestVFS::path("proj/main.cpp"));
 }
 
-ZEST_CASE(FilePathResolvesLinks, skip = Windows) {
+ZEST_CASE(FilePathResolvesLinks) {
     TempDir tmp;
     tmp.touch("real/a.h", "extern int a;\n");
     ZASSERT(!fs::create_symlink(tmp.path("real/a.h"), tmp.path("link.h")));
@@ -174,8 +174,9 @@ ZEST_CASE(FilePathResolvesLinks, skip = Windows) {
     ZASSERT(directive.includes.size() == 1U);
     ZASSERT(directive.has_includes.size() == 1U);
     ZASSERT(directive.has_includes[0].file);
-    ZEXPECT(unit->file_path(directive.includes[0].fid) == tmp.path("real/a.h"));
-    ZEXPECT(unit->file_path(*directive.has_includes[0].file) == tmp.path("real/a.h"));
+    auto real = CanonicalPath(Spelling::absolute(tmp.path("real/a.h")));
+    ZEXPECT(unit->file_path(directive.includes[0].fid) == real.str());
+    ZEXPECT(unit->file_path(*directive.has_includes[0].file) == real.str());
 }
 
 ZEST_CASE(FilePathOfHardLinks) {

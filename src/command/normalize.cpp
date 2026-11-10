@@ -450,7 +450,7 @@ std::vector<std::string> Normalizer::expand_response_files(kotatsu::string_list_
                  .hash = observed ? std::optional(observed->obs.hash) : std::nullopt});
         }
         if(!observed) {
-            return observed.error();
+            return observed.error().code;
         }
         out.assign(observed->text);
         return {};
@@ -478,10 +478,10 @@ std::vector<std::string> Normalizer::expand_response_files(kotatsu::string_list_
         }
         for(auto& name: *names) {
             std::string text;
-            if(read(text, name)) {
+            if(auto error = read(text, name)) {
                 /// nvcc warns about an options file it cannot read and
                 /// compiles without it.
-                LOG_WARN("Cannot read nvcc options file {}", name);
+                LOG_WARN("Cannot read the nvcc options file {}: {}", name, error.message());
                 continue;
             }
             spliced.append_range(

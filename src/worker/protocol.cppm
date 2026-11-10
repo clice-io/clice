@@ -427,6 +427,9 @@ struct PrecompiledBuildResult {
     /// why it did not build.
     std::string first_error;
 
+    /// How many errors the build met.
+    std::uint32_t error_count = 0;
+
     /// The tmp path the PCH or PCM was written to.
     std::string output_path;
 
@@ -601,6 +604,13 @@ struct EvictParams {
     std::string path;
 };
 
+/// Log into `<dir>/<the worker's name>.log` from now on, the lines kept
+/// since the start first: the master learns where its session logs once a
+/// project keeps its files on disk.
+struct LogParams {
+    std::string dir;
+};
+
 /// The id the request sent next to a stateful worker goes by in its start
 /// report (StartedParams).
 struct NextRequestParams {
@@ -738,6 +748,11 @@ struct RequestTraits<clice::worker::FormatParams> {
 template <>
 struct NotificationTraits<clice::worker::EvictParams> {
     constexpr inline static std::string_view method = "clice/worker/evict";
+};
+
+template <>
+struct NotificationTraits<clice::worker::LogParams> {
+    constexpr inline static std::string_view method = "clice/worker/log";
 };
 
 template <>

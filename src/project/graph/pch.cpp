@@ -41,6 +41,10 @@ void forget_pairs(Project& project, llvm::StringRef pch_key) {
     }
 }
 
+/// Why a PCH registered under a key is rebuilt: its pairs went from the
+/// store or the disk.
+constexpr llvm::StringRef evicted = "the last one left the cache";
+
 /// Whether the PCH registered under the key can be adopted as it is, and
 /// why not: complete, in the store, on disk, a preamble's index readable —
 /// else it is gone, and builds again from what it read — and what it read
@@ -52,27 +56,27 @@ void forget_pairs(Project& project, llvm::StringRef pch_key) {
 std::pair<Check, llvm::StringRef> pair_state(Project& project, llvm::StringRef pch_key) {
     auto it = project.pchs.find(pch_key);
     if(it == project.pchs.end() || it->second.path.empty()) {
-        return {Check::ProductGone, "no_entry"};
+        return {Check::ProductGone, "none is built yet for its command and preamble"};
     }
     auto& entry = it->second;
     if(!project.store || !project.store->lookup("pch", entry.blob) ||
        (!entry.whole_file && !project.store->lookup_aux("pch", entry.blob)) ||
        !fs::exists(entry.path)) {
-        return {Check::ProductGone, "evicted"};
+        return {Check::ProductGone, evicted};
     }
     // load_index() found the blob unreadable earlier; republish the pair
     // rather than serving a PCH with no index forever.
     if(!entry.whole_file && entry.index_path.empty()) {
-        return {Check::ProductGone, "idx_unreadable"};
+        return {Check::ProductGone, "the last one's index cannot be read"};
     }
     if(!entry.base.empty()) {
         auto* base = project.built_pch(entry.base);
         if(!base || base->blob != entry.base_blob) {
-            return {Check::InputsChanged, "base_rebuilt"};
+            return {Check::InputsChanged, "the PCH it extends was rebuilt"};
         }
     }
     if(!inputs_hold(project.file_table, entry.inputs)) {
-        return {Check::InputsChanged, "inputs_changed"};
+        return {Check::InputsChanged, "a file it read changed"};
     }
     return {Check::Holds, {}};
 }
@@ -116,22 +120,18 @@ bool refused(Project& project, llvm::StringRef pch_key, llvm::StringRef file) {
 async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest request) {
     const auto& pch_key = request.pch_key;
 
-    auto [state, pch_miss] = pair_state(project, pch_key);
+    auto [state, why] = pair_state(project, pch_key);
     if(state == Check::Holds) {
         LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, request.params.file);
         co_return Result::Success;
     }
-    LOG_PERF("cache",
-             "ns=pch event=miss reason={} key={} file={}",
-             pch_miss,
-             pch_key,
-             request.params.file);
-    if(pch_miss == "evicted") {
+    LOG_PERF("cache", "ns=pch event=miss key={} file={}", pch_key, request.params.file);
+    if(why == evicted) {
         forget_pairs(project, pch_key);
     }
 
     if(!project.store) {
-        LOG_WARN("PCH build skipped: cache store is unavailable");
+        LOG_WARN("No PCH for {}: the cache directory cannot be used", request.params.file);
         co_return Result::Failed;
     }
     if(refused(project, pch_key, request.params.file)) {
@@ -192,6 +192,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         attempt,
         bp,
         bp.file,
+        why,
         std::move(known),
         before,
         [&](FailureRecord record, Inputs inputs) {
@@ -241,14 +242,14 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         }
     });
     if(!pch_path) {
-        LOG_WARN("Failed to commit PCH for {}", bp.file);
+        LOG_WARN("Cannot store the PCH of {}", bp.file);
         co_return Result::Failed;
     }
     if(pending_idx && !loaded) {
         if(!index_path) {
-            LOG_WARN("Failed to commit pch.idx envelope for {}", bp.file);
+            LOG_WARN("Cannot store the index of the PCH of {}", bp.file);
         } else {
-            LOG_WARN("Freshly committed pch.idx envelope for {} is unreadable", bp.file);
+            LOG_WARN("The index of the PCH of {}, just stored, does not read", bp.file);
         }
         // The commit job discarded the new pair, and the previous one is
         // stale (that is why it was rebuilt): drop it rather than let it
@@ -276,7 +277,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         entry.built_index = std::move(loaded);
     }
 
-    LOG_INFO("PCH built for {}: {}", bp.file, entry.path);
+    LOG_DEBUG("The PCH of {} is stored at {}", bp.file, entry.path);
 
     project.mark_precompiled_dirty();
 
@@ -321,7 +322,7 @@ std::shared_ptr<index::TUIndex> PCHEntry::load_index() {
         // Unreadable blob: clear the path so queries don't retry the
         // mmap + verification on every call. The pair now looks
         // incomplete and the next acquisition rebuilds it.
-        LOG_WARN("Failed to open pch.idx envelope {}", index_path);
+        LOG_WARN("Cannot open the PCH index {}", index_path);
         index_path.clear();
     }
     index = loaded;
@@ -672,7 +673,7 @@ std::shared_ptr<index::TUIndex> Project::preamble_index(llvm::StringRef pch_key)
         // would be served to every session for the rest of the store's
         // life. Discard it now; the entry itself stays until the next acquisition
         // re-checks the store and rebuilds the pair.
-        LOG_WARN("Discarding PCH pair {} with unreadable pch.idx envelope", pch_key);
+        LOG_WARN("Dropping the PCH {}, whose index does not read", pch_key);
         store->invalidate("pch", entry.blob);
     }
     return loaded;

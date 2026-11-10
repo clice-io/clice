@@ -1,8 +1,8 @@
-name: test-leg
+name: test-platform
 
 # One target and build type: a build job, then the suites in jobs of their
-# own that wait for this build only, never for another leg's. A cross-built
-# leg (build_os) builds on a faster runner, with xclang's toolchain for the
+# own that wait for this build only, never for another platform's. A
+# cross-built platform (build_os) builds on a faster runner, with xclang's toolchain for the
 # target, and runs its suites with only the test-run environment active, as a
 # machine with clice and a compiler of its own: the clang++ its tests find is
 # another (on Windows the runner's, targeting MSVC). Builds run on Linux and
@@ -50,8 +50,8 @@ defaults:
   run:
     shell: bash
 
-# A native leg's suites run with the build's environment active, as they do
-# on a developer's machine; a cross-built leg's with test-run alone.
+# A natively built platform's suites run with the build's environment active,
+# as they do on a developer's machine; a cross-built one's with test-run alone.
 env:
   TEST_ENVIRONMENTS: ${{ inputs.build_os && 'test-run' || 'default test-run' }}
   TEST_ACTIVATE: ${{ inputs.build_os && 'true' || 'default' }}
@@ -99,7 +99,7 @@ jobs:
           } > user.bazelrc
           touch "$RUNNER_TEMP/bazel-start"
 
-      # The packaged legs build the release archives along: the programs in
+      # The platforms that package build the release archives along: the programs in
       # them are the ones the suites run.
       - name: Build
         run: >-
@@ -159,7 +159,7 @@ jobs:
           retention-days: 3
 
       # The committed config schema must match the binary that just built
-      # (the dump needs clice itself). One leg suffices — the output is
+      # (the dump needs clice itself). One platform suffices — the output is
       # machine-independent by construction. The pure-node doc checks
       # (feature/config/translation) run in the lint workflow instead.
       - name: Config schema check

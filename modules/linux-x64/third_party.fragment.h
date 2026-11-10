@@ -211,8 +211,4 @@ import std.compat;
 #include "kotatsu/zest/async.h"
 #include "kotatsu/zest/zest.h"
 #include "roaring/roaring.hh"
-#include "spdlog/details/log_msg.h"
-#include "spdlog/sinks/base_sink.h"
-#include "spdlog/sinks/ringbuffer_sink.h"
-#include "spdlog/spdlog.h"
 #include "lmdb.h"

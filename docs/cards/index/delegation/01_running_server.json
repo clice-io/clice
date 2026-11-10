@@ -59,7 +59,7 @@
         {
           "label": "$ clice index",
           "value": {
-            "stderr": "error: another clice process (pid #) holds the index writer lock at ${WS}/.clice; retry when it is done",
+            "stderr": "error: another clice process (pid #) holds the index writer lock at .clice; retry when it is done",
             "exit": 1
           }
         },

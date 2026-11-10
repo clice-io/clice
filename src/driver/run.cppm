@@ -11,6 +11,7 @@ import :settings.settings;
 import :support.logging;
 import :support.prelude;
 import :support.process;
+import :support.version;
 import :vfs.file_table;
 import :vfs.path;
 import :worker.pool;
@@ -31,7 +32,9 @@ inline std::expected<std::pair<Spelling, LoadedSettings>, ProjectError>
         return std::unexpected(ProjectError{.message = std::move(root.error()), .exit_code = 2});
     }
     options.configuration = where.build.configuration;
-    auto loaded = load_settings(CanonicalPath(*root), options);
+    CanonicalPath canonical(*root);
+    logging::set_project_roots({canonical.str()});
+    auto loaded = load_settings(canonical, options);
     std::vector<std::string> errors;
     for(auto& issue: loaded.issues) {
         auto text = location(issue.file, issue.line, issue.column) + issue.message;
@@ -205,7 +208,7 @@ struct BatchResult {
     std::vector<UnitErrors> compiled_with_errors;
 
     /// The session log directory; empty when file logging is off.
-    std::string log_dir;
+    std::string session_dir;
 
     /// Index state remained that the final save could not commit; a rerun
     /// cannot resume from it.
@@ -240,7 +243,7 @@ struct BatchRun {
 
     /// The session log directory start_batch created; empty when file
     /// logging is off.
-    std::string log_dir;
+    std::string session_dir;
 
     explicit BatchRun(async::event_loop& loop) : loop(loop) {}
 };
@@ -254,7 +257,7 @@ inline void show_path(FileTable& files, std::string& path) {
 
 /// Batch startup: the command's settings with the run's overrides
 /// (`workers` for the project's), the session file logger, and the worker
-/// pool. `log_tag` names the log files after the subcommand.
+/// pool. `log_tag` names the run's log after the subcommand.
 inline bool start_batch(BatchRun& run,
                         const BatchProject& batch,
                         std::uint32_t workers,
@@ -263,29 +266,40 @@ inline bool start_batch(BatchRun& run,
     run.files.spell_root(batch.root);
     project.root = CanonicalPath(batch.root);
     project.settings = batch.loaded.settings;
-    auto& cfg = project.settings.project;
-    cfg.idle_timeout_ms = 0;
+    auto& settings = project.settings.project;
+    settings.idle_timeout_ms = 0;
     if(workers != 0) {
-        cfg.stateless_worker_count = workers;
-        cfg.min_stateless_worker_count = std::min(cfg.min_stateless_worker_count, workers);
-        cfg.max_stateless_worker_count = workers;
+        settings.stateless_worker_count = workers;
+        settings.min_stateless_worker_count =
+            std::min(settings.min_stateless_worker_count, workers);
+        settings.max_stateless_worker_count = workers;
     }
 
-    if(!cfg.logging_dir.empty()) {
-        auto session_log_dir = logging::session_log_directory(cfg.logging_dir);
-        if(logging::file_logger(log_tag, session_log_dir)) {
-            LOG_INFO("Session log directory: {}", session_log_dir);
-            run.log_dir = std::move(session_log_dir);
+    logging::stderr_logger(log_tag);
+    if(!settings.logging_dir.empty()) {
+        auto session_dir = logging::start_session_log(settings.logging_dir);
+        if(logging::file_logger(session_dir)) {
+            LOG_INFO("clice {} ({}) runs {} on {}, pid {}",
+                     clice::version,
+                     clice::target,
+                     log_tag,
+                     batch.root,
+                     sys::pid());
+            if(auto source = built_from(); !source.empty()) {
+                LOG_INFO("{}", source);
+            }
+            LOG_INFO("Session log directory: {}", session_dir);
+            run.session_dir = std::move(session_dir);
         }
     }
 
     WorkerPoolOptions pool_opts;
     // Stateful workers host open documents; a batch run has none.
     pool_opts.stateful_count = 0;
-    pool_opts.stateless_count = cfg.stateless_worker_count;
-    pool_opts.min_stateless = cfg.min_stateless_worker_count;
-    pool_opts.max_stateless = cfg.max_stateless_worker_count;
-    pool_opts.log_dir = run.log_dir;
+    pool_opts.stateless_count = settings.stateless_worker_count;
+    pool_opts.min_stateless = settings.min_stateless_worker_count;
+    pool_opts.max_stateless = settings.max_stateless_worker_count;
+    pool_opts.session_dir = run.session_dir;
     if(!run.pool.start(pool_opts)) {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
         return false;

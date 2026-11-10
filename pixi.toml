@@ -227,9 +227,8 @@ depends-on = [
 # ============================================================================== #
 #                                EDITOR E2E TESTS                                #
 # ============================================================================== #
-# No win-64: the tasks below reference the binary as bin/clice (no .exe).
 [feature.editor]
-platforms = ["linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
+platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 
 # Same mitigation as feature.test: the server the editors start queries
 # xclang's clang for the fixtures' commands.
@@ -265,6 +264,12 @@ depends-on = ["editor-prepare"]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cwd = "editors/vscode"
 cmd = "CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test"
+depends-on = ["install-vscode", "editor-prepare"]
+
+[feature.editor.target.win-64.tasks.vscode-e2e]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+cwd = "editors/vscode"
+cmd = "CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice.exe npm test"
 depends-on = ["install-vscode", "editor-prepare"]
 
 [feature.editor.tasks.editor-test]

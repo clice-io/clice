@@ -1,18 +1,17 @@
 import { test } from "@clice/tools/testing";
 
-const MISSING = "Toolchain query failed: Cannot find driver";
 const UNCONVERTED = "The command stays a driver command";
 
 // Options that only shape the generated code leave; -fPIC and the stack
 // protector stay, for the macros they define.
-test("codegen", { errors: [MISSING, UNCONVERTED] }, async (t) => {
+test("codegen", { errors: [UNCONVERTED] }, async (t) => {
     await t.cli(
         "command convert -- missing-clang++ -std=c++20 -fPIC -fno-omit-frame-pointer -fstack-protector-strong -fdata-sections -ffunction-sections -fcolor-diagnostics -g main.cpp",
     );
 });
 
 // The LTO modes clang takes stay; g++'s job count goes.
-test("lto", { errors: [MISSING, UNCONVERTED] }, async (t) => {
+test("lto", { errors: [UNCONVERTED] }, async (t) => {
     await t.cli("command convert -- missing-clang++ -flto main.cpp");
     await t.cli("command convert -- missing-clang++ -flto=thin main.cpp");
     await t.cli("command convert -- missing-clang++ -flto=auto main.cpp");

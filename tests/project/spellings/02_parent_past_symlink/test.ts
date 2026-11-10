@@ -3,7 +3,11 @@ import { test } from "@clice/tools/testing";
 
 test(
     "parent segment past a symlinked directory",
-    { except: { win32: "a symlink on Windows needs a privilege the CI runners lack" } },
+    {
+        except: {
+            win32: "Windows takes `..` off before it follows the link, and so does its compiler: the include is not found there",
+        },
+    },
     async (t) => {
         t.disk.symlink("inc", "vendor/real");
         const s = await t.start();

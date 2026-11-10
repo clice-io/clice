@@ -207,9 +207,9 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     auto lock_path = path::join(parent, store_lock_name);
     auto lock = fs::File::open(lock_path, {.read = true, .write = true, .create = true});
     if(!lock) {
-        LOG_WARN("CacheStore: cannot open {}: {}", lock_path, lock.error().message());
+        LOG_WARN("Cannot open the cache's lock file {}: {}", lock_path, lock.error().message());
     } else if(auto error = lock->lock()) {
-        LOG_WARN("CacheStore: cannot lock {}: {}", lock_path, error.message());
+        LOG_WARN("Cannot lock the cache's lock file {}: {}", lock_path, error.message());
     }
 
     if(auto made = fs::create_directories(state->base); !made) {
@@ -231,15 +231,16 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
             }
             auto layout = path::join(parent, entry->name);
             if(entry->type != fs::FileType::Directory) {
-                LOG_INFO("CacheStore: discarding stale cache layout {}", layout);
+                LOG_INFO("Removing {}, not a cache of this clice", layout);
                 fs::remove(layout);
                 continue;
             }
             if(has_live_instance(layout)) {
-                LOG_INFO("CacheStore: keeping cache layout {}, still in use", layout);
+                LOG_INFO("Keeping the cache of another clice version, {}: a clice still uses it",
+                         layout);
                 continue;
             }
-            LOG_INFO("CacheStore: discarding stale cache layout {}", layout);
+            LOG_INFO("Removing the cache of another clice version, {}", layout);
             fs::remove_all(layout);
         }
     }
@@ -256,8 +257,9 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
                 state->last_generation = std::max(state->last_generation, entry.atime);
             }
         } else {
-            LOG_WARN("CacheStore: corrupt manifest {}, rebuilding from directory scan",
-                     manifest_path);
+            LOG_WARN(
+                "The cache's list of entries, {}, is corrupt; the cache directory is read instead",
+                manifest_path);
         }
     }
 
@@ -278,7 +280,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
             }
             auto dead = path::join(tmp_parent, entry->name);
             fs::remove_all(dead);
-            LOG_DEBUG("CacheStore: removed dead instance directory {}", dead);
+            LOG_DEBUG("Removed {}, left by a clice that exited", dead);
         }
     }
 
@@ -304,7 +306,7 @@ void CacheStore::write_ignore_markers(llvm::StringRef root) {
     // skip a config.toml kept here — git, which sees it, is the intended
     // preservation channel.
     if(auto made = fs::create_directories(root); !made) {
-        LOG_WARN("CacheStore: cannot create {}: {}", root, made.error().message());
+        LOG_WARN("Cannot create the cache directory {}: {}", root, made.error().message());
         return;
     }
     auto write_marker = [](llvm::StringRef path, llvm::StringRef content) {
@@ -313,12 +315,12 @@ void CacheStore::write_ignore_markers(llvm::StringRef root) {
         auto file = fs::File::open(path, {.write = true, .create_new = true});
         if(!file) {
             if(file.error() != std::errc::file_exists) {
-                LOG_WARN("CacheStore: cannot write {}: {}", path, file.error().message());
+                LOG_WARN("Cannot write {}: {}", path, file.error().message());
             }
             return;
         }
         if(auto error = file->write(content)) {
-            LOG_WARN("CacheStore: cannot write {}: {}", path, error.message());
+            LOG_WARN("Cannot write {}: {}", path, error.message());
             // create_new proved this call created the file, so removing
             // the partial marker clobbers no concurrent writer and lets a
             // later session retry.
@@ -360,16 +362,14 @@ void CacheStore::register_namespace(CacheNamespace ns) {
     if(!listed && !(state->read_only && listed.error() == std::errc::no_such_file_or_directory)) {
         // A read-only open of a store whose namespace was never created is
         // a legitimately empty scan; any other failure hides existing blobs.
-        LOG_WARN("CacheStore: failed to scan namespace {}: {}",
-                 ns_state.dir,
-                 listed.error().message());
+        LOG_WARN("Cannot list the cache directory {}: {}", ns_state.dir, listed.error().message());
     }
     llvm::StringMap<AuxBlob> aux_blobs;
     llvm::StringMap<std::int64_t> primary_mtimes;
     if(listed) {
         for(auto& entry: *listed) {
             if(!entry) {
-                LOG_WARN("CacheStore: failed to scan namespace {}: {}",
+                LOG_WARN("Cannot list the cache directory {}: {}",
                          ns_state.dir,
                          entry.error().message());
                 break;
@@ -420,7 +420,9 @@ void CacheStore::register_namespace(CacheNamespace ns) {
             ns_state.total_size += entry.getValue().size;
         } else if(!state->read_only) {
             fs::remove(state->aux_blob_path(ns_state, key));
-            LOG_DEBUG("CacheStore: removed stale aux blob {} in {}", key, ns_state.config.name);
+            LOG_DEBUG("Removed the cache's {} entry {}, whose main entry is gone",
+                      ns_state.config.name,
+                      key);
         }
     }
 
@@ -497,7 +499,7 @@ std::string CacheStore::next_tmp_path(llvm::StringRef extension) {
     // (a user resetting state with `rm -rf`); re-create the tmp dir so
     // writers don't fail forever afterwards. Idempotent and cheap.
     if(auto made = fs::create_directories(state->tmp_dir); !made) {
-        LOG_WARN("CacheStore: cannot re-create tmp dir {}: {}",
+        LOG_WARN("Cannot create the cache's temporary directory {} again: {}",
                  state->tmp_dir,
                  made.error().message());
     }
@@ -552,7 +554,7 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
         // The namespace dir can be wiped externally while the server runs;
         // re-create it so the rename below doesn't fail forever.
         if(auto made = fs::create_directories(dir); !made) {
-            LOG_WARN("CacheStore: cannot re-create dir {}: {}", dir, made.error().message());
+            LOG_WARN("Cannot create the cache directory {} again: {}", dir, made.error().message());
         }
         if(auto error = fs::rename(pending.tmp_path, final_path)) {
             if(same_content(pending.tmp_path, final_path)) {
@@ -583,7 +585,7 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
     if(!failure) {
         auto directory = fs::Directory::open(dir);
         if(auto error = directory ? directory->sync() : directory.error()) {
-            LOG_WARN("CacheStore: cannot sync dir {}: {}", dir, error.message());
+            LOG_WARN("Cannot flush the cache directory {} to disk: {}", dir, error.message());
         }
     }
     bool gone = removed && !fs::exists(final_path);
@@ -738,9 +740,10 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
             auto it = ns.entries.find(candidate.key);
             if(it->second.aux_size != 0) {
                 if(!fs::remove(aux_blob_path(ns, candidate.key))) {
-                    LOG_DEBUG("CacheStore: cannot evict aux {} from {}, retrying later",
-                              candidate.key,
-                              ns.config.name);
+                    LOG_DEBUG(
+                        "Cannot remove the cache's side entry {} of {} yet; tried again later",
+                        candidate.key,
+                        ns.config.name);
                     continue;
                 }
                 ns.total_size -= it->second.aux_size;
@@ -748,7 +751,7 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
             }
         }
         if(!fs::remove(blob_path(ns, candidate.key))) {
-            LOG_DEBUG("CacheStore: cannot evict {} from {}, retrying later",
+            LOG_DEBUG("Cannot remove the cache entry {} of {} yet; tried again later",
                       candidate.key,
                       ns.config.name);
             continue;
@@ -785,18 +788,18 @@ void CacheStore::State::checkpoint_locked() {
 
     auto json = json::to_string(data);
     if(!json) {
-        LOG_WARN("CacheStore: failed to serialize manifest");
+        LOG_WARN("Cannot write the cache's list of entries as JSON");
         return;
     }
 
     auto manifest_path = path::join(base, "manifest.json");
     auto tmp_path = path::join(tmp_dir, "manifest.json");
     if(auto error = fs::write_file(tmp_path, *json)) {
-        LOG_WARN("CacheStore: failed to write manifest: {}", error.message());
+        LOG_WARN("Cannot write the cache's list of entries: {}", error.message());
         return;
     }
     if(auto error = fs::rename(tmp_path, manifest_path)) {
-        LOG_WARN("CacheStore: failed to publish manifest: {}", error.message());
+        LOG_WARN("Cannot replace the cache's list of entries: {}", error.message());
         return;
     }
 

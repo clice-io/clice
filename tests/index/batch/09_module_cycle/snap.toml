@@ -59,7 +59,7 @@ stdout = '''
       ]
     }
   ],
-  "logDir": "${WS}/.clice/logs/${SESSION}",
+  "sessionDir": "${WS}/.clice/logs/${SESSION}",
   "unsaved": false,
   "damaged": false,
   "seconds": "#"

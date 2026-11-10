@@ -22,7 +22,7 @@ function firstReached(parks: readonly Park[]): Promise<Park> {
     return Promise.race(parks.map((park) => park.reached().then(() => park)));
 }
 
-test({ errors: ["exceeded crash budget"] }, async (t) => {
+test(async (t) => {
     t.disk.write(generate.units(UNITS));
     // The units join the database once every index run of theirs is
     // parked: the pass that indexes them starts after the parks.

@@ -13,8 +13,8 @@ stdout = '''
 }
 '''
 stderr = '''
-warning: Index database at ${WS}/.clice/cache/v15/index/default/index.mdb was written by another version of clice; run `clice index` to rebuild it
-error: The index database at ${WS}/.clice/cache/v15/index/default cannot be opened; the log above says why
+warning: Index database at .clice/cache/v15/index/default/index.mdb was written by another version of clice; run `clice index` to rebuild it
+error: The index database at .clice/cache/v15/index/default cannot be opened; the log above says why
 '''
 exit = 1
 

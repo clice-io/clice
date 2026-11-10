@@ -178,6 +178,8 @@ export class Session {
             // database's directory so that both compile under one command.
             cwd: isClice(this.server) ? undefined : database,
             checked: false,
+            // clice writes the [perf:*] lines collectPerf reads only when asked.
+            env: isClice(this.server) ? { CLICE_PERF: "1" } : undefined,
         });
         this.connected = client;
         // A wrapper this process may not signal (sudo's memory scope) fails a

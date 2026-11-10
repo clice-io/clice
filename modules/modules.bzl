@@ -25,5 +25,4 @@ LIBRARIES = [
     "@libclang//:headers",
     "@lmdb",
     "@simdjson",
-    "@spdlog",
 ]

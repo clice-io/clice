@@ -11,7 +11,7 @@ stderr = '''
 at argv[2]:
   format --log-level loud
                      ^~~~
-  invalid enum value: loud (supported: trace, debug, info, warn, error, off)
+  invalid enum value: loud (supported: trace, debug, info, warn, error, fatal, off)
 '''
 exit = 2
 

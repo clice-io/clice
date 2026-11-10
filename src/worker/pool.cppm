@@ -65,31 +65,17 @@ struct WorkerDeath {
     std::size_t documents = 0;
 };
 
-/// The last lines a worker wrote to stderr, kept for its crash report:
-/// the fatal diagnosis (an LLVM ERROR, an assertion) arrives there seconds
-/// before the exit is observed, far from the report in the log.
-struct StderrTail {
-    constexpr static std::size_t capacity = 8;
-
-    llvm::SmallVector<std::string, capacity> lines;
-
-    /// The crash tag the dying worker wrote after worker::crashed_in_marker;
-    /// kept apart from `lines`, which a sanitizer report would roll over.
+/// What a worker's stderr said of its death, read as the lines come: the
+/// exit is observed independently, often before the last of them.
+struct StderrReport {
+    /// The crash tag the dying worker wrote after worker::crashed_in_marker.
     std::string crashed_in;
 
     /// The worker wrote that an allocation failed.
     bool out_of_memory = false;
 
-    /// The pipe reached EOF. The exit is observed independently of the
-    /// pipe, so the crash report waits for this before reading the lines.
+    /// The pipe reached EOF: the death's report waits for it.
     async::event drained;
-
-    void add(std::string line) {
-        if(lines.size() == capacity) {
-            lines.erase(lines.begin());
-        }
-        lines.push_back(std::move(line));
-    }
 };
 
 struct WorkerPoolOptions {
@@ -102,7 +88,7 @@ struct WorkerPoolOptions {
     /// pool past it, up to max_stateless.
     std::uint32_t stateless_count = 2;
     std::uint32_t stateful_count = 2;
-    std::string log_dir;
+    std::string session_dir;
 
     /// A slot is given up once it crashes more than this many times in a
     /// row. The streak resets after `healthy_uptime` of stable operation,
@@ -274,6 +260,10 @@ public:
         residency.used(path_id);
     }
 
+    /// The workers log into `dir` from now on: those running are told, those
+    /// started later are given it.
+    void log_to(std::string dir);
+
     /// The document closed or moved to another project: its worker drops
     /// its AST, and a compile of it still running leaves none behind.
     void forget_document(std::uint32_t path_id);
@@ -360,7 +350,7 @@ private:
         std::shared_ptr<ipc::BincodePeer> peer;
 
         /// Written by the stderr drain, read by the crash report.
-        std::shared_ptr<StderrTail> stderr_tail = std::make_shared<StderrTail>();
+        std::shared_ptr<StderrReport> stderr_report = std::make_shared<StderrReport>();
 
         /// Display name for logging, e.g. "SL-0" or "SF-1"; its log file is
         /// named after it.
@@ -495,10 +485,18 @@ private:
                                   llvm::StringRef tag,
                                   codec::dyn::Value identity);
 
-    /// What of a crashed worker's log the master's log quotes: the lines the
-    /// dead incarnation wrote from `from` on, its last few kilobytes, up to
-    /// the crash's stack trace.
-    static llvm::StringRef crash_output(llvm::StringRef log, std::size_t from);
+    /// What of a crashed worker's log the master's log quotes, of what the
+    /// dead incarnation wrote from `from` on.
+    struct CrashOutput {
+        /// The last few kilobytes of its lines before the crash.
+        llvm::StringRef lines;
+
+        /// The crash's line and stack trace, their first kilobytes; empty
+        /// when it wrote none, as a killed process cannot.
+        llvm::StringRef trace;
+    };
+
+    static CrashOutput crash_output(llvm::StringRef log, std::size_t from);
 
     static SchedulerTime now() {
         return chrono::steady_clock::now();
@@ -866,10 +864,10 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // Asked to stop before it reached the worker: giving the slot back
         // costs nothing.
         if(request.preempt.cancelled()) {
-            co_await async::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
+            co_await async::fail(ipc::Error{cancelled, "more urgent work came first"});
         }
         if(options.admitted && !options.admitted()) {
-            co_await async::fail(ipc::Error{cancelled, "Request stopped by a crash"});
+            co_await async::fail(ipc::Error{cancelled, "a crash stopped it"});
         }
 
         auto death = stateless_workers[index].death;
@@ -887,7 +885,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // its death record is not done yet, so it is requeued uncharged and crashes
         // its worker once more.
         if(request.preempt.cancelled() && !death->out_of_memory && !death->ignored_cancel) {
-            co_await async::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
+            co_await async::fail(ipc::Error{cancelled, "more urgent work came first"});
         }
         // An error returned by the worker's handler leaves the worker
         // healthy; pass it through untouched.

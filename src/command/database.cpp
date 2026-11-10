@@ -6,6 +6,7 @@ import :command.file_kind;
 import :command.normalize;
 import :command.table;
 import :support.logging;
+import :support.text;
 import :vfs.cygwin;
 import :vfs.file_system;
 import :vfs.path;
@@ -194,10 +195,10 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     auto observed = vfs::read_observed(source.path, json_padding);
     if(!observed) {
         // A database not built yet is no failure: the callers wait for it.
-        if(observed.error() != std::errc::no_such_file_or_directory) {
-            LOG_ERROR("Failed to read compilation database from {}: {}",
-                      path,
-                      observed.error().message());
+        if(observed.error().code != std::errc::no_such_file_or_directory) {
+            LOG_WARN("Cannot read the compilation database {}: {}",
+                     path,
+                     observed.error().code.message());
         }
         return std::nullopt;
     }
@@ -218,9 +219,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
     if(auto error = json_parser.iterate(padded).get(doc)) {
-        LOG_ERROR("Failed to parse compilation database from {}: {}",
-                  path,
-                  simdjson::error_message(error));
+        LOG_WARN("The compilation database {} is not valid JSON: {}",
+                 path,
+                 simdjson::error_message(error));
         return std::nullopt;
     }
 
@@ -230,15 +231,13 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         simdjson::dom::parser checker;
         simdjson::dom::object single;
         if(!checker.parse(json_buf).get(single) && single["file"].is_string()) {
-            LOG_ERROR(
-                "Invalid compilation database format in {}: the root is one entry, not an "
-                "array of them (PowerShell's ConvertTo-Json writes a single entry so); wrap it "
-                "in [ ].",
+            LOG_GUIDANCE(
+                "The compilation database {} is one entry, not an array of them (PowerShell's "
+                "ConvertTo-Json writes a single entry so); wrap it in [ ]",
                 path);
             return std::nullopt;
         }
-        LOG_ERROR("Invalid compilation database format in {}: root element must be an array.",
-                  path);
+        LOG_GUIDANCE("The compilation database {} is not an array of entries", path);
         return std::nullopt;
     }
 
@@ -293,16 +292,17 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     llvm::StringMap<Spelling> working_dirs;
     llvm::DenseMap<SharedKey, CommandID> shared;
     std::uint32_t index = 0;
+    std::uint32_t skipped = 0;
+    auto skip_entry = [&](llvm::StringRef reason) {
+        LOG_WARN("Skipping entry {} of the compilation database {}: {}", index, path, reason);
+        skipped += 1;
+    };
     for(auto element: arr) {
         auto skip = llvm::make_scope_exit([&] { index += 1; });
 
         simdjson::ondemand::object obj;
         if(element.get_object().get(obj)) {
-            LOG_ERROR(
-                "Invalid compilation database in {}. Skipping item at index {}: "
-                "item is not an object.",
-                path,
-                index);
+            skip_entry("it is not an object");
             continue;
         }
 
@@ -310,22 +310,14 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         if(auto text = text_of(obj["directory"], dir_storage)) {
             dir_sv = *text;
         } else {
-            LOG_ERROR(
-                "Invalid compilation database in {}. Skipping item at index {}: "
-                "'directory' key is missing.",
-                path,
-                index);
+            skip_entry("it has no \"directory\"");
             continue;
         }
 
         if(auto text = text_of(obj["file"], file_storage)) {
             file_sv = *text;
         } else {
-            LOG_ERROR(
-                "Invalid compilation database in {}. Skipping item at index {}: "
-                "'file' key is missing.",
-                path,
-                index);
+            skip_entry("it has no \"file\"");
             continue;
         }
 
@@ -356,11 +348,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             if(auto text = text_of(obj["command"], command_storage)) {
                 cmd_sv = *text;
             } else {
-                LOG_ERROR(
-                    "Invalid compilation database in {}. Skipping item at index {}: "
-                    "neither 'arguments' nor 'command' key is present.",
-                    path,
-                    index);
+                skip_entry("it has neither \"arguments\" nor \"command\"");
                 continue;
             }
             command = llvm::StringRef(cmd_sv.data(), cmd_sv.size());
@@ -369,12 +357,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         llvm::StringRef file_ref(file_sv.data(), file_sv.size());
         if(damaged(dir_sv) || damaged(file_ref) ||
            (command ? damaged(*command) : ranges::any_of(args, damaged))) {
-            LOG_ERROR(
-                "Invalid compilation database in {}. Skipping item at index {} ({}): "
-                "it holds bytes that are not UTF-8.",
-                path,
-                index,
-                file_ref);
+            skip_entry(std::format("{} holds bytes that are not UTF-8", file_ref));
             continue;
         }
 
@@ -456,6 +439,14 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                                .source = id,
                                .ordinal = index,
                                .spelling = spelling});
+    }
+
+    if(skipped != 0) {
+        LOG_GUIDANCE("{} of the compilation database {} {} skipped; the log names {}",
+                     counted(skipped, "entry", "entries"),
+                     path,
+                     skipped == 1 ? "is" : "are",
+                     skipped == 1 ? "it" : "them");
     }
 
     if(auto option = per_file_option(command_table, new_entries); !option.empty()) {

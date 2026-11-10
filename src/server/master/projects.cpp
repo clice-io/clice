@@ -270,6 +270,7 @@ void MasterServer::serve_folders() {
         }
     }
     projects = std::move(serving);
+    show_paths_relative();
     for(auto& project: leaving) {
         std::erase(waiting_projects, project.get());
         removed_projects.push_back(project);

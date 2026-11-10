@@ -13,16 +13,16 @@ ZEST_CASE(BoundedRetention) {
     async::event_loop loop;
     MasterServer server(loop, "");
 
-    // Keep the guidance gate open but silence the console sink: the test
-    // fires well over a hundred reports.
-    auto saved_level = spdlog::get_level();
-    spdlog::set_level(spdlog::level::off);
+    // Keep the guidance gate open but silence stderr: the test fires well
+    // over a hundred reports.
+    auto saved_level = logging::options.stderr_level;
+    logging::options.stderr_level = logging::Level::Off;
 
     for(int i = 0; i < 130; i++) {
         LOG_GUIDANCE("notify retention probe {}", i);
     }
 
-    spdlog::set_level(saved_level);
+    logging::options.stderr_level = saved_level;
 
     ZEXPECT(server.notify_seq == 130u);
     ZASSERT(server.notify_log.size() == 128u);

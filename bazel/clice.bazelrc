@@ -16,10 +16,9 @@ common --per_file_copt=.*/share/libc[+][+]/v1/std.*[.]cppm@-fno-rtti,-fno-except
 common:macos --macos_minimum_os=15.0
 
 # clice builds without exceptions or RTTI, and its libraries are configured
-# to match; spdlog formats with std::format.
+# to match.
 common --@kotatsu//bazel:exceptions=false --@kotatsu//bazel:rtti=false
 common --@simdjson//:exceptions=false
-common --@spdlog//:std_format=true --@spdlog//:exceptions=false
 # The allocator of the Windows and macOS executables (src/mimalloc.cc)
 # leaves its memory to the process exit. On macOS mimalloc takes malloc over
 # itself, as its malloc zone also serves the system libraries; under ASan

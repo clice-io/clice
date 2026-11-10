@@ -6,9 +6,7 @@ import { test } from "@clice/tools/testing";
 // the document it was asked in. The rendering resolves the link, so the
 // URIs are checked as the server sent them.
 
-const POSIX = { except: { win32: "symlinks need privileges on Windows" } };
-
-test("action from the second name", POSIX, async (t) => {
+test("action from the second name", async (t) => {
     t.disk.write("real/main.cpp", t.disk.read("main.cpp"));
     t.disk.rm("main.cpp");
     const s = await t.start();

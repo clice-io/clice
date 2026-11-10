@@ -9,6 +9,7 @@ import :project.saved;
 import :settings.settings;
 import :support.json;
 import :support.logging;
+import :support.text;
 import :syntax.dependency_graph;
 import :vfs.cache_store;
 import :vfs.file_table;
@@ -82,7 +83,9 @@ void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
     }
     for(auto id: sources) {
         if(auto loaded = project.cdb.load_source(id)) {
-            LOG_INFO("Loaded CDB from {} with {} entries", project.cdb.source_path(id), *loaded);
+            LOG_INFO("Loaded the compilation database {} ({})",
+                     project.cdb.source_path(id),
+                     counted(*loaded, "entry", "entries"));
             entries += *loaded;
         } else if(!fs::exists(project.cdb.source_path(id))) {
             LOG_WARN("Compilation database {} does not exist yet", project.cdb.source_path(id));
@@ -118,21 +121,6 @@ void load_members(Project& project,
     auto scan = project.rebuild_dependency_graph().scan;
     opened.members = project.members();
 
-    auto found = scan.includes_resolved + scan.unresolved.size();
-    double accuracy =
-        found > 0 ? 100.0 * static_cast<double>(scan.includes_resolved) / found : 100.0;
-    LOG_INFO(
-        "Dependency scan: {}ms, {} files ({} source + {} header, {} reused), "
-        "{}/{} includes resolved ({:.1f}%), {} waves",
-        scan.elapsed_ms,
-        scan.total_files,
-        scan.source_files,
-        scan.total_files - scan.source_files,
-        scan.scan_cache_hits,
-        scan.includes_resolved,
-        found,
-        accuracy,
-        scan.waves);
     LOG_PERF("startup",
              "phase=dep_scan files={} edges={} elapsed_ms={}",
              scan.total_files,
@@ -254,16 +242,20 @@ std::string Project::damaged_index_error() const {
         index::database_directory(*store, database_key));
 }
 
+void Project::use_configuration(llvm::StringRef configuration) {
+    rules = Rules(settings, root, configuration);
+    resolved_databases = rules.resolved_databases();
+    database_key = rules.database_key(resolved_databases);
+}
+
 Project::Opened Project::open(const OpenOptions& options) {
     using Load = OpenOptions::Load;
     using Cache = OpenOptions::Cache;
     Opened opened;
     index.project_root = root;
     commands.set_project_root(root);
-    rules = Rules(settings, root, options.configuration);
+    use_configuration(options.configuration);
     freshness.options = options.freshness;
-    resolved_databases = rules.resolved_databases();
-    database_key = rules.database_key(resolved_databases);
     if(database_key.configuration != options.configuration) {
         LOG_INFO("The databases of configuration {} resolve to those of {}; sharing its index",
                  options.configuration,
@@ -280,8 +272,8 @@ Project::Opened Project::open(const OpenOptions& options) {
         saved_members.read(*database);
     }
     auto nearby = saved_members.databases(index);
-    if(!options.file.empty()) {
-        auto above = databases_above(CanonicalRef(options.file).parent(), root);
+    for(auto& file: options.files) {
+        auto above = databases_above(CanonicalRef(file).parent(), root);
         nearby.append(above.begin(), above.end());
     }
     switch(options.load) {

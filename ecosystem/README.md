@@ -248,7 +248,7 @@ directories, the fixed seed picking the same ones every round.
 Every run records the latencies the client observes, the memory of the
 server's process tree (its peak, at the end, and at each stage of a session,
 each process by role: master, each worker, clangd), its CPU seconds, and for
-clice the server's own breakdown from its `[perf:*]` log lines. Answers' sizes
+clice the server's own breakdown from its `[perf:*]` log lines, which it writes when `CLICE_PERF` is set, as the job sets it. Answers' sizes
 are recorded beside their times (items, locations, tokens), so a time is read
 beside the work it bought. A perf job **fails** only when a clice run fails
 (a crash, its workers' too, which its logs tell; a hang; an error answer; an

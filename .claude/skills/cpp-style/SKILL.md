@@ -62,11 +62,11 @@ defending against ghosts.
   (`ranges::sort`, `protocol::Range`, `async::task`), never `std::ranges::`
   or `kotatsu::ipc::protocol::`, and no file declares them again.
 - No module carries a macro: every compilation force-includes
-  `support/macros.h`, the libraries' (`modules/macros.h`) and clice's own
-  (`*.macros.h`). A unit opens a global module fragment (`module;`) only
-  for a header no module carries, a platform header or `version.h`.
-- `.h` is left for what a module cannot carry — macros (`*.macros.h`) and
-  platform headers — with `#pragma once`, never include guards.
+  `support/macros.h`, which holds clice's own after including the
+  libraries' (`modules/macros.h`). A unit opens a global module fragment
+  (`module;`) only for a header no module carries, a platform header.
+- `.h` is left for what a module cannot carry — macros (`support/macros.h`)
+  and platform headers — with `#pragma once`, never include guards.
 - File names are `snake_case`.
 - Every file sees the names of all it imports: a file-local helper can
   clash with a name of another partition or lose overload resolution and
@@ -145,7 +145,8 @@ defending against ghosts.
   `LOG_ERROR` macros (`std::format` syntax, source location captured
   automatically); `LOG_FATAL` logs and aborts, `LOG_ANOMALY` and
   `LOG_GUIDANCE` are the bug and user-setup channels (all in
-  `support/logging.macros.h`). Never call spdlog directly, never print
+  `support/macros.h`). Never write to the outputs of
+  `support/logging` directly, never print
   diagnostics to stdout/stderr.
 
 ## Naming Conventions

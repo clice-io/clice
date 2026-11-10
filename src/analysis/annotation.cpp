@@ -25,8 +25,7 @@ double Annotations::value(llvm::StringRef name, llvm::StringRef path, double fal
 std::expected<Annotation, std::string> read_annotation(llvm::StringRef path) {
     auto text = vfs::read_text(path);
     if(!text) {
-        return std::unexpected(
-            std::format("cannot read {}: {}", std::string_view(path), text.error().message()));
+        return std::unexpected(std::format("{}", text.error()));
     }
 
     struct File {

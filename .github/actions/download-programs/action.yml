@@ -1,5 +1,5 @@
 name: "Download programs"
-description: "pixi and a leg's programs, from its build-<target>-<type> artifact, in build/<type>/bin"
+description: "pixi and a platform's programs, from its build-<target>-<type> artifact, in build/<type>/bin"
 
 inputs:
   target:

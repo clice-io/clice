@@ -346,11 +346,16 @@ public:
     void configure(const std::optional<codec::dyn::Value>& init_options,
                    llvm::ArrayRef<CanonicalPath> taken_cache_dirs);
 
-    /// Open the project (Project::open), queue what its index lacks, load
-    /// the context choices it saved, and start its store-lifetime services;
-    /// then watch its databases and files. Documents adopted before have
-    /// it decided now whether they compile. A broken project starts nothing.
+    /// Open the project (open()), unless it has nothing to open for: a
+    /// folder with no database to index and no open document keeps nothing
+    /// on disk — no cache directory, no index lock, no log — until a file
+    /// below it opens or a database appears (look_for_database).
     void start();
+
+    /// A project start() left waiting starts once a database appears in
+    /// its folder, looked for as often as the folder is polled, or now when
+    /// `force`; whether it did.
+    bool look_for_database(bool force);
 
     /// Quiesce the compiles, then the project's own shutdown: the background
     /// index stops, the final state is persisted and the store closes.
@@ -706,7 +711,6 @@ public:
     async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         ast_request(const Ticket& ticket,
                     feature::RequestKind kind,
-                    llvm::StringRef label,
                     Params params,
                     async::cancellation_token token);
 
@@ -719,7 +723,6 @@ public:
     async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
         stateless_request(const Ticket& ticket,
                           feature::RequestKind kind,
-                          llvm::StringRef label,
                           std::uint32_t offset,
                           Params params,
                           async::cancellation_token token);
@@ -738,11 +741,7 @@ public:
     /// the document says why, and an error would only show as a client
     /// popup.
     template <typename R>
-    R finish(const Ticket& ticket,
-             feature::RequestKind kind,
-             llvm::StringRef label,
-             R result,
-             bool snapshot = false);
+    R finish(const Ticket& ticket, feature::RequestKind kind, R result, bool snapshot = false);
 
     /// Set while compiles may run and requests resolve commands. A project
     /// made while its root's previous one still shuts down
@@ -772,7 +771,13 @@ private:
     /// (readers holding the old shared_ptr are unaffected).
     void update_latest(Fid path_id, llvm::function_ref<void(DocumentCompile&)> edit);
 
-    /// start() opened the project from disk and watches its build: never
+    /// Open the project (Project::open), queue what its index lacks, load
+    /// the context choices it saved, and start its store-lifetime services;
+    /// then watch its databases and files. Documents adopted before have
+    /// it decided now whether they compile. A broken project starts nothing.
+    void open();
+
+    /// open() opened the project from disk and watches its build: never
     /// the rootless project, nor a broken one, nor before it starts.
     bool watches_build() const {
         return started && !broken() && !project.root.empty();
@@ -921,9 +926,16 @@ private:
     /// The open documents that belong here.
     llvm::DenseMap<Fid, ServedDocument> documents;
 
-    /// start() ran: documents adopted from now on have it decided at once
+    /// open() ran: documents adopted from now on have it decided at once
     /// whether they compile.
     bool started = false;
+
+    /// start() found nothing to open the project for: no database and no
+    /// document.
+    bool waiting = false;
+
+    /// When look_for_database looks next.
+    chrono::steady_clock::time_point next_look;
 
     /// The build configuration the project activates (LoadedSettings).
     std::string configuration;
@@ -960,17 +972,13 @@ private:
 };
 
 template <typename R>
-R ServedProject::finish(const Ticket& ticket,
-                        feature::RequestKind kind,
-                        llvm::StringRef label,
-                        R result,
-                        bool snapshot) {
+R ServedProject::finish(const Ticket& ticket, feature::RequestKind kind, R result, bool snapshot) {
     auto& session = *ticket.session;
     if(!result.has_value()) {
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
                         "{} failed for {}: {}",
-                        label,
+                        feature::request_name(kind),
                         project.file_table.resolve(session.path_id),
                         result.error().message);
             return result;
@@ -986,7 +994,7 @@ R ServedProject::finish(const Ticket& ticket,
     }
     if(!result.has_value()) {
         LOG_INFO("{} for {} answers empty: {}",
-                 label,
+                 feature::request_name(kind),
                  project.file_table.resolve(session.path_id),
                  result.error().message);
         return empty_value<typename R::value_type>();
@@ -1045,7 +1053,6 @@ template <typename Params>
 async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     ServedProject::ast_request(const Ticket& ticket,
                                feature::RequestKind kind,
-                               llvm::StringRef label,
                                Params params,
                                async::cancellation_token token) {
     using Result = typename protocol::RequestTraits<Params>::Result;
@@ -1090,11 +1097,11 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     if(result.has_value() && ticket.fresh()) {
         keep_answer(*compile->kept, params, *result);
     }
-    result = finish(ticket, kind, label, std::move(result));
+    result = finish(ticket, kind, std::move(result));
     if(result.has_value()) {
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
-                 label,
+                 feature::request_name(kind),
                  params.path,
                  wait_ms,
                  timer.precise_ms());
@@ -1129,7 +1136,6 @@ template <typename Params>
 async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     ServedProject::stateless_request(const Ticket& ticket,
                                      feature::RequestKind kind,
-                                     llvm::StringRef label,
                                      std::uint32_t offset,
                                      Params params,
                                      async::cancellation_token token) {
@@ -1140,7 +1146,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     // This build parses the same content as the compile: a compile or
     // preamble that crashed stops it as well as its own crashes do.
     if(!admits(session, kind, nullptr, true)) {
-        LOG_DEBUG("{}: {} is stopped by a crash", label, path);
+        LOG_DEBUG("{}: {} is stopped by a crash", feature::request_name(kind), path);
         co_return empty_value<Result>();
     }
     Session::Dispatch dispatch(session, kind);
@@ -1206,17 +1212,19 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     bool refused = false;
     auto result = co_await send_stateless(ticket, kind, params, dispatch, true, token, refused);
     if(refused) {
-        LOG_DEBUG("{}: {} was stopped by a crash before it reached a worker", label, path);
+        LOG_DEBUG("{}: {} was stopped by a crash before it reached a worker",
+                  feature::request_name(kind),
+                  path);
         if(!ticket.fresh() && !snapshot()) {
             co_await async::fail(content_modified());
         }
         co_return empty_value<Result>();
     }
-    result = finish(ticket, kind, label, std::move(result), snapshot());
+    result = finish(ticket, kind, std::move(result), snapshot());
     if(result.has_value()) {
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
-                 label,
+                 feature::request_name(kind),
                  path,
                  wait_ms,
                  timer.precise_ms());

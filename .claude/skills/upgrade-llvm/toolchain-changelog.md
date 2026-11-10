@@ -46,13 +46,13 @@ files.
   `--num-threads=1` in `xclang_debug_symbols`' `gsymutil_args`
   (`bazel/defs.bzl`). Check: build `//:gsym` twice without the disk cache
   and compare.
-- **Fewer Windows unit tests than the last green main run's Windows legs, or
+- **Fewer Windows unit tests than the last green main run's Windows jobs, or
   `clice --help` aborting with "The <name> subcommand is not registered".**
   lld's `--gc-sections` drops a COMDAT nothing references, initializer and
   all, and an archive member nothing references is never linked. zest's
   registrations are ordinary variables since kotatsu 0.1.0.226, the
   driver's too, and the `driver` library is `alwayslink`, so both programs
-  link with `gc_sections` on every OS. Check: the Windows legs'
+  link with `gc_sections` on every OS. Check: the Windows jobs'
   `N tests from M test suites` line matches the last green main run's
   (Linux runs more: some tests are compiled out on Windows);
   `clice --help` lists every subcommand.
@@ -89,7 +89,7 @@ files.
   static, hermetic libc++ (hidden visibility, libc++abi merged in). Never
   pass it. The SDK's `libc++.1.dylib` still arrives through system frameworks
   (libuv → CoreFoundation → libobjc); two libc++ in one process is expected.
-  Check: `scripts/check_artifact_deps.py` (CI runs it on every packaged leg).
+  Check: `scripts/check_artifact_deps.py` (CI runs it on every platform that packages).
 
 ## Windows
 

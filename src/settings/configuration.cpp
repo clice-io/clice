@@ -3,6 +3,7 @@ module clice;
 import :settings.configuration;
 import :settings.settings;
 import :support.logging;
+import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -27,15 +28,15 @@ std::string read_selected_configuration(llvm::StringRef cache_dir) {
         return {};
     }
     auto path = state_path(cache_dir);
-    std::string content;
-    if(auto error = fs::read_file(content, path)) {
-        if(error != std::errc::no_such_file_or_directory) {
-            LOG_WARN("Cannot read {}: {}", path, error.message());
+    auto content = vfs::read_text(path);
+    if(!content) {
+        if(content.error().code != std::errc::no_such_file_or_directory) {
+            LOG_WARN("{}", content.error());
         }
         return {};
     }
     PersistedState state;
-    if(auto parsed = json::from_string(content, state); !parsed) {
+    if(auto parsed = json::from_string(*content, state); !parsed) {
         LOG_WARN("Ignoring malformed {}: {}", path, parsed.error().message);
         return {};
     }

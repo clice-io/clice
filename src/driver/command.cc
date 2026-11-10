@@ -161,7 +161,7 @@ struct DatabaseText {
 std::expected<DatabaseText, std::string> read_database(const Spelling& path) {
     auto observed = vfs::read_observed(path);
     if(!observed) {
-        return std::unexpected(std::format("cannot read {}: {}", path, observed.error().message()));
+        return std::unexpected(std::format("{}", observed.error()));
     }
     DatabaseText text{.hash = observed->obs.hash};
     auto repaired = repaired_database_text(observed->text);
@@ -266,7 +266,7 @@ int run(Command& opts) {
     auto opened =
         open_at(root,
                 std::move(loaded),
-                {.load = Project::OpenOptions::Load::Databases, .file = CanonicalPath(path)});
+                {.load = Project::OpenOptions::Load::Databases, .files = {CanonicalPath(path)}});
     auto& project = opened->project;
     auto& files = project.file_table;
     auto file = files.intern(path);
@@ -420,7 +420,7 @@ int convert_database(Project& project, const Spelling& path) {
         return 1;
     }
     if(!cdb.load_source(source)) {
-        LOG_ERROR("{} cannot be loaded; the error above says why", database);
+        LOG_ERROR("{} cannot be loaded; the warning above says why", database);
         return 1;
     }
     if(!written->loaded_by(cdb, source)) {
@@ -475,7 +475,8 @@ int convert_database(Project& project, const Spelling& path) {
     }
     print_json(converted);
     if(unconverted != 0) {
-        LOG_ERROR("{} of the entries stay driver commands: the errors above say why", unconverted);
+        LOG_ERROR("{} of the entries stay driver commands: the warnings above say why",
+                  unconverted);
         return 1;
     }
     return 0;

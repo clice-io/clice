@@ -64,6 +64,12 @@ Each workspace folder the editor opens is a project of its own, with its own `cl
 
 `initializationOptions` apply to every project, and a cache directory serves one project: a directory outside the project records the project that first used it, and another project, in this server or a later `clice index` run alike, falls back to the one its `clice.toml` names, then to `.clice` in its folder, and runs without a cache when those are taken too. An absolute `cache_dir` in `initializationOptions` therefore goes to the first folder only. The worker counts are the largest any folder asks for at startup. Listing or switching configurations acts on the project of the file the request names — in VS Code, the active editor's — else on the first folder.
 
+## Logs
+
+Each run of `clice serve`, `clice index` and `clice lint` logs into a directory of its own under `logging_dir` (`.clice/logs` in the project by default), named for when it started and its process id: a server's `master.log`, or a command's `index.log` or `lint.log`, beside one log per worker. A server starts its log with the first project it opens — a folder without a compilation database waits until a file of it is opened or a database appears in it — and every other project it opens links to it from its own logging directory. A run removes all but the 20 latest sessions, links among them, never one whose process still runs. A log file past 64 MiB moves to `<name>.1.log`, replacing the one there, and the new file starts by saying so.
+
+The logs keep `info` and above whatever the log level; `--log-level` sets what reaches stderr. An editor shows the server's, from `info` (the Neovim configuration asks for `warn`); a command prints warnings and errors as `warning: …` and `error: …`. Paths in a project are written relative to its root; a server serving several projects writes them relative to the directory holding them all, the folder's name first; a worker's own log writes them in full. To report a problem, attach the session directory: `master.log` says what the server did and how long it took, and a crash's stack trace is in the log of the process that crashed; `master.log` quotes a worker's, with the last lines the worker logged.
+
 ## Variable Substitution
 
 The following variable is supported in string values:
@@ -110,7 +116,7 @@ Directory for the unified on-disk cache (PCHs, PCMs and the index). Empty defaul
 | ------------- | -------- | ------- |
 | `logging_dir` | `string` | `""`    |
 
-Directory for log files; empty derives `${cache_dir}/logs`. Each server session logs into its own timestamped subdirectory.
+Directory for log files; empty derives `${cache_dir}/logs`. Each server, `clice index` and `clice lint` run logs into a subdirectory of its own; the 20 latest are kept.
 
 </div>
 

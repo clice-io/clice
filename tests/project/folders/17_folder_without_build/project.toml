@@ -1,0 +1,2 @@
+[databases]
+alpha = ["alpha/main.cpp"]

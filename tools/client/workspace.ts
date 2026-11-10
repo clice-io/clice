@@ -91,8 +91,8 @@ export class Workspace {
     }
 
     /// The text of every log file named `name` ("master.log", "SF-0.log")
-    /// the servers wrote under .clice/logs, one session directory each;
-    /// empty when none was written.
+    /// the servers wrote (logFiles), one session directory each; empty when
+    /// none was written.
     log(name: string): string {
         return logFiles(this.root)
             .filter((file) => path.basename(file) === name)
@@ -100,13 +100,23 @@ export class Workspace {
             .join("");
     }
 
-    /// The workers that crashed on requests whose tag starts with `tag`
-    /// ("compile /abs/path"), counted from the crash lines the master logs
-    /// with the worker's name in front (the crash report repeats them bare).
-    workerCrashes(tag: string): number {
-        return (
-            this.log("master.log").split(`] clice worker crashed in: clice/worker/${tag}`).length -
-            1
-        );
+    /// The workers that crashed on `request` for `file`, counted from the
+    /// crash lines the master logs with the worker's name in front.
+    workerCrashes(request: string, file: string): number {
+        const marker = `] clice worker crashed in: clice/worker/${request} `;
+        return this.log("master.log")
+            .split(/\r?\n/)
+            .filter((line) => {
+                const at = line.indexOf(marker);
+                return at >= 0 && namesFile(file, line.slice(at + marker.length));
+            }).length;
     }
+}
+
+/// Whether a path a log line writes names `file`, a path in the workspace:
+/// the log writes it relative to the project root, which may be a folder
+/// below the workspace's.
+export function namesFile(file: string, logged: string): boolean {
+    const written = logged.replaceAll("\\", "/");
+    return file === written || file.endsWith(`/${written}`);
 }

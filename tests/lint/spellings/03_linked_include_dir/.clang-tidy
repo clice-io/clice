@@ -1,2 +1,2 @@
 Checks: "-*,bugprone-integer-division"
-HeaderFilterRegex: "inc/"
+HeaderFilterRegex: "inc[/\\\\]"

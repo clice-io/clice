@@ -49,14 +49,14 @@ jobs:
         timeout-minutes: 15
         run: pixi run -e editor nvim-e2e RelWithDebInfo
 
-      # macOS runners have no headless X server, so run without xvfb there.
+      # Linux runners have no display: xvfb gives VS Code one.
       - name: VSCode E2E tests (Linux)
         if: runner.os == 'Linux'
         timeout-minutes: 20
         run: xvfb-run -a pixi run -e editor vscode-e2e RelWithDebInfo
 
-      - name: VSCode E2E tests (macOS)
-        if: runner.os == 'macOS'
+      - name: VSCode E2E tests
+        if: runner.os != 'Linux'
         timeout-minutes: 20
         run: pixi run -e editor vscode-e2e RelWithDebInfo
 

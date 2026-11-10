@@ -1,0 +1,2 @@
+# No database: the folder waits for a file of it to be opened.
+databases = {}

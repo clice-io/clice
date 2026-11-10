@@ -1,8 +1,9 @@
 import * as assert from "assert";
 import * as cp from "child_process";
 import * as fs from "fs";
-import * as os from "os";
+import { once } from "events";
 import * as path from "path";
+import { PassThrough } from "stream";
 import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
@@ -17,6 +18,7 @@ import type {
 };
 
 import { inactiveSpans } from "../feature/inactive";
+import { serverOutput, TraceChannel } from "../log";
 import { exited, retire } from "../process";
 import { resolveExecutable, serverEnvironment } from "../setting";
 
@@ -181,67 +183,70 @@ suite("server environment setting", function () {
     });
 });
 
-// Symlinks need a privilege Windows runners lack.
-if (process.platform !== "win32") {
-    suite("second names", function () {
-        test("an editor on a second name moves to the open document", async function () {
-            this.timeout(90 * 1000);
-            const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-alias-"));
-            fs.mkdirSync(path.join(root, "real"));
-            fs.writeFileSync(path.join(root, "real", "a.cpp"), "int a() { return 0; }\n");
-            fs.symlinkSync(path.join(root, "real"), path.join(root, "link"));
-            const secondUri = vscode.Uri.file(path.join(root, "link", "a.cpp"));
-            // Activated first, the extension hears of the second name's editor
-            // first; then the host stays busy while the selection the open
-            // asked for arrives, as a loaded CI runner's does.
-            await vscode.extensions.getExtension("clice-io.clice")?.activate();
-            const busy = vscode.window.onDidChangeActiveTextEditor((editor) => {
-                if (editor?.document.uri.toString() === secondUri.toString()) {
-                    const until = Date.now() + 500;
-                    while (Date.now() < until) {
-                        // Busy.
-                    }
-                }
-            });
-            try {
-                const first = await vscode.workspace.openTextDocument(
-                    vscode.Uri.file(path.join(root, "real", "a.cpp")),
-                );
-                await vscode.window.showTextDocument(first);
-                const second = await vscode.workspace.openTextDocument(secondUri);
-                await vscode.window.showTextDocument(second, {
-                    selection: new vscode.Range(0, 4, 0, 5),
-                    preview: false,
-                });
-                const tabs = () =>
-                    vscode.window.tabGroups.all
-                        .flatMap((group) => group.tabs)
-                        .filter((tab) => tab.input instanceof vscode.TabInputText)
-                        .map((tab) => (tab.input as vscode.TabInputText).uri.toString());
-                // The redirect shows the first document, then closes the
-                // second name's tab.
-                await until<unknown>(
-                    [
-                        vscode.window.tabGroups.onDidChangeTabs,
-                        vscode.window.onDidChangeActiveTextEditor,
-                    ],
-                    () =>
-                        !tabs().includes(second.uri.toString()) &&
-                        vscode.window.activeTextEditor?.document === first,
-                    "redirect to the open document",
-                );
-                const active = vscode.window.activeTextEditor;
-                assert.ok(active);
-                assert.deepStrictEqual(active.selection.start, new vscode.Position(0, 4));
-            } finally {
-                busy.dispose();
-                await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-                fs.rmSync(root, { recursive: true, force: true });
-            }
-        });
-    });
+/// A new folder outside the workspace, which .vscode-test.mjs removes once
+/// VS Code has exited.
+function scratchFolder(prefix: string): string {
+    const scratch = process.env.CLICE_E2E_SCRATCH;
+    assert.ok(scratch, "CLICE_E2E_SCRATCH names the folder .vscode-test.mjs made");
+    return fs.mkdtempSync(path.join(scratch, prefix));
 }
 
+suite("second names", function () {
+    test("an editor on a second name moves to the open document", async function () {
+        this.timeout(90 * 1000);
+        const root = scratchFolder("clice-alias-");
+        fs.mkdirSync(path.join(root, "real"));
+        fs.writeFileSync(path.join(root, "real", "a.cpp"), "int a() { return 0; }\n");
+        fs.symlinkSync(path.join(root, "real"), path.join(root, "link"));
+        const secondUri = vscode.Uri.file(path.join(root, "link", "a.cpp"));
+        // Activated first, the extension hears of the second name's editor
+        // first; then the host stays busy while the selection the open
+        // asked for arrives, as a loaded CI runner's does.
+        await vscode.extensions.getExtension("clice-io.clice")?.activate();
+        const busy = vscode.window.onDidChangeActiveTextEditor((editor) => {
+            if (editor?.document.uri.toString() === secondUri.toString()) {
+                const until = Date.now() + 500;
+                while (Date.now() < until) {
+                    // Busy.
+                }
+            }
+        });
+        try {
+            const first = await vscode.workspace.openTextDocument(
+                vscode.Uri.file(path.join(root, "real", "a.cpp")),
+            );
+            await vscode.window.showTextDocument(first);
+            const second = await vscode.workspace.openTextDocument(secondUri);
+            await vscode.window.showTextDocument(second, {
+                selection: new vscode.Range(0, 4, 0, 5),
+                preview: false,
+            });
+            const tabs = () =>
+                vscode.window.tabGroups.all
+                    .flatMap((group) => group.tabs)
+                    .filter((tab) => tab.input instanceof vscode.TabInputText)
+                    .map((tab) => (tab.input as vscode.TabInputText).uri.toString());
+            // The redirect shows the first document, then closes the
+            // second name's tab.
+            await until<unknown>(
+                [
+                    vscode.window.tabGroups.onDidChangeTabs,
+                    vscode.window.onDidChangeActiveTextEditor,
+                ],
+                () =>
+                    !tabs().includes(second.uri.toString()) &&
+                    vscode.window.activeTextEditor?.document === first,
+                "redirect to the open document",
+            );
+            const active = vscode.window.activeTextEditor;
+            assert.ok(active);
+            assert.deepStrictEqual(active.selection.start, new vscode.Position(0, 4));
+        } finally {
+            busy.dispose();
+            await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+        }
+    });
+});
 // A previous server must be gone before the next one starts: it holds the
 // workspace's index lock until it has saved.
 suite("server retirement", function () {
@@ -269,6 +274,56 @@ suite("server retirement", function () {
         });
         assert.ok(exited(server));
         assert.strictEqual(lines.length, process.platform === "win32" ? 1 : 2);
+    });
+});
+
+suite("server output", function () {
+    test("each line at its level, a stack trace with the line before", async function () {
+        const shown: [string, string][] = [];
+        const record = (level: string) => (text: string) => shown.push([level, text]);
+        const channel = {
+            trace: record("trace"),
+            debug: record("debug"),
+            info: record("info"),
+            warn: record("warn"),
+            error: record("error"),
+        } as unknown as vscode.LogOutputChannel;
+        const input = new PassThrough();
+        serverOutput.stderr(input, channel);
+        input.end(
+            [
+                "[2026-11-10 03:28:05.123] [info] [compile.cpp:555] Compiled main.cpp",
+                "[2026-11-10 03:28:05.124] [warning] [thread 2] [pool.cpp:39] slow",
+                "[2026-11-10 03:28:05.125] [fatal] clice crashed",
+                "#0 0x1234 in main",
+                "",
+            ].join("\n"),
+        );
+        await once(input, "end");
+        assert.deepStrictEqual(shown, [
+            ["info", "[compile.cpp:555] Compiled main.cpp"],
+            ["warn", "[thread 2] [pool.cpp:39] slow"],
+            ["error", "clice crashed"],
+            ["error", "#0 0x1234 in main"],
+        ]);
+    });
+});
+
+suite("trace channel", function () {
+    test("traces as clice.trace.server says", async function () {
+        const settings = vscode.workspace.getConfiguration("clice");
+        const channel = new TraceChannel();
+        try {
+            assert.strictEqual(channel.logLevel, vscode.LogLevel.Off);
+            const changed = new Promise<vscode.LogLevel>((resolve) => {
+                channel.onDidChangeLogLevel(resolve);
+            });
+            await settings.update("trace.server", "verbose", vscode.ConfigurationTarget.Global);
+            assert.strictEqual(await changed, vscode.LogLevel.Trace);
+        } finally {
+            await settings.update("trace.server", undefined, vscode.ConfigurationTarget.Global);
+            channel.dispose();
+        }
     });
 });
 
@@ -307,18 +362,6 @@ suite("clice E2E", function () {
             await vscode.workspace
                 .getConfiguration("clice")
                 .update("executable", path.resolve(executable), vscode.ConfigurationTarget.Global);
-        }
-    });
-
-    suiteTeardown(function () {
-        if (bundled) {
-            const extension = vscode.extensions.getExtension("clice-io.clice");
-            if (extension) {
-                fs.rmSync(path.join(extension.extensionPath, "clice"), {
-                    recursive: true,
-                    force: true,
-                });
-            }
         }
     });
 
@@ -512,7 +555,14 @@ suite("clice E2E", function () {
         assert.strictEqual(shown?.uri.scheme, "clice-command");
         const text = shown.getText();
         assert.ok(text.startsWith(`# The command clice compiles ${scenario.file} with:`), text);
-        assert.ok(text.includes(document.uri.fsPath), "the command names the file");
+        // As the database spells it, which on Windows may write the drive
+        // and the separators otherwise than VS Code does.
+        const spelled = (file: string) =>
+            process.platform === "win32" ? file.replaceAll("\\", "/").toLowerCase() : file;
+        assert.ok(
+            spelled(text).includes(spelled(document.uri.fsPath)),
+            "the command names the file",
+        );
         await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
     });
 
@@ -616,7 +666,7 @@ suite("clice E2E", function () {
                 : [];
         assert.deepStrictEqual([...commands].sort(), [...advertised].sort());
 
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-refactor-"));
+        const root = scratchFolder("clice-refactor-");
         const file = path.join(root, "paint.cpp");
         fs.writeFileSync(
             file,
@@ -644,7 +694,6 @@ suite("clice E2E", function () {
             );
         } finally {
             await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
-            fs.rmSync(root, { recursive: true, force: true });
         }
     });
 
@@ -688,7 +737,7 @@ suite("clice E2E", function () {
             this.skip();
         }
 
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-problems-"));
+        const root = scratchFolder("clice-problems-");
         const uri = vscode.Uri.file(path.join(root, "broken.cpp"));
         fs.writeFileSync(uri.fsPath, "int value = missing;\n");
         const problems = () => vscode.languages.getDiagnostics(uri).length;
@@ -708,7 +757,6 @@ suite("clice E2E", function () {
             await listed(() => problems() > 0, "problems back with the tab");
         } finally {
             await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-            fs.rmSync(root, { recursive: true, force: true });
         }
     });
 });

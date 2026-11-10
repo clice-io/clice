@@ -266,7 +266,6 @@ async::task<std::vector<index::DocumentLink>, ipc::Error>
     ServedProject::directive_links(const Ticket& ticket, async::cancellation_token token) {
     auto result = co_await ast_request(ticket,
                                        feature::RequestKind::DocumentLink,
-                                       "DocumentLink",
                                        worker::DocumentLinkParams{},
                                        std::move(token))
                       .or_fail();
@@ -307,7 +306,7 @@ async::task<std::optional<worker::FormatResult>, ipc::Error>
     auto kind = feature::RequestKind::Format;
 
     if(!admits(session, kind, nullptr, false)) {
-        LOG_DEBUG("Format: {} is stopped by a crash", path);
+        LOG_DEBUG("{}: {} is stopped by a crash", feature::request_name(kind), path);
         co_return std::nullopt;
     }
     Session::Dispatch dispatch(session, kind);
@@ -323,17 +322,23 @@ async::task<std::optional<worker::FormatResult>, ipc::Error>
     bool refused = false;
     auto result = co_await send_stateless(ticket, kind, params, dispatch, false, token, refused);
     if(refused) {
-        LOG_DEBUG("Format: {} was stopped by a crash before it reached a worker", path);
+        LOG_DEBUG("{}: {} was stopped by a crash before it reached a worker",
+                  feature::request_name(kind),
+                  path);
         if(!ticket.fresh()) {
             co_await async::fail(content_modified());
         }
         co_return std::nullopt;
     }
-    result = finish(ticket, kind, "Format", std::move(result));
+    result = finish(ticket, kind, std::move(result));
     if(!result.has_value()) {
         co_return kotatsu::outcome_error(std::move(result.error()));
     }
-    LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.precise_ms());
+    LOG_PERF("request",
+             "kind={} file={} total_ms={:.2f}",
+             feature::request_name(kind),
+             path,
+             timer.precise_ms());
     co_return std::move(*result);
 }
 

@@ -20,8 +20,9 @@ struct Worker {
     KANNOTATE(&worker_name, description = "Name the worker logs under")
     std::string worker_name = "worker";
 
-    KANNOTATE(&log_dir, description = "Directory of the worker's log file (default: no log file)")
-    std::string log_dir;
+    KANNOTATE(&session_dir,
+              description = "Session directory the worker logs into (default: no log file)")
+    std::string session_dir;
 };
 
 /// Not through dispatch: a worker logs as the pool relays its stderr.
@@ -42,14 +43,15 @@ int run_worker(Worker& worker) {
     }
     // The pool relays each line of a worker's stderr as a warning: one
     // with no log file to write keeps its lower levels out of it.
-    logging::options.stderr_level = logging::Level::warn;
-    logging::options.stderr_crash_trace = false;
-    logging::stderr_logger(worker.worker_name);
-    if(!worker.log_dir.empty()) {
-        // File only: worker stderr is reserved for crash/unexpected output,
-        // which the master relays into its own log (see logging taxonomy).
-        logging::file_logger(worker.worker_name, worker.log_dir, /*mirror_stderr=*/false);
+    logging::options.stderr_level = logging::Level::Warn;
+    logging::stderr_logger(worker.worker_name, logging::StderrReader::Pool);
+    if(!worker.session_dir.empty()) {
+        logging::file_logger(worker.session_dir);
     }
+    LOG_INFO("Worker {} ({}) starting, pid {}",
+             worker.worker_name,
+             worker.stateful ? "stateful" : "stateless",
+             sys::pid());
     // See WorkerPool::launch.
     if(auto error = sys::exit_with_parent()) {
         LOG_ERROR("Cannot watch the master, exiting: {}", error.message());

@@ -484,7 +484,7 @@ boundary observes cheaply, built with the sources. Names of at most four words.
 ## Budgets
 
 - Pull-request CI under 20 minutes wall clock; no job over 10 minutes on the
-  slowest leg.
+  slowest platform.
 - A test under 30 seconds in Debug on four cores.
 
 ## Never

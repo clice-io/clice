@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // real path, whose vendor/.clang-format keeps short functions on several
 // lines. No compile check: it would read the header's diagnostics alone,
 // not the host's.
-test({ except: { win32: "creating a symbolic link needs privileges on Windows" } }, async (t) => {
+test(async (t) => {
     t.disk.symlink("src", "vendor/real");
     const s = await t.start();
     await s.diagnostics("widget.h");

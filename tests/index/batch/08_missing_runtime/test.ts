@@ -2,8 +2,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { test } from "@clice/tools/testing";
 
-const MISSING = "Toolchain query failed: .*a DLL it loads is missing";
-
 const PATH = Object.keys(process.env).find((name) => name.toUpperCase() === "PATH") ?? "PATH";
 
 // A program of Git for Windows' MSYS2, which every Windows runner image
@@ -21,7 +19,6 @@ const PROGRAM = path.join(
 // to put it there.
 test(
     {
-        errors: [MISSING],
         except: { linux: "only Windows loads a DLL from PATH", darwin: "no DLLs there" },
     },
     async (t) => {

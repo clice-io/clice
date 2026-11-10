@@ -150,8 +150,9 @@ struct Project {
 
     CompilationDatabase cdb{file_table, commands};
 
-    /// The rules of clice.toml under the configuration open() activated;
-    /// those of the settings a Project is born with until then.
+    /// The rules of clice.toml under the configuration use_configuration()
+    /// chose (open() chooses one); those of the settings a Project is born
+    /// with until then.
     Rules rules{settings, root, {}};
 
     /// The commands the rules write by hand, and the builtin ones.
@@ -298,6 +299,10 @@ struct Project {
     /// What each unit's compiles in this session showed.
     llvm::DenseMap<Fid, UnitHistory> unit_history;
 
+    /// The hash of each file's command as resolve_command last logged it:
+    /// a file's command is logged again when it changed.
+    llvm::DenseMap<Fid, std::uint64_t> logged_commands;
+
     /// The include-tree runs on the worker pool, by tree: a second asker
     /// waits for the first (take_tree).
     llvm::DenseMap<UnitCommand, std::shared_ptr<async::event>> tree_runs;
@@ -352,9 +357,10 @@ struct Project {
         /// What the reads of the index withhold (FreshnessGate).
         index::FreshnessOptions freshness;
 
-        /// The file a run is about: the databases in its directory and
-        /// above it up to the root join the ones discovered.
-        CanonicalPath file;
+        /// The files a run is about, or the documents open as a server
+        /// starts: the databases in their directories and above them up to
+        /// the root join the ones discovered.
+        llvm::SmallVector<CanonicalPath> files;
     };
 
     /// What open() found.
@@ -382,6 +388,10 @@ struct Project {
     /// outdated (ProjectIndex::stale_units). A run reading the index without
     /// the build binds its tables alone, fetched on first use.
     Opened open(const OpenOptions& options);
+
+    /// The rules of `configuration` over the settings, and the databases
+    /// they resolve to: what a project waiting to open already answers by.
+    void use_configuration(llvm::StringRef configuration);
 
     /// What a reader says of an index database the index reports damaged: a
     /// writer discards one only when it meets the damage itself, which may sit
@@ -639,8 +649,7 @@ struct Project {
 
     /// A file's final compile command: select_command, then the context
     /// restoring the includer's preprocessor state of a header that needs
-    /// it, rendered. Emits a per-file decision log (tiers tried, tier hit,
-    /// command hash).
+    /// it, rendered. Logs where the command came from, once per change.
     Resolution resolve_command(Fid file, const CommandRequest& request = {});
 
     /// resolve_command until the host search it runs misses no include
@@ -1107,7 +1116,8 @@ struct Project {
                            std::uint64_t command);
 
     /// Send a PCH or PCM build, `label` naming what it builds in the log (a
-    /// file, a module), and keep what did not build: a build that
+    /// file, a module) and `why` why the last build cannot serve, and keep
+    /// what did not build: a build that
     /// crashed its worker is recorded through `fail` on what it was known to
     /// read (`known`), and one that failed on the user's code on what it read
     /// (read_inputs over `before`); any other failure is clice's own breakage,
@@ -1121,6 +1131,7 @@ struct Project {
         send_precompiled(Attempt& attempt,
                          const worker::BuildPCHParams& params,
                          llvm::StringRef label,
+                         llvm::StringRef why,
                          Inputs known,
                          const Inputs& before,
                          llvm::function_ref<void(FailureRecord, Inputs)> fail);
@@ -1129,6 +1140,7 @@ struct Project {
         send_precompiled(Attempt& attempt,
                          const worker::BuildPCMParams& params,
                          llvm::StringRef label,
+                         llvm::StringRef why,
                          Inputs known,
                          const Inputs& before,
                          llvm::function_ref<void(FailureRecord, Inputs)> fail);

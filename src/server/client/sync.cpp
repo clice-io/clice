@@ -39,7 +39,7 @@ void LSPClient::register_document_sync() {
                           params.text_document.text,
                           params.text_document.version);
 
-        LOG_DEBUG("didOpen: {} (v{})", path, params.text_document.version);
+        LOG_INFO("Opened {} (version {})", path, params.text_document.version);
     });
 
     peer.on_notification([this](const protocol::DidChangeTextDocumentParams& params) {
@@ -56,6 +56,7 @@ void LSPClient::register_document_sync() {
                             spelled->str(),
                             params.content_changes,
                             params.text_document.version);
+        LOG_DEBUG("Changed {} (version {})", spelled->str(), params.text_document.version);
     });
 
     peer.on_notification([this](const protocol::DidCloseTextDocumentParams& params) {
@@ -73,6 +74,7 @@ void LSPClient::register_document_sync() {
             return;
         }
         srv.close_document(srv.files.intern(*spelled), spelled->str());
+        LOG_INFO("Closed {}", spelled->str());
     });
 
     peer.on_notification([this](const protocol::DidSaveTextDocumentParams& params) {
@@ -91,7 +93,7 @@ void LSPClient::register_document_sync() {
         }
         srv.save_document(srv.files.intern(*path));
 
-        LOG_DEBUG("didSave: {}", *path);
+        LOG_INFO("Saved {}", *path);
     });
 }
 

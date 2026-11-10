@@ -16,6 +16,7 @@ import :index.tu_index;
 import :support.json;
 import :support.logging;
 import :support.process;
+import :support.text;
 import :vfs.file_system;
 import :worker.common;
 import :worker.crash_report;
@@ -146,7 +147,7 @@ class StatefulWorker {
     /// into one distribution.
     template <typename Params, typename R, typename F>
     async::task<R, ipc::Error>
-        with_ast_or(llvm::StringRef kind, const Params& params, R missing, F fn) {
+        with_ast_or(feature::RequestKind kind, const Params& params, R missing, F fn) {
         auto it = documents.find(params.path);
         assert(it != documents.end() && "the pool queries only documents it holds resident here");
         return serve_ast(kind,
@@ -158,7 +159,7 @@ class StatefulWorker {
     }
 
     template <typename Params, typename R, typename F>
-    async::task<R, ipc::Error> serve_ast(llvm::StringRef kind,
+    async::task<R, ipc::Error> serve_ast(feature::RequestKind kind,
                                          EntryHold hold,
                                          std::uint64_t id,
                                          const Params& params,
@@ -194,7 +195,7 @@ class StatefulWorker {
 
         LOG_PERF("query",
                  "kind={} path={} acquire_ms={:.2f} compute_ms={:.2f} total_ms={:.2f}",
-                 kind,
+                 feature::request_name(kind),
                  params.path,
                  acquire_ms,
                  compute_ms,
@@ -312,11 +313,11 @@ RequestResult<worker::CompileParams>
                 if(index_error) {
                     diags.push_back(feature::index_unavailable(*index_error));
                 }
-                LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
+                LOG_INFO("Compiled {} in {} ms: {}{}",
                          params.path,
                          timer.ms(),
-                         diags.size(),
-                         unit->fatal_error());
+                         counted(diags.size(), "diagnostic", "diagnostics"),
+                         unit->fatal_error() ? ", a fatal error among them" : "");
                 result.diagnostics = std::move(diags);
                 doc->unit = std::move(unit);
                 doc->pch_mapping = std::move(pch_mapping);
@@ -330,10 +331,10 @@ RequestResult<worker::CompileParams>
                 if(unit->setup_fail()) {
                     result.diagnostics = feature::diagnostics(*unit);
                 }
-                LOG_WARN("Compile incomplete: path={}, {}ms, setup_fail={}",
+                LOG_WARN("The compile of {} stopped after {} ms: {}",
                          params.path,
                          timer.ms(),
-                         unit->setup_fail());
+                         unit->setup_fail() ? "clang cannot start it" : "it was cancelled");
                 // An incomplete unit can never serve a query, yet it pins
                 // the consumed PCHs and PCMs — on Windows a mapped PCH cannot
                 // be replaced on disk, so holding it would block the
@@ -357,7 +358,7 @@ void StatefulWorker::register_handlers() {
     peer.on_request(
         [this](RequestContext& ctx,
                const worker::CompileParams& params) -> RequestResult<worker::CompileParams> {
-            LOG_INFO("Compile request: path={}, version={}", params.path, params.version);
+            LOG_DEBUG("Compiling {} (version {})", params.path, params.version);
             CompileGuard guard(get_or_create(params.path));
             return serve_compile(std::move(guard), next_request, params);
         });
@@ -365,7 +366,7 @@ void StatefulWorker::register_handlers() {
     // === DocumentLink ===
     peer.on_request([this](RequestContext& ctx, const worker::DocumentLinkParams& params)
                         -> RequestResult<worker::DocumentLinkParams> {
-        return with_ast_or("DocumentLink",
+        return with_ast_or(feature::RequestKind::DocumentLink,
                            params,
                            std::vector<index::DocumentLink>{},
                            [&](DocumentEntry& doc) { return feature::document_links(*doc.unit); });
@@ -375,7 +376,7 @@ void StatefulWorker::register_handlers() {
     peer.on_request([this](RequestContext& ctx, const worker::FoldingRangeParams& params)
                         -> RequestResult<worker::FoldingRangeParams> {
         return with_ast_or(
-            "FoldingRange",
+            feature::RequestKind::FoldingRange,
             params,
             std::optional<std::vector<feature::FoldingRange>>{},
             [&](DocumentEntry& doc) { return std::optional(feature::folding_ranges(*doc.unit)); });
@@ -385,7 +386,7 @@ void StatefulWorker::register_handlers() {
     peer.on_request([this](RequestContext& ctx, const worker::SemanticTokensParams& params)
                         -> RequestResult<worker::SemanticTokensParams> {
         return with_ast_or(
-            "SemanticTokens",
+            feature::RequestKind::SemanticTokens,
             params,
             std::optional<std::vector<feature::SemanticToken>>{},
             [&](DocumentEntry& doc) {
@@ -398,7 +399,7 @@ void StatefulWorker::register_handlers() {
     // === DocumentSymbol ===
     peer.on_request([this](RequestContext& ctx, const worker::DocumentSymbolParams& params)
                         -> RequestResult<worker::DocumentSymbolParams> {
-        return with_ast_or("DocumentSymbol",
+        return with_ast_or(feature::RequestKind::DocumentSymbol,
                            params,
                            std::optional<std::vector<feature::DocumentSymbol>>{},
                            [&](DocumentEntry& doc) {
@@ -415,7 +416,7 @@ void StatefulWorker::register_handlers() {
         [this](RequestContext& ctx,
                const worker::CodeActionParams& params) -> RequestResult<worker::CodeActionParams> {
             return with_ast_or(
-                "CodeAction",
+                feature::RequestKind::CodeAction,
                 params,
                 std::vector<feature::CodeAction>{},
                 [&](DocumentEntry& doc) { return feature::code_actions(*doc.unit, params.range); });
@@ -424,7 +425,7 @@ void StatefulWorker::register_handlers() {
     // === SelectionRange ===
     peer.on_request([this](RequestContext& ctx, const worker::SelectionRangeParams& params)
                         -> RequestResult<worker::SelectionRangeParams> {
-        return with_ast_or("SelectionRange",
+        return with_ast_or(feature::RequestKind::SelectionRange,
                            params,
                            std::vector<std::vector<LocalSourceRange>>{},
                            [&](DocumentEntry& doc) {
@@ -436,7 +437,7 @@ void StatefulWorker::register_handlers() {
     peer.on_request([this](RequestContext& ctx, const worker::InlayHintParams& params)
                         -> RequestResult<worker::InlayHintParams> {
         return with_ast_or(
-            "InlayHint",
+            feature::RequestKind::InlayHint,
             params,
             std::vector<feature::InlayHint>{},
             [&](DocumentEntry& doc) {
@@ -455,7 +456,7 @@ void StatefulWorker::register_handlers() {
     peer.on_request(
         [this](RequestContext& ctx,
                const worker::HoverParams& params) -> RequestResult<worker::HoverParams> {
-            return with_ast_or("Hover",
+            return with_ast_or(feature::RequestKind::Hover,
                                params,
                                std::optional<feature::HoverInfo>{},
                                [&](DocumentEntry& doc) {
@@ -468,20 +469,20 @@ void StatefulWorker::register_handlers() {
 }
 
 int run_stateful_worker_mode() {
-    LOG_INFO("Starting stateful worker");
     install_crash_report();
 
     async::event_loop loop;
 
     auto transport_result = ipc::StreamTransport::open_stdio(loop);
     if(!transport_result) {
-        LOG_ERROR("Failed to open stdio transport");
+        LOG_ERROR("Cannot talk to the master over stdin and stdout");
         return 1;
     }
     (*transport_result)->set_remote_max_payload(ipc::default_max_payload);
 
     ipc::BincodePeer peer(loop, std::move(*transport_result));
     install_test_hooks(peer, loop);
+    log_where_told(peer);
 
     StatefulWorker worker(peer);
     worker.register_handlers();

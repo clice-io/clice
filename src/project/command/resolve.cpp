@@ -16,24 +16,40 @@ namespace clice {
 
 namespace {
 
-/// Per-file command selection decision log: which tiers were tried, which one
-/// was hit, and a hash of the final command for correlating later failures.
-void log_command_decision(llvm::StringRef path,
-                          llvm::ArrayRef<llvm::StringRef> tried,
-                          CommandSource source,
-                          llvm::ArrayRef<std::string> arguments) {
-    if(logging::options.level > logging::Level::info)
+/// Where the file's command came from, logged when the command differs
+/// from the last one the file logged; the frontend's arguments, which run
+/// to kilobytes, at debug.
+void log_command(Project& project, Fid file, const Resolution& resolution) {
+    if(logging::options.level > logging::Level::Info) {
         return;
-    std::string joined;
-    for(auto& arg: arguments) {
-        joined += arg;
-        joined += '\0';
     }
-    LOG_INFO("compile_args: file={} tried=[{}] source={} args_hash={:016x}",
-             path,
-             llvm::join(tried, ","),
-             source,
-             llvm::xxh3_64bits(llvm::StringRef(joined)));
+    auto& files = project.file_table;
+    auto from = [&]() -> std::string {
+        switch(resolution.ref.source) {
+            case CommandSource::Database: return "its database entry";
+            case CommandSource::Host:
+                return std::format("its host {}{}",
+                                   files.resolve(resolution.host),
+                                   resolution.in_context ? ", in the host's context" : "");
+            case CommandSource::Fallback: return "clice's default command";
+            case CommandSource::Default: return "a rule's default_command";
+            case CommandSource::Borrowed:
+                return std::format("the command of {}", files.resolve(resolution.candidate.from()));
+        }
+        std::unreachable();
+    }();
+    auto arguments = join_command(resolution.arguments);
+    auto hash = llvm::xxh3_64bits(std::format("{}\n{}\n{}", from, resolution.directory, arguments));
+    auto logged = std::exchange(project.logged_commands[file], hash);
+    if(logged == hash) {
+        return;
+    }
+    LOG_INFO("Command of {}{}: from {}, run in {}",
+             files.resolve(file),
+             logged == 0 ? "" : " changed",
+             from,
+             resolution.directory);
+    LOG_DEBUG("Arguments of {}: {}", files.resolve(file), arguments);
 }
 
 /// How many of `ref`'s `-include`s come before the one naming `forced`:
@@ -101,7 +117,6 @@ struct Tiers {
         auto& entry = *search.host;
         selection.occurrence = search.occurrence;
         selection.forced = entry.chain.front() != entry.file ? entry.chain.front() : Fid{};
-        LOG_INFO("resolve_command: {} compiles in {}", path, project.file_table.resolve(host));
         // A header the command forces in itself has nothing to cut: the
         // -includes ahead of it are its context. A host the user chose is
         // chosen for its preprocessor state, so the header always compiles in
@@ -169,13 +184,7 @@ struct Tiers {
     /// 5. A nearby member's command, edited for both files as a
     ///    provisional member's is.
     std::optional<Candidate> borrowed() {
-        auto borrowed = project.borrowed_command(file, true);
-        if(borrowed) {
-            LOG_INFO("resolve_command: {} borrows the command of {}",
-                     path,
-                     project.file_table.resolve(borrowed->from()));
-        }
-        return borrowed;
+        return project.borrowed_command(file, true);
     }
 
     /// 6. The builtin fallback, so the file still compiles and produces
@@ -199,17 +208,16 @@ SelectedCommand Project::select_command(Fid path_id, const CommandRequest& reque
     auto path = file_table.resolve(path_id);
     SelectedCommand selection;
     Tiers tiers{*this, path_id, path, request, selection};
-    constexpr std::pair<llvm::StringRef, std::optional<Candidate> (Tiers::*)()> order[] = {
-        {"chosen_host", &Tiers::chosen_host    },
-        {"own",         &Tiers::own            },
-        {"ranked_host", &Tiers::ranked_host    },
-        {"default",     &Tiers::default_command},
-        {"borrowed",    &Tiers::borrowed       },
-        {"fallback",    &Tiers::fallback       },
+    constexpr std::optional<Candidate> (Tiers::* order[])() = {
+        &Tiers::chosen_host,
+        &Tiers::own,
+        &Tiers::ranked_host,
+        &Tiers::default_command,
+        &Tiers::borrowed,
+        &Tiers::fallback,
     };
     std::optional<Candidate> candidate;
-    for(auto [name, tier]: order) {
-        selection.tried.push_back(name);
+    for(auto tier: order) {
         if((candidate = (tiers.*tier)())) {
             break;
         }
@@ -273,10 +281,7 @@ Resolution Project::resolve_command(Fid path_id, const CommandRequest& request) 
     }
     options.kept_includes = includes_before(*this, resolution.ref, resolution.forced);
     static_cast<Rendered&>(resolution) = render(resolution.ref, options);
-    log_command_decision(file_table.resolve(path_id),
-                         resolution.tried,
-                         resolution.ref.source,
-                         resolution.arguments);
+    log_command(*this, path_id, resolution);
     return resolution;
 }
 

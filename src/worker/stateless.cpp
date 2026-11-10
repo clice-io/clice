@@ -76,8 +76,8 @@ static std::optional<std::string> write_preamble_index(llvm::StringRef blob,
                                                        llvm::StringRef output_path) {
     if(auto error = fs::write_file(output_path, blob)) {
         auto message =
-            std::format("failed writing pch.idx envelope {}: {}", output_path, error.message());
-        LOG_ERROR("BuildPCH: {}", message);
+            std::format("cannot write the PCH index {}: {}", output_path, error.message());
+        LOG_ERROR("{}", message);
         return message;
     }
     return std::nullopt;
@@ -106,8 +106,9 @@ static std::expected<std::string, std::string> precompiled_output(llvm::StringRe
     sys::temp_dir(dir);
     std::string path;
     if(!fs::create_temp_file(path, dir, prefix.str() + "-", "." + extension.str())) {
-        LOG_ERROR("Build{}: failed to create temp file", label);
-        return std::unexpected(std::format("Failed to create temporary {} file", label));
+        auto message = std::format("Cannot create a temporary {} file in {}", label, dir);
+        LOG_ERROR("{}", message);
+        return std::unexpected(std::move(message));
     }
     return path;
 }
@@ -144,6 +145,7 @@ static worker::PrecompiledBuildResult finish_precompiled(worker::PrecompiledBuil
     if(result.has_user_errors) {
         result.first_error = errors.front();
     }
+    result.error_count = static_cast<std::uint32_t>(errors.size());
     return result;
 }
 
@@ -219,7 +221,7 @@ static worker::PrecompiledBuildResult
         if(auto error = send_index(index::build_tu_index(*unit, index_options(params.indexing)),
                                    params.indexing.output_path,
                                    result)) {
-            LOG_WARN("BuildPCH: the index of {} is lost: {}", params.file, *error);
+            LOG_WARN("The index of the PCH of {} is lost: {}", params.file, *error);
         }
     }
     auto index_ms = index_timer.ms();
@@ -256,7 +258,7 @@ static worker::PrecompiledBuildResult
                  state_write_ms,
                  timer.ms());
     } else {
-        LOG_WARN("BuildPCH failed: file={}, {}ms, errors=[{}]",
+        LOG_WARN("The PCH of {} failed to build in {} ms: {}",
                  params.file,
                  timer.ms(),
                  llvm::join(errors, "; "));
@@ -311,7 +313,7 @@ static worker::PrecompiledBuildResult
         index_bytes = blob.size();
         // The PCM stands without the index, whose unit then compiles itself.
         if(auto error = send_index(std::move(blob), params.indexing.output_path, result)) {
-            LOG_WARN("BuildPCM: the index of module {} is lost: {}", params.module_name, *error);
+            LOG_WARN("The index of module {} is lost: {}", params.module_name, *error);
         }
     }
     auto index_ms = index_timer.ms();
@@ -331,7 +333,7 @@ static worker::PrecompiledBuildResult
                  flush_ms,
                  timer.ms());
     } else {
-        LOG_WARN("BuildPCM failed: module={}, {}ms, errors=[{}]",
+        LOG_WARN("Module {} failed to build in {} ms: {}",
                  params.module_name,
                  timer.ms(),
                  llvm::join(errors, "; "));
@@ -417,7 +419,7 @@ static std::vector<worker::LocatedMessage> located_errors(CompilationUnit& unit)
 static worker::IncludeTreeResult
     handle_include_tree(const worker::IncludeTreeParams& params,
                         const std::shared_ptr<std::atomic_bool>& stop) {
-    LOG_INFO("IncludeTree request: file={}", params.file);
+    LOG_DEBUG("Include tree of {}", params.file);
     Timer timer;
     auto unit = compile({
         .kind = CompilationKind::Preprocess,
@@ -448,7 +450,7 @@ static worker::IncludeTreeResult
 static worker::CompileUnitResult
     handle_compile_unit(const worker::CompileUnitParams& params,
                         const std::shared_ptr<std::atomic_bool>& stop) {
-    LOG_INFO("Unit compile request: file={}", params.file);
+    LOG_DEBUG("Compiling the unit {}", params.file);
     Timer timer;
 
     // One parse serves every product of the plan. The command-affecting
@@ -470,8 +472,15 @@ static worker::CompileUnitResult
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
     if(!unit->completed()) {
-        LOG_WARN("Unit compile failed: file={}, {}ms", params.file, timer.ms());
+        if(stop->load(std::memory_order_relaxed)) {
+            LOG_DEBUG("The compile of {} stopped after {} ms", params.file, timer.ms());
+            return {false, "Unit compile cancelled"};
+        }
         auto errors = collect_errors(*unit);
+        LOG_WARN("The compile of {} failed after {} ms{}",
+                 params.file,
+                 timer.ms(),
+                 errors.empty() ? std::string() : ": " + errors.front());
         if(errors.empty()) {
             return {false, "Unit compile failed"};
         }
@@ -716,19 +725,19 @@ static void
 }
 
 int run_stateless_worker_mode() {
-    LOG_INFO("Starting stateless worker");
     install_crash_report();
     async::event_loop loop;
 
     auto transport_result = ipc::StreamTransport::open_stdio(loop);
     if(!transport_result) {
-        LOG_ERROR("Failed to open stdio transport");
+        LOG_ERROR("Cannot talk to the master over stdin and stdout");
         return 1;
     }
     (*transport_result)->set_remote_max_payload(ipc::default_max_payload);
 
     ipc::BincodePeer peer(loop, std::move(*transport_result));
     install_test_hooks(peer, loop);
+    log_where_told(peer);
 
     const worker::PrecompiledBuildResult cancelled_build{.success = false,
                                                          .error = "Build cancelled"};

@@ -2,6 +2,7 @@ module clice;
 
 import :support.logging;
 import :support.process;
+import :support.text;
 import :vfs.path;
 import :worker.pool;
 import :worker.resources;
@@ -16,7 +17,7 @@ namespace {
 /// (crash stacktraces, assertion failures, sanitizer reports, etc.).
 async::task<> drain_stderr(async::pipe stderr_pipe,
                            std::string prefix,
-                           std::shared_ptr<StderrTail> tail) {
+                           std::shared_ptr<StderrReport> report) {
     while(true) {
         auto read = co_await stderr_pipe.read_line();
         if(!read.has_value() || !read.value()) {
@@ -24,18 +25,17 @@ async::task<> drain_stderr(async::pipe stderr_pipe,
         }
         auto& line = *read.value();
         if(line.starts_with(worker::crashed_in_marker)) {
-            tail->crashed_in = line.substr(worker::crashed_in_marker.size());
+            report->crashed_in = line.substr(worker::crashed_in_marker.size());
         }
         // LLVM's handler of a failed allocation, before it aborts.
         if(line.starts_with("LLVM ERROR: out of memory")) {
-            tail->out_of_memory = true;
+            report->out_of_memory = true;
         }
         if(!line.empty()) {
             LOG_WARN("{} {}", prefix, line);
-            tail->add(std::move(line));
         }
     }
-    tail->drained.set();
+    report->drained.set();
 }
 
 /// How a worker died, worded for the user.
@@ -110,10 +110,10 @@ bool WorkerPool::launch(std::size_t index, bool stateful) {
     opts.args.push_back("--worker-name");
     opts.args.push_back(w.name);
     std::uint64_t log_offset = 0;
-    if(!options.log_dir.empty()) {
-        opts.args.push_back("--log-dir");
-        opts.args.push_back(options.log_dir);
-        if(auto status = fs::status(path::join(options.log_dir, w.name + ".log"))) {
+    if(!options.session_dir.empty()) {
+        opts.args.push_back("--session-dir");
+        opts.args.push_back(options.session_dir);
+        if(auto status = fs::status(path::join(options.session_dir, w.name + ".log"))) {
             log_offset = status->size;
         }
     }
@@ -153,7 +153,7 @@ bool WorkerPool::launch(std::size_t index, bool stateful) {
         });
     }
     w.proc = std::move(spawned->proc);
-    w.stderr_tail = std::make_shared<StderrTail>();
+    w.stderr_report = std::make_shared<StderrReport>();
     w.state = SlotState::Alive;
     w.scaling_down = false;
     w.killed_on_purpose = false;
@@ -166,7 +166,7 @@ bool WorkerPool::launch(std::size_t index, bool stateful) {
     // the crash streak carries across until a healthy uptime resets it.
 
     worker_tasks.spawn(
-        drain_stderr(std::move(spawned->stderr_pipe), "[" + w.name + "]", w.stderr_tail));
+        drain_stderr(std::move(spawned->stderr_pipe), "[" + w.name + "]", w.stderr_report));
     worker_tasks.spawn(run_peer(w.peer, index, stateful, w.generation));
     worker_tasks.spawn(monitor_worker(index, stateful));
     if(!stateful) {
@@ -233,15 +233,19 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
 
     worker_tasks.spawn(monitor_loop());
 
-    LOG_INFO("WorkerPool started: {} stateless, {} stateful workers keeping {} documents compiled",
-             stateless_workers.size(),
-             stateful_workers.size(),
-             max_resident);
+    LOG_INFO(
+        "Worker pool started: {}{}",
+        counted(stateless_workers.size(), "stateless worker", "stateless workers"),
+        stateful_workers.empty()
+            ? std::string()
+            : std::format(", {} keeping up to {} compiled",
+                          counted(stateful_workers.size(), "stateful worker", "stateful workers"),
+                          counted(max_resident, "document", "documents")));
     return true;
 }
 
 async::task<> WorkerPool::stop() {
-    LOG_INFO("WorkerPool stopping...");
+    LOG_DEBUG("Stopping the worker pool");
     stop_scope.cancel();
     fail_pending_requests();
     capacity_returned.set();
@@ -267,13 +271,13 @@ async::task<> WorkerPool::stop() {
     watchdog.cancel();
     co_await watchdog.join();
 
-    LOG_INFO("WorkerPool stopped");
+    LOG_DEBUG("Worker pool stopped");
 }
 
 async::task<> WorkerPool::kill_stragglers() {
     // Time is the feature: the grace a worker gets after SIGTERM.
     co_await async::sleep(chrono::milliseconds(5000), loop);
-    LOG_WARN("Workers still alive 5s after SIGTERM; sending SIGKILL");
+    LOG_WARN("Workers still running 5 s after being asked to stop; killing them");
     for(bool stateful: {false, true}) {
         for(auto& w: workers(stateful)) {
             if(w.state == SlotState::Alive) {
@@ -300,6 +304,18 @@ std::optional<Residency::Assignment> WorkerPool::assign_worker(std::uint32_t pat
     }
     set_oom_score(stateful_workers[*fewest], true);
     return residency.assign(path_id, *fewest, path);
+}
+
+void WorkerPool::log_to(std::string dir) {
+    options.session_dir = std::move(dir);
+    for(auto stateful: {false, true}) {
+        for(auto& w: workers(stateful)) {
+            if(w.state == SlotState::Alive) {
+                w.log_offset = 0;
+                w.peer->send_notification(worker::LogParams{options.session_dir});
+            }
+        }
+    }
 }
 
 void WorkerPool::forget_document(std::uint32_t path_id) {
@@ -383,7 +399,7 @@ async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     // processing.
     if(!stateful && stateless_workers[index].scaling_down) {
         auto& w = stateless_workers[index];
-        LOG_INFO("Worker {} scaled down", w.name);
+        LOG_DEBUG("Worker {} stopped", w.name);
         w.state = SlotState::ScaledDown;
         w.scaling_down = false;
         w.generation += 1;
@@ -413,7 +429,7 @@ async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         // The pool killed this worker on purpose; the work it lost was
         // signalled to its sender. Bring the capacity back immediately,
         // without touching the crash budget.
-        LOG_INFO("Worker {} killed on purpose, respawning", w.name);
+        LOG_DEBUG("Worker {} was stopped by clice; starting it again", w.name);
         w.state = SlotState::Respawning;
         mark_done.death->done.set();
         worker_tasks.spawn(respawn_after(index, stateful, chrono::milliseconds(0)));
@@ -424,12 +440,12 @@ async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     // it, can still sit in the stderr pipe when the exit is observed: the
     // drain reaches EOF first. The slot is already dying, so a shutdown
     // meanwhile skips its reaped pid.
-    auto drained = [](std::shared_ptr<StderrTail> tail) -> async::task<> {
-        co_await tail->drained.wait();
+    auto drained = [](std::shared_ptr<StderrReport> report) -> async::task<> {
+        co_await report->drained.wait();
     };
     // Hang detection: a short bound runs out on a stalled master (a
     // loaded machine), and the crash then names no request.
-    co_await async::with_timeout(drained(w.stderr_tail), chrono::minutes(1), loop);
+    co_await async::with_timeout(drained(w.stderr_report), chrono::minutes(1), loop);
     if(stop_scope.cancelled())
         co_return;
 
@@ -476,14 +492,14 @@ bool WorkerPool::process_crash(std::size_t index,
     auto& w = slot(index, stateful);
     mark_worker_dead(index, stateful, false);
     auto& death = *w.death;
-    auto& tail = *w.stderr_tail;
-    death.out_of_memory = tail.out_of_memory;
+    auto& report = *w.stderr_report;
+    death.out_of_memory = report.out_of_memory;
     // An allocation failure's abort names the request it ran, whose content
     // is not charged with it.
     if(death.out_of_memory) {
         death.cause = "ran out of memory";
-    } else if(death.named.empty() && !tail.crashed_in.empty()) {
-        death.named.push_back(tail.crashed_in);
+    } else if(death.named.empty() && !report.crashed_in.empty()) {
+        death.named.push_back(report.crashed_in);
     }
     if(death.cause.empty()) {
         death.cause = describe_exit(exit_code, exit_signal);
@@ -506,60 +522,81 @@ bool WorkerPool::process_crash(std::size_t index,
         w.counted_deaths.push_back(w.generation - 1);
     }
 
-    // Ahead of the anomaly report, which aborts Debug builds.
-    if(!tail.lines.empty()) {
-        LOG_ERROR("Last stderr of crashed worker {}:\n{}", w.name, llvm::join(tail.lines, "\n"));
-    }
-    // Relay the tail of the dead incarnation's own log into the master log
-    // so CI, which only sees the master's output, still gets the worker's
-    // final assert/error message.
+    // Relay the tail of the dead incarnation's own log into the master log,
+    // so that log alone tells how a worker died: its last lines, and its
+    // stack trace at info — a command's terminal shows the death, the logs
+    // the frames. Ahead of the anomaly report, which aborts Debug builds.
     std::string content;
-    if(!options.log_dir.empty() &&
-       !fs::read_file(content, path::join(options.log_dir, w.name + ".log"))) {
-        if(auto output = crash_output(content, w.log_offset); !output.empty())
-            LOG_ERROR("Last output of crashed worker {}:\n{}", w.name, output);
+    if(!options.session_dir.empty() &&
+       !fs::read_file(content, path::join(options.session_dir, w.name + ".log"))) {
+        auto quoted = [](llvm::StringRef text) {
+            std::string out;
+            for(auto line: llvm::split(text, '\n')) {
+                out += std::format("\n    {}", line);
+            }
+            return out;
+        };
+        auto output = crash_output(content, w.log_offset);
+        if(!output.lines.empty()) {
+            LOG_ERROR("The last lines {} logged before it died:{}", w.name, quoted(output.lines));
+        }
+        if(!output.trace.empty()) {
+            LOG_INFO("{}'s stack trace:{}", w.name, quoted(output.trace));
+        }
     }
+    auto streak = w.crash_streak == 0
+                      ? std::string()
+                      : std::format(" ({} in a row)", counted(w.crash_streak, "crash", "crashes"));
 
     if(terminated) {
         // Termination requested from outside — e.g. the editor tearing the
         // whole process group down on a hard restart. The worker did not
         // crash; don't alarm the user through the anomaly channel.
-        LOG_WARN("Worker {} terminated by signal {} (crash streak: {})",
-                 w.name,
-                 exit_signal,
-                 w.crash_streak);
+        LOG_WARN("Worker {} terminated by signal {}{}", w.name, exit_signal, streak);
     } else if(death.out_of_memory) {
         // The machine ran out, not clice.
         LOG_WARN("Worker {} ran out of memory at {} MiB", w.name, death.memory >> 20);
     } else {
         LOG_ANOMALY(WorkerCrash,
-                    "Worker {} {} (crash streak: {})",
+                    "Worker {} {}{}",
                     w.name,
                     describe_exit(exit_code, exit_signal),
-                    w.crash_streak);
+                    streak);
     }
 
     if(w.crash_streak > options.max_crash_streak) {
-        LOG_ERROR("Worker {} exceeded crash budget ({} consecutive), giving up",
-                  w.name,
-                  options.max_crash_streak);
+        LOG_WARN("Worker {} crashed more than {} times in a row; not started again",
+                 w.name,
+                 options.max_crash_streak);
         give_up_slot(index, stateful);
         return false;
     }
     return true;
 }
 
-llvm::StringRef WorkerPool::crash_output(llvm::StringRef log, std::size_t from) {
-    // The crash's backtrace stays in the worker log: the master log carries
-    // the diagnosis, not the (noisy, non-portable) stack frames.
-    auto output = log.substr(from);
-    output = output.substr(0, output.find("=== CRASH STACK TRACE ===")).rtrim();
+WorkerPool::CrashOutput WorkerPool::crash_output(llvm::StringRef log, std::size_t from) {
+    // The log moved aside since the worker started: what the fresh one holds
+    // is all its own.
+    auto own = log.substr(from <= log.size() ? from : 0);
+    CrashOutput output{.lines = own};
+    if(auto trace = own.find("=== CRASH STACK TRACE ==="); trace != llvm::StringRef::npos) {
+        // The crash's line, the time it died, heads the trace.
+        auto before = own.take_front(trace).rtrim();
+        auto start = before.ends_with("] [fatal] clice crashed") ? before.rfind('\n') + 1 : trace;
+        output.lines = own.take_front(start);
+        output.trace = own.drop_front(start).rtrim();
+        constexpr std::size_t max_trace = 16384;
+        if(output.trace.size() > max_trace) {
+            output.trace = output.trace.take_front(output.trace.take_front(max_trace).rfind('\n'));
+        }
+    }
+    output.lines = output.lines.rtrim();
 
-    constexpr std::size_t max_output = 4096;
-    if(output.size() > max_output) {
-        output = output.take_back(max_output);
-        if(auto nl = output.find('\n'); nl != llvm::StringRef::npos) {
-            output = output.drop_front(nl + 1);
+    constexpr std::size_t max_lines = 4096;
+    if(output.lines.size() > max_lines) {
+        output.lines = output.lines.take_back(max_lines);
+        if(auto nl = output.lines.find('\n'); nl != llvm::StringRef::npos) {
+            output.lines = output.lines.drop_front(nl + 1);
         }
     }
     return output;
@@ -611,10 +648,10 @@ async::task<> WorkerPool::respawn_after(std::size_t index,
                                         chrono::milliseconds delay) {
     while(true) {
         if(delay.count() > 0) {
-            LOG_INFO("Worker {} respawn delayed by {}ms (crash streak {})",
+            LOG_INFO("Worker {} starts again in {} ms ({} in a row)",
                      slot(index, stateful).name,
                      delay.count(),
-                     slot(index, stateful).crash_streak);
+                     counted(slot(index, stateful).crash_streak, "crash", "crashes"));
             // Time is the feature: the crash streak's backoff.
             co_await async::with_token(async::sleep(delay, loop), stop_scope.token());
         }
@@ -623,7 +660,13 @@ async::task<> WorkerPool::respawn_after(std::size_t index,
 
         auto& w = slot(index, stateful);
         if(launch(index, stateful)) {
-            LOG_INFO("Worker {} started (crash streak {})", w.name, w.crash_streak);
+            if(w.crash_streak == 0) {
+                LOG_INFO("Worker {} started again", w.name);
+            } else {
+                LOG_INFO("Worker {} started again after {} in a row",
+                         w.name,
+                         counted(w.crash_streak, "crash", "crashes"));
+            }
             co_return;
         }
 
@@ -631,7 +674,7 @@ async::task<> WorkerPool::respawn_after(std::size_t index,
         // treat it like another crash in the streak and back off harder.
         w.crash_streak += 1;
         if(w.crash_streak > options.max_crash_streak) {
-            LOG_ERROR("Worker {} respawn failed permanently, giving up", w.name);
+            LOG_WARN("Worker {} cannot be started; not tried again", w.name);
             give_up_slot(index, stateful);
             co_return;
         }
@@ -672,7 +715,7 @@ void WorkerPool::revive_due() {
             // A fresh budget, not a pardon: if the workload that killed the
             // slot is still around, the budget bounds the damage again and
             // the next revival is one cooldown away.
-            LOG_INFO("Worker {} reviving after cooldown", w.name);
+            LOG_INFO("Worker {} starts again after its pause", w.name);
             w.fresh_budget();
             w.state = SlotState::Respawning;
             worker_tasks.spawn(
@@ -814,7 +857,7 @@ void WorkerPool::scale_down_worker(std::size_t index) {
     w.scaling_down = true;
     w.peer->close_output();
     w.proc.kill(SIGTERM);
-    LOG_INFO("Scaling down worker {}", w.name);
+    LOG_DEBUG("Stopping worker {}: there is less work", w.name);
 }
 
 async::task<> WorkerPool::monitor_loop() {
@@ -923,7 +966,7 @@ void WorkerPool::scale_up_worker() {
     auto& w = stateless_workers[index];
     w.fresh_budget();
     w.state = SlotState::Respawning;
-    LOG_INFO("Scaling up: {}", w.name);
+    LOG_DEBUG("Starting worker {}: there is more work", w.name);
     worker_tasks.spawn(respawn_after(index, false, chrono::milliseconds(0)));
 }
 

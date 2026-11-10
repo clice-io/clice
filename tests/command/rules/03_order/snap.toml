@@ -1,7 +1,7 @@
 [test."$ clice command convert -- missing-clang++ later.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D BAR ${WS}/later.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1
@@ -9,7 +9,7 @@ exit = 1
 [test."$ clice command convert -- missing-clang++ earlier.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D FOO=1 ${WS}/earlier.cpp"
 stderr = '''
-error: Toolchain query failed: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-clang++
 '''
 exit = 1

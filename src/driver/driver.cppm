@@ -82,30 +82,17 @@ inline void println() {
     write_output(stdout, "\n");
 }
 
-enum class LogLevel : std::uint8_t { Trace, Debug, Info, Warn, Error, Off };
-
 /// The --log-level option every subcommand's options hold: what reaches
 /// stderr. A session log keeps info whatever stderr shows, as an
 /// info-level session log is what tells what a run did.
 struct LogLevelOption {
     KANNOTATE(&log_level, description = "Log level of stderr")
-    LogLevel log_level = LogLevel::Warn;
+    logging::Level log_level = logging::Level::Warn;
 
     /// Set the global levels: stderr's as given, the logs' info at least.
     void apply() const {
-        auto level = [&] {
-            switch(log_level) {
-                case LogLevel::Trace: return logging::Level::trace;
-                case LogLevel::Debug: return logging::Level::debug;
-                case LogLevel::Info: return logging::Level::info;
-                case LogLevel::Warn: return logging::Level::warn;
-                case LogLevel::Error: return logging::Level::err;
-                case LogLevel::Off: return logging::Level::off;
-            }
-            std::unreachable();
-        }();
-        logging::options.stderr_level = level;
-        logging::options.level = std::min(level, logging::Level::info);
+        logging::options.stderr_level = log_level;
+        logging::options.level = std::min(log_level, logging::Level::Info);
     }
 };
 
@@ -201,11 +188,6 @@ struct FreshOption {
                   "first, through the running server or a batch run of this command")
     bool fresh = false;
 };
-
-/// "s" when `count` warrants a plural noun, for user-facing summaries.
-const inline char* plural_s(std::size_t count) {
-    return count == 1 ? "" : "s";
-}
 
 /// One answer on stdout: `{"result": ..., "stale": [...]}`, the files
 /// whose shards were withheld because their content moved on from the

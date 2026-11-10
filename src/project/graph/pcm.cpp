@@ -125,19 +125,19 @@ llvm::SetVector<NodeId> module_closure(const Project& project, llvm::ArrayRef<No
 llvm::StringRef revalidate(Project& project, NodeId module, llvm::StringRef pcm_key) {
     auto it = project.pcms.find(module);
     if(it == project.pcms.end()) {
-        return "no_entry";
+        return "none is built yet";
     }
     auto& entry = it->second;
     llvm::StringRef miss;
     if(entry.key.empty()) {
-        miss = entry.failure ? "failed" : "no_build";
+        miss = entry.failure ? "the last one failed" : "none is built yet";
     } else if(entry.key != pcm_key) {
-        miss = "key_changed";
+        miss = "its command, an import or its PCH changed";
     } else if(!inputs_hold(project.file_table, entry.inputs)) {
-        miss = "inputs_changed";
+        miss = "a file it read changed";
     } else if(entry.path.empty() || !project.store->lookup("pcm", entry.blob) ||
               !fs::exists(entry.path)) {
-        miss = "evicted";
+        miss = "the last one left the cache";
     } else {
         return {};
     }
@@ -402,18 +402,14 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
                                           import_keys,
                                           pch_blob}));
 
-    auto pcm_miss = revalidate(project, node, pcm_key);
-    if(pcm_miss.empty()) {
+    auto why = revalidate(project, node, pcm_key);
+    if(why.empty()) {
         LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
         // A record read back from the database names no PCH.
         project.pcms.find(node)->second.pch = std::move(bp.pch);
         co_return Result::Success;
     }
-    LOG_PERF("cache",
-             "ns=pcm event=miss reason={} key={} module={}",
-             pcm_miss,
-             pcm_key,
-             module_name);
+    LOG_PERF("cache", "ns=pcm event=miss key={} module={}", pcm_key, module_name);
 
     if(refused(project, node, pcm_key, module_name)) {
         co_return Result::Failed;
@@ -445,7 +441,8 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
     auto built = co_await project.send_precompiled(
         attempt,
         bp,
-        std::format("module {}", module_name),
+        std::format("module {} ({})", module_name, file_path),
+        why,
         std::move(known),
         before,
         [&](FailureRecord record, Inputs inputs) {
@@ -481,7 +478,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
     auto& entry = project.pcms[node];
     if(!committed.has_value()) {
         entry.retire(&*project.store, "pcm");
-        LOG_WARN("Failed to commit PCM for module {}", module_name);
+        LOG_WARN("Cannot store the PCM of module {}", module_name);
         co_return Result::Failed;
     }
     entry.publish(&*project.store,
@@ -491,7 +488,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
                   project.read_inputs(*built, before));
     entry.key = std::move(pcm_key);
     entry.pch = std::move(bp.pch);
-    LOG_INFO("PCM built for module {}: {}", module_name, entry.path);
+    LOG_DEBUG("The PCM of module {} is stored at {}", module_name, entry.path);
 
     project.mark_precompiled_dirty();
 
@@ -755,13 +752,18 @@ async::task<std::optional<BuiltImports>> Project::build_imports(Fid file,
         waited.push_back(module);
     }
     auto waits = co_await wait_modules(options.attempt, waited, [&](NodeId module) {
-        LOG_INFO("Import {} of {} failed to build; the parse reports it",
-                 file_table.resolve(module.file()),
-                 file_table.resolve(file));
         built.failed.push_back(module);
     });
     if(waits == Result::Stale) {
         co_return std::nullopt;
+    }
+    if(!built.failed.empty()) {
+        LOG_INFO("Imports of {} failed to build: {}; the parse reports them",
+                 file_table.resolve(file),
+                 llvm::join(built.failed | views::transform([&](NodeId module) {
+                                return dep_graph.module_of(module.file());
+                            }),
+                            ", "));
     }
     co_return built;
 }

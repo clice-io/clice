@@ -1,0 +1,13 @@
+["a database found later takes its files".before]
+errors = [
+    {
+        at = "#⟦error⟧ compiled without plain's flags",
+        severity = "error",
+        message = "compiled without plain's flags",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
+]
+
+["a database found later takes its files".after]
+errors = []

@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // A change to a document never opened has no text to apply to: it is
 // dropped, and the open that follows starts from the editor's text.
 
-test({ errors: ["didChange for a document with no open session, dropping"] }, async (t) => {
+test(async (t) => {
     const s = await t.start();
     // Before any open: no action sends it.
     s.client.change(s.uri("main.cpp"), 1, "int broken(");

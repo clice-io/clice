@@ -38,15 +38,17 @@ A logs artifact holds, under the runner's directories:
   own project: `clice/clice/.clice/logs/`): one directory per server or
   `clice index` run, `master.log`, a log per worker (`SF-n` stateful, `SL-n`
   stateless), `index.log`. The clice under test and the baseline write into
-  the same directory: a master log's first line names its version
-  (`version=0.1.0+g<commit>`), and a perf run's `logs` in `results.json` names
-  its sessions. A crashed process's stack is in its own log after
+  the same directory: a log's first lines name its version and the commit
+  it was built from (`clice 0.1.0+g<commit> (<target>) starting, …`, then
+  `Built from https://github.com/clice-io/clice/tree/<commit>`), and a perf
+  run's `logs` in `results.json` names its sessions. A crashed process's stack is in its own log after
   `=== CRASH STACK TRACE ===` (symbolize it: the release skill).
 - `_temp/logs/run.log` — what the job printed: the sweep's `sweep <file>`
   lines, a perf run's `[<scenario> <file> #<run> <server>] done`.
 
-What a server did in the background: its `[N/M] Indexing <file>` and
-`[perf:index] phase=run dispatched=` lines. Read them on both sides before
+What a server did in the background: its `[N/M] Indexing <file>` lines,
+and in a perf run, which sets `CLICE_PERF`, its `[perf:index] phase=run
+dispatched=` lines. Read them on both sides before
 believing a memory or CPU number.
 
 ## A red job: a regression, or an old bug a new sample exposed?

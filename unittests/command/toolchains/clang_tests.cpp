@@ -104,7 +104,7 @@ ZEST_CASE(NamesStandard) {
     ZEXPECT(!names("f.cpp", {"cl", "/std:c++20", "/c"}));
 }
 
-ZEST_CASE(UnqueriedRunsNothing, skip = Windows) {
+ZEST_CASE(UnqueriedRunsNothing) {
     // Neither resolve() nor warm() runs the driver: clang's own builds the
     // job. Queried, the same command runs it.
     auto ran = tmp.path("ran");

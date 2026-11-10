@@ -26,16 +26,41 @@ export function serverEnv(): NodeJS.ProcessEnv {
     return { ...process.env, CLICE_SHADOW_FRESHNESS: "1" };
 }
 
+/// Every session log of the projects at `root` and in the folders below
+/// it: a session logs under the first project that opened its files,
+/// whichever folder's that is.
 export function logFiles(root: string): string[] {
-    const logsDir = path.join(root, ".clice", "logs");
-    if (!fs.existsSync(logsDir)) {
-        return [];
+    const projects = [root];
+    if (fs.existsSync(root)) {
+        for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+            if (entry.isDirectory() && !entry.name.startsWith(".")) {
+                projects.push(path.join(root, entry.name));
+            }
+        }
     }
-    return fs
-        .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
-        .filter((name) => name.endsWith(".log"))
-        .sort()
-        .map((name) => path.join(logsDir, name));
+    // A project's logging directory links the session of a server that
+    // serves it from another's: each file is read once.
+    const seen = new Set<string>();
+    return projects.flatMap((project) => {
+        const logsDir = path.join(project, ".clice", "logs");
+        if (!fs.existsSync(logsDir)) {
+            return [];
+        }
+        return fs
+            .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
+            .filter((name) => name.endsWith(".log"))
+            .sort()
+            .map((name) => path.join(logsDir, name))
+            .filter((file) => {
+                // Through a Windows junction the drive reads as clice spelled it.
+                const real = fs
+                    .realpathSync(file)
+                    .replace(/^[A-Z]:/, (drive) => drive.toLowerCase());
+                const fresh = !seen.has(real);
+                seen.add(real);
+                return fresh;
+            });
+    });
 }
 
 export function anomaliesInLogFiles(root: string): string[] {
@@ -78,8 +103,9 @@ export function serverStderrExcerpt(stderrText: string): string {
         .split("\n")
         .filter(
             (line) =>
-                line.includes("[warn]") ||
+                line.includes("[warning]") ||
                 line.includes("[error]") ||
+                line.includes("[fatal]") ||
                 line.includes("Sanitizer") ||
                 line.includes("==ERROR:") ||
                 line.includes("runtime error:") ||

@@ -8,6 +8,7 @@ import :project.graph.unit;
 import :project.project;
 import :support.failure;
 import :support.logging;
+import :support.text;
 import :vfs.cache_store;
 import :vfs.file_table;
 import :worker.pool;
@@ -71,11 +72,14 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
                Attempt& attempt,
                const Params& params,
                llvm::StringRef label,
+               llvm::StringRef why,
                Inputs known,
                const Inputs& before,
                llvm::function_ref<void(FailureRecord, Inputs)> fail) {
     constexpr bool pch = std::same_as<Params, worker::BuildPCHParams>;
     constexpr llvm::StringRef what = pch ? "PCH" : "PCM";
+    LOG_INFO("Building the {} of {}: {}", what, label, why);
+    Timer timer;
     auto result = co_await deliver(
         *project.pool,
         false,
@@ -90,10 +94,13 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
             fail(failed_build(worker::death_of(error), error.message), std::move(known));
         });
     if(result.has_value() && result.value().success) {
+        LOG_INFO("Built the {} of {} in {} ms", what, label, timer.ms());
         co_return std::move(result.value());
     }
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
-        LOG_INFO("{} build preempted for {}, will retry", what, label);
+        LOG_INFO("The {} build of {} was stopped for more urgent work; it runs again later",
+                 what,
+                 label);
         co_return std::unexpected(Result::Stale);
     }
     // A build is expected to fail on the user's errors, or for an operational
@@ -102,7 +109,14 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
                                        : worker::is_operational_error(result.error());
     auto& message = result.has_value() ? result.value().error : result.error().message;
     if(expected) {
-        LOG_WARN("{} build failed for {}: {}", what, label, message);
+        std::string shown = message;
+        if(result.has_value() && result.value().has_user_errors && result.value().error_count > 1) {
+            auto more = result.value().error_count - 1;
+            shown = std::format("{} (and {}, all in the worker's log)",
+                                result.value().first_error,
+                                counted(more, "more error", "more errors"));
+        }
+        LOG_WARN("The {} build of {} failed: {}", what, label, shown);
         if(result.has_value()) {
             fail(failed_build({}, result.value().first_error),
                  project.read_inputs(result.value(), before));
@@ -119,20 +133,22 @@ async::task<std::expected<worker::PrecompiledBuildResult, Result>>
     Project::send_precompiled(Attempt& attempt,
                               const worker::BuildPCHParams& params,
                               llvm::StringRef label,
+                              llvm::StringRef why,
                               Inputs known,
                               const Inputs& before,
                               llvm::function_ref<void(FailureRecord, Inputs)> fail) {
-    return send_build(*this, attempt, params, label, std::move(known), before, fail);
+    return send_build(*this, attempt, params, label, why, std::move(known), before, fail);
 }
 
 async::task<std::expected<worker::PrecompiledBuildResult, Result>>
     Project::send_precompiled(Attempt& attempt,
                               const worker::BuildPCMParams& params,
                               llvm::StringRef label,
+                              llvm::StringRef why,
                               Inputs known,
                               const Inputs& before,
                               llvm::function_ref<void(FailureRecord, Inputs)> fail) {
-    return send_build(*this, attempt, params, label, std::move(known), before, fail);
+    return send_build(*this, attempt, params, label, why, std::move(known), before, fail);
 }
 
 }  // namespace clice

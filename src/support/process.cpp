@@ -9,7 +9,7 @@ async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::
                                                                std::string cwd,
                                                                std::string path) {
     auto file = arguments[0];
-    LOG_INFO("Execute command: {}", file);
+    LOG_DEBUG("Running {}", file);
 
     arguments.erase(arguments.begin());
     // Keeps the output callers parse unlocalized. Not LANG alone: GCC

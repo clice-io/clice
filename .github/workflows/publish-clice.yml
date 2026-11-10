@@ -2,7 +2,7 @@ name: clice
 
 # Promotes already-built, already-tested packages to a release. There is no
 # release build: every CI run on main packages the binaries its test suites
-# just validated (see test-leg.yml), and this workflow
+# just validated (see test-platform.yml), and this workflow
 # only downloads those artifacts from the green run of the tagged commit,
 # renames them to their asset names, attaches them to the release, and then
 # publishes the release. It also re-uploads the packages into the current run
@@ -161,7 +161,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Only after every leg of the matrix succeeded; a failed leg leaves the
+  # Only after every job of the matrix succeeded; a failed one leaves the
   # draft for `gh run rerun --failed`.
   publish:
     needs: promote

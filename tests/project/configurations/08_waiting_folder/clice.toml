@@ -1,0 +1,11 @@
+default_configuration = "debug"
+
+[[rules]]
+configuration = "debug"
+patterns = ["**"]
+append = ["-DDEBUG"]
+
+[[rules]]
+configuration = "release"
+patterns = ["**"]
+append = ["-DNDEBUG"]

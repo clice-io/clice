@@ -47,7 +47,7 @@ pixi run test Debug          # all tests with debug build
 
 ## 编辑器 E2E 测试
 
-这些冒烟测试使用真实编辑器（无头 Neovim 和 VS Code）测试本地构建的 clice 可执行文件，覆盖启动、首次诊断、悬停、转到定义和代码补全，并在头文件上覆盖显示和切换其编译上下文的命令。测试运行在三个用例的副本上——一个单文件项目、一个 C++20 模块项目，以及一个有两个宿主的头文件——这些副本由 `editor-prepare` 写入 `.cache/editors`。CI 在 Linux x64 和 macOS arm64 两条流水线上使用编辑器的最新稳定版本运行这些测试，并且有意不锁定版本：该作业用于发现编辑器新版本导致的故障。
+这些冒烟测试使用真实编辑器（无头 Neovim 和 VS Code）测试本地构建的 clice 可执行文件，覆盖启动、首次诊断、悬停、转到定义和代码补全，并在头文件上覆盖显示和切换其编译上下文的命令。测试运行在三个用例的副本上——一个单文件项目、一个 C++20 模块项目，以及一个有两个宿主的头文件——这些副本由 `editor-prepare` 写入 `.cache/editors`。CI 在 Linux x64、macOS arm64 和 Windows x64（Windows 上只有 VS Code）上使用编辑器的最新稳定版本运行这些测试，并且有意不锁定版本：该作业用于发现编辑器新版本导致的故障。
 
 ```bash
 $ pixi run build                  # build/RelWithDebInfo/bin/bin/clice
