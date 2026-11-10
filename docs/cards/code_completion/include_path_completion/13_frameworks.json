@@ -34,6 +34,11 @@
       "markers": []
     },
     {
+      "path": "later/FwSnap.framework/Headers/FwSnapLater.h",
+      "text": "",
+      "markers": []
+    },
+    {
       "path": "main.cpp",
       "text": "#include <FwSn>\n#include <FwSnap/>\n",
       "markers": [
