@@ -417,9 +417,10 @@ ZEST_CASE(FrameworkHeaders) {
 }
 
 ZEST_CASE(FrameworkHeaderArgument) {
-    /// A framework's header is included as <Foo/Bar.h>.
+    /// A framework's header is included as <Foo/Bar.h>, a private one too.
     TempDir tmp;
     tmp.touch("Frameworks/Foo.framework/Headers/Bar.h");
+    tmp.touch("Frameworks/Foo.framework/PrivateHeaders/Internal.h");
     tmp.touch("src/main.cpp");
 
     SearchConfig config;
@@ -431,6 +432,9 @@ ZEST_CASE(FrameworkHeaderArgument) {
     auto header =
         CanonicalPath(Spelling::absolute(tmp.path("Frameworks/Foo.framework/Headers/Bar.h")));
     ZEXPECT(arguments.of(header) == std::optional<std::string>("<Foo/Bar.h>"));
+    auto internal = CanonicalPath(
+        Spelling::absolute(tmp.path("Frameworks/Foo.framework/PrivateHeaders/Internal.h")));
+    ZEXPECT(arguments.of(internal) == std::optional<std::string>("<Foo/Internal.h>"));
 }
 
 ZEST_CASE(FirstFrameworkWins) {

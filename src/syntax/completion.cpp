@@ -426,7 +426,9 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
     FuzzyMatcher matcher(file_prefix);
     auto builtin_headers = Spelling::absolute(path::join(resource_dir(), "include")).str();
     std::vector<IncludeCandidate> results;
-    llvm::StringSet<> seen;
+    // A name several directories hold is listed once, at its best rank: a
+    // file no header would be named as does not hide a header behind it.
+    llvm::StringMap<std::size_t> listed;
 
     auto collect =
         [&](const SearchDir& search_dir, bool system, std::uint64_t tier, std::uint64_t position) {
@@ -449,10 +451,9 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
                     continue;
                 }
                 auto score = matcher.match(name);
-                if(!score || seen.contains(name)) {
+                if(!score) {
                     continue;
                 }
-                seen.insert(name);
 
                 auto internal = [&] {
                     auto below = dir_prefix.empty() ? name.str() : (dir_prefix + "/" + name).str();
@@ -466,11 +467,18 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
                 bool reserved = name.starts_with("_");
                 // The score is in [0, 2]: a better match takes a smaller rank.
                 auto mismatch = static_cast<std::uint64_t>((2.0f - *score) * 1000.0f);
-                results.push_back({name.str(),
-                                   is_dir,
-                                   (std::uint64_t(hidden) << 32) | (std::uint64_t(unlikely) << 31) |
-                                       (mismatch << 20) | (tier << 17) |
-                                       (std::uint64_t(reserved) << 16) | position});
+                IncludeCandidate candidate{name.str(),
+                                           is_dir,
+                                           (std::uint64_t(hidden) << 32) |
+                                               (std::uint64_t(unlikely) << 31) | (mismatch << 20) |
+                                               (tier << 17) | (std::uint64_t(reserved) << 16) |
+                                               position};
+                auto [it, inserted] = listed.try_emplace(name, results.size());
+                if(inserted) {
+                    results.push_back(std::move(candidate));
+                } else if(candidate.order < results[it->second].order) {
+                    results[it->second] = std::move(candidate);
+                }
             }
         };
 

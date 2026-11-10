@@ -589,6 +589,20 @@ ZEST_CASE(OtherFilesLast) {
     ZEXPECT(complete(config, "") == std::vector<std::string>{"notes.h", "notes.txt", ".hidden.h"});
 }
 
+ZEST_CASE(HeadersOutrankOtherFiles) {
+    /// A name an earlier directory holds as some other file is listed at
+    /// the rank of the header a later one holds.
+    TempDir tmp;
+    tmp.touch("inc/print");
+    tmp.touch("sys/print");
+    tmp.touch("sys/printer.h");
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("inc")});
+    config.dirs.push_back({tmp.path("sys")});
+    config.system_start_idx = 1;
+    ZEXPECT(complete(config, "pri") == std::vector<std::string>{"print", "printer.h"});
+}
+
 ZEST_CASE(InternalBuiltinsLast) {
     /// clang's builtin headers that must not be included directly follow
     /// the others.
