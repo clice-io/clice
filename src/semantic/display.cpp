@@ -706,14 +706,14 @@ namespace {
 /// Negative numbers are sign-extended to 32/64 bits:
 ///   -2    => 0xfffffffe
 ///   -2^32 => 0xffffffff00000000
-auto print_hex(const llvm::APSInt& value) -> llvm::FormattedNumber {
+std::string print_hex(const llvm::APSInt& value) {
     assert(value.getSignificantBits() <= 64 && "Can't print more than 64 bits.");
     std::uint64_t bits =
         value.getBitWidth() > 64 ? value.trunc(64).getZExtValue() : value.getZExtValue();
     if(value.isNegative() && value.getSignificantBits() <= 32) {
-        return llvm::format_hex(static_cast<std::uint32_t>(bits), 0);
+        return std::format("{:#x}", static_cast<std::uint32_t>(bits));
     }
-    return llvm::format_hex(bits, 0);
+    return std::format("{:#x}", bits);
 }
 
 /// A string as a literal of `element` characters writes it, its quotes,
@@ -791,7 +791,7 @@ auto quoted(const clang::ASTContext& context,
             /// No universal character name spells what is no character, a
             /// lone surrogate.
             text += R"(\x)";
-            text += llvm::utohexstr(c, /*LowerCase=*/true);
+            text += std::format("{:x}", c);
             after_hex = true;
         }
     }
@@ -934,10 +934,9 @@ auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
                 if(constant.Val.getInt().getSignificantBits() > 64) {
                     return enumerator->getNameAsString();
                 }
-                return llvm::formatv("{0} ({1})",
-                                     enumerator->getNameAsString(),
-                                     print_hex(constant.Val.getInt()))
-                    .str();
+                return std::format("{} ({})",
+                                   enumerator->getNameAsString(),
+                                   print_hex(constant.Val.getInt()));
             }
         }
     }
@@ -945,10 +944,9 @@ auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
     /// Show hex value of integers if they're at least 10 (or negative!).
     if(type->isIntegralOrEnumerationType() && constant.Val.isInt() &&
        constant.Val.getInt().getSignificantBits() <= 64 && constant.Val.getInt().uge(10)) {
-        return llvm::formatv("{0} ({1})",
-                             constant.Val.getAsString(context, type),
-                             print_hex(constant.Val.getInt()))
-            .str();
+        return std::format("{} ({})",
+                           constant.Val.getAsString(context, type),
+                           print_hex(constant.Val.getInt()));
     }
 
     /// Arrays show their first elements only, as in diagnostics.

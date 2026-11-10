@@ -135,10 +135,10 @@ auto accessor_description(const clang::NamedDecl* decl) -> std::string {
         return {};
     }
     if(const auto* field = returned_field(*definition, *body)) {
-        return llvm::formatv("Trivial accessor for `{0}`.", field->getName()).str();
+        return std::format("Trivial accessor for `{}`.", field->getName());
     }
     if(const auto* field = assigned_field(*definition, *body)) {
-        return llvm::formatv("Trivial setter for `{0}`.", field->getName()).str();
+        return std::format("Trivial setter for `{}`.", field->getName());
     }
     return {};
 }

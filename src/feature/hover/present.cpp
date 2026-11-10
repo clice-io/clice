@@ -15,7 +15,7 @@ namespace {
 /// Sizes (and padding) are shown in bytes if possible, otherwise in bits.
 auto format_size(std::uint64_t bits) -> std::string {
     auto [value, unit] = bits % 8 == 0 ? std::pair(bits / 8, "byte") : std::pair(bits, "bit");
-    return llvm::formatv("{0} {1}{2}", value, unit, value == 1 ? "" : "s").str();
+    return std::format("{} {}{}", value, unit, value == 1 ? "" : "s");
 }
 
 /// An offset in bytes, and bits past them for a bitfield, so offsets of
@@ -381,7 +381,7 @@ markup::Document HoverInfo::present() const {
     }
     if(defined_on_line) {
         output.add_paragraph().append_text(
-            llvm::formatv("Not defined yet here: defined on line {0}", *defined_on_line).str());
+            std::format("Not defined yet here: defined on line {}", *defined_on_line));
     }
     if(!overrides.empty()) {
         auto& line = add_fact(output, "Overrides:");
@@ -399,10 +399,9 @@ markup::Document HoverInfo::present() const {
         auto& line = add_fact(output, "Size:").append_text(format_size(*size));
         if(padding && *padding != 0) {
             /// A field's padding follows it; a class's is spread inside it.
-            line.append_text(
-                llvm::formatv(kind == SymbolKind::Field ? " (+{0} padding)" : " ({0} padding)",
-                              format_size(*padding))
-                    .str());
+            line.append_text(std::format(" ({}{} padding)",
+                                         kind == SymbolKind::Field ? "+" : "",
+                                         format_size(*padding)));
         }
     }
     if(align) {

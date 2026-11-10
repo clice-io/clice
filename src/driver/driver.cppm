@@ -82,30 +82,17 @@ inline void println() {
     write_output(stdout, "\n");
 }
 
-enum class LogLevel : std::uint8_t { Trace, Debug, Info, Warn, Error, Off };
-
 /// The --log-level option every subcommand's options hold: what reaches
 /// stderr. A session log keeps info whatever stderr shows, as an
 /// info-level session log is what tells what a run did.
 struct LogLevelOption {
     KANNOTATE(&log_level, description = "Log level of stderr")
-    LogLevel log_level = LogLevel::Warn;
+    logging::Level log_level = logging::Level::Warn;
 
     /// Set the global levels: stderr's as given, the logs' info at least.
     void apply() const {
-        auto level = [&] {
-            switch(log_level) {
-                case LogLevel::Trace: return logging::Level::Trace;
-                case LogLevel::Debug: return logging::Level::Debug;
-                case LogLevel::Info: return logging::Level::Info;
-                case LogLevel::Warn: return logging::Level::Warn;
-                case LogLevel::Error: return logging::Level::Error;
-                case LogLevel::Off: return logging::Level::Off;
-            }
-            std::unreachable();
-        }();
-        logging::options.stderr_level = level;
-        logging::options.level = std::min(level, logging::Level::Info);
+        logging::options.stderr_level = log_level;
+        logging::options.level = std::min(log_level, logging::Level::Info);
     }
 };
 
