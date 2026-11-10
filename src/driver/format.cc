@@ -8,6 +8,7 @@ import :feature.formatting;
 import :project.discovery;
 import :project.project;
 import :support.logging;
+import :support.text;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -371,19 +372,16 @@ int run_format(const Request& options) {
         return 0;
     }
     if(!options.check) {
-        driver::println("Formatted {} file{} in {:.1f}s.",
-                        result.files,
-                        plural_s(result.files),
+        driver::println("Formatted {} in {:.1f}s.",
+                        counted(result.files, "file", "files"),
                         result.seconds);
     } else if(result.unformatted.empty()) {
-        driver::println("Checked {} file{} in {:.1f}s: all formatted.",
-                        result.files,
-                        plural_s(result.files),
+        driver::println("Checked {} in {:.1f}s: all formatted.",
+                        counted(result.files, "file", "files"),
                         result.seconds);
     } else {
-        driver::println("Checked {} file{} in {:.1f}s: {} need{} formatting.",
-                        result.files,
-                        plural_s(result.files),
+        driver::println("Checked {} in {:.1f}s: {} need{} formatting.",
+                        counted(result.files, "file", "files"),
                         result.seconds,
                         result.unformatted.size(),
                         result.unformatted.size() == 1 ? "s" : "");

@@ -10,7 +10,7 @@ test("each entry", { errors: [UNCONVERTED_ENTRIES] }, async (t) => {
 });
 
 // A relative directory is the database's own, written out absolute.
-test("a relative directory", { errors: ["Cannot find driver", UNCONVERTED_ENTRIES] }, async (t) => {
+test("a relative directory", { errors: [UNCONVERTED_ENTRIES] }, async (t) => {
     await t.cli("command convert build/compile_commands.json");
 });
 

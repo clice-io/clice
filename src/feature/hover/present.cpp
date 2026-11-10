@@ -7,6 +7,7 @@ import :semantic.comment;
 import :semantic.display;
 import :semantic.symbol;
 import :support.markup;
+import :support.text;
 
 namespace clice::feature {
 
@@ -14,8 +15,7 @@ namespace {
 
 /// Sizes (and padding) are shown in bytes if possible, otherwise in bits.
 auto format_size(std::uint64_t bits) -> std::string {
-    auto [value, unit] = bits % 8 == 0 ? std::pair(bits / 8, "byte") : std::pair(bits, "bit");
-    return std::format("{} {}{}", value, unit, value == 1 ? "" : "s");
+    return bits % 8 == 0 ? counted(bits / 8, "byte", "bytes") : counted(bits, "bit", "bits");
 }
 
 /// An offset in bytes, and bits past them for a bitfield, so offsets of

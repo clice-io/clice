@@ -160,15 +160,15 @@ void ServedProject::open() {
         return;
     }
     if(!project.root.empty()) {
-        llvm::SmallVector<CanonicalPath> open;
+        llvm::SmallVector<CanonicalPath> open_files;
         for(auto& [path_id, document]: documents) {
-            open.emplace_back(project.file_table.resolve(path_id));
+            open_files.emplace_back(project.file_table.resolve(path_id));
         }
         auto opened = project.open({
             .configuration = configuration,
             .cache = Project::OpenOptions::Cache::Write,
             .freshness = {.withhold = project.settings.project.enable_indexing},
-            .files = std::move(open),
+            .files = std::move(open_files),
         });
         if(project.store) {
             bg_tasks.spawn(checkpoint_task());
@@ -358,7 +358,7 @@ void ServedProject::decide_compiling(Fid path_id) {
 }
 
 bool ServedProject::look_for_database(bool force) {
-    if(!waiting) {
+    if(!waiting || server.shutting_down()) {
         return false;
     }
     if(!force) {

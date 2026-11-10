@@ -12,5 +12,5 @@ test("nothing is served", async (t) => {
     await s.stop();
     const logs = t.disk.list(".clice/logs/*/master.log");
     expect(logs).toHaveLength(1);
-    expect(t.disk.read(logs[0] ?? "")).toContain("clice.toml");
+    expect(t.disk.read(logs[0] ?? "")).toContain("TOML parse error");
 });

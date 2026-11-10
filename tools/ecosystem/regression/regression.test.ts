@@ -43,6 +43,10 @@ describe("index", () => {
             "[t] [warning] [2/2] Not indexing e.cpp again (crashed); what other files know",
             "[t] [info] [1/1] Indexing f.cpp",
             "[t] [info] [1/1] f.cpp was removed while it was indexed",
+            "[t] [info] [1/2] Indexing h.cpp",
+            "[t] [info] [1/2] Indexing h.cpp again later: more urgent work came first",
+            "[t] [info] [2/2] Indexing i.cpp",
+            "[t] [info] [2/2] i.cpp or a file it includes changed while it was indexed; the result is dropped",
         ].join("\n");
         expect(unitsInFlight(log)).toEqual(["b.cpp"]);
     });

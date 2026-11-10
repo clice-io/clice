@@ -61,7 +61,8 @@ const ENDED = [
     /\] Cannot index (\S+?):/,
     /\] Not indexing (\S+) again/,
     /\] The worker indexing (\S+) died/,
-    /\] (\S+) (?:was removed while|changed while|is indexed again later|does not fit in memory)/,
+    /\] Indexing (\S+) again later/,
+    /\] (\S+) (?:was removed while|or a file it includes changed while|does not fit in memory)/,
 ];
 
 /// The units the session log shows begun and whose attempt has not ended.

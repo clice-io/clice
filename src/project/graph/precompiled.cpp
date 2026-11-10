@@ -8,6 +8,7 @@ import :project.graph.unit;
 import :project.project;
 import :support.failure;
 import :support.logging;
+import :support.text;
 import :vfs.cache_store;
 import :vfs.file_table;
 import :worker.pool;
@@ -111,10 +112,9 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
         std::string shown = message;
         if(result.has_value() && result.value().has_user_errors && result.value().error_count > 1) {
             auto more = result.value().error_count - 1;
-            shown = std::format("{} (and {} more {}, all in the worker's log)",
+            shown = std::format("{} (and {}, all in the worker's log)",
                                 result.value().first_error,
-                                more,
-                                more == 1 ? "error" : "errors");
+                                counted(more, "more error", "more errors"));
         }
         LOG_WARN("The {} build of {} failed: {}", what, label, shown);
         if(result.has_value()) {

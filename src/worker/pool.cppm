@@ -65,18 +65,16 @@ struct WorkerDeath {
     std::size_t documents = 0;
 };
 
-/// The last lines a worker wrote to stderr, kept for its crash report:
-/// the fatal diagnosis (an LLVM ERROR, an assertion) arrives there seconds
-/// before the exit is observed, far from the report in the log.
-struct StderrTail {
+/// What a worker's stderr said of its death, read as the lines come: the
+/// exit is observed independently, often before the last of them.
+struct StderrReport {
     /// The crash tag the dying worker wrote after worker::crashed_in_marker.
     std::string crashed_in;
 
     /// The worker wrote that an allocation failed.
     bool out_of_memory = false;
 
-    /// The pipe reached EOF. The exit is observed independently of the
-    /// pipe, so the crash report waits for this before reading the lines.
+    /// The pipe reached EOF: the death's report waits for it.
     async::event drained;
 };
 
@@ -352,7 +350,7 @@ private:
         std::shared_ptr<ipc::BincodePeer> peer;
 
         /// Written by the stderr drain, read by the crash report.
-        std::shared_ptr<StderrTail> stderr_tail = std::make_shared<StderrTail>();
+        std::shared_ptr<StderrReport> stderr_report = std::make_shared<StderrReport>();
 
         /// Display name for logging, e.g. "SL-0" or "SF-1"; its log file is
         /// named after it.

@@ -108,7 +108,7 @@ int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
              sys::pid(),
              opts.mode == ServerMode::Pipe ? "stdio" : "a socket",
              opts.workspace.empty() ? std::string()
-                                    : std::format(", for the workspace {}", opts.workspace));
+                                    : std::format(", for the project root {}", opts.workspace));
     if(auto source = built_from(); !source.empty()) {
         LOG_INFO("{}", source);
     }

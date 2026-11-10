@@ -289,8 +289,8 @@ int run(Modularize& opts) {
         }
         for(auto& removed: rewriting->plan.removed) {
             auto path = join_path(loaded->root, removed);
-            if(auto removed = vfs::remove(path); !removed) {
-                return fail(std::format("{}", removed.error()));
+            if(auto gone = vfs::remove(path); !gone) {
+                return fail(std::format("{}", gone.error()));
             }
         }
         plan.rewriting = std::move(rewriting->plan);

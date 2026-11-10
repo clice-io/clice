@@ -23,12 +23,19 @@ const keepEnv = "--force-disable-user-env";
 // process exits, once VS Code has: Windows removes nothing in use, VS Code
 // watches the folder of a document outside the workspace a while after its
 // editor closes, and a runner's own process watching the programs it saw run
-// holds the staged server as long as VS Code runs.
+// holds the staged server as long as VS Code runs. The server's workers may
+// outlive VS Code by a moment, holding it still: what cannot go yet stays,
+// said so, and the next run's staging replaces it.
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "clice-e2e-"));
 const staged = path.join(extensionRoot, "clice");
 process.on("exit", () => {
-    fs.rmSync(scratch, { recursive: true, force: true });
-    fs.rmSync(staged, { recursive: true, force: true });
+    for (const dir of [scratch, staged]) {
+        try {
+            fs.rmSync(dir, { recursive: true, force: true });
+        } catch (error) {
+            console.error(`${dir} stays, still in use: ${String(error)}`);
+        }
+    }
 });
 
 const configs = fixtures.map((fixture) => ({

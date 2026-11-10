@@ -53,9 +53,9 @@ ZEST_CASE(BusyPipeSwitchesLater) {
     ZASSERT(::_pipe(fds, 65536, _O_BINARY) == 0);
     ZASSERT(::_write(fds[1], "\n", 1) == 1);
 
-    auto sink = logging::pipe_output({.fd = fds[1]});
-    ZEXPECT(sink.pipe != logging::PipeSwitch::Refused);
-    logging::write(sink, as_line("while busy"));
+    auto output = logging::pipe_output({.fd = fds[1]});
+    ZEXPECT(output.pipe != logging::PipeSwitch::Refused);
+    logging::write(output, as_line("while busy"));
     DWORD unread = 0;
     auto read_end = reinterpret_cast<HANDLE>(::_get_osfhandle(fds[0]));
     ZASSERT(::PeekNamedPipe(read_end, nullptr, 0, nullptr, &unread, nullptr) != 0);
@@ -63,7 +63,7 @@ ZEST_CASE(BusyPipeSwitchesLater) {
 
     char byte = 0;
     ZASSERT(::_read(fds[0], &byte, 1) == 1);
-    logging::write(sink, as_line("after the read"));
+    logging::write(output, as_line("after the read"));
     ::_close(fds[1]);
 
     std::string out;
@@ -74,7 +74,7 @@ ZEST_CASE(BusyPipeSwitchesLater) {
         out.append(buf, static_cast<std::size_t>(n));
     }
     ZEXPECT(out.find("while busy") < out.find("after the read"));
-    ZEXPECT(sink.dropped == 0);
+    ZEXPECT(output.dropped == 0);
     ::_close(fds[0]);
 }
 
@@ -125,7 +125,7 @@ ZEST_SUITE(PipeOutput) {
 
 ZEST_CASE(FullPipeDropsLines) {
     Pipe pipe;
-    auto sink = logging::pipe_output({.fd = pipe.fds[1], .capacity = 4096});
+    auto output = logging::pipe_output({.fd = pipe.fds[1], .capacity = 4096});
     ZEXPECT((::fcntl(pipe.fds[1], F_GETFL) & O_NONBLOCK) != 0);
 
     // Nobody reads: the pipe (64KB) and the buffer budget fill, and every
@@ -133,48 +133,48 @@ ZEST_CASE(FullPipeDropsLines) {
     // blocking regression hangs right here — a clean, attributable
     // failure.
     auto line = std::string(100, 'x');
-    for(int i = 0; i < 5000 && sink.dropped == 0; i += 1) {
-        logging::write(sink, as_line(line));
+    for(int i = 0; i < 5000 && output.dropped == 0; i += 1) {
+        logging::write(output, as_line(line));
     }
-    ZEXPECT(sink.dropped > 0);
+    ZEXPECT(output.dropped > 0);
 }
 
 ZEST_CASE(BackpressureBuffersLines) {
     Pipe pipe;
-    auto sink = logging::pipe_output({.fd = pipe.fds[1]});
+    auto output = logging::pipe_output({.fd = pipe.fds[1]});
 
     // More than the pipe holds, less than the buffer budget: a reader
     // that is merely slow loses nothing.
     for(int i = 0; i < 600; i += 1) {
-        logging::write(sink, as_line(std::format("line number {}", i)));
+        logging::write(output, as_line(std::format("line number {}", i)));
     }
-    ZEXPECT(sink.dropped == 0);
+    ZEXPECT(output.dropped == 0);
 
     auto out = pipe.drain();
-    logging::write(sink, as_line("the flush trigger"));
+    logging::write(output, as_line("the flush trigger"));
     out += pipe.drain();
     ZEXPECT(out.find("line number 0") != std::string::npos);
     ZEXPECT(out.find("line number 599") != std::string::npos);
     ZEXPECT(out.find("the flush trigger") != std::string::npos);
-    ZEXPECT(sink.dropped == 0);
+    ZEXPECT(output.dropped == 0);
 }
 
 ZEST_CASE(DrainRecoversAndReports) {
     Pipe pipe;
-    auto sink = logging::pipe_output({.fd = pipe.fds[1], .capacity = 4096});
+    auto output = logging::pipe_output({.fd = pipe.fds[1], .capacity = 4096});
 
     auto line = std::string(100, 'y');
-    for(int i = 0; i < 5000 && sink.dropped == 0; i += 1) {
-        logging::write(sink, as_line(line));
+    for(int i = 0; i < 5000 && output.dropped == 0; i += 1) {
+        logging::write(output, as_line(line));
     }
-    ZASSERT(sink.dropped > 0);
+    ZASSERT(output.dropped > 0);
 
     // The client starts reading again: one call flushes the buffered
     // survivors, then the gap report — unless the room the full pipe had
     // left took it already — then the fresh line; everything is
     // synchronous, no waits involved.
     auto first = pipe.drain();
-    logging::write(sink, as_line("after the flood"));
+    logging::write(output, as_line("after the flood"));
     auto second = pipe.drain();
     // The buffered survivors waited for the room the drain made.
     ZEXPECT(second.find('y') != std::string::npos);
@@ -192,18 +192,18 @@ ZEST_CASE(TinyPipeStillReports) {
     // ordering bug only showed up on small-pipe CI runners).
     Pipe pipe;
     ::fcntl(pipe.fds[1], F_SETPIPE_SZ, 4096);
-    auto sink = logging::pipe_output({.fd = pipe.fds[1], .capacity = 65536});
+    auto output = logging::pipe_output({.fd = pipe.fds[1], .capacity = 65536});
 
     auto line = std::string(100, 'z');
-    for(int i = 0; i < 5000 && sink.dropped == 0; i += 1) {
-        logging::write(sink, as_line(line));
+    for(int i = 0; i < 5000 && output.dropped == 0; i += 1) {
+        logging::write(output, as_line(line));
     }
-    ZASSERT(sink.dropped > 0);
+    ZASSERT(output.dropped > 0);
 
     // Drain only one tiny pipe's worth, log once: the report must already
     // be in that first quantum even though most of the backlog is not.
     pipe.drain();
-    logging::write(sink, as_line("nudge"));
+    logging::write(output, as_line("nudge"));
     auto out = pipe.drain();
     ZEXPECT(out.find("client not draining") != std::string::npos);
     // Eviction must never cut the tail off a partially written line: a
@@ -216,21 +216,22 @@ ZEST_CASE(TornLineEndsBeforeNote) {
     // backlog. The line's tail goes out before the gap report does.
     Pipe pipe;
     ::fcntl(pipe.fds[1], F_SETPIPE_SZ, 4096);
-    auto sink = logging::pipe_output({.fd = pipe.fds[1], .capacity = 8192});
+    auto output = logging::pipe_output({.fd = pipe.fds[1], .capacity = 8192});
     auto long_line = as_line(std::string(100'000, 'x'));
-    logging::write(sink, long_line);
-    for(int i = 0; i < 5000 && sink.dropped == 0; i += 1) {
-        logging::write(sink, as_line(std::string(100, 'y')));
+    logging::write(output, long_line);
+    for(int i = 0; i < 5000 && output.dropped == 0; i += 1) {
+        logging::write(output, as_line(std::string(100, 'y')));
     }
-    ZASSERT(sink.dropped > 0);
+    ZASSERT(output.dropped > 0);
 
     std::string out;
     for(int i = 0; i < 100; i += 1) {
         out += pipe.drain();
-        logging::write(sink, as_line("nudge"));
+        logging::write(output, as_line("nudge"));
     }
     out += pipe.drain();
     ZEXPECT(out.find(long_line) != std::string::npos);
+    ZEXPECT(out.find("client not draining") != std::string::npos);
     ZEXPECT(out.find("client not draining") > out.find(long_line));
 }
 
@@ -239,23 +240,23 @@ ZEST_CASE(NoteSurvivesPressure) {
     // evicting buffered lines must never evict the count itself.
     Pipe pipe;
     ::fcntl(pipe.fds[1], F_SETPIPE_SZ, 4096);
-    auto sink = logging::pipe_output({.fd = pipe.fds[1], .capacity = 8192});
+    auto output = logging::pipe_output({.fd = pipe.fds[1], .capacity = 8192});
 
     auto line = std::string(100, 'w');
-    for(int i = 0; i < 5000 && sink.dropped == 0; i += 1) {
-        logging::write(sink, as_line(line));
+    for(int i = 0; i < 5000 && output.dropped == 0; i += 1) {
+        logging::write(output, as_line(line));
     }
-    ZASSERT(sink.dropped > 0);
-    auto seen = sink.dropped;
+    ZASSERT(output.dropped > 0);
+    auto seen = output.dropped;
 
     // Keep the flood going well past several full buffer turnovers.
     for(int i = 0; i < 500; i += 1) {
-        logging::write(sink, as_line(line));
+        logging::write(output, as_line(line));
     }
-    ZEXPECT(sink.dropped > seen);
+    ZEXPECT(output.dropped > seen);
 
     pipe.drain();
-    logging::write(sink, as_line("nudge"));
+    logging::write(output, as_line("nudge"));
     auto out = pipe.drain();
     ZEXPECT(out.find("client not draining") != std::string::npos);
 }
@@ -267,7 +268,7 @@ ZEST_CASE(SocketGetsNonblocking) {
     int fds[2] = {-1, -1};
     ZASSERT(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
 
-    auto sink = logging::pipe_output({.fd = fds[1]});
+    auto output = logging::pipe_output({.fd = fds[1]});
     ZEXPECT((::fcntl(fds[1], F_GETFL) & O_NONBLOCK) != 0);
 
     ::close(fds[0]);
@@ -283,11 +284,11 @@ ZEST_CASE(RegularFileStaysBlocking) {
     int fd = ::open(tmp.path("log.txt").c_str(), O_WRONLY | O_APPEND);
     ZASSERT(fd >= 0);
 
-    auto sink = logging::pipe_output({.fd = fd});
+    auto output = logging::pipe_output({.fd = fd});
     ZEXPECT((::fcntl(fd, F_GETFL) & O_NONBLOCK) == 0);
 
-    logging::write(sink, as_line("to the file"));
-    ZEXPECT(sink.dropped == 0);
+    logging::write(output, as_line("to the file"));
+    ZEXPECT(output.dropped == 0);
     ::close(fd);
 }
 
@@ -323,26 +324,26 @@ ZEST_SUITE(FileOutput) {
 ZEST_CASE(FailedWritesDropLines) {
     TempDir tmp;
     auto log = tmp.path("session.log");
-    auto sink = append_to(log);
-    ZASSERT(sink.fd >= 0);
-    logging::write(sink, as_line("before the disk filled"));
+    auto output = append_to(log);
+    ZASSERT(output.fd >= 0);
+    logging::write(output, as_line("before the disk filled"));
 
     auto status = fs::status(log);
     ZASSERT(status);
     {
         FileSizeCap cap(status->size);
-        logging::write(sink, as_line("lost one"));
-        logging::write(sink, as_line("lost two"));
+        logging::write(output, as_line("lost one"));
+        logging::write(output, as_line("lost two"));
     }
-    ZEXPECT(sink.dropped == 2u);
+    ZEXPECT(output.dropped == 2u);
 
-    logging::write(sink, as_line("after space came back"));
+    logging::write(output, as_line("after space came back"));
     auto text = read_file(log).value_or("");
     ZEXPECT(text.find("lost") == std::string::npos);
     auto note = text.find("[logging] dropped 2 line(s): File too large\n");
     ZASSERT(note != std::string::npos);
     ZEXPECT(text.find("after space came back") > note);
-    ::close(sink.fd);
+    ::close(output.fd);
 }
 
 // Linux writes up to the size limit and fails the rest; macOS refuses a
@@ -351,16 +352,16 @@ ZEST_CASE(FailedWritesDropLines) {
 ZEST_CASE(TornLineGetsNewline) {
     TempDir tmp;
     auto log = tmp.path("session.log");
-    auto sink = append_to(log);
-    ZASSERT(sink.fd >= 0);
+    auto output = append_to(log);
+    ZASSERT(output.fd >= 0);
     {
         FileSizeCap cap(8);
-        logging::write(sink, as_line("a line longer than eight bytes"));
+        logging::write(output, as_line("a line longer than eight bytes"));
     }
-    logging::write(sink, as_line("next"));
+    logging::write(output, as_line("next"));
     auto text = read_file(log).value_or("");
     ZEXPECT(text.find("\n[logging] dropped 1 line(s)") == 8u);
-    ::close(sink.fd);
+    ::close(output.fd);
 }
 #endif
 

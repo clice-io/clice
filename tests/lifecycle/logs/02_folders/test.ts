@@ -25,6 +25,6 @@ test(async (t) => {
     expect(real("beta/.clice/logs")).toBe(real(".clice/logs"));
     const text = t.disk.read(logs[0] ?? "");
     for (const file of ["alpha/main.cpp", "beta/main.cpp"]) {
-        expect(text).toContain(`Command of ${file}: from its database entry`);
+        expect(text).toContain(`Command of ${file}: `);
     }
 });

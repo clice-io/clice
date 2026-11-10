@@ -38,9 +38,13 @@ struct ToolchainEntries {
         return toolchain.query_key_for(ref.command, ref.language);
     }
 
-    /// The command clice compiles `ref` with, resolved through the query.
+    /// The command clice compiles `ref` with, resolved through the query,
+    /// which answered: a failed one renders the command too, without the
+    /// compiler's say the test is about.
     std::vector<const char*> resolve(const CommandRef& ref) {
-        ZASSERT(toolchain.resolve(ref.command, ref.language));
+        auto resolution = toolchain.resolve(ref.command, ref.language);
+        ZASSERT(resolution);
+        ZEXPECT(resolution->query_failure == "");
         return toolchain.render(ref, db.spelling(ref.file)).argv;
     }
 

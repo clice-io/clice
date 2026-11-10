@@ -189,11 +189,6 @@ struct FreshOption {
     bool fresh = false;
 };
 
-/// "s" when `count` warrants a plural noun, for user-facing summaries.
-const inline char* plural_s(std::size_t count) {
-    return count == 1 ? "" : "s";
-}
-
 /// One answer on stdout: `{"result": ..., "stale": [...]}`, the files
 /// whose shards were withheld because their content moved on from the
 /// index (or that the index never held) listed so the reader knows what

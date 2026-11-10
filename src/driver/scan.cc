@@ -4,6 +4,7 @@ import :driver.driver;
 import :driver.run;
 import :project.project;
 import :support.logging;
+import :support.text;
 import :syntax.dependency_graph;
 
 namespace clice::driver {
@@ -92,18 +93,13 @@ void print_summary(const Output& output, const ScanReport& scan) {
         ranges::count_if(output.files, [](const ScannedFile& file) { return file.source; }));
     auto headers = output.files.size() - sources;
     auto found = scan.includes_resolved + scan.unresolved.size();
-    driver::println(
-        "Scanned {} file{} ({} source{}, {} header{}) in {}ms: {} of {} include{} resolved.",
-        output.files.size(),
-        plural_s(output.files.size()),
-        sources,
-        plural_s(sources),
-        headers,
-        plural_s(headers),
-        scan.elapsed_ms,
-        scan.includes_resolved,
-        found,
-        plural_s(found));
+    driver::println("Scanned {} ({}, {}) in {}ms: {} of {} resolved.",
+                    counted(output.files.size(), "file", "files"),
+                    counted(sources, "source", "sources"),
+                    counted(headers, "header", "headers"),
+                    scan.elapsed_ms,
+                    scan.includes_resolved,
+                    counted(found, "include", "includes"));
     for(auto& file: output.files) {
         for(auto& name: file.unresolved) {
             driver::println("  {}: {} not found", file.path, name);

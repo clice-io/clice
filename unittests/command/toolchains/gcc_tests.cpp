@@ -262,7 +262,7 @@ ZEST_CASE(DeferralAskedThroughXclang) {
     /// An MSVC target's default template deferral stays only when the
     /// command asks for it, to the driver or to cc1.
     auto driver = fake_clang(
-        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-pc-windows-msvc" "-fdelayed-template-parsing")");
+        clang_job_of(R"("-cc1" "-triple" "x86_64-pc-windows-msvc" "-fdelayed-template-parsing")"));
     ZEXPECT(!contains(f.resolve(add("a.cpp", {driver.c_str()})), "-fdelayed-template-parsing"));
     auto asked = f.resolve(add("b.cpp", {driver.c_str(), "-Xclang", "-fdelayed-template-parsing"}));
     ZEXPECT(contains(asked, "-fdelayed-template-parsing"));
@@ -465,18 +465,20 @@ ZEST_CASE(GCCSeesWrittenAliases) {
     /// clang reads these as aliases of options GCC names otherwise or not
     /// at all (`-G 8`, `-flto=full`, `-ftrigraphs`), which GCC rejects.
     auto args = tmp.path("args");
-    auto driver = fake_driver("riscv32-unknown-elf-gcc",
-                              std::format(R"(printf '%s\n' "$@" > '{}'
+    auto driver =
+        fake_driver("riscv32-unknown-elf-gcc",
+                    std::format(R"(printf '%s\n' "$@" > '{}'
 echo 'Target: riscv32-unknown-elf' >&2
-echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' >&2
+echo ' {} -E -quiet query.c -dM' >&2
 )",
-                                          args));
+                                args,
+                                host_path("/opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1")));
     std::vector<const char*> written = {"-msmall-data-limit=8", "-flto=auto", "-trigraphs"};
     auto command = written;
     command.insert(command.begin(), driver.c_str());
     command.push_back("-c");
     auto ref = add("a.c", command);
-    ZEXPECT(f.toolchain.resolve(ref.command, ref.language).has_value());
+    f.resolve(ref);
 
     auto passed = vfs::read_text(args);
     ZASSERT(passed);
@@ -493,7 +495,7 @@ echo ' /opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1 -E -quiet query.c -dM' 
     };
     auto edited = ref;
     edited.command = apply_edits(f.commands, f.file_table, ref.command, {.edits = edits});
-    ZEXPECT(f.toolchain.resolve(edited.command, edited.language).has_value());
+    f.resolve(edited);
     passed = vfs::read_text(args);
     ZASSERT(passed);
     ZEXPECT(llvm::StringRef(*passed).contains("-msmall-data-limit=8\n"));
@@ -508,9 +510,12 @@ ZEST_CASE(GCCMeaningsForClang) {
     /// GCC's -fmodules is its C++20 modules, which clang's C++20 has; to
     /// clang it would mean header modules. Warnings GCC makes errors stay
     /// warnings: clang warns of what GCC does not.
-    auto driver = fake_driver("g++", R"(echo 'Target: x86_64-linux-gnu' >&2
-echo ' /usr/libexec/gcc/x86_64-linux-gnu/15/cc1plus -E -quiet query.cpp -fmodules -dM' >&2
-)");
+    auto driver =
+        fake_driver("g++",
+                    std::format(R"(echo 'Target: x86_64-linux-gnu' >&2
+echo ' {} -E -quiet query.cpp -fmodules -dM' >&2
+)",
+                                host_path("/usr/libexec/gcc/x86_64-linux-gnu/15/cc1plus")));
     auto argv = f.resolve(
         add("a.cpp",
             {driver.c_str(), "-std=c++20", "-fmodules", "-Werror", "-Werror=shadow", "-c"}));
@@ -527,9 +532,12 @@ echo ' /usr/libexec/gcc/x86_64-linux-gnu/15/cc1plus -E -quiet query.cpp -fmodule
 ZEST_CASE(CommandISAForClang) {
     /// The command's own -march, which GCC takes as written and clang
     /// without what LLVM does not know.
-    auto driver = fake_driver("riscv32-wch-elf-gcc", R"(echo 'Target: riscv32-wch-elf' >&2
-echo ' /opt/wch/libexec/gcc/riscv32-wch-elf/15/cc1 -E -quiet query.c -dM' >&2
-)");
+    auto driver =
+        fake_driver("riscv32-wch-elf-gcc",
+                    std::format(R"(echo 'Target: riscv32-wch-elf' >&2
+echo ' {} -E -quiet query.c -dM' >&2
+)",
+                                host_path("/opt/wch/libexec/gcc/riscv32-wch-elf/15/cc1")));
     auto argv = f.resolve(
         add("a.c", {driver.c_str(), "-march=rv32imc_zba_zbb_zbc_zbs_xw", "-mabi=ilp32", "-c"}));
     ZEXPECT(adjacent(argv, "-target-feature", "+m"));

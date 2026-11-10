@@ -226,10 +226,10 @@ struct WorkerPoolFixture {
 
     /// The worker's last stderr, as its drain would have kept it.
     void set_stderr(std::size_t idx, std::string crashed_in, bool out_of_memory) {
-        auto tail = std::make_shared<StderrTail>();
-        tail->crashed_in = std::move(crashed_in);
-        tail->out_of_memory = out_of_memory;
-        pool.stateless_workers[idx].stderr_tail = std::move(tail);
+        auto report = std::make_shared<StderrReport>();
+        report->crashed_in = std::move(crashed_in);
+        report->out_of_memory = out_of_memory;
+        pool.stateless_workers[idx].stderr_report = std::move(report);
     }
 
     std::shared_ptr<WorkerDeath> death(std::size_t idx, bool stateful) {

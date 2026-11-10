@@ -16,9 +16,10 @@ import { elideCrash } from "../render/lsp.ts";
 import { resourceRoot } from "../render/paths.ts";
 import type { Table } from "../render/value.ts";
 
-/// A log line below warning: one the command's stderr shows under
-/// --log-level, or one a worker logged that a crash report quotes.
-const QUIET_LINE = /^(?:trace|debug|info): |^\s*\[[^\]]+\] \[(?:trace|debug|info)\] /;
+/// A log line below warning, which the command's stderr shows under
+/// --log-level; or a line of a worker's log a crash report quotes, whose
+/// source lines and threads every change of the worker moves.
+const QUIET_LINE = /^(?:trace|debug|info): |^\s+\[/;
 
 function quote(word: string): string {
     return /^[\p{L}\p{N}_./:=@%+,-]+$/u.test(word) ? word : `"${word.replaceAll('"', '\\"')}"`;

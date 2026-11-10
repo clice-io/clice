@@ -17,7 +17,7 @@ namespace {
 /// (crash stacktraces, assertion failures, sanitizer reports, etc.).
 async::task<> drain_stderr(async::pipe stderr_pipe,
                            std::string prefix,
-                           std::shared_ptr<StderrTail> tail) {
+                           std::shared_ptr<StderrReport> report) {
     while(true) {
         auto read = co_await stderr_pipe.read_line();
         if(!read.has_value() || !read.value()) {
@@ -25,17 +25,17 @@ async::task<> drain_stderr(async::pipe stderr_pipe,
         }
         auto& line = *read.value();
         if(line.starts_with(worker::crashed_in_marker)) {
-            tail->crashed_in = line.substr(worker::crashed_in_marker.size());
+            report->crashed_in = line.substr(worker::crashed_in_marker.size());
         }
         // LLVM's handler of a failed allocation, before it aborts.
         if(line.starts_with("LLVM ERROR: out of memory")) {
-            tail->out_of_memory = true;
+            report->out_of_memory = true;
         }
         if(!line.empty()) {
             LOG_WARN("{} {}", prefix, line);
         }
     }
-    tail->drained.set();
+    report->drained.set();
 }
 
 /// How a worker died, worded for the user.
@@ -153,7 +153,7 @@ bool WorkerPool::launch(std::size_t index, bool stateful) {
         });
     }
     w.proc = std::move(spawned->proc);
-    w.stderr_tail = std::make_shared<StderrTail>();
+    w.stderr_report = std::make_shared<StderrReport>();
     w.state = SlotState::Alive;
     w.scaling_down = false;
     w.killed_on_purpose = false;
@@ -166,7 +166,7 @@ bool WorkerPool::launch(std::size_t index, bool stateful) {
     // the crash streak carries across until a healthy uptime resets it.
 
     worker_tasks.spawn(
-        drain_stderr(std::move(spawned->stderr_pipe), "[" + w.name + "]", w.stderr_tail));
+        drain_stderr(std::move(spawned->stderr_pipe), "[" + w.name + "]", w.stderr_report));
     worker_tasks.spawn(run_peer(w.peer, index, stateful, w.generation));
     worker_tasks.spawn(monitor_worker(index, stateful));
     if(!stateful) {
@@ -440,12 +440,12 @@ async::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     // it, can still sit in the stderr pipe when the exit is observed: the
     // drain reaches EOF first. The slot is already dying, so a shutdown
     // meanwhile skips its reaped pid.
-    auto drained = [](std::shared_ptr<StderrTail> tail) -> async::task<> {
-        co_await tail->drained.wait();
+    auto drained = [](std::shared_ptr<StderrReport> report) -> async::task<> {
+        co_await report->drained.wait();
     };
     // Hang detection: a short bound runs out on a stalled master (a
     // loaded machine), and the crash then names no request.
-    co_await async::with_timeout(drained(w.stderr_tail), chrono::minutes(1), loop);
+    co_await async::with_timeout(drained(w.stderr_report), chrono::minutes(1), loop);
     if(stop_scope.cancelled())
         co_return;
 
@@ -492,14 +492,14 @@ bool WorkerPool::process_crash(std::size_t index,
     auto& w = slot(index, stateful);
     mark_worker_dead(index, stateful, false);
     auto& death = *w.death;
-    auto& tail = *w.stderr_tail;
-    death.out_of_memory = tail.out_of_memory;
+    auto& report = *w.stderr_report;
+    death.out_of_memory = report.out_of_memory;
     // An allocation failure's abort names the request it ran, whose content
     // is not charged with it.
     if(death.out_of_memory) {
         death.cause = "ran out of memory";
-    } else if(death.named.empty() && !tail.crashed_in.empty()) {
-        death.named.push_back(tail.crashed_in);
+    } else if(death.named.empty() && !report.crashed_in.empty()) {
+        death.named.push_back(report.crashed_in);
     }
     if(death.cause.empty()) {
         death.cause = describe_exit(exit_code, exit_signal);

@@ -439,9 +439,12 @@ void stderr_logger(std::string_view name, StderrReader stderr_reader) {
 void set_project_roots(llvm::ArrayRef<std::string> paths) {
     roots.clear();
     if(paths.size() > 1) {
-        // Shown from the deepest directory holding them all; when that is
-        // the file system's root, or a drive's, they stay absolute.
-        auto ancestors = fs::path::ancestors(fs::path::parent(paths.front()));
+        // Shown from the deepest directory above them all, sought from the
+        // shortest's parent: a nested root's parent can be another root.
+        // When it is the file system's root, or a drive's, they stay
+        // absolute.
+        auto& shortest = *ranges::min_element(paths, {}, &std::string::size);
+        auto ancestors = fs::path::ancestors(fs::path::parent(shortest));
         auto common = ranges::find_if(ancestors, [&](std::string_view ancestor) {
             return ranges::all_of(paths,
                                   [&](auto& path) { return fs::path::is_within(path, ancestor); });
@@ -479,6 +482,10 @@ void link_session_log(std::string_view logging_dir, std::string_view session_dir
     remove_old_sessions(logging_dir);
     std::string link(logging_dir);
     fs::path::push(link, fs::path::filename(session_dir));
+    // A project opened again in the session is linked already.
+    if(fs::is_directory(link)) {
+        return;
+    }
     if(auto error = fs::create_directory_symlink(session_dir, link)) {
         LOG_WARN("Cannot link {} to the session log {}: {}", link, session_dir, error.message());
     }

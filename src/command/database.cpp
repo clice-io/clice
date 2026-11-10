@@ -6,6 +6,7 @@ import :command.file_kind;
 import :command.normalize;
 import :command.table;
 import :support.logging;
+import :support.text;
 import :vfs.cygwin;
 import :vfs.file_system;
 import :vfs.path;
@@ -442,7 +443,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
 
     if(skipped != 0) {
         LOG_GUIDANCE("{} of the compilation database {} {} skipped; the log names {}",
-                     skipped == 1 ? "1 entry" : std::format("{} entries", skipped),
+                     counted(skipped, "entry", "entries"),
                      path,
                      skipped == 1 ? "is" : "are",
                      skipped == 1 ? "it" : "them");

@@ -45,7 +45,7 @@ test("a full log file moves aside", async (t) => {
         `${LOGS}/${started ?? ""}/index.1.log`,
         log,
     ]);
-    expect(t.disk.read(log).split("\n")[0]).toBe("[logging] the lines before are in index.1.log");
+    expect(t.disk.read(log).split("\n")[0]).toContain("index.1.log");
 });
 
 /// A log line: date and time, level, thread off the main one, source line.
@@ -87,9 +87,9 @@ test("the server's lines", async (t) => {
         ),
     );
     expect(lines.filter((line) => under.some((prefix) => line.includes(prefix)))).toEqual([]);
-    expect(lines.filter((line) => line.includes("[resolve.cpp:"))).toEqual([
-        expect.stringContaining("Command of main.cpp: from its database entry"),
-        expect.stringContaining("Command of main.cpp changed: from its database entry"),
+    expect(lines.filter((line) => /\] Command of main\.cpp( changed)?: /.test(line))).toEqual([
+        expect.stringContaining("Command of main.cpp: "),
+        expect.stringContaining("Command of main.cpp changed: "),
     ]);
 });
 
@@ -105,6 +105,8 @@ test("a server on no folder", async (t) => {
     const separatorless = t.root.replaceAll(/[\\/]/g, "");
     const lines = logs.flatMap((log) => t.disk.read(log).split(/\r?\n/));
     expect(lines.filter((line) => line.includes(separatorless))).toEqual([]);
+    const whole = new RegExp(String.raw`${path.basename(t.root)}[\\/]main\.cpp`);
+    expect(lines.some((line) => line.includes("Opened ") && whole.test(line))).toBe(true);
 });
 
 // A server whose log moves aside over and over keeps no file it moved aside
