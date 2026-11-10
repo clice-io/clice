@@ -512,6 +512,20 @@ tests/navigation/references/13_override_calls
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Objective-C 消息**
+
+方法的引用包括所有可能到达它的消息：发给其类或子类的、经由它所实现的协议发出的，以及发给 `id` 的
+
+发给 `id` 或 `Class` 的消息可能到达其选择器（selector）对应的任何方法，因此会列入其中每个方法的引用；发给 `super` 的消息只会到达父类的方法。选择器分成几段书写的消息只列出一次，位置在第一段。
+
+```case
+tests/navigation/references/17_objective_c
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 推导类型

@@ -9,31 +9,32 @@ clice 为文档中的每个 Token 着色：名称按其声明或指代的实体�
 
 ## 种类
 
-| 种类                               | 标记的内容                                                                                                       |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `comment`                          | 注释                                                                                                             |
-| `string`、`character`、`number`    | 字面量，包括其前缀和后缀                                                                                         |
-| `escape`                           | 字面量中的转义序列：`\n`、`\x41`，以及格式字符串中的 `{{`                                                        |
-| `formatSpecifier`                  | 格式字符串中的占位符：`{}`、`{:>8}`、`%d`                                                                        |
-| `keyword`                          | 关键字；`module`、`import`、`override` 和 `final` 起关键字作用时也是；以单词拼写的运算符：`sizeof`、`new`、`and` |
-| `primitive`                        | 内置类型：`int`、`bool`、`char8_t`                                                                               |
-| `operator`                         | 运算符，无论内置还是重载                                                                                         |
-| `bracket`                          | 模板实参和模板参数两侧的 `<` 与 `>`                                                                              |
-| `directive`、`header`              | 预处理指令；头文件名                                                                                             |
-| `namespace`、`module`              | 命名空间或命名空间别名；C++20 模块名                                                                             |
-| `class`、`struct`、`union`、`enum` | 类，按声明它的关键字区分                                                                                         |
-| `typeAlias`                        | `typedef` 或 `using` 别名                                                                                        |
-| `typeParameter`                    | 模板类型参数或模板模板参数                                                                                       |
-| `templateParameter`                | 非类型模板参数                                                                                                   |
-| `concept`                          | Concept                                                                                                          |
-| `function`、`method`               | 自由函数；成员函数，包括构造函数和析构函数                                                                       |
-| `variable`、`parameter`、`field`   | 变量、函数参数、数据成员                                                                                         |
-| `enumMember`、`label`              | 枚举成员；标签                                                                                                   |
-| `macro`、`macroParameter`          | 宏；函数式宏在其定义中的参数                                                                                     |
-| `attribute`                        | 属性名：`nodiscard`、`gnu::packed`                                                                               |
-| `unknown`                          | 只有实例化才能解析的待决名：`T::reset()`、`value.size()`                                                         |
-| `conflict`                         | 同时指代不同种类实体的名称                                                                                       |
-| `plain`                            | 未选中分支中没有自身种类的 Token（关闭词法 Token 时则是其中的所有 Token），为携带 `inactive` 而发送              |
+| 种类                               | 标记的内容                                                                                                                                                                         |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `comment`                          | 注释                                                                                                                                                                               |
+| `string`、`character`、`number`    | 字面量，包括其前缀和后缀                                                                                                                                                           |
+| `escape`                           | 字面量中的转义序列：`\n`、`\x41`，以及格式字符串中的 `{{`                                                                                                                          |
+| `formatSpecifier`                  | 格式字符串中的占位符：`{}`、`{:>8}`、`%d`                                                                                                                                          |
+| `keyword`                          | 关键字；`module`、`import`、`override` 和 `final` 起关键字作用时也是；以单词拼写的运算符：`sizeof`、`new`、`and`；Objective-C 的 `@interface` 及其他 `@` 关键字、`self` 和 `super` |
+| `primitive`                        | 内置类型：`int`、`bool`、`char8_t`                                                                                                                                                 |
+| `operator`                         | 运算符，无论内置还是重载                                                                                                                                                           |
+| `bracket`                          | 模板实参和模板参数两侧、以及 Objective-C 协议和类型实参两侧的 `<` 与 `>`                                                                                                           |
+| `directive`、`header`              | 预处理指令；头文件名                                                                                                                                                               |
+| `namespace`、`module`              | 命名空间或命名空间别名；C++20 模块名；Objective-C 分类（category）                                                                                                                 |
+| `class`、`struct`、`union`、`enum` | 类，按声明它的关键字区分；Objective-C 类                                                                                                                                           |
+| `typeAlias`                        | `typedef` 或 `using` 别名                                                                                                                                                          |
+| `typeParameter`                    | 模板类型参数或模板模板参数                                                                                                                                                         |
+| `templateParameter`                | 非类型模板参数                                                                                                                                                                     |
+| `concept`                          | Concept                                                                                                                                                                            |
+| `interface`                        | Objective-C 协议                                                                                                                                                                   |
+| `function`、`method`               | 自由函数；成员函数，包括构造函数和析构函数，以及 Objective-C 方法，标在其选择器（selector）的每一段上                                                                              |
+| `variable`、`parameter`、`field`   | 变量、函数参数、数据成员，以及 Objective-C 的属性（property）或实例变量                                                                                                            |
+| `enumMember`、`label`              | 枚举成员；标签                                                                                                                                                                     |
+| `macro`、`macroParameter`          | 宏；函数式宏在其定义中的参数                                                                                                                                                       |
+| `attribute`                        | 属性名：`nodiscard`、`gnu::packed`                                                                                                                                                 |
+| `unknown`                          | 只有实例化才能解析的待决名：`T::reset()`、`value.size()`                                                                                                                           |
+| `conflict`                         | 同时指代不同种类实体的名称                                                                                                                                                         |
+| `plain`                            | 未选中分支中没有自身种类的 Token（关闭词法 Token 时则是其中的所有 Token），为携带 `inactive` 而发送                                                                                |
 
 ## 修饰符
 
@@ -55,25 +56,25 @@ clice 为文档中的每个 Token 着色：名称按其声明或指代的实体�
 
 其余修饰符是 clice 自有的，其中一些在不同种类上各有含义：
 
-| 修饰符                      | 作用于                           | 含义                                                                 |
-| --------------------------- | -------------------------------- | -------------------------------------------------------------------- |
-| `template`                  | 类、别名、变量或函数             | 模板，或模板的特化                                                   |
-| `dependent`                 | 任意名称                         | 依赖于模板参数；每个 `unknown` 名称都带有它                          |
-| `virtual`                   | 方法；类                         | 虚方法；多态类                                                       |
-| `constexpr`                 | 函数、变量或 `templateParameter` | 声明为 `constexpr`、`consteval` 或 `constinit`，或者是非类型模板参数 |
-| `constructor`、`destructor` | 方法                             | 构造函数；析构函数                                                   |
-| `callable`                  | 宏                               | 函数式宏                                                             |
-|                             | 变量、参数或字段                 | 其类型可被调用：函数指针、Lambda、带有 `operator()` 的类             |
-| `controlFlow`               | 关键字                           | 转移控制：`if`、`for`、`return`、`throw`、`co_await`、`case`         |
-|                             | 函数                             | `[[noreturn]]`                                                       |
-|                             | 宏                               | 其展开可能离开函数：`return`、`break`、`goto`、`throw`               |
-| `userDefined`               | 运算符；字面量的后缀             | 调用重载运算符；用户定义字面量                                       |
-| `declarator`                | 运算符                           | 声明符中的 `*`、`&` 或 `&&`，与表达式中的同名运算符区分开            |
-| `operator`                  | 关键字                           | 运算符：`sizeof`、`new`、`static_cast`、`and`、`defined`             |
-| `literal`                   | 关键字                           | `true`、`false`、`nullptr`                                           |
-| `affix`                     | 字面量                           | 其前缀或后缀：`u8`、`L`、`42u`、`1.5f`                               |
-| `empty`                     | 宏                               | 展开为空                                                             |
-| `inactive`                  | 任意 Token                       | 位于未选中的预处理分支中，或属于宏丢弃的实参                         |
+| 修饰符                      | 作用于                           | 含义                                                                                  |
+| --------------------------- | -------------------------------- | ------------------------------------------------------------------------------------- |
+| `template`                  | 类、别名、变量或函数             | 模板，或模板的特化                                                                    |
+| `dependent`                 | 任意名称                         | 依赖于模板参数，每个 `unknown` 名称都带有它；发给 `id` 或 `Class` 的 Objective-C 消息 |
+| `virtual`                   | 方法；类                         | 虚方法；多态类                                                                        |
+| `constexpr`                 | 函数、变量或 `templateParameter` | 声明为 `constexpr`、`consteval` 或 `constinit`，或者是非类型模板参数                  |
+| `constructor`、`destructor` | 方法                             | 构造函数；析构函数                                                                    |
+| `callable`                  | 宏                               | 函数式宏                                                                              |
+|                             | 变量、参数或字段                 | 其类型可被调用：函数指针、Lambda、带有 `operator()` 的类                              |
+| `controlFlow`               | 关键字                           | 转移控制：`if`、`for`、`return`、`throw`、`co_await`、`case`                          |
+|                             | 函数                             | `[[noreturn]]`                                                                        |
+|                             | 宏                               | 其展开可能离开函数：`return`、`break`、`goto`、`throw`                                |
+| `userDefined`               | 运算符；字面量的后缀             | 调用重载运算符；用户定义字面量                                                        |
+| `declarator`                | 运算符                           | 声明符中的 `*`、`&` 或 `&&`，与表达式中的同名运算符区分开                             |
+| `operator`                  | 关键字                           | 运算符：`sizeof`、`new`、`static_cast`、`and`、`defined`                              |
+| `literal`                   | 关键字                           | `true`、`false`、`nullptr`                                                            |
+| `affix`                     | 字面量                           | 其前缀或后缀：`u8`、`L`、`42u`、`1.5f`                                                |
+| `empty`                     | 宏                               | 展开为空                                                                              |
+| `inactive`                  | 任意 Token                       | 位于未选中的预处理分支中，或属于宏丢弃的实参                                          |
 
 ## 编辑器
 
@@ -907,6 +908,28 @@ tests/semantic_tokens/modules/02_partitions
 
 ```case
 tests/semantic_tokens/modules/03_contextual_keywords
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 语言
+
+C 和 Objective-C 源文件使用与 C++ 相同的种类着色：Objective-C 的实体采用上文表格为它列出的种类。
+
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/languages -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Objective-C 源文件**
+
+Objective-C 的类、协议、分类、方法、属性和实例变量各按其种类着色
+
+选择器的每一段都按它所指的方法着色；`@interface`、`@property` 等 `@` 关键字作为关键字着色，`self` 和 `super` 与 C++ 中的 `this` 着色相同，`@"text"` 作为字符串着色。
+
+```case
+tests/semantic_tokens/languages/02_objective_c
 ```
 
 <!-- END CAPABILITY -->

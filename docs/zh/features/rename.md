@@ -61,6 +61,18 @@ tests/rename/edits/13_templates
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Objective-C 名称**
+
+重命名 Objective-C 的类、协议、分类（category）或实例变量时，会修改所有写到它的地方
+
+```case
+tests/rename/edits/14_objective_c
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 拒绝重命名的情况
@@ -101,6 +113,20 @@ tests/rename/refusals/02_rejected_names
 
 ```case
 tests/rename/refusals/05_macro_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Objective-C 方法与属性**
+
+重命名 Objective-C 的方法或属性会被拒绝并说明原因
+
+方法的选择器（selector）指代其消息可能到达的所有方法，属性则指代它的存取方法以及它合成的实例变量；由属性合成的实例变量没有可供重命名的声明。
+
+```case
+tests/rename/refusals/07_objective_c
 ```
 
 <!-- END CAPABILITY -->

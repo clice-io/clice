@@ -985,6 +985,30 @@ tests/semantic_tokens/modules/03_contextual_keywords
 
 <!-- END GENERATED ITEMS -->
 
+## Languages
+
+C and Objective-C sources are colored with the same kinds as C++: an Objective-C entity takes the kind the tables above give it.
+
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/languages -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Objective-C sources**
+
+Classes, protocols, categories, methods, properties and instance variables of Objective-C are colored by what they are
+
+Every piece of a selector colors as the method it names; `@interface`,
+`@property` and the other `@` keywords read as keywords, `self` and `super`
+as `this` does in C++, and `@"text"` as a string.
+
+```case
+tests/semantic_tokens/languages/02_objective_c
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## Inactive Code Regions
 
 Every token inside an untaken preprocessor branch carries the `inactive`

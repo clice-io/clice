@@ -19,13 +19,13 @@ Language Server Protocol features available when using clice as an editor backen
 | Feature                                   | Status                                   |
 | ----------------------------------------- | ---------------------------------------- |
 | [Code Completion](./completion.md)        | 49 supported                             |
-| [Hover](./hover.md)                       | 71 supported                             |
+| [Hover](./hover.md)                       | 72 supported                             |
 | [Signature Help](./signature-help.md)     | 21 supported · 1 partial · 2 unsupported |
-| [Code Navigation](./navigation.md)        | 114 supported · 8 unsupported            |
-| [Rename](./rename.md)                     | 7 supported                              |
+| [Code Navigation](./navigation.md)        | 115 supported · 8 unsupported            |
+| [Rename](./rename.md)                     | 9 supported                              |
 | [Diagnostics](./diagnostics.md)           | 10 supported · 1 partial                 |
 | [Code Action](./code-action.md)           | 38 supported                             |
-| [Semantic Tokens](./semantic-tokens.md)   | 60 supported                             |
+| [Semantic Tokens](./semantic-tokens.md)   | 61 supported                             |
 | [Inlay Hints](./inlay-hints.md)           | 40 supported                             |
 | [Document Links](./document-links.md)     | 5 supported · 1 partial                  |
 | [Document Symbols](./document-symbols.md) | 29 supported                             |
