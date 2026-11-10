@@ -44,3 +44,16 @@ test("exported in the buffer", async (t) => {
         parts: ["insert", "edit"],
     });
 });
+
+// A file the graph knows as no module declares one in its buffer, which an
+// import names before the file is saved.
+test("declared in the buffer", async (t) => {
+    const s = await t.start();
+    await s.diagnostics("sketch.cpp");
+    s.open("main.cpp");
+    s.edit("sketch.cpp", { replace: "int sketch = 0;", with: "export module sketchpad;" });
+    s.edit("main.cpp", { replace: "import geo", with: "import sketch" });
+    await t.show("declared", s.completion(t.at("main.cpp", "import sketch|")), {
+        parts: ["insert", "edit"],
+    });
+});

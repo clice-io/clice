@@ -422,7 +422,7 @@ ZEST_CASE(InternalBuiltinsLast) {
                                             scope,
                                             0);
     ranges::sort(list.items, {}, [](const protocol::CompletionItem& item) {
-        return static_cast<const std::optional<std::string>&>(item.sort_text);
+        return std::tie(static_cast<const std::optional<std::string>&>(item.sort_text), item.label);
     });
     auto labels =
         ranges::to<std::vector>(list.items | views::transform(&protocol::CompletionItem::label));

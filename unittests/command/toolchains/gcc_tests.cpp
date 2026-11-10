@@ -441,6 +441,21 @@ End of search list.)",
         Spelling::absolute(tmp.path("libc")).str(),
     };
     ZEXPECT(dirs == expected);
+
+    /// A C++ file's job carries C_INCLUDE_PATH too, which it does not search.
+    auto cxx_driver = fake_gcc("clang++",
+                               std::format(R"(Target: x86_64-unknown-linux-gnu
+ "/usr/bin/clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-E" "-c-isystem" "{0}" "-cxx-isystem" "{1}" "-x" "c++" "query.cpp"
+#include <...> search starts here:
+ {1}
+End of search list.)",
+                                           tmp.path("c"),
+                                           tmp.path("cxx")));
+    auto cxx_ref = add("b.cpp", {cxx_driver.c_str(), "-c"});
+    ZASSERT(f.toolchain.resolve(cxx_ref.command, cxx_ref.language));
+    auto cxx_dirs = f.toolchain.search_config(cxx_ref).dirs | views::transform(&SearchDir::path);
+    ZEXPECT(!ranges::contains(cxx_dirs, Spelling::absolute(tmp.path("c")).str()));
+    ZEXPECT(ranges::contains(cxx_dirs, Spelling::absolute(tmp.path("cxx")).str()));
 }
 
 ZEST_CASE(GCCPrivateHeaders, skip = Windows) {
