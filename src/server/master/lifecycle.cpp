@@ -96,8 +96,12 @@ void MasterServer::log_settings(const ServedProject& project) const {
     if(init_options) {
         sources.push_back("initializationOptions");
     }
+    // Against the defaults as the project's root derives them: its cache
+    // and logging directories are no setting of the user's.
+    Settings unset;
+    unset.finalize(project.project.root);
     auto actual = json::to_string(project.project.settings);
-    auto defaults = json::to_string(Settings{});
+    auto defaults = json::to_string(unset);
     simdjson::dom::parser actual_parser, defaults_parser;
     simdjson::dom::element actual_root, defaults_root;
     if(!actual || !defaults || actual_parser.parse(*actual).get(actual_root) ||
@@ -117,9 +121,9 @@ void MasterServer::log_into(const ServedProject& project) {
     if(logging_dir.empty()) {
         return;
     }
-    if(!log_dir.empty()) {
-        if(fs::path::parent(log_dir) != std::string_view(logging_dir)) {
-            logging::link_session_log(logging_dir, log_dir);
+    if(!session_dir.empty()) {
+        if(fs::path::parent(session_dir) != std::string_view(logging_dir)) {
+            logging::link_session_log(logging_dir, session_dir);
         }
         return;
     }
@@ -128,7 +132,7 @@ void MasterServer::log_into(const ServedProject& project) {
         return;
     }
     LOG_INFO("Session log directory: {}", dir);
-    log_dir = dir;
+    session_dir = dir;
     pool.log_to(std::move(dir));
 }
 

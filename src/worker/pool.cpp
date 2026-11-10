@@ -111,10 +111,10 @@ bool WorkerPool::launch(std::size_t index, bool stateful) {
     opts.args.push_back("--worker-name");
     opts.args.push_back(w.name);
     std::uint64_t log_offset = 0;
-    if(!options.log_dir.empty()) {
-        opts.args.push_back("--log-dir");
-        opts.args.push_back(options.log_dir);
-        if(auto status = fs::status(path::join(options.log_dir, w.name + ".log"))) {
+    if(!options.session_dir.empty()) {
+        opts.args.push_back("--session-dir");
+        opts.args.push_back(options.session_dir);
+        if(auto status = fs::status(path::join(options.session_dir, w.name + ".log"))) {
             log_offset = status->size;
         }
     }
@@ -304,12 +304,12 @@ std::optional<Residency::Assignment> WorkerPool::assign_worker(std::uint32_t pat
 }
 
 void WorkerPool::log_to(std::string dir) {
-    options.log_dir = std::move(dir);
+    options.session_dir = std::move(dir);
     for(auto stateful: {false, true}) {
         for(auto& w: workers(stateful)) {
             if(w.state == SlotState::Alive) {
                 w.log_offset = 0;
-                w.peer->send_notification(worker::LogParams{options.log_dir});
+                w.peer->send_notification(worker::LogParams{options.session_dir});
             }
         }
     }
@@ -527,8 +527,8 @@ bool WorkerPool::process_crash(std::size_t index,
     // so CI, which only sees the master's output, still gets the worker's
     // final assert/error message.
     std::string content;
-    if(!options.log_dir.empty() &&
-       !fs::read_file(content, path::join(options.log_dir, w.name + ".log"))) {
+    if(!options.session_dir.empty() &&
+       !fs::read_file(content, path::join(options.session_dir, w.name + ".log"))) {
         if(auto output = crash_output(content, w.log_offset); !output.empty())
             LOG_ERROR("Last output of crashed worker {}:\n{}", w.name, output);
     }

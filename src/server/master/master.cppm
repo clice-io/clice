@@ -366,7 +366,7 @@ public:
     /// The session's log directory, the master's and its workers', under
     /// the logging directory of the first project that opened its files on
     /// disk; empty until one did.
-    std::string log_dir;
+    std::string session_dir;
 
     /// The connection to the editor: set by the client as it is made and
     /// cleared as it goes — a socket's client goes with its connection while

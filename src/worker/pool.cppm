@@ -102,7 +102,7 @@ struct WorkerPoolOptions {
     /// pool past it, up to max_stateless.
     std::uint32_t stateless_count = 2;
     std::uint32_t stateful_count = 2;
-    std::string log_dir;
+    std::string session_dir;
 
     /// A slot is given up once it crashes more than this many times in a
     /// row. The streak resets after `healthy_uptime` of stable operation,

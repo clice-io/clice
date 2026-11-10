@@ -134,7 +134,7 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     auto& batch = options.project;
     bool started =
         start_batch(run, batch, batch.workers != 0 ? batch.workers : sys::parallelism(), "index");
-    result.log_dir = run.log_dir;
+    result.session_dir = run.session_dir;
     if(!started) {
         result.exit_code = 1;
         // A failed later spawn leaves earlier workers and their I/O tasks
@@ -297,8 +297,8 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
         return result.exit_code;
     }
     if(!result.completed) {
-        if(!result.log_dir.empty()) {
-            driver::println("Session log: {}", result.log_dir);
+        if(!result.session_dir.empty()) {
+            driver::println("Session log: {}", result.session_dir);
         }
         return result.exit_code;
     }
@@ -359,8 +359,8 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
     if(result.unsaved) {
         driver::println("Part of the index could not be persisted (see the log).");
     }
-    if(!result.log_dir.empty()) {
-        driver::println("Session log: {}", result.log_dir);
+    if(!result.session_dir.empty()) {
+        driver::println("Session log: {}", result.session_dir);
     }
     return result.exit_code;
 }

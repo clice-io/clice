@@ -5,8 +5,16 @@ import { test } from "@clice/tools/testing";
 // ${workspace} puts it, the logs under app rather than the directory the
 // command ran in, and nothing to the default app/.clice. Both are named
 // .clice, which a command's written files leave out.
-test(async (t) => {
+test("index", async (t) => {
     await t.cli("index --workspace app");
     expect(t.disk.list("app/build/.clice/**").length > 0).toBe(true);
+    expect(t.disk.list("app/.clice/**")).toEqual([]);
+});
+
+// An editor's server on the app folder logs where clice.toml says too.
+test("server", async (t) => {
+    const s = await t.start({ folders: ["app"] });
+    await s.sync();
+    expect(t.disk.list("app/logs/.clice/*/master.log")).toHaveLength(1);
     expect(t.disk.list("app/.clice/**")).toEqual([]);
 });

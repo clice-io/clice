@@ -20,8 +20,9 @@ struct Worker {
     KANNOTATE(&worker_name, description = "Name the worker logs under")
     std::string worker_name = "worker";
 
-    KANNOTATE(&log_dir, description = "Directory of the worker's log file (default: no log file)")
-    std::string log_dir;
+    KANNOTATE(&session_dir,
+              description = "Session directory the worker logs into (default: no log file)")
+    std::string session_dir;
 };
 
 /// Not through dispatch: a worker logs as the pool relays its stderr.
@@ -45,10 +46,10 @@ int run_worker(Worker& worker) {
     logging::options.stderr_level = logging::Level::Warn;
     logging::options.stderr_crash_trace = false;
     logging::stderr_logger(worker.worker_name);
-    if(!worker.log_dir.empty()) {
+    if(!worker.session_dir.empty()) {
         // File only: worker stderr is reserved for crash/unexpected output,
         // which the master relays into its own log (see logging taxonomy).
-        logging::file_logger(worker.log_dir, /*mirror_stderr=*/false);
+        logging::file_logger(worker.session_dir, /*mirror_stderr=*/false);
     }
     // See WorkerPool::launch.
     if(auto error = sys::exit_with_parent()) {

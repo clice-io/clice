@@ -208,7 +208,7 @@ struct BatchResult {
     std::vector<UnitErrors> compiled_with_errors;
 
     /// The session log directory; empty when file logging is off.
-    std::string log_dir;
+    std::string session_dir;
 
     /// Index state remained that the final save could not commit; a rerun
     /// cannot resume from it.
@@ -243,7 +243,7 @@ struct BatchRun {
 
     /// The session log directory start_batch created; empty when file
     /// logging is off.
-    std::string log_dir;
+    std::string session_dir;
 
     explicit BatchRun(async::event_loop& loop) : loop(loop) {}
 };
@@ -276,8 +276,8 @@ inline bool start_batch(BatchRun& run,
 
     logging::stderr_logger(log_tag);
     if(!cfg.logging_dir.empty()) {
-        auto session_log_dir = logging::start_session_log(cfg.logging_dir);
-        if(logging::file_logger(session_log_dir)) {
+        auto session_dir = logging::start_session_log(cfg.logging_dir);
+        if(logging::file_logger(session_dir)) {
             LOG_INFO("clice {} ({}) runs {}, pid {}",
                      clice::version,
                      clice::target,
@@ -286,8 +286,8 @@ inline bool start_batch(BatchRun& run,
             if(auto source = built_from(); !source.empty()) {
                 LOG_INFO("{}", source);
             }
-            LOG_INFO("Session log directory: {}", session_log_dir);
-            run.log_dir = std::move(session_log_dir);
+            LOG_INFO("Session log directory: {}", session_dir);
+            run.session_dir = std::move(session_dir);
         }
     }
 
@@ -297,7 +297,7 @@ inline bool start_batch(BatchRun& run,
     pool_opts.stateless_count = cfg.stateless_worker_count;
     pool_opts.min_stateless = cfg.min_stateless_worker_count;
     pool_opts.max_stateless = cfg.max_stateless_worker_count;
-    pool_opts.log_dir = run.log_dir;
+    pool_opts.session_dir = run.session_dir;
     if(!run.pool.start(pool_opts)) {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
         return false;
