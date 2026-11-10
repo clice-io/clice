@@ -65,6 +65,22 @@ describe("gateLogs", () => {
         workspace.remove();
     });
 
+    test("a crash declared in a folder matches the path the log writes in it", () => {
+        const workspace = logged([]);
+        workspace.write(
+            ".clice/logs/session/master.log",
+            `${[
+                `[t] [warning] [pool.cpp:39] [SF-0] clice worker crashed in: clice/worker/hover main.cpp`,
+                "[t] [error] [pool.cpp:575] [anomaly:WorkerCrash] Worker SF-0 killed by signal 4 (SIGILL)",
+            ].join("\n")}\n`,
+        );
+        const hover = { crash: { request: "hover", file: "app/main.cpp" } };
+        expect(gateLogs(workspace, { servers: [hover] }, false)).toEqual([]);
+        const other = { crash: { request: "hover", file: "app/other.cpp" } };
+        expect(gateLogs(workspace, { servers: [other] }, false)).not.toEqual([]);
+        workspace.remove();
+    });
+
     test("undeclared error lines fail", () => {
         const workspace = logged(["[t] [error] [x.cpp:1] something broke"]);
         expect(gateLogs(workspace, {}, false)).toHaveLength(1);
