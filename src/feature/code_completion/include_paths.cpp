@@ -89,6 +89,9 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
     // A name several directories hold is listed once, at its best rank: a
     // file no header would be named as does not hide a header behind it.
     llvm::StringMap<std::size_t> listed;
+    // clang takes the first framework directory holding the framework: a
+    // header only a later one's has does not resolve.
+    bool framework_found = false;
 
     auto collect =
         [&](const SearchDir& search_dir, bool system, std::uint64_t tier, std::uint64_t position) {
@@ -96,7 +99,12 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
             bool frameworks = search_dir.framework && dir_prefix.empty();
             if(search_dir.framework && !dir_prefix.empty()) {
                 auto [name, rest] = dir_prefix.split('/');
-                path::push(dir, (name + ".framework").str());
+                auto bundle = (name + ".framework").str();
+                if(framework_found || !scope.list(search_dir.path).contains(bundle)) {
+                    return;
+                }
+                framework_found = true;
+                path::push(dir, bundle);
                 path::push(dir, "Headers");
                 if(!rest.empty()) {
                     path::push(dir, rest);
