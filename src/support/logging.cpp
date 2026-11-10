@@ -34,16 +34,13 @@ std::mutex mutex;
 
 std::string process_name;
 
-/// stderr: an editor's pipe (Options::never_block_stderr), or for every
-/// other process a terminal, a pipeline or the master's drain, its levels
-/// coloured on a terminal.
+StderrReader reader = StderrReader::Terminal;
+
+/// stderr: an editor's pipe, or for every other reader a descriptor
+/// written blocking.
 std::optional<PipeOutput> editor;
 std::optional<FileOutput> console;
 bool color = false;
-
-/// Every line goes to stderr too, at Options::stderr_level; not a worker's
-/// once its log file opened.
-bool mirror = true;
 
 std::optional<FileOutput> file;
 std::string file_path;
@@ -420,12 +417,13 @@ void write(FileOutput& output, std::string_view text) {
     output.unreported += 1;
 }
 
-void stderr_logger(std::string_view name) {
+void stderr_logger(std::string_view name, StderrReader stderr_reader) {
     this_thread = 0;
     {
         std::lock_guard lock(mutex);
         process_name = name;
-        if(!options.never_block_stderr) {
+        reader = stderr_reader;
+        if(reader != StderrReader::Editor) {
             console = FileOutput{.fd = 2};
             color = sys::shows_colors(2);
             return;
@@ -486,7 +484,7 @@ void link_session_log(std::string_view logging_dir, std::string_view session_dir
     }
 }
 
-bool file_logger(std::string_view dir, bool mirror_stderr) {
+bool file_logger(std::string_view dir) {
     if(auto made = fs::create_directories(dir); !made) {
         LOG_ERROR("Cannot create the log directory {}: {}", dir, made.error().message());
         return false;
@@ -507,15 +505,11 @@ bool file_logger(std::string_view dir, bool mirror_stderr) {
     }
     early.clear();
     early_bytes = 0;
-    mirror = mirror_stderr;
     return true;
 }
 
 bool perf_lines() {
-    const static bool wanted = [] {
-        std::string value;
-        return !sys::get_env(value, "CLICE_PERF") && !value.empty();
-    }();
+    const static bool wanted = !env_string("CLICE_PERF").value_or("").empty();
     return wanted;
 }
 
@@ -531,6 +525,7 @@ void log(Level level, std::source_location location, std::string text) {
                             location.line(),
                             text);
     std::lock_guard lock(mutex);
+    bool mirror = reader != StderrReader::Pool || !file;
     if(mirror && level >= options.stderr_level) {
         if(editor) {
             write(*editor, line);
@@ -573,7 +568,7 @@ void write_crash(const sys::Crash& crash) noexcept {
         write_crash_header(fd);
         sys::write_stacktrace(fd, crash);
     }
-    if(options.stderr_crash_trace) {
+    if(reader != StderrReader::Pool) {
         // An editor's pipe may hold part of a line.
         sys::write_console(2, "\n");
         write_crash_header(2);

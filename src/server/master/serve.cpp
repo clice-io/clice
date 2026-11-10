@@ -100,8 +100,7 @@ async::task<> accept_peers(async::tcp::acceptor acceptor,
 }
 
 int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
-    logging::options.never_block_stderr = true;
-    logging::stderr_logger("master");
+    logging::stderr_logger("master", logging::StderrReader::Editor);
 
     LOG_INFO("clice {} ({}) starting, pid {}, over {}{}",
              clice::version,

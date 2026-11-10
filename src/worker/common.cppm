@@ -34,9 +34,7 @@ inline std::shared_ptr<const llvm::MemoryBuffer>
 /// Log into the directory the master names once it knows where the
 /// session logs (worker::LogParams).
 inline void log_where_told(ipc::BincodePeer& peer) {
-    peer.on_notification([](const worker::LogParams& params) {
-        logging::file_logger(params.dir, /*mirror_stderr=*/false);
-    });
+    peer.on_notification([](const worker::LogParams& params) { logging::file_logger(params.dir); });
 }
 
 /// The largest index blob a worker reply carries inline. The transport

@@ -76,10 +76,10 @@ import :support.prelude;
 /// one that stops reading costs log lines, never liveness — once the
 /// pipe fills, lines are dropped and the gap is reported when the client
 /// drains again (see PipeOutput). Workers log ONLY to
-/// their own <session>/<worker>.log (mirror_stderr = false): a worker's
+/// their own <session>/<worker>.log once it opens: a worker's
 /// stderr is reserved for unexpected third-party output — assertion
 /// failures, sanitizer reports — which the pool relays line-by-line into the
-/// master log. A crash's stack trace (handle_crashes, from LOG_FATAL and
+/// master log (StderrReader). A crash's stack trace (handle_crashes, from LOG_FATAL and
 /// Debug anomaly traps too) is appended to the process's log file once
 /// file_logger opened it, and printed to stderr, but a worker's: its
 /// trace goes only to its own log file, none without a log dir.
@@ -102,20 +102,24 @@ struct Options {
     /// Lines below it are written to the log file alone: a session log keeps
     /// what a terminal reader does not want to see.
     Level stderr_level = Level::Info;
-
-    /// stderr's reader is an editor, which must not be able to block the
-    /// server: lines it does not take are buffered, then dropped (see
-    /// PipeOutput). Every other process writes stderr blocking, as any
-    /// command-line tool does — its reader is a terminal, a pipeline, or
-    /// the master's drain.
-    bool never_block_stderr = false;
-
-    /// A crash's trace is printed to stderr too. Not a worker's, whose
-    /// stderr the pool relays into the master's log line by line.
-    bool stderr_crash_trace = true;
 };
 
 extern Options options;
+
+/// Who reads the process's stderr, which decides what it is written.
+enum class StderrReader : std::uint8_t {
+    /// A terminal, a pipeline or a file: lines written blocking, as any
+    /// command-line tool writes them, their levels coloured on a terminal.
+    Terminal,
+    /// An editor, which must not be able to block the server: lines it does
+    /// not take are buffered, then dropped (PipeOutput).
+    Editor,
+    /// The worker pool, which relays each line into the master's log: lines
+    /// only until the worker's own log file opens, then just what clice
+    /// does not write itself (assertion failures, sanitizer reports); never
+    /// a crash's trace, which the log file has.
+    Pool,
+};
 
 /// How switching an fd to non-blocking writes went.
 enum class PipeSwitch : std::uint8_t {
@@ -221,7 +225,7 @@ void write(FileOutput& output, std::string_view text);
 /// Log the process's lines to stderr, under `name`, which its log file
 /// takes (file_logger); lines no log file takes yet are kept for it. Called
 /// from main, before any other thread starts.
-void stderr_logger(std::string_view name);
+void stderr_logger(std::string_view name, StderrReader reader = StderrReader::Terminal);
 
 /// The lines the calling thread logs write paths under these project roots
 /// relative to them: to the one root, or for several to the deepest
@@ -242,14 +246,11 @@ std::string start_session_log(std::string_view logging_dir);
 void link_session_log(std::string_view logging_dir, std::string_view session_dir);
 
 /// Log to <dir>/<name>.log, the name stderr_logger took, starting with the
-/// lines kept since. With mirror_stderr, every line is also written to
-/// stderr — the master uses this so editors can show its log; workers must
-/// pass false (their stderr is reserved for crash output, relayed by the
-/// pool). Returns false when the log directory or file cannot be set up.
-bool file_logger(std::string_view dir, bool mirror_stderr = true);
+/// lines kept since; false when the log directory or file cannot be set up.
+bool file_logger(std::string_view dir);
 
-/// Write a crash's stack trace where `options` says: from main, before any
-/// other thread starts.
+/// Write a crash's stack trace to the log file and to stderr, but the
+/// pool's: from main, before any other thread starts.
 void handle_crashes();
 
 /// What handle_crashes writes for a crash, for a handler that writes its
