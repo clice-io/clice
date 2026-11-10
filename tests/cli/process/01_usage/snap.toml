@@ -62,7 +62,7 @@ Options:
   --record <value>                Record LSP input to file for replay testing
   --workspace <value>             Workspace root directory (optional, skips LSP initialize)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: info]
 '''
 exit = 0
@@ -118,7 +118,7 @@ Options:
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   -j|--jobs <value>               How many units or files to work on at once; 0 for project.stateless_worker_count, or for index and format the CPU count [default: 0]
   --json                          Print the run's report as JSON on stdout instead of text
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 
 Subcommands:
@@ -142,7 +142,7 @@ Options:
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   -j|--jobs <value>               How many units or files to work on at once; 0 for project.stateless_worker_count, or for index and format the CPU count [default: 0]
   --json                          Print the run's report as JSON on stdout instead of text
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 '''
 exit = 0
@@ -160,7 +160,7 @@ Options:
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   -j|--jobs <value>               How many units or files to work on at once; 0 for project.stateless_worker_count, or for index and format the CPU count [default: 0]
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 '''
 exit = 0
@@ -203,7 +203,7 @@ Options:
   --json                          Print the commands as JSON on stdout instead of text
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 
 Subcommands:
@@ -223,7 +223,7 @@ Options:
   --runs <value>                  Time this many scans, each from a fresh start (cold) and again over what it kept (warm, as after a database reload) [range: 1..]
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 '''
 exit = 0
@@ -257,7 +257,7 @@ Options:
   --no-mirrors                    Write no mirrors: what still includes a wrapped header parses it beside the import
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 
 Subcommands:
@@ -273,7 +273,7 @@ Options:
   -h|--help                       Print this help and exit.
   --stateful                      Run as stateful worker (default: stateless)
   --worker-name <value>           Name the worker logs under [default: worker]
-  --log-dir <value>               Directory of the worker's log file (default: no log file)
+  --session-dir <value>           Session directory the worker logs into (default: no log file)
 '''
 exit = 0
 
@@ -290,7 +290,7 @@ Options:
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --fresh                         Reindex the files whose content changed since they were indexed first, through the running server or a batch run of this command
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 '''
 exit = 0
@@ -307,7 +307,7 @@ Options:
   --variants                      Then every file shard with its variant count, one tab-separated line each
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 '''
 exit = 0
@@ -332,7 +332,7 @@ Options:
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --annotation <value>            An annotation file weighing the results: {"name": "compile_time", "unit": "s", "values": {"src/a.cpp": 1.5}} (may be repeated)
   --churn-since <value>           git log --since value of the churn annotation (empty leaves it out) [default: 6.months]
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 
 Subcommands:
@@ -364,7 +364,7 @@ Options:
   --move-entity <value>           A hypothetical declaration move: <locator>=<header> (may be repeated)
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 '''
 exit = 0
@@ -384,7 +384,7 @@ Options:
   --occurrence <value>            With --host, which place its compile enters the header at, from 0
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 '''
 exit = 0
@@ -399,7 +399,7 @@ Options:
   -h|--help                       Print this help and exit.
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 
 Convert, one of: a database:
@@ -423,7 +423,7 @@ Options:
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --fresh                         Reindex the files whose content changed since they were indexed first, through the running server or a batch run of this command
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 
 Rename, one of: one symbol:
@@ -501,7 +501,7 @@ Options:
   --json                          Print the commands as JSON on stdout instead of text
   --workspace <value>             Project root directory (default: the nearest directory at or above the current one holding a clice.toml or a compile_commands.json)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --log-level <trace|debug|info|warn|error|off>
+  --log-level <trace|debug|info|warn|error|fatal|...>
                                   Log level of stderr [default: warn]
 
 Subcommands:

@@ -1,4 +1,4 @@
-[test."$ clice index --workspace app"]
+[index."$ clice index --workspace app"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/app/logs/.clice/${SESSION}
