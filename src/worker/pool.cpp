@@ -33,7 +33,6 @@ async::task<> drain_stderr(async::pipe stderr_pipe,
         }
         if(!line.empty()) {
             LOG_WARN("{} {}", prefix, line);
-            tail->add(std::move(line));
         }
     }
     tail->drained.set();
@@ -234,10 +233,14 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
 
     worker_tasks.spawn(monitor_loop());
 
-    LOG_INFO("Worker pool started: {} stateless, {} stateful workers keeping {} compiled",
-             stateless_workers.size(),
-             stateful_workers.size(),
-             counted(max_resident, "document", "documents"));
+    LOG_INFO(
+        "Worker pool started: {}{}",
+        counted(stateless_workers.size(), "stateless worker", "stateless workers"),
+        stateful_workers.empty()
+            ? std::string()
+            : std::format(", {} keeping up to {} compiled",
+                          counted(stateful_workers.size(), "stateful worker", "stateful workers"),
+                          counted(max_resident, "document", "documents")));
     return true;
 }
 
@@ -519,37 +522,39 @@ bool WorkerPool::process_crash(std::size_t index,
         w.counted_deaths.push_back(w.generation - 1);
     }
 
-    // Ahead of the anomaly report, which aborts Debug builds.
-    if(!tail.lines.empty()) {
-        LOG_ERROR("Last stderr of crashed worker {}:\n{}", w.name, llvm::join(tail.lines, "\n"));
-    }
     // Relay the tail of the dead incarnation's own log into the master log
     // so CI, which only sees the master's output, still gets the worker's
-    // final assert/error message.
+    // final assert/error message: ahead of the anomaly report, which aborts
+    // Debug builds.
     std::string content;
     if(!options.session_dir.empty() &&
        !fs::read_file(content, path::join(options.session_dir, w.name + ".log"))) {
-        if(auto output = crash_output(content, w.log_offset); !output.empty())
-            LOG_ERROR("Last output of crashed worker {}:\n{}", w.name, output);
+        if(auto output = crash_output(content, w.log_offset); !output.empty()) {
+            std::string quoted;
+            for(auto line: llvm::split(output, '\n')) {
+                quoted += std::format("\n    {}", line);
+            }
+            LOG_ERROR("The last lines {} logged, from {}.log:{}", w.name, w.name, quoted);
+        }
     }
+    auto streak = w.crash_streak == 0
+                      ? std::string()
+                      : std::format(" ({} in a row)", counted(w.crash_streak, "crash", "crashes"));
 
     if(terminated) {
         // Termination requested from outside — e.g. the editor tearing the
         // whole process group down on a hard restart. The worker did not
         // crash; don't alarm the user through the anomaly channel.
-        LOG_WARN("Worker {} terminated by signal {} (crash streak: {})",
-                 w.name,
-                 exit_signal,
-                 w.crash_streak);
+        LOG_WARN("Worker {} terminated by signal {}{}", w.name, exit_signal, streak);
     } else if(death.out_of_memory) {
         // The machine ran out, not clice.
         LOG_WARN("Worker {} ran out of memory at {} MiB", w.name, death.memory >> 20);
     } else {
         LOG_ANOMALY(WorkerCrash,
-                    "Worker {} {} (crash streak: {})",
+                    "Worker {} {}{}",
                     w.name,
                     describe_exit(exit_code, exit_signal),
-                    w.crash_streak);
+                    streak);
     }
 
     if(w.crash_streak > options.max_crash_streak) {
@@ -564,11 +569,16 @@ bool WorkerPool::process_crash(std::size_t index,
 
 llvm::StringRef WorkerPool::crash_output(llvm::StringRef log, std::size_t from) {
     // The crash's backtrace stays in the worker log: the master log carries
-    // the diagnosis, not the (noisy, non-portable) stack frames.
+    // the diagnosis, not the (noisy, non-portable) stack frames, nor the
+    // crash's line before them, which would read as the master's own.
     // The log moved aside since the worker started: what the fresh one holds
     // is all its own.
     auto output = log.substr(from <= log.size() ? from : 0);
-    output = output.substr(0, output.find("=== CRASH STACK TRACE ===")).rtrim();
+    if(auto trace = output.find("=== CRASH STACK TRACE ==="); trace != llvm::StringRef::npos) {
+        output = output.take_front(trace).rtrim();
+        output = output.take_front(output.rfind('\n') + 1);
+    }
+    output = output.rtrim();
 
     constexpr std::size_t max_output = 4096;
     if(output.size() > max_output) {
@@ -638,9 +648,13 @@ async::task<> WorkerPool::respawn_after(std::size_t index,
 
         auto& w = slot(index, stateful);
         if(launch(index, stateful)) {
-            LOG_INFO("Worker {} started again ({} in a row)",
-                     w.name,
-                     counted(w.crash_streak, "crash", "crashes"));
+            if(w.crash_streak == 0) {
+                LOG_INFO("Worker {} started again", w.name);
+            } else {
+                LOG_INFO("Worker {} started again after {} in a row",
+                         w.name,
+                         counted(w.crash_streak, "crash", "crashes"));
+            }
             co_return;
         }
 

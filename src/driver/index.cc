@@ -229,6 +229,10 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
         result.exit_code = 1;
     }
     result.seconds = timer.ms() / 1000.0;
+    LOG_INFO("Indexed {} in {:.1f} s, {} failed",
+             counted(result.indexed_tus, "translation unit", "translation units"),
+             result.seconds,
+             result.failed.size() + result.too_big.size());
 }
 
 int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) {

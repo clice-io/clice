@@ -544,7 +544,8 @@ async::task<Result> ServedProject::CompileAttempt::run() {
                 project.file_table.intern_version(path_id, session->source->hash()),
                 std::move(inputs));
             if(leans) {
-                LOG_INFO("Header {} needs includer context, re-compiling with prefix", file_path);
+                LOG_INFO("{} does not compile on its own; compiling it again in its host's context",
+                         file_path);
                 continue;
             }
         }
@@ -711,6 +712,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
     // file dodge its stop by being edited between dispatch and the crash
     // response (contract 12).
     bool retry_without_suspect = false;
+    bool died = false;
     auto interrupt = std::make_unique<async::cancellation_source>();
     auto interrupt_token = interrupt->token();
     auto* own_interrupt = interrupt.get();
@@ -737,6 +739,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
             co_return co_await pool.send_stateful(path_id.raw, params, {.token = interrupt_token});
         },
         [&](const ipc::Error& error) {
+            died = true;
             retry_without_suspect =
                 served.attribute_crash(session, params.tidy.has_value(), built.loaded, error);
         });
@@ -752,6 +755,8 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
     if(!result.has_value()) {
         if(served.server.shutting_down()) {
             LOG_DEBUG("The compile of {} stopped with the server", file_path);
+        } else if(died) {
+            LOG_DEBUG("The compile of {} did not complete: {}", file_path, result.error().message);
         } else if(worker::is_operational_error(result.error())) {
             LOG_WARN("The compile of {} did not complete: {}", file_path, result.error().message);
         } else {

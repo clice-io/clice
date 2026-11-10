@@ -856,9 +856,9 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
                                         load_deps(saved.deps));
     }
 
-    LOG_INFO("Loaded precompiled records: {} PCH entries, {} PCM entries",
-             pchs.size(),
-             pcms.size());
+    LOG_INFO("Loaded the records of {} and {}",
+             counted(pchs.size(), "PCH", "PCHs"),
+             counted(pcms.size(), "PCM", "PCMs"));
 }
 
 }  // namespace clice

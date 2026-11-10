@@ -69,12 +69,7 @@ struct WorkerDeath {
 /// the fatal diagnosis (an LLVM ERROR, an assertion) arrives there seconds
 /// before the exit is observed, far from the report in the log.
 struct StderrTail {
-    constexpr static std::size_t capacity = 8;
-
-    llvm::SmallVector<std::string, capacity> lines;
-
-    /// The crash tag the dying worker wrote after worker::crashed_in_marker;
-    /// kept apart from `lines`, which a sanitizer report would roll over.
+    /// The crash tag the dying worker wrote after worker::crashed_in_marker.
     std::string crashed_in;
 
     /// The worker wrote that an allocation failed.
@@ -83,13 +78,6 @@ struct StderrTail {
     /// The pipe reached EOF. The exit is observed independently of the
     /// pipe, so the crash report waits for this before reading the lines.
     async::event drained;
-
-    void add(std::string line) {
-        if(lines.size() == capacity) {
-            lines.erase(lines.begin());
-        }
-        lines.push_back(std::move(line));
-    }
 };
 
 struct WorkerPoolOptions {
@@ -870,10 +858,10 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // Asked to stop before it reached the worker: giving the slot back
         // costs nothing.
         if(request.preempt.cancelled()) {
-            co_await async::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
+            co_await async::fail(ipc::Error{cancelled, "it gave way to more urgent work"});
         }
         if(options.admitted && !options.admitted()) {
-            co_await async::fail(ipc::Error{cancelled, "Request stopped by a crash"});
+            co_await async::fail(ipc::Error{cancelled, "a crash stopped it"});
         }
 
         auto death = stateless_workers[index].death;
@@ -891,7 +879,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // its death record is not done yet, so it is requeued uncharged and crashes
         // its worker once more.
         if(request.preempt.cancelled() && !death->out_of_memory && !death->ignored_cancel) {
-            co_await async::fail(ipc::Error{cancelled, "Request preempted by the scheduler"});
+            co_await async::fail(ipc::Error{cancelled, "it gave way to more urgent work"});
         }
         // An error returned by the worker's handler leaves the worker
         // healthy; pass it through untouched.

@@ -751,7 +751,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
     // pages, which a read-only open cannot.
     if(read_only) {
         if(auto status = fs::status(path); status && status->size == 0) {
-            LOG_WARN("Index database at {} is empty; run `clice index` to repair it", path);
+            LOG_WARN("Index database at {} is empty; run `clice index` to build it", path);
             return nullptr;
         }
     }

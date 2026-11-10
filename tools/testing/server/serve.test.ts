@@ -56,7 +56,7 @@ describe("gateLogs", () => {
             ".clice/logs/session/lint.log",
             `${[
                 `[t] [warning] [pool.cpp:39] [SL-0] clice worker crashed in: clice/worker/compileUnit a.cpp`,
-                "[t] [error] [pool.cpp:575] [anomaly:WorkerCrash] Worker SL-0 killed by signal 4 (SIGILL) (crash streak: 0)",
+                "[t] [error] [pool.cpp:575] [anomaly:WorkerCrash] Worker SL-0 killed by signal 4 (SIGILL)",
             ].join("\n")}\n`,
         );
         expect(gateLogs(workspace, {}, false)).not.toEqual([]);

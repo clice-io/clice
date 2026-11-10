@@ -472,8 +472,15 @@ static worker::CompileUnitResult
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
     if(!unit->completed()) {
-        LOG_WARN("The compile of {} failed after {} ms", params.file, timer.ms());
+        if(stop->load(std::memory_order_relaxed)) {
+            LOG_DEBUG("The compile of {} stopped after {} ms", params.file, timer.ms());
+            return {false, "Unit compile cancelled"};
+        }
         auto errors = collect_errors(*unit);
+        LOG_WARN("The compile of {} failed after {} ms{}",
+                 params.file,
+                 timer.ms(),
+                 errors.empty() ? std::string() : ": " + errors.front());
         if(errors.empty()) {
             return {false, "Unit compile failed"};
         }
@@ -718,7 +725,6 @@ static void
 }
 
 int run_stateless_worker_mode() {
-    LOG_INFO("Starting stateless worker");
     install_crash_report();
     async::event_loop loop;
 

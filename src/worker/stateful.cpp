@@ -469,7 +469,6 @@ void StatefulWorker::register_handlers() {
 }
 
 int run_stateful_worker_mode() {
-    LOG_INFO("Starting stateful worker");
     install_crash_report();
 
     async::event_loop loop;

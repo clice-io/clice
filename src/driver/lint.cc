@@ -6,6 +6,7 @@ import :driver.run;
 import :project.graph.unit;
 import :project.project;
 import :support.logging;
+import :support.text;
 
 namespace clice::driver {
 
@@ -343,6 +344,11 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         result.exit_code = 2;
     }
     result.seconds = timer.ms() / 1000.0;
+    LOG_INFO("Linted {} in {:.1f} s: {}, {} failed",
+             counted(result.checked_tus, "translation unit", "translation units"),
+             result.seconds,
+             counted(result.findings.size(), "finding", "findings"),
+             result.failed_tus);
 }
 
 int run_lint(const ProjectOptions& where, std::uint32_t jobs, bool with_index, bool json) {

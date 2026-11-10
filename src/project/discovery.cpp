@@ -565,7 +565,7 @@ CDBDiff Project::discover_databases(llvm::ArrayRef<Fid> files, DiscoverOptions o
             }
         }
         if(!registered) {
-            LOG_INFO("Found compilation database: {}", place);
+            LOG_INFO("Found the compilation database {}", place);
             watch_database(*this, id);
         }
     }

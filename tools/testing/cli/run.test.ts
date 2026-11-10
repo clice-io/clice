@@ -57,16 +57,17 @@ describe("normalize", () => {
     });
 
     test("a worker's death reads the same everywhere", () => {
-        expect(elideCrash("Worker SL-0 killed by signal 4 (SIGILL) (crash streak: 0)")).toBe(
-            "Worker SL-0 ${CRASH} (crash streak: 0)",
-        );
+        expect(elideCrash("Worker SL-0 killed by signal 4 (SIGILL)")).toBe("Worker SL-0 ${CRASH}");
         expect(
             elideCrash(
-                "Worker SL-0 terminated by exception 0xC000001D (STATUS_ILLEGAL_INSTRUCTION) (crash streak: 0)",
+                "Worker SL-0 terminated by exception 0xC000001D (STATUS_ILLEGAL_INSTRUCTION)",
             ),
-        ).toBe("Worker SL-0 ${CRASH} (crash streak: 0)");
-        expect(elideCrash("Worker SL-0 exited with code 1 (crash streak: 1)")).toBe(
-            "Worker SL-0 ${CRASH} (crash streak: 1)",
+        ).toBe("Worker SL-0 ${CRASH}");
+        expect(elideCrash("Worker SL-0 exited with code 1 (1 crash in a row)")).toBe(
+            "Worker SL-0 ${CRASH} (1 crash in a row)",
+        );
+        expect(elideCrash("the compiler exited with code 1")).toBe(
+            "the compiler exited with code 1",
         );
     });
 });

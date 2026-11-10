@@ -48,6 +48,10 @@ int run_worker(Worker& worker) {
     if(!worker.session_dir.empty()) {
         logging::file_logger(worker.session_dir);
     }
+    LOG_INFO("Worker {} ({}) starting, pid {}",
+             worker.worker_name,
+             worker.stateful ? "stateful" : "stateless",
+             sys::pid());
     // See WorkerPool::launch.
     if(auto error = sys::exit_with_parent()) {
         LOG_ERROR("Cannot watch the master, exiting: {}", error.message());

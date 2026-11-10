@@ -191,16 +191,12 @@ void MasterServer::initialize() {
         log_settings(*project);
     }
 
-    LOG_INFO("Server ready: {}, {} stateful and {} stateless workers",
-             counted(projects.size(), "project", "projects"),
-             pool_opts.stateful_count,
-             pool_opts.stateless_count);
-
     if(projects.front()->project.settings.project.test_hooks) {
         pool.hooks = &hooks;
     }
     if(pool.start(pool_opts)) {
         lifecycle = ServerLifecycle::Ready;
+        LOG_INFO("Server ready: {}", counted(projects.size(), "project", "projects"));
         for(auto& project: projects) {
             project->start();
         }

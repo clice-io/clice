@@ -40,6 +40,7 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
     if(content_changed ||
        (compiled_by != CompiledBy::Document && (diagnostics || !project.index_holds(path_id)))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
+        Timer timer;
         // A build compiling the unit indexes it but brings no such
         // diagnostics: only a booking asking for them compiles it for them.
         bool wants_skipped =
@@ -75,11 +76,7 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                                         .diagnostics = std::move(result->skipped_diagnostics)};
                 }
                 indexed_units += 1;
-                LOG_INFO("[{}/{}] Indexed {} in {} ms",
-                         index,
-                         total,
-                         file_path,
-                         result->perf.index_ms + result->perf.merge_ms);
+                LOG_INFO("[{}/{}] Indexed {} in {} ms", index, total, file_path, timer.ms());
                 LOG_PERF("index",
                          "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
                          index,

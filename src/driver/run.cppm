@@ -278,10 +278,11 @@ inline bool start_batch(BatchRun& run,
     if(!cfg.logging_dir.empty()) {
         auto session_dir = logging::start_session_log(cfg.logging_dir);
         if(logging::file_logger(session_dir)) {
-            LOG_INFO("clice {} ({}) runs {}, pid {}",
+            LOG_INFO("clice {} ({}) runs {} on {}, pid {}",
                      clice::version,
                      clice::target,
                      log_tag,
+                     batch.root,
                      sys::pid());
             if(auto source = built_from(); !source.empty()) {
                 LOG_INFO("{}", source);

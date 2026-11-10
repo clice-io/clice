@@ -679,7 +679,7 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     }
 
     auto total = pending.size();
-    LOG_DEBUG("Asking {} for their default settings", counted(total, "compiler", "compilers"));
+    LOG_DEBUG("Querying {} for default settings", counted(total, "compiler", "compilers"));
 
     // Run the queries concurrently on a local event loop. The interface
     // stays synchronous: block until all complete, then fill the cache here.
@@ -727,7 +727,7 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
         commit_query(o.key, o.command, o.result);
     }
 
-    LOG_INFO("Asked {} for their default settings; {} failed",
+    LOG_INFO("Queried {} for default settings; {} failed",
              counted(total, "compiler", "compilers"),
              total - succeeded);
 }

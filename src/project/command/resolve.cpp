@@ -16,17 +16,11 @@ namespace clice {
 
 namespace {
 
-/// Where the file's command came from, the places tried for it, and a hash
-/// of it for correlating later failures; logged when it differs from the
-/// last one the file logged.
+/// Where the file's command came from and the command, logged when it
+/// differs from the last one the file logged.
 void log_command(Project& project, Fid file, const Resolution& resolution) {
     if(logging::options.level > logging::Level::Info) {
         return;
-    }
-    std::string joined;
-    for(auto& arg: resolution.arguments) {
-        joined += arg;
-        joined += '\0';
     }
     auto& files = project.file_table;
     auto from = [&]() -> std::string {
@@ -43,10 +37,10 @@ void log_command(Project& project, Fid file, const Resolution& resolution) {
         }
         std::unreachable();
     }();
-    auto decision = std::format("from {} (tried {}), arguments hashed {:016x}",
+    auto decision = std::format("from {}, run in {}: {}",
                                 from,
-                                llvm::join(resolution.tried, ", "),
-                                llvm::xxh3_64bits(llvm::StringRef(joined)));
+                                resolution.directory,
+                                join_command(resolution.arguments));
     auto hash = llvm::xxh3_64bits(decision);
     if(std::exchange(project.logged_commands[file], hash) != hash) {
         LOG_INFO("Command of {}: {}", files.resolve(file), decision);
@@ -209,17 +203,16 @@ SelectedCommand Project::select_command(Fid path_id, const CommandRequest& reque
     auto path = file_table.resolve(path_id);
     SelectedCommand selection;
     Tiers tiers{*this, path_id, path, request, selection};
-    constexpr std::pair<llvm::StringRef, std::optional<Candidate> (Tiers::*)()> order[] = {
-        {"chosen_host", &Tiers::chosen_host    },
-        {"own",         &Tiers::own            },
-        {"ranked_host", &Tiers::ranked_host    },
-        {"default",     &Tiers::default_command},
-        {"borrowed",    &Tiers::borrowed       },
-        {"fallback",    &Tiers::fallback       },
+    constexpr std::optional<Candidate> (Tiers::* order[])() = {
+        &Tiers::chosen_host,
+        &Tiers::own,
+        &Tiers::ranked_host,
+        &Tiers::default_command,
+        &Tiers::borrowed,
+        &Tiers::fallback,
     };
     std::optional<Candidate> candidate;
-    for(auto [name, tier]: order) {
-        selection.tried.push_back(name);
+    for(auto tier: order) {
         if((candidate = (tiers.*tier)())) {
             break;
         }
