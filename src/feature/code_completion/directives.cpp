@@ -1,9 +1,6 @@
 module clice;
 
 import :feature.code_completion.cursor;
-import :feature.code_completion.directives;
-import :feature.code_completion.ranking;
-import :feature.code_completion.snippet;
 import :feature.code_completion;
 import :support.fuzzy_matcher;
 import :syntax.position;

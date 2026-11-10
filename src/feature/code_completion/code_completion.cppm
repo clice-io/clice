@@ -2,6 +2,7 @@ module clice:feature.code_completion;
 
 import :command.search_config;
 import :compile.compilation;
+import :feature.code_completion.cursor;
 import :feature.documentation;
 import :index.query;
 import :support.json;
@@ -9,6 +10,7 @@ import :support.prelude;
 import :syntax.dependency_graph;
 import :syntax.position;
 import :syntax.scan;
+import :syntax.source_text;
 import :vfs.dir_cache;
 import :vfs.file_table;
 import :vfs.ids;
@@ -219,20 +221,16 @@ struct OpenModule {
 
 /// A completion request as the server has it before any compile.
 struct CompletionInputs {
-    /// The file completed in, its path and text, and the point completed at
-    /// in the client's encoding.
+    /// The file completed in, its path and its text, read in the file's
+    /// dialect.
     Fid file;
     llvm::StringRef path;
-    llvm::StringRef text;
-    const PositionMap& positions;
-    protocol::Position position;
+    SourceText& source;
+
+    /// The request, its positions in `encoding`, the one the client and the
+    /// server agreed on.
+    const protocol::CompletionParams& params;
     PositionEncoding encoding;
-
-    /// The character whose typing asked; empty for a request the user made.
-    llvm::StringRef trigger_character;
-
-    /// The dialect the file is lexed in.
-    const clang::LangOptions& dialect;
 
     const CodeCompletionOptions& options;
     const CompletionClient& client;
@@ -274,5 +272,90 @@ struct NoCompletion {};
 /// other code by a compile, which offer_names gives the index's names.
 auto code_complete(const CompletionInputs& inputs)
     -> std::variant<NoCompletion, protocol::CompletionList, CompileCompletion>;
+
+/// The directives a directive name being typed (`completing`) may name,
+/// as a compile's completion offers them: `#elif`, `#else` and `#endif`
+/// inside a conditional block (CompletionName::conditional). A directive's
+/// arguments come as placeholders with statement snippets.
+auto directive_completion(const CompletionName& completing,
+                          const PositionMap& map,
+                          PositionEncoding encoding,
+                          const clang::LangOptions& dialect,
+                          const CodeCompletionOptions& options,
+                          const CompletionClient& client) -> protocol::CompletionList;
+
+/// The paths an `#include` being typed (`completing`) may go on with in
+/// `text`, the file at `path`, as `search` finds them: a directory leaves
+/// the path open for the `/` typed next, a header closes the directive.
+auto include_completion(const CompletionName& completing,
+                        llvm::StringRef text,
+                        const PositionMap& map,
+                        PositionEncoding encoding,
+                        llvm::StringRef path,
+                        const SearchConfig& search,
+                        vfs::Scope& scope,
+                        std::uint32_t limit) -> protocol::CompletionList;
+
+/// The modules an `import` or a module declaration being typed
+/// (`completing`) may name, each with its documentation: the better the
+/// name typed matches, the earlier; then the unit's own partitions first,
+/// then the modules whose interface lies nearest the file — the fewest
+/// directories up from it to one holding the interface.
+/// The other open units provide what their buffers declare, the file what
+/// its text does.
+auto module_completion(const CompletionName& completing, const CompletionInputs& inputs)
+    -> protocol::CompletionList;
+
+/// The `import` declaration a unit of the module `unit` (`name` or
+/// `name:partition`, empty outside a named module) needs to reach what the
+/// module `module` exports; none when the unit is that module.
+auto import_for(llvm::StringRef module, llvm::StringRef unit) -> std::optional<std::string>;
+
+/// How strongly the context asks for a candidate, apart from how its name
+/// matches: clang's priority — locals before members before the rest, a
+/// type the context expects ahead of all, macros last — as a factor around
+/// 1, the priority of a keyword.
+inline float priority_weight(unsigned priority) {
+    return std::max(0.05F, (90.0F - static_cast<float>(priority)) / 50.0F);
+}
+
+/// Ascending sort text for a candidate scoring `score`, at most 8; `order`
+/// breaks ties.
+inline std::string sort_text(float score, std::optional<std::uint32_t> order) {
+    auto text = std::format("{:.4f}", 8.0F - score);
+    if(order) {
+        text += std::format("{:05}", *order);
+    }
+    return text;
+}
+
+/// The reply listing `items` under `code_completion.limit`: the best ranked
+/// stay, ties by label, and a list cut short is marked incomplete.
+inline auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
+    -> protocol::CompletionList {
+    protocol::CompletionList list{.is_incomplete = false, .items = std::move(items)};
+    if(limit != 0 && list.items.size() > limit) {
+        ranges::sort(list.items, {}, [](const protocol::CompletionItem& item) {
+            return std::tie(static_cast<const std::optional<std::string>&>(item.sort_text),
+                            item.label);
+        });
+        list.items.resize(limit);
+        list.is_incomplete = true;
+    }
+    return list;
+}
+
+/// Text a snippet takes literally: `$` and `\` would otherwise start or
+/// escape a snippet construct, and inside a placeholder `}` would end it.
+inline auto escape_snippet(llvm::StringRef text, bool placeholder = false) -> std::string {
+    std::string escaped;
+    for(char c: text) {
+        if(c == '$' || c == '\\' || (placeholder && c == '}')) {
+            escaped += '\\';
+        }
+        escaped += c;
+    }
+    return escaped;
+}
 
 }  // namespace clice::feature

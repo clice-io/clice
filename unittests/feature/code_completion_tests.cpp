@@ -3,7 +3,7 @@ module clice;
 import :command.search_config;
 import :command.table;
 import :feature.code_completion.cursor;
-import :feature.code_completion.include_paths;
+import :feature.code_completion;
 import :syntax.lexer;
 import :syntax.position;
 import :unittests.utils;

@@ -3,8 +3,6 @@ module clice;
 import :command.file_kind;
 import :command.search_config;
 import :feature.code_actions;
-import :feature.code_completion.insertion;
-import :feature.code_completion.ranking;
 import :feature.code_completion;
 import :feature.protocol;
 import :index.query;

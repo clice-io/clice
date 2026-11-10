@@ -1,8 +1,6 @@
 module clice;
 
 import :feature.code_completion.cursor;
-import :feature.code_completion.module_names;
-import :feature.code_completion.ranking;
 import :feature.code_completion;
 import :feature.documentation;
 import :index.query;
@@ -12,6 +10,7 @@ import :semantic.symbol;
 import :support.fuzzy_matcher;
 import :syntax.dependency_graph;
 import :syntax.scan;
+import :syntax.source_text;
 
 namespace clice::feature {
 
@@ -137,7 +136,8 @@ std::vector<ModuleCandidate> complete_module_import(const ModuleProviders& provi
 
 auto module_completion(const CompletionName& completing, const CompletionInputs& inputs)
     -> protocol::CompletionList {
-    auto& text = inputs.text;
+    auto text = inputs.source.text();
+    auto positions = inputs.source.positions();
     auto limit = inputs.options.limit;
     auto open = inputs.open_modules();
     std::vector<ModuleCandidate> candidates;
@@ -197,7 +197,7 @@ auto module_completion(const CompletionName& completing, const CompletionInputs&
         item.kind = protocol::CompletionItemKind::Module;
         item.sort_text = sort_text(score, distance(name));
         item.text_edit = protocol::TextEdit{
-            .range = *inputs.positions.range(completing.replace, inputs.encoding),
+            .range = *positions.range(completing.replace, inputs.encoding),
             .new_text = completing.closed ? name : name + ";",
         };
         items.push_back(std::move(item));

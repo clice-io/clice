@@ -158,10 +158,6 @@ void LSPClient::register_editing() {
         project.start_compiling(path_id);
         auto pause = ScopedPause(project.project.background_index);
 
-        llvm::StringRef trigger;
-        if(params.context && params.context->trigger_character) {
-            trigger = *params.context->trigger_character;
-        }
         auto& settings = project.project.settings;
         auto& files = project.project.file_table;
         auto encoding = server.position_encoding;
@@ -171,12 +167,9 @@ void LSPClient::register_editing() {
         auto answer = feature::code_complete({
             .file = path_id,
             .path = resolved,
-            .text = session->text(),
-            .positions = positions,
-            .position = params.position,
+            .source = project.text_of(*session),
+            .params = params,
             .encoding = encoding,
-            .trigger_character = trigger,
-            .dialect = project.dialect(path_id),
             .options = settings.code_completion,
             .client = completion_client,
             .graph = project.project.dep_graph,
