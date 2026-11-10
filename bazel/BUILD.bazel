@@ -96,12 +96,14 @@ genrule(
     cmd = select({
         ":" + setting: """
 version=$$(sed -n 's/^STABLE_CLICE_VERSION //p' bazel-out/stable-status.txt)
+commit=$$(sed -n 's/^STABLE_CLICE_COMMIT //p' bazel-out/stable-status.txt)
 cat > $@ <<EOF
 #include <string_view>
 
 namespace clice {
 
 extern const std::string_view version = "$$version";
+extern const std::string_view commit = "$$commit";
 extern const std::string_view target = "%s";
 
 }  // namespace clice

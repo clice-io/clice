@@ -110,6 +110,9 @@ int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
              opts.mode == ServerMode::Pipe ? "stdio" : "a socket",
              opts.workspace.empty() ? std::string()
                                     : std::format(", for the workspace {}", opts.workspace));
+    if(auto source = built_from(); !source.empty()) {
+        LOG_INFO("{}", source);
+    }
 
     if(opts.mode == ServerMode::Socket && (opts.port <= 0 || opts.port > 65535)) {
         LOG_ERROR("--port must be between 1 and 65535 in socket mode");

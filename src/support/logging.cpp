@@ -310,12 +310,12 @@ void write_crash_header(int fd) noexcept {
     auto day = chrono::floor<chrono::days>(time);
     chrono::year_month_day date(day);
     chrono::hh_mm_ss clock(time - day);
-    std::array<char, 256> header;
+    std::array<char, 512> header;
     auto end =
         std::format_to_n(header.data(),
                          header.size(),
                          "[{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}] [fatal] clice crashed\n"
-                         "=== CRASH STACK TRACE ===\nclice {} {}\n",
+                         "=== CRASH STACK TRACE ===\nclice {} {}{}{}{}\n",
                          static_cast<int>(date.year()),
                          static_cast<unsigned>(date.month()),
                          static_cast<unsigned>(date.day()),
@@ -324,7 +324,10 @@ void write_crash_header(int fd) noexcept {
                          clock.seconds().count(),
                          clock.subseconds().count(),
                          version,
-                         target)
+                         target,
+                         commit.empty() ? "" : " ",
+                         commit.empty() ? std::string_view() : source_tree,
+                         commit)
             .out;
     sys::write_console(fd, std::string_view(header.data(), end));
 }

@@ -1,5 +1,6 @@
-// Bazel's --workspace_status_command: STABLE_CLICE_VERSION, the version
-// version.cpp is stamped with (bazel/BUILD.bazel). A change of it rebuilds
+// Bazel's --workspace_status_command: STABLE_CLICE_VERSION and
+// STABLE_CLICE_COMMIT, the version and the commit version.cpp is stamped with
+// (bazel/BUILD.bazel). A change of it rebuilds
 // version.cpp alone and relinks the programs.
 //
 // The version is `git describe` relative to the latest tag, without its v
@@ -61,4 +62,10 @@ function version() {
     return described.replace(/^v/, "");
 }
 
+/// The commit checked out, or empty outside a git checkout of clice.
+function commit() {
+    return describe() ? (git("rev-parse", "HEAD") ?? "") : "";
+}
+
 console.log(`STABLE_CLICE_VERSION ${version()}`);
+console.log(`STABLE_CLICE_COMMIT ${commit()}`);

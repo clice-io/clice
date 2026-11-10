@@ -11,6 +11,7 @@ import :settings.settings;
 import :support.logging;
 import :support.prelude;
 import :support.process;
+import :support.version;
 import :vfs.file_table;
 import :vfs.path;
 import :worker.pool;
@@ -277,6 +278,14 @@ inline bool start_batch(BatchRun& run,
     if(!cfg.logging_dir.empty()) {
         auto session_log_dir = logging::start_session_log(cfg.logging_dir);
         if(logging::file_logger(session_log_dir)) {
+            LOG_INFO("clice {} ({}) runs {}, pid {}",
+                     clice::version,
+                     clice::target,
+                     log_tag,
+                     sys::pid());
+            if(auto source = built_from(); !source.empty()) {
+                LOG_INFO("{}", source);
+            }
             LOG_INFO("Session log directory: {}", session_log_dir);
             run.log_dir = std::move(session_log_dir);
         }

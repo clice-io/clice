@@ -20,6 +20,25 @@ extern "C++" {
     /// Target platform this binary was built for, e.g. "x86_64-unknown-linux-gnu".
     /// Logged with the version so crash reports identify the exact build.
     extern const std::string_view target;
+
+    /// The commit the binary was built from, empty for a non-git build.
+    extern const std::string_view commit;
+}
+
+/// Where a reader of a log finds the source of `commit`.
+constexpr inline std::string_view source_tree = "https://github.com/clice-io/clice/tree/";
+
+/// The line a log starts with after the version's: the source of the
+/// build's commit, with local changes when the version says so; empty for a
+/// non-git build.
+inline std::string built_from() {
+    if(commit.empty()) {
+        return {};
+    }
+    return std::format("Built from {}{}{}",
+                       source_tree,
+                       commit,
+                       version.ends_with("-dirty") ? " with local changes" : "");
 }
 
 }  // namespace clice
