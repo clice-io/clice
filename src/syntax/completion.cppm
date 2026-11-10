@@ -123,16 +123,20 @@ struct IncludeCandidate {
     std::string name;
     bool is_directory = false;
 
-    /// Where the search found it, ascending: the includer's directory, the
-    /// quoted then the angled search directories, the system ones the
-    /// command names, last the toolchain's own; in search order within each,
-    /// after the others of its group when the name is reserved (`_`-led: a
-    /// library's internals, libc++'s `__algorithm/`, MinGW's `_mingw.h`).
-    /// A hidden name (`.git/`) follows all the others.
-    std::uint32_t order = 0;
+    /// Its rank, ascending. A hidden name (`.git/`) follows all the others,
+    /// and a file no header would be named as (`README.md`, `main.cpp`), or
+    /// a builtin header that must not be included directly, the rest. Then
+    /// the better the typed name matches: the whole name, a prefix, words of
+    /// it (`v` finds `string_view`). Then where the search found it: the
+    /// includer's directory, the quoted then the angled search directories,
+    /// the system ones the command names, last the toolchain's own; in
+    /// search order within each, after the others of its group when the
+    /// name is reserved (`_`-led: a library's internals, libc++'s
+    /// `__algorithm/`, MinGW's `_mingw.h`).
+    std::uint64_t order = 0;
 };
 
-/// Return header and directory names matching a prefix in the given search paths.
+/// Return header and directory names matching the typed name in the given search paths.
 /// @param config        The command's search directories.
 /// @param includer_dir  Directory of the file being edited, searched first by "" includes.
 /// @param prefix        Partially-typed include path (e.g. "vec" or "sys/").

@@ -1,0 +1,186 @@
+{
+  "id": "code_completion/include_path_completion/14_name_words",
+  "topic": "code_completion",
+  "subtopic": "include_path_completion",
+  "title": "Words of names",
+  "summary": "A typed name also matches the words of a name, after the names it spells whole or begins: `wsnap_view` lists `wsnap_view`, then `wsnap_viewport.h`, then `old_wsnap_view.h`",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "include/old_wsnap_view.h",
+      "text": "",
+      "markers": []
+    },
+    {
+      "path": "include/wsnap_view",
+      "text": "",
+      "markers": []
+    },
+    {
+      "path": "include/wsnap_viewport.h",
+      "text": "",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"wsnap_view\"\n#include <wsnap_view>\n",
+      "markers": [
+        {
+          "name": "quoted",
+          "begin": 20,
+          "end": 20,
+          "range": false
+        },
+        {
+          "name": "angled",
+          "begin": 42,
+          "end": 42,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "quoted",
+          "marker": "quoted",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "wsnap_view",
+                  "kind": "File",
+                  "insert": "wsnap_view\"",
+                  "replace": {
+                    "$place": "#include \"⟦wsnap_view\"⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 21
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": "wsnap_viewport.h",
+                  "kind": "File",
+                  "insert": "wsnap_viewport.h\"",
+                  "replace": {
+                    "$place": "#include \"⟦wsnap_view\"⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 21
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": "old_wsnap_view.h",
+                  "kind": "File",
+                  "insert": "old_wsnap_view.h\"",
+                  "replace": {
+                    "$place": "#include \"⟦wsnap_view\"⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 21
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "angled",
+          "marker": "angled",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "wsnap_view",
+                  "kind": "File",
+                  "insert": "wsnap_view>",
+                  "replace": {
+                    "$place": "#include <⟦wsnap_view>⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 1,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 1,
+                        "character": 21
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": "wsnap_viewport.h",
+                  "kind": "File",
+                  "insert": "wsnap_viewport.h>",
+                  "replace": {
+                    "$place": "#include <⟦wsnap_view>⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 1,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 1,
+                        "character": 21
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": "old_wsnap_view.h",
+                  "kind": "File",
+                  "insert": "old_wsnap_view.h>",
+                  "replace": {
+                    "$place": "#include <⟦wsnap_view>⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 1,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 1,
+                        "character": 21
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

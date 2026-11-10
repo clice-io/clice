@@ -86,6 +86,23 @@ llvm::StringRef resource_dir() {
     return dir;
 }
 
+BuiltinHeader builtin_header(llvm::StringRef name) {
+    struct Entry {
+        llvm::StringLiteral name;
+        BuiltinHeader kind;
+    };
+
+    constexpr static Entry entries[] = {
+#define BUILTIN_HEADER(NAME, KIND) {NAME, BuiltinHeader::KIND},
+#include "builtin_headers.inc"
+#undef BUILTIN_HEADER
+    };
+    auto found = ranges::lower_bound(entries, name, {}, [](const Entry& entry) {
+        return llvm::StringRef(entry.name);
+    });
+    return found != ranges::end(entries) && found->name == name ? found->kind : BuiltinHeader::None;
+}
+
 void CommandTable::set_project_root(CanonicalRef path) {
     root = path;
 }

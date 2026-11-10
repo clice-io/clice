@@ -299,6 +299,97 @@ ZEST_CASE(LastSysrootWins) {
     ZEXPECT(config.dirs[0].path == spelled(tmp, "three/inc"));
 }
 
+ZEST_CASE(FrameworkDirs) {
+    /// -F among the angled directories in command order, -iframework after
+    /// the -isystem ones, the driver's -internal-iframework after its own.
+    TempDir tmp;
+    std::vector<const char*> args = {"clang++",
+                                     "-internal-iframework",
+                                     tmp.c_path("driver_frameworks"),
+                                     "-internal-isystem",
+                                     tmp.c_path("driver"),
+                                     "-iframework",
+                                     tmp.c_path("system_frameworks"),
+                                     "-isystem",
+                                     tmp.c_path("system"),
+                                     "-F",
+                                     tmp.c_path("frameworks"),
+                                     "-I",
+                                     tmp.c_path("user"),
+                                     "main.cpp"};
+    auto config = extract(args, tmp.root);
+    ZASSERT(config.dirs.size() == 6u);
+    ZEXPECT(config.system_start_idx == 2u);
+    std::vector<std::pair<std::string, bool>> dirs;
+    for(auto& dir: config.dirs) {
+        dirs.emplace_back(dir.path, dir.framework);
+    }
+    std::vector<std::pair<std::string, bool>> expected = {
+        {spelled(tmp, "frameworks"),        true },
+        {spelled(tmp, "user"),              false},
+        {spelled(tmp, "system"),            false},
+        {spelled(tmp, "system_frameworks"), true },
+        {spelled(tmp, "driver"),            false},
+        {spelled(tmp, "driver_frameworks"), true },
+    };
+    ZEXPECT(dirs == expected);
+    ZEXPECT(config.dirs[5].driver);
+}
+
+ZEST_CASE(FrameworkAndPlainDir) {
+    /// One directory searched for frameworks and for plain headers is two
+    /// entries, as in clang.
+    TempDir tmp;
+    std::vector<const char*> args =
+        {"clang++", "-I", tmp.c_path("lib"), "-F", tmp.c_path("lib"), "main.cpp"};
+    auto config = extract(args, tmp.root);
+    ZASSERT(config.dirs.size() == 2u);
+    ZEXPECT(!config.dirs[0].framework);
+    ZEXPECT(config.dirs[1].framework);
+}
+
+ZEST_CASE(CXXSystemDirs) {
+    /// -cxx-isystem searches C++ alone, after -iframework and before the
+    /// driver's own.
+    TempDir tmp;
+    std::vector<const char*> args = {"clang++",
+                                     "-internal-isystem",
+                                     tmp.c_path("driver"),
+                                     "-cxx-isystem",
+                                     tmp.c_path("libcxx"),
+                                     "-isystem",
+                                     tmp.c_path("system"),
+                                     "main.cpp"};
+    auto config = extract(args, tmp.root);
+    ZASSERT(config.dirs.size() == 3u);
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "libcxx"));
+
+    args.insert(args.begin() + 1, {"-x", "c"});
+    config = extract(args, tmp.root);
+    ZASSERT(config.dirs.size() == 2u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "system"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "driver"));
+}
+
+ZEST_CASE(WithSysroot, skip = Windows) {
+    /// -iwithsysroot puts the sysroot before an absolute path, among the
+    /// -isystem directories in command order.
+    TempDir tmp;
+    auto sysroot = tmp.path("sdk");
+    std::vector<const char*> args = {"clang++",
+                                     "-isysroot",
+                                     sysroot.c_str(),
+                                     "-iwithsysroot",
+                                     "/inc",
+                                     "-isystem",
+                                     tmp.c_path("system"),
+                                     "main.cpp"};
+    auto config = extract(args, tmp.root);
+    ZASSERT(config.dirs.size() == 2u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "sdk/inc"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "system"));
+}
+
 };  // ZEST_SUITE(ExtractSearchConfig)
 
 }  // namespace

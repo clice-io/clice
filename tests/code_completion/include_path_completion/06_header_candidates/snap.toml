@@ -9,7 +9,9 @@ items = [
     { label = "snap_bare", kind = "File", insert = 'snap_bare"', replace = '#include "⟦snap"⟧' },
     { label = "snap_system", kind = "File", insert = 'snap_system"', replace = '#include "⟦snap"⟧' },
     { label = "snap_system.h", kind = "File", insert = 'snap_system.h"', replace = '#include "⟦snap"⟧' },
+    { label = "snap_data.json", kind = "File", insert = 'snap_data.json"', replace = '#include "⟦snap"⟧' },
 ]
+more = 3
 
 [answers.angled.completion]
 items = [
@@ -22,7 +24,9 @@ items = [
     { label = "snap_bare", kind = "File", insert = "snap_bare>", replace = "#include <⟦snap>⟧" },
     { label = "snap_system", kind = "File", insert = "snap_system>", replace = "#include <⟦snap>⟧" },
     { label = "snap_system.h", kind = "File", insert = "snap_system.h>", replace = "#include <⟦snap>⟧" },
+    { label = "snap_notes.txt", kind = "File", insert = "snap_notes.txt>", replace = "#include <⟦snap>⟧" },
 ]
+more = 1
 
 [answers.code.completion]
 items = [

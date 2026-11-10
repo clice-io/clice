@@ -12,7 +12,7 @@ ResolvedSearchConfig resolve_search_config(const SearchConfig& config, vfs::Scop
     resolved.hidden = config.hidden;
     resolved.dirs.reserve(config.dirs.size());
     for(auto& dir: config.dirs) {
-        resolved.dirs.push_back({dir.path, &scope.list(dir.path)});
+        resolved.dirs.push_back({dir.path, &scope.list(dir.path), dir.framework});
     }
     return resolved;
 }
@@ -58,6 +58,30 @@ bool check_in_dir(llvm::StringRef dir_path,
     return scope.list(parent).contains_file(name) && shown();
 }
 
+/// The header a framework directory gives for `filename` (`Foo/Bar.h`), as
+/// clang's framework lookup finds it: `Foo.framework/Headers/Bar.h` below
+/// `dir`, else `Foo.framework/PrivateHeaders/Bar.h`.
+std::optional<llvm::SmallString<256>> find_in_framework(llvm::StringRef dir,
+                                                        const vfs::Listing* listing,
+                                                        llvm::StringRef filename,
+                                                        vfs::Scope& scope) {
+    auto [name, rest] = filename.split('/');
+    auto bundle = (name + ".framework").str();
+    if(rest.empty() || !listing->contains(bundle)) {
+        return std::nullopt;
+    }
+    for(llvm::StringRef headers: {"Headers", "PrivateHeaders"}) {
+        llvm::SmallString<256> full(dir);
+        path::push(full, bundle);
+        path::push(full, headers);
+        path::push(full, rest);
+        if(scope.list(path::parent(full.str())).contains_file(path::filename(full.str()))) {
+            return full;
+        }
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
@@ -88,20 +112,29 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
         path::push(candidate, fname);
     };
 
-    // 2. For #include_next, start from found_dir_idx + 1.
-    if(is_include_next && found_dir_idx) {
-        for(unsigned i = *found_dir_idx + 1; i < config.dirs.size(); i += 1) {
-            if(check_in_dir(config.dirs[i].path,
-                            config.dirs[i].listing,
-                            filename,
-                            is_simple,
-                            config.hidden.get(),
-                            scope)) {
-                make_candidate(config.dirs[i].path, filename);
+    auto search_from = [&](unsigned start) -> std::optional<ResolveResult> {
+        for(unsigned i = start; i < config.dirs.size(); i += 1) {
+            auto& dir = config.dirs[i];
+            if(dir.framework) {
+                if(auto found = find_in_framework(dir.path, dir.listing, filename, scope)) {
+                    return ResolveResult{std::move(*found), i};
+                }
+            } else if(check_in_dir(dir.path,
+                                   dir.listing,
+                                   filename,
+                                   is_simple,
+                                   config.hidden.get(),
+                                   scope)) {
+                make_candidate(dir.path, filename);
                 return ResolveResult{candidate, i};
             }
         }
         return std::nullopt;
+    };
+
+    // 2. For #include_next, start from found_dir_idx + 1.
+    if(is_include_next && found_dir_idx) {
+        return search_from(*found_dir_idx + 1);
     }
 
     // 3. Quoted include: try includer's directory first.
@@ -118,22 +151,7 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     }
 
     // 4. Search directories from appropriate start index.
-    // FIXME: framework lookup (<Foo/Bar.h> in Foo.framework/Headers/Bar.h)
-    // waits on SearchConfig carrying the framework directories.
-    unsigned start = is_angled ? config.angled_start_idx : 0;
-    for(unsigned i = start; i < config.dirs.size(); ++i) {
-        if(check_in_dir(config.dirs[i].path,
-                        config.dirs[i].listing,
-                        filename,
-                        is_simple,
-                        config.hidden.get(),
-                        scope)) {
-            make_candidate(config.dirs[i].path, filename);
-            return ResolveResult{candidate, i};
-        }
-    }
-
-    return std::nullopt;
+    return search_from(is_angled ? config.angled_start_idx : 0);
 }
 
 std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
@@ -202,18 +220,29 @@ std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
     };
 
     struct Candidate {
-        llvm::StringRef name;
+        std::string name;
         bool angled;
     };
 
     std::vector<Candidate> candidates;
     if(auto relative = below(resolved_directory)) {
-        candidates.push_back({*relative, false});
+        candidates.push_back({relative->str(), false});
     }
     for(auto [index, dir]: views::enumerate(resolved_dirs)) {
-        if(auto relative = below(dir)) {
-            candidates.push_back(
-                {*relative, static_cast<std::size_t>(index) >= search.angled_start_idx});
+        auto relative = below(dir);
+        if(!relative) {
+            continue;
+        }
+        bool angled = static_cast<std::size_t>(index) >= search.angled_start_idx;
+        if(!search.dirs[index].framework) {
+            candidates.push_back({relative->str(), angled});
+            continue;
+        }
+        auto [bundle, inside] = relative->split('/');
+        auto [headers, rest] = inside.split('/');
+        if(bundle.consume_back(".framework") && !rest.empty() &&
+           (headers == "Headers" || headers == "PrivateHeaders")) {
+            candidates.push_back({(bundle + "/" + rest).str(), angled});
         }
     }
     ranges::stable_sort(candidates, {}, [](const Candidate& candidate) {

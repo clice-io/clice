@@ -1,5 +1,7 @@
 module clice;
 
+import :command.table;
+import :support.fuzzy_matcher;
 import :support.text;
 import :syntax.completion;
 import :syntax.dependency_graph;
@@ -16,10 +18,10 @@ bool is_module_name_char(char c) {
     return is_identifier_char(c) || c == '.' || c == ':';
 }
 
-/// Clang's own include-completion filter widened by the fragment
-/// extensions projects include (`.inl`, `.ipp`, `.def`, ...): header
-/// extensions everywhere, extensionless files (the standard library's,
-/// Qt's, frameworks') only where such headers live.
+/// Whether a file looks like a header, by clang's own include-completion
+/// filter widened by the fragment extensions projects include (`.inl`,
+/// `.ipp`, `.def`, ...): a header extension anywhere, no extension (the
+/// standard library's, Qt's, frameworks') only where such headers live.
 bool looks_like_header(llvm::StringRef name,
                        llvm::StringRef dir,
                        llvm::StringRef search_dir,
@@ -421,45 +423,69 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
         file_prefix = prefix.slice(slash_pos + 1, llvm::StringRef::npos);
     }
 
+    FuzzyMatcher matcher(file_prefix);
+    auto builtin_headers = Spelling::absolute(path::join(resource_dir(), "include")).str();
     std::vector<IncludeCandidate> results;
     llvm::StringSet<> seen;
 
     auto collect =
-        [&](llvm::StringRef search_dir, bool system, std::uint32_t tier, std::uint32_t position) {
-            llvm::SmallString<256> dir(search_dir);
-            if(!dir_prefix.empty()) {
+        [&](const SearchDir& search_dir, bool system, std::uint64_t tier, std::uint64_t position) {
+            // `<Foo/Bar.h>` in a framework directory is Foo.framework/Headers/Bar.h,
+            // and its entries are the frameworks.
+            llvm::SmallString<256> dir(search_dir.path);
+            bool frameworks = search_dir.framework && dir_prefix.empty();
+            if(search_dir.framework && !dir_prefix.empty()) {
+                auto [name, rest] = dir_prefix.split('/');
+                path::push(dir, (name + ".framework").str());
+                path::push(dir, "Headers");
+                if(!rest.empty()) {
+                    path::push(dir, rest);
+                }
+            } else if(!dir_prefix.empty()) {
                 path::push(dir, dir_prefix);
             }
             for(auto& entry: scope.list(dir).entries) {
-                auto name = entry.getKey();
-                if(!name.starts_with(file_prefix) || seen.contains(name)) {
-                    continue;
-                }
-
+                llvm::StringRef name = entry.getKey();
                 bool is_dir = entry.getValue();
-                if(!is_dir && !looks_like_header(name, dir, search_dir, system)) {
+                if(frameworks && !(is_dir && name.consume_back(".framework"))) {
                     continue;
                 }
-
+                auto score = matcher.match(name);
+                if(!score || seen.contains(name)) {
+                    continue;
+                }
                 seen.insert(name);
-                std::uint32_t hidden = name.starts_with(".");
-                std::uint32_t reserved = name.starts_with("_");
+
+                auto internal = [&] {
+                    auto below = dir_prefix.empty() ? name.str() : (dir_prefix + "/" + name).str();
+                    return search_dir.path == builtin_headers &&
+                           builtin_header(below) == BuiltinHeader::Internal;
+                };
+                bool hidden = name.starts_with(".");
+                bool unlikely =
+                    !is_dir &&
+                    (!looks_like_header(name, dir, search_dir.path, system) || internal());
+                bool reserved = name.starts_with("_");
+                // The score is in [0, 2]: a better match takes a smaller rank.
+                auto mismatch = static_cast<std::uint64_t>((2.0f - *score) * 1000.0f);
                 results.push_back({name.str(),
                                    is_dir,
-                                   (hidden << 20) | (tier << 17) | (reserved << 16) | position});
+                                   (std::uint64_t(hidden) << 32) | (std::uint64_t(unlikely) << 31) |
+                                       (mismatch << 20) | (tier << 17) |
+                                       (std::uint64_t(reserved) << 16) | position});
             }
         };
 
     // A quoted include looks next to the file that contains it first.
     if(!angled) {
-        collect(includer_dir, false, 0, 0);
+        collect({.path = includer_dir.str()}, false, 0, 0);
     }
     for(unsigned i = angled ? config.angled_start_idx : 0; i < config.dirs.size(); i += 1) {
-        std::uint32_t tier = i < config.angled_start_idx   ? 1
+        std::uint64_t tier = i < config.angled_start_idx   ? 1
                              : i < config.system_start_idx ? 2
                              : config.dirs[i].driver       ? 4
                                                            : 3;
-        collect(config.dirs[i].path, i >= config.system_start_idx, tier, i + 1);
+        collect(config.dirs[i], i >= config.system_start_idx, tier, i + 1);
     }
 
     return results;

@@ -188,6 +188,38 @@ std::string riscv_isa_for_clang(llvm::StringRef isa, bool quiet) {
     return result;
 }
 
+/// Whether `id` is an option naming a header search directory (-I,
+/// -isystem, -F, the driver's -internal-isystem, ...).
+bool is_search_option(unsigned id) {
+    if(id == clang_options::OPT_F || id == clang_options::OPT_internal_isystem ||
+       id == clang_options::OPT_internal_externc_isystem ||
+       id == clang_options::OPT_internal_iframework) {
+        return true;
+    }
+    auto option = clang_options::table().option(id);
+    return option && option->matches(clang_options::OPT_IncludePath_Group);
+}
+
+/// The directories clang's own driver searches as framework directories
+/// for `target` with the sysroot `/` (`/System/Library/Frameworks` on
+/// Darwin): GCC lists its framework directories as plain ones, below
+/// whatever sysroot it searches.
+std::vector<std::string> framework_dirs(llvm::StringRef target) {
+    auto job =
+        query_driver({"clang", "--target=" + target.str(), "-isysroot", "/", "-x", "c", "query.c"},
+                     "");
+    std::vector<std::string> dirs;
+    if(!job) {
+        return dirs;
+    }
+    for(std::size_t i = 0; i + 1 < job->args.size(); i += 1) {
+        if(job->args[i] == "-internal-iframework") {
+            dirs.push_back(lexical(job->args[i + 1]));
+        }
+    }
+    return dirs;
+}
+
 }  // namespace
 
 std::string for_clang(llvm::StringRef arg, const llvm::Triple& target, bool quiet) {
@@ -370,6 +402,7 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
     if(!job) {
         return job;
     }
+    auto frameworks = framework_dirs(output.target);
     for(std::size_t i = 0; i < output.search_dirs.size(); i += 1) {
         auto& dir = output.search_dirs[i];
         if(output.private_dir == i) {
@@ -377,10 +410,32 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
                              {"-internal-isystem", path::join(resource_dir(), "include")});
             job->shadowed.push_back(dir.path);
         }
+        auto path = lexical(dir.path);
+        bool framework = ranges::any_of(frameworks, [&](llvm::StringRef below) {
+            return llvm::StringRef(path).ends_with(below);
+        });
         job->args.insert(job->args.end(),
-                         {dir.framework ? "-internal-iframework" : "-internal-isystem", dir.path});
+                         {framework ? "-internal-iframework" : "-internal-isystem", dir.path});
     }
     return job;
+}
+
+void add_frontend_dirs(Job& job, llvm::ArrayRef<GCCSearchDir> printed) {
+    std::vector<std::string> cc1(job.args.begin() + 2, job.args.end());
+    auto parse_options = cli::ParseOptions{.visibility = clang_options::CC1Option};
+    llvm::StringSet<> named;
+    for(auto& parsed: clang_options::table().parse(cc1, parse_options)) {
+        if(parsed && !parsed->values.empty() && is_search_option(parsed->id)) {
+            named.insert(lexical(parsed->values[0]));
+        }
+    }
+    for(auto& dir: printed) {
+        if(!named.contains(lexical(dir.path))) {
+            job.args.insert(
+                job.args.end(),
+                {dir.framework ? "-internal-iframework" : "-internal-isystem", dir.path});
+        }
+    }
 }
 
 async::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::string> args,
@@ -406,6 +461,7 @@ async::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::stri
         if(!standard.empty()) {
             job.args.push_back(std::move(standard));
         }
+        add_frontend_dirs(job, output->search_dirs);
         co_return job;
     }
     if(output->gcc_job.empty()) {

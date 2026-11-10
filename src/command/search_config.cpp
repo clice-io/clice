@@ -10,23 +10,30 @@ using namespace clang_options;
 
 SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef directory) {
     // clang's layout (ParseHeaderSearchArgs, then InitHeaderSearch::Realize):
-    // Quoted (-iquote) → Angled (-I, then -iwithprefixbefore) → System
-    // (-isystem, then the driver's -internal-isystem) → After (-iwithprefix,
-    // then -idirafter). A group keeps the command's order within each kind
-    // of option, wherever the options sit in the command.
+    // Quoted (-iquote) → Angled (-I and -F, then -iwithprefixbefore) →
+    // System (-isystem and -iwithsysroot, -iframework, -cxx-isystem, the
+    // driver's -internal-isystem, its -internal-iframework) → After
+    // (-iwithprefix, then -idirafter). A group keeps the command's order
+    // within each kind of option, wherever the options sit in the command.
     std::vector<SearchDir> quoted;
     std::vector<SearchDir> angled;
     std::vector<SearchDir> angled_prefixed;
     std::vector<SearchDir> system;
+    std::vector<SearchDir> system_frameworks;
+    std::vector<SearchDir> system_cxx;
     std::vector<SearchDir> system_driver;
+    std::vector<SearchDir> driver_frameworks;
     std::vector<SearchDir> after_prefixed;
     std::vector<SearchDir> after;
     std::vector<std::string> forced_includes;
 
     // A leading `=` names the sysroot: the last -isysroot, else the last
-    // --sysroot.
+    // --sysroot; -iwithsysroot puts it before an absolute path.
     std::string_view isysroot;
     std::string_view sysroot;
+    // -cxx-isystem searches C++ alone; a driver-level command without -x
+    // names it for its C++ files.
+    bool cxx = true;
     for(auto& arg: args) {
         if(arg.values.empty()) {
             continue;
@@ -35,6 +42,9 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
             isysroot = arg.values[0];
         } else if(arg.opt_id == OPT__sysroot_EQ) {
             sysroot = arg.values[0];
+        } else if(arg.opt_id == OPT_x) {
+            namespace types = clang::driver::types;
+            cxx = types::isCXX(types::lookupTypeForTypeSpecifier(arg.values[0]));
         }
     }
     if(!isysroot.empty()) {
@@ -44,6 +54,12 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     auto make_absolute = [&](std::string_view path) -> std::string {
         if(path.starts_with('=') && !sysroot.empty()) {
             return Spelling(std::string(sysroot) + std::string(path.substr(1)), base).str();
+        }
+        return Spelling(path, base).str();
+    };
+    auto under_sysroot = [&](std::string_view path) -> std::string {
+        if(path::is_absolute(path) && !sysroot.empty() && sysroot != "/") {
+            return Spelling(std::string(sysroot) + std::string(path), base).str();
         }
         return Spelling(path, base).str();
     };
@@ -59,10 +75,27 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
         switch(arg.opt_id) {
             case OPT_iquote: quoted.push_back({make_absolute(value)}); break;
             case OPT_I: angled.push_back({make_absolute(value)}); break;
+            case OPT_F:
+                angled.push_back({.path = Spelling(value, base).str(), .framework = true});
+                break;
             case OPT_isystem: system.push_back({make_absolute(value)}); break;
+            case OPT_iwithsysroot: system.push_back({under_sysroot(value)}); break;
+            case OPT_iframework:
+                system_frameworks.push_back(
+                    {.path = Spelling(value, base).str(), .framework = true});
+                break;
+            case OPT_cxx_isystem:
+                if(cxx) {
+                    system_cxx.push_back({Spelling(value, base).str()});
+                }
+                break;
             case OPT_internal_isystem:
             case OPT_internal_externc_isystem:
                 system_driver.push_back({.path = make_absolute(value), .driver = true});
+                break;
+            case OPT_internal_iframework:
+                driver_frameworks.push_back(
+                    {.path = Spelling(value, base).str(), .driver = true, .framework = true});
                 break;
 
             // Prefix options: must be processed in argument order.
@@ -78,10 +111,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
 
             case OPT_include: forced_includes.emplace_back(value); break;
 
-            // FIXME: what clang's HeaderSearch has and this does not:
-            // framework directories (-F, -iframework, -internal-iframework),
-            // C++-only system directories (-cxx-isystem), -iwithsysroot,
-            // and header maps (-I foo.hmap remaps include names).
+            // FIXME: header maps (-I foo.hmap remaps include names), which
+            // only Xcode's own builds write.
             default: break;
         }
     }
@@ -99,7 +130,10 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     append(angled_prefixed);
     config.system_start_idx = static_cast<unsigned>(config.dirs.size());
     append(system);
+    append(system_frameworks);
+    append(system_cxx);
     append(system_driver);
+    append(driver_frameworks);
     append(after_prefixed);
     append(after);
 
@@ -107,12 +141,17 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     // apart from the rest: the later copy, except that a user directory
     // (-I) the system groups repeat goes in favor of the system copy, as
     // in GCC — the order #include_next walks. Duplicates are one directory
-    // however spelled, as clang tells them apart by the directory itself.
+    // however spelled, as clang tells them apart by the directory itself,
+    // and searched the same way: a framework directory is no duplicate of
+    // the same directory searched for plain headers.
     std::vector<bool> removed(config.dirs.size());
     auto remove_duplicates = [&](unsigned first, unsigned end) {
         llvm::StringMap<unsigned> seen;
         for(unsigned i = first; i < end; i += 1) {
             auto key = CanonicalPath(Spelling::absolute(config.dirs[i].path)).str();
+            if(config.dirs[i].framework) {
+                key += '\0';
+            }
             auto [it, inserted] = seen.try_emplace(key, i);
             if(inserted) {
                 continue;

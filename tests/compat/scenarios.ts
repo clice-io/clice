@@ -369,6 +369,19 @@ export const SCENARIOS: Scenario[] = [
         `${LLVM_WINDOWS}/clang.exe`,
         `${LLVM_WINDOWS}/clang++.exe`,
     ),
+    // The runner's LLVM, of another version than clice's, for MinGW.
+    cmakeNinja(
+        "cmake ninja llvm clang mingw",
+        ["win32"],
+        `${LLVM_WINDOWS}/clang.exe`,
+        `${LLVM_WINDOWS}/clang++.exe`,
+        {
+            extra: [
+                "-DCMAKE_C_COMPILER_TARGET=x86_64-w64-mingw32",
+                "-DCMAKE_CXX_COMPILER_TARGET=x86_64-w64-mingw32",
+            ],
+        },
+    ),
     cmakeNinja("cmake ninja mingw gcc", ["win32"], `${MINGW}/gcc.exe`, `${MINGW}/g++.exe`),
     {
         ...cmakeNinja(

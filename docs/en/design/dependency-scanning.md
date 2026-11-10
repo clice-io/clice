@@ -139,4 +139,3 @@ Fast scanning and background indexing are complementary: fast scanning guarantee
 - **Macro-ized includes**: Includes of the form `#include MACRO_NAME` cannot be resolved by the fast scanner -- they require macro expansion to determine the actual header name. This pattern is relatively uncommon in real projects; affected files are correctly handled during precise compilation.
 - **Conditional compilation precision**: Includes from all conditional branches are recorded, making the include graph larger than the actual one. This is safe for host lookup (nothing is missed) but may cause relevance judgments to be overly broad.
 - **Case sensitivity**: On case-insensitive file systems (macOS, Windows), if the case of an include does not match the file name, resolution may fail.
-- **Framework search paths**: macOS Framework directories (`-F`, `-iframework`) are not yet supported; Framework includes of the form `<Foo/Bar.h>` cannot be resolved correctly.

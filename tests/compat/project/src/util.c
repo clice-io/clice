@@ -24,6 +24,12 @@
 #include <sanitizer/memprof_interface.h>
 #endif
 
+// A framework header: Apple clang before Xcode 26 and clang before 21 leave
+// the SDK's framework directories to their own frontend.
+#if defined(__APPLE__)
+#include <CoreFoundation/CoreFoundation.h>
+#endif
+
 #if !defined(_MSC_VER) && !defined(__STDC_NO_ATOMICS__)
 #include <stdatomic.h>
 static atomic_int calls;

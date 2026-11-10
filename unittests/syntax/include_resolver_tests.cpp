@@ -387,6 +387,52 @@ ZEST_CASE(NormalizationMatchesVolume) {
     ZASSERT(result.has_value() == insensitive);
 }
 
+ZEST_CASE(FrameworkHeaders) {
+    /// <Foo/Bar.h> in a framework directory is Foo.framework/Headers/Bar.h,
+    /// else Foo.framework/PrivateHeaders/Bar.h; nothing there is found as
+    /// in a plain directory.
+    TempDir tmp;
+    tmp.touch("Frameworks/Foo.framework/Headers/Bar.h");
+    tmp.touch("Frameworks/Foo.framework/PrivateHeaders/Internal.h");
+
+    SearchConfig config;
+    config.dirs.push_back({.path = tmp.path("Frameworks"), .framework = true});
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    auto bar = resolve_include("Foo/Bar.h", true, "", false, 0, config, scope);
+    ZASSERT(bar);
+    ZEXPECT(fs::equivalent(bar->path.str(), tmp.path("Frameworks/Foo.framework/Headers/Bar.h"))
+                .value_or(false));
+    ZEXPECT(bar->found_dir_idx == 0u);
+
+    auto internal = resolve_include("Foo/Internal.h", true, "", false, 0, config, scope);
+    ZASSERT(internal);
+    ZEXPECT(fs::equivalent(internal->path.str(),
+                           tmp.path("Frameworks/Foo.framework/PrivateHeaders/Internal.h"))
+                .value_or(false));
+
+    ZEXPECT(!resolve_include("Foo.framework/Headers/Bar.h", true, "", false, 0, config, scope));
+    ZEXPECT(!resolve_include("Bar.h", true, "", false, 0, config, scope));
+}
+
+ZEST_CASE(FrameworkHeaderArgument) {
+    /// A framework's header is included as <Foo/Bar.h>.
+    TempDir tmp;
+    tmp.touch("Frameworks/Foo.framework/Headers/Bar.h");
+    tmp.touch("src/main.cpp");
+
+    SearchConfig config;
+    config.dirs.push_back({.path = tmp.path("Frameworks"), .framework = true});
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    IncludeArguments arguments(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
+    auto header =
+        CanonicalPath(Spelling::absolute(tmp.path("Frameworks/Foo.framework/Headers/Bar.h")));
+    ZEXPECT(arguments.of(header) == std::optional<std::string>("<Foo/Bar.h>"));
+}
+
 // TODO: add tests for:
 // - #include_next crossing segment boundaries (angled→system)
 // - #include_next at last search dir (should return nullopt)

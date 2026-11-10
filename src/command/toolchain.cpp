@@ -132,19 +132,6 @@ std::vector<std::string> files_under(const Spelling& dir) {
     return names;
 }
 
-/// clice's builtin headers, by their paths relative to its resource
-/// directory's include/.
-const llvm::StringSet<>& resource_headers() {
-    const static auto headers = [] {
-        llvm::StringSet<> headers;
-        for(auto& name: files_under(Spelling::absolute(path::join(resource_dir(), "include")))) {
-            headers.insert(name);
-        }
-        return headers;
-    }();
-    return headers;
-}
-
 /// What the compiles of a job whose search list is `search` do not see of
 /// the builtin headers of another compiler in its `shadowed` directories,
 /// clang's own placed right before each: those clang has as well, and past
@@ -162,7 +149,7 @@ std::shared_ptr<const vfs::HiddenFiles> hidden_files(const SearchConfig& search,
             continue;
         }
         for(auto& name: files_under(dir)) {
-            if(!resource_headers().contains(name)) {
+            if(builtin_header(name) == BuiltinHeader::None) {
                 continue;
             }
             hidden[dir.str()].insert(name);
@@ -424,8 +411,6 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
 
     Frontend result{.driver = commands.intern(job.args[0]).data(),
                     .job_resource_dir = commands.intern(job_resource_dir)};
-    result.own_resource_dir =
-        llvm::Triple(triple).isWindowsGNUEnvironment() && fs::is_directory(job_resource_dir);
     auto builtin_headers = path::join(resource_dir(), "include");
     std::vector<std::string> shadowed = job.shadowed;
     std::vector<LocalArg> staged;
@@ -449,11 +434,9 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
             continue;
         }
         auto theirs = *local;
-        if(!result.own_resource_dir) {
-            for(auto& value: local->values) {
-                if(auto ours = ours_for(local->opt_id, value, job_resource_dir)) {
-                    value = commands.intern(*ours).data();
-                }
+        for(auto& value: local->values) {
+            if(auto ours = ours_for(local->opt_id, value, job_resource_dir)) {
+                value = commands.intern(*ours).data();
             }
         }
         staged.push_back(std::move(*local));
@@ -522,11 +505,9 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& query)
             continue;
         }
         auto& staged_arg = staged.emplace_back(local(arg));
-        if(!query.own_resource_dir) {
-            for(auto& value: staged_arg.values) {
-                if(auto ours = ours_for(arg.opt_id, value, query.job_resource_dir)) {
-                    value = commands.intern(*ours).data();
-                }
+        for(auto& value: staged_arg.values) {
+            if(auto ours = ours_for(arg.opt_id, value, query.job_resource_dir)) {
+                value = commands.intern(*ours).data();
             }
         }
     }

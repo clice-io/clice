@@ -112,6 +112,22 @@ struct RenderOptions {
 /// from the current executable path using Driver::GetResourcesPath.
 llvm::StringRef resource_dir();
 
+/// What the include/ of resource_dir() has as a path below it.
+enum class BuiltinHeader : std::uint8_t {
+    None,
+
+    /// A header code includes itself (`<stddef.h>`, `<immintrin.h>`).
+    Public,
+
+    /// A part of another builtin header that must not be included directly
+    /// (`<avxintrin.h>`, which `<immintrin.h>` includes).
+    Internal,
+};
+
+/// The builtin header `name` (`/`-separated), as the build that made clice
+/// found it in its resource directory.
+BuiltinHeader builtin_header(llvm::StringRef name);
+
 /// Every command clice knows, as the FileTable holds every file: each
 /// structured command stored once, its strings interned (pointer-comparable)
 /// and kept, together with what derives from one command alone — its

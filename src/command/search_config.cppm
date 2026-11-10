@@ -9,9 +9,15 @@ struct Arg;
 
 struct SearchDir {
     std::string path;
+
     /// Added by the driver (-internal-isystem and kin) rather than written
     /// by the user: the toolchain's own headers.
     bool driver = false;
+
+    /// A framework directory (-F, -iframework, -internal-iframework):
+    /// `<Foo/Bar.h>` is `Foo.framework/Headers/Bar.h` below it, else
+    /// `Foo.framework/PrivateHeaders/Bar.h`.
+    bool framework = false;
 };
 
 /// Header search configuration extracted from compilation arguments.

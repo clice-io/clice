@@ -1,8 +1,10 @@
 module clice;
 
+import :command.table;
 import :syntax.completion;
 import :syntax.dependency_graph;
 import :syntax.lexer;
+import :unittests.utils.temp_dir;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -542,6 +544,79 @@ ZEST_CASE(PrimaryInterfacesOnly) {
 }
 
 };  // ZEST_SUITE(CompleteModuleDeclaration)
+
+ZEST_SUITE(CompleteIncludePath) {
+
+/// The names an include completes to, in their order.
+std::vector<std::string> complete(const SearchConfig& config, llvm::StringRef prefix) {
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    auto candidates = complete_include_path(config, "", prefix, true, scope);
+    ranges::sort(candidates, {}, [](const IncludeCandidate& candidate) {
+        return std::tie(candidate.order, candidate.name);
+    });
+    std::vector<std::string> names;
+    for(auto& candidate: candidates) {
+        names.push_back(candidate.is_directory ? candidate.name + "/" : candidate.name);
+    }
+    return names;
+}
+
+ZEST_CASE(WordsOfNames) {
+    /// The typed name matches the whole name first, then a prefix, then
+    /// words of a name.
+    TempDir tmp;
+    tmp.touch("inc/view");
+    tmp.touch("inc/viewport.h");
+    tmp.touch("inc/string_view");
+    tmp.touch("inc/vector");
+    SearchConfig config;
+    config.dirs.push_back({.path = tmp.path("inc"), .driver = true});
+    config.system_start_idx = 0;
+    ZEXPECT(complete(config, "view") ==
+            std::vector<std::string>{"view", "viewport.h", "string_view"});
+}
+
+ZEST_CASE(OtherFilesLast) {
+    /// Files no header is named as follow the headers, a hidden one all.
+    TempDir tmp;
+    tmp.touch("inc/notes.txt");
+    tmp.touch("inc/.hidden.h");
+    tmp.touch("inc/notes.h");
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("inc")});
+    ZEXPECT(complete(config, "notes") == std::vector<std::string>{"notes.h", "notes.txt"});
+    ZEXPECT(complete(config, "") == std::vector<std::string>{"notes.h", "notes.txt", ".hidden.h"});
+}
+
+ZEST_CASE(InternalBuiltinsLast) {
+    /// clang's builtin headers that must not be included directly follow
+    /// the others.
+    SearchConfig config;
+    config.dirs.push_back(
+        {.path = Spelling::absolute(path::join(resource_dir(), "include")).str(), .driver = true});
+    auto names = complete(config, "va");
+    ZASSERT(names.size() >= 3u);
+    ZEXPECT(names.back() == "vaesintrin.h");
+    ZEXPECT(names[0] == "vadefs.h");
+    ZEXPECT(names[1] == "varargs.h");
+}
+
+ZEST_CASE(Frameworks) {
+    /// A framework directory completes to its frameworks' names, and past
+    /// one to the headers of its Headers/.
+    TempDir tmp;
+    tmp.touch("Frameworks/Foo.framework/Headers/Bar.h");
+    tmp.touch("Frameworks/Foo.framework/Headers/Baz");
+    tmp.touch("Frameworks/Foo.framework/Resources/Info.plist");
+    tmp.touch("Frameworks/stray.h");
+    SearchConfig config;
+    config.dirs.push_back({.path = tmp.path("Frameworks"), .framework = true});
+    ZEXPECT(complete(config, "") == std::vector<std::string>{"Foo/"});
+    ZEXPECT(complete(config, "Foo/") == std::vector<std::string>{"Bar.h", "Baz"});
+}
+
+};  // ZEST_SUITE(CompleteIncludePath)
 
 }  // namespace
 }  // namespace clice::testing

@@ -10,7 +10,7 @@ namespace clice {
 struct GCCSearchDir {
     std::string path;
 
-    /// Listed as a macOS framework directory.
+    /// Marked as a framework directory: clang marks its, GCC none.
     bool framework = false;
 };
 
@@ -76,13 +76,23 @@ async::task<std::expected<GCCStyleOutput, std::string>>
 /// The job clang's own driver builds for `args` (a driver, its flags and
 /// the input) set up as GCC set itself up: GCC's target, the options GCC's
 /// driver gave its cc1 job that clang's driver knows, and GCC's header
-/// search list in place of clang's own idea of the system headers. clang's
-/// builtin headers go right before GCC's own, which the job shadows: those
-/// are GCC's versions of the same headers, which clang cannot parse, among
-/// headers only GCC has (omp.h, a vendor's intrinsics).
+/// search list in place of clang's own idea of the system headers, its
+/// directories searched as frameworks where clang's driver searches them
+/// so for the target. clang's builtin headers go right before GCC's own,
+/// which the job shadows: those are GCC's versions of the same headers,
+/// which clang cannot parse, among headers only GCC has (omp.h, a vendor's
+/// intrinsics).
 std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
                                              llvm::ArrayRef<std::string> args,
                                              llvm::StringRef cwd);
+
+/// Adds to a clang job the directories of `printed`, the search list its
+/// driver printed, that the job names none of: a clang older than clice's
+/// sets up some targets' search list in its own frontend (Darwin's
+/// framework directories before LLVM 21, all of FreeBSD's before 16),
+/// which clice's frontend leaves to the driver. They go after the job's
+/// own, where that frontend adds them.
+void add_frontend_dirs(Job& job, llvm::ArrayRef<GCCSearchDir> printed);
 
 /// A GCC-style driver, which every driver but cl and nvcc is: asked how it
 /// compiles the input, it shows its job, and the job tells clang underneath (Apple clang, zig,
