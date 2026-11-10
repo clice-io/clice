@@ -260,6 +260,12 @@ enum class RequestKind : std::uint8_t {
     Hover,
 };
 
+/// The kind as logs name it: its enumerator in lower snake case
+/// (`semantic_tokens`).
+inline std::string request_name(RequestKind kind) {
+    return kotatsu::naming::normalize_to_lower_snake(kotatsu::meta::enum_name(kind));
+}
+
 /// A crash that stops work on a document.
 struct CrashNote {
     RequestKind kind;

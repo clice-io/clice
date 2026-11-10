@@ -329,11 +329,11 @@ async::task<std::optional<worker::FormatResult>, ipc::Error>
         }
         co_return std::nullopt;
     }
-    result = finish(ticket, kind, "Format", std::move(result));
+    result = finish(ticket, kind, std::move(result));
     if(!result.has_value()) {
         co_return kotatsu::outcome_error(std::move(result.error()));
     }
-    LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.precise_ms());
+    LOG_PERF("request", "kind=format file={} total_ms={:.2f}", path, timer.precise_ms());
     co_return std::move(*result);
 }
 

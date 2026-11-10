@@ -917,7 +917,7 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
             llvm::MemoryBuffer::getMemBufferCopy(as_chars(reply.tu_index_data))));
     }
 
-    LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.precise_ms());
+    LOG_PERF("request", "kind=compile file={} total_ms={:.2f}", file_path, timer.precise_ms());
     auto unconfirmed = params.skip_bodies ? feature::take_unconfirmed(diagnostics)
                                           : std::vector<feature::FileDiagnostic>();
     next->output = CompileOutput{

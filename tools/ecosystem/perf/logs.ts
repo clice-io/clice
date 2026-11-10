@@ -103,6 +103,15 @@ export function computeStats(values: number[]): Stats | null {
     };
 }
 
+/// `name` in lower snake case, as clice spells a request's kind; a baseline
+/// built before it spelled the enumerator itself (`SemanticTokens`).
+function lowerSnake(name: string): string {
+    return name
+        .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+        .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+        .toLowerCase();
+}
+
 /// Discriminated name for an event: `<topic>[.<kind>][.<detail>]`. The kind
 /// is the event's `kind`, `phase`, or `op` value; the detail is its `scope`
 /// or `rel` value — mirroring how the topics in logging.cppm use those fields
@@ -113,7 +122,7 @@ function eventName(event: PerfEvent): string {
     const parts = [event.topic];
     const kind = event.values["kind"] ?? event.values["phase"] ?? event.values["op"];
     if (kind !== undefined) {
-        parts.push(String(kind));
+        parts.push(lowerSnake(String(kind)));
     }
     const detail = event.values["scope"] ?? event.values["rel"];
     if (detail !== undefined) {
