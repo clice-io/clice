@@ -32,7 +32,7 @@ describe("index", () => {
         const log = [
             "[t] [info] [1/4] Indexing a.cpp",
             "[t] [info] [2/4] Indexing b.cpp",
-            "[t] [info] [perf:index] progress=1/4 file=a.cpp bytes=1",
+            "[t] [info] [1/4] Indexed a.cpp in 12 ms",
             "[t] [info] [3/4] Indexing c.cpp",
             "[t] [warning] [3/4] Cannot index c.cpp: no",
             "[t] [info] [4/4] Indexing g.cpp",

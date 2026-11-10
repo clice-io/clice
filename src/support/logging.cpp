@@ -511,6 +511,14 @@ bool file_logger(std::string_view dir, bool mirror_stderr) {
     return true;
 }
 
+bool perf_lines() {
+    const static bool wanted = [] {
+        std::string value;
+        return !sys::get_env(value, "CLICE_PERF") && !value.empty();
+    }();
+    return wanted;
+}
+
 void log(Level level, std::source_location location, std::string text) {
     constexpr std::string_view names[] = {"trace", "debug", "info", "warning", "error", "fatal"};
     auto name = names[std::to_underlying(level)];

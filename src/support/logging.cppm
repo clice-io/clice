@@ -48,9 +48,11 @@ import :support.prelude;
 /// - fatal (LOG_FATAL): unrecoverable; logs and aborts.
 ///
 /// ## Perf lines — LOG_PERF(topic, ...)
-/// Greppable measurements for profiling on real codebases, rendered as
-/// "[perf:<topic>] key=value ..." at info level, e.g.
-/// `grep 'perf:index' master.log`. Topics in use: "index" (per-file and
+/// Measurements for profiling on real codebases, rendered as
+/// "[perf:<topic>] key=value ..." at info level, and written only when the
+/// environment sets CLICE_PERF (perf_lines()), as the ecosystem's
+/// measurements do: a log a reader opens says how long a step took in its
+/// own words. Topics in use: "index" (per-file and
 /// phase timings), "cache" (hit/miss with reason), "startup" (phase
 /// durations), "request" (per-request latency on the master: wait_ms =
 /// time until a worker was ready, total_ms = end-to-end), "query"
@@ -344,6 +346,9 @@ void reset_anomaly_for_testing();
 }  // namespace clice::logging
 
 namespace clice {
+
+/// Whether perf lines (LOG_PERF) are written: CLICE_PERF set.
+bool perf_lines();
 
 /// Wall-clock time since it was made, for perf log lines (LOG_PERF).
 struct Timer {

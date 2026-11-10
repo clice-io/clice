@@ -57,7 +57,7 @@ const INDEX_MS = 3 * 60 * 60_000;
 
 /// How the session log ends a unit's attempt (src/project/background/background.cpp).
 const ENDED = [
-    /progress=\d+\/\d+ file=(\S+)/,
+    /\] Indexed (\S+) in \d+ ms$/,
     /\] Cannot index (\S+?):/,
     /\] Not indexing (\S+) again/,
     /\] The worker indexing (\S+) died/,

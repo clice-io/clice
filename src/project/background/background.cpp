@@ -75,6 +75,11 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                                         .diagnostics = std::move(result->skipped_diagnostics)};
                 }
                 indexed_units += 1;
+                LOG_INFO("[{}/{}] Indexed {} in {} ms",
+                         index,
+                         total,
+                         file_path,
+                         result->perf.index_ms + result->perf.merge_ms);
                 LOG_PERF("index",
                          "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
                          index,

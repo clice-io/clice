@@ -24,7 +24,12 @@
 
 /// Performance measurement line (see the taxonomy in logging.cppm): `topic`
 /// must be a string literal, the message should be stable key=value pairs.
-#define LOG_PERF(topic, fmt, ...) LOG_INFO("[perf:" topic "] " fmt __VA_OPT__(, ) __VA_ARGS__)
+#define LOG_PERF(topic, fmt, ...)                                                                  \
+    do {                                                                                           \
+        if(clice::logging::perf_lines()) {                                                         \
+            LOG_INFO("[perf:" topic "] " fmt __VA_OPT__(, ) __VA_ARGS__);                          \
+        }                                                                                          \
+    } while(0)
 
 /// Soft assertion for internal invariants (see AnomalyId).
 #define LOG_ANOMALY(id, fmt, ...)                                                                  \
