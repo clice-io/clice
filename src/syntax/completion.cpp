@@ -430,8 +430,6 @@ std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
 
     auto collect =
         [&](const SearchDir& search_dir, bool system, std::uint64_t tier, std::uint64_t position) {
-            // `<Foo/Bar.h>` in a framework directory is Foo.framework/Headers/Bar.h,
-            // and its entries are the frameworks.
             llvm::SmallString<256> dir(search_dir.path);
             bool frameworks = search_dir.framework && dir_prefix.empty();
             if(search_dir.framework && !dir_prefix.empty()) {

@@ -460,7 +460,7 @@ tests/code_completion/directives/01_directive_names
 
 ## Include Paths
 
-After `#include`, header names complete: a quoted one from the includer's own directory first, then from the include directories, the system's last. A typed name matches a whole name first, then a prefix, then words of a name (`view` finds `string_view`). Files that look like headers come before the others: header extensions everywhere, extensionless files in system directories and other places such headers live; a source or text file, and a builtin header of clang's that must not be included directly (`<avxintrin.h>`), follow. A framework directory offers its frameworks, and past one their headers.
+After `#include`, header names complete. A typed name matches a whole name first, then a prefix, then words of a name (`view` finds `string_view`); names that match alike list a quoted one's from the includer's own directory first, then from the include directories, the system's last. Files that look like headers come before the others: header extensions everywhere, extensionless files in system directories and other places such headers live; a source or text file, and a builtin header of clang's that must not be included directly (`<avxintrin.h>`), follow. A framework directory offers its frameworks, and past one their headers.
 
 <!-- BEGIN GENERATED ITEMS: code_completion/include_path_completion -->
 

@@ -188,8 +188,8 @@ std::string riscv_isa_for_clang(llvm::StringRef isa, bool quiet) {
     return result;
 }
 
-/// Whether `id` is an option naming a header search directory (-I,
-/// -isystem, -F, the driver's -internal-isystem, ...).
+/// Whether `id` is an include path option (-I, -isystem, -F, the driver's
+/// -internal-isystem, ...), whose value may name a search directory.
 bool is_search_option(unsigned id) {
     if(id == clang_options::OPT_F || id == clang_options::OPT_internal_isystem ||
        id == clang_options::OPT_internal_externc_isystem ||
@@ -218,6 +218,30 @@ std::vector<std::string> framework_dirs(llvm::StringRef target) {
         }
     }
     return dirs;
+}
+
+/// Adds to a clang job the directories of `printed`, the search list its
+/// driver printed, that the job names none of: a clang older than clice's
+/// sets up some targets' search list in its own frontend (Darwin's
+/// framework directories before LLVM 21, all of FreeBSD's before 16),
+/// which clice's frontend leaves to the driver. They go after the job's
+/// own, where that frontend adds them.
+void add_frontend_dirs(Job& job, llvm::ArrayRef<GCCSearchDir> printed) {
+    std::vector<std::string> cc1(job.args.begin() + 2, job.args.end());
+    auto parse_options = cli::ParseOptions{.visibility = clang_options::CC1Option};
+    llvm::StringSet<> named;
+    for(auto& parsed: clang_options::table().parse(cc1, parse_options)) {
+        if(parsed && !parsed->values.empty() && is_search_option(parsed->id)) {
+            named.insert(lexical(parsed->values[0]));
+        }
+    }
+    for(auto& dir: printed) {
+        if(!named.contains(lexical(dir.path))) {
+            job.args.insert(
+                job.args.end(),
+                {dir.framework ? "-internal-iframework" : "-internal-isystem", dir.path});
+        }
+    }
 }
 
 }  // namespace
@@ -418,24 +442,6 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
                          {framework ? "-internal-iframework" : "-internal-isystem", dir.path});
     }
     return job;
-}
-
-void add_frontend_dirs(Job& job, llvm::ArrayRef<GCCSearchDir> printed) {
-    std::vector<std::string> cc1(job.args.begin() + 2, job.args.end());
-    auto parse_options = cli::ParseOptions{.visibility = clang_options::CC1Option};
-    llvm::StringSet<> named;
-    for(auto& parsed: clang_options::table().parse(cc1, parse_options)) {
-        if(parsed && !parsed->values.empty() && is_search_option(parsed->id)) {
-            named.insert(lexical(parsed->values[0]));
-        }
-    }
-    for(auto& dir: printed) {
-        if(!named.contains(lexical(dir.path))) {
-            job.args.insert(
-                job.args.end(),
-                {dir.framework ? "-internal-iframework" : "-internal-isystem", dir.path});
-        }
-    }
 }
 
 async::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::string> args,

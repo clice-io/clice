@@ -86,14 +86,6 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
                                              llvm::ArrayRef<std::string> args,
                                              llvm::StringRef cwd);
 
-/// Adds to a clang job the directories of `printed`, the search list its
-/// driver printed, that the job names none of: a clang older than clice's
-/// sets up some targets' search list in its own frontend (Darwin's
-/// framework directories before LLVM 21, all of FreeBSD's before 16),
-/// which clice's frontend leaves to the driver. They go after the job's
-/// own, where that frontend adds them.
-void add_frontend_dirs(Job& job, llvm::ArrayRef<GCCSearchDir> printed);
-
 /// A GCC-style driver, which every driver but cl and nvcc is: asked how it
 /// compiles the input, it shows its job, and the job tells clang underneath (Apple clang, zig,
 /// emcc, a `c++` that is clang) from GCC. There is neither for an input the

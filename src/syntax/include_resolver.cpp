@@ -58,18 +58,13 @@ bool check_in_dir(llvm::StringRef dir_path,
     return scope.list(parent).contains_file(name) && shown();
 }
 
-/// The header a framework directory gives for `filename` (`Foo/Bar.h`), as
-/// clang's framework lookup finds it: `Foo.framework/Headers/Bar.h` below
-/// `dir`, else `Foo.framework/PrivateHeaders/Bar.h`.
+/// The header `rest` of the framework `bundle` (`Foo.framework`) below
+/// `dir`, as clang's framework lookup finds it: in its Headers/, else in
+/// its PrivateHeaders/.
 std::optional<llvm::SmallString<256>> find_in_framework(llvm::StringRef dir,
-                                                        const vfs::Listing* listing,
-                                                        llvm::StringRef filename,
+                                                        llvm::StringRef bundle,
+                                                        llvm::StringRef rest,
                                                         vfs::Scope& scope) {
-    auto [name, rest] = filename.split('/');
-    auto bundle = (name + ".framework").str();
-    if(rest.empty() || !listing->contains(bundle)) {
-        return std::nullopt;
-    }
     for(llvm::StringRef headers: {"Headers", "PrivateHeaders"}) {
         llvm::SmallString<256> full(dir);
         path::push(full, bundle);
@@ -112,11 +107,24 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
         path::push(candidate, fname);
     };
 
+    auto [framework, framework_rest] = filename.split('/');
     auto search_from = [&](unsigned start) -> std::optional<ResolveResult> {
+        // clang takes the first framework directory holding the framework:
+        // a header it lacks is not looked for in the framework of a later
+        // one.
+        bool framework_found = false;
         for(unsigned i = start; i < config.dirs.size(); i += 1) {
             auto& dir = config.dirs[i];
             if(dir.framework) {
-                if(auto found = find_in_framework(dir.path, dir.listing, filename, scope)) {
+                if(framework_rest.empty() || framework_found) {
+                    continue;
+                }
+                auto bundle = (framework + ".framework").str();
+                if(!dir.listing->contains(bundle)) {
+                    continue;
+                }
+                framework_found = true;
+                if(auto found = find_in_framework(dir.path, bundle, framework_rest, scope)) {
                     return ResolveResult{std::move(*found), i};
                 }
             } else if(check_in_dir(dir.path,
@@ -239,6 +247,11 @@ std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
             continue;
         }
         auto [bundle, inside] = relative->split('/');
+        // A versioned framework's Headers/ links into Versions/<version>/,
+        // where the header's identity is.
+        if(inside.consume_front("Versions/")) {
+            inside = inside.split('/').second;
+        }
         auto [headers, rest] = inside.split('/');
         if(bundle.consume_back(".framework") && !rest.empty() &&
            (headers == "Headers" || headers == "PrivateHeaders")) {

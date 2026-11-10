@@ -371,7 +371,7 @@ ZEST_CASE(CXXSystemDirs) {
     ZEXPECT(config.dirs[1].path == spelled(tmp, "driver"));
 }
 
-ZEST_CASE(WithSysroot, skip = Windows) {
+ZEST_CASE(WithSysroot) {
     /// -iwithsysroot puts the sysroot before an absolute path, among the
     /// -isystem directories in command order.
     TempDir tmp;

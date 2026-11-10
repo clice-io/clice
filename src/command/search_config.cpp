@@ -28,7 +28,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     std::vector<std::string> forced_includes;
 
     // A leading `=` names the sysroot: the last -isysroot, else the last
-    // --sysroot; -iwithsysroot puts it before an absolute path.
+    // --sysroot; -iwithsysroot puts it before a path from the root, which on
+    // Windows names no drive.
     std::string_view isysroot;
     std::string_view sysroot;
     // -cxx-isystem searches C++ alone; a driver-level command without -x
@@ -58,7 +59,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
         return Spelling(path, base).str();
     };
     auto under_sysroot = [&](std::string_view path) -> std::string {
-        if(path::is_absolute(path) && !sysroot.empty() && sysroot != "/") {
+        if(!path.empty() && path::is_separator(path.front()) && !sysroot.empty() &&
+           sysroot != "/") {
             return Spelling(std::string(sysroot) + std::string(path), base).str();
         }
         return Spelling(path, base).str();
