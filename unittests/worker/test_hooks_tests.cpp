@@ -36,7 +36,7 @@ ZEST_CASE(counts_builds_run) {
     using Compiled = kotatsu::outcome<worker::CompileResult, ipc::Error>;
     worker::CompileParams compile{.path = "/w/main.cpp"};
     Compiled withdrawn = kotatsu::outcome_error(
-        ipc::Error{worker::dispatch_errc::cancelled, "it gave way to more urgent work"});
+        ipc::Error{worker::dispatch_errc::cancelled, "more urgent work came first"});
     Compiled stopped = worker::CompileResult{.status = worker::CompileStatus::Cancelled};
     Compiled unsent = kotatsu::outcome_error(
         ipc::Error{worker::dispatch_errc::worker_unavailable, "No stateful workers available"});

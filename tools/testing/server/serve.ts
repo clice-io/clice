@@ -1536,7 +1536,7 @@ export function gateLogs(workspace: Workspace, declared: Declared, failed: boole
     const expected = [...(declared.errors ?? [])];
     if (crashes.length + kills.length + killed > 0) {
         expected.push(
-            /\[anomaly:WorkerCrash\] |Worker \S+ lost|The last lines \S+ logged, from |\[fatal\] clice crashed$/,
+            /\[anomaly:WorkerCrash\] |Worker \S+ lost|The last lines \S+ logged before it died |\[fatal\] clice crashed$/,
         );
     }
     const logs = readLogs(workspace.root);

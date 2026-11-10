@@ -89,7 +89,7 @@ test("the server's lines", async (t) => {
     expect(lines.filter((line) => under.some((prefix) => line.includes(prefix)))).toEqual([]);
     expect(lines.filter((line) => line.includes("[resolve.cpp:"))).toEqual([
         expect.stringContaining("Command of main.cpp: from its database entry"),
-        expect.stringContaining("Command of main.cpp: from its database entry"),
+        expect.stringContaining("Command of main.cpp changed: from its database entry"),
     ]);
 });
 

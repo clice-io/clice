@@ -16,8 +16,9 @@ namespace clice {
 
 namespace {
 
-/// Where the file's command came from and the command, logged when it
-/// differs from the last one the file logged.
+/// Where the file's command came from, logged when the command differs
+/// from the last one the file logged; the frontend's arguments, which run
+/// to kilobytes, at debug.
 void log_command(Project& project, Fid file, const Resolution& resolution) {
     if(logging::options.level > logging::Level::Info) {
         return;
@@ -37,14 +38,18 @@ void log_command(Project& project, Fid file, const Resolution& resolution) {
         }
         std::unreachable();
     }();
-    auto decision = std::format("from {}, run in {}: {}",
-                                from,
-                                resolution.directory,
-                                join_command(resolution.arguments));
-    auto hash = llvm::xxh3_64bits(decision);
-    if(std::exchange(project.logged_commands[file], hash) != hash) {
-        LOG_INFO("Command of {}: {}", files.resolve(file), decision);
+    auto arguments = join_command(resolution.arguments);
+    auto hash = llvm::xxh3_64bits(std::format("{}\n{}\n{}", from, resolution.directory, arguments));
+    auto logged = std::exchange(project.logged_commands[file], hash);
+    if(logged == hash) {
+        return;
     }
+    LOG_INFO("Command of {}{}: from {}, run in {}",
+             files.resolve(file),
+             logged == 0 ? "" : " changed",
+             from,
+             resolution.directory);
+    LOG_DEBUG("Arguments of {}: {}", files.resolve(file), arguments);
 }
 
 /// How many of `ref`'s `-include`s come before the one naming `forced`:

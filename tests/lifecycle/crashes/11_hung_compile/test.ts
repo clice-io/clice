@@ -6,7 +6,7 @@ import { test } from "@clice/tools/testing";
 
 test(
     {
-        errors: [String.raw`\[anomaly:WorkerCrash\] |The last lines \S+ logged, from `],
+        errors: [String.raw`\[anomaly:WorkerCrash\] |The last lines \S+ logged before it died `],
     },
     async (t) => {
         const s = await t.start({

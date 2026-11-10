@@ -125,12 +125,12 @@ llvm::SetVector<NodeId> module_closure(const Project& project, llvm::ArrayRef<No
 llvm::StringRef revalidate(Project& project, NodeId module, llvm::StringRef pcm_key) {
     auto it = project.pcms.find(module);
     if(it == project.pcms.end()) {
-        return "none was built";
+        return "none is built yet";
     }
     auto& entry = it->second;
     llvm::StringRef miss;
     if(entry.key.empty()) {
-        miss = entry.failure ? "the last one failed" : "none was built";
+        miss = entry.failure ? "the last one failed" : "none is built yet";
     } else if(entry.key != pcm_key) {
         miss = "its command, an import or its PCH changed";
     } else if(!inputs_hold(project.file_table, entry.inputs)) {

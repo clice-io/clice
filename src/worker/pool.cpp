@@ -534,7 +534,10 @@ bool WorkerPool::process_crash(std::size_t index,
             for(auto line: llvm::split(output, '\n')) {
                 quoted += std::format("\n    {}", line);
             }
-            LOG_ERROR("The last lines {} logged, from {}.log:{}", w.name, w.name, quoted);
+            LOG_ERROR("The last lines {} logged before it died (its stack trace is in {}.log):{}",
+                      w.name,
+                      w.name,
+                      quoted);
         }
     }
     auto streak = w.crash_streak == 0

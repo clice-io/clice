@@ -200,10 +200,10 @@ void MasterServer::initialize() {
     }
     if(pool.start(pool_opts)) {
         lifecycle = ServerLifecycle::Ready;
-        LOG_INFO("Server ready: {}", counted(projects.size(), "project", "projects"));
         for(auto& project: projects) {
             project->start();
         }
+        LOG_INFO("Server ready: {}", counted(projects.size(), "project", "projects"));
         polling.spawn(poll_task());
     } else {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");

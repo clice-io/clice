@@ -344,9 +344,9 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         result.exit_code = 2;
     }
     result.seconds = timer.ms() / 1000.0;
-    LOG_INFO("Linted {} in {:.1f} s: {}, {} failed",
+    LOG_INFO("Linted {} in {} ms: {}, {} failed",
              counted(result.checked_tus, "translation unit", "translation units"),
-             result.seconds,
+             timer.ms(),
              counted(result.findings.size(), "finding", "findings"),
              result.failed_tus);
 }

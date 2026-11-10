@@ -229,9 +229,9 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
         result.exit_code = 1;
     }
     result.seconds = timer.ms() / 1000.0;
-    LOG_INFO("Indexed {} in {:.1f} s, {} failed",
+    LOG_INFO("Indexed {} in {} ms, {} failed",
              counted(result.indexed_tus, "translation unit", "translation units"),
-             result.seconds,
+             timer.ms(),
              result.failed.size() + result.too_big.size());
 }
 

@@ -56,7 +56,7 @@ constexpr llvm::StringRef evicted = "the last one left the cache";
 std::pair<Check, llvm::StringRef> pair_state(Project& project, llvm::StringRef pch_key) {
     auto it = project.pchs.find(pch_key);
     if(it == project.pchs.end() || it->second.path.empty()) {
-        return {Check::ProductGone, "none was built"};
+        return {Check::ProductGone, "none is built yet for its command and preamble"};
     }
     auto& entry = it->second;
     if(!project.store || !project.store->lookup("pch", entry.blob) ||

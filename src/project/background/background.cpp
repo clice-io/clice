@@ -121,10 +121,12 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                         break;
                     }
                     case ReindexQueue::FailureDecision::Outdated: {
-                        LOG_INFO("[{}/{}] {} changed while it was indexed; the result is dropped",
-                                 index,
-                                 total,
-                                 file_path);
+                        LOG_INFO(
+                            "[{}/{}] {} or a file it includes changed while it was indexed; "
+                            "the result is dropped",
+                            index,
+                            total,
+                            file_path);
                         break;
                     }
                     case ReindexQueue::FailureDecision::GaveUp: {
@@ -167,7 +169,7 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                                 file_path,
                                 result->error);
                         } else {
-                            LOG_INFO("[{}/{}] {} is indexed again later: {}",
+                            LOG_INFO("[{}/{}] Indexing {} again later: {}",
                                      index,
                                      total,
                                      file_path,

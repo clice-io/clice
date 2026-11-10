@@ -230,7 +230,9 @@ async::task<UnitResult>
             // that no longer exists. Drop the merge; the follow-up attempt
             // redoes it.
             if(request.outdated && request.outdated()) {
-                LOG_INFO("{} changed while it was indexed; the result is dropped", file_path);
+                LOG_INFO(
+                    "{} or a file it includes changed while it was indexed; the result is dropped",
+                    file_path);
                 co_return UnitResult{.status = Status::Skipped};
             }
             Timer merge_timer;

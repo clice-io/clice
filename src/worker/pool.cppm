@@ -858,7 +858,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // Asked to stop before it reached the worker: giving the slot back
         // costs nothing.
         if(request.preempt.cancelled()) {
-            co_await async::fail(ipc::Error{cancelled, "it gave way to more urgent work"});
+            co_await async::fail(ipc::Error{cancelled, "more urgent work came first"});
         }
         if(options.admitted && !options.admitted()) {
             co_await async::fail(ipc::Error{cancelled, "a crash stopped it"});
@@ -879,7 +879,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         // its death record is not done yet, so it is requeued uncharged and crashes
         // its worker once more.
         if(request.preempt.cancelled() && !death->out_of_memory && !death->ignored_cancel) {
-            co_await async::fail(ipc::Error{cancelled, "it gave way to more urgent work"});
+            co_await async::fail(ipc::Error{cancelled, "more urgent work came first"});
         }
         // An error returned by the worker's handler leaves the worker
         // healthy; pass it through untouched.
