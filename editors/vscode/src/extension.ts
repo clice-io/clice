@@ -342,6 +342,8 @@ export async function activate(context: ExtensionContext) {
         { scheme: "file", language: "cpp" },
         { scheme: "file", language: "c" },
         { scheme: "file", language: "cuda-cpp" },
+        { scheme: "file", language: "objective-c" },
+        { scheme: "file", language: "objective-cpp" },
     ];
     const inactive = registerInactiveRegions(() => client, context);
     const clientOptions: LanguageClientOptions = {

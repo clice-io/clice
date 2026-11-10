@@ -16,7 +16,7 @@ export type { ContextItem };
 
 function isCppEditor(editor: vscode.TextEditor | undefined): editor is vscode.TextEditor {
     const language = editor?.document.languageId;
-    return language === "c" || language === "cpp" || language === "cuda-cpp";
+    return language === "c" || language === "cpp" || language === "cuda-cpp" || language === "objective-c" || language === "objective-cpp";
 }
 
 /// A context's description, a path, as the workspace names it; nothing when
@@ -207,7 +207,7 @@ class OutlineRefresher implements vscode.Disposable {
     refresh() {
         this.registration?.dispose();
         this.registration = vscode.languages.registerDocumentSymbolProvider(
-            [{ language: "c" }, { language: "cpp" }, { language: "cuda-cpp" }],
+            [{ language: "c" }, { language: "cpp" }, { language: "cuda-cpp" }, { language: "objective-cpp" }, { language: "objective-cpp" }],
             { provideDocumentSymbols: () => [] },
         );
     }

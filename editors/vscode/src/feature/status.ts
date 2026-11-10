@@ -4,6 +4,8 @@ const selector: vscode.DocumentSelector = [
     { scheme: "file", language: "c" },
     { scheme: "file", language: "cpp" },
     { scheme: "file", language: "cuda-cpp" },
+    { scheme: "file", language: "objective-c" },
+    { scheme: "file", language: "objective-cpp" },
 ];
 
 /// A language status item, listed under the `{}` beside the language mode
