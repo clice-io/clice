@@ -36,7 +36,6 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     std::string_view sysroot;
     // -c-isystem searches C alone, -cxx-isystem C++ alone; a driver-level
     // command without -x is read as C++'s.
-    bool c = false;
     bool cxx = true;
     for(auto& arg: args) {
         if(arg.values.empty()) {
@@ -48,9 +47,7 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
             sysroot = arg.values[0];
         } else if(arg.opt_id == OPT_x) {
             namespace types = clang::driver::types;
-            auto type = types::lookupTypeForTypeSpecifier(arg.values[0]);
-            cxx = types::isCXX(type);
-            c = !cxx && !types::isObjC(type);
+            cxx = types::isCXX(types::lookupTypeForTypeSpecifier(arg.values[0]));
         }
     }
     if(!isysroot.empty()) {
@@ -92,7 +89,7 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
                     {.path = Spelling(value, base).str(), .framework = true});
                 break;
             case OPT_c_isystem:
-                if(c) {
+                if(!cxx) {
                     system_c.push_back({Spelling(value, base).str()});
                 }
                 break;

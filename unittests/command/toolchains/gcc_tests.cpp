@@ -1,6 +1,7 @@
 module clice;
 
 import :command.edit;
+import :command.search_config;
 import :command.table;
 import :command.toolchains.gcc;
 import :compile.compilation;

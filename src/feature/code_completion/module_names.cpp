@@ -195,9 +195,7 @@ auto module_completion(const CompletionName& completing, const CompletionInputs&
         protocol::CompletionItem item;
         item.label = name;
         item.kind = protocol::CompletionItemKind::Module;
-        // The score is in [0, 2]: a better match sorts first.
-        auto mismatch = static_cast<std::uint32_t>((2.0F - score) * 1000.0F);
-        item.sort_text = std::format("{:04}{:05}", mismatch, distance(name));
+        item.sort_text = sort_text(score, distance(name));
         item.text_edit = protocol::TextEdit{
             .range = *inputs.positions.range(completing.replace, inputs.encoding),
             .new_text = completing.closed ? name : name + ";",
