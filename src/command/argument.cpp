@@ -309,6 +309,7 @@ bool names_path(unsigned id, llvm::StringRef value) {
         case OPT_iquote:
         case OPT_idirafter:
         case OPT_isystem_after:
+        case OPT_c_isystem:
         case OPT_cxx_isystem:
         case OPT_stdlibxx_isystem:
         case OPT_F:

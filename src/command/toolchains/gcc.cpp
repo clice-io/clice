@@ -1,6 +1,7 @@
 module clice;
 
 import :command.argument;
+import :command.search_config;
 import :command.table;
 import :command.toolchains.clang;
 import :command.toolchains.gcc;
@@ -188,18 +189,6 @@ std::string riscv_isa_for_clang(llvm::StringRef isa, bool quiet) {
     return result;
 }
 
-/// Whether `id` is an include path option (-I, -isystem, -F, the driver's
-/// -internal-isystem, ...), whose value may name a search directory.
-bool is_search_option(unsigned id) {
-    if(id == clang_options::OPT_F || id == clang_options::OPT_internal_isystem ||
-       id == clang_options::OPT_internal_externc_isystem ||
-       id == clang_options::OPT_internal_iframework) {
-        return true;
-    }
-    auto option = clang_options::table().option(id);
-    return option && option->matches(clang_options::OPT_IncludePath_Group);
-}
-
 /// The directories clang's own driver searches as framework directories
 /// for `target` with the sysroot `/` (`/System/Library/Frameworks` on
 /// Darwin): GCC lists its framework directories as plain ones, below
@@ -221,22 +210,33 @@ std::vector<std::string> framework_dirs(llvm::StringRef target) {
 }
 
 /// Adds to a clang job the directories of `printed`, the search list its
-/// driver printed, that the job names none of: a clang older than clice's
-/// sets up some targets' search list in its own frontend (Darwin's
-/// framework directories before LLVM 21, all of FreeBSD's before 16),
-/// which clice's frontend leaves to the driver. They go after the job's
-/// own, where that frontend adds them.
-void add_frontend_dirs(Job& job, llvm::ArrayRef<GCCSearchDir> printed) {
+/// driver printed, that the job does not search already: a clang older
+/// than clice's sets up some targets' search list in its own frontend
+/// (Darwin's framework directories before LLVM 21, all of FreeBSD's
+/// before 16), which clice's frontend leaves to the driver. They go after
+/// the job's own, where that frontend adds them.
+void add_frontend_dirs(Job& job, llvm::ArrayRef<GCCSearchDir> printed, llvm::StringRef cwd) {
     std::vector<std::string> cc1(job.args.begin() + 2, job.args.end());
     auto parse_options = cli::ParseOptions{.visibility = clang_options::CC1Option};
-    llvm::StringSet<> named;
+    llvm::BumpPtrAllocator allocator;
+    llvm::StringSaver saver(allocator);
+    std::vector<LocalArg> parsed_args;
     for(auto& parsed: clang_options::table().parse(cc1, parse_options)) {
-        if(parsed && !parsed->values.empty() && is_search_option(parsed->id)) {
-            named.insert(lexical(parsed->values[0]));
+        if(parsed) {
+            auto& arg = parsed_args.emplace_back(LocalArg{.opt_id = parsed->id});
+            for(auto value: parsed->values) {
+                arg.values.push_back(saver.save(value).data());
+            }
         }
     }
+    auto args = ranges::to<std::vector>(parsed_args | views::transform(&LocalArg::view));
+    auto base = cwd.empty() ? Spelling::cwd() : Spelling::absolute(cwd);
+    llvm::StringSet<> named;
+    for(auto& dir: extract_search_config(args, base).dirs) {
+        named.insert(lexical(dir.path));
+    }
     for(auto& dir: printed) {
-        if(!named.contains(lexical(dir.path))) {
+        if(!named.contains(lexical(Spelling(dir.path, base)))) {
             job.args.insert(
                 job.args.end(),
                 {dir.framework ? "-internal-iframework" : "-internal-isystem", dir.path});
@@ -467,7 +467,7 @@ async::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::stri
         if(!standard.empty()) {
             job.args.push_back(std::move(standard));
         }
-        add_frontend_dirs(job, output->search_dirs);
+        add_frontend_dirs(job, output->search_dirs, cwd);
         co_return job;
     }
     if(output->gcc_job.empty()) {
