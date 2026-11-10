@@ -48,6 +48,13 @@ struct ToolchainEntries {
         return toolchain.render(ref, db.spelling(ref.file)).argv;
     }
 
+    /// The command clice compiles `ref` with when its compiler could not be
+    /// queried: clang's own driver read it.
+    std::vector<const char*> read_as_clang(const CommandRef& ref) {
+        failure(ref);
+        return toolchain.render(ref, db.spelling(ref.file)).argv;
+    }
+
     /// Why the compiler of `ref` could not be queried, which leaves clang's
     /// own driver reading its command.
     std::string failure(const CommandRef& ref) {

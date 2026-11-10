@@ -9,10 +9,8 @@ test(async (t) => {
     s.open("app/sub/main.cpp");
     await s.sync();
     await s.stop();
-    const logs = [
-        ...t.disk.list("app/sub/.clice/logs/*/master.log"),
-        ...t.disk.list("app/.clice/logs/*/master.log"),
-    ];
+    const logs = t.disk.list(".clice/logs/*/master.log");
+    expect(logs).toHaveLength(1);
     const text = t.disk.read(logs[0] ?? "");
     expect(text).toContain("Command of app/main.cpp:");
     expect(text).toContain("Command of app/sub/main.cpp:");

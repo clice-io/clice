@@ -224,12 +224,12 @@ ZEST_CASE(ReadAsClangSpellings) {
         add("a.c", {tmp.c_path("riscv32-wch-elf-gcc"), "-march=rv32imc_zba_xw", "-mabi=ilp32"});
     ZEXPECT(contains(f.toolchain.render_for_clang(riscv, f.db.spelling(riscv.file)),
                      "-march=rv32imc_zba"));
-    ZEXPECT(contains(f.resolve(riscv), "+zba"));
+    ZEXPECT(contains(f.read_as_clang(riscv), "+zba"));
 
     auto arm = add("b.c", {tmp.c_path("aarch64-linux-gnu-gcc"), "-mcpu=cortex-a72.cortex-a53"});
     ZEXPECT(
         contains(f.toolchain.render_for_clang(arm, f.db.spelling(arm.file)), "-mcpu=cortex-a72"));
-    ZEXPECT(adjacent(f.resolve(arm), "-target-cpu", "cortex-a72"));
+    ZEXPECT(adjacent(f.read_as_clang(arm), "-target-cpu", "cortex-a72"));
 }
 
 ZEST_CASE(ReadAsClangUnknownNames) {
@@ -241,7 +241,7 @@ ZEST_CASE(ReadAsClangUnknownNames) {
     auto argv = f.toolchain.render_for_clang(x86, f.db.spelling(x86.file));
     ZEXPECT(contains(argv, "-march=x86-64-v3"));
     ZEXPECT(!contains(argv, "-mtune=x86-64-v3"));
-    ZEXPECT(adjacent(f.resolve(x86), "-target-cpu", "x86-64-v3"));
+    ZEXPECT(adjacent(f.read_as_clang(x86), "-target-cpu", "x86-64-v3"));
 
     auto abi = add("b.c", {tmp.c_path("aarch64-linux-gnu-gcc"), "-mabi=ilp64x", "-mabi=lp64"});
     argv = f.toolchain.render_for_clang(abi, f.db.spelling(abi.file));

@@ -94,7 +94,8 @@ test("the server's lines", async (t) => {
 });
 
 // A server on no workspace folder logs into the cache directory the
-// editor's settings name, its lines' paths whole.
+// editor's settings name; its lines name a file by the project found above
+// it.
 test("a server on no folder", async (t) => {
     const s = await t.start({ folders: [] });
     s.open("main.cpp");
@@ -102,11 +103,8 @@ test("a server on no folder", async (t) => {
     await s.stop();
     const logs = t.disk.list(`${LOGS}/*/*.log`);
     expect(logs.filter((log) => log.endsWith("/master.log"))).toHaveLength(1);
-    const separatorless = t.root.replaceAll(/[\\/]/g, "");
     const lines = logs.flatMap((log) => t.disk.read(log).split(/\r?\n/));
-    expect(lines.filter((line) => line.includes(separatorless))).toEqual([]);
-    const whole = new RegExp(String.raw`${path.basename(t.root)}[\\/]main\.cpp`);
-    expect(lines.some((line) => line.includes("Opened ") && whole.test(line))).toBe(true);
+    expect(lines.some((line) => line.includes("] Opened main.cpp "))).toBe(true);
 });
 
 // A server whose log moves aside over and over keeps no file it moved aside
