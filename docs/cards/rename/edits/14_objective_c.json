@@ -1,0 +1,100 @@
+{
+  "id": "rename/edits/14_objective_c",
+  "topic": "rename",
+  "subtopic": "edits",
+  "title": "Objective-C names",
+  "summary": "Renaming an Objective-C class, protocol, category or instance variable changes every place that writes it",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.m",
+      "text": "#import \"shape.h\"\n\n@interface Shape ()\n@property(nonatomic, copy) NSString *name;\n@end\n\n@implementation Shape\n@synthesize x = _x;\n\nstatic int shapes;\n\n+ (int)count {\n    return shapes;\n}\n\n+ (void)setCount:(int)count {\n    shapes = count;\n}\n\n- (int)area {\n    return _x * _x;\n}\n\n- (void)setX:(int)x y:(int)y {\n    _x = x + y;\n    _generation += 1;\n    _name = @\"moved\";\n}\n\n+ (instancetype)shapeWithX:(int)x {\n    Shape *shape = [[self alloc] init];\n    [shape setX:x y:0];\n    return shape;\n}\n\n- (void)draw {\n}\n@end\n\n@implementation Shape (Extras)\n- (void)wobble {\n    [self setX:self.x + 1 y:0];\n}\n@end\n\n@interface Circle : Shape\n@end\n\n@implementation Circle\n- (void)draw {\n    [super draw];\n}\n@end\n\nvoid render(id thing, id<Drawable> drawable, Shape *shape) {\n    [thing draw];\n    [drawable draw];\n    [shape draw];\n    Shape.count = 2;\n    SEL selector = @selector(setX:y:);\n    void (^block)(void) = ^{\n      [shape wobble];\n    };\n    block();\n    @try {\n        [Shape shapeWithX:1];\n    } @catch (Shape *error) {\n        [error draw];\n    } @finally {\n    }\n    (void)selector;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "shape.h",
+      "text": "/// Something that can be drawn.\n@protocol Drawable\n- (void)draw;\n@optional\n- (void)drawInWidth:(int)width height:(int)height;\n@end\n\n__attribute__((objc_root_class))\n@interface Object\n+ (instancetype)alloc;\n- (instancetype)init;\n@end\n\n@interface NSString : Object\n@end\n\n/// A shape on the canvas.\n@interface Shape : Object <Drawable> {\n    int _generation;\n}\n@property(nonatomic) int x;\n@property(nonatomic, readonly) int area;\n@property(class, nonatomic) int count;\n/// Moves the shape.\n- (void)setX:(int)x y:(int)y;\n+ (instancetype)shapeWithX:(int)x;\n@end\n\n@interface Shape (Extras)\n- (void)wobble;\n@end\n",
+      "markers": [
+        {
+          "name": "protocol",
+          "begin": 43,
+          "end": 43,
+          "range": false
+        },
+        {
+          "name": "interface",
+          "begin": 308,
+          "end": 308,
+          "range": false
+        },
+        {
+          "name": "ivar_declaration",
+          "begin": 344,
+          "end": 344,
+          "range": false
+        },
+        {
+          "name": "category",
+          "begin": 577,
+          "end": 577,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "class",
+          "value": {
+            "rename": {
+              "edits": {
+                "main.m": " #import \"shape.h\"\n\n-@interface Shape ()\n+@interface Figure ()\n @property(nonatomic, copy) NSString *name;\n @end\n\n-@implementation Shape\n+@implementation Figure\n @synthesize x = _x;\n\n…\n\n + (instancetype)shapeWithX:(int)x {\n-    Shape *shape = [[self alloc] init];\n+    Figure *shape = [[self alloc] init];\n     [shape setX:x y:0];\n     return shape;\n…\n @end\n\n-@implementation Shape (Extras)\n+@implementation Figure (Extras)\n - (void)wobble {\n     [self setX:self.x + 1 y:0];\n…\n @end\n\n-@interface Circle : Shape\n+@interface Circle : Figure\n @end\n\n…\n @end\n\n-void render(id thing, id<Drawable> drawable, Shape *shape) {\n+void render(id thing, id<Drawable> drawable, Figure *shape) {\n     [thing draw];\n     [drawable draw];\n     [shape draw];\n-    Shape.count = 2;\n+    Figure.count = 2;\n     SEL selector = @selector(setX:y:);\n     void (^block)(void) = ^{\n…\n     block();\n     @try {\n-        [Shape shapeWithX:1];\n-    } @catch (Shape *error) {\n+        [Figure shapeWithX:1];\n+    } @catch (Figure *error) {\n         [error draw];\n     } @finally {",
+                "shape.h": "\n /// A shape on the canvas.\n-@interface Shape : Object <Drawable> {\n+@interface Figure : Object <Drawable> {\n     int _generation;\n }\n…\n @end\n\n-@interface Shape (Extras)\n+@interface Figure (Extras)\n - (void)wobble;\n @end"
+              }
+            }
+          }
+        },
+        {
+          "label": "protocol",
+          "marker": "protocol",
+          "value": {
+            "rename": {
+              "edits": {
+                "main.m": " @end\n\n-void render(id thing, id<Drawable> drawable, Shape *shape) {\n+void render(id thing, id<Paintable> drawable, Shape *shape) {\n     [thing draw];\n     [drawable draw];",
+                "shape.h": " /// Something that can be drawn.\n-@protocol Drawable\n+@protocol Paintable\n - (void)draw;\n @optional\n…\n\n /// A shape on the canvas.\n-@interface Shape : Object <Drawable> {\n+@interface Shape : Object <Paintable> {\n     int _generation;\n }"
+              }
+            }
+          }
+        },
+        {
+          "label": "ivar",
+          "value": {
+            "rename": {
+              "edits": {
+                "main.m": " - (void)setX:(int)x y:(int)y {\n     _x = x + y;\n-    _generation += 1;\n+    _moves += 1;\n     _name = @\"moved\";\n }",
+                "shape.h": " /// A shape on the canvas.\n @interface Shape : Object <Drawable> {\n-    int _generation;\n+    int _moves;\n }\n @property(nonatomic) int x;"
+              }
+            }
+          }
+        },
+        {
+          "label": "category",
+          "marker": "category",
+          "value": {
+            "rename": {
+              "edits": {
+                "main.m": " @end\n\n-@implementation Shape (Extras)\n+@implementation Shape (Motion)\n - (void)wobble {\n     [self setX:self.x + 1 y:0];",
+                "shape.h": " @end\n\n-@interface Shape (Extras)\n+@interface Shape (Motion)\n - (void)wobble;\n @end"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

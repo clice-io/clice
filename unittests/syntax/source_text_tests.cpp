@@ -70,7 +70,7 @@ ZEST_CASE(DialectChangeRescans) {
     ZASSERT(text.lexical().tokens.size() == 3U);
     ZEXPECT(text.kind(text.lexical().tokens[0]) == clang::tok::kw_class);
 
-    text.set_dialect(dialect_of("main.c", true, "c11"));
+    text.set_dialect(dialect_of("main.c", clang::Language::C, "c11"));
     const auto& tokens = text.lexical().tokens;
     ZASSERT(tokens.size() == 4U);
     ZEXPECT(text.kind(tokens[0]) == clang::tok::identifier);

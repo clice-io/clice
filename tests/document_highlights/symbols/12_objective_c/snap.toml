@@ -1,0 +1,18 @@
+[answers.ivar_use]
+highlights = [
+    { at = "⟦_generation⟧ += 1;", kind = "write" },
+]
+
+[answers.message]
+highlights = [
+    { at = "- (void)⟦setX⟧:(int)x y:(int)y {", kind = "text" },
+    { at = "[shape ⟦setX⟧:x y:0];", kind = "text" },
+    { at = "[self ⟦setX⟧:self.x + 1 y:0];", kind = "text" },
+]
+
+[answers.second_piece]
+highlights = [
+    { at = "- (void)⟦setX⟧:(int)x y:(int)y {", kind = "text" },
+    { at = "[shape ⟦setX⟧:x y:0];", kind = "text" },
+    { at = "[self ⟦setX⟧:self.x + 1 y:0];", kind = "text" },
+]

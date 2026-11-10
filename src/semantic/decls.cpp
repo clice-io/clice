@@ -127,6 +127,17 @@ auto written_range(const clang::Decl* decl) -> clang::SourceRange {
                          ? sources.getLocForEndOfFile(sources.getFileID(range.getBegin()))
                          : decl->getLocation());
     }
+    // An @implementation's range stops at the `@` of its `@end`.
+    if(llvm::isa<clang::ObjCImplDecl>(decl)) {
+        const auto& options = decl->getASTContext().getLangOpts();
+        clang::Token at;
+        if(!clang::Lexer::getRawToken(range.getEnd(), at, sources, options) &&
+           at.is(clang::tok::at)) {
+            if(auto end = clang::Lexer::findNextToken(range.getEnd(), sources, options)) {
+                range.setEnd(end->getLocation());
+            }
+        }
+    }
     return range;
 }
 
@@ -442,13 +453,92 @@ auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* 
 auto normalize(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
     assert(decl);
 
-    decl = llvm::cast<clang::NamedDecl>(decl->getCanonicalDecl());
+    decl = llvm::cast<clang::NamedDecl>(objc_defined(decl)->getCanonicalDecl());
 
     if(auto ND = instantiated_from(llvm::cast<clang::NamedDecl>(decl))) {
         return llvm::cast<clang::NamedDecl>(ND->getCanonicalDecl());
     }
 
     return decl;
+}
+
+auto objc_defined(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
+    if(const auto* implementation = llvm::dyn_cast<clang::ObjCImplementationDecl>(decl);
+       implementation && implementation->getClassInterface()) {
+        return implementation->getClassInterface();
+    }
+    if(const auto* implementation = llvm::dyn_cast<clang::ObjCCategoryImplDecl>(decl);
+       implementation && implementation->getCategoryDecl()) {
+        return implementation->getCategoryDecl();
+    }
+    return decl;
+}
+
+auto objc_class(const clang::DeclContext* context) -> const clang::ObjCInterfaceDecl* {
+    if(const auto* objc_class = llvm::dyn_cast<clang::ObjCInterfaceDecl>(context)) {
+        return objc_class;
+    }
+    if(const auto* implementation = llvm::dyn_cast<clang::ObjCImplDecl>(context)) {
+        return implementation->getClassInterface();
+    }
+    if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(context)) {
+        return category->getClassInterface();
+    }
+    return nullptr;
+}
+
+/// The method `selector` names in an Objective-C class itself: in its
+/// @interface, its extensions and categories, or their @implementations.
+static auto own_method(const clang::ObjCInterfaceDecl& objc_class,
+                       clang::Selector selector,
+                       bool instance) -> const clang::ObjCMethodDecl* {
+    auto in = [&](const clang::ObjCContainerDecl* container) -> const clang::ObjCMethodDecl* {
+        return container ? container->getMethod(selector, instance) : nullptr;
+    };
+    if(const auto* method = in(objc_class.getImplementation())) {
+        return method;
+    }
+    if(const auto* method = in(&objc_class)) {
+        return method;
+    }
+    for(const auto* category: objc_class.visible_categories()) {
+        if(const auto* method = in(category)) {
+            return method;
+        }
+        if(const auto* method = in(category->getImplementation())) {
+            return method;
+        }
+    }
+    return nullptr;
+}
+
+auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::ObjCMethodDecl* {
+    const auto* method = message.getMethodDecl();
+    if(!method) {
+        return nullptr;
+    }
+    const auto* declaring = objc_class(method->getDeclContext());
+    for(const auto* objc_class = message.getReceiverInterface();
+        objc_class && objc_class != declaring && objc_class->hasDefinition();
+        objc_class = objc_class->getSuperClass()) {
+        if(const auto* own =
+               own_method(*objc_class, message.getSelector(), message.isInstanceMessage())) {
+            return own;
+        }
+    }
+    return method;
+}
+
+auto objc_overridden(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl* {
+    const auto* objc_class = decls::objc_class(method.getDeclContext());
+    for(const auto* base = objc_class ? objc_class->getSuperClass() : nullptr;
+        base && base->hasDefinition();
+        base = base->getSuperClass()) {
+        if(const auto* own = own_method(*base, method.getSelector(), method.isInstanceMethod())) {
+            return own;
+        }
+    }
+    return nullptr;
 }
 
 auto constructor_of(const clang::CXXConstructExpr* construct) -> const clang::CXXConstructorDecl* {

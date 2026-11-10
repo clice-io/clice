@@ -1,0 +1,54 @@
+[answers.Shape]
+workspace_symbols = [
+    { name = "Shape", kind = "Class", at = "main.m │ @implementation ⟦Shape⟧" },
+    { name = "shapes", kind = "Variable", at = "main.m │ static int ⟦shapes⟧;" },
+    {
+        name = "shapeWithX:",
+        kind = "Method",
+        at = "main.m │ + (instancetype)⟦shapeWithX⟧:(int)x {",
+        container = "Shape",
+    },
+]
+
+[answers.setX]
+workspace_symbols = [
+    { name = "setX:y:", kind = "Method", at = "main.m │ - (void)⟦setX⟧:(int)x y:(int)y {", container = "Shape" },
+]
+
+[answers.Drawable]
+workspace_symbols = [
+    { name = "Drawable", kind = "Interface", at = "shape.h │ @protocol ⟦Drawable⟧" },
+]
+
+[answers.count]
+workspace_symbols = [
+    { name = "count", kind = "Method", at = "main.m │ + (int)⟦count⟧ {", container = "Shape" },
+    { name = "setCount:", kind = "Method", at = "main.m │ + (void)⟦setCount⟧:(int)count {", container = "Shape" },
+    {
+        name = "count",
+        kind = "Property",
+        at = "shape.h │ @property(class, nonatomic) int ⟦count⟧;",
+        container = "Shape",
+    },
+]
+
+[answers.area]
+workspace_symbols = [
+    { name = "area", kind = "Method", at = "main.m │ - (int)⟦area⟧ {", container = "Shape" },
+    {
+        name = "area",
+        kind = "Property",
+        at = "shape.h │ @property(nonatomic, readonly) int ⟦area⟧;",
+        container = "Shape",
+    },
+]
+
+[answers.Object]
+workspace_symbols = [
+    { name = "Object", kind = "Class", at = "shape.h │ @interface ⟦Object⟧" },
+]
+
+[answers._generation]
+workspace_symbols = [
+    { name = "_generation", kind = "Field", at = "shape.h │ int ⟦_generation⟧;", container = "Shape" },
+]

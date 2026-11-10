@@ -255,6 +255,8 @@ auto kind_noun(SymbolKind kind) -> llvm::StringRef {
         case SymbolKind::Enum: return "enum";
         case SymbolKind::Type: return "type";
         case SymbolKind::Concept: return "concept";
+        case SymbolKind::Protocol: return "protocol";
+        case SymbolKind::Property: return "property";
         case SymbolKind::Field: return "field";
         case SymbolKind::EnumMember: return "enumerator";
         /// Only an index card has it: whether the operator is a member is

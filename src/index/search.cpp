@@ -447,4 +447,15 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
     return results;
 }
 
+std::vector<IndexQuery::Located> selector_peers(const IndexQuery& index, const SymbolInfo& method) {
+    auto peers = locate(
+        index,
+        {.mode = SymbolQuery::Mode::Exact, .pattern = method.name, .kinds = {SymbolKind::Method}});
+    std::erase_if(peers, [&](const IndexQuery::Located& peer) {
+        return peer.symbol.hash == method.hash || peer.symbol.name != method.name ||
+               name_form(peer.symbol.flags) != NameForm::Selector;
+    });
+    return peers;
+}
+
 }  // namespace clice::index

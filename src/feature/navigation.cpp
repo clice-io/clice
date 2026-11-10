@@ -336,6 +336,11 @@ std::vector<index::Site> references(const index::IndexQuery& index,
                 }
             }
         }
+        if(index::name_form(info->flags) == index::NameForm::Selector) {
+            for(auto& peer: index::selector_peers(index, *info)) {
+                add(peer.symbol.hash, peer.site.file, {RelationKind::Candidate});
+            }
+        }
         // Its constructors are named by the class's name; the name in a
         // destructor's already refers to the class.
         if(is_class(info->kind)) {
@@ -457,7 +462,9 @@ std::vector<index::IndexQuery::Located> implementation(const index::IndexQuery& 
     }
     // Every class deriving from a class, every override of a function, at
     // any depth.
-    auto kind = is_class(info->kind) ? RelationKind::Derived : RelationKind::Implementation;
+    auto kind = is_class(info->kind) || info->kind == SymbolKind::Protocol
+                    ? RelationKind::Derived
+                    : RelationKind::Implementation;
     std::vector<index::IndexQuery::Located> result;
     for(auto target: index.transitive_targets(hash, anchor, kind)) {
         if(auto located = index.resolve(target.symbol, target.anchor)) {

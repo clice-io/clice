@@ -59,6 +59,8 @@ void offer_names(const index::IndexQuery& query,
             case SymbolKind::Struct:
             case SymbolKind::Union: return Kind::Class;
             case SymbolKind::Enum: return Kind::Enum;
+            case SymbolKind::Protocol: return Kind::Interface;
+            case SymbolKind::Property: return Kind::Property;
             case SymbolKind::EnumMember: return Kind::EnumMember;
             case SymbolKind::Function: return Kind::Function;
             case SymbolKind::Variable: return Kind::Variable;
@@ -220,7 +222,9 @@ auto finish_completion(protocol::CompletionList list,
         if(inserted) {
             auto path = query.file_table().resolve(header);
             if(auto read = vfs::read_observed(path)) {
-                it->second = include_pragmas(read->text, dialect_of(path, include.c));
+                it->second = include_pragmas(
+                    read->text,
+                    dialect_of(path, include.c ? std::optional(clang::Language::C) : std::nullopt));
             }
         }
         return it->second;

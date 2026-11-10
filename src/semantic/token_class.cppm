@@ -67,13 +67,15 @@ enum class SemanticTokenKind : std::uint8_t {
     /// carrying its Inactive modifier; with lexical tokens off, every token
     /// there.
     Plain,
+    /// An Objective-C protocol.
+    Interface,
 };
 
 /// Whether every byte of an index column names a kind: one past the enum
 /// would index the legend's tables out of bounds.
 inline bool all_token_kinds(llvm::ArrayRef<std::uint8_t> kinds) {
     return ranges::all_of(kinds, [](std::uint8_t kind) {
-        return kind <= static_cast<std::uint8_t>(SemanticTokenKind::Plain);
+        return kind <= static_cast<std::uint8_t>(SemanticTokenKind::Interface);
     });
 }
 

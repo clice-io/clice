@@ -1,0 +1,290 @@
+[answers."main.m"]
+document_symbols = [
+    { name = "name", kind = "Property", at = "@property(nonatomic, copy) NSString *⟦name⟧;", detail = "NSString *" },
+    {
+        name = "Shape",
+        kind = "Class",
+        at = "@implementation ⟦Shape⟧",
+        detail = "class implementation",
+        children = [
+            { name = "shapes", kind = "Variable", at = "static int ⟦shapes⟧;", detail = "int" },
+            { name = "count", kind = "Method", at = "+ (int)⟦count⟧ {", detail = "+(int)" },
+            { name = "setCount:", kind = "Method", at = "+ (void)⟦setCount⟧:(int)count {", detail = "+(void)" },
+            { name = "area", kind = "Method", at = "- (int)⟦area⟧ {", detail = "-(int)" },
+            { name = "setX:y:", kind = "Method", at = "- (void)⟦setX⟧:(int)x y:(int)y {", detail = "-(void)" },
+            {
+                name = "shapeWithX:",
+                kind = "Method",
+                at = "+ (instancetype)⟦shapeWithX⟧:(int)x {",
+                detail = "+(instancetype)",
+                children = [
+                    {
+                        name = "shape",
+                        kind = "Variable",
+                        at = "Shape *⟦shape⟧ = [[self alloc] init];",
+                        detail = "Shape *",
+                    },
+                ],
+            },
+            { name = "draw", kind = "Method", at = "- (void)⟦draw⟧ { @36", detail = "-(void)" },
+        ],
+    },
+    {
+        name = "Extras",
+        kind = "Class",
+        at = "@implementation Shape (⟦Extras⟧)",
+        detail = "category implementation",
+        children = [
+            { name = "wobble", kind = "Method", at = "- (void)⟦wobble⟧ {", detail = "-(void)" },
+        ],
+    },
+    { name = "Circle", kind = "Class", at = "@interface ⟦Circle⟧ : Shape", detail = "class : Shape" },
+    {
+        name = "Circle",
+        kind = "Class",
+        at = "@implementation ⟦Circle⟧",
+        detail = "class implementation",
+        children = [
+            { name = "draw", kind = "Method", at = "- (void)⟦draw⟧ { @50", detail = "-(void)" },
+        ],
+    },
+    {
+        name = "render",
+        kind = "Function",
+        at = "void ⟦render⟧(id thing, id<Drawable> drawable, Shape *shape) {",
+        detail = "void (id thing, id<Drawable> drawable, Shape *shape)",
+        children = [
+            { name = "selector", kind = "Variable", at = "SEL ⟦selector⟧ = @selector(setX:y:);", detail = "SEL" },
+            { name = "block", kind = "Variable", at = "void (^⟦block⟧)(void) = ^{", detail = "void (^)(void)" },
+            { name = "error", kind = "Variable", at = "} @catch (Shape *⟦error⟧) {", detail = "Shape *" },
+        ],
+    },
+]
+
+[answers."main.m extents"]
+document_symbols = [
+    {
+        name = "name",
+        kind = "Property",
+        at = "@property(nonatomic, copy) NSString *⟦name⟧;",
+        range = "⟦@property(nonatomic, copy) NSString *name⟧;",
+    },
+    {
+        name = "Shape",
+        kind = "Class",
+        at = "@implementation ⟦Shape⟧",
+        range = "⟦@implementation Shape … @end⟧ (32 lines)",
+        children = [
+            { name = "shapes", kind = "Variable", at = "static int ⟦shapes⟧;", range = "⟦static int shapes⟧;" },
+            { name = "count", kind = "Method", at = "+ (int)⟦count⟧ {", range = "⟦+ (int)count { … }⟧ (3 lines)" },
+            {
+                name = "setCount:",
+                kind = "Method",
+                at = "+ (void)⟦setCount⟧:(int)count {",
+                range = "⟦+ (void)setCount:(int)count { … }⟧ (3 lines)",
+            },
+            { name = "area", kind = "Method", at = "- (int)⟦area⟧ {", range = "⟦- (int)area { … }⟧ (3 lines)" },
+            {
+                name = "setX:y:",
+                kind = "Method",
+                at = "- (void)⟦setX⟧:(int)x y:(int)y {",
+                range = "⟦- (void)setX:(int)x y:(int)y { … }⟧ (5 lines)",
+            },
+            {
+                name = "shapeWithX:",
+                kind = "Method",
+                at = "+ (instancetype)⟦shapeWithX⟧:(int)x {",
+                range = "⟦+ (instancetype)shapeWithX:(int)x { … }⟧ (5 lines)",
+                children = [
+                    {
+                        name = "shape",
+                        kind = "Variable",
+                        at = "Shape *⟦shape⟧ = [[self alloc] init];",
+                        range = "⟦Shape *shape = [[self alloc] init]⟧;",
+                    },
+                ],
+            },
+            { name = "draw", kind = "Method", at = "- (void)⟦draw⟧ { @36", range = "⟦- (void)draw { … }⟧ (2 lines)" },
+        ],
+    },
+    {
+        name = "Extras",
+        kind = "Class",
+        at = "@implementation Shape (⟦Extras⟧)",
+        range = "⟦@implementation Shape (Extras) … @end⟧ (5 lines)",
+        children = [
+            { name = "wobble", kind = "Method", at = "- (void)⟦wobble⟧ {", range = "⟦- (void)wobble { … }⟧ (3 lines)" },
+        ],
+    },
+    {
+        name = "Circle",
+        kind = "Class",
+        at = "@interface ⟦Circle⟧ : Shape",
+        range = "⟦@interface Circle : Shape … @end⟧ (2 lines)",
+    },
+    {
+        name = "Circle",
+        kind = "Class",
+        at = "@implementation ⟦Circle⟧",
+        range = "⟦@implementation Circle … @end⟧ (5 lines)",
+        children = [
+            { name = "draw", kind = "Method", at = "- (void)⟦draw⟧ { @50", range = "⟦- (void)draw { … }⟧ (3 lines)" },
+        ],
+    },
+    {
+        name = "render",
+        kind = "Function",
+        at = "void ⟦render⟧(id thing, id<Drawable> drawable, Shape *shape) {",
+        range = "⟦void render(id thing, id<Drawable> drawable, Shape *shape) { … }⟧ (18 lines)",
+        children = [
+            {
+                name = "selector",
+                kind = "Variable",
+                at = "SEL ⟦selector⟧ = @selector(setX:y:);",
+                range = "⟦SEL selector = @selector(setX:y:)⟧;",
+            },
+            {
+                name = "block",
+                kind = "Variable",
+                at = "void (^⟦block⟧)(void) = ^{",
+                range = "⟦void (^block)(void) = ^{ … }⟧ (3 lines)",
+            },
+            {
+                name = "error",
+                kind = "Variable",
+                at = "} @catch (Shape *⟦error⟧) {",
+                range = "} @catch (⟦Shape *error⟧) {",
+            },
+        ],
+    },
+]
+
+[answers."shape.h"]
+document_symbols = [
+    {
+        name = "Drawable",
+        kind = "Interface",
+        at = "@protocol ⟦Drawable⟧",
+        detail = "protocol",
+        children = [
+            { name = "draw", kind = "Method", at = "- (void)⟦draw⟧;", detail = "-(void)" },
+            {
+                name = "drawInWidth:height:",
+                kind = "Method",
+                at = "- (void)⟦drawInWidth⟧:(int)width height:(int)height;",
+                detail = "-(void)",
+            },
+        ],
+    },
+    {
+        name = "Object",
+        kind = "Class",
+        at = "@interface ⟦Object⟧",
+        detail = "class",
+        children = [
+            { name = "alloc", kind = "Method", at = "+ (instancetype)⟦alloc⟧;", detail = "+(instancetype)" },
+            { name = "init", kind = "Method", at = "- (instancetype)⟦init⟧;", detail = "-(instancetype)" },
+        ],
+    },
+    { name = "NSString", kind = "Class", at = "@interface ⟦NSString⟧ : Object", detail = "class : Object" },
+    {
+        name = "Shape",
+        kind = "Class",
+        at = "@interface ⟦Shape⟧ : Object <Drawable> {",
+        detail = "class : Object",
+        children = [
+            { name = "_generation", kind = "Field", at = "int ⟦_generation⟧;", detail = "int" },
+            { name = "x", kind = "Property", at = "@property(nonatomic) int ⟦x⟧;", detail = "int" },
+            { name = "area", kind = "Property", at = "@property(nonatomic, readonly) int ⟦area⟧;", detail = "int" },
+            { name = "count", kind = "Property", at = "@property(class, nonatomic) int ⟦count⟧;", detail = "int" },
+            { name = "setX:y:", kind = "Method", at = "- (void)⟦setX⟧:(int)x y:(int)y;", detail = "-(void)" },
+            {
+                name = "shapeWithX:",
+                kind = "Method",
+                at = "+ (instancetype)⟦shapeWithX⟧:(int)x;",
+                detail = "+(instancetype)",
+            },
+        ],
+    },
+    { name = "Extras", kind = "Class", at = "@interface Shape (⟦Extras⟧)", detail = "category" },
+]
+
+[answers."shape.h extents"]
+document_symbols = [
+    {
+        name = "Drawable",
+        kind = "Interface",
+        at = "@protocol ⟦Drawable⟧",
+        range = "⟦@protocol Drawable … @end⟧ (5 lines)",
+        children = [
+            { name = "draw", kind = "Method", at = "- (void)⟦draw⟧;", range = "⟦- (void)draw;⟧" },
+            {
+                name = "drawInWidth:height:",
+                kind = "Method",
+                at = "- (void)⟦drawInWidth⟧:(int)width height:(int)height;",
+                range = "⟦- (void)drawInWidth:(int)width height:(int)height;⟧",
+            },
+        ],
+    },
+    {
+        name = "Object",
+        kind = "Class",
+        at = "@interface ⟦Object⟧",
+        range = "__attribute__((⟦objc_root_class)) … @end⟧ (5 lines)",
+        children = [
+            { name = "alloc", kind = "Method", at = "+ (instancetype)⟦alloc⟧;", range = "⟦+ (instancetype)alloc;⟧" },
+            { name = "init", kind = "Method", at = "- (instancetype)⟦init⟧;", range = "⟦- (instancetype)init;⟧" },
+        ],
+    },
+    {
+        name = "NSString",
+        kind = "Class",
+        at = "@interface ⟦NSString⟧ : Object",
+        range = "⟦@interface NSString : Object … @end⟧ (2 lines)",
+    },
+    {
+        name = "Shape",
+        kind = "Class",
+        at = "@interface ⟦Shape⟧ : Object <Drawable> {",
+        range = "⟦@interface Shape : Object <Drawable> { … @end⟧ (10 lines)",
+        children = [
+            { name = "_generation", kind = "Field", at = "int ⟦_generation⟧;", range = "⟦int _generation⟧;" },
+            {
+                name = "x",
+                kind = "Property",
+                at = "@property(nonatomic) int ⟦x⟧;",
+                range = "⟦@property(nonatomic) int x⟧;",
+            },
+            {
+                name = "area",
+                kind = "Property",
+                at = "@property(nonatomic, readonly) int ⟦area⟧;",
+                range = "⟦@property(nonatomic, readonly) int area⟧;",
+            },
+            {
+                name = "count",
+                kind = "Property",
+                at = "@property(class, nonatomic) int ⟦count⟧;",
+                range = "⟦@property(class, nonatomic) int count⟧;",
+            },
+            {
+                name = "setX:y:",
+                kind = "Method",
+                at = "- (void)⟦setX⟧:(int)x y:(int)y;",
+                range = "⟦- (void)setX:(int)x y:(int)y;⟧",
+            },
+            {
+                name = "shapeWithX:",
+                kind = "Method",
+                at = "+ (instancetype)⟦shapeWithX⟧:(int)x;",
+                range = "⟦+ (instancetype)shapeWithX:(int)x;⟧",
+            },
+        ],
+    },
+    {
+        name = "Extras",
+        kind = "Class",
+        at = "@interface Shape (⟦Extras⟧)",
+        range = "⟦@interface Shape (Extras) … @end⟧ (3 lines)",
+    },
+]

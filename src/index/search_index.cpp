@@ -319,6 +319,8 @@ bool is_searchable_kind(SymbolKind kind) {
         case SymbolKind::Concept:
         case SymbolKind::Module:
         case SymbolKind::Operator:
+        case SymbolKind::Protocol:
+        case SymbolKind::Property:
         case SymbolKind::Attribute: return true;
         default: return false;
     }

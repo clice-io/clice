@@ -51,6 +51,8 @@ auto to_protocol(SymbolKind kind) -> protocol::SymbolKind {
         case SymbolKind::Header: return String;
         case SymbolKind::Number: return Number;
         case SymbolKind::Operator: return Operator;
+        case SymbolKind::Protocol: return Interface;
+        case SymbolKind::Property: return Property;
         case SymbolKind::Invalid: return Variable;
     }
 
@@ -66,10 +68,12 @@ bool outline_lists(SymbolKind kind, bool unnamed, bool template_parameter) {
         case SymbolKind::Class:
         case SymbolKind::Struct:
         case SymbolKind::Union:
-        case SymbolKind::Enum: return true;
+        case SymbolKind::Enum:
+        case SymbolKind::Protocol: return true;
         case SymbolKind::Type:
         case SymbolKind::Concept:
         case SymbolKind::Field:
+        case SymbolKind::Property:
         case SymbolKind::EnumMember:
         case SymbolKind::Function:
         case SymbolKind::Method:
@@ -727,6 +731,18 @@ private:
             return false;
         }
 
+        // An Objective-C class extension names nothing: its members list
+        // where it is written, as the index places them. An instance
+        // variable a property synthesizes is declared nowhere.
+        if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(decl);
+           category && category->IsClassExtension()) {
+            return true;
+        }
+        if(const auto* ivar = llvm::dyn_cast<clang::ObjCIvarDecl>(decl);
+           ivar && ivar->getSynthesize()) {
+            return true;
+        }
+
         const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
         if(!named || !outline_lists(SymbolKind::from(named),
                                     display::symbol_name(named).unnamed,
@@ -744,6 +760,18 @@ private:
             definition = function->isThisDeclarationADefinition();
         } else if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(named)) {
             definition = tag->isThisDeclarationADefinition();
+        } else if(const auto* method = llvm::dyn_cast<clang::ObjCMethodDecl>(named)) {
+            name_range = method->getSelectorStartLoc();
+            definition = method->isThisDeclarationADefinition();
+        } else if(const auto* protocol = llvm::dyn_cast<clang::ObjCProtocolDecl>(named)) {
+            definition = protocol->isThisDeclarationADefinition();
+        } else if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(named)) {
+            name_range = category->getCategoryNameLoc();
+            definition = false;
+        } else if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryImplDecl>(named)) {
+            name_range = category->getCategoryNameLoc();
+        } else if(llvm::isa<clang::ObjCInterfaceDecl, clang::ObjCPropertyDecl>(named)) {
+            definition = false;
         }
 
         // A fragment's members outline at its top level.
@@ -875,6 +903,26 @@ private:
                 text += " : " + llvm::join(bases, ", ");
             }
             parts.push_back(std::move(text));
+        } else if(const auto* method = llvm::dyn_cast<clang::ObjCMethodDecl>(&decl)) {
+            parts.push_back(std::format("{}({})",
+                                        method->isInstanceMethod() ? '-' : '+',
+                                        type(method->getReturnType())));
+        } else if(const auto* property = llvm::dyn_cast<clang::ObjCPropertyDecl>(&decl)) {
+            parts.push_back(type(property->getType()));
+        } else if(const auto* objc_class = llvm::dyn_cast<clang::ObjCInterfaceDecl>(&decl)) {
+            std::string text = "class";
+            if(objc_class->isThisDeclarationADefinition() && objc_class->getSuperClass()) {
+                text += " : " + objc_class->getSuperClass()->getName().str();
+            }
+            parts.push_back(std::move(text));
+        } else if(llvm::isa<clang::ObjCImplementationDecl>(&decl)) {
+            parts.push_back("class implementation");
+        } else if(llvm::isa<clang::ObjCCategoryDecl>(&decl)) {
+            parts.push_back("category");
+        } else if(llvm::isa<clang::ObjCCategoryImplDecl>(&decl)) {
+            parts.push_back("category implementation");
+        } else if(llvm::isa<clang::ObjCProtocolDecl>(&decl)) {
+            parts.push_back("protocol");
         } else if(llvm::isa<clang::TypedefNameDecl>(&decl)) {
             parts.push_back("type alias");
         } else if(llvm::isa<clang::NamespaceAliasDecl>(&decl)) {

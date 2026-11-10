@@ -2,6 +2,10 @@
 
 clice provides a suite of C++ development tools built on LLVM/Clang. This section documents what's implemented, what's planned, and links to relevant upstream issues.
 
+## Languages
+
+clice serves C, C++ and CUDA, and Objective-C and Objective-C++ for reading code: semantic tokens, hover, navigation and references, call and type hierarchies, the outline, folding, workspace symbols and `clice query` know their classes, protocols, categories, methods, properties and instance variables, and rename takes classes, protocols, categories and instance variables. Renaming a method or a property and completing a message are not supported, nor are Clang header modules (`-fmodules`, `@import`): a file compiles without them, and clice says so once. Like every project, an Objective-C one needs a compilation database, which CMake writes and Xcode does not.
+
 ## Features
 
 Language Server Protocol features available when using clice as an editor backend.

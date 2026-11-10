@@ -35,9 +35,10 @@ export const RESERVED = new Set([
     "trace.jsonl",
 ]);
 
-const SOURCE = /\.(c|cc|cpp|cxx|cppm|ixx)$/;
+export const SOURCE = /\.(c|cc|cpp|cxx|cppm|ixx|m|mm)$/;
+export const HEADER = /\.(h|hh|hpp|hxx)$/;
 /// The files that may carry markers; any other input copies byte for byte.
-export const MARKED = /\.(c|cc|cpp|cxx|cppm|ixx|h|hh|hpp|hxx)$/;
+export const MARKED = new RegExp(`${SOURCE.source}|${HEADER.source}`);
 const KEYS = ["flags", "units", "databases", "compiles"];
 
 export function posix(file: string): string {
@@ -191,7 +192,7 @@ function entries(project: Project, units: Record<string, UnitArgs>, root: string
             directory: workspace,
             file,
             arguments: [
-                unit.endsWith(".c") ? "clang" : "clang++",
+                /\.[cm]$/.test(unit) ? "clang" : "clang++",
                 ...(project.flags ?? []),
                 ...args,
                 "-fsyntax-only",

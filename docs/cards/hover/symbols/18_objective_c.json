@@ -1,0 +1,495 @@
+{
+  "id": "hover/symbols/18_objective_c",
+  "topic": "hover",
+  "subtopic": "symbols",
+  "title": "Objective-C symbols",
+  "summary": "Hovering an Objective-C class, protocol, method, property or instance variable shows its declaration and where it belongs",
+  "prose": "A member names the class or the category declaring it, `Shape(Extras)`, and\nan `@implementation` shows the `@interface` it implements. Any piece of a\nselector shows its method.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.m",
+      "text": "#import \"shape.h\"\n\n@interface Shape ()\n@property(nonatomic, copy) NSString *name;\n@end\n\n@implementation Shape\n@synthesize x = _x;\n\nstatic int shapes;\n\n+ (int)count {\n    return shapes;\n}\n\n+ (void)setCount:(int)count {\n    shapes = count;\n}\n\n- (int)area {\n    return _x * _x;\n}\n\n- (void)setX:(int)x y:(int)y {\n    _x = x + y;\n    _generation += 1;\n    _name = @\"moved\";\n}\n\n+ (instancetype)shapeWithX:(int)x {\n    Shape *shape = [[self alloc] init];\n    [shape setX:x y:0];\n    return shape;\n}\n\n- (void)draw {\n}\n@end\n\n@implementation Shape (Extras)\n- (void)wobble {\n    [self setX:self.x + 1 y:0];\n}\n@end\n\n@interface Circle : Shape\n@end\n\n@implementation Circle\n- (void)draw {\n    [super draw];\n}\n@end\n\nvoid render(id thing, id<Drawable> drawable, Shape *shape) {\n    [thing draw];\n    [drawable draw];\n    [shape draw];\n    Shape.count = 2;\n    SEL selector = @selector(setX:y:);\n    void (^block)(void) = ^{\n      [shape wobble];\n    };\n    block();\n    @try {\n        [Shape shapeWithX:1];\n    } @catch (Shape *error) {\n        [error draw];\n    } @finally {\n    }\n    (void)selector;\n}\n",
+      "markers": [
+        {
+          "name": "implementation",
+          "begin": 104,
+          "end": 104,
+          "range": false
+        },
+        {
+          "name": "synthesized_use",
+          "begin": 313,
+          "end": 313,
+          "range": false
+        },
+        {
+          "name": "auto_ivar",
+          "begin": 351,
+          "end": 351,
+          "range": false
+        },
+        {
+          "name": "message",
+          "begin": 459,
+          "end": 459,
+          "range": false
+        },
+        {
+          "name": "second_piece",
+          "begin": 466,
+          "end": 466,
+          "range": false
+        },
+        {
+          "name": "property_use",
+          "begin": 584,
+          "end": 584,
+          "range": false
+        },
+        {
+          "name": "untyped",
+          "begin": 772,
+          "end": 772,
+          "range": false
+        },
+        {
+          "name": "class_property",
+          "begin": 828,
+          "end": 828,
+          "range": false
+        },
+        {
+          "name": "category_method",
+          "begin": 920,
+          "end": 920,
+          "range": false
+        },
+        {
+          "name": "class_receiver",
+          "begin": 969,
+          "end": 969,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "shape.h",
+      "text": "/// Something that can be drawn.\n@protocol Drawable\n- (void)draw;\n@optional\n- (void)drawInWidth:(int)width height:(int)height;\n@end\n\n__attribute__((objc_root_class))\n@interface Object\n+ (instancetype)alloc;\n- (instancetype)init;\n@end\n\n@interface NSString : Object\n@end\n\n/// A shape on the canvas.\n@interface Shape : Object <Drawable> {\n    int _generation;\n}\n@property(nonatomic) int x;\n@property(nonatomic, readonly) int area;\n@property(class, nonatomic) int count;\n/// Moves the shape.\n- (void)setX:(int)x y:(int)y;\n+ (instancetype)shapeWithX:(int)x;\n@end\n\n@interface Shape (Extras)\n- (void)wobble;\n@end\n",
+      "markers": [
+        {
+          "name": "protocol",
+          "begin": 43,
+          "end": 43,
+          "range": false
+        },
+        {
+          "name": "interface",
+          "begin": 308,
+          "end": 308,
+          "range": false
+        },
+        {
+          "name": "ivar_declaration",
+          "begin": 344,
+          "end": 344,
+          "range": false
+        },
+        {
+          "name": "property",
+          "begin": 384,
+          "end": 384,
+          "range": false
+        },
+        {
+          "name": "setter",
+          "begin": 496,
+          "end": 496,
+          "range": false
+        },
+        {
+          "name": "category",
+          "begin": 577,
+          "end": 577,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "implementation",
+          "marker": "implementation",
+          "value": {
+            "hover": {
+              "markdown": "**class** `Shape`\n\nA shape on the canvas.\n\n```cpp\n@interface Shape : Object <Drawable> {\n  int _generation;\n}\n@end\n```",
+              "range": {
+                "$place": "@implementation ⟦Shape⟧",
+                "path": "main.m",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 16
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 21
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "synthesized_use",
+          "marker": "synthesized_use",
+          "value": {
+            "hover": {
+              "markdown": "**field** `_x` · class `Shape`\n\n```cpp\nint _x\n```\n**Type:** `int`",
+              "range": {
+                "$place": "⟦_x⟧ = x + y;",
+                "path": "main.m",
+                "range": {
+                  "start": {
+                    "line": 24,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 24,
+                    "character": 6
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "auto_ivar",
+          "marker": "auto_ivar",
+          "value": {
+            "hover": {
+              "markdown": "**field** `_name` · class `Shape`\n\n```cpp\nNSString* _name\n```\n**Type:** `NSString *`",
+              "range": {
+                "$place": "⟦_name⟧ = @\"moved\";",
+                "path": "main.m",
+                "range": {
+                  "start": {
+                    "line": 26,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 26,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "message",
+          "marker": "message",
+          "value": {
+            "hover": {
+              "markdown": "**method** `setX:y:` · class `Shape`\n\nMoves the shape.\n\n```cpp\n- (void)setX:(int)x y:(int)y;\n```",
+              "range": {
+                "$place": "[shape ⟦setX⟧:x y:0];",
+                "path": "main.m",
+                "range": {
+                  "start": {
+                    "line": 31,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 31,
+                    "character": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "second_piece",
+          "marker": "second_piece",
+          "value": {
+            "hover": {
+              "markdown": "**method** `setX:y:` · class `Shape`\n\nMoves the shape.\n\n```cpp\n- (void)setX:(int)x y:(int)y;\n```",
+              "range": {
+                "$place": "[shape setX:x ⟦y⟧:0];",
+                "path": "main.m",
+                "range": {
+                  "start": {
+                    "line": 31,
+                    "character": 18
+                  },
+                  "end": {
+                    "line": 31,
+                    "character": 19
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "property_use",
+          "marker": "property_use",
+          "value": {
+            "hover": {
+              "markdown": "**property** `x` · class `Shape`\n\n```cpp\n@property(nonatomic, assign, unsafe_unretained, readwrite) int x;\n```",
+              "range": {
+                "$place": "[self setX:self.⟦x⟧ + 1 y:0];",
+                "path": "main.m",
+                "range": {
+                  "start": {
+                    "line": 41,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 41,
+                    "character": 21
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "untyped",
+          "marker": "untyped",
+          "value": {
+            "hover": {
+              "markdown": "**method** `draw` · protocol `Drawable`\n\nSomething that can be drawn.\n\n```cpp\n- (void)draw;\n```",
+              "range": {
+                "$place": "[thing ⟦draw⟧];",
+                "path": "main.m",
+                "range": {
+                  "start": {
+                    "line": 55,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 55,
+                    "character": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "class_property",
+          "marker": "class_property",
+          "value": {
+            "hover": {
+              "markdown": "**property** `count` · class `Shape`\n\n```cpp\n@property(class, nonatomic, assign, unsafe_unretained, readwrite) int count;\n```",
+              "range": {
+                "$place": "Shape.⟦count⟧ = 2;",
+                "path": "main.m",
+                "range": {
+                  "start": {
+                    "line": 58,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 58,
+                    "character": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "category_method",
+          "marker": "category_method",
+          "value": {
+            "hover": {
+              "markdown": "**method** `wobble` · class `Shape(Extras)`\n\n```cpp\n- (void)wobble;\n```",
+              "range": {
+                "$place": "[shape ⟦wobble⟧];",
+                "path": "main.m",
+                "range": {
+                  "start": {
+                    "line": 61,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 61,
+                    "character": 19
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "class_receiver",
+          "marker": "class_receiver",
+          "value": {
+            "hover": {
+              "markdown": "**class** `Shape`\n\nA shape on the canvas.\n\n```cpp\n@interface Shape : Object <Drawable> {\n  int _generation;\n}\n@end\n```",
+              "range": {
+                "$place": "[⟦Shape⟧ shapeWithX:1];",
+                "path": "main.m",
+                "range": {
+                  "start": {
+                    "line": 65,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 65,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "protocol",
+          "marker": "protocol",
+          "value": {
+            "hover": {
+              "markdown": "**protocol** `Drawable`\n\nSomething that can be drawn.\n\n```cpp\n@protocol Drawable\n@end\n```",
+              "range": {
+                "$place": "@protocol ⟦Drawable⟧",
+                "path": "shape.h",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 18
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "interface",
+          "marker": "interface",
+          "value": {
+            "hover": {
+              "markdown": "**class** `Shape`\n\nA shape on the canvas.\n\n```cpp\n@interface Shape : Object <Drawable> {\n  int _generation;\n}\n@end\n```",
+              "range": {
+                "$place": "@interface ⟦Shape⟧ : Object <Drawable> {",
+                "path": "shape.h",
+                "range": {
+                  "start": {
+                    "line": 17,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 17,
+                    "character": 16
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "ivar_declaration",
+          "marker": "ivar_declaration",
+          "value": {
+            "hover": {
+              "markdown": "**field** `_generation` · class `Shape`\n\n```cpp\nint _generation\n```",
+              "range": {
+                "$place": "int ⟦_generation⟧;",
+                "path": "shape.h",
+                "range": {
+                  "start": {
+                    "line": 18,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 18,
+                    "character": 19
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "property",
+          "marker": "property",
+          "value": {
+            "hover": {
+              "markdown": "**property** `x` · class `Shape`\n\n```cpp\n@property(nonatomic, assign, unsafe_unretained, readwrite) int x;\n```",
+              "range": {
+                "$place": "@property(nonatomic) int ⟦x⟧;",
+                "path": "shape.h",
+                "range": {
+                  "start": {
+                    "line": 20,
+                    "character": 25
+                  },
+                  "end": {
+                    "line": 20,
+                    "character": 26
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "setter",
+          "marker": "setter",
+          "value": {
+            "hover": {
+              "markdown": "**method** `setX:y:` · class `Shape`\n\nMoves the shape.\n\n```cpp\n- (void)setX:(int)x y:(int)y;\n```",
+              "range": {
+                "$place": "- (void)⟦setX⟧:(int)x y:(int)y;",
+                "path": "shape.h",
+                "range": {
+                  "start": {
+                    "line": 24,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 24,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "category",
+          "marker": "category",
+          "value": {
+            "hover": {
+              "markdown": "**class** `Shape(Extras)`\n\n```cpp\n@interface Shape (Extras)\n@end\n```",
+              "range": {
+                "$place": "@interface Shape (⟦Extras⟧)",
+                "path": "shape.h",
+                "range": {
+                  "start": {
+                    "line": 28,
+                    "character": 18
+                  },
+                  "end": {
+                    "line": 28,
+                    "character": 24
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

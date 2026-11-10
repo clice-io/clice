@@ -30,15 +30,15 @@ bool can_highlight_name(clang::DeclarationName name) {
         case clang::DeclarationName::CXXDestructorName:
         case clang::DeclarationName::CXXOperatorName:
         case clang::DeclarationName::CXXLiteralOperatorName:
-        case clang::DeclarationName::CXXDeductionGuideName: {
+        case clang::DeclarationName::CXXDeductionGuideName:
+        case clang::DeclarationName::ObjCZeroArgSelector:
+        case clang::DeclarationName::ObjCOneArgSelector:
+        case clang::DeclarationName::ObjCMultiArgSelector: {
             return true;
         }
 
         case clang::DeclarationName::CXXConversionFunctionName:
-        case clang::DeclarationName::CXXUsingDirective:
-        case clang::DeclarationName::ObjCZeroArgSelector:
-        case clang::DeclarationName::ObjCOneArgSelector:
-        case clang::DeclarationName::ObjCMultiArgSelector: {
+        case clang::DeclarationName::CXXUsingDirective: {
             return false;
         }
     }
@@ -317,7 +317,7 @@ private:
         }
     }
 
-    /// The `*`, `&` and `&&` a declarator writes.
+    /// The `*`, `&`, `&&` and `^` a declarator writes.
     void declarator(clang::TypeLoc type) {
         clang::SourceLocation location;
         if(auto pointer = type.getAs<clang::PointerTypeLoc>()) {
@@ -328,6 +328,10 @@ private:
             location = lvalue.getAmpLoc();
         } else if(auto rvalue = type.getAs<clang::RValueReferenceTypeLoc>()) {
             location = rvalue.getAmpAmpLoc();
+        } else if(auto object = type.getAs<clang::ObjCObjectPointerTypeLoc>()) {
+            location = object.getStarLoc();
+        } else if(auto block = type.getAs<clang::BlockPointerTypeLoc>()) {
+            location = block.getCaretLoc();
         }
         if(auto offset = token_at(location)) {
             owned[*offset] = {.kind = Kind::Operator, .modifiers = mask(Modifier::Declarator)};

@@ -213,7 +213,7 @@ local restarts = vim.fn.exists(':lsp') == 2
 ---@type vim.lsp.Config
 return {
   cmd = { 'clice', 'serve', '--log-level', 'warn' },
-  filetypes = { 'c', 'cpp', 'cuda' },
+  filetypes = { 'c', 'cpp', 'cuda', 'objc', 'objcpp' },
   root_markers = { 'clice.toml', 'compile_commands.json', '.git' },
   capabilities = restarts and { experimental = { restartServer = true } } or nil,
   handlers = restarts and {

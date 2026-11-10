@@ -108,6 +108,19 @@ int x = 1;
     ZASSERT(tokens[8].is_pp_keyword);
 }
 
+ZEST_CASE(ObjectiveCDialects) {
+    const auto& objc = dialect_of("shape.m", std::nullopt, "c11");
+    ZEXPECT(objc.ObjC == 1U);
+    ZEXPECT(objc.CPlusPlus == 0U);
+    ZEXPECT(objc.LangStd == clang::LangStandard::lang_c11);
+    const auto& objcxx = dialect_of("shape.mm", std::nullopt, "c11");
+    ZEXPECT(objcxx.ObjC == 1U);
+    ZEXPECT(objcxx.CPlusPlus == 1U);
+    ZEXPECT(objcxx.LangStd != clang::LangStandard::lang_c11);
+    ZEXPECT(dialect_of("shape.h", clang::Language::ObjC).ObjC == 1U);
+    ZEXPECT(dialect_of("shape.c").ObjC == 0U);
+}
+
 ZEST_CASE(DigitSeparator) {
     llvm::StringRef content = "x = 1'000, y";
     Lexer lexer(content, dialect_of());

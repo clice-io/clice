@@ -143,10 +143,12 @@ bool is_template_parameter(const clang::Decl* decl) {
 /// redeclaration it looked up, and adopting that list re-parents its
 /// parameters into the guide the first time the unit uses CTAD.
 const clang::DeclContext* context_of(const clang::Decl* decl) {
-    /// FIXME: an Objective-C ivar of a class extension (`@interface A () { int
-    /// _state; }`) is named in the anonymous category, so same-named ivars of two
-    /// classes' extensions are one entity; getContainingInterface() would part them.
     const clang::DeclContext* context = decl->getDeclContext();
+    /// An Objective-C class's members are named in the class wherever they
+    /// are written: its @implementation, its extensions and its categories.
+    if(const auto* objc_class = decls::objc_class(context)) {
+        return objc_class;
+    }
     auto* guide = llvm::dyn_cast<clang::CXXDeductionGuideDecl>(context);
     if(!guide || !guide->isImplicit() || !is_template_parameter(decl)) {
         return context;
@@ -867,6 +869,26 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
         hasher.add(decl->getName());
     } else if(auto* function = dyn_cast<FunctionDecl>(decl)) {
         add_function(hasher, function);
+    } else if(auto* method = dyn_cast<ObjCMethodDecl>(decl)) {
+        /// `-count` and `+count` are two methods of one class.
+        hasher.add(Tag::Other);
+        hasher.add(static_cast<std::uint64_t>(decl->getKind()));
+        add_declaration_name(hasher, decl->getDeclName());
+        hasher.add(static_cast<std::uint64_t>(method->isInstanceMethod()));
+    } else if(auto* property = dyn_cast<ObjCPropertyDecl>(decl)) {
+        hasher.add(Tag::Other);
+        hasher.add(static_cast<std::uint64_t>(decl->getKind()));
+        hasher.add(decl->getName());
+        hasher.add(static_cast<std::uint64_t>(property->isClassProperty()));
+    } else if(auto* category = dyn_cast<ObjCCategoryDecl>(decl)) {
+        /// Two classes' categories may share a name: `NSWindow (SDL)`,
+        /// `NSScreen (SDL)`.
+        hasher.add(Tag::Other);
+        hasher.add(static_cast<std::uint64_t>(decl->getKind()));
+        hasher.add(decl->getName());
+        if(auto* objc_class = category->getClassInterface()) {
+            hasher.add(entity(objc_class));
+        }
     } else if(isa<ConceptDecl>(decl)) {
         hasher.add(Tag::Concept);
         hasher.add(decl->getName());

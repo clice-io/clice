@@ -452,6 +452,21 @@ public:
         });
     }
 
+    // RAV hands a property's class receiver (`Shape.count`) over as a type
+    // location whose data lives in its own stack frame; the expression
+    // names the class itself.
+    bool TraverseObjCPropertyRefExpr(clang::ObjCPropertyRefExpr* E, DataRecursionQueue* = nullptr) {
+        return traverse_node(SemanticNode(static_cast<const clang::Stmt*>(E)),
+                             [&] { return !E->isObjectReceiver() || TraverseStmt(E->getBase()); });
+    }
+
+    // RAV leaves out the variable an @catch catches into.
+    bool TraverseObjCAtCatchStmt(clang::ObjCAtCatchStmt* S, DataRecursionQueue* = nullptr) {
+        return traverse_node(SemanticNode(static_cast<const clang::Stmt*>(S)), [&] {
+            return TraverseDecl(S->getCatchParamDecl()) && TraverseStmt(S->getCatchBody());
+        });
+    }
+
     // OpaqueValueExpr blocks traversal, we must explicitly traverse it.
     bool TraverseOpaqueValueExpr(clang::OpaqueValueExpr* E) {
         return traverse_node(SemanticNode(static_cast<const clang::Stmt*>(E)),
@@ -654,6 +669,11 @@ private:
 
             if(auto PTL = TL->getAs<clang::PointerTypeLoc>()) {
                 take_range(PTL.getStarLoc(), self);
+                return;
+            }
+
+            if(auto BTL = TL->getAs<clang::BlockPointerTypeLoc>()) {
+                take_range(BTL.getCaretLoc(), self);
                 return;
             }
 
@@ -1077,9 +1097,139 @@ void refer_calls_named(References& out,
     }
 }
 
+/// References of `kind` to `method` at the pieces of its selector written at
+/// `pieces`: the first is the use, the others its later pieces. A piece with
+/// no name (the second `:` of `add:(int)a :(int)b`) spells nothing.
+void refer_selector(References& out,
+                    const clang::ObjCMethodDecl* method,
+                    RelationKind kind,
+                    llvm::ArrayRef<clang::SourceLocation> pieces) {
+    if(!method) {
+        return;
+    }
+    auto selector = method->getSelector();
+    for(auto [index, piece]: views::enumerate(pieces)) {
+        if(selector.getNameForSlot(static_cast<unsigned>(index)).empty()) {
+            continue;
+        }
+        out.push_back({.decl = method, .kind = kind, .location = piece, .later_piece = index != 0});
+    }
+}
+
+/// References to the protocols a declaration or a type lists, at their names.
+void refer_protocols(References& out, auto&& protocols, auto&& locations) {
+    for(auto [protocol, location]: views::zip(protocols, locations)) {
+        refer(out, protocol, RelationKind::Reference, location);
+    }
+}
+
+/// The Objective-C declarations: whether `D` is one, its references added.
+bool objc_decl_references(const clang::Decl* D, References& out) {
+    /// @interface Shape : NSObject <Drawable>   @class Shape;
+    ///            ^~~~ declaration   ^~~~ reference to each protocol
+    /// The @implementation defines the class.
+    if(auto* ID = llvm::dyn_cast<clang::ObjCInterfaceDecl>(D)) {
+        refer(out, ID, RelationKind::Declaration, ID->getLocation());
+        if(ID->isThisDeclarationADefinition()) {
+            refer_protocols(out, ID->protocols(), ID->protocol_locs());
+        }
+        return true;
+    }
+
+    /// @implementation Shape
+    ///                 ^~~~ definition of the class
+    if(auto* IMD = llvm::dyn_cast<clang::ObjCImplementationDecl>(D)) {
+        refer(out, IMD, RelationKind::Definition, IMD->getLocation());
+        refer(out, IMD->getSuperClass(), RelationKind::Reference, IMD->getSuperClassLoc());
+        return true;
+    }
+
+    /// @interface Shape (Extras) <Drawable>   @interface Shape ()
+    ///            ^~~~ reference  ^~~~ declaration of the category; an
+    /// extension has no name of its own
+    if(auto* CD = llvm::dyn_cast<clang::ObjCCategoryDecl>(D)) {
+        refer(out, CD->getClassInterface(), RelationKind::Reference, CD->getLocation());
+        if(!CD->IsClassExtension()) {
+            refer(out, CD, RelationKind::Declaration, CD->getCategoryNameLoc());
+        }
+        refer_protocols(out, CD->protocols(), CD->protocol_locs());
+        return true;
+    }
+
+    /// @implementation Shape (Extras)
+    ///                 ^~~~ reference  ^~~~ definition of the category
+    if(auto* CID = llvm::dyn_cast<clang::ObjCCategoryImplDecl>(D)) {
+        refer(out, CID->getClassInterface(), RelationKind::Reference, CID->getLocation());
+        refer(out, CID, RelationKind::Definition, CID->getCategoryNameLoc());
+        return true;
+    }
+
+    /// @protocol Drawable <NSObject>   @protocol Drawable;
+    ///           ^~~~ definition        ^~~~ declaration
+    if(auto* PD = llvm::dyn_cast<clang::ObjCProtocolDecl>(D)) {
+        bool defines = PD->isThisDeclarationADefinition();
+        refer(out,
+              PD,
+              defines ? RelationKind::Definition : RelationKind::Declaration,
+              PD->getLocation());
+        if(defines) {
+            refer_protocols(out, PD->protocols(), PD->protocol_locs());
+        }
+        return true;
+    }
+
+    /// - (void)setX:(double)x y:(double)y;
+    ///         ^~~~           ^~~~ declaration (definition with a body)
+    if(auto* MD = llvm::dyn_cast<clang::ObjCMethodDecl>(D)) {
+        llvm::SmallVector<clang::SourceLocation, 4> pieces;
+        MD->getSelectorLocs(pieces);
+        refer_selector(out,
+                       MD,
+                       MD->isThisDeclarationADefinition() ? RelationKind::Definition
+                                                          : RelationKind::Declaration,
+                       pieces);
+        return true;
+    }
+
+    /// @property (nonatomic) double x;
+    ///                              ^~~~ declaration
+    if(auto* PD = llvm::dyn_cast<clang::ObjCPropertyDecl>(D)) {
+        refer(out, PD, RelationKind::Declaration, PD->getLocation());
+        return true;
+    }
+
+    /// @synthesize name = _name;
+    ///             ^~~~   ^~~~~ definition of the ivar it names apart
+    ///             reference to the property
+    /// What a property synthesizes with no @synthesize written is nowhere.
+    if(auto* PID = llvm::dyn_cast<clang::ObjCPropertyImplDecl>(D)) {
+        if(PID->getBeginLoc().isInvalid()) {
+            return true;
+        }
+        refer(out, PID->getPropertyDecl(), RelationKind::Reference, PID->getLocation());
+        if(auto location = PID->getPropertyIvarDeclLoc();
+           location.isValid() && location != PID->getLocation()) {
+            refer(out, PID->getPropertyIvarDecl(), RelationKind::Definition, location);
+        }
+        return true;
+    }
+
+    /// A synthesized ivar has no declaration of its own: its location is
+    /// the property's name, or the name an @synthesize writes, and those
+    /// spell the property.
+    if(auto* IVD = llvm::dyn_cast<clang::ObjCIvarDecl>(D); IVD && IVD->getSynthesize()) {
+        return true;
+    }
+    return false;
+}
+
 /// The per-decl-kind extraction below is ported verbatim from the former
 /// SemanticVisitor: the same decls, the same roles, the same name locations.
 void decl_references(const clang::Decl* D, References& out, types::TemplateResolver* resolver) {
+    if(objc_decl_references(D, out)) {
+        return;
+    }
+
     /// namespace Foo = Bar
     ///            ^     ^~~~ reference
     ///            ^~~~ definition
@@ -1342,6 +1492,34 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
 }
 
 void type_loc_references(clang::TypeLoc TL, References& out, types::TemplateResolver* resolver) {
+    /// Shape *shape;  NSArray<id<Drawable>> *shapes;
+    /// ^~~~ reference          ^~~~ reference to each protocol
+    if(auto OITL = TL.getAs<clang::ObjCInterfaceTypeLoc>()) {
+        refer(out, OITL.getIFaceDecl(), RelationKind::Reference, OITL.getNameLoc());
+        return;
+    }
+    if(auto OOTL = TL.getAs<clang::ObjCObjectTypeLoc>()) {
+        for(unsigned index = 0; index < OOTL.getNumProtocols(); index += 1) {
+            refer(out,
+                  OOTL.getProtocol(index),
+                  RelationKind::Reference,
+                  OOTL.getProtocolLoc(index));
+        }
+        return;
+    }
+    /// @interface Box<ObjectType> - (ObjectType)first;
+    ///                                ^~~~ reference
+    if(auto OTPTL = TL.getAs<clang::ObjCTypeParamTypeLoc>()) {
+        refer(out, OTPTL.getDecl(), RelationKind::Reference, OTPTL.getNameLoc());
+        for(unsigned index = 0; index < OTPTL.getNumProtocols(); index += 1) {
+            refer(out,
+                  OTPTL.getProtocol(index),
+                  RelationKind::Reference,
+                  OTPTL.getProtocolLoc(index));
+        }
+        return;
+    }
+
     /// struct Foo foo;
     ///         ^~~~ reference
     if(auto TTL = TL.getAs<clang::TagTypeLoc>()) {
@@ -1486,6 +1664,67 @@ void stmt_references(const clang::Stmt* S,
                      References& out,
                      types::TemplateResolver* resolver,
                      const clang::CallExpr* call = nullptr) {
+    /// [shape setX:1 y:2]
+    ///        ^~~~   ^~~~ reference to the method clang resolves; a message
+    /// to `id` or `Class` may reach any method of its selector, and clang
+    /// picks one of them: a candidate. `self` in a class method is a
+    /// `Class` clang knows to be its class.
+    if(auto* OME = llvm::dyn_cast<clang::ObjCMessageExpr>(S)) {
+        llvm::SmallVector<clang::SourceLocation, 4> pieces;
+        OME->getSelectorLocs(pieces);
+        const auto* receiver = OME->getReceiverKind() == clang::ObjCMessageExpr::Instance
+                                   ? OME->getInstanceReceiver()
+                                   : nullptr;
+        bool untyped =
+            receiver && !receiver->isObjCSelfExpr() &&
+            (receiver->getType()->isObjCIdType() || receiver->getType()->isObjCClassType());
+        refer_selector(out,
+                       decls::objc_message_target(*OME),
+                       untyped ? RelationKind::Candidate : RelationKind::Reference,
+                       pieces);
+        return;
+    }
+
+    /// shape.name = @"square";  Shape.count
+    ///       ^~~~ reference to the property: a class property's, which
+    /// clang reaches through its accessor, or the accessor a method
+    /// declares (the getter when both are used); a class receiver names its
+    /// class
+    if(auto* OPRE = llvm::dyn_cast<clang::ObjCPropertyRefExpr>(S)) {
+        if(OPRE->isClassReceiver()) {
+            refer(out,
+                  OPRE->getClassReceiver(),
+                  RelationKind::Reference,
+                  OPRE->getReceiverLocation());
+        }
+        const clang::NamedDecl* target = nullptr;
+        if(OPRE->isExplicitProperty()) {
+            target = OPRE->getExplicitProperty();
+        } else {
+            const auto* accessor = OPRE->isMessagingGetter() ? OPRE->getImplicitPropertyGetter()
+                                                             : OPRE->getImplicitPropertySetter();
+            const clang::ObjCPropertyDecl* property =
+                accessor ? accessor->findPropertyDecl() : nullptr;
+            target = property ? static_cast<const clang::NamedDecl*>(property) : accessor;
+        }
+        refer(out, target, RelationKind::Reference, OPRE->getLocation());
+        return;
+    }
+
+    /// _generation += 1;
+    /// ^~~~ reference
+    if(auto* OIRE = llvm::dyn_cast<clang::ObjCIvarRefExpr>(S)) {
+        refer(out, OIRE->getDecl(), RelationKind::Reference, OIRE->getLocation());
+        return;
+    }
+
+    /// @protocol(Drawable)
+    ///           ^~~~ reference
+    if(auto* OPE = llvm::dyn_cast<clang::ObjCProtocolExpr>(S)) {
+        refer(out, OPE->getProtocol(), RelationKind::Reference, OPE->getProtocolIdLoc());
+        return;
+    }
+
     /// foo = 1
     ///  ^~~~ reference
     if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(S)) {
@@ -1846,7 +2085,11 @@ llvm::SmallVector<NameOccurrence, 2> spelled(const References& references) {
     llvm::SmallVector<NameOccurrence, 2> out;
     for(auto& reference: references) {
         if(reference.location.isValid()) {
-            out.push_back({reference.decl, reference.kind, reference.location, reference.name_end});
+            out.push_back({reference.decl,
+                           reference.kind,
+                           reference.location,
+                           reference.name_end,
+                           reference.later_piece});
         }
     }
     return out;
@@ -1898,7 +2141,8 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semant
 bool is_written(const Semantics& semantics, std::uint32_t index) {
     auto& entry = semantics.node(index);
     auto* expr = entry.node.get<clang::Expr>();
-    if(!llvm::isa_and_present<clang::DeclRefExpr, clang::MemberExpr>(expr)) {
+    if(!llvm::isa_and_present<clang::DeclRefExpr, clang::MemberExpr, clang::ObjCIvarRefExpr>(
+           expr)) {
         return false;
     }
 

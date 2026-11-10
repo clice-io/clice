@@ -1,0 +1,131 @@
+[answers.class.rename.edits]
+"main.m" = '''
+ #import "shape.h"
+
+-@interface Shape ()
++@interface Figure ()
+ @property(nonatomic, copy) NSString *name;
+ @end
+
+-@implementation Shape
++@implementation Figure
+ @synthesize x = _x;
+
+…
+
+ + (instancetype)shapeWithX:(int)x {
+-    Shape *shape = [[self alloc] init];
++    Figure *shape = [[self alloc] init];
+     [shape setX:x y:0];
+     return shape;
+…
+ @end
+
+-@implementation Shape (Extras)
++@implementation Figure (Extras)
+ - (void)wobble {
+     [self setX:self.x + 1 y:0];
+…
+ @end
+
+-@interface Circle : Shape
++@interface Circle : Figure
+ @end
+
+…
+ @end
+
+-void render(id thing, id<Drawable> drawable, Shape *shape) {
++void render(id thing, id<Drawable> drawable, Figure *shape) {
+     [thing draw];
+     [drawable draw];
+     [shape draw];
+-    Shape.count = 2;
++    Figure.count = 2;
+     SEL selector = @selector(setX:y:);
+     void (^block)(void) = ^{
+…
+     block();
+     @try {
+-        [Shape shapeWithX:1];
+-    } @catch (Shape *error) {
++        [Figure shapeWithX:1];
++    } @catch (Figure *error) {
+         [error draw];
+     } @finally {
+'''
+"shape.h" = '''
+
+ /// A shape on the canvas.
+-@interface Shape : Object <Drawable> {
++@interface Figure : Object <Drawable> {
+     int _generation;
+ }
+…
+ @end
+
+-@interface Shape (Extras)
++@interface Figure (Extras)
+ - (void)wobble;
+ @end
+'''
+
+[answers.protocol.rename.edits]
+"main.m" = '''
+ @end
+
+-void render(id thing, id<Drawable> drawable, Shape *shape) {
++void render(id thing, id<Paintable> drawable, Shape *shape) {
+     [thing draw];
+     [drawable draw];
+'''
+"shape.h" = '''
+ /// Something that can be drawn.
+-@protocol Drawable
++@protocol Paintable
+ - (void)draw;
+ @optional
+…
+
+ /// A shape on the canvas.
+-@interface Shape : Object <Drawable> {
++@interface Shape : Object <Paintable> {
+     int _generation;
+ }
+'''
+
+[answers.ivar.rename.edits]
+"main.m" = '''
+ - (void)setX:(int)x y:(int)y {
+     _x = x + y;
+-    _generation += 1;
++    _moves += 1;
+     _name = @"moved";
+ }
+'''
+"shape.h" = '''
+ /// A shape on the canvas.
+ @interface Shape : Object <Drawable> {
+-    int _generation;
++    int _moves;
+ }
+ @property(nonatomic) int x;
+'''
+
+[answers.category.rename.edits]
+"main.m" = '''
+ @end
+
+-@implementation Shape (Extras)
++@implementation Shape (Motion)
+ - (void)wobble {
+     [self setX:self.x + 1 y:0];
+'''
+"shape.h" = '''
+ @end
+
+-@interface Shape (Extras)
++@interface Shape (Motion)
+ - (void)wobble;
+ @end
+'''

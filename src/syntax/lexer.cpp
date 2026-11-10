@@ -44,22 +44,36 @@ const clang::LangOptions& raw_dialect(clang::Language language,
     return it->second;
 }
 
-const clang::LangOptions& dialect_of(llvm::StringRef path, bool c, llvm::StringRef standard) {
-    auto language = c || path.ends_with(".c") ? clang::Language::C : clang::Language::CXX;
-    auto kind = clang::getDefaultLanguageStandard(language, llvm::Triple());
+const clang::LangOptions& dialect_of(llvm::StringRef path,
+                                     std::optional<clang::Language> language,
+                                     llvm::StringRef standard) {
+    if(!language) {
+        language = path.ends_with(".c")    ? clang::Language::C
+                   : path.ends_with(".m")  ? clang::Language::ObjC
+                   : path.ends_with(".mm") ? clang::Language::ObjCXX
+                                           : clang::Language::CXX;
+    }
+    // Objective-C takes the standards of the language it extends.
+    auto base = *language == clang::Language::ObjC     ? clang::Language::C
+                : *language == clang::Language::ObjCXX ? clang::Language::CXX
+                                                       : *language;
+    auto kind = clang::getDefaultLanguageStandard(base, llvm::Triple());
     if(!standard.empty()) {
         auto parsed = clang::LangStandard::getLangKind(standard);
         if(parsed != clang::LangStandard::lang_unspecified &&
-           clang::LangStandard::getLangStandardForKind(parsed).getLanguage() == language) {
+           clang::LangStandard::getLangStandardForKind(parsed).getLanguage() == base) {
             kind = parsed;
         }
     }
-    return raw_dialect(language, kind);
+    return raw_dialect(*language, kind);
 }
 
 const clang::IdentifierTable& keywords(const clang::LangOptions& dialect) {
-    const auto& raw =
-        raw_dialect(dialect.CPlusPlus ? clang::Language::CXX : clang::Language::C, dialect.LangStd);
+    auto language = dialect.ObjC
+                        ? (dialect.CPlusPlus ? clang::Language::ObjCXX : clang::Language::ObjC)
+                    : dialect.CPlusPlus ? clang::Language::CXX
+                                        : clang::Language::C;
+    const auto& raw = raw_dialect(language, dialect.LangStd);
     auto& dialects = RawDialects::get();
     std::lock_guard lock(dialects.mutex);
     return dialects.keywords.try_emplace(&raw, raw).first->second;

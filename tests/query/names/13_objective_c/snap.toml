@@ -1,0 +1,82 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 29 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query definition Shape"]
+stdout = '''
+{
+  "result": {
+    "name": "Shape",
+    "kind": "Class",
+    "symbol": "#fbd764220a6273b7",
+    "documentation": "A shape on the canvas.",
+    "definition": {
+      "file": "${WS}/main.m",
+      "startLine": 7,
+      "endLine": 38,
+      "text": "@implementation Shape\n@synthesize x = _x;\n\nstatic int shapes;\n\n+ (int)count {\n    return shapes;\n}\n\n+ (void)setCount:(int)count {\n    shapes = count;\n}\n\n- (int)area {\n    return _x * _x;\n}\n\n- (void)setX:(int)x y:(int)y {\n    _x = x + y;\n    _generation += 1;\n    _name = @\"moved\";\n}\n\n+ (instancetype)shapeWithX:(int)x {\n    Shape *shape = [[self alloc] init];\n    [shape setX:x y:0];\n    return shape;\n}\n\n- (void)draw {\n}\n@end"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query references Shape::setX:y:"]
+stdout = '''
+{
+  "result": {
+    "name": "setX:y:",
+    "kind": "Method",
+    "symbol": "#db012a39567dd9cd",
+    "references": [
+      {
+        "file": "${WS}/main.m",
+        "line": 32,
+        "context": "    [shape setX:x y:0];",
+        "function": "Shape::shapeWithX:"
+      },
+      {
+        "file": "${WS}/main.m",
+        "line": 42,
+        "context": "    [self setX:self.x + 1 y:0];",
+        "function": "Shape::wobble"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query references Drawable::draw"]
+stdout = '''
+{
+  "result": {
+    "name": "draw",
+    "kind": "Method",
+    "symbol": "#f0a3de877b386c8a",
+    "references": [
+      {
+        "file": "${WS}/main.m",
+        "line": 56,
+        "context": "    [thing draw];",
+        "function": "render"
+      },
+      {
+        "file": "${WS}/main.m",
+        "line": 57,
+        "context": "    [drawable draw];",
+        "function": "render"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0

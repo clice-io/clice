@@ -210,6 +210,14 @@ private:
             return;
         }
 
+        if(const auto* method = llvm::dyn_cast<clang::ObjCMethodDecl>(decl);
+           method && method->hasBody()) {
+            add_declaration_block(method->getBody()->getSourceRange(),
+                                  method->getSelectorStartLoc(),
+                                  "functionBody");
+            return;
+        }
+
         if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
            function && function->doesThisDeclarationHaveABody()) {
             auto kind = *declaration_fold_kind(SymbolKind::from(function));
@@ -1040,9 +1048,10 @@ auto folding_ranges(SourceText& source,
         }
 
         // The block keeps the name and signature visible like the AST
-        // folds do.
+        // folds do. It closes the declaration: an Objective-C container
+        // closes with `@end`, past its last method's body.
         auto group = last_brace_group(braces, decl.extent);
-        if(!group) {
+        if(!group || group->end != decl.extent.end) {
             continue;
         }
 

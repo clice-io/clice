@@ -66,7 +66,8 @@ bool renamable(SymbolKind kind) {
         case SymbolKind::Parameter:
         case SymbolKind::Label:
         case SymbolKind::Concept:
-        case SymbolKind::Operator: return true;
+        case SymbolKind::Operator:
+        case SymbolKind::Protocol: return true;
         default: return false;
     }
 }
@@ -204,6 +205,12 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
         return macro_target(serving, named);
     }
     auto query = serving.written_only();
+    if(symbol.kind == SymbolKind::Property) {
+        return std::unexpected(std::format(
+            "renaming the Objective-C property `{}` is not supported: its accessors and the "
+            "instance variable it synthesizes would have to change with it",
+            symbol.name));
+    }
     if(!renamable(symbol.kind)) {
         return std::unexpected(std::format("`{}` cannot be renamed", symbol.name));
     }
@@ -232,6 +239,12 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
             }
             root = std::move(deduced.front());
             break;
+        }
+        case index::NameForm::Selector: {
+            return std::unexpected(std::format(
+                "renaming the Objective-C method `{}` is not supported: every method its "
+                "messages may reach would have to change with it",
+                symbol.name));
         }
         case index::NameForm::Conversion:
         case index::NameForm::Operator:
@@ -333,10 +346,16 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
     }
     if(!found && refused.empty()) {
         for(auto symbol: cursor->symbols) {
-            if(auto info = query.symbol_info(symbol, cursor->site.file);
-               info && info->kind == SymbolKind::Macro) {
+            auto info = query.symbol_info(symbol, cursor->site.file);
+            if(!info) {
+                continue;
+            }
+            if(info->kind == SymbolKind::Macro) {
                 return std::unexpected(unplaced_macro(*info));
             }
+            // An instance variable an Objective-C property synthesizes, for one.
+            return std::unexpected(
+                std::format("`{}` has no declaration in the index to rename", info->name));
         }
     }
     if(!found) {

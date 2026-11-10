@@ -1,0 +1,15 @@
+[test."main.m"]
+diagnostics = [
+    {
+        at = "⟦@⟧import Foundation;",
+        severity = "error",
+        message = "use of '@import' when modules are disabled",
+        source = "clang",
+        code = "err_atimport",
+    },
+]
+
+[test.guidance]
+value = [
+    "The compile commands use Clang header modules (-fmodules), which clice does not support: their files compile without them, and an `@import` is an error",
+]

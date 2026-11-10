@@ -40,6 +40,8 @@ bool links_files(SymbolKind kind) {
         case SymbolKind::Variable:
         case SymbolKind::Concept:
         case SymbolKind::Operator:
+        case SymbolKind::Protocol:
+        case SymbolKind::Property:
         case SymbolKind::Macro: return true;
         default: return false;
     }

@@ -86,8 +86,31 @@ bool fixed_std_utility(const clang::NamedDecl* decl);
 auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl*;
 
 /// The canonical decl, folding instantiations back to the canonical decl
-/// of their pattern.
+/// of their pattern, and an Objective-C @implementation back to the
+/// @interface (or the category) it defines.
 auto normalize(const clang::NamedDecl* decl) -> const clang::NamedDecl*;
+
+/// The @interface or the category an Objective-C @implementation defines;
+/// any other decl itself.
+auto objc_defined(const clang::NamedDecl* decl) -> const clang::NamedDecl*;
+
+/// The Objective-C class whose members a context declares: an @interface,
+/// its @implementation, one of its extensions or categories; null for a
+/// protocol and for any other context.
+auto objc_class(const clang::DeclContext* context) -> const clang::ObjCInterfaceDecl*;
+
+/// The method an Objective-C message runs as far as its receiver's static
+/// class tells. Clang names the declaration its lookup found, which for a
+/// method the class adopts from a protocol, or declares in its
+/// @implementation alone, is the protocol's or a superclass's: the class,
+/// or a superclass below the one declaring it, that has a method of the
+/// selector names it instead.
+auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::ObjCMethodDecl*;
+
+/// The nearest superclass method an Objective-C method overrides, null for
+/// none; getOverriddenMethods leaves out one only an @implementation or a
+/// category declares.
+auto objc_overridden(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl*;
 
 /// The constructor a construction runs, as the source names it: an
 /// inherited constructor is an implicit declaration standing in for the

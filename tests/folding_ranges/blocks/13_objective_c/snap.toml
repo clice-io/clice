@@ -1,0 +1,23 @@
+[answers."main.m"]
+folding_ranges = [
+    { kind = "functionBody", at = "+ (int)count ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "+ (void)setCount:(int)count ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "- (int)area ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "- (void)setX:(int)x y:(int)y ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "+ (instancetype)shapeWithX:(int)x ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "- (void)draw ⟦{ … }⟧ (2 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "- (void)wobble ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "- (void)draw ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    {
+        kind = "functionBody",
+        at = "void render(id thing, id<Drawable> drawable, Shape *shape) ⟦{ … }⟧ (18 lines)",
+        collapsed = "{...}",
+    },
+    { kind = "compoundStmt", at = "void (^block)(void) = ^⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "@try ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "} @catch (Shape *error) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "} @finally ⟦{ … }⟧ (2 lines)", collapsed = "{...}" },
+]
+
+[answers."shape.h"]
+folding_ranges = []

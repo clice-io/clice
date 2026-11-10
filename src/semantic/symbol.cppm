@@ -34,6 +34,8 @@ struct SymbolKind {
         Concept,      ///> C++20 concept.
         Attribute,    ///> GNU/MSVC/C++11/C23 attribute.
         Operator,     ///> C/C++ operator.
+        Protocol,     ///> Objective-C protocol.
+        Property,     ///> Objective-C property.
         Invalid,
     };
 

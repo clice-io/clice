@@ -89,7 +89,7 @@ push runs them, `ecosystem/` at the repository root does
   build = ["main.cpp"]
   ```
 
-  - A command is `clang++` (`clang` for a `.c` unit), `flags`, the unit's own
+  - A command is `clang++` (`clang` for a `.c` or `.m` unit), `flags`, the unit's own
     arguments, `-fsyntax-only`, the file. Nothing else is added: a topic
     states its standard in `flags`, and a unit's own `-std` overrides it.
   - Without `units`, every C-family source of the case is a unit with no

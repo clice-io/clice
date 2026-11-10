@@ -1,0 +1,188 @@
+[answers.implementation.hover]
+markdown = '''
+**class** `Shape`
+
+A shape on the canvas.
+
+```cpp
+@interface Shape : Object <Drawable> {
+  int _generation;
+}
+@end
+```
+'''
+range = "@implementation ⟦Shape⟧"
+
+[answers.synthesized_use.hover]
+markdown = '''
+**field** `_x` · class `Shape`
+
+```cpp
+int _x
+```
+**Type:** `int`
+'''
+range = "⟦_x⟧ = x + y;"
+
+[answers.auto_ivar.hover]
+markdown = '''
+**field** `_name` · class `Shape`
+
+```cpp
+NSString* _name
+```
+**Type:** `NSString *`
+'''
+range = '⟦_name⟧ = @"moved";'
+
+[answers.message.hover]
+markdown = '''
+**method** `setX:y:` · class `Shape`
+
+Moves the shape.
+
+```cpp
+- (void)setX:(int)x y:(int)y;
+```
+'''
+range = "[shape ⟦setX⟧:x y:0];"
+
+[answers.second_piece.hover]
+markdown = '''
+**method** `setX:y:` · class `Shape`
+
+Moves the shape.
+
+```cpp
+- (void)setX:(int)x y:(int)y;
+```
+'''
+range = "[shape setX:x ⟦y⟧:0];"
+
+[answers.property_use.hover]
+markdown = '''
+**property** `x` · class `Shape`
+
+```cpp
+@property(nonatomic, assign, unsafe_unretained, readwrite) int x;
+```
+'''
+range = "[self setX:self.⟦x⟧ + 1 y:0];"
+
+[answers.untyped.hover]
+markdown = '''
+**method** `draw` · protocol `Drawable`
+
+Something that can be drawn.
+
+```cpp
+- (void)draw;
+```
+'''
+range = "[thing ⟦draw⟧];"
+
+[answers.class_property.hover]
+markdown = '''
+**property** `count` · class `Shape`
+
+```cpp
+@property(class, nonatomic, assign, unsafe_unretained, readwrite) int count;
+```
+'''
+range = "Shape.⟦count⟧ = 2;"
+
+[answers.category_method.hover]
+markdown = '''
+**method** `wobble` · class `Shape(Extras)`
+
+```cpp
+- (void)wobble;
+```
+'''
+range = "[shape ⟦wobble⟧];"
+
+[answers.class_receiver.hover]
+markdown = '''
+**class** `Shape`
+
+A shape on the canvas.
+
+```cpp
+@interface Shape : Object <Drawable> {
+  int _generation;
+}
+@end
+```
+'''
+range = "[⟦Shape⟧ shapeWithX:1];"
+
+[answers.protocol.hover]
+markdown = '''
+**protocol** `Drawable`
+
+Something that can be drawn.
+
+```cpp
+@protocol Drawable
+@end
+```
+'''
+range = "@protocol ⟦Drawable⟧"
+
+[answers.interface.hover]
+markdown = '''
+**class** `Shape`
+
+A shape on the canvas.
+
+```cpp
+@interface Shape : Object <Drawable> {
+  int _generation;
+}
+@end
+```
+'''
+range = "@interface ⟦Shape⟧ : Object <Drawable> {"
+
+[answers.ivar_declaration.hover]
+markdown = '''
+**field** `_generation` · class `Shape`
+
+```cpp
+int _generation
+```
+'''
+range = "int ⟦_generation⟧;"
+
+[answers.property.hover]
+markdown = '''
+**property** `x` · class `Shape`
+
+```cpp
+@property(nonatomic, assign, unsafe_unretained, readwrite) int x;
+```
+'''
+range = "@property(nonatomic) int ⟦x⟧;"
+
+[answers.setter.hover]
+markdown = '''
+**method** `setX:y:` · class `Shape`
+
+Moves the shape.
+
+```cpp
+- (void)setX:(int)x y:(int)y;
+```
+'''
+range = "- (void)⟦setX⟧:(int)x y:(int)y;"
+
+[answers.category.hover]
+markdown = '''
+**class** `Shape(Extras)`
+
+```cpp
+@interface Shape (Extras)
+@end
+```
+'''
+range = "@interface Shape (⟦Extras⟧)"

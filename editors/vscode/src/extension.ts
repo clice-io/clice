@@ -14,6 +14,7 @@ import {
     StreamInfo,
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
+import { LANGUAGES } from "./languages";
 import { serverOutput, TraceChannel } from "./log";
 import { exitsWithin, retire } from "./process";
 import { getSetting, Setting, variable, workspaceDirectory } from "./setting";
@@ -333,17 +334,14 @@ export async function activate(context: ExtensionContext) {
     // The manifest has no workspaceContains event, not even for a root
     // clice.toml: with background indexing, activating is a real cost, and
     // monorepos and vendored checkouts hold C++ the user never opens. Until a
-    // C, C++ or CUDA file is opened or a clice command is run there is no
+    // file of a language it serves is opened or a clice command is run there is no
     // server; accepted.
     const channel = window.createOutputChannel("clice", { log: true });
     const traceChannel = new TraceChannel();
     context.subscriptions.push(channel, traceChannel);
 
-    const documentSelector = [
-        { scheme: "file", language: "cpp" },
-        { scheme: "file", language: "c" },
-        { scheme: "file", language: "cuda-cpp" },
-    ];
+    void vscode.commands.executeCommand("setContext", "clice.languages", LANGUAGES);
+    const documentSelector = LANGUAGES.map((language) => ({ scheme: "file", language }));
     const inactive = registerInactiveRegions(() => client, context);
     const clientOptions: LanguageClientOptions = {
         documentSelector,

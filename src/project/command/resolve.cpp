@@ -302,16 +302,19 @@ async::task<Resolution> Project::resolve_with_trees(Fid file,
 
 const clang::LangOptions& Project::dialect(Fid file, const ContextChoice* choice) {
     auto ref = select_command(file, {.choice = choice}).ref;
-    auto language = language_of(ref);
-    bool is_c =
-        language == clang::driver::types::TY_C || language == clang::driver::types::TY_CHeader;
+    using namespace clang::driver::types;
+    auto type = language_of(ref);
+    auto language = type == TY_C || type == TY_CHeader             ? clang::Language::C
+                    : type == TY_ObjC || type == TY_ObjCHeader     ? clang::Language::ObjC
+                    : type == TY_ObjCXX || type == TY_ObjCXXHeader ? clang::Language::ObjCXX
+                                                                   : clang::Language::CXX;
     llvm::StringRef standard;
     for(auto& arg: commands.get(ref.command).args) {
         if(arg.opt_id == clang_options::OPT_std_EQ && arg.values.size() == 1) {
             standard = arg.values[0];
         }
     }
-    return dialect_of("", is_c, standard);
+    return dialect_of("", language, standard);
 }
 
 std::uint64_t Project::command_identity(Fid unit) {
