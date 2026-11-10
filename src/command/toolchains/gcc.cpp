@@ -225,7 +225,7 @@ void add_frontend_dirs(Job& job, llvm::ArrayRef<GCCSearchDir> printed, llvm::Str
         if(parsed) {
             auto& arg = parsed_args.emplace_back(LocalArg{.opt_id = parsed->id});
             for(auto value: parsed->values) {
-                arg.values.push_back(saver.save(value).data());
+                arg.values.push_back(saver.save(llvm::StringRef(value)).data());
             }
         }
     }
