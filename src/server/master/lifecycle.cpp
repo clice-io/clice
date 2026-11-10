@@ -166,14 +166,18 @@ void MasterServer::initialize() {
     auto machine_resident = default_max_resident(memory_state({}).limit);
     std::size_t resident = 0;
     for(auto& project: projects) {
-        auto& cfg = project->project.settings.project;
-        pool_opts.stateful_count = std::max(pool_opts.stateful_count, cfg.stateful_worker_count);
-        pool_opts.stateless_count = std::max(pool_opts.stateless_count, cfg.stateless_worker_count);
-        pool_opts.min_stateless = std::max(pool_opts.min_stateless, cfg.min_stateless_worker_count);
-        pool_opts.max_stateless = std::max(pool_opts.max_stateless, cfg.max_stateless_worker_count);
+        auto& settings = project->project.settings.project;
+        pool_opts.stateful_count =
+            std::max(pool_opts.stateful_count, settings.stateful_worker_count);
+        pool_opts.stateless_count =
+            std::max(pool_opts.stateless_count, settings.stateless_worker_count);
+        pool_opts.min_stateless =
+            std::max(pool_opts.min_stateless, settings.min_stateless_worker_count);
+        pool_opts.max_stateless =
+            std::max(pool_opts.max_stateless, settings.max_stateless_worker_count);
         // 0 leaves the ceiling to the core count, the largest one.
-        unbounded = unbounded || cfg.max_stateless_worker_count == 0;
-        auto documents = cfg.max_resident_documents;
+        unbounded = unbounded || settings.max_stateless_worker_count == 0;
+        auto documents = settings.max_resident_documents;
         resident = std::max<std::size_t>(resident, documents == 0 ? machine_resident : documents);
     }
     pool_opts.max_resident = resident;

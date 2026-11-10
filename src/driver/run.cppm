@@ -266,17 +266,18 @@ inline bool start_batch(BatchRun& run,
     run.files.spell_root(batch.root);
     project.root = CanonicalPath(batch.root);
     project.settings = batch.loaded.settings;
-    auto& cfg = project.settings.project;
-    cfg.idle_timeout_ms = 0;
+    auto& settings = project.settings.project;
+    settings.idle_timeout_ms = 0;
     if(workers != 0) {
-        cfg.stateless_worker_count = workers;
-        cfg.min_stateless_worker_count = std::min(cfg.min_stateless_worker_count, workers);
-        cfg.max_stateless_worker_count = workers;
+        settings.stateless_worker_count = workers;
+        settings.min_stateless_worker_count =
+            std::min(settings.min_stateless_worker_count, workers);
+        settings.max_stateless_worker_count = workers;
     }
 
     logging::stderr_logger(log_tag);
-    if(!cfg.logging_dir.empty()) {
-        auto session_dir = logging::start_session_log(cfg.logging_dir);
+    if(!settings.logging_dir.empty()) {
+        auto session_dir = logging::start_session_log(settings.logging_dir);
         if(logging::file_logger(session_dir)) {
             LOG_INFO("clice {} ({}) runs {} on {}, pid {}",
                      clice::version,
@@ -295,9 +296,9 @@ inline bool start_batch(BatchRun& run,
     WorkerPoolOptions pool_opts;
     // Stateful workers host open documents; a batch run has none.
     pool_opts.stateful_count = 0;
-    pool_opts.stateless_count = cfg.stateless_worker_count;
-    pool_opts.min_stateless = cfg.min_stateless_worker_count;
-    pool_opts.max_stateless = cfg.max_stateless_worker_count;
+    pool_opts.stateless_count = settings.stateless_worker_count;
+    pool_opts.min_stateless = settings.min_stateless_worker_count;
+    pool_opts.max_stateless = settings.max_stateless_worker_count;
     pool_opts.session_dir = run.session_dir;
     if(!run.pool.start(pool_opts)) {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
