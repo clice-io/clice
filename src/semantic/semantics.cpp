@@ -252,6 +252,13 @@ public:
             return true;
         }
 
+        // The instance variable a property synthesizes is declared by no
+        // code: an @synthesize naming it holds the name.
+        if(auto* ivar = llvm::dyn_cast_if_present<clang::ObjCIvarDecl>(X);
+           ivar && ivar->getSynthesize()) {
+            return true;
+        }
+
         // Base::TraverseDecl will suppress children, but not this node itself.
         if(X && X->isImplicit()) {
             // Most implicit nodes have only implicit children and can be skipped.
@@ -1211,13 +1218,6 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
            location.isValid() && location != PID->getLocation()) {
             refer(out, PID->getPropertyIvarDecl(), RelationKind::Definition, location);
         }
-        return true;
-    }
-
-    /// A synthesized ivar has no declaration of its own: its location is
-    /// the property's name, or the name an @synthesize writes, and those
-    /// spell the property.
-    if(auto* IVD = llvm::dyn_cast<clang::ObjCIvarDecl>(D); IVD && IVD->getSynthesize()) {
         return true;
     }
     return false;

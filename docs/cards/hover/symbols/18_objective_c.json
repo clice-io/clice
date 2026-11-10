@@ -19,6 +19,12 @@
           "range": false
         },
         {
+          "name": "synthesize",
+          "begin": 126,
+          "end": 126,
+          "range": false
+        },
+        {
           "name": "synthesized_use",
           "begin": 313,
           "end": 313,
@@ -138,6 +144,29 @@
                   "end": {
                     "line": 6,
                     "character": 21
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "synthesize",
+          "marker": "synthesize",
+          "value": {
+            "hover": {
+              "markdown": "**field** `_x` · class `Shape`\n\n```cpp\nint _x\n```\n**Type:** `int`",
+              "range": {
+                "$place": "@synthesize x = ⟦_x⟧;",
+                "path": "main.m",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 16
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 18
                   }
                 }
               }

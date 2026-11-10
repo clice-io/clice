@@ -5,7 +5,7 @@
 @end
 
 @implementation §(implementation)Shape
-@synthesize x = _x;
+@synthesize x = §(synthesize)_x;
 
 static int shapes;
 

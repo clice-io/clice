@@ -13,6 +13,17 @@ A shape on the canvas.
 '''
 range = "@implementation ⟦Shape⟧"
 
+[answers.synthesize.hover]
+markdown = '''
+**field** `_x` · class `Shape`
+
+```cpp
+int _x
+```
+**Type:** `int`
+'''
+range = "@synthesize x = ⟦_x⟧;"
+
 [answers.synthesized_use.hover]
 markdown = '''
 **field** `_x` · class `Shape`

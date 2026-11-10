@@ -732,14 +732,9 @@ private:
         }
 
         // An Objective-C class extension names nothing: its members list
-        // where it is written, as the index places them. An instance
-        // variable a property synthesizes is declared nowhere.
+        // where it is written, as the index places them.
         if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(decl);
            category && category->IsClassExtension()) {
-            return true;
-        }
-        if(const auto* ivar = llvm::dyn_cast<clang::ObjCIvarDecl>(decl);
-           ivar && ivar->getSynthesize()) {
             return true;
         }
 
