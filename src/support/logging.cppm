@@ -343,12 +343,12 @@ void set_anomaly_trap_for_testing(std::function<void(AnomalyId)> trap);
 /// Clear rate-limit counters and the testing trap.
 void reset_anomaly_for_testing();
 
+/// Whether perf lines (LOG_PERF) are written: CLICE_PERF set.
+bool perf_lines();
+
 }  // namespace clice::logging
 
 namespace clice {
-
-/// Whether perf lines (LOG_PERF) are written: CLICE_PERF set.
-bool perf_lines();
 
 /// Wall-clock time since it was made, for perf log lines (LOG_PERF).
 struct Timer {
