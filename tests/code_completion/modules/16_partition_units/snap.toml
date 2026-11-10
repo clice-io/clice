@@ -1,0 +1,12 @@
+[answers.interface.completion]
+items = [
+    { label = ":core", kind = "Module", insert = ":core", replace = "import ⟦⟧;" },
+    { label = "app", kind = "Module", insert = "app", replace = "import ⟦⟧;" },
+]
+
+[answers.implementation.completion]
+items = [
+    { label = ":core", kind = "Module", insert = ":core", replace = "import ⟦:⟧;" },
+    { label = ":detail", kind = "Module", insert = ":detail", replace = "import ⟦:⟧;" },
+    { label = ":menu", kind = "Module", insert = ":menu", replace = "import ⟦:⟧;" },
+]

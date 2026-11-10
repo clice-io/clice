@@ -3,7 +3,7 @@
   "topic": "code_completion",
   "subtopic": "modules",
   "title": "Words of module names",
-  "summary": "A typed name matches a whole module name first, then a prefix, then the words of a name, ahead of where the interface lies: `compat` lists the distant `compat`, then the nearby `app.compat`",
+  "summary": "A typed name matches a whole module name first, then a prefix, then the words of a name, ahead of where the interface lies: `compat` lists the distant `compat`, then the nearby `compat_legacy` and `app.compat`",
   "prose": "",
   "status": "supported",
   "issues": [],
@@ -16,6 +16,11 @@
     {
       "path": "app/app_core.cppm",
       "text": "export module app.core;\n",
+      "markers": []
+    },
+    {
+      "path": "app/compat_legacy.cppm",
+      "text": "export module compat_legacy;\n",
       "markers": []
     },
     {
@@ -50,6 +55,25 @@
                   "label": "compat",
                   "kind": "Module",
                   "insert": "compat;",
+                  "replace": {
+                    "$place": "import ⟦compat⟧",
+                    "path": "app/main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 7
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 13
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": "compat_legacy",
+                  "kind": "Module",
+                  "insert": "compat_legacy;",
                   "replace": {
                     "$place": "import ⟦compat⟧",
                     "path": "app/main.cpp",

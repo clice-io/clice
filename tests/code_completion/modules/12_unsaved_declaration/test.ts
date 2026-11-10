@@ -31,6 +31,7 @@ test("renamed in its own buffer", async (t) => {
 test("exported in the buffer", async (t) => {
     const s = await t.start();
     await s.diagnostics("shapes_detail.cppm");
+    s.open("shapes.cppm");
     s.edit("shapes_detail.cppm", {
         replace: "module shapes:detail;",
         with: "export module shapes:detail;",

@@ -1,5 +1,6 @@
 [answers.words.completion]
 items = [
     { label = "compat", kind = "Module", insert = "compat;", replace = "import ⟦compat⟧" },
+    { label = "compat_legacy", kind = "Module", insert = "compat_legacy;", replace = "import ⟦compat⟧" },
     { label = "app.compat", kind = "Module", insert = "app.compat;", replace = "import ⟦compat⟧" },
 ]
