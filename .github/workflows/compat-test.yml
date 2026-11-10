@@ -82,8 +82,11 @@ jobs:
 
       # MSYS2 ships on the image without compilers: its UCRT and clang
       # environments' native ones, and its own GCC and CMake, which write
-      # POSIX paths. Its runtime is upgraded alone first: a transaction
-      # replacing it cannot fork afterwards (hooks, install scripts).
+      # POSIX paths. The image is upgraded whole before they install: a new
+      # package beside the image's older libraries fails to load (libarchive
+      # built for OpenSSL 4 beside OpenSSL 3). pacman upgrades the core alone
+      # first and stops, as a transaction replacing the runtime cannot fork
+      # afterwards; the second call upgrades the rest and installs.
       - name: Install MSYS2's compilers
         if: runner.os == 'Windows'
         run: |
@@ -94,8 +97,8 @@ jobs:
             done
             return 1
           }
-          pacman -Sy msys2-runtime
-          pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-clang-x86_64-clang gcc cmake ninja
+          pacman -Syu
+          pacman -Su mingw-w64-ucrt-x86_64-gcc mingw-w64-clang-x86_64-clang gcc cmake ninja
 
       - name: Install Cygwin's compilers
         if: runner.os == 'Windows'
