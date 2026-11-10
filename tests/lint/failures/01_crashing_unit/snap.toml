@@ -6,11 +6,8 @@ Linted 1 translation unit in #s: 1 finding.
 '''
 stderr = '''
 warning: [SL-0] clice worker crashed in: clice/worker/compileUnit poison.cpp
-error: Last stderr of crashed worker SL-0:
-clice worker crashed in: clice/worker/compileUnit poison.cpp
-error: Last output of crashed worker SL-0:
-[#time] [fatal] clice crashed
-error: [anomaly:WorkerCrash] Worker SL-0 ${CRASH} (crash streak: 0)
+error: The last lines SL-0 logged before it died (its stack trace is in SL-0.log):
+error: [anomaly:WorkerCrash] Worker SL-0 ${CRASH}
 warning: Lint gave up on poison.cpp: it crashed the worker: ${CRASH}
 '''
 exit = 2

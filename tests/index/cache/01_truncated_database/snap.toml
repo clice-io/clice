@@ -62,7 +62,7 @@ stdout = '''
 }
 '''
 stderr = '''
-warning: Index database at .clice/cache/v15/index/default/index.mdb is empty; run `clice index` to repair it
+warning: Index database at .clice/cache/v15/index/default/index.mdb is empty; run `clice index` to build it
 error: The index database at .clice/cache/v15/index/default cannot be opened; the log above says why
 '''
 exit = 1
