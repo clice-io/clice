@@ -872,19 +872,29 @@ public:
             }
             return;
         }
-        // `shape.count` calls the accessor the code declares, if any.
+        // `shape.count` calls the accessors the code writes, `+=` both;
+        // `super.count` the superclass's, never an override.
         if(auto* OPRE = node.get<clang::ObjCPropertyRefExpr>()) {
-            const clang::ObjCMethodDecl* accessor = nullptr;
-            if(OPRE->isImplicitProperty()) {
-                accessor = OPRE->isMessagingGetter() ? OPRE->getImplicitPropertyGetter()
-                                                     : OPRE->getImplicitPropertySetter();
-            } else {
+            auto accessor = [&](bool getter) -> const clang::ObjCMethodDecl* {
+                if(OPRE->isImplicitProperty()) {
+                    return getter ? OPRE->getImplicitPropertyGetter()
+                                  : OPRE->getImplicitPropertySetter();
+                }
                 const auto* property = OPRE->getExplicitProperty();
-                accessor = OPRE->isMessagingGetter() ? property->getGetterMethodDecl()
-                                                     : property->getSetterMethodDecl();
-            }
-            if(accessor && !accessor->isImplicit()) {
-                call(accessor, OPRE->getLocation());
+                return getter ? property->getGetterMethodDecl() : property->getSetterMethodDecl();
+            };
+            for(bool getter: {true, false}) {
+                if(!(getter ? OPRE->isMessagingGetter() : OPRE->isMessagingSetter())) {
+                    continue;
+                }
+                if(const auto* method = accessor(getter)) {
+                    if(const auto* written = decls::objc_written(*method); !written->isImplicit()) {
+                        call(written, OPRE->getLocation());
+                        if(OPRE->isSuperReceiver()) {
+                            add_self_relation(written, RelationKind::Direct, OPRE->getLocation());
+                        }
+                    }
+                }
             }
             return;
         }
@@ -1311,8 +1321,8 @@ public:
                 add_specialized_type(occurrence.decl, name);
             }
             // `[super draw]` runs the superclass's method, never an override.
-            if(const auto* message = semantics.node(i).node.get<clang::ObjCMessageExpr>();
-               message && occurrence.kind.is_one_of(RelationKind::Reference) &&
+            const auto* message = semantics.node(i).node.get<clang::ObjCMessageExpr>();
+            if(occurrence.kind.is_one_of(RelationKind::Reference) && message &&
                (message->getReceiverKind() == clang::ObjCMessageExpr::SuperInstance ||
                 message->getReceiverKind() == clang::ObjCMessageExpr::SuperClass)) {
                 add_self_relation(occurrence.decl, RelationKind::Direct, name);

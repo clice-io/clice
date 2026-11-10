@@ -487,7 +487,8 @@ auto objc_class(const clang::DeclContext* context) -> const clang::ObjCInterface
 }
 
 /// The method `selector` names in an Objective-C class itself: in its
-/// @interface, its extensions and categories, or their @implementations.
+/// @interface, its extensions and categories, or their @implementations,
+/// which come first: they write the accessors clang declares for a property.
 static auto own_method(const clang::ObjCInterfaceDecl& objc_class,
                        clang::Selector selector,
                        bool instance) -> const clang::ObjCMethodDecl* {
@@ -497,6 +498,11 @@ static auto own_method(const clang::ObjCInterfaceDecl& objc_class,
     if(const auto* method = in(objc_class.getImplementation())) {
         return method;
     }
+    for(const auto* category: objc_class.visible_categories()) {
+        if(const auto* method = in(category->getImplementation())) {
+            return method;
+        }
+    }
     if(const auto* method = in(&objc_class)) {
         return method;
     }
@@ -504,11 +510,19 @@ static auto own_method(const clang::ObjCInterfaceDecl& objc_class,
         if(const auto* method = in(category)) {
             return method;
         }
-        if(const auto* method = in(category->getImplementation())) {
-            return method;
-        }
     }
     return nullptr;
+}
+
+auto objc_written(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl* {
+    if(!method.isImplicit()) {
+        return &method;
+    }
+    const auto* objc_class = decls::objc_class(method.getDeclContext());
+    const auto* own = objc_class
+                          ? own_method(*objc_class, method.getSelector(), method.isInstanceMethod())
+                          : nullptr;
+    return own && !own->isImplicit() ? own : &method;
 }
 
 auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::ObjCMethodDecl* {
@@ -522,10 +536,10 @@ auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::
         objc_class = objc_class->getSuperClass()) {
         if(const auto* own =
                own_method(*objc_class, message.getSelector(), message.isInstanceMessage())) {
-            return own;
+            return objc_written(*own);
         }
     }
-    return method;
+    return objc_written(*method);
 }
 
 auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::ObjCPropertyDecl* {

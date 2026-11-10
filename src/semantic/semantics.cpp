@@ -1727,7 +1727,7 @@ void stmt_references(const clang::Stmt* S,
     if(auto* OPRE = llvm::dyn_cast<clang::ObjCPropertyRefExpr>(S)) {
         if(OPRE->isClassReceiver()) {
             refer(out,
-                  OPRE->getClassReceiver(),
+                  decls::objc_class_name(*OPRE->getClassReceiver(), OPRE->getReceiverLocation()),
                   RelationKind::Reference,
                   OPRE->getReceiverLocation());
         }

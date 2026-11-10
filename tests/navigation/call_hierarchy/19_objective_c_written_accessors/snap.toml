@@ -1,0 +1,118 @@
+[answers.base_count]
+call_hierarchy = [
+    { name = "count", kind = "Method", at = "- (int)⟦count⟧ { @+0", detail = "Base::count" },
+]
+incoming_calls = [
+    {
+        name = "count",
+        kind = "Method",
+        at = "- (int)⟦count⟧ { @+13",
+        detail = "Counter::count",
+        sites = ["return super.⟦count⟧;"],
+    },
+]
+outgoing_calls = []
+
+[answers.total]
+call_hierarchy = [
+    { name = "total", kind = "Method", at = "- (int)⟦total⟧ {", detail = "Counter::total" },
+]
+incoming_calls = [
+    {
+        name = "limit",
+        kind = "Method",
+        at = "- (int)⟦limit⟧ {",
+        detail = "Counter::limit",
+        sites = ["return self.⟦total⟧;"],
+    },
+    {
+        name = "bump",
+        kind = "Function",
+        at = "void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["counter.⟦total⟧ += 1;"],
+    },
+]
+outgoing_calls = []
+
+[answers.set_total]
+call_hierarchy = [
+    { name = "setTotal:", kind = "Method", at = "- (void)⟦setTotal⟧:(int)total {", detail = "Counter::setTotal:" },
+]
+incoming_calls = [
+    {
+        name = "bump",
+        kind = "Function",
+        at = "void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["counter.⟦total⟧ += 1;", "[counter ⟦setTotal⟧:[counter limit]];"],
+    },
+]
+outgoing_calls = []
+
+[answers.count]
+call_hierarchy = [
+    { name = "count", kind = "Method", at = "- (int)⟦count⟧ { @+0", detail = "Counter::count" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "count",
+        kind = "Method",
+        at = "- (int)⟦count⟧ { @-13",
+        detail = "Base::count",
+        sites = ["return super.⟦count⟧;"],
+    },
+]
+
+[answers.limit]
+call_hierarchy = [
+    { name = "limit", kind = "Method", at = "- (int)⟦limit⟧ {", detail = "Counter::limit" },
+]
+incoming_calls = [
+    {
+        name = "bump",
+        kind = "Function",
+        at = "void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["[counter setTotal:[counter ⟦limit⟧]];", "(void)counter.⟦limit⟧;"],
+    },
+]
+outgoing_calls = [
+    {
+        name = "total",
+        kind = "Method",
+        at = "- (int)⟦total⟧ {",
+        detail = "Counter::total",
+        sites = ["return self.⟦total⟧;"],
+    },
+]
+
+[answers.bump]
+call_hierarchy = [
+    { name = "bump", kind = "Function", at = "void ⟦bump⟧(Counter *counter) {", detail = "bump(Counter *counter)" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "total",
+        kind = "Method",
+        at = "- (int)⟦total⟧ {",
+        detail = "Counter::total",
+        sites = ["counter.⟦total⟧ += 1;"],
+    },
+    {
+        name = "setTotal:",
+        kind = "Method",
+        at = "- (void)⟦setTotal⟧:(int)total {",
+        detail = "Counter::setTotal:",
+        sites = ["counter.⟦total⟧ += 1;", "[counter ⟦setTotal⟧:[counter limit]];"],
+    },
+    {
+        name = "limit",
+        kind = "Method",
+        at = "- (int)⟦limit⟧ {",
+        detail = "Counter::limit",
+        sites = ["[counter setTotal:[counter ⟦limit⟧]];", "(void)counter.⟦limit⟧;"],
+    },
+]

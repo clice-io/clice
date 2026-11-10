@@ -99,6 +99,11 @@ auto objc_defined(const clang::NamedDecl* decl) -> const clang::NamedDecl*;
 /// protocol and for any other context.
 auto objc_class(const clang::DeclContext* context) -> const clang::ObjCInterfaceDecl*;
 
+/// An Objective-C method as the code writes it: an accessor clang declares
+/// for a property is the method its class's @implementation writes, if it
+/// does.
+auto objc_written(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl*;
+
 /// The method an Objective-C message runs as far as its receiver's static
 /// class tells. Clang names the declaration its lookup found, which for a
 /// method the class adopts from a protocol, or declares in its
