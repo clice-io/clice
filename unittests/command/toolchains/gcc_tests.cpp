@@ -380,6 +380,50 @@ End of search list.)",
     ZEXPECT(dirs == expected);
 }
 
+ZEST_CASE(OlderFrontendNamedDirs, skip = Windows) {
+    /// A directory the job reaches under its sysroot or a prefix is the
+    /// job's own, though the older frontend prints it composed.
+    auto driver = fake_gcc("clang",
+                           std::format(R"(Target: x86_64-unknown-freebsd13
+ "/usr/bin/clang-15" "-cc1" "-triple" "x86_64-unknown-freebsd13" "-E" "-isysroot" "{0}" "-iwithsysroot" "/usr/include" "-iprefix" "{1}/" "-iwithprefixbefore" "inc" "-x" "c++" "query.cpp"
+#include <...> search starts here:
+ {1}/inc
+ {0}/usr/include
+ {2}
+End of search list.)",
+                                       tmp.path("sdk"),
+                                       tmp.path("prefix"),
+                                       tmp.path("usr/local/include")));
+    auto argv = f.resolve(add("a.cpp", {driver.c_str()}));
+    std::vector<std::string> added;
+    for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
+        if(llvm::StringRef(argv[i]) == "-internal-isystem" &&
+           llvm::StringRef(argv[i + 1]).starts_with(tmp.root)) {
+            added.push_back(argv[i + 1]);
+        }
+    }
+    std::vector<std::string> expected = {tmp.path("usr/local/include")};
+    ZEXPECT(added == expected);
+}
+
+ZEST_CASE(CSystemDirs, skip = Windows) {
+    /// clang's driver passes C_INCLUDE_PATH on as -c-isystem and
+    /// CPLUS_INCLUDE_PATH as -cxx-isystem: a C file searches the first.
+    auto driver = fake_gcc("clang",
+                           std::format(R"(Target: x86_64-unknown-linux-gnu
+ "/usr/bin/clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-E" "-c-isystem" "{0}" "-cxx-isystem" "{1}" "-x" "c" "query.c"
+#include <...> search starts here:
+ {0}
+End of search list.)",
+                                       tmp.path("c"),
+                                       tmp.path("cxx")));
+    auto ref = add("a.c", {driver.c_str(), "-c"});
+    ZASSERT(f.toolchain.resolve(ref.command, ref.language));
+    auto dirs = f.toolchain.search_config(ref).dirs | views::transform(&SearchDir::path);
+    ZEXPECT(ranges::contains(dirs, Spelling::absolute(tmp.path("c")).str()));
+    ZEXPECT(!ranges::contains(dirs, Spelling::absolute(tmp.path("cxx")).str()));
+}
+
 ZEST_CASE(GCCPrivateHeaders, skip = Windows) {
     /// GCC's private include directory holds headers only GCC has, among
     /// GCC's versions of clang's builtin headers. A header only GCC has is
