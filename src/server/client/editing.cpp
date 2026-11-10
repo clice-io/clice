@@ -159,7 +159,6 @@ void LSPClient::register_editing() {
 
         auto& settings = project.project.settings;
         auto encoding = server.position_encoding;
-        auto positions = session->positions();
         auto answer = feature::code_complete({
             .file = path_id,
             .source = project.text_of(*session),
@@ -192,18 +191,19 @@ void LSPClient::register_editing() {
             co_return to_raw(*list);
         }
         auto& compile = std::get<feature::CompileCompletion>(answer);
-        auto result = co_await project
-                          .stateless_request(ticket,
-                                             feature::RequestKind::Completion,
-                                             "Completion",
-                                             positions.offset_clamped(params.position, encoding),
-                                             worker::CompletionParams{
-                                                 .client = completion_client,
-                                                 .encoding = encoding,
-                                                 .names = compile,
-                                             },
-                                             ctx.cancellation)
-                          .or_fail();
+        auto result =
+            co_await project
+                .stateless_request(ticket,
+                                   feature::RequestKind::Completion,
+                                   "Completion",
+                                   session->positions().offset_clamped(params.position, encoding),
+                                   worker::CompletionParams{
+                                       .client = completion_client,
+                                       .encoding = encoding,
+                                       .names = compile,
+                                   },
+                                   ctx.cancellation)
+                .or_fail();
         if(!result.include) {
             co_return std::move(result.list);
         }

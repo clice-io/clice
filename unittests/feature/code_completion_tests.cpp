@@ -407,7 +407,7 @@ ZEST_CASE(InternalBuiltinsLast) {
     llvm::StringRef text = "#include <amd";
     std::vector<std::uint32_t> lines = {0};
     PositionMap map(text, lines);
-    auto completing = feature::completion_name(text, text.size(), dialect_of());
+    auto completing = completion_name(text, text.size());
     SearchConfig config;
     config.dirs.push_back(
         {.path = Spelling::absolute(path::join(resource_dir(), "include")).str(), .driver = true});

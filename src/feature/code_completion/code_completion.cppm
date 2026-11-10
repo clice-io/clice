@@ -12,7 +12,6 @@ import :syntax.position;
 import :syntax.scan;
 import :syntax.source_text;
 import :vfs.dir_cache;
-import :vfs.file_table;
 import :vfs.ids;
 
 namespace clice::feature {
@@ -201,8 +200,9 @@ auto finish_completion(protocol::CompletionList list,
                        const SearchConfig& search,
                        std::uint32_t limit) -> protocol::CompletionList;
 
-/// An open module unit's buffer, which may declare another module than the
-/// graph knows until the file is saved.
+/// The buffer of an open translation unit, which may declare another module
+/// than the graph knows until the file is saved, or one where the graph
+/// knows none.
 struct OpenUnit {
     Fid file;
     llvm::StringRef text;
@@ -234,8 +234,8 @@ struct CompletionInputs {
     /// a declaration a conditional holds.
     llvm::function_ref<ScanResult(llvm::StringRef)> declared_module;
 
-    /// The buffers of the other open module units, asked where a module
-    /// name is completed.
+    /// The buffers of the project's other open translation units, asked
+    /// where a module name is completed.
     llvm::function_ref<std::vector<OpenUnit>()> open_units;
 
     /// The project's index: the names it offers a compile, the
@@ -295,9 +295,14 @@ auto module_completion(const CompletionName& completing, const CompletionInputs&
 
 /// The `import` declaration a unit of the module `unit` (`name` or
 /// `name:partition`, empty outside a named module) needs to reach what the
-/// module `module` exports; none when the unit is that module.
+/// module `module` exports; none when the unit is that module. The compile
+/// adds an item's `import` itself, while its `#include` waits for the
+/// server (finish_completion).
 auto import_for(llvm::StringRef module, llvm::StringRef unit) -> std::optional<std::string>;
 
+/// Completion items rank alike wherever they come from: a compile's
+/// candidates, the directives, the include paths and the module names.
+///
 /// How strongly the context asks for a candidate, apart from how its name
 /// matches: clang's priority — locals before members before the rest, a
 /// type the context expects ahead of all, macros last — as a factor around
