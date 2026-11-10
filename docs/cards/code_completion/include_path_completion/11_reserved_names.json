@@ -19,6 +19,11 @@
       "markers": []
     },
     {
+      "path": "inc/rsvlast/notes.txt",
+      "text": "",
+      "markers": []
+    },
+    {
       "path": "inc/rsvlast/own.h",
       "text": "",
       "markers": []
@@ -141,6 +146,25 @@
                   "label": "_config.h",
                   "kind": "File",
                   "insert": "_config.h>",
+                  "replace": {
+                    "$place": "#include <rsvlast/⟦>⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 18
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 19
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": "notes.txt",
+                  "kind": "File",
+                  "insert": "notes.txt>",
                   "replace": {
                     "$place": "#include <rsvlast/⟦>⟧",
                     "path": "main.cpp",

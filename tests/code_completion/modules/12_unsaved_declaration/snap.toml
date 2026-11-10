@@ -10,3 +10,8 @@ items = []
 items = [
     { label = ":detail", kind = "Module", insert = ":detail;", replace = "import ⟦:⟧" },
 ]
+
+["declared in the buffer".declared.completion]
+items = [
+    { label = "sketchpad", kind = "Module", insert = "sketchpad;", replace = "import ⟦sketch⟧" },
+]
