@@ -1,25 +1,51 @@
 module clice;
 
+import :command.search_config;
 import :command.table;
-import :syntax.completion;
+import :feature.code_completion.cursor;
+import :feature.code_completion.include_paths;
+import :feature.code_completion.module_names;
 import :syntax.dependency_graph;
 import :syntax.lexer;
+import :syntax.scan;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
+import :vfs.dir_cache;
 
 namespace clice::testing {
 namespace {
 
+using feature::CompletionName;
+using feature::IncludeCandidate;
+using feature::module_providers;
+using feature::WrittenDesignator;
+
 bool follows_access_operator(llvm::StringRef text, std::uint32_t offset) {
-    return clice::follows_access_operator(text, offset, dialect_of());
+    return feature::follows_access_operator(text, offset, dialect_of());
 }
 
 std::vector<WrittenDesignator> written_designators(llvm::StringRef text, std::uint32_t offset) {
-    return clice::written_designators(text, offset, dialect_of());
+    return feature::written_designators(text, offset, dialect_of());
 }
 
 CompletionName completion_name(llvm::StringRef text, std::uint32_t offset) {
-    return clice::completion_name(text, offset, dialect_of());
+    return feature::completion_name(text, offset, dialect_of());
+}
+
+/// The module names a completion offers, in their order.
+std::vector<std::string> names_of(const std::vector<feature::ModuleCandidate>& candidates) {
+    return ranges::to<std::vector>(candidates | views::transform(&feature::ModuleCandidate::name));
+}
+
+std::vector<std::string> complete_module_import(const feature::ModuleProviders& providers,
+                                                llvm::StringRef typed,
+                                                const ScanResult& unit) {
+    return names_of(feature::complete_module_import(providers, typed, unit));
+}
+
+std::vector<std::string> complete_module_declaration(const feature::ModuleProviders& providers,
+                                                     llvm::StringRef typed) {
+    return names_of(feature::complete_module_declaration(providers, typed));
 }
 
 ZEST_SUITE(FollowsAccessOperator) {
@@ -456,6 +482,18 @@ ZEST_CASE(PrefixIsFullName) {
     ZEXPECT(results.size() == 2u);
 }
 
+ZEST_CASE(WordsOfNames) {
+    /// A module name matches by the words of its name, the better match
+    /// first: the whole name before a word of a longer one.
+    clice::DependencyGraph modules;
+    modules.add_module("std.compat", Fid{1});
+    modules.add_module("compat", Fid{2});
+    modules.add_module("boost", Fid{3});
+
+    auto names = complete_module_import(module_providers(modules), "compat", {});
+    ZEXPECT(names == std::vector<std::string>{"compat", "std.compat"});
+}
+
 ZEST_CASE(OwnPartitionsOnly) {
     clice::DependencyGraph modules;
     modules.add_module("foo", Fid{1});
@@ -551,7 +589,7 @@ ZEST_SUITE(CompleteIncludePath) {
 std::vector<std::string> complete(const SearchConfig& config, llvm::StringRef prefix) {
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    auto candidates = complete_include_path(config, "", prefix, true, scope);
+    auto candidates = feature::complete_include_path(config, "", prefix, true, scope);
     ranges::sort(candidates, {}, [](const IncludeCandidate& candidate) {
         return std::tie(candidate.order, candidate.name);
     });

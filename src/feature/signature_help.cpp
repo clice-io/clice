@@ -2,6 +2,7 @@ module clice;
 
 import :compile.compilation;
 import :compile.directive;
+import :feature.code_completion.cursor;
 import :feature.documentation;
 import :feature.signature_help;
 import :semantic.comment;
@@ -10,7 +11,6 @@ import :semantic.display;
 import :semantic.template_resolver;
 import :semantic.types;
 import :support.markup;
-import :syntax.completion;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 

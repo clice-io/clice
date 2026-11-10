@@ -2,8 +2,11 @@ module clice;
 
 import :feature.code_actions.action;
 import :feature.code_actions;
-import :feature.code_completion.item;
-import :feature.code_completion.names;
+import :feature.code_completion.cursor;
+import :feature.code_completion.insertion;
+import :feature.code_completion.ranking;
+import :feature.code_completion.snippet;
+import :feature.code_completion.typed_names;
 import :feature.code_completion.whole_buffer;
 import :feature.code_completion;
 import :feature.documentation;
@@ -14,7 +17,6 @@ import :semantic.identity;
 import :semantic.template_resolver;
 import :support.fuzzy_matcher;
 import :support.markup;
-import :syntax.completion;
 import :syntax.lexer;
 
 namespace clice::feature {
@@ -2015,7 +2017,7 @@ public:
             scan(ast.getTranslationUnitDecl());
 
             auto import_at = action::import_insertion(content, sema.getLangOpts());
-            llvm::StringRef own = module ? module->getPrimaryModuleInterfaceName() : "";
+            llvm::StringRef own = module ? module->getTopLevelModuleName() : "";
             // As qualified lookup finds them: through the inline and the
             // anonymous namespaces in the scope too.
             auto visible = [&](clang::DeclContext* scope, llvm::StringRef name) {
@@ -2117,16 +2119,13 @@ public:
                    (imported && !named_module && !imports)) {
                     continue;
                 }
-                std::string import;
+                std::optional<std::string> import;
                 if(imported) {
-                    auto name = candidate.module.empty() ? llvm::StringRef("std")
-                                                         : llvm::StringRef(candidate.module);
-                    auto [primary, partition] = name.split(':');
-                    if(primary != own) {
-                        import = std::format("import {};\n", primary);
-                    } else if(!partition.empty() && candidate.module != module->Name) {
-                        import = std::format("import :{};\n", partition);
-                    } else {
+                    import =
+                        import_for(candidate.module.empty() ? llvm::StringRef("std")
+                                                            : llvm::StringRef(candidate.module),
+                                   own);
+                    if(!import) {
                         continue;
                     }
                 }
@@ -2176,7 +2175,7 @@ public:
                 if(imported) {
                     item.edits.push_back({
                         .range = {import_at, import_at},
-                        .text = std::move(import)
+                        .text = std::move(*import)
                     });
                 } else {
                     item.include = candidate.symbol;

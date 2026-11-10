@@ -6,7 +6,6 @@ import :feature.documentation;
 import :index.query;
 import :support.json;
 import :support.prelude;
-import :syntax.completion;
 import :syntax.dependency_graph;
 import :syntax.position;
 import :syntax.scan;
@@ -185,11 +184,6 @@ auto code_complete(CompilationParams params,
                    PositionEncoding encoding = PositionEncoding::UTF16,
                    const CompileCompletion& names = {}) -> Completion;
 
-/// The reply listing `items` under `code_completion.limit`: the best ranked
-/// stay, ties by label, and a list cut short is marked incomplete.
-auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
-    -> protocol::CompletionList;
-
 /// The most names one completion takes from the index (ScopeCandidate), and
 /// reads of the files its compile loads where a name is typed (TypedNames).
 constexpr inline std::size_t scope_candidate_limit = 100;
@@ -215,28 +209,13 @@ auto finish_completion(protocol::CompletionList list,
                        vfs::Scope& scope,
                        std::uint32_t limit) -> protocol::CompletionList;
 
-/// The paths an `#include` being typed (`completing`) may go on with in
-/// `text`, the file at `path`, as `search` finds them: a directory leaves
-/// the path open for the `/` typed next, a header closes the directive.
-auto include_completion(const CompletionName& completing,
-                        llvm::StringRef text,
-                        const PositionMap& map,
-                        PositionEncoding encoding,
-                        llvm::StringRef path,
-                        const SearchConfig& search,
-                        vfs::Scope& scope,
-                        std::uint32_t limit) -> protocol::CompletionList;
-
-/// The directives a directive name being typed (`completing`) may name,
-/// as a compile's completion offers them: `#elif`, `#else` and `#endif`
-/// inside a conditional block (CompletionName::conditional). A directive's
-/// arguments come as placeholders with statement snippets.
-auto directive_completion(const CompletionName& completing,
-                          const PositionMap& map,
-                          PositionEncoding encoding,
-                          const clang::LangOptions& dialect,
-                          const CodeCompletionOptions& options,
-                          const CompletionClient& client) -> protocol::CompletionList;
+/// The module an open unit's buffer declares (ScanResult::provided_module),
+/// which the graph learns once the file is saved.
+struct OpenModule {
+    Fid file;
+    std::string name;
+    bool internal = false;
+};
 
 /// A completion request as the server has it before any compile.
 struct CompletionInputs {
@@ -286,10 +265,6 @@ struct CompletionInputs {
 /// items.
 struct NoCompletion {};
 
-/// How a completion request is answered: not at all, before any compile,
-/// or by a compile of the code.
-using CompletionStart = std::variant<NoCompletion, protocol::CompletionList, CompileCompletion>;
-
 /// The completion at a point, as far as the server answers it alone. A
 /// client without request-side gating (nvim, zed) forwards every keystroke
 /// of an advertised trigger character: space is advertised only so that
@@ -297,6 +272,7 @@ using CompletionStart = std::variant<NoCompletion, protocol::CompletionList, Com
 /// member or scope access, and any other use of them completes nothing. A
 /// directive name, an include path and a module name are completed here;
 /// other code by a compile, which offer_names gives the index's names.
-auto start_completion(const CompletionInputs& inputs) -> CompletionStart;
+auto code_complete(const CompletionInputs& inputs)
+    -> std::variant<NoCompletion, protocol::CompletionList, CompileCompletion>;
 
 }  // namespace clice::feature

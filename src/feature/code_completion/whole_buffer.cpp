@@ -1,7 +1,7 @@
 module clice;
 
 import :compile.compilation;
-import :feature.code_completion.item;
+import :feature.code_completion.cursor;
 import :feature.code_completion.whole_buffer;
 
 namespace clice::feature {

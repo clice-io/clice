@@ -1,6 +1,6 @@
 module clice;
 
-import :feature.code_completion.names;
+import :feature.code_completion.typed_names;
 import :support.fuzzy_matcher;
 
 namespace clice::feature {

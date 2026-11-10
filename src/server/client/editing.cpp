@@ -11,7 +11,6 @@ import :server.extension;
 import :server.master;
 import :server.served_project;
 import :support.json;
-import :syntax.completion;
 import :syntax.include_resolver;
 import :syntax.scan;
 import :syntax.source_text;
@@ -169,7 +168,7 @@ void LSPClient::register_editing() {
         auto resolved = std::string(files.resolve(path_id));
         auto positions = session->positions();
         vfs::Scope scope(files.dirs);
-        auto start = feature::start_completion({
+        auto answer = feature::code_complete({
             .file = path_id,
             .path = resolved,
             .text = session->text(),
@@ -187,7 +186,7 @@ void LSPClient::register_editing() {
                 [&](llvm::StringRef text) { return project.declared_module(path_id, text); },
             .open_modules =
                 [&] {
-                    std::vector<OpenModule> open;
+                    std::vector<feature::OpenModule> open;
                     for(auto& [file, opened]: server.documents) {
                         if(file == path_id || opened.owner != &project ||
                            !project.project.is_unit(file)) {
@@ -208,13 +207,13 @@ void LSPClient::register_editing() {
             .query = project.query(),
             .documentation = settings.documentation,
         });
-        if(std::holds_alternative<feature::NoCompletion>(start)) {
+        if(std::holds_alternative<feature::NoCompletion>(answer)) {
             co_return codec::raw_value{"[]"};
         }
-        if(auto* list = std::get_if<protocol::CompletionList>(&start)) {
+        if(auto* list = std::get_if<protocol::CompletionList>(&answer)) {
             co_return to_raw(*list);
         }
-        auto& compile = std::get<feature::CompileCompletion>(start);
+        auto& compile = std::get<feature::CompileCompletion>(answer);
         feature::offer_names(project.query(), project.project.dep_graph, compile);
         auto result = co_await project
                           .stateless_request(ticket,
