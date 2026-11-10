@@ -151,6 +151,9 @@ struct IncludePlace {
 
     /// A module unit without a global module fragment opens one there.
     bool opens_fragment = false;
+
+    /// The file is C: a standard name's header is the C library's.
+    bool c = false;
 };
 
 /// A completion's reply before the server finishes it: an item whose
@@ -186,16 +189,15 @@ auto code_complete(CompilationParams params,
 constexpr inline std::size_t scope_candidate_limit = 100;
 
 /// A completion's reply finished (Completion): an item naming what the
-/// file, read in `dialect`, does not include yet takes the `#include` of
-/// the header declaring it, at `include`; one whose header is unknown goes.
-/// The list is then cut to `limit`.
+/// file does not include yet takes the `#include` of the header declaring
+/// it, at `include`; one whose header is unknown goes. The list is then cut
+/// to `limit`.
 auto finish_completion(protocol::CompletionList list,
                        const IncludePlace& include,
                        llvm::ArrayRef<ScopeCandidate> candidates,
                        const index::IndexQuery& query,
                        const DependencyGraph& graph,
                        Fid file,
-                       const clang::LangOptions& dialect,
                        const SearchConfig& search,
                        std::uint32_t limit) -> protocol::CompletionList;
 

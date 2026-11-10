@@ -2667,6 +2667,7 @@ auto code_complete(CompilationParams params,
             completion.include = IncludePlace{
                 .position = *position,
                 .opens_fragment = insertion.opens_fragment,
+                .c = !unit->lang_options().CPlusPlus,
             };
         }
     }

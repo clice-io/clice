@@ -217,7 +217,6 @@ void LSPClient::register_editing() {
                                                     project.query(),
                                                     project.project.dep_graph,
                                                     path_id,
-                                                    project.dialect(path_id),
                                                     project.search_of(path_id),
                                                     settings.code_completion.limit));
     });
