@@ -408,7 +408,8 @@ End of search list.)",
 
 ZEST_CASE(CSystemDirs, skip = Windows) {
     /// clang's driver passes C_INCLUDE_PATH on as -c-isystem and
-    /// CPLUS_INCLUDE_PATH as -cxx-isystem: a C file searches the first.
+    /// CPLUS_INCLUDE_PATH as -cxx-isystem: a C file searches the first, as
+    /// the job's own directory.
     auto driver = fake_gcc("clang",
                            std::format(R"(Target: x86_64-unknown-linux-gnu
  "/usr/bin/clang" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-E" "-c-isystem" "{0}" "-cxx-isystem" "{1}" "-x" "c" "query.c"
@@ -418,7 +419,8 @@ End of search list.)",
                                        tmp.path("c"),
                                        tmp.path("cxx")));
     auto ref = add("a.c", {driver.c_str(), "-c"});
-    ZASSERT(f.toolchain.resolve(ref.command, ref.language));
+    auto argv = f.resolve(ref);
+    ZEXPECT(!adjacent(argv, "-internal-isystem", tmp.path("c")));
     auto dirs = f.toolchain.search_config(ref).dirs | views::transform(&SearchDir::path);
     ZEXPECT(ranges::contains(dirs, Spelling::absolute(tmp.path("c")).str()));
     ZEXPECT(!ranges::contains(dirs, Spelling::absolute(tmp.path("cxx")).str()));
