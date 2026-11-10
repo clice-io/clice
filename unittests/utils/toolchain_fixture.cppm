@@ -124,9 +124,33 @@ echo '#define __cplusplus 201402L'
     }
 };
 
-/// A clang job as `-v` prints it.
-constexpr inline llvm::StringRef clang_job =
-    R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-std=c++23")";
+/// `path` as a compiler of the host names a program in its output: with a
+/// drive on Windows, where one without names a Cygwin or MSYS2 compiler's,
+/// which only that runtime's mount table maps.
+inline std::string host_path(llvm::StringRef path) {
+#ifdef _WIN32
+    return "C:" + path.str();
+#else
+    return path.str();
+#endif
+}
+
+/// A clang job as `-v` prints it: `program`, then `options`, with their
+/// backslashes escaped, as clang prints a Windows path's.
+inline std::string clang_job_of(llvm::StringRef options,
+                                llvm::StringRef program = host_path("/usr/bin/clang-22")) {
+    std::string job;
+    for(auto c: std::format(R"( "{}" {})", program, options)) {
+        if(c == '\\') {
+            job += c;
+        }
+        job += c;
+    }
+    return job;
+}
+
+const inline std::string clang_job =
+    clang_job_of(R"("-cc1" "-triple" "x86_64-unknown-linux-gnu" "-std=c++23")");
 
 /// Whether `argv` holds `first` directly followed by `second`.
 inline bool adjacent(llvm::ArrayRef<const char*> argv,

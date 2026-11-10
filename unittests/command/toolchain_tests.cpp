@@ -323,8 +323,8 @@ ZEST_CASE(ClangJobCleaned) {
     /// it —, and so does what the linked cc1 cannot take: a newer clang's
     /// flag with its value, a codegen flag's newer value, a CPU name the
     /// target does not know.
-    auto driver = fake_clang(
-        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-E" "-dM" "-v" "-main-file-name" "query.cpp" "-clice-future-flag" "val" "-mframe-pointer=non-leaf-no-reserve" "-target-cpu" "clice-future-cpu" "-fmodules-reduced-bmi" "-fmodule-output=/tmp/query.pcm" "-dependency-file" "/tmp/zig/query.d" "-MT" "query.o" "-sys-header-deps" "-MV" "-o" "-" "-x" "c++" "/tmp/query.cpp")");
+    auto driver = fake_clang(clang_job_of(
+        R"("-cc1" "-triple" "x86_64-unknown-linux-gnu" "-E" "-dM" "-v" "-main-file-name" "query.cpp" "-clice-future-flag" "val" "-mframe-pointer=non-leaf-no-reserve" "-target-cpu" "clice-future-cpu" "-fmodules-reduced-bmi" "-fmodule-output=/tmp/query.pcm" "-dependency-file" "/tmp/zig/query.d" "-MT" "query.o" "-sys-header-deps" "-MV" "-o" "-" "-x" "c++" "/tmp/query.cpp")"));
     auto argv = f.resolve(add("dir/a.cpp", {driver.c_str()}));
 
     ZEXPECT(contains(argv, "-fmodules-reduced-bmi"));
@@ -364,8 +364,8 @@ ZEST_CASE(UserContentAttached) {
 ZEST_CASE(XclangAfterUserContent) {
     // As CMake builds a target's PCH: the driver passes the -Xclang values
     // on after the command's own -include, which the PCH header needs first.
-    auto driver = fake_clang(
-        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-include" "/build/cmake_pch.hxx" "-x" "c++-header")");
+    auto driver = fake_clang(clang_job_of(
+        R"("-cc1" "-triple" "x86_64-unknown-linux-gnu" "-include" "/build/cmake_pch.hxx" "-x" "c++-header")"));
     auto argv = f.resolve(add("a.cpp",
                               {driver.c_str(),
                                "-include",
@@ -383,7 +383,7 @@ ZEST_CASE(XclangAfterUserContent) {
 
 ZEST_CASE(PrecompileFullBMI) {
     auto driver = fake_clang(
-        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fmodules-reduced-bmi")");
+        clang_job_of(R"("-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fmodules-reduced-bmi")"));
 
     // Whether the module unit's cc1 asks for a reduced BMI.
     auto reduced = [&](std::vector<const char*> flags) {
@@ -408,8 +408,8 @@ ZEST_CASE(ResourceDirBecomesOurs) {
     // ours, a trailing separator or not, and so does a builtin header the
     // command forces; the ignorelist under its share/ has no counterpart in
     // our tree and stays.
-    auto driver = fake_clang(
-        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-resource-dir" "/clice-fake/lib/clang/22//" "-internal-isystem" "/clice-fake/lib/clang/22//include" "-fsanitize=address" "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22//share/asan_ignorelist.txt")");
+    auto driver = fake_clang(clang_job_of(
+        R"("-cc1" "-triple" "x86_64-unknown-linux-gnu" "-resource-dir" "/clice-fake/lib/clang/22//" "-internal-isystem" "/clice-fake/lib/clang/22//include" "-fsanitize=address" "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22//share/asan_ignorelist.txt")"));
     auto argv = f.resolve(
         add("a.cpp", {driver.c_str(), "-include", "/clice-fake/lib/clang/22/include/stddef.h"}));
 
@@ -427,9 +427,10 @@ ZEST_CASE(OtherBuiltinHeadersStay) {
     tmp.touch("clang-22/include/stddef.h");
     tmp.touch("clang-22/include/xray/xray_interface.h");
     auto theirs = tmp.path("clang-22/include");
-    auto driver = fake_clang(std::format(
-        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-resource-dir" "{0}" "-internal-isystem" "{0}/include")",
-        tmp.path("clang-22")));
+    auto driver = fake_clang(clang_job_of(std::format(
+        R"("-cc1" "-triple" "x86_64-unknown-linux-gnu" "-resource-dir" "{}" "-internal-isystem" "{}")",
+        tmp.path("clang-22"),
+        theirs)));
     auto ref = add("a.cpp", {driver.c_str()});
     auto argv = f.resolve(ref);
     auto builtin_headers = path::join(resource_dir(), "include");
@@ -460,11 +461,11 @@ ZEST_CASE(AliasedBuiltinHeaders) {
     auto alias = tmp.path("alias");
     ZASSERT(!fs::create_directory_symlink(resource_dir(), own));
     ZASSERT(!fs::create_directory_symlink(theirs, alias));
-    auto driver = fake_clang(std::format(
-        R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-resource-dir" "{0}" "-internal-isystem" "{0}/include" "-I" "{1}" "-internal-isystem" "{2}")",
+    auto driver = fake_clang(clang_job_of(std::format(
+        R"("-cc1" "-triple" "x86_64-unknown-linux-gnu" "-resource-dir" "{0}" "-internal-isystem" "{0}/include" "-I" "{1}" "-internal-isystem" "{2}")",
         own,
         alias,
-        theirs));
+        theirs)));
     auto ref = add("a.cpp", {driver.c_str()});
     ZASSERT(f.toolchain.resolve(ref.command, ref.language));
     auto hidden = f.toolchain.render(ref, f.db.spelling(ref.file)).hidden;
@@ -478,10 +479,10 @@ ZEST_CASE(MinGWKeepsResourceDir) {
     tmp.mkdir("llvm-mingw/lib/clang/22/include");
     auto external = tmp.path("llvm-mingw/lib/clang/22");
     auto job = [&](llvm::StringRef triple) {
-        return std::format(
-            R"( "/usr/bin/clang-22" "-cc1" "-triple" "{0}" "-resource-dir" "{1}" "-internal-isystem" "{1}/include")",
+        return clang_job_of(std::format(
+            R"("-cc1" "-triple" "{0}" "-resource-dir" "{1}" "-internal-isystem" "{1}/include")",
             triple,
-            external);
+            external));
     };
 
     auto mingw = fake_driver("x86_64-w64-mingw32-clang++",
