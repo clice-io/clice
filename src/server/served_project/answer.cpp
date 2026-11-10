@@ -266,7 +266,6 @@ async::task<std::vector<index::DocumentLink>, ipc::Error>
     ServedProject::directive_links(const Ticket& ticket, async::cancellation_token token) {
     auto result = co_await ast_request(ticket,
                                        feature::RequestKind::DocumentLink,
-                                       "DocumentLink",
                                        worker::DocumentLinkParams{},
                                        std::move(token))
                       .or_fail();
