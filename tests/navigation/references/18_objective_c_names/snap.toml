@@ -25,6 +25,9 @@ references = ["- (void)⟦draw⟧;", "- (void)⟦draw⟧ {", "SEL action = @sele
 [answers.object_ink]
 references = ["- (int)⟦ink⟧;", "[thing ⟦ink⟧];"]
 
+[answers.object_dry]
+references = ["- (int)⟦isDry⟧;", "[thing ⟦isDry⟧];"]
+
 [answers.quill]
 references = [
     "@compatibility_alias ⟦Quill⟧ Pen;",

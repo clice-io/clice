@@ -49,4 +49,5 @@ void §(bump)bump(Counter *counter) {
     counter.total += 1;
     [counter setTotal:[counter limit]];
     (void)counter.limit;
+    (void)counter.count;
 }

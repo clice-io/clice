@@ -1708,18 +1708,11 @@ void stmt_references(const clang::Stmt* S,
     /// [shape setX:1 y:2]
     ///        ^~~~   ^~~~ reference to the method clang resolves; a message
     /// to `id` or `Class` may reach any method of its selector, and clang
-    /// picks one of them: a candidate. `self` in a class method is a
-    /// `Class` clang knows to be its class.
+    /// picks one of them: a candidate.
     if(auto* OME = llvm::dyn_cast<clang::ObjCMessageExpr>(S)) {
         llvm::SmallVector<clang::SourceLocation, 4> pieces;
         OME->getSelectorLocs(pieces);
-        const auto* receiver = OME->getReceiverKind() == clang::ObjCMessageExpr::Instance
-                                   ? OME->getInstanceReceiver()
-                                   : nullptr;
-        bool untyped =
-            receiver && !receiver->isObjCSelfExpr() &&
-            (receiver->getType()->isObjCIdType() || receiver->getType()->isObjCClassType());
-        auto kind = untyped ? RelationKind::Candidate : RelationKind::Reference;
+        auto kind = decls::objc_untyped(*OME) ? RelationKind::Candidate : RelationKind::Reference;
         const auto* method = decls::objc_message_target(*OME);
         // An accessor clang declares for a property is written nowhere: the
         // message names the property.

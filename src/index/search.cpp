@@ -356,6 +356,17 @@ std::optional<IndexQuery::Cursor> cursor_at(const IndexQuery& index,
     return index.symbol_at(file, offset);
 }
 
+/// The ranking of `query` down to every symbol spelling the name exactly,
+/// however many.
+static RankedHits exact_search(const IndexQuery& index, const SymbolQuery& query) {
+    for(std::uint32_t limit = 64;; limit *= 4) {
+        auto ranked = ranked_search(index, query, limit);
+        if(ranked.exhausted || (!ranked.hits.empty() && ranked.hits.back().rank.tier > 1)) {
+            return ranked;
+        }
+    }
+}
+
 std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQuery& query) {
     if(query.handle) {
         Fid anchor;
@@ -406,15 +417,7 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
         return defined;
     }
 
-    // Every symbol spelling the name exactly is wanted, however many: the
-    // ranking is fetched wider until a match of a lower tier ends it.
-    RankedHits ranked;
-    for(std::uint32_t limit = 64;; limit *= 4) {
-        ranked = ranked_search(index, query, limit);
-        if(ranked.exhausted || (!ranked.hits.empty() && ranked.hits.back().rank.tier > 1)) {
-            break;
-        }
-    }
+    auto ranked = exact_search(index, query);
     // Spelling the name exactly decides it; otherwise every match stands.
     // A class and its constructors spell one name: asked by it, the class
     // answers. So does a template asked by its bare name: a specialization
@@ -448,34 +451,21 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
     return results;
 }
 
-std::vector<IndexQuery::Located> reached_by_selector(const IndexQuery& index,
-                                                     const SymbolInfo& method) {
-    auto reached = locate(
+std::vector<IndexQuery::Target> reached_by_selector(const IndexQuery& index,
+                                                    const SymbolInfo& method) {
+    auto ranked = exact_search(
         index,
         {.mode = SymbolQuery::Mode::Exact, .pattern = method.name, .kinds = {SymbolKind::Method}});
-    std::erase_if(reached, [&](const IndexQuery::Located& other) {
-        return other.symbol.hash == method.hash ||
-               name_form(other.symbol.flags) != NameForm::Selector;
-    });
-    // The property a getter's selector names (`count`), or a setter's
-    // (`setCount:`), whose accessors clang declares itself.
-    llvm::StringRef selector = method.name;
-    std::string property = selector.str();
-    if(selector.consume_front("set") && selector.consume_back(":") && !selector.empty() &&
-       !selector.contains(':')) {
-        property = selector.str();
-        property.front() = static_cast<char>(llvm::toLower(property.front()));
+    std::vector<IndexQuery::Target> reached;
+    for(auto& hit: ranked.hits) {
+        auto& other = hit.symbol;
+        if(other.name == method.name && other.hash != method.hash &&
+           name_form(other.flags) == NameForm::Selector &&
+           other.token_class.has(SemanticTokenModifier::Static) ==
+               method.token_class.has(SemanticTokenModifier::Static)) {
+            reached.push_back({.symbol = other.hash, .anchor = hit.anchor});
+        }
     }
-    if(!llvm::StringRef(property).contains(':')) {
-        reached.append_range(locate(index,
-                                    {.mode = SymbolQuery::Mode::Exact,
-                                     .pattern = property,
-                                     .kinds = {SymbolKind::Property}}));
-    }
-    std::erase_if(reached, [&](const IndexQuery::Located& other) {
-        return other.symbol.token_class.has(SemanticTokenModifier::Static) !=
-               method.token_class.has(SemanticTokenModifier::Static);
-    });
     return reached;
 }
 

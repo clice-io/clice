@@ -24,6 +24,7 @@ __attribute__((objc_root_class))
 }
 @property(nonatomic) int width;
 @property(nonatomic) int ink;
+@property(nonatomic, getter=isDry) int dry;
 - (void):(int)x tail:(int)y;
 - (int)size;
 + (void)draw;
@@ -38,6 +39,7 @@ __attribute__((objc_root_class))
 @interface Object (Extras)
 - (void)tidy;
 - (int)ink;
+- (int)isDry;
 @end
 
 @compatibility_alias §(quill)Quill §(pen)Pen;
@@ -87,6 +89,7 @@ void use(Quill *quill, Class kind, id thing, Box<Pen *> *box) {
     [kind draw];
     [thing draw];
     [thing ink];
+    [thing isDry];
     id writing = @protocol(Writing);
     [[box first] write];
     int count = Quill.count;

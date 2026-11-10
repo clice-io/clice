@@ -111,6 +111,11 @@ auto objc_dispatched(const clang::ObjCInterfaceDecl* receiver,
                      const clang::ObjCMethodDecl& method,
                      bool instance) -> const clang::ObjCMethodDecl*;
 
+/// Whether an Objective-C message goes to `id` or `Class`, which may reach
+/// any method of its selector. `self` in a class method is a `Class` clang
+/// knows to be its class.
+auto objc_untyped(const clang::ObjCMessageExpr& message) -> bool;
+
 /// The method an Objective-C message runs as far as its receiver's static
 /// class tells (objc_dispatched).
 auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::ObjCMethodDecl*;

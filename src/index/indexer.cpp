@@ -865,9 +865,15 @@ public:
 
         // A property's accessor clang declares is one symbol with the method
         // an @implementation, maybe in another unit, writes for it: a call
-        // to one nothing writes finds no callee.
+        // to one nothing writes finds no callee. A message to `id` naming
+        // one is the property's candidate in the semantic map, and the
+        // accessor's here, where the other methods of its selector find it.
         if(auto* OME = node.get<clang::ObjCMessageExpr>()) {
-            call(decls::objc_message_target(*OME), OME->getSelectorStartLoc());
+            const auto* method = decls::objc_message_target(*OME);
+            call(method, OME->getSelectorStartLoc());
+            if(method && method->isImplicit() && decls::objc_untyped(*OME)) {
+                add_self_relation(method, RelationKind::Candidate, OME->getSelectorStartLoc());
+            }
             return;
         }
         // `shape.count` calls its accessors, `+=` both; `super.count` the

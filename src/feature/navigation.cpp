@@ -338,8 +338,8 @@ std::vector<index::Site> references(const index::IndexQuery& index,
             }
         }
         if(index::name_form(info->flags) == index::NameForm::Selector) {
-            for(auto& other: index::reached_by_selector(index, *info)) {
-                add(other.symbol.hash, other.site.file, {RelationKind::Candidate});
+            for(auto other: index::reached_by_selector(index, *info)) {
+                add(other.symbol, other.anchor, {RelationKind::Candidate});
             }
         }
         // Its constructors are named by the class's name; the name in a

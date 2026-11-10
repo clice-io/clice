@@ -261,8 +261,8 @@ CallGraph call_graph(const index::IndexQuery& index,
                 }
             }
             if(info && index::name_form(info->flags) == index::NameForm::Selector) {
-                for(auto& other: index::reached_by_selector(index, *info)) {
-                    add_calls(other.symbol.hash, other.site.file, RelationKind::Candidate, true);
+                for(auto other: index::reached_by_selector(index, *info)) {
+                    add_calls(other.symbol, other.anchor, RelationKind::Candidate, true);
                 }
             }
             graph.callers = located_callers(index, by_caller);

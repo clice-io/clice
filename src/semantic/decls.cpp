@@ -541,6 +541,14 @@ auto objc_dispatched(const clang::ObjCInterfaceDecl* receiver,
     return objc_written(method);
 }
 
+auto objc_untyped(const clang::ObjCMessageExpr& message) -> bool {
+    const auto* receiver = message.getReceiverKind() == clang::ObjCMessageExpr::Instance
+                               ? message.getInstanceReceiver()
+                               : nullptr;
+    return receiver && !receiver->isObjCSelfExpr() &&
+           (receiver->getType()->isObjCIdType() || receiver->getType()->isObjCClassType());
+}
+
 auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::ObjCMethodDecl* {
     const auto* method = message.getMethodDecl();
     return method ? objc_dispatched(message.getReceiverInterface(),

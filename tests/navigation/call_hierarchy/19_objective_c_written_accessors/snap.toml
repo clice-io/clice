@@ -62,6 +62,13 @@ incoming_calls = [
         detail = "Leaf::count",
         sites = ["return super.⟦count⟧; @+7"],
     },
+    {
+        name = "bump",
+        kind = "Function",
+        at = "void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["(void)counter.⟦count⟧;"],
+    },
 ]
 outgoing_calls = [
     {
@@ -77,7 +84,15 @@ outgoing_calls = [
 call_hierarchy = [
     { name = "count", kind = "Method", at = "- (int)⟦count⟧ { @+0", detail = "Leaf::count" },
 ]
-incoming_calls = []
+incoming_calls = [
+    {
+        name = "bump",
+        kind = "Function",
+        at = "void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["(void)counter.⟦count⟧;"],
+    },
+]
 outgoing_calls = [
     {
         name = "count",
@@ -130,6 +145,13 @@ outgoing_calls = [
         at = "- (void)⟦setTotal⟧:(int)total {",
         detail = "Counter::setTotal:",
         sites = ["counter.⟦total⟧ += 1;", "[counter ⟦setTotal⟧:[counter limit]];"],
+    },
+    {
+        name = "count",
+        kind = "Method",
+        at = "- (int)⟦count⟧ { @-17",
+        detail = "Counter::count",
+        sites = ["(void)counter.⟦count⟧;"],
     },
     {
         name = "limit",
