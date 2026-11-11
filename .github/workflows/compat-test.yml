@@ -100,6 +100,24 @@ jobs:
           pacman -Syu
           pacman -Su mingw-w64-ucrt-x86_64-gcc mingw-w64-clang-x86_64-clang gcc cmake ninja
 
+      # The `import std` scenarios' CMake: 4.5 is the first without an
+      # experimental gate on it.
+      - name: Install CMake 4.5
+        if: runner.os != 'macOS'
+        run: |
+          release=https://github.com/Kitware/CMake/releases/download/v4.5.0-rc3
+          if [ "$RUNNER_OS" = Windows ]; then
+            curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/cmake.zip" \
+              "$release/cmake-4.5.0-rc3-windows-x86_64.zip"
+            unzip -q "$RUNNER_TEMP/cmake.zip" -d "$RUNNER_TEMP"
+            mv "$RUNNER_TEMP/cmake-4.5.0-rc3-windows-x86_64" ~/cmake-4.5
+          else
+            curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/cmake.tar.gz" \
+              "$release/cmake-4.5.0-rc3-linux-x86_64.tar.gz"
+            tar -xzf "$RUNNER_TEMP/cmake.tar.gz" -C "$RUNNER_TEMP"
+            mv "$RUNNER_TEMP/cmake-4.5.0-rc3-linux-x86_64" ~/cmake-4.5
+          fi
+
       - name: Install Cygwin's compilers
         if: runner.os == 'Windows'
         run: |
