@@ -506,6 +506,16 @@ Result<DefinitionResult> definition(Context& ctx, index::Locator locator) {
         }
     }
     result.definition = entry(definition->extent, std::move(definition->text));
+    // Several definitions answer in the order of their places, whichever
+    // unit's index merged first.
+    if(auto& others = result.other_definitions; !others.empty()) {
+        others.push_back(std::move(*result.definition));
+        ranges::sort(others, {}, [](const LocationEntry& place) {
+            return std::tie(place.file, place.start_line);
+        });
+        result.definition = std::move(others.front());
+        others.erase(others.begin());
+    }
     return result;
 }
 

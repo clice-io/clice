@@ -291,6 +291,12 @@ void ProjectIndex::update_symbols(Fid file, const Shard* before, const Shard* af
         if(old && fresh && *old == *fresh) {
             return;
         }
+        // Most symbols below external scope stay in their one file and
+        // have no record: a read would remember each miss until the next
+        // save.
+        if(either.local && !old && !holds(local_records, number_key(either.symbol))) {
+            return;
+        }
         auto* record = change_symbol(either.symbol, either.local);
         if(!record) {
             return;

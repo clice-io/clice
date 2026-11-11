@@ -488,6 +488,18 @@ private:
         return entry ? &*entry : nullptr;
     }
 
+    /// Whether `records` holds a `key` record, without reading it: a miss
+    /// is not remembered.
+    template <typename Value>
+    bool holds(const Records<Value>& records, llvm::StringRef key) const {
+        for(auto* held: {&records.changed, &records.written, &records.cached}) {
+            if(auto it = held->find(key); it != held->end()) {
+                return it->second.has_value();
+            }
+        }
+        return db && db->contains(records.kind, key);
+    }
+
     /// The newest `key` record of `records` the index holds in memory, to
     /// change in place; null for one it holds none of.
     template <typename Value>
