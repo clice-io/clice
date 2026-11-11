@@ -91,7 +91,8 @@ push runs them, `ecosystem/` at the repository root does
 
   - A command is `clang++` (`clang` for a `.c` or `.m` unit), `flags`, the unit's own
     arguments, `-fsyntax-only`, the file. Nothing else is added: a topic
-    states its standard in `flags`, and a unit's own `-std` overrides it.
+    states its standard in `flags`, and a unit's own `-std` overrides it, as
+    an OpenCL unit's `-cl-std` replaces it.
   - Without `units`, every C-family source of the case is a unit with no
     arguments of its own; with it, exactly those files are, a list of lists
     giving one unit several commands.

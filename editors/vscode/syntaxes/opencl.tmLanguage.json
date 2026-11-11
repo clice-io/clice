@@ -1,0 +1,4 @@
+{
+  "scopeName": "source.opencl",
+  "patterns": [{ "include": "source.c" }]
+}

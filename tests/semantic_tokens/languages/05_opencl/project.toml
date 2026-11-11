@@ -1,0 +1,5 @@
+# OpenCL compiles for any target clang knows: one is pinned, so that every
+# platform resolves the builtins alike.
+[units]
+"main.cl" = ["-cl-std=CL3.0", "--target=x86_64-unknown-linux-gnu"]
+"main.clcpp" = ["-cl-std=clc++2021", "--target=x86_64-unknown-linux-gnu"]

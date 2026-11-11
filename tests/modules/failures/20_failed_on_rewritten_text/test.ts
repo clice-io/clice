@@ -15,5 +15,8 @@ test(async (t) => {
     await t.show("errors", first);
     await t.show("pushes", s.pushes("main.cpp"));
     const counts = (await s.counts()).files;
-    await t.show("builds", { compiles: counts["main.cpp"]?.compile, pcms: counts["a.cppm"]?.pcm });
+    await t.show("builds", {
+        compiles: counts["main.cpp"]?.compile ?? 0,
+        pcms: counts["a.cppm"]?.pcm ?? 0,
+    });
 });

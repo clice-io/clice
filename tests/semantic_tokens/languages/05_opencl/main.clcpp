@@ -1,0 +1,9 @@
+template <typename T>
+T twice(T value) {
+    return value + value;
+}
+
+__kernel void scale(__global float *data) {
+    size_t i = get_global_id(0);
+    data[i] = twice(data[i]);
+}

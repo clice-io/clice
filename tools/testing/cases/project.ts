@@ -35,7 +35,7 @@ export const RESERVED = new Set([
     "trace.jsonl",
 ]);
 
-export const SOURCE = /\.(c|cc|cpp|cxx|cppm|ixx|m|mm)$/;
+export const SOURCE = /\.(c|cc|cpp|cxx|cppm|ixx|m|mm|cl|clcpp)$/;
 export const HEADER = /\.(h|hh|hpp|hxx)$/;
 /// The files that may carry markers; any other input copies byte for byte.
 export const MARKED = new RegExp(`${SOURCE.source}|${HEADER.source}`);
@@ -183,6 +183,14 @@ interface Entry {
     arguments: string[];
 }
 
+/// The project's flags a unit's command takes: an OpenCL unit's -cl-std is
+/// its standard, beside which clang rejects any -std.
+function inheritedFlags(flags: readonly string[], args: readonly string[]): readonly string[] {
+    return args.some((arg) => arg.startsWith("-cl-std="))
+        ? flags.filter((flag) => !flag.startsWith("-std="))
+        : flags;
+}
+
 function entries(project: Project, units: Record<string, UnitArgs>, root: string): Entry[] {
     const workspace = posix(root);
     return Object.entries(units).flatMap(([unit, own]) => {
@@ -193,7 +201,7 @@ function entries(project: Project, units: Record<string, UnitArgs>, root: string
             file,
             arguments: [
                 /\.[cm]$/.test(unit) ? "clang" : "clang++",
-                ...(project.flags ?? []),
+                ...inheritedFlags(project.flags ?? [], args),
                 ...args,
                 "-fsyntax-only",
                 file,
