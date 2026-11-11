@@ -29,6 +29,7 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     std::vector<SearchDir> driver_frameworks;
     std::vector<SearchDir> after_prefixed;
     std::vector<SearchDir> after;
+    std::vector<std::string> forced_macros;
     std::vector<std::string> forced_includes;
 
     // A leading `=` names the sysroot: the last -isysroot, else the last
@@ -134,6 +135,7 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
 
             case OPT_idirafter: after.push_back({make_absolute(value)}); break;
 
+            case OPT_imacros: forced_macros.emplace_back(value); break;
             case OPT_include: forced_includes.emplace_back(value); break;
 
             // FIXME: header maps (-I foo.hmap remaps include names), which
@@ -143,7 +145,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     }
 
     SearchConfig config;
-    config.forced_includes = std::move(forced_includes);
+    config.forced_includes = std::move(forced_macros);
+    config.forced_includes.append_range(forced_includes);
     auto append = [&](std::vector<SearchDir>& group) {
         config.dirs.insert(config.dirs.end(),
                            std::make_move_iterator(group.begin()),

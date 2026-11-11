@@ -98,14 +98,18 @@ struct RenderOptions {
     /// command's own user-content flags so the host's -include runs first.
     const char* preamble = nullptr;
 
-    /// How many of the command's `-include`s to keep, in order: the ones
-    /// past them are left out.
-    std::size_t kept_includes = std::numeric_limits<std::size_t>::max();
+    /// How many of the command's forced files to keep, in the order clang
+    /// enters them (SearchConfig::forced_includes): the ones past them are
+    /// left out.
+    std::size_t kept_forced = std::numeric_limits<std::size_t>::max();
 
     /// Keep the directories of another compiler's builtin headers that
     /// clang's own shadow; a command another tool reads leaves them out,
     /// since it cannot hide the files of them clang's stand in for.
     bool shadowed_dirs = true;
+
+    /// Which of `args` these options leave out, by position.
+    llvm::SmallVector<bool> left_out(llvm::ArrayRef<Arg> args) const;
 };
 
 /// Get the resource directory for clang builtin headers. Computed once

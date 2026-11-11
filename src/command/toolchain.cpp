@@ -741,17 +741,11 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
     };
 
     std::size_t last_user_content = argv.size();
-    std::size_t includes = 0;
-    for(auto& arg: rc.args) {
-        if(!opts.shadowed_dirs && names_search_dir(arg.opt_id) &&
-           ranges::contains(rc.shadowed, llvm::StringRef(arg.values[0]))) {
+    auto left_out = opts.left_out(rc.args);
+    for(auto [i, arg]: views::enumerate(rc.args)) {
+        if(left_out[i] || (!opts.shadowed_dirs && names_search_dir(arg.opt_id) &&
+                           ranges::contains(rc.shadowed, llvm::StringRef(arg.values[0])))) {
             continue;
-        }
-        if(arg.opt_id == clang_options::OPT_include) {
-            includes += 1;
-            if(includes > opts.kept_includes) {
-                continue;
-            }
         }
         render_arg(arg, emit);
         if(arg.cls == ArgClass::UserContent) {

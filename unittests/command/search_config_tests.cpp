@@ -58,22 +58,27 @@ ZEST_CASE(ReordersDirectoryGroups) {
 }
 
 ZEST_CASE(KeepsForcedIncludes) {
-    // In command order and as written: their lookup starts from the
-    // working directory, which extraction does not determine.
+    // In the order clang enters them, every -imacros before every
+    // -include, and as written: their lookup starts from the working
+    // directory, which extraction does not determine.
     TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-include",
                                      "b.h",
+                                     "-imacros",
+                                     "m.h",
                                      "-include-pch",
                                      "p.pch",
                                      "-I",
                                      tmp.c_path("inc"),
                                      "-include",
                                      "a.h",
+                                     "-imacros",
+                                     "n.h",
                                      "main.cpp"};
     auto config = extract(args, tmp.root);
 
-    ZASSERT(config.forced_includes == (std::vector<std::string>{"b.h", "a.h"}));
+    ZASSERT(config.forced_includes == (std::vector<std::string>{"m.h", "n.h", "b.h", "a.h"}));
 }
 
 ZEST_CASE(MarksDriverDirs) {

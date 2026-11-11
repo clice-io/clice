@@ -111,7 +111,11 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     auto search_from = [&](unsigned start) -> std::optional<ResolveResult> {
         // clang takes the first framework directory holding the framework:
         // a header it lacks is not looked for in the framework of a later
-        // one.
+        // one. clang's subframework lookup is left out: `<Sub/x.h>` written
+        // inside Umb.framework, which clang finds in its
+        // Frameworks/Sub.framework, stays unresolved here. Only the SDK's
+        // umbrella frameworks rely on it; their headers never change, and
+        // the compile itself, being clang's, finds them.
         bool framework_found = false;
         for(unsigned i = start; i < config.dirs.size(); i += 1) {
             auto& dir = config.dirs[i];

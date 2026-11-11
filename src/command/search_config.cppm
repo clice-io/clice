@@ -37,9 +37,11 @@ struct SearchConfig {
     /// start; the After dirs (-idirafter, -iwithprefix) follow them.
     unsigned system_start_idx = 0;
 
-    /// The files the command includes ahead of the file it compiles (`-include`),
-    /// in order and as written: clang looks a relative one up in the
-    /// compile's working directory first, then as a quoted include.
+    /// The files the command enters ahead of the file it compiles, in the
+    /// order clang enters them: every `-imacros` (whose macros alone it
+    /// keeps), then every `-include`, each in command order and as written.
+    /// clang looks a relative one up in the compile's working directory
+    /// first, then as a quoted include.
     std::vector<std::string> forced_includes;
 
     /// The files in `dirs` its compiles do not see; null for none.

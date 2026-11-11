@@ -86,6 +86,20 @@ llvm::StringRef resource_dir() {
     return dir;
 }
 
+llvm::SmallVector<bool> RenderOptions::left_out(llvm::ArrayRef<Arg> args) const {
+    llvm::SmallVector<bool> result(args.size());
+    std::size_t entered = 0;
+    for(auto id: {clang_options::OPT_imacros, clang_options::OPT_include}) {
+        for(auto [i, arg]: views::enumerate(args)) {
+            if(arg.opt_id == id) {
+                entered += 1;
+                result[i] = entered > kept_forced;
+            }
+        }
+    }
+    return result;
+}
+
 BuiltinHeader builtin_header(llvm::StringRef name) {
     struct Entry {
         llvm::StringLiteral name;
@@ -330,13 +344,10 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
     auto state = language_state_at_slot(command.args);
     std::size_t last_user_content = argv.size();
 
-    std::size_t includes = 0;
-    for(auto& arg: command.args) {
-        if(arg.opt_id == clang_options::OPT_include) {
-            includes += 1;
-            if(includes > opts.kept_includes) {
-                continue;
-            }
+    auto left_out = opts.left_out(command.args);
+    for(auto [i, arg]: views::enumerate(command.args)) {
+        if(left_out[i]) {
+            continue;
         }
         switch(arg.cls) {
             case ArgClass::Semantic:

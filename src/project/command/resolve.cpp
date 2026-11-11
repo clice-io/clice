@@ -52,10 +52,10 @@ void log_command(Project& project, Fid file, const Resolution& resolution) {
     LOG_DEBUG("Arguments of {}: {}", files.resolve(file), arguments);
 }
 
-/// How many of `ref`'s `-include`s come before the one naming `forced`:
-/// what a header context entered through that forced file keeps
+/// How many of `ref`'s forced files clang enters before `forced`: what a
+/// header context entered through that forced file keeps
 /// (SelectedCommand::forced). All of them for none.
-std::size_t includes_before(Project& project, const CommandRef& ref, Fid forced) {
+std::size_t forced_before(Project& project, const CommandRef& ref, Fid forced) {
     if(!forced.valid()) {
         return std::numeric_limits<std::size_t>::max();
     }
@@ -273,13 +273,14 @@ Resolution Project::resolve_command(Fid path_id, const CommandRequest& request) 
 
     // A header compiling in its host compiles as the host's language, with
     // the header injected as the input; the synthesized prefix lands after
-    // the host's own user-content flags (its -includes run first, but for
-    // the one the context enters the header through and those after it).
+    // the host's own user-content flags (its forced files run first, but
+    // for the one the context enters the header through and those clang
+    // enters after it).
     RenderOptions options;
     if(resolution.synthesized) {
         options.preamble = resolution.synthesized->prefix.c_str();
     }
-    options.kept_includes = includes_before(*this, resolution.ref, resolution.forced);
+    options.kept_forced = forced_before(*this, resolution.ref, resolution.forced);
     static_cast<Rendered&>(resolution) = render(resolution.ref, options);
     log_command(*this, path_id, resolution);
     return resolution;
