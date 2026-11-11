@@ -3,7 +3,7 @@
 <!-- The cards in the sections below are generated from the documented cases
      in tests/inlay_hints/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 clice renders inline annotations for the information the code leaves implicit: parameter names at call sites, deduced types, the field names behind positional aggregate initialization, and what a closing brace or an `#endif` closes. Every kind of hint has its own switch in the `[inlay_hints]` configuration section; each section below says which are off by default.
 

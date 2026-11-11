@@ -135,7 +135,7 @@ for (const key of new Set(documented.map((c) => `${c.topic}/${c.subtopic}`))) {
 if (problems.length > 0) {
     console.error(problems.join("\n"));
     if (mode === "check") {
-        console.error("pixi run update-feature-docs rewrites the regions");
+        console.error("pixi run docs-update rewrites the regions");
     }
     process.exit(1);
 }

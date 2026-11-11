@@ -137,35 +137,25 @@ cmd = "python3 scripts/check_timers.py"
 
 # Workspace-level (default feature) so every environment can run them —
 # the lint job uses the bare `node` env, local runs use `default`.
-[tasks.check-feature-docs]
-cmd = "node tools/testing/docs/site.ts check"
-depends-on = ["install-tests"]
-
-[tasks.update-feature-docs]
-cmd = "node tools/testing/docs/site.ts update"
-depends-on = ["install-tests"]
-
-[tasks.check-config-docs]
-cmd = "node tools/docs/config.ts check"
-depends-on = ["install-tests"]
-
-[tasks.update-config-docs]
-cmd = "node tools/docs/config.ts update"
-depends-on = ["install-tests"]
-
 # docs/en and docs/zh are both hand-edited; docs/meta/translations holds
-# the per-segment hash pairs tying them together. The checker comes from
-# clice-io/docs (tools/translations, its RULES.md states the contract).
-[tasks.check-doc-translations]
-cmd = "node tools/docs/translations.ts check"
+# the per-segment hash pairs tying them together. The translation checker
+# comes from clice-io/docs (tools/translations, its RULES.md states the
+# contract).
+[tasks.docs-update]
+cmd = "node tools/testing/docs/site.ts update && node tools/docs/config.ts update"
+depends-on = ["install-tests"]
 
-[tasks.report-doc-translations]
+[tasks.docs-check]
+cmd = "node tools/testing/docs/site.ts check && node tools/docs/config.ts check && node tools/docs/translations.ts check"
+depends-on = ["install-tests"]
+
+[tasks.docs-report]
 cmd = "node tools/docs/translations.ts report"
 
-[tasks.record-doc-translations]
+[tasks.docs-record]
 cmd = "node tools/docs/translations.ts record"
 
-[tasks.review-doc-translations]
+[tasks.docs-review]
 cmd = "node tools/docs/translations.ts review --glossary=.claude/skills/translate-docs/SKILL.md"
 
 [feature.test.tasks.unit-test]

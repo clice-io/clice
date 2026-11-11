@@ -8,7 +8,7 @@ Language Server Protocol features available when using clice as an editor backen
 
 <!-- The status matrix counts the documented cases each feature page shows,
      in the order of the sidebar. Do not edit the region between the
-     GENERATED markers by hand — run `pixi run update-feature-docs`. -->
+     GENERATED markers by hand — run `pixi run docs-update`. -->
 
 <!-- BEGIN GENERATED OVERVIEW -->
 

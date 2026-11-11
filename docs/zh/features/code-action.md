@@ -3,7 +3,7 @@
 <!-- The cards in the sections below are generated from the documented cases
      in tests/code_actions/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 clice 针对选区提供代码操作：依据编译器已掌握的信息生成或改写代码的重构、为头文件未声明的名字提供的快速修复，以及编译器和 clang-tidy 附在诊断上的修复。每个操作在列出时就已完整算好，应用时无需再等一次请求；编辑内容带有计算时所依据的文档版本，缓冲区一旦变动，编辑器就会拒绝它们。同一批操作也可以通过 `clice inspect code-action` 以无头方式运行。
 

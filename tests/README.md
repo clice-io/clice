@@ -405,9 +405,9 @@ written by hand that a case can show.
   linux-x64 run to the docs site, and a pull request's docs check builds the
   site with them. A case's sources are what the card shows: maintainer notes
   go in its `test.ts`.
-- **Checks.** `pixi run check-feature-docs` fails where pages and cases
-  disagree: a stale region, a documented subtopic on no page;
-  `pixi run update-feature-docs` rewrites the regions.
+- **Checks.** `pixi run docs-check` fails where pages and cases disagree: a
+  stale region, a documented subtopic on no page; `pixi run docs-update`
+  rewrites the regions.
 - **Command pages**: documented cases of a command topic are its examples, in
   order: the commands and their transcripts.
 - **Configuration page**: a documented case whose `---` block names
