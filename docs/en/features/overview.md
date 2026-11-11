@@ -4,7 +4,7 @@ clice provides a suite of C++ development tools built on LLVM/Clang. This sectio
 
 ## Languages
 
-clice serves C, C++, CUDA, HIP and OpenCL, and Objective-C and Objective-C++ for reading code: semantic tokens, hover, navigation and references, call and type hierarchies, the outline, folding, workspace symbols and `clice query` know their classes, protocols, categories, methods, properties and instance variables, and rename takes classes, protocols, categories and instance variables. Renaming a method or a property and completing a message are not supported, nor are Clang header modules (`-fmodules`, `@import`): a file compiles without them, and clice says so once. Like every project, an Objective-C one needs a compilation database, which CMake's Makefile and Ninja generators write; neither Xcode nor CMake's Xcode generator does.
+clice serves C, C++, CUDA, HIP and OpenCL, and Objective-C and Objective-C++ for reading code: semantic tokens, hover, navigation and references, call and type hierarchies, the outline, folding, workspace symbols and `clice query` know their classes, protocols, categories, methods, properties and instance variables, completion writes a message's selector, and rename takes classes, protocols, categories and instance variables. Renaming a method or a property is not supported, nor are Clang header modules (`-fmodules`, `@import`): a file compiles without them, and clice says so once. Like every project, an Objective-C one needs a compilation database, which CMake's Makefile and Ninja generators write; neither Xcode nor CMake's Xcode generator does.
 
 CUDA and HIP files compile their device side, as Clang runs that job first. OpenCL C and C++ for OpenCL (`.cl`, `.clcpp`) compile as Clang compiles them, builtins included; a file no compilation database lists takes a rule's `default_command`, such as `clang -cl-std=CL3.0`. The VS Code extension gives `.hip` a `hip` language and the OpenCL extensions an `opencl` one, which VS Code has none of; `.cl` is Common Lisp's extension too, which `files.associations` gives back.
 
@@ -20,7 +20,7 @@ Language Server Protocol features available when using clice as an editor backen
 
 | Feature                                   | Status                                   |
 | ----------------------------------------- | ---------------------------------------- |
-| [Code Completion](./completion.md)        | 52 supported                             |
+| [Code Completion](./completion.md)        | 53 supported                             |
 | [Hover](./hover.md)                       | 72 supported                             |
 | [Signature Help](./signature-help.md)     | 21 supported · 1 partial · 2 unsupported |
 | [Code Navigation](./navigation.md)        | 115 supported · 8 unsupported            |

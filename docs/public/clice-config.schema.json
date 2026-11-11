@@ -478,7 +478,7 @@
                         "delimiters",
                         "none"
                     ],
-                    "description": "What completing a call or a template inserts after the name: \"placeholders\" its parentheses or angle brackets with a placeholder per parameter, \"delimiters\" the empty parentheses or brackets with the cursor between them, \"none\" the name alone. It applies to functions, function-like macros, variables holding a lambda and class, alias and variable templates; an overload set listed as one item takes the delimiters. Nothing is added where the arguments are written already or the name is not called, as when taking a function's address. Clients without snippet support get the parentheses of a call alone.",
+                    "description": "What completing a call or a template inserts after the name: \"placeholders\" its parentheses or angle brackets with a placeholder per parameter, \"delimiters\" the empty parentheses or brackets with the cursor between them, \"none\" the name alone. It applies to functions, function-like macros, variables holding a lambda and class, alias and variable templates; an overload set listed as one item takes the delimiters. Nothing is added where the arguments are written already or the name is not called, as when taking a function's address. Clients without snippet support get the parentheses of a call alone. An Objective-C message takes a placeholder or an empty tab stop after each piece of its selector, its first piece alone with \"none\" or without snippet support.",
                     "default": "placeholders"
                 },
                 "bundle_overloads": {

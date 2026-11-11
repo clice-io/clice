@@ -321,6 +321,20 @@ tests/code_completion/functions_snippets/08_statement_snippets
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Objective-C 方法**
+
+补全消息时，从光标所在的那一段起补全选择器，并为每个实参插入一个占位符；在发给 `super` 的消息里，正在编写的方法会把自己的实参原样传下去。在实现中声明方法时会插入整条声明；在点号之后，无参方法会像属性一样提供
+
+列表显示选择器的第一段，其余部分作为签名显示。设为 `delimiters` 时，实参处是空的 Tab 跳转点；设为 `none` 时，以及实参已经写出时，只插入这一段。
+
+```case
+tests/code_completion/functions_snippets/12_objective_c_methods
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 模板与概念
