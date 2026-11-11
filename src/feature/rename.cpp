@@ -14,6 +14,17 @@ namespace clice::feature {
 
 namespace {
 
+/// The name a symbol's declarations write: an Objective-C category's own,
+/// which the index names after its class (`Shape(Extras)`); empty for a
+/// class extension (`Shape()`). No other named class's name ends in `)`.
+llvm::StringRef written_name(const index::SymbolInfo& symbol) {
+    llvm::StringRef name = symbol.name;
+    if(symbol.kind == SymbolKind::Class && name.ends_with(")")) {
+        return name.drop_back().rsplit('(').second;
+    }
+    return name;
+}
+
 /// The offsets in `text[begin, end)` where `name` stands as a whole
 /// identifier.
 llvm::SmallVector<std::uint32_t, 1>
@@ -66,7 +77,8 @@ bool renamable(SymbolKind kind) {
         case SymbolKind::Parameter:
         case SymbolKind::Label:
         case SymbolKind::Concept:
-        case SymbolKind::Operator: return true;
+        case SymbolKind::Operator:
+        case SymbolKind::Protocol: return true;
         default: return false;
     }
 }
@@ -204,10 +216,20 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
         return macro_target(serving, named);
     }
     auto query = serving.written_only();
+    // LIMITATION: an Objective-C property is not renamed: its getter and
+    // setter, their messages and dot syntax, and the instance variable it
+    // synthesizes would rename with it. Whoever renames a property gets the
+    // refusal.
+    if(symbol.kind == SymbolKind::Property) {
+        return std::unexpected(std::format(
+            "renaming the Objective-C property `{}` is not supported: its accessors and the "
+            "instance variable it synthesizes would have to change with it",
+            symbol.name));
+    }
     if(!renamable(symbol.kind)) {
         return std::unexpected(std::format("`{}` cannot be renamed", symbol.name));
     }
-    if(index::has_flag(symbol.flags, index::SymbolFlags::Unnamed)) {
+    if(index::has_flag(symbol.flags, index::SymbolFlags::Unnamed) || written_name(symbol).empty()) {
         return std::unexpected(std::format("{} has no name to rename", symbol.name));
     }
 
@@ -233,6 +255,16 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
             root = std::move(deduced.front());
             break;
         }
+        // LIMITATION: an Objective-C method is not renamed: its selector's
+        // pieces would rename in every method a message to `id` may reach,
+        // overrides and protocol requirements among them. Whoever renames a
+        // method gets the refusal.
+        case index::NameForm::Selector: {
+            return std::unexpected(std::format(
+                "renaming the Objective-C method `{}` is not supported: every method its "
+                "messages may reach would have to change with it",
+                symbol.name));
+        }
         case index::NameForm::Conversion:
         case index::NameForm::Operator:
         case index::NameForm::Literal: {
@@ -254,6 +286,27 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
     if(index::has_flag(root.symbol.flags, index::SymbolFlags::SpelledInMacro)) {
         return std::unexpected(std::format("every declaration of `{}` is spelled by a macro",
                                            root.symbol.display_name()));
+    }
+    // `@synthesize width;` binds the instance variable by its property's
+    // name: one token names both.
+    if(root.symbol.kind == SymbolKind::Field &&
+       !index::locate(query,
+                      {.mode = index::SymbolQuery::Mode::Exact,
+                       .pattern = root.symbol.name,
+                       .kinds = {SymbolKind::Property}})
+            .empty()) {
+        for(auto& site: query.sites(root.symbol.hash, root.site.file, RelationKind::Reference)) {
+            auto cursor = query.symbol_at(site.file, site.range.begin);
+            if(cursor && ranges::any_of(cursor->symbols, [&](index::SymbolHash hash) {
+                   auto info = query.symbol_info(hash, site.file);
+                   return info && info->kind == SymbolKind::Property;
+               })) {
+                return std::unexpected(
+                    std::format("an `@synthesize` binds `{0}` by the name of its property, which a "
+                                "rename would change too; write `@synthesize {0} = {0};` first",
+                                root.symbol.name));
+            }
+        }
     }
 
     RenameTarget target{.symbol = root};
@@ -333,10 +386,16 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
     }
     if(!found && refused.empty()) {
         for(auto symbol: cursor->symbols) {
-            if(auto info = query.symbol_info(symbol, cursor->site.file);
-               info && info->kind == SymbolKind::Macro) {
+            auto info = query.symbol_info(symbol, cursor->site.file);
+            if(!info) {
+                continue;
+            }
+            if(info->kind == SymbolKind::Macro) {
                 return std::unexpected(unplaced_macro(*info));
             }
+            // An instance variable an Objective-C property synthesizes, for one.
+            return std::unexpected(
+                std::format("`{}` has no declaration in the index to rename", info->name));
         }
     }
     if(!found) {
@@ -348,7 +407,7 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
     if(!text) {
         return std::unexpected(std::format("{} changed since it was indexed", site.path));
     }
-    llvm::StringRef name = found->symbol.symbol.name;
+    auto name = written_name(found->symbol.symbol);
     auto offsets = spellings(*text, site.range.begin, site.range.end, name);
     if(offsets.empty()) {
         return std::unexpected(
@@ -420,7 +479,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     // A rename edits names as the text spells them: a macro's also where
     // the expansions of a body resolve one to it.
     auto query = macro ? serving : serving.written_only();
-    RenamePlan plan{.old_name = root.name, .new_name = new_name.str()};
+    RenamePlan plan{.old_name = written_name(root).str(), .new_name = new_name.str()};
     llvm::StringRef old_name = plan.old_name;
     if(new_name == old_name) {
         return plan;
@@ -725,6 +784,19 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
             }
         }
     }
+    // A category is indexed after its class (`Shape(Extras)`): another of
+    // the class's by the new name would be declared twice.
+    if(llvm::StringRef indexed = root.name; indexed != old_name) {
+        auto objc_class = indexed.split('(').first;
+        for(auto& hit: all_named(query, std::format("{}({})", objc_class, new_name))) {
+            if(!group.contains(hit.symbol.hash) && !batch.renamed.contains(hit.symbol.hash)) {
+                plan.conflicts.push_back(std::format("`{}` has a category `{}` already ({})",
+                                                     objc_class,
+                                                     std::string_view(new_name),
+                                                     where(hit.site)));
+            }
+        }
+    }
     auto reserved = [&](bool global) {
         // Both languages reserve `__x` and `_X` everywhere, and `_x` at
         // file and global namespace scope.
@@ -926,7 +998,7 @@ RenamePlan plan_rename(const index::IndexQuery& query,
                        llvm::StringRef new_name,
                        const RenameScope& scope,
                        const RenameBatch& batch) {
-    llvm::StringSet<> names{target.symbol.symbol.name, new_name};
+    llvm::StringSet<> names{written_name(target.symbol.symbol), new_name};
     return plan_rename(query,
                        files,
                        target,
@@ -959,7 +1031,7 @@ BatchPlan plan_renames(const index::IndexQuery& query,
 
     llvm::StringSet<> names;
     for(auto& [target, new_name]: renamings) {
-        names.insert(target.symbol.symbol.name);
+        names.insert(written_name(target.symbol.symbol));
         names.insert(new_name);
     }
     auto outdated = outdated_files(query, files, scope, names);
@@ -967,7 +1039,7 @@ BatchPlan plan_renames(const index::IndexQuery& query,
     BatchPlan result;
     for(std::uint32_t i = 0; i < renamings.size(); i += 1) {
         auto& [target, new_name] = renamings[i];
-        auto& old_name = target.symbol.symbol.name;
+        auto old_name = written_name(target.symbol.symbol).str();
         if(auto& earlier = repeats[i]) {
             auto& plan =
                 result.plans.emplace_back(RenamePlan{.old_name = old_name, .new_name = new_name});

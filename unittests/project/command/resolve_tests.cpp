@@ -3,6 +3,7 @@ module clice;
 import :command.table;
 import :project.command;
 import :project.project;
+import :syntax.lexer;
 import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
@@ -253,6 +254,40 @@ ZEST_CASE(DialectFollowsCommand) {
     auto& borrowed = project.dialect(borrowing, nullptr);
     ZEXPECT(bool(borrowed.CPlusPlus));
     ZEXPECT((borrowed.LangStd == clang::LangStandard::lang_cxx14));
+}
+
+ZEST_CASE(DialectOfLanguage) {
+    /// The master lexes a file in the language its command compiles it in,
+    /// as the frontend does: Objective-C, Objective-C++ and OpenCL C read
+    /// their own keywords.
+    TempDir tmp;
+    tmp.touch("shape.m", "");
+    tmp.touch("shape.mm", "");
+    tmp.touch("kernel.cl", "");
+    tmp.touch("kernel.clcpp", "");
+    FileTable files;
+    Project project{files};
+    project.root = CanonicalPath(Spelling::absolute(tmp.root));
+    project.settings.finalize(project.root);
+    project.rules = Rules(project.settings, project.root, "");
+    auto add = [&](llvm::StringRef command, llvm::StringRef file) {
+        auto line = std::format("{} -c {}", command, tmp.path(file));
+        return project.cdb.add_command(tmp.root, tmp.path(file), llvm::StringRef(line))->file;
+    };
+    auto& objc = project.dialect(add("clang -std=c11", "shape.m"), nullptr);
+    ZEXPECT(bool(objc.ObjC));
+    ZEXPECT(!bool(objc.CPlusPlus));
+    ZEXPECT((objc.LangStd == clang::LangStandard::lang_c11));
+    auto& objcxx = project.dialect(add("clang++", "shape.mm"), nullptr);
+    ZEXPECT(bool(objcxx.ObjC));
+    ZEXPECT(bool(objcxx.CPlusPlus));
+    auto& opencl = project.dialect(add("clang -cl-std=CL3.0", "kernel.cl"), nullptr);
+    ZEXPECT(bool(opencl.OpenCL));
+    ZEXPECT((opencl.LangStd == clang::LangStandard::lang_opencl30));
+    ZEXPECT(keyword_kind("__global", keywords(opencl)) != clang::tok::identifier);
+    auto& openclcxx = project.dialect(add("clang -cl-std=clc++2021", "kernel.clcpp"), nullptr);
+    ZEXPECT(bool(openclcxx.OpenCLCPlusPlus));
+    ZEXPECT((openclcxx.LangStd == clang::LangStandard::lang_openclcpp2021));
 }
 
 ZEST_CASE(IdentityIsEffectiveCommand) {

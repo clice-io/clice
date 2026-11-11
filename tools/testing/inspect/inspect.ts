@@ -200,6 +200,8 @@ const LSP_SYMBOL_KIND: Record<string, string> = {
     Header: "String",
     Number: "Number",
     Operator: "Operator",
+    Protocol: "Interface",
+    Property: "Property",
 };
 
 /// Twin of the HintCategory -> protocol::InlayHintKind switch in

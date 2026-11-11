@@ -1,0 +1,26 @@
+about = "libobjc2 2.3 with its tests"
+repository = "https://github.com/gnustep/libobjc2"
+commit = "e877e782fb965c4e870d2ecf6aff58dddc6290ae"
+
+[configurations.clang]
+about = "C, C++, Objective-C and Objective-C++ for the GNUstep runtime, built by clang"
+platforms = ["linux"]
+database = "build/compile_commands.json"
+
+[[configurations.clang.prepare]]
+run = ["git", "submodule", "update", "--init", "--depth", "1"]
+
+[[configurations.clang.prepare]]
+run = [
+    "cmake",
+    "-S",
+    ".",
+    "-B",
+    "build",
+    "-G",
+    "Ninja",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    "-DCMAKE_C_COMPILER=clang",
+    "-DCMAKE_CXX_COMPILER=clang++",
+    "-DTESTS=ON"
+]

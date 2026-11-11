@@ -18,7 +18,7 @@ import { at, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
 import type { Case } from "./case.ts";
 import { Disk } from "./disk.ts";
 import { Output, writeSnapshot, type Blocks } from "./output.ts";
-import { copyRoot, materialize, writeDatabases } from "./project.ts";
+import { copyRoot, HEADER, materialize, SOURCE, writeDatabases } from "./project.ts";
 import type { AnswersOptions } from "./script.ts";
 
 /// The requests an answers test asks, the same on both clients.
@@ -89,9 +89,6 @@ export const EDITOR_CAPABILITIES: proto.ClientCapabilities = {
         },
     },
 };
-
-const HEADER = /\.(h|hh|hpp|hxx)$/;
-const SOURCE = /\.(c|cc|cpp|cxx|cppm|ixx)$/;
 
 /// What one client showed, and the same rendered whole: what the two must
 /// agree on beyond what shows.

@@ -52,6 +52,13 @@ Completables completables(const IndexQuery& index, llvm::StringRef prefix, std::
 /// arguments names the template, not its specializations.
 std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQuery& query);
 
+/// What a message of the Objective-C method `method`'s selector may reach
+/// besides it, an instance or a class one as it is: the other methods of
+/// the selector, the accessors clang declares for properties among them,
+/// which no code places. A message to `id` or `Class` may reach any of them.
+std::vector<IndexQuery::Target> reached_by_selector(const IndexQuery& index,
+                                                    const SymbolInfo& method);
+
 /// The cursor at a place with a column, in the file's serving source;
 /// none when the index of the file is stale or the place is off its text.
 std::optional<IndexQuery::Cursor> cursor_at(const IndexQuery& index,

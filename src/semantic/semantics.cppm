@@ -198,6 +198,11 @@ struct Reference {
 
     /// Invalid for a name of one token.
     clang::SourceLocation name_end;
+
+    /// A later piece of a name written apart, an Objective-C selector's (`y`
+    /// in `[shape setX:1 y:2]`): it spells the name, but the use is the
+    /// first piece's.
+    bool later_piece = false;
 };
 
 /// A name occurrence a node gives rise to: the decl the written name refers
@@ -212,6 +217,9 @@ struct NameOccurrence {
 
     /// Invalid for a name of one token.
     clang::SourceLocation name_end;
+
+    /// As Reference::later_piece.
+    bool later_piece = false;
 
     /// Whether the decl owns every token of the name, a name nested in it
     /// (`Foo` of `~Foo`) included. A conversion function owns its

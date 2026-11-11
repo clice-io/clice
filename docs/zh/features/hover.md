@@ -111,6 +111,20 @@ tests/hover/symbols/14_header_symbols
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Objective-C 符号**
+
+悬停在 Objective-C 的类、协议、方法、属性或实例变量上时，卡片会显示其声明及其归属
+
+成员会注明声明它的类或分类（category），如 `Shape(Extras)`；`@implementation` 会显示它所实现的 `@interface`。悬停在选择器（selector）的任意一段上，都会显示它的方法。
+
+```case
+tests/hover/symbols/18_objective_c
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 函数

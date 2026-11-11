@@ -1,0 +1,326 @@
+[default.message.completion]
+items = [
+    { label = "moveToX:(int)", kind = "Method", detail = "void", insert = "moveToX:${1:(int)}", snippet = true },
+    {
+        label = "moveToX:(int) y:(int)",
+        kind = "Method",
+        detail = "void",
+        insert = "moveToX:${1:(int)} y:${2:(int)}",
+        snippet = true,
+    },
+]
+
+[default.unary.completion]
+items = [
+    { label = "area", kind = "Method", detail = "int", insert = "area" },
+]
+
+[default.next_piece.completion]
+items = [
+    { label = "y:(int)", kind = "Method", detail = "void", insert = "y:${1:(int)}", snippet = true },
+]
+
+[default.written.completion]
+items = [
+    { label = "moveToX:(int)", kind = "Method", detail = "void", insert = "moveToX" },
+    { label = "moveToX:(int) y:(int)", kind = "Method", detail = "void", insert = "moveToX" },
+]
+
+[default.class_message.completion]
+items = [
+    {
+        label = "shapeWithWidth:(int)",
+        kind = "Method",
+        detail = "instancetype",
+        insert = "shapeWithWidth:${1:(int)}",
+        snippet = true,
+    },
+]
+
+[default.method_as_property.completion]
+items = [
+    { label = "area", kind = "Method", detail = "int", insert = "area" },
+]
+
+[default.class_method_as_property.completion]
+items = [
+    { label = "unit", kind = "Method", detail = "Shape *", insert = "unit" },
+]
+
+[default.selector.completion]
+items = [
+    { label = "moveToX:", kind = "Method", insert = "moveToX:" },
+    { label = "moveToX:y:", kind = "Method", insert = "moveToX:y:" },
+]
+
+[default.selector_written.completion]
+items = [
+    { label = "moveToX:", kind = "Method", insert = "moveToX" },
+    { label = "moveToX:y:", kind = "Method", insert = "moveToX" },
+]
+
+[default.super_message.completion]
+items = [
+    { label = "moveToX:x y:y", kind = "Method", detail = "void", insert = "moveToX:x y:y" },
+]
+
+[default.super_written.completion]
+items = [
+    { label = "moveToX:x y:y", kind = "Method", detail = "void", insert = "moveToX" },
+]
+
+[default.declaration.completion]
+items = [
+    { label = "moveToX:(int)x", kind = "Method", insert = "moveToX:(int)x" },
+    { label = "moveToX:(int)x y:(int)y", kind = "Method", insert = "moveToX:(int)x y:(int)y" },
+]
+
+[default.declaration_piece.completion]
+items = [
+    { label = "y:(int)y", kind = "Method", detail = "void", insert = "y:(int)y" },
+]
+
+[default.untyped_declaration.completion]
+items = [
+    { label = "area", kind = "Method", insert = "(int)area" },
+]
+
+[default.class_receiver.completion]
+items = [
+    { label = "shape", kind = "Variable", detail = "Shape *", insert = "shape" },
+    { label = "Shape", kind = "Class", insert = "Shape" },
+]
+
+[default.protocol.completion]
+items = [
+    { label = "Drawable", kind = "Interface", insert = "Drawable" },
+]
+
+[default.property.completion]
+items = [
+    { label = "width", kind = "Property", detail = "int", insert = "width" },
+]
+
+[default.alias.completion]
+items = [
+    { label = "Stylus", kind = "TypeParameter", insert = "Stylus" },
+]
+
+[default.selector_piece.completion]
+items = [
+    { label = "y:", kind = "Method", insert = "y:" },
+]
+
+[delimiters.message.completion]
+items = [
+    { label = "moveToX:(int)", kind = "Method", detail = "void", insert = "moveToX:$1", snippet = true },
+    { label = "moveToX:(int) y:(int)", kind = "Method", detail = "void", insert = "moveToX:$1 y:$2", snippet = true },
+]
+
+[delimiters.unary.completion]
+items = [
+    { label = "area", kind = "Method", detail = "int", insert = "area" },
+]
+
+[delimiters.next_piece.completion]
+items = [
+    { label = "y:(int)", kind = "Method", detail = "void", insert = "y:$1", snippet = true },
+]
+
+[delimiters.written.completion]
+items = [
+    { label = "moveToX:(int)", kind = "Method", detail = "void", insert = "moveToX" },
+    { label = "moveToX:(int) y:(int)", kind = "Method", detail = "void", insert = "moveToX" },
+]
+
+[delimiters.class_message.completion]
+items = [
+    {
+        label = "shapeWithWidth:(int)",
+        kind = "Method",
+        detail = "instancetype",
+        insert = "shapeWithWidth:$1",
+        snippet = true,
+    },
+]
+
+[delimiters.method_as_property.completion]
+items = [
+    { label = "area", kind = "Method", detail = "int", insert = "area" },
+]
+
+[delimiters.class_method_as_property.completion]
+items = [
+    { label = "unit", kind = "Method", detail = "Shape *", insert = "unit" },
+]
+
+[delimiters.selector.completion]
+items = [
+    { label = "moveToX:", kind = "Method", insert = "moveToX:" },
+    { label = "moveToX:y:", kind = "Method", insert = "moveToX:y:" },
+]
+
+[delimiters.selector_written.completion]
+items = [
+    { label = "moveToX:", kind = "Method", insert = "moveToX" },
+    { label = "moveToX:y:", kind = "Method", insert = "moveToX" },
+]
+
+[delimiters.super_message.completion]
+items = [
+    { label = "moveToX:x y:y", kind = "Method", detail = "void", insert = "moveToX:x y:y" },
+]
+
+[delimiters.super_written.completion]
+items = [
+    { label = "moveToX:x y:y", kind = "Method", detail = "void", insert = "moveToX" },
+]
+
+[delimiters.declaration.completion]
+items = [
+    { label = "moveToX:(int)x", kind = "Method", insert = "moveToX:(int)x" },
+    { label = "moveToX:(int)x y:(int)y", kind = "Method", insert = "moveToX:(int)x y:(int)y" },
+]
+
+[delimiters.declaration_piece.completion]
+items = [
+    { label = "y:(int)y", kind = "Method", detail = "void", insert = "y:(int)y" },
+]
+
+[delimiters.untyped_declaration.completion]
+items = [
+    { label = "area", kind = "Method", insert = "(int)area" },
+]
+
+[delimiters.class_receiver.completion]
+items = [
+    { label = "shape", kind = "Variable", detail = "Shape *", insert = "shape" },
+    { label = "Shape", kind = "Class", insert = "Shape" },
+]
+
+[delimiters.protocol.completion]
+items = [
+    { label = "Drawable", kind = "Interface", insert = "Drawable" },
+]
+
+[delimiters.property.completion]
+items = [
+    { label = "width", kind = "Property", detail = "int", insert = "width" },
+]
+
+[delimiters.alias.completion]
+items = [
+    { label = "Stylus", kind = "TypeParameter", insert = "Stylus" },
+]
+
+[delimiters.selector_piece.completion]
+items = [
+    { label = "y:", kind = "Method", insert = "y:" },
+]
+
+[none.message.completion]
+items = [
+    { label = "moveToX:(int)", kind = "Method", detail = "void", insert = "moveToX:" },
+    { label = "moveToX:(int) y:(int)", kind = "Method", detail = "void", insert = "moveToX:" },
+]
+
+[none.unary.completion]
+items = [
+    { label = "area", kind = "Method", detail = "int", insert = "area" },
+]
+
+[none.next_piece.completion]
+items = [
+    { label = "y:(int)", kind = "Method", detail = "void", insert = "y:" },
+]
+
+[none.written.completion]
+items = [
+    { label = "moveToX:(int)", kind = "Method", detail = "void", insert = "moveToX" },
+    { label = "moveToX:(int) y:(int)", kind = "Method", detail = "void", insert = "moveToX" },
+]
+
+[none.class_message.completion]
+items = [
+    { label = "shapeWithWidth:(int)", kind = "Method", detail = "instancetype", insert = "shapeWithWidth:" },
+]
+
+[none.method_as_property.completion]
+items = [
+    { label = "area", kind = "Method", detail = "int", insert = "area" },
+]
+
+[none.class_method_as_property.completion]
+items = [
+    { label = "unit", kind = "Method", detail = "Shape *", insert = "unit" },
+]
+
+[none.selector.completion]
+items = [
+    { label = "moveToX:", kind = "Method", insert = "moveToX:" },
+    { label = "moveToX:y:", kind = "Method", insert = "moveToX:y:" },
+]
+
+[none.selector_written.completion]
+items = [
+    { label = "moveToX:", kind = "Method", insert = "moveToX" },
+    { label = "moveToX:y:", kind = "Method", insert = "moveToX" },
+]
+
+[none.super_message.completion]
+items = [
+    { label = "moveToX:x y:y", kind = "Method", detail = "void", insert = "moveToX:x y:y" },
+]
+
+[none.super_written.completion]
+items = [
+    { label = "moveToX:x y:y", kind = "Method", detail = "void", insert = "moveToX" },
+]
+
+[none.declaration.completion]
+items = [
+    { label = "moveToX:(int)x", kind = "Method", insert = "moveToX:(int)x" },
+    { label = "moveToX:(int)x y:(int)y", kind = "Method", insert = "moveToX:(int)x y:(int)y" },
+]
+
+[none.declaration_piece.completion]
+items = [
+    { label = "y:(int)y", kind = "Method", detail = "void", insert = "y:(int)y" },
+]
+
+[none.untyped_declaration.completion]
+items = [
+    { label = "area", kind = "Method", insert = "(int)area" },
+]
+
+[none.class_receiver.completion]
+items = [
+    { label = "shape", kind = "Variable", detail = "Shape *", insert = "shape" },
+    { label = "Shape", kind = "Class", insert = "Shape" },
+]
+
+[none.protocol.completion]
+items = [
+    { label = "Drawable", kind = "Interface", insert = "Drawable" },
+]
+
+[none.property.completion]
+items = [
+    { label = "width", kind = "Property", detail = "int", insert = "width" },
+]
+
+[none.alias.completion]
+items = [
+    { label = "Stylus", kind = "TypeParameter", insert = "Stylus" },
+]
+
+[none.selector_piece.completion]
+items = [
+    { label = "y:", kind = "Method", insert = "y:" },
+]
+
+["plain text client".message.completion]
+items = [
+    { label = "moveToX:(int)", kind = "Method", detail = "void", insert = "moveToX:" },
+    { label = "moveToX:(int) y:(int)", kind = "Method", detail = "void", insert = "moveToX:" },
+]

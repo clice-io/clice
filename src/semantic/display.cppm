@@ -151,14 +151,21 @@ auto name_of(const clang::NamedDecl* decl, const Options& options = {}) -> std::
 
 /// The name a declaration goes by in the index and the outline: its bare
 /// name, a constructor's without its class template's arguments, a
-/// deduction guide's label (`<deduction guide for Box>`); a nameless
-/// entity's presentation, `unnamed` set.
+/// deduction guide's label (`<deduction guide for Box>`), an Objective-C
+/// category's with its class's, as clang prints it (`Shape(Extras)`, a
+/// class extension `Shape()`), which a search for the class finds; a
+/// nameless entity's presentation, `unnamed` set.
 struct SymbolName {
     std::string text;
     bool unnamed = false;
 };
 
 auto symbol_name(const clang::NamedDecl* decl) -> SymbolName;
+
+/// The name an Objective-C container goes by: a protocol's own, else its
+/// class's, with the category for a category or its @implementation
+/// (`Shape(Extras)`, `Shape()` for a class extension).
+auto objc_container_name(const clang::ObjCContainerDecl& container) -> std::string;
 
 /// The template arguments of a template specialization as written in the
 /// source code ("<int, 4>"). Empty if the decl is not a specialization.

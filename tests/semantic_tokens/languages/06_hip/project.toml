@@ -1,0 +1,12 @@
+# HIP without ROCm: no GPU headers or libraries, the runtime's few names
+# declared by the sample. The target is pinned, as clang compiles HIP for
+# Linux from any host.
+[units]
+"main.hip" = [
+    "-x",
+    "hip",
+    "-nogpuinc",
+    "-nogpulib",
+    "--offload-arch=gfx906",
+    "--target=x86_64-unknown-linux-gnu",
+]

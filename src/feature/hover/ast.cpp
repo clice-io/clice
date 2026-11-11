@@ -273,8 +273,28 @@ struct Scope {
     std::string name;
 };
 
+/// The scope an Objective-C container gives its members: its class, named
+/// with the category, `()` for an extension; a protocol.
+auto objc_scope(const clang::ObjCContainerDecl& container) -> Scope {
+    return {.kind = llvm::isa<clang::ObjCProtocolDecl>(container) ? "protocol" : "class",
+            .name = display::objc_container_name(container)};
+}
+
 auto scope_of(const clang::Decl* decl, const display::Options& options) -> Scope {
     for(const auto* context = decl->getDeclContext(); context; context = context->getParent()) {
+        /// An Objective-C class's members are named in the class or the
+        /// category declaring them: `Shape`, `Shape(Extras)`.
+        if(const auto* container = llvm::dyn_cast<clang::ObjCContainerDecl>(context)) {
+            return objc_scope(*container);
+        }
+        if(const auto* method = llvm::dyn_cast<clang::ObjCMethodDecl>(context)) {
+            const auto* container = llvm::cast<clang::ObjCContainerDecl>(method->getDeclContext());
+            return {.kind = "method",
+                    .name = std::format("{}[{} {}]",
+                                        method->isInstanceMethod() ? '-' : '+',
+                                        objc_scope(*container).name,
+                                        method->getSelector().getAsString())};
+        }
         if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context)) {
             /// Code names an inline namespace's members through the namespace
             /// around it.
@@ -340,6 +360,9 @@ auto scope_of(const clang::Decl* decl, const display::Options& options) -> Scope
 /// The name a card's title shows: a specialization's with its arguments,
 /// a nameless entity's as presented (`(anonymous struct)`, `(lambda)`).
 auto title_name(const clang::NamedDecl* decl, const display::Options& options) -> std::string {
+    if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(decl)) {
+        return display::objc_container_name(*category);
+    }
     auto name = display::name_of(decl, {.suppress_ctor_template_args = true, .qualified = false});
     if(name.empty()) {
         return display::name_of(decl);
@@ -834,6 +857,8 @@ auto instantiation(const clang::NamedDecl& decl, const display::Options& options
 
 /// The card of a declaration.
 auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverInfo {
+    /// An @implementation shows the @interface (or the category) it defines.
+    decl = decls::objc_defined(decl);
     HoverInfo info;
     auto& unit = request.unit;
     auto& context = decl->getASTContext();
@@ -1064,7 +1089,11 @@ void add_layout(const clang::NamedDecl& decl, HoverInfo& info) {
         return;
     }
 
+    // An Objective-C ivar has no record around it to lay out.
     const auto* field = llvm::dyn_cast<clang::FieldDecl>(&decl);
+    if(llvm::isa_and_present<clang::ObjCIvarDecl>(field)) {
+        return;
+    }
     const auto* parent = field ? field->getParent()->getDefinition() : nullptr;
     if(!parent || parent->isInvalidDecl() || parent->isDependentType()) {
         return;
@@ -1295,8 +1324,8 @@ auto this_hover(const clang::CXXThisExpr& expr,
     return info;
 }
 
-/// The card of an expression: `this`, `__func__`, a literal, or one whose
-/// value is known at compile time.
+/// The card of an expression: `this` or `self`, `__func__`, a literal, or
+/// one whose value is known at compile time.
 auto expr_hover(const SelectionTree::Node& node, const clang::Expr& expr, const Request& request)
     -> std::optional<HoverInfo> {
     auto& context = request.unit.context();
@@ -1318,6 +1347,12 @@ auto expr_hover(const SelectionTree::Node& node, const clang::Expr& expr, const 
     }
     if(const auto* this_expr = llvm::dyn_cast<clang::CXXThisExpr>(&expr)) {
         return this_hover(*this_expr, context, request.display);
+    }
+    if(expr.isObjCSelfExpr()) {
+        HoverInfo info;
+        info.name = "self";
+        info.definition = shown_type(context, expr.getType(), request.display).text;
+        return info;
     }
     if(const auto* predefined = llvm::dyn_cast<clang::PredefinedExpr>(&expr)) {
         return predefined_hover(*predefined, context, request.display);

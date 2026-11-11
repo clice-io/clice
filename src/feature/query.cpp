@@ -177,11 +177,27 @@ std::unexpected<std::string> ambiguous(Context& ctx,
                     candidates.size()));
 }
 
-/// Resolve a locator to exactly one symbol.
+/// Resolve a locator to exactly one symbol. A name none spells exactly
+/// names none: its closest matches are listed for the caller to pick.
 Result<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQuery query) {
+    std::optional<std::string> name;
+    if(query.by_pattern() && query.mode == index::SymbolQuery::Mode::Fuzzy &&
+       !query.pattern.empty()) {
+        name = query.pattern;
+    }
     auto candidates = resolve(ctx, std::move(query));
     if(!candidates) {
         return std::unexpected(candidates.error());
+    }
+    if(name && ranges::none_of(*candidates, [&](const index::IndexQuery::Located& candidate) {
+           return candidate.symbol.name == *name;
+       })) {
+        for(auto& candidate: *candidates) {
+            ctx.candidates.push_back(symbol_entry(ctx, candidate));
+        }
+        return std::unexpected(
+            std::format("no symbol is named `{}`; name one of the closest matches by its `symbol`",
+                        *name));
     }
     if(candidates->size() > 1) {
         return ambiguous(ctx, *candidates);

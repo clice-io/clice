@@ -1,0 +1,4 @@
+# Objective-C++ without an SDK: the Apple target fixes the runtime, and the
+# sample declares its own root class.
+[units]
+"main.mm" = ["--target=arm64-apple-macos13", "-fobjc-arc"]

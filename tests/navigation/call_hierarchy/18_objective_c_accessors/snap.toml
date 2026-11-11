@@ -1,0 +1,29 @@
+[answers.size]
+call_hierarchy = [
+    { name = "size", kind = "Method", at = "- (int)⟦size⟧ {", detail = "Pen::size" },
+]
+incoming_calls = [
+    {
+        name = "use",
+        kind = "Function",
+        at = "void ⟦use⟧(Quill *quill, Class kind, id thing, Box<Pen *> *box) {",
+        detail = "use(Pen *quill, Class kind, id thing, Box<Pen *> *box)",
+        sites = ["int size = quill.⟦size⟧;"],
+    },
+]
+outgoing_calls = []
+
+[answers.object_tail]
+call_hierarchy = [
+    { name = ":tail:", kind = "Method", at = "- (void):(int)x ⟦tail⟧:(int)y; @+0", detail = "Object:::tail:" },
+]
+incoming_calls = [
+    {
+        name = "use",
+        kind = "Function",
+        at = "void ⟦use⟧(Quill *quill, Class kind, id thing, Box<Pen *> *box) {",
+        detail = "use(Pen *quill, Class kind, id thing, Box<Pen *> *box)",
+        sites = ["[thing :3 ⟦tail⟧:4];"],
+    },
+]
+outgoing_calls = []

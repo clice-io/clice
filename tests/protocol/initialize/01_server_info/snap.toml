@@ -107,7 +107,8 @@ value = '''
                 "attribute",
                 "unknown",
                 "conflict",
-                "plain"
+                "plain",
+                "interface"
             ],
             "tokenModifiers": [
                 "declaration",

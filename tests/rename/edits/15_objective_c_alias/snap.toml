@@ -1,0 +1,99 @@
+[answers.class.rename]
+notice = '''
+Spellings of `Pen` left alone:
+  ${WS}/main.m:53: @implementation Quill : Object (the name is written here as `Quill`)
+'''
+
+[answers.class.rename.edits]
+"main.m" = '''
+-@class Pen;
++@class Brush;
+ @protocol Inking;
+
+…
+ @end
+
+-@interface Pen : Object {
++@interface Brush : Object {
+     int width;
+ }
+…
+ @end
+
+-@interface Pen (Extras) <Writing>
++@interface Brush (Extras) <Writing>
+ - (void)write;
+ @end
+…
+ @end
+
+-@compatibility_alias Quill Pen;
++@compatibility_alias Quill Brush;
+ @compatibility_alias Stylus Quill;
+
+…
+ @end
+
+-@implementation Pen (Extras)
++@implementation Brush (Extras)
+ - (void)write {
+     SEL action = @selector(draw);
+…
+ @end
+
+-void use(Quill *quill, Class kind, id thing, Box<Pen *> *box) {
++void use(Quill *quill, Class kind, id thing, Box<Brush *> *box) {
+     [quill :1 tail:2];
+     [quill setInk:[quill ink] + 1];
+'''
+
+[answers.category.rename.edits]
+"main.m" = '''
+ @end
+
+-@interface Pen (Extras) <Writing>
++@interface Pen (Motion) <Writing>
+ - (void)write;
+ @end
+…
+ @end
+
+-@implementation Pen (Extras)
++@implementation Pen (Motion)
+ - (void)write {
+     SEL action = @selector(draw);
+'''
+
+[answers.alias.rename.edits]
+"main.m" = '''
+ @end
+
+-@compatibility_alias Quill Pen;
+-@compatibility_alias Stylus Quill;
++@compatibility_alias Nib Pen;
++@compatibility_alias Stylus Nib;
+
+-@interface Quill (Trim)
++@interface Nib (Trim)
+ - (void)trim;
+ @end
+
+-@implementation Quill : Object
++@implementation Nib : Object
+ @synthesize width;
+
+…
+ @end
+
+-void use(Quill *quill, Class kind, id thing, Box<Pen *> *box) {
++void use(Nib *quill, Class kind, id thing, Box<Pen *> *box) {
+     [quill :1 tail:2];
+     [quill setInk:[quill ink] + 1];
+…
+     id writing = @protocol(Writing);
+     [[box first] write];
+-    int count = Quill.count;
++    int count = Nib.count;
+     (void)writing;
+     (void)size;
+'''

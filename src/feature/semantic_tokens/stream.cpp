@@ -4,6 +4,7 @@ import :feature.semantic_tokens.stream;
 import :feature.semantic_tokens;
 import :semantic.comment;
 import :semantic.token_class;
+import :syntax.lexer;
 import :syntax.source_text;
 import :syntax.token;
 
@@ -263,6 +264,13 @@ std::size_t number_suffix(llvm::StringRef text) {
     return i;
 }
 
+/// The words an Objective-C `@` makes keywords: `@interface`, `@end`.
+bool is_objc_keyword(llvm::StringRef spelling, const clang::LangOptions& lang_opts) {
+    auto& table = keywords(lang_opts);
+    auto it = table.find(spelling);
+    return it != table.end() && it->second->getObjCKeywordID() != clang::tok::objc_not_keyword;
+}
+
 class TokenStream {
 public:
     TokenStream(SourceText& source, const TokenFacts& facts, const SemanticTokensOptions& options) :
@@ -320,8 +328,26 @@ private:
     /// The token after the one being classified.
     /// FIXME: a kept comment counts as that token: `default /* c */:` gets no
     /// controlFlow, and `module /* c */ m;` / `import /* c */ m;` no keyword.
-    Token next() const {
-        return at + 1 < stream.size() ? stream[at + 1] : Token{.kind = clang::tok::eof};
+    Token next(std::size_t distance = 1) const {
+        return at + distance < stream.size() ? stream[at + distance]
+                                             : Token{.kind = clang::tok::eof};
+    }
+
+    /// Whether the `[[` just read opens attributes. In Objective-C it may
+    /// open a message to a message (`[[Shape alloc] init]`), which names a
+    /// selector after its receiver where an attribute ends, takes
+    /// arguments or a scope.
+    bool opens_attribute() const {
+        if(!lang_opts.ObjC) {
+            return true;
+        }
+        auto name = next();
+        auto following = source.kind(next(2));
+        return name.text(content) == "using" || ranges::contains(std::array{clang::tok::r_square,
+                                                                            clang::tok::l_paren,
+                                                                            clang::tok::comma,
+                                                                            clang::tok::coloncolon},
+                                                                 following);
     }
 
     void classify(const Token& token) {
@@ -331,6 +357,52 @@ private:
         auto spelling = token.text(content);
         auto kind = source.kind(token);
         bool word = clang::tok::isAnyIdentifier(kind) || clang::tok::getKeywordSpelling(kind);
+
+        // Objective-C's `@interface` and `@"text"`: the `@` reads as what it
+        // starts.
+        if(kind == clang::tok::at && lang_opts.ObjC && directive == Directive::None) {
+            auto following = next();
+            if(following.range.begin == token.range.end) {
+                auto following_kind = source.kind(following);
+                if(clang::tok::isStringLiteral(following_kind)) {
+                    emit(token.range, {{.kind = Kind::String}, false});
+                } else if(following_kind == clang::tok::numeric_constant) {
+                    emit(token.range, {{.kind = Kind::Number}, false});
+                } else if(is_objc_keyword(following.text(content), lang_opts)) {
+                    emit(token.range, {{.kind = Kind::Keyword}, false});
+                    objc_keyword = following.range.begin;
+                }
+            }
+            after(kind, false);
+            return;
+        }
+        if(objc_keyword == token.range.begin) {
+            emit(token.range, {{.kind = Kind::Keyword}, false});
+            if(spelling == "property" && source.kind(next()) == clang::tok::l_paren) {
+                property_attributes = depth + 1;
+            }
+            after(kind, false);
+            return;
+        }
+        // `@property(nonatomic, getter=isOn)`: the attributes are keywords,
+        // an accessor's name is not.
+        if(property_attributes && depth == *property_attributes) {
+            if(kind == clang::tok::r_paren) {
+                property_attributes.reset();
+            } else if(word && previous != clang::tok::equal) {
+                emit(token.range, {{.kind = Kind::Keyword}, false});
+                after(kind, false);
+                return;
+            }
+        }
+        // The `-` or `+` opening a method's declaration says which kind of
+        // method it is.
+        if(lang_opts.ObjC && (kind == clang::tok::minus || kind == clang::tok::plus) &&
+           token.is_at_start_of_line && depth == 0 && source.kind(next()) == clang::tok::l_paren) {
+            emit(token.range, {{.kind = Kind::Keyword}, false});
+            after(kind, false);
+            return;
+        }
 
         if(clang::tok::isStringLiteral(kind) || is_char_literal(kind)) {
             literal(token.range, kind);
@@ -372,8 +444,14 @@ private:
            !tokens.empty() && tokens.back().range.begin == token.range.begin) {
             definition = tokens.size() - 1;
         }
+        // An Objective-C type's name opens its protocols or type arguments
+        // with `<`, as a template's name its arguments.
+        bool objc_type = lang_opts.ObjC && (piece.classified.kind == Kind::Class ||
+                                            piece.classified.kind == Kind::Interface ||
+                                            piece.classified.kind == Kind::TypeAlias);
         after(kind,
-              piece.classified.has(Modifier::Template) || piece.classified.kind == Kind::Concept);
+              piece.classified.has(Modifier::Template) || piece.classified.kind == Kind::Concept ||
+                  objc_type);
     }
 
     /// Ends a directive: a `#define`'s name learns what its replacement
@@ -410,7 +488,7 @@ private:
             }
             return;
         }
-        if(kind == clang::tok::l_square && previous == clang::tok::l_square) {
+        if(kind == clang::tok::l_square && previous == clang::tok::l_square && opens_attribute()) {
             attribute = {.depth = depth, .entered = true};
         } else if(kind == clang::tok::kw___attribute) {
             attribute = {.depth = depth + 2};
@@ -471,6 +549,11 @@ private:
                 }
             }
             if(lang_opts.CPlusPlus && is_override_keyword(spelling)) {
+                return {{.kind = Kind::Keyword}, true};
+            }
+            // Objective-C's `this`: a parameter no code declares, and the
+            // receiver of a message to the superclass.
+            if(lang_opts.ObjC && (spelling == "self" || spelling == "super")) {
                 return {{.kind = Kind::Keyword}, true};
             }
         }
@@ -840,6 +923,11 @@ private:
     bool names_template = false;
     bool after_template = false;
     clang::tok::TokenKind previous = clang::tok::unknown;
+    /// Where the word an Objective-C `@` makes a keyword starts.
+    std::optional<std::uint32_t> objc_keyword;
+
+    /// The depth inside the parentheses of an `@property` list.
+    std::optional<std::uint32_t> property_attributes;
 
     struct AttributeList {
         /// The bracket depth of the names.

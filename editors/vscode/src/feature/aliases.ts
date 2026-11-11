@@ -1,7 +1,8 @@
 import * as fs from "fs";
 import * as vscode from "vscode";
+import { LANGUAGES } from "../languages";
 
-const languages = new Set(["c", "cpp", "cuda-cpp"]);
+const languages = new Set(LANGUAGES);
 
 /// The file a document names, as the server tells files apart: the OS's
 /// final path (symlinks, junctions and subst drives followed). Undefined

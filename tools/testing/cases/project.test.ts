@@ -45,6 +45,33 @@ describe("materialize", () => {
     });
 });
 
+describe("writeDatabases", () => {
+    test("an OpenCL unit's -cl-std replaces the project's -std", () => {
+        const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "clice-case-copy-")));
+        try {
+            writeDatabases(
+                {
+                    flags: ["-std=c++20", "-DX"],
+                    units: { "main.cl": ["-cl-std=CL3.0"], "main.cpp": [] },
+                },
+                ["main.cl", "main.cpp"],
+                root,
+            );
+            const database = JSON.parse(
+                fs.readFileSync(path.join(root, "compile_commands.json"), "utf8"),
+            ) as {
+                arguments: string[];
+            }[];
+            expect(database.map((entry) => entry.arguments.slice(0, -2))).toEqual([
+                ["clang++", "-DX", "-cl-std=CL3.0"],
+                ["clang++", "-std=c++20", "-DX"],
+            ]);
+        } finally {
+            fs.rmSync(root, { recursive: true });
+        }
+    });
+});
+
 describe("readProject", () => {
     test("comments, and databases listing units", () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clice-case-src-"));

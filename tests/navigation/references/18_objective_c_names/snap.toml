@@ -1,0 +1,111 @@
+[answers.writing_write]
+references = ["- (void)⟦write⟧; @+0"]
+
+[answers.width]
+references = ["int ⟦width⟧;", "@synthesize ⟦width⟧;", "⟦width⟧ = x + y;", "_ink = ⟦width⟧;", "return ⟦width⟧;"]
+
+[answers.ink]
+references = [
+    "@property(nonatomic) int ⟦ink⟧;",
+    "⟦_ink⟧ = width;",
+    "[quill ⟦setInk⟧:[quill ink] + 1];",
+    "[quill setInk:[quill ⟦ink⟧] + 1];",
+    "[thing ⟦ink⟧];",
+]
+
+[answers.tail]
+references = [
+    "- (void):(int)x ⟦tail⟧:(int)y; @+0",
+    "- (void):(int)x ⟦tail⟧:(int)y {",
+    "[quill :1 ⟦tail⟧:2];",
+    "[thing :3 ⟦tail⟧:4];",
+]
+
+[answers.class_draw]
+references = ["+ (void)⟦draw⟧;", "+ (void)⟦draw⟧ {", "[kind ⟦draw⟧];"]
+
+[answers.instance_draw]
+references = ["- (void)⟦draw⟧;", "- (void)⟦draw⟧ {", "SEL action = @selector(⟦draw⟧);", "[thing ⟦draw⟧];"]
+
+[answers.object_ink]
+references = ["- (int)⟦ink⟧;", "[thing ⟦ink⟧];"]
+
+[answers.object_dry]
+references = ["- (int)⟦isDry⟧;", "[thing ⟦isDry⟧];"]
+
+[answers.quill]
+references = [
+    "@compatibility_alias ⟦Quill⟧ Pen;",
+    "@compatibility_alias Stylus ⟦Quill⟧;",
+    "@interface ⟦Quill⟧ (Trim)",
+    "@implementation ⟦Quill⟧ : Object",
+    "void use(⟦Quill⟧ *quill, Class kind, id thing, Box<Pen *> *box) {",
+    "int count = ⟦Quill⟧.count;",
+]
+
+[answers.pen]
+references = [
+    "@class ⟦Pen⟧;",
+    "@interface ⟦Pen⟧ : Object {",
+    "@interface ⟦Pen⟧ (Extras) <Writing>",
+    "@compatibility_alias Quill ⟦Pen⟧;",
+    "@implementation ⟦Quill⟧ : Object",
+    "@implementation ⟦Pen⟧ (Extras)",
+    "void use(Quill *quill, Class kind, id thing, Box<⟦Pen⟧ *> *box) {",
+]
+
+[answers.extent]
+references = ["@property(nonatomic) int ⟦extent⟧;", "sized.⟦extent⟧ = brush.handle;", "return sized.⟦extent⟧;"]
+
+[answers.bristles]
+references = ["@property(nonatomic) int ⟦bristles⟧;", "@synthesize ⟦bristles⟧;", "brush.handle = brush.⟦bristles⟧;"]
+
+[answers.handle]
+references = [
+    "@property(nonatomic) int ⟦handle⟧;",
+    "@dynamic ⟦handle⟧;",
+    "brush.⟦handle⟧ = brush.bristles;",
+    "sized.extent = brush.⟦handle⟧;",
+]
+
+[answers.set_y]
+references = [
+    "- (void)⟦setX⟧:(int)x y:(int)y;",
+    "- (void)⟦setX⟧:(int)x y:(int)y {",
+    "SEL moving = @selector(⟦setX⟧:y:);",
+]
+
+[answers.unnamed_piece]
+references = [
+    "- (void)⟦tail⟧:(int)a :(int)b;",
+    "- (void)⟦tail⟧:(int)a :(int)b {",
+    "SEL trailing = @selector(⟦tail⟧::);",
+]
+
+[answers.dynamic]
+references = [
+    "@property(nonatomic) int ⟦handle⟧;",
+    "@dynamic ⟦handle⟧;",
+    "brush.⟦handle⟧ = brush.bristles;",
+    "sized.extent = brush.⟦handle⟧;",
+]
+
+[answers.bristles_ivar]
+references = ["⟦bristles⟧ = x + y;"]
+
+[answers.selector_y]
+references = [
+    "- (void)⟦setX⟧:(int)x y:(int)y;",
+    "- (void)⟦setX⟧:(int)x y:(int)y {",
+    "SEL moving = @selector(⟦setX⟧:y:);",
+]
+
+[answers.selector_unnamed]
+references = [
+    "- (void)⟦tail⟧:(int)a :(int)b;",
+    "- (void)⟦tail⟧:(int)a :(int)b {",
+    "SEL trailing = @selector(⟦tail⟧::);",
+]
+
+[answers.extent_use]
+references = ["@property(nonatomic) int ⟦extent⟧;", "sized.⟦extent⟧ = brush.handle;", "return sized.⟦extent⟧;"]

@@ -80,6 +80,7 @@ ScanResult scan_quick(llvm::StringRef content) {
             }
             case dds::pp_include:
             case dds::pp_include_next:
+            case dds::pp_import:
             case dds::pp___include_macros: {
                 // Find the header token (string_literal or header_name).
                 for(auto& tok: dir.Tokens) {

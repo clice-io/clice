@@ -5,6 +5,10 @@
 
 [[deprecated("use checked")]] [[maybe_unused]] int unchecked();
 
+__attribute__((visibility("default"))) int exported();
+
+__attribute__((cold, noinline)) void rare();
+
 template <typename T>
 [[nodiscard]] T made();
 

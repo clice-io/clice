@@ -1,0 +1,25 @@
+about = "SDL 3.4.20 with its tests"
+repository = "https://github.com/libsdl-org/SDL"
+commit = "f00dc919ca35b9756316e86c4777392de442f9b2"
+
+[configurations.macos]
+about = "C and Objective-C: the Cocoa, Metal, AVFoundation and other Apple drivers, built by Apple clang"
+platforms = ["macos"]
+database = "build/compile_commands.json"
+
+[[configurations.macos.prepare]]
+run = [
+    "cmake",
+    "-S",
+    ".",
+    "-B",
+    "build",
+    "-G",
+    "Ninja",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    "-DCMAKE_C_COMPILER=/usr/bin/clang",
+    "-DCMAKE_CXX_COMPILER=/usr/bin/clang++",
+    "-DCMAKE_OBJC_COMPILER=/usr/bin/clang",
+    "-DCMAKE_OBJCXX_COMPILER=/usr/bin/clang++",
+    "-DSDL_TESTS=ON"
+]

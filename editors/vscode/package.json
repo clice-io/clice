@@ -22,12 +22,18 @@
     "C",
     "C++",
     "cuda",
+    "OpenCL",
+    "HIP",
     "clang"
   ],
   "activationEvents": [
     "onLanguage:c",
     "onLanguage:cpp",
-    "onLanguage:cuda-cpp"
+    "onLanguage:cuda-cpp",
+    "onLanguage:objective-c",
+    "onLanguage:objective-cpp",
+    "onLanguage:opencl",
+    "onLanguage:hip"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -36,6 +42,41 @@
     }
   },
   "contributes": {
+    "languages": [
+      {
+        "id": "opencl",
+        "aliases": [
+          "OpenCL"
+        ],
+        "extensions": [
+          ".cl",
+          ".clcpp"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "hip",
+        "aliases": [
+          "HIP"
+        ],
+        "extensions": [
+          ".hip"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "opencl",
+        "scopeName": "source.opencl",
+        "path": "./syntaxes/opencl.tmLanguage.json"
+      },
+      {
+        "language": "hip",
+        "scopeName": "source.hip",
+        "path": "./syntaxes/hip.tmLanguage.json"
+      }
+    ],
     "configurationDefaults": {
       "files.watcherExclude": {
         "**/.clice/**": true
@@ -205,7 +246,7 @@
       {
         "command": "clice.switchSourceHeader",
         "key": "alt+o",
-        "when": "editorTextFocus && (editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp)"
+        "when": "editorTextFocus && editorLangId in clice.languages"
       }
     ],
     "semanticTokenTypes": [
@@ -653,6 +694,362 @@
             "variable.other.constant"
           ]
         }
+      },
+      {
+        "language": "objective-c",
+        "scopes": {
+          "keyword": [
+            "keyword.other"
+          ],
+          "struct.global": [
+            "entity.name.type.struct"
+          ],
+          "struct.member": [
+            "entity.name.type.struct"
+          ],
+          "struct.local": [
+            "entity.name.type.struct"
+          ],
+          "struct.internal": [
+            "entity.name.type.struct"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control"
+          ],
+          "keyword.operator": [
+            "keyword.operator.wordlike"
+          ],
+          "keyword.literal": [
+            "constant.language"
+          ],
+          "keyword.documentation": [
+            "storage.type.class.doxygen"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive"
+          ],
+          "operator.userDefined": [
+            "entity.name.function.operator"
+          ],
+          "operator.declarator": [
+            "storage.modifier"
+          ],
+          "escape": [
+            "constant.character.escape"
+          ],
+          "formatSpecifier": [
+            "constant.other.placeholder"
+          ],
+          "number.affix": [
+            "keyword.other.unit.suffix"
+          ],
+          "number.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "string.affix": [
+            "storage.type.string"
+          ],
+          "string.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "character.affix": [
+            "storage.type.string"
+          ],
+          "directive": [
+            "keyword.control.directive"
+          ],
+          "header": [
+            "string.quoted.other.lt-gt.include"
+          ],
+          "bracket": [
+            "punctuation.section.angle-brackets"
+          ],
+          "comment.documentation": [
+            "comment.block.documentation"
+          ],
+          "parameter.documentation": [
+            "variable.parameter"
+          ],
+          "templateParameter": [
+            "variable.other.constant"
+          ],
+          "label": [
+            "entity.name.label"
+          ],
+          "attribute": [
+            "entity.other.attribute"
+          ],
+          "variable.constexpr": [
+            "variable.other.constant"
+          ]
+        }
+      },
+      {
+        "language": "objective-cpp",
+        "scopes": {
+          "keyword": [
+            "keyword.other"
+          ],
+          "struct.global": [
+            "entity.name.type.struct"
+          ],
+          "struct.member": [
+            "entity.name.type.struct"
+          ],
+          "struct.local": [
+            "entity.name.type.struct"
+          ],
+          "struct.internal": [
+            "entity.name.type.struct"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control"
+          ],
+          "keyword.operator": [
+            "keyword.operator.wordlike"
+          ],
+          "keyword.literal": [
+            "constant.language"
+          ],
+          "keyword.documentation": [
+            "storage.type.class.doxygen"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive"
+          ],
+          "operator.userDefined": [
+            "entity.name.function.operator"
+          ],
+          "operator.declarator": [
+            "storage.modifier"
+          ],
+          "escape": [
+            "constant.character.escape"
+          ],
+          "formatSpecifier": [
+            "constant.other.placeholder"
+          ],
+          "number.affix": [
+            "keyword.other.unit.suffix"
+          ],
+          "number.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "string.affix": [
+            "storage.type.string"
+          ],
+          "string.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "character.affix": [
+            "storage.type.string"
+          ],
+          "directive": [
+            "keyword.control.directive"
+          ],
+          "header": [
+            "string.quoted.other.lt-gt.include"
+          ],
+          "bracket": [
+            "punctuation.section.angle-brackets"
+          ],
+          "comment.documentation": [
+            "comment.block.documentation"
+          ],
+          "parameter.documentation": [
+            "variable.parameter"
+          ],
+          "templateParameter": [
+            "variable.other.constant"
+          ],
+          "label": [
+            "entity.name.label"
+          ],
+          "attribute": [
+            "entity.other.attribute"
+          ],
+          "variable.constexpr": [
+            "variable.other.constant"
+          ]
+        }
+      },
+      {
+        "language": "opencl",
+        "scopes": {
+          "keyword": [
+            "keyword.other"
+          ],
+          "struct.global": [
+            "entity.name.type.struct"
+          ],
+          "struct.member": [
+            "entity.name.type.struct"
+          ],
+          "struct.local": [
+            "entity.name.type.struct"
+          ],
+          "struct.internal": [
+            "entity.name.type.struct"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control"
+          ],
+          "keyword.operator": [
+            "keyword.operator.wordlike"
+          ],
+          "keyword.literal": [
+            "constant.language"
+          ],
+          "keyword.documentation": [
+            "storage.type.class.doxygen"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive"
+          ],
+          "operator.userDefined": [
+            "entity.name.function.operator"
+          ],
+          "operator.declarator": [
+            "storage.modifier"
+          ],
+          "escape": [
+            "constant.character.escape"
+          ],
+          "formatSpecifier": [
+            "constant.other.placeholder"
+          ],
+          "number.affix": [
+            "keyword.other.unit.suffix"
+          ],
+          "number.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "string.affix": [
+            "storage.type.string"
+          ],
+          "string.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "character.affix": [
+            "storage.type.string"
+          ],
+          "directive": [
+            "keyword.control.directive"
+          ],
+          "header": [
+            "string.quoted.other.lt-gt.include"
+          ],
+          "bracket": [
+            "punctuation.section.angle-brackets"
+          ],
+          "comment.documentation": [
+            "comment.block.documentation"
+          ],
+          "parameter.documentation": [
+            "variable.parameter"
+          ],
+          "templateParameter": [
+            "variable.other.constant"
+          ],
+          "label": [
+            "entity.name.label"
+          ],
+          "attribute": [
+            "entity.other.attribute"
+          ],
+          "variable.constexpr": [
+            "variable.other.constant"
+          ]
+        }
+      },
+      {
+        "language": "hip",
+        "scopes": {
+          "keyword": [
+            "keyword.other"
+          ],
+          "struct.global": [
+            "entity.name.type.struct"
+          ],
+          "struct.member": [
+            "entity.name.type.struct"
+          ],
+          "struct.local": [
+            "entity.name.type.struct"
+          ],
+          "struct.internal": [
+            "entity.name.type.struct"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control"
+          ],
+          "keyword.operator": [
+            "keyword.operator.wordlike"
+          ],
+          "keyword.literal": [
+            "constant.language"
+          ],
+          "keyword.documentation": [
+            "storage.type.class.doxygen"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive"
+          ],
+          "operator.userDefined": [
+            "entity.name.function.operator"
+          ],
+          "operator.declarator": [
+            "storage.modifier"
+          ],
+          "escape": [
+            "constant.character.escape"
+          ],
+          "formatSpecifier": [
+            "constant.other.placeholder"
+          ],
+          "number.affix": [
+            "keyword.other.unit.suffix"
+          ],
+          "number.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "string.affix": [
+            "storage.type.string"
+          ],
+          "string.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "character.affix": [
+            "storage.type.string"
+          ],
+          "directive": [
+            "keyword.control.directive"
+          ],
+          "header": [
+            "string.quoted.other.lt-gt.include"
+          ],
+          "bracket": [
+            "punctuation.section.angle-brackets"
+          ],
+          "comment.documentation": [
+            "comment.block.documentation"
+          ],
+          "parameter.documentation": [
+            "variable.parameter"
+          ],
+          "templateParameter": [
+            "variable.other.constant"
+          ],
+          "label": [
+            "entity.name.label"
+          ],
+          "attribute": [
+            "entity.other.attribute"
+          ],
+          "variable.constexpr": [
+            "variable.other.constant"
+          ]
+        }
       }
     ],
     "views": {
@@ -680,66 +1077,66 @@
         },
         {
           "command": "clice.switchContext",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "editorLangId in clice.languages"
         },
         {
           "command": "clice.resetContext",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "editorLangId in clice.languages"
         },
         {
           "command": "clice.refactor.rewrite.define.inline",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "editorLangId in clice.languages"
         },
         {
           "command": "clice.refactor.rewrite.define.outOfLine",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "editorLangId in clice.languages"
         },
         {
           "command": "clice.refactor.rewrite.define.missing",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "editorLangId in clice.languages"
         },
         {
           "command": "clice.refactor.rewrite.implementPureVirtuals",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "editorLangId in clice.languages"
         },
         {
           "command": "clice.refactor.rewrite.generateMemberwiseConstructor",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "editorLangId in clice.languages"
         },
         {
           "command": "clice.refactor.rewrite.populateSwitch",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "editorLangId in clice.languages"
         },
         {
           "command": "clice.refactor.rewrite.expandDeducedType",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "editorLangId in clice.languages"
         },
         {
           "command": "clice.refactor.rewrite.reorderDefinitions",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "editorLangId in clice.languages"
         },
         {
           "command": "clice.refactor.inline.macro",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "editorLangId in clice.languages"
         },
         {
           "command": "clice.switchSourceHeader",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "editorLangId in clice.languages"
         },
         {
           "command": "clice.showCompileCommand",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "editorLangId in clice.languages"
         }
       ],
       "editor/context": [
         {
           "command": "clice.switchSourceHeader",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp",
+          "when": "editorLangId in clice.languages",
           "group": "navigation@1.9"
         },
         {
           "command": "clice.switchContext",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp",
+          "when": "editorLangId in clice.languages",
           "group": "clice@1"
         }
       ],

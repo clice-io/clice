@@ -124,7 +124,9 @@ auto finish_completion(protocol::CompletionList list,
         if(inserted) {
             auto path = query.file_table().resolve(header);
             if(auto read = vfs::read_observed(path)) {
-                it->second = include_pragmas(read->text, dialect_of(path, include.c));
+                it->second = include_pragmas(
+                    read->text,
+                    dialect_of(path, include.c ? std::optional(clang::Language::C) : std::nullopt));
             }
         }
         return it->second;

@@ -99,12 +99,15 @@ TokenKind closer(TokenKind opener) {
 
 }  // namespace
 
-std::optional<std::uint32_t> guard_opening(llvm::StringRef content, const LexicalInfo& info) {
+std::optional<std::uint32_t> guard_opening(llvm::StringRef content,
+                                           const LexicalInfo& info,
+                                           bool after_includes) {
     auto& directives = info.directives;
     auto opening = static_cast<std::uint32_t>(
         ranges::find_if(directives,
-                        [](const Directive& directive) {
-                            return directive.kind != Directive::Kind::PragmaOnce;
+                        [&](const Directive& directive) {
+                            return directive.kind != Directive::Kind::PragmaOnce &&
+                                   (!after_includes || directive.kind != Directive::Kind::Include);
                         }) -
         directives.begin());
     if(opening + 1 >= directives.size() || directives[opening].kind != Directive::Kind::If) {

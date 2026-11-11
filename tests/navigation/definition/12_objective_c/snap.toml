@@ -1,0 +1,38 @@
+[answers.implementation]
+definition = ["shape.h │ @interface ⟦Shape⟧ : Object <Drawable> {"]
+
+[answers.synthesized_use]
+definition = ["@synthesize x = ⟦_x⟧;"]
+
+[answers.ivar_use]
+definition = ["shape.h │ int ⟦_generation⟧;"]
+
+[answers.auto_ivar]
+definition = ["@property(nonatomic, copy) NSString *⟦name⟧;"]
+
+[answers.message]
+definition = ["- (void)⟦setX⟧:(int)x y:(int)y {"]
+
+[answers.second_piece]
+definition = ["- (void)⟦setX⟧:(int)x y:(int)y {"]
+
+[answers.property_use]
+definition = ["shape.h │ @property(nonatomic) int ⟦x⟧;"]
+
+[answers.super_draw]
+definition = ["- (void)⟦draw⟧ { @-15"]
+
+[answers.protocol_use]
+definition = ["shape.h │ @protocol ⟦Drawable⟧"]
+
+[answers.untyped]
+definition = ["shape.h │ - (void)⟦draw⟧;"]
+
+[answers.class_property]
+definition = ["shape.h │ @property(class, nonatomic) int ⟦count⟧;"]
+
+[answers.category_method]
+definition = ["- (void)⟦wobble⟧ {"]
+
+[answers.interface]
+definition = ["main.m │ @implementation ⟦Shape⟧"]

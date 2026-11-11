@@ -1,0 +1,78 @@
+[answers.count]
+references = [
+    "- (int)⟦count⟧ {",
+    "use.m │ return [super ⟦count⟧];",
+    "use.m │ counter.⟦count⟧ += [counter count];",
+    "use.m │ counter.count += [counter ⟦count⟧];",
+]
+incoming_calls = [
+    {
+        name = "count",
+        kind = "Method",
+        at = "use.m │ - (int)⟦count⟧ {",
+        detail = "Tally::count",
+        sites = ["use.m │ return [super ⟦count⟧];"],
+    },
+    {
+        name = "bump",
+        kind = "Function",
+        at = "use.m │ void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["use.m │ counter.⟦count⟧ += [counter count];", "use.m │ counter.count += [counter ⟦count⟧];"],
+    },
+]
+outgoing_calls = []
+
+[answers.set_count]
+references = ["- (void)⟦setCount⟧:(int)count {", "use.m │ counter.⟦count⟧ += [counter count];"]
+incoming_calls = [
+    {
+        name = "bump",
+        kind = "Function",
+        at = "use.m │ void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["use.m │ counter.⟦count⟧ += [counter count];"],
+    },
+]
+outgoing_calls = []
+
+[answers.tally_count]
+references = ["- (int)⟦count⟧ {", "counter.⟦count⟧ += [counter count];", "counter.count += [counter ⟦count⟧];"]
+incoming_calls = [
+    {
+        name = "bump",
+        kind = "Function",
+        at = "void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["counter.⟦count⟧ += [counter count];", "counter.count += [counter ⟦count⟧];"],
+    },
+]
+outgoing_calls = [
+    {
+        name = "count",
+        kind = "Method",
+        at = "counter.m │ - (int)⟦count⟧ {",
+        detail = "Counter::count",
+        sites = ["return [super ⟦count⟧];"],
+    },
+]
+
+[answers.bump]
+references = ["void ⟦bump⟧(Counter *counter) {"]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "count",
+        kind = "Method",
+        at = "counter.m │ - (int)⟦count⟧ {",
+        detail = "Counter::count",
+        sites = ["counter.⟦count⟧ += [counter count];", "counter.count += [counter ⟦count⟧];"],
+    },
+    {
+        name = "setCount:",
+        kind = "Method",
+        at = "counter.m │ - (void)⟦setCount⟧:(int)count {",
+        detail = "Counter::setCount:",
+        sites = ["counter.⟦count⟧ += [counter count];"],
+    },
+]

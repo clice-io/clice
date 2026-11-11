@@ -359,7 +359,7 @@ void expect_tokens_match_ast() {
     auto& source = unit->focus_file().text();
     auto ast =
         feature::semantic_token_stream(source, feature::semantic_token_facts(*unit, {}, true), {});
-    SourceText served(source.text(), dialect_of("main.cpp", false, "c++20"));
+    SourceText served(source.text(), dialect_of("main.cpp", std::nullopt, "c++20"));
     auto from_index = feature::semantic_tokens(served, entries, resolver(), {});
 
     ZASSERT(from_index.size() == ast.size());
@@ -485,7 +485,7 @@ ZEST_CASE(MergedKindsConflict) {
     llvm::StringRef content = "value;\n";
     auto tokens = tokens_from(
         content,
-        dialect_of("main.cpp", false),
+        dialect_of("main.cpp"),
         {
             .occurrences = {{.range = {0, 5}, .target = 1}, {.range = {0, 5}, .target = 2}}
     },
@@ -501,7 +501,7 @@ ZEST_CASE(ModuleNameComponents) {
     llvm::StringRef content = "export module demo.core;\nimport foo:part;\n";
     auto tokens = tokens_from(
         content,
-        dialect_of("main.cppm", false),
+        dialect_of("main.cppm"),
         {
             .occurrences = {{.range = {14, 23}, .target = 1}, {.range = {32, 40}, .target = 1}}
     },
@@ -537,12 +537,14 @@ ZEST_CASE(CDialectKeywords) {
     index::FileEntries entries{
         .decls = {{.range = {4, 9}, .extent = {0, 10}, .symbol = 1, .definition = true}},
     };
-    auto c_tokens =
-        tokens_from(content, dialect_of("header.h", true), entries, {SemanticTokenKind::Variable});
+    auto c_tokens = tokens_from(content,
+                                dialect_of("header.h", clang::Language::C),
+                                entries,
+                                {SemanticTokenKind::Variable});
     ZASSERT(kind_at(c_tokens, 4) == SemanticTokenKind::Variable);
 
     auto cpp_tokens =
-        tokens_from(content, dialect_of("header.h", false), entries, {SemanticTokenKind::Variable});
+        tokens_from(content, dialect_of("header.h"), entries, {SemanticTokenKind::Variable});
     ZASSERT(kind_at(cpp_tokens, 4) == SemanticTokenKind::Keyword);
 }
 
@@ -550,7 +552,7 @@ ZEST_CASE(DriverDefaultKeywords) {
     // The driver turns on `char8_t` from C++20 and the GNU keywords in GNU
     // modes; the language defaults alone leave both off.
     llvm::StringRef content = "char8_t c;\ntypeof(c) d;\n";
-    auto tokens = tokens_from(content, dialect_of("main.cpp", false, "gnu++20"), {}, {});
+    auto tokens = tokens_from(content, dialect_of("main.cpp", std::nullopt, "gnu++20"), {}, {});
     ZASSERT(kind_at(tokens, 0) == SemanticTokenKind::Primitive);
     ZASSERT(kind_at(tokens, 11) == SemanticTokenKind::Keyword);
 }
@@ -558,7 +560,7 @@ ZEST_CASE(DriverDefaultKeywords) {
 ZEST_CASE(ModuleKeywordsNeedModules) {
     // Before C++20 a line-leading `module` is a plain name.
     llvm::StringRef content = "module m;\n";
-    auto tokens = tokens_from(content, dialect_of("main.cpp", false, "c++17"), {}, {});
+    auto tokens = tokens_from(content, dialect_of("main.cpp", std::nullopt, "c++17"), {}, {});
     ZASSERT(ranges::none_of(tokens, [](const feature::SemanticToken& token) {
         return token.kind == SemanticTokenKind::Keyword;
     }));
@@ -574,15 +576,17 @@ ZEST_CASE(StandardFromCommand) {
     };
     auto kinds = {SemanticTokenKind::Variable};
 
-    auto cxx17 = tokens_from(content, dialect_of("main.cpp", false, "c++17"), entries, kinds);
+    auto cxx17 =
+        tokens_from(content, dialect_of("main.cpp", std::nullopt, "c++17"), entries, kinds);
     ZASSERT(kind_at(cxx17, 4) == SemanticTokenKind::Variable);
 
-    auto cxx20 = tokens_from(content, dialect_of("main.cpp", false, "c++20"), entries, kinds);
+    auto cxx20 =
+        tokens_from(content, dialect_of("main.cpp", std::nullopt, "c++20"), entries, kinds);
     ZASSERT(kind_at(cxx20, 4) == SemanticTokenKind::Keyword);
 
     // No -std in the command means the entries were indexed under the
     // driver's default dialect (C++17 today); the fallback matches it.
-    auto fallback = tokens_from(content, dialect_of("main.cpp", false), entries, kinds);
+    auto fallback = tokens_from(content, dialect_of("main.cpp"), entries, kinds);
     ZASSERT(kind_at(fallback, 4) == SemanticTokenKind::Variable);
 }
 

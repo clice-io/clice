@@ -28,6 +28,8 @@ static auto offer_names(const index::IndexQuery& query,
             case SymbolKind::Struct:
             case SymbolKind::Union: return Kind::Class;
             case SymbolKind::Enum: return Kind::Enum;
+            case SymbolKind::Protocol: return Kind::Interface;
+            case SymbolKind::Property: return Kind::Property;
             case SymbolKind::EnumMember: return Kind::EnumMember;
             case SymbolKind::Function: return Kind::Function;
             case SymbolKind::Variable: return Kind::Variable;

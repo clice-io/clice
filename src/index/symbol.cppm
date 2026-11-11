@@ -215,9 +215,11 @@ enum class NameForm : std::uint8_t {
     Conversion,
     Operator,
     Literal,
-    /// Deduction guides, Objective-C selectors and other names no consumer
+    /// Deduction guides, using-directives and other names no consumer
     /// tells apart.
     Other,
+    /// An Objective-C method's selector (`setX:y:`).
+    Selector,
 };
 
 constexpr SymbolFlags with_form(SymbolFlags flags, NameForm form) {

@@ -1,0 +1,22 @@
+[answers.extension.prepare_rename]
+error = "Shape() has no name to rename"
+
+[answers.synthesize_ivar.prepare_rename]
+at = "@synthesize x = ⟦_x⟧;"
+placeholder = "_x"
+
+[answers.synthesized_ivar.prepare_rename]
+at = "return ⟦_x⟧ * _x;"
+placeholder = "_x"
+
+[answers.auto_ivar.prepare_rename]
+error = "renaming the Objective-C property `name` is not supported: its accessors and the instance variable it synthesizes would have to change with it"
+
+[answers.untyped.prepare_rename]
+error = "renaming the Objective-C method `draw` is not supported: every method its messages may reach would have to change with it"
+
+[answers.property.prepare_rename]
+error = "renaming the Objective-C property `x` is not supported: its accessors and the instance variable it synthesizes would have to change with it"
+
+[answers.setter.prepare_rename]
+error = "renaming the Objective-C method `setX:y:` is not supported: every method its messages may reach would have to change with it"

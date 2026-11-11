@@ -5,6 +5,7 @@ import :index.query;
 import :index.search;
 import :index.search_index;
 import :index.tu_index;
+import :semantic.token_class;
 import :support.logging;
 
 namespace clice::index {
@@ -355,6 +356,17 @@ std::optional<IndexQuery::Cursor> cursor_at(const IndexQuery& index,
     return index.symbol_at(file, offset);
 }
 
+/// The ranking of `query` down to every symbol spelling the name exactly,
+/// however many.
+static RankedHits exact_search(const IndexQuery& index, const SymbolQuery& query) {
+    for(std::uint32_t limit = 64;; limit *= 4) {
+        auto ranked = ranked_search(index, query, limit);
+        if(ranked.exhausted || (!ranked.hits.empty() && ranked.hits.back().rank.tier > 1)) {
+            return ranked;
+        }
+    }
+}
+
 std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQuery& query) {
     if(query.handle) {
         Fid anchor;
@@ -405,28 +417,20 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
         return defined;
     }
 
-    // Every symbol spelling the name exactly is wanted, however many: the
-    // ranking is fetched wider until a match of a lower tier ends it.
-    RankedHits ranked;
-    for(std::uint32_t limit = 64;; limit *= 4) {
-        ranked = ranked_search(index, query, limit);
-        if(ranked.exhausted || (!ranked.hits.empty() && ranked.hits.back().rank.tier > 1)) {
-            break;
-        }
-    }
-    // Spelling the name exactly decides it; otherwise every match stands.
-    // A class and its constructors spell one name: asked by it, the class
-    // answers. So does a template asked by its bare name: a specialization
-    // is named with its arguments.
+    auto ranked = exact_search(index, query);
+    // Spelling the name exactly, case included, decides it; otherwise every
+    // match stands. A class and its constructors spell one name: asked by
+    // it, the class answers. So does a template asked by its bare name: a
+    // specialization is named with its arguments.
     llvm::DenseSet<SymbolHash> exact;
     for(auto& hit: ranked.hits) {
-        if(hit.rank.tier <= 1) {
+        if(hit.rank.tier == 0) {
             exact.insert(hit.symbol.hash);
         }
     }
     std::vector<IndexQuery::Located> results;
     for(auto& hit: ranked.hits) {
-        if(!exact.empty() && hit.rank.tier > 1) {
+        if(!exact.empty() && hit.rank.tier > 0) {
             continue;
         }
         if(name_form(hit.symbol.flags) == NameForm::Constructor &&
@@ -445,6 +449,23 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
         }
     }
     return results;
+}
+
+std::vector<IndexQuery::Target> reached_by_selector(const IndexQuery& index,
+                                                    const SymbolInfo& method) {
+    auto ranked = exact_search(
+        index,
+        {.mode = SymbolQuery::Mode::Exact, .pattern = method.name, .kinds = {SymbolKind::Method}});
+    std::vector<IndexQuery::Target> reached;
+    for(auto& hit: ranked.hits) {
+        auto& other = hit.symbol;
+        if(other.hash != method.hash && name_form(other.flags) == NameForm::Selector &&
+           other.token_class.has(SemanticTokenModifier::Static) ==
+               method.token_class.has(SemanticTokenModifier::Static)) {
+            reached.push_back({.symbol = other.hash, .anchor = hit.anchor});
+        }
+    }
+    return reached;
 }
 
 }  // namespace clice::index

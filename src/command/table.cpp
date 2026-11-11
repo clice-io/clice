@@ -323,6 +323,11 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
 
     // Inject our resource dir if the command names none, so the embedded
     // frontend and its builtin headers stay version-matched.
+    // LIMITATION: a runtime's headers written for an older clang's predefines
+    // and wrapper headers fail: ROCm 5.7's HIP headers (Ubuntu 24.04's
+    // packages) use `__AMDGCN_WAVEFRONT_SIZE` and `__ocml_*_f64`, which this
+    // clang neither predefines nor declares, so its HIP units show errors in
+    // ROCm's headers; ROCm 7.2 is clean.
     bool has_resource_dir = ranges::any_of(command.args, [](const Arg& arg) {
         return arg.opt_id == clang_options::OPT_resource_dir;
     });

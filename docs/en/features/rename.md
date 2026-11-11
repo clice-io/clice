@@ -61,6 +61,18 @@ tests/rename/edits/13_templates
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Objective-C names**
+
+Renaming an Objective-C class, protocol, category or instance variable changes every place that writes it
+
+```case
+tests/rename/edits/14_objective_c
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Refused Renames
@@ -101,6 +113,22 @@ A macro has no scope: a new name some symbol, macro or `#ifdef` of the project a
 
 ```case
 tests/rename/refusals/05_macro_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Objective-C methods and properties**
+
+Renaming an Objective-C method or property is refused, with the reason
+
+A method's selector names every method its messages may reach, and a
+property its accessors and the instance variable it synthesizes; an
+instance variable a property synthesizes has no declaration to rename.
+
+```case
+tests/rename/refusals/07_objective_c
 ```
 
 <!-- END CAPABILITY -->

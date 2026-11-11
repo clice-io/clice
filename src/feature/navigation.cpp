@@ -223,9 +223,10 @@ std::vector<Highlight>
     for(auto symbol: symbols) {
         auto kind = kind_of(symbol);
         // Only a variable is read or written; any other symbol is named.
-        bool accessed = kind && ranges::contains(std::array<SymbolKind, 3>{SymbolKind::Variable,
+        bool accessed = kind && ranges::contains(std::array<SymbolKind, 4>{SymbolKind::Variable,
                                                                            SymbolKind::Field,
-                                                                           SymbolKind::Parameter},
+                                                                           SymbolKind::Parameter,
+                                                                           SymbolKind::Property},
                                                  *kind);
         auto used = accessed ? HighlightKind::Read : HighlightKind::Text;
         add(symbol, RelationKind::Declaration, HighlightKind::Text);
@@ -336,6 +337,11 @@ std::vector<index::Site> references(const index::IndexQuery& index,
                 }
             }
         }
+        if(index::name_form(info->flags) == index::NameForm::Selector) {
+            for(auto other: index::reached_by_selector(index, *info)) {
+                add(other.symbol, other.anchor, {RelationKind::Candidate});
+            }
+        }
         // Its constructors are named by the class's name; the name in a
         // destructor's already refers to the class.
         if(is_class(info->kind)) {
@@ -420,7 +426,7 @@ std::vector<index::Site> type_definition(const index::IndexQuery& index,
         // A type is its own type definition.
         if(auto info = index.symbol_info(symbol, anchor);
            info && (is_class(info->kind) || info->kind == SymbolKind::Enum ||
-                    info->kind == SymbolKind::Type)) {
+                    info->kind == SymbolKind::Protocol || info->kind == SymbolKind::Type)) {
             found.push_back({.symbol = symbol, .anchor = anchor});
         } else {
             found = declared_type({.symbol = symbol, .anchor = anchor});
@@ -457,7 +463,9 @@ std::vector<index::IndexQuery::Located> implementation(const index::IndexQuery& 
     }
     // Every class deriving from a class, every override of a function, at
     // any depth.
-    auto kind = is_class(info->kind) ? RelationKind::Derived : RelationKind::Implementation;
+    auto kind = is_class(info->kind) || info->kind == SymbolKind::Protocol
+                    ? RelationKind::Derived
+                    : RelationKind::Implementation;
     std::vector<index::IndexQuery::Located> result;
     for(auto target: index.transitive_targets(hash, anchor, kind)) {
         if(auto located = index.resolve(target.symbol, target.anchor)) {

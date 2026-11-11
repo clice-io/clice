@@ -1,0 +1,5 @@
+[answers.objc_draw]
+references = ["- (void)⟦draw⟧;", "- (void)⟦draw⟧ {", "[canvas ⟦draw⟧];", "[thing ⟦draw⟧];"]
+
+[answers.cxx_draw]
+references = ["void ⟦draw⟧() {", "sketch.⟦draw⟧();", "copy->⟦draw⟧();", "void (Sketch::*member)() = &Sketch::⟦draw⟧;"]

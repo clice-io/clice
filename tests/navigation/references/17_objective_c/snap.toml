@@ -1,0 +1,55 @@
+[answers.shape_draw]
+references = [
+    "- (void)⟦draw⟧ { @+0",
+    "[super ⟦draw⟧];",
+    "[thing ⟦draw⟧];",
+    "[drawable ⟦draw⟧];",
+    "[shape ⟦draw⟧];",
+    "[error ⟦draw⟧];",
+]
+
+[answers.circle_draw]
+references = ["- (void)⟦draw⟧ { @+0", "[thing ⟦draw⟧];", "[drawable ⟦draw⟧];", "[shape ⟦draw⟧];", "[error ⟦draw⟧];"]
+
+[answers.protocol]
+references = [
+    "main.m │ void render(id thing, id<⟦Drawable⟧> drawable, Shape *shape) {",
+    "@protocol ⟦Drawable⟧",
+    "@interface Shape : Object <⟦Drawable⟧> {",
+]
+
+[answers.protocol_draw]
+references = ["main.m │ [thing ⟦draw⟧];", "main.m │ [drawable ⟦draw⟧];", "- (void)⟦draw⟧;"]
+
+[answers.interface]
+references = [
+    "main.m │ @interface ⟦Shape⟧ ()",
+    "main.m │ @implementation ⟦Shape⟧",
+    "main.m │ ⟦Shape⟧ *shape = [[self alloc] init];",
+    "main.m │ @implementation ⟦Shape⟧ (Extras)",
+    "main.m │ @interface Circle : ⟦Shape⟧",
+    "main.m │ void render(id thing, id<Drawable> drawable, ⟦Shape⟧ *shape) {",
+    "main.m │ ⟦Shape⟧.count = 2;",
+    "main.m │ [⟦Shape⟧ shapeWithX:1];",
+    "main.m │ } @catch (⟦Shape⟧ *error) {",
+    "@interface ⟦Shape⟧ : Object <Drawable> {",
+    "@interface ⟦Shape⟧ (Extras)",
+]
+
+[answers.ivar_declaration]
+references = ["main.m │ ⟦_generation⟧ += 1;", "int ⟦_generation⟧;"]
+
+[answers.property]
+references = [
+    "main.m │ @synthesize ⟦x⟧ = _x;",
+    "main.m │ [self setX:self.⟦x⟧ + 1 y:0];",
+    "@property(nonatomic) int ⟦x⟧;",
+]
+
+[answers.setter]
+references = [
+    "main.m │ - (void)⟦setX⟧:(int)x y:(int)y {",
+    "main.m │ [shape ⟦setX⟧:x y:0];",
+    "main.m │ [self ⟦setX⟧:self.x + 1 y:0];",
+    "- (void)⟦setX⟧:(int)x y:(int)y;",
+]

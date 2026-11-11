@@ -1,0 +1,29 @@
+[answers.inking]
+type_hierarchy = [
+    { name = "Inking", kind = "Interface", at = "@protocol ⟦Inking⟧" },
+]
+supertypes = []
+subtypes = [
+    { name = "Writing", kind = "Interface", at = "@protocol ⟦Writing⟧ <Inking>" },
+]
+
+[answers.writing]
+type_hierarchy = [
+    { name = "Writing", kind = "Interface", at = "@protocol ⟦Writing⟧ <Inking>" },
+]
+supertypes = [
+    { name = "Inking", kind = "Interface", at = "@protocol ⟦Inking⟧" },
+]
+subtypes = [
+    { name = "Pen", kind = "Class", at = "@implementation ⟦Quill⟧ : Object" },
+]
+
+[answers.pen_class]
+type_hierarchy = [
+    { name = "Pen", kind = "Class", at = "@implementation ⟦Quill⟧ : Object" },
+]
+supertypes = [
+    { name = "Writing", kind = "Interface", at = "@protocol ⟦Writing⟧ <Inking>" },
+    { name = "Object", kind = "Class", at = "@interface ⟦Object⟧" },
+]
+subtypes = []

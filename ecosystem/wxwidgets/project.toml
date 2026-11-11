@@ -1,0 +1,27 @@
+about = "wxWidgets 3.3.4"
+repository = "https://github.com/wxWidgets/wxWidgets"
+commit = "6a42a4b999b127cf28a8b5fe686da6b8ca93a9b8"
+
+[configurations.cocoa]
+about = "C++ and Objective-C++: the Cocoa port, built by Apple clang"
+platforms = ["macos"]
+database = "build/compile_commands.json"
+
+[[configurations.cocoa.prepare]]
+run = ["git", "submodule", "update", "--init", "--depth", "1"]
+
+[[configurations.cocoa.prepare]]
+run = [
+    "cmake",
+    "-S",
+    ".",
+    "-B",
+    "build",
+    "-G",
+    "Ninja",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    "-DCMAKE_C_COMPILER=/usr/bin/clang",
+    "-DCMAKE_CXX_COMPILER=/usr/bin/clang++",
+    "-DCMAKE_OBJC_COMPILER=/usr/bin/clang",
+    "-DCMAKE_OBJCXX_COMPILER=/usr/bin/clang++"
+]

@@ -1,0 +1,4 @@
+# Clang header modules on an Objective-C file: clice compiles it without
+# them, so the `@import` is an error, and says so once.
+[units]
+"main.m" = ["-std=gnu11", "--target=arm64-apple-macos13", "-fmodules"]

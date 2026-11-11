@@ -1,0 +1,267 @@
+[answers.base_count]
+call_hierarchy = [
+    { name = "count", kind = "Method", at = "- (int)⟦count⟧ { @+0", detail = "Base::count" },
+]
+incoming_calls = [
+    {
+        name = "count",
+        kind = "Method",
+        at = "- (int)⟦count⟧ { @+17",
+        detail = "Counter::count",
+        sites = ["return super.⟦count⟧; @+18"],
+    },
+]
+outgoing_calls = []
+
+[answers.total]
+call_hierarchy = [
+    { name = "total", kind = "Method", at = "- (int)⟦total⟧ {", detail = "Counter::total" },
+]
+incoming_calls = [
+    {
+        name = "limit",
+        kind = "Method",
+        at = "- (int)⟦limit⟧ {",
+        detail = "Counter::limit",
+        sites = ["return self.⟦total⟧;"],
+    },
+    {
+        name = "bump",
+        kind = "Function",
+        at = "void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["counter.⟦total⟧ += 1;"],
+    },
+]
+outgoing_calls = []
+
+[answers.set_total]
+call_hierarchy = [
+    { name = "setTotal:", kind = "Method", at = "- (void)⟦setTotal⟧:(int)total {", detail = "Counter::setTotal:" },
+]
+incoming_calls = [
+    {
+        name = "bump",
+        kind = "Function",
+        at = "void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["counter.⟦total⟧ += 1;", "[counter ⟦setTotal⟧:[counter limit]];"],
+    },
+]
+outgoing_calls = []
+
+[answers.count]
+call_hierarchy = [
+    { name = "count", kind = "Method", at = "- (int)⟦count⟧ { @+0", detail = "Counter::count" },
+]
+incoming_calls = [
+    {
+        name = "count",
+        kind = "Method",
+        at = "- (int)⟦count⟧ { @+10",
+        detail = "Leaf::count",
+        sites = ["return super.⟦count⟧; @+11"],
+    },
+    {
+        name = "bump",
+        kind = "Function",
+        at = "void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["(void)counter.⟦count⟧;"],
+    },
+]
+outgoing_calls = [
+    {
+        name = "count",
+        kind = "Method",
+        at = "- (int)⟦count⟧ { @-17",
+        detail = "Base::count",
+        sites = ["return super.⟦count⟧; @+1"],
+    },
+]
+
+[answers.counter_shared]
+call_hierarchy = [
+    { name = "shared", kind = "Method", at = "+ (int)⟦shared⟧ { @+0", detail = "Counter::shared" },
+]
+incoming_calls = [
+    {
+        name = "reset",
+        kind = "Method",
+        at = "+ (int)⟦reset⟧ {",
+        detail = "Leaf::reset",
+        sites = ["return super.⟦shared⟧;"],
+    },
+    {
+        name = "fresh",
+        kind = "Method",
+        at = "+ (int)⟦fresh⟧ {",
+        detail = "Leaf::fresh",
+        sites = ["return [super ⟦shared⟧];"],
+    },
+    {
+        name = "again",
+        kind = "Method",
+        at = "+ (int)⟦again⟧ {",
+        detail = "Leaf::again",
+        sites = ["return [self ⟦shared⟧];"],
+    },
+]
+outgoing_calls = []
+
+[answers.leaf_count]
+call_hierarchy = [
+    { name = "count", kind = "Method", at = "- (int)⟦count⟧ { @+0", detail = "Leaf::count" },
+]
+incoming_calls = [
+    {
+        name = "bump",
+        kind = "Function",
+        at = "void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["(void)counter.⟦count⟧;"],
+    },
+]
+outgoing_calls = [
+    {
+        name = "count",
+        kind = "Method",
+        at = "- (int)⟦count⟧ { @-10",
+        detail = "Counter::count",
+        sites = ["return super.⟦count⟧; @+1"],
+    },
+]
+
+[answers.leaf_shared]
+call_hierarchy = [
+    { name = "reset", kind = "Method", at = "+ (int)⟦reset⟧ {", detail = "Leaf::reset" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "shared",
+        kind = "Method",
+        at = "+ (int)⟦shared⟧ { @-10",
+        detail = "Counter::shared",
+        sites = ["return super.⟦shared⟧;"],
+    },
+]
+
+[answers.limit]
+call_hierarchy = [
+    { name = "limit", kind = "Method", at = "- (int)⟦limit⟧ {", detail = "Counter::limit" },
+]
+incoming_calls = [
+    {
+        name = "bump",
+        kind = "Function",
+        at = "void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["[counter setTotal:[counter ⟦limit⟧]];", "(void)counter.⟦limit⟧;"],
+    },
+]
+outgoing_calls = [
+    {
+        name = "total",
+        kind = "Method",
+        at = "- (int)⟦total⟧ {",
+        detail = "Counter::total",
+        sites = ["return self.⟦total⟧;"],
+    },
+]
+
+[answers.bump]
+call_hierarchy = [
+    { name = "bump", kind = "Function", at = "void ⟦bump⟧(Counter *counter) {", detail = "bump(Counter *counter)" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "total",
+        kind = "Method",
+        at = "- (int)⟦total⟧ {",
+        detail = "Counter::total",
+        sites = ["counter.⟦total⟧ += 1;"],
+    },
+    {
+        name = "setTotal:",
+        kind = "Method",
+        at = "- (void)⟦setTotal⟧:(int)total {",
+        detail = "Counter::setTotal:",
+        sites = ["counter.⟦total⟧ += 1;", "[counter ⟦setTotal⟧:[counter limit]];"],
+    },
+    {
+        name = "count",
+        kind = "Method",
+        at = "- (int)⟦count⟧ { @-25",
+        detail = "Counter::count",
+        sites = ["(void)counter.⟦count⟧;"],
+    },
+    {
+        name = "limit",
+        kind = "Method",
+        at = "- (int)⟦limit⟧ {",
+        detail = "Counter::limit",
+        sites = ["[counter setTotal:[counter ⟦limit⟧]];", "(void)counter.⟦limit⟧;"],
+    },
+]
+
+[answers.fresh]
+call_hierarchy = [
+    { name = "fresh", kind = "Method", at = "+ (int)⟦fresh⟧ {", detail = "Leaf::fresh" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "shared",
+        kind = "Method",
+        at = "+ (int)⟦shared⟧ { @-34",
+        detail = "Counter::shared",
+        sites = ["return [super ⟦shared⟧];"],
+    },
+]
+
+[answers.again]
+call_hierarchy = [
+    { name = "again", kind = "Method", at = "+ (int)⟦again⟧ {", detail = "Leaf::again" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "shared",
+        kind = "Method",
+        at = "+ (int)⟦shared⟧ { @-38",
+        detail = "Counter::shared",
+        sites = ["return [self ⟦shared⟧];"],
+    },
+]
+
+[answers.dial_level]
+call_hierarchy = [
+    { name = "level", kind = "Method", at = "- (int)⟦level⟧ {", detail = "Dial::level" },
+]
+incoming_calls = [
+    {
+        name = "gauge",
+        kind = "Function",
+        at = "int ⟦gauge⟧(Needle *needle) {",
+        detail = "gauge(Needle *needle)",
+        sites = ["return needle.⟦level⟧;"],
+    },
+]
+outgoing_calls = []
+
+[answers.gauge]
+call_hierarchy = [
+    { name = "gauge", kind = "Function", at = "int ⟦gauge⟧(Needle *needle) {", detail = "gauge(Needle *needle)" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "level",
+        kind = "Method",
+        at = "- (int)⟦level⟧ {",
+        detail = "Dial::level",
+        sites = ["return needle.⟦level⟧;"],
+    },
+]

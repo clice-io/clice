@@ -1,0 +1,29 @@
+[answers.circle]
+type_hierarchy = [
+    { name = "Circle", kind = "Class", at = "@implementation ⟦Circle⟧" },
+]
+supertypes = [
+    { name = "Shape", kind = "Class", at = "@implementation ⟦Shape⟧" },
+]
+subtypes = []
+
+[answers.protocol]
+type_hierarchy = [
+    { name = "Drawable", kind = "Interface", at = "@protocol ⟦Drawable⟧" },
+]
+supertypes = []
+subtypes = [
+    { name = "Shape", kind = "Class", at = "main.m │ @implementation ⟦Shape⟧" },
+]
+
+[answers.interface]
+type_hierarchy = [
+    { name = "Shape", kind = "Class", at = "main.m │ @implementation ⟦Shape⟧" },
+]
+supertypes = [
+    { name = "Drawable", kind = "Interface", at = "@protocol ⟦Drawable⟧" },
+    { name = "Object", kind = "Class", at = "@interface ⟦Object⟧" },
+]
+subtypes = [
+    { name = "Circle", kind = "Class", at = "main.m │ @implementation ⟦Circle⟧" },
+]

@@ -916,11 +916,12 @@ CompilationStatus CompilationUnit::run() {
     // A header its preamble includes again, through a cycle of headers,
     // fails the preamble's build ("main file cannot be included recursively
     // when building a preamble"): clang learns the guard only at the
-    // header's end, enters it, and refuses. Its guard's `#define` comes
-    // before every include, so a compile of the whole file skips it too.
+    // header's end, enters it, and refuses. A compile of the whole file
+    // skips it at its guard, whose `#define` comes before every include but
+    // those it follows: SDL's headers include a header of their own first.
     if(params.kind == CompilationKind::Preamble && instance->getLangOpts().IsHeaderFile) {
         auto focus = focus_file();
-        if(guard_opening(focus.content(), focus.lexical())) {
+        if(guard_opening(focus.content(), focus.lexical(), /*after_includes=*/true)) {
             instance->getPreprocessor().getHeaderSearchInfo().MarkFileIncludeOnce(
                 *SM().getFileEntryRefForID(focus.file()));
         }

@@ -274,7 +274,10 @@ auto completion_kind(const clang::NamedDecl* decl) -> protocol::CompletionItemKi
         return protocol::CompletionItemKind::Constructor;
     }
 
-    if(llvm::isa<clang::CXXMethodDecl, clang::CXXConversionDecl, clang::CXXDestructorDecl>(decl)) {
+    if(llvm::isa<clang::CXXMethodDecl,
+                 clang::CXXConversionDecl,
+                 clang::CXXDestructorDecl,
+                 clang::ObjCMethodDecl>(decl)) {
         return protocol::CompletionItemKind::Method;
     }
 
@@ -308,11 +311,22 @@ auto completion_kind(const clang::NamedDecl* decl) -> protocol::CompletionItemKi
 
     if(llvm::isa<clang::RecordDecl,
                  clang::ClassTemplateDecl,
-                 clang::ClassTemplateSpecializationDecl>(decl)) {
+                 clang::ClassTemplateSpecializationDecl,
+                 clang::ObjCInterfaceDecl,
+                 clang::ObjCCategoryDecl>(decl)) {
         return protocol::CompletionItemKind::Class;
     }
 
+    if(llvm::isa<clang::ObjCProtocolDecl>(decl)) {
+        return protocol::CompletionItemKind::Interface;
+    }
+
+    if(llvm::isa<clang::ObjCPropertyDecl>(decl)) {
+        return protocol::CompletionItemKind::Property;
+    }
+
     if(llvm::isa<clang::TypedefNameDecl,
+                 clang::ObjCCompatibleAliasDecl,
                  clang::TemplateTypeParmDecl,
                  clang::TemplateTemplateParmDecl,
                  clang::TypeAliasTemplateDecl,
@@ -893,9 +907,10 @@ auto extract_signature(const clang::CodeCompletionString& ccs,
 
 /// Build a snippet string from a CodeCompletionString.
 /// Produces e.g. "funcName(${1:int x}, ${2:float y})" for functions,
-/// "ClassName<${1:T}>" for class templates, or a whole statement for a
-/// keyword pattern. Empty when there is nothing to fill in.
-auto build_snippet(const clang::CodeCompletionString& ccs) -> std::string {
+/// "ClassName<${1:T}>" for class templates, "moveToX:${1:(int)} y:${2:(int)}"
+/// for a message, or a whole statement for a keyword pattern; its tab stops
+/// are empty unless `named`. Empty when there is nothing to fill in.
+auto build_snippet(const clang::CodeCompletionString& ccs, bool named = true) -> std::string {
     std::string snippet;
     unsigned placeholder_index = 0;
 
@@ -904,9 +919,13 @@ auto build_snippet(const clang::CodeCompletionString& ccs) -> std::string {
         switch(chunk.Kind) {
             case CK::CK_Placeholder:
                 placeholder_index += 1;
-                snippet += std::format("${{{}:{}}}",
-                                       placeholder_index,
-                                       escape_snippet(chunk.Text, /*placeholder=*/true));
+                if(named) {
+                    snippet += std::format("${{{}:{}}}",
+                                           placeholder_index,
+                                           escape_snippet(chunk.Text, /*placeholder=*/true));
+                } else {
+                    snippet += std::format("${}", placeholder_index);
+                }
                 break;
             // Default arguments and display-only chunks are not inserted.
             case CK::CK_Optional:
@@ -944,17 +963,18 @@ auto pattern_text(const clang::CodeCompletionString& ccs, bool whole) -> std::st
 }
 
 /// A pattern's text after its typed text, placeholders shown by name:
-/// tells apart the two `for` statements.
+/// tells apart the two `for` statements. A message's selector is typed
+/// piece by piece: its tail is the pieces after the first, each with its
+/// argument.
 auto pattern_tail(const clang::CodeCompletionString& ccs) -> std::string {
     std::string tail;
     bool typed = false;
     for(const auto& chunk: ccs) {
         using CK = clang::CodeCompletionString::ChunkKind;
-        if(chunk.Kind == CK::CK_TypedText) {
-            typed = true;
-        } else if(typed && chunk.Kind != CK::CK_Optional && chunk.Kind != CK::CK_Informative) {
+        if(typed && chunk.Kind != CK::CK_Optional && chunk.Kind != CK::CK_Informative) {
             tail += chunk.Kind == CK::CK_VerticalSpace ? " " : chunk.Text;
         }
+        typed = typed || chunk.Kind == CK::CK_TypedText;
     }
     return tail;
 }
@@ -967,6 +987,22 @@ auto extract_return_type(const clang::CodeCompletionString& ccs) -> std::string 
         }
     }
     return {};
+}
+
+/// What a message still writes of `method`'s selector, the pieces before
+/// `start` written already: `moveToX:y:` from the start, `y:` after
+/// `moveToX:1`. Empty when every piece is written.
+auto selector_rest(const clang::ObjCMethodDecl& method, unsigned start) -> std::string {
+    auto selector = method.getSelector();
+    if(selector.isUnarySelector()) {
+        return selector.getNameForSlot(0).str();
+    }
+    std::string rest;
+    for(auto piece = start; piece < selector.getNumArgs(); piece += 1) {
+        rest += selector.getNameForSlot(piece);
+        rest += ':';
+    }
+    return rest;
 }
 
 /// One candidate as the item it becomes, before matching and bundling.
@@ -1443,6 +1479,7 @@ public:
         auto after = content.drop_front(prefix.whole.end).ltrim();
         bool call_follows = after.starts_with("(");
         bool angles_follow = after.starts_with("<");
+        bool colon_follows = after.starts_with(":");
         auto arguments_follow = [&](bool templated) {
             return call_follows || (angles_follow && templated);
         };
@@ -1590,6 +1627,45 @@ public:
                     .relevance = priority_weight(priority),
                 });
             }
+        };
+
+        /// Sema offers an Objective-C method as a pattern where it is written
+        /// whole: its declaration in an implementation, after the `-` or the
+        /// return type, its body left to write; after a dot one taking no
+        /// argument, read as a property; and in a message to `super` the
+        /// method being written, passed its arguments — in place of the
+        /// method's own candidate.
+        auto add_method_pattern = [&](const clang::CodeCompletionString& pattern,
+                                      const clang::ObjCMethodDecl& method,
+                                      unsigned priority) {
+            Candidate item{
+                .kind = protocol::CompletionItemKind::Method,
+                .return_type = extract_return_type(pattern),
+                .documented = &method,
+                .relevance = priority_weight(priority),
+            };
+            for(const auto& chunk: pattern) {
+                using CK = clang::CodeCompletionString::ChunkKind;
+                if(chunk.Kind == CK::CK_LeftBrace) {
+                    break;
+                }
+                if(chunk.Kind == CK::CK_Informative || chunk.Kind == CK::CK_ResultType) {
+                    continue;
+                }
+                item.insert += chunk.Text;
+                if(!item.label.empty()) {
+                    item.signature += chunk.Text;
+                } else if(chunk.Kind == CK::CK_TypedText) {
+                    item.label = chunk.Text;
+                }
+            }
+            item.insert = colon_follows ? llvm::StringRef(item.label).rtrim(':').str()
+                                        : llvm::StringRef(item.insert).rtrim().str();
+            item.signature = llvm::StringRef(item.signature).rtrim().str();
+            if(auto typed = pattern.getAllTypedText(); typed != item.label) {
+                item.filter = std::move(typed);
+            }
+            add(item);
         };
 
         // In a module unit, imports precede every other declaration of its
@@ -1805,12 +1881,30 @@ public:
                                                                     getAllocator(),
                                                                     getCodeCompletionTUInfo(),
                                                                     /*IncludeBriefComments=*/false);
+            item.return_type = extract_return_type(ccs);
+            if(llvm::isa<clang::ObjCMethodDecl>(declaration)) {
+                item.signature = pattern_tail(ccs);
+                if(candidate.DeclaringEntity) {
+                    // A method's declaration after its return type.
+                    item.insert = pattern_text(ccs, /*whole=*/true);
+                } else if(colon_follows) {
+                    item.insert = llvm::StringRef(item.label).rtrim(':').str();
+                } else if(client.snippets && options.arguments != CompletionArguments::None) {
+                    auto snippet =
+                        build_snippet(ccs, options.arguments == CompletionArguments::Placeholders);
+                    if(!snippet.empty()) {
+                        item.insert = std::move(snippet);
+                        item.snippet = true;
+                    }
+                }
+                add(item);
+                return;
+            }
             // Clang gives a variable holding a lambda the signature of its
             // call operator, whose `const` is no part of calling it.
             bool method = llvm::isa_and_present<clang::CXXMethodDecl>(declaration->getAsFunction());
             std::size_t parameters;
             item.signature = extract_signature(ccs, /*qualifiers=*/method, &parameters);
-            item.return_type = extract_return_type(ccs);
             // Where Sema gives a parameter list and a type, they are printed
             // as every feature prints them.
             if(!readable) {
@@ -1894,6 +1988,10 @@ public:
         };
         std::vector<Pending> pending;
 
+        /// The selectors offered to declare: Sema offers one for every
+        /// method declaring it, its overrides among them.
+        llvm::StringSet<> declared_selectors;
+
         /// `relevance` scales what the context makes of the candidate.
         auto add_declaration = [&](clang::CodeCompletionResult& candidate, float relevance) {
             // Sema offers a class's constructors with its name.
@@ -1908,11 +2006,17 @@ public:
             candidate.Declaration = shown_declaration(candidate.Declaration);
             auto* declaration = candidate.Declaration;
             offered.insert(declaration->getCanonicalDecl());
-            auto name = display::name_of(declaration,
-                                         {
-                                             .suppress_ctor_template_args = true,
-                                             .qualified = false,
-                                         });
+            const auto* method = llvm::dyn_cast<clang::ObjCMethodDecl>(declaration);
+            if(method && candidate.DeclaringEntity &&
+               !declared_selectors.insert(method->getSelector().getAsString()).second) {
+                return;
+            }
+            auto name = method ? selector_rest(*method, candidate.StartParameter)
+                               : display::name_of(declaration,
+                                                  {
+                                                      .suppress_ctor_template_args = true,
+                                                      .qualified = false,
+                                                  });
             // Sema offers every name in scope, of which the typed prefix
             // keeps a few: what follows is too costly to spend on the rest.
             if(!match(name)) {
@@ -1936,6 +2040,12 @@ public:
                 .deprecated = candidate.Availability == CXAvailability_Deprecated,
                 .documented = declaration,
             };
+            // A message's item is named by the selector's piece the cursor
+            // is at, the pieces after it are its signature.
+            if(method && ranges::count(name, ':') > 1) {
+                item.label = name.substr(0, name.find(':') + 1);
+                item.filter = name;
+            }
 
             // Clang offers a namespace last, among the qualifiers; but one is
             // typed to name what it declares, like any other declaration.
@@ -1974,7 +2084,7 @@ public:
             bool is_callable = kind == protocol::CompletionItemKind::Function ||
                                kind == protocol::CompletionItemKind::Method ||
                                kind == protocol::CompletionItemKind::Constructor;
-            if(options.bundle_overloads && is_callable) {
+            if(options.bundle_overloads && is_callable && !method) {
                 item.bundle = item.label;
             }
 
@@ -2001,12 +2111,29 @@ public:
 
                 case clang::CodeCompletionResult::RK_Pattern: {
                     auto& pattern = *candidate.Pattern;
-                    // A pattern carrying a method is an override declaration
-                    // in a class body, which the overrides below offer for
-                    // every base, or in a method body a call of the
+                    // A pattern carrying a C++ method is an override
+                    // declaration in a class body, which the overrides below
+                    // offer for every base, or in a method body a call of the
                     // overridden method — a duplicate of the method's own
                     // candidate that would change which function is called.
                     if(candidate.Declaration) {
+                        if(const auto* method =
+                               llvm::dyn_cast<clang::ObjCMethodDecl>(candidate.Declaration)) {
+                            add_method_pattern(pattern, *method, candidate.Priority);
+                        }
+                        break;
+                    }
+                    // After `@selector(` Sema offers every selector it knows,
+                    // from the piece the cursor is at.
+                    if(context.getKind() == clang::CodeCompletionContext::CCC_SelectorName) {
+                        auto typed = pattern.getAllTypedText();
+                        add({
+                            .label = typed,
+                            .kind = protocol::CompletionItemKind::Method,
+                            .insert = colon_follows ? llvm::StringRef(typed).split(':').first.str()
+                                                    : std::string(),
+                            .relevance = priority_weight(candidate.Priority),
+                        });
                         break;
                     }
                     if(requirements) {
@@ -2516,8 +2643,10 @@ public:
             deduped.reserve(collected.size());
 
             for(auto& entry: collected) {
-                // The variants of one statement share their keyword.
-                if(entry.item.kind == protocol::CompletionItemKind::Snippet) {
+                // The variants of one statement share their keyword, the
+                // selectors of one first piece their label.
+                if(entry.item.kind == protocol::CompletionItemKind::Snippet ||
+                   llvm::isa_and_present<clang::ObjCMethodDecl>(entry.documented)) {
                     deduped.push_back(std::move(entry));
                     continue;
                 }

@@ -1,0 +1,8 @@
+[answers.protocol]
+implementation = ["main.m │ @implementation ⟦Shape⟧", "main.m │ @implementation ⟦Circle⟧"]
+
+[answers.protocol_draw]
+implementation = ["main.m │ - (void)⟦draw⟧ { @36", "main.m │ - (void)⟦draw⟧ { @50"]
+
+[answers.interface]
+implementation = ["main.m │ @implementation ⟦Circle⟧"]

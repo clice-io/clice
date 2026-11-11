@@ -87,10 +87,10 @@ NameForm name_form_of(clang::DeclarationName name) {
         case clang::DeclarationName::CXXOperatorName: return NameForm::Operator;
         case clang::DeclarationName::CXXLiteralOperatorName: return NameForm::Literal;
         case clang::DeclarationName::CXXDeductionGuideName:
-        case clang::DeclarationName::CXXUsingDirective:
+        case clang::DeclarationName::CXXUsingDirective: return NameForm::Other;
         case clang::DeclarationName::ObjCZeroArgSelector:
         case clang::DeclarationName::ObjCOneArgSelector:
-        case clang::DeclarationName::ObjCMultiArgSelector: return NameForm::Other;
+        case clang::DeclarationName::ObjCMultiArgSelector: return NameForm::Selector;
     }
     std::unreachable();
 }
@@ -532,7 +532,10 @@ public:
         auto [fid, range] = *unit.written_range(name);
         Relation relation{.kind = kind, .range = range, .target = 0};
 
-        if(kind.declares()) {
+        // An instance variable a property synthesizes spans no declaration
+        // of its own, an @synthesize names it at most.
+        const auto* ivar = llvm::dyn_cast<clang::ObjCIvarDecl>(decl);
+        if(kind.declares() && !(ivar && ivar->getSynthesize())) {
             auto source_range = decls::written_range(decl);
             if(source_range.isValid()) {
                 auto [def_fid, extent] = unit.produced_range(source_range);
@@ -721,7 +724,8 @@ public:
                 result = *enclosing_memo[p];
                 break;
             }
-            if(auto* decl = semantics.node(p).node.get<clang::FunctionDecl>()) {
+            const auto* decl = semantics.node(p).node.get<clang::NamedDecl>();
+            if(llvm::isa_and_present<clang::FunctionDecl, clang::ObjCMethodDecl>(decl)) {
                 result = decl;
                 break;
             }
@@ -859,6 +863,66 @@ public:
             return;
         }
 
+        // A property's accessor clang declares is one symbol with the method
+        // an @implementation, maybe in another unit, writes for it: a call
+        // to one nothing writes finds no callee. A message naming one refers
+        // to the property in the semantic map, and to the accessor here,
+        // where that method, and the other methods of its selector, find it.
+        if(auto* OME = node.get<clang::ObjCMessageExpr>()) {
+            const auto* method = decls::objc_message_target(*OME);
+            if(!method) {
+                return;
+            }
+            auto name = decls::objc_message_name(*OME);
+            call(method, name);
+            if(method->isImplicit()) {
+                add_self_relation(method,
+                                  decls::objc_untyped(*OME) ? RelationKind::Candidate
+                                                            : RelationKind::Reference,
+                                  name);
+            }
+            // `[super draw]` runs the superclass's method, never an override.
+            if(OME->getReceiverKind() == clang::ObjCMessageExpr::SuperInstance ||
+               OME->getReceiverKind() == clang::ObjCMessageExpr::SuperClass) {
+                add_self_relation(method, RelationKind::Direct, name);
+            }
+            return;
+        }
+        // `shape.count` calls its accessors, `+=` both, and refers to them
+        // as a message does; `super.count` calls the superclass's, never an
+        // override.
+        if(auto* OPRE = node.get<clang::ObjCPropertyRefExpr>()) {
+            auto type = OPRE->getReceiverType(context);
+            if(const auto* pointer = type->getAsObjCInterfacePointerType()) {
+                type = pointer->getPointeeType();
+            }
+            const auto* object = type->getAsObjCInterfaceType();
+            const auto* receiver = object ? object->getInterface() : nullptr;
+            auto call_accessor = [&](const clang::ObjCMethodDecl* method) {
+                if(!method) {
+                    return;
+                }
+                const auto* called =
+                    decls::objc_dispatched(receiver, *method, method->isInstanceMethod());
+                call(called, OPRE->getLocation());
+                add_self_relation(called, RelationKind::Reference, OPRE->getLocation());
+                if(OPRE->isSuperReceiver()) {
+                    add_self_relation(called, RelationKind::Direct, OPRE->getLocation());
+                }
+            };
+            const auto* property =
+                OPRE->isExplicitProperty() ? OPRE->getExplicitProperty() : nullptr;
+            if(OPRE->isMessagingGetter()) {
+                call_accessor(property ? property->getGetterMethodDecl()
+                                       : OPRE->getImplicitPropertyGetter());
+            }
+            if(OPRE->isMessagingSetter()) {
+                call_accessor(property ? property->getSetterMethodDecl()
+                                       : OPRE->getImplicitPropertySetter());
+            }
+            return;
+        }
+
         // Constructions are call edges too, but only written ones — an
         // implicit copy or elided temporary has no paren/brace form and
         // would flood the constructor's callers.
@@ -944,6 +1008,68 @@ public:
         if(auto* TND = llvm::dyn_cast<clang::TypedefNameDecl>(D)) {
             if(auto target = types::decl_of(types::unwrap(TND->getUnderlyingType()))) {
                 add_pair_relation(TND, RelationKind::TypeDefinition, target, TND->getLocation());
+            }
+            return;
+        }
+
+        // An Objective-C class's bases are its superclass and the protocols
+        // it or a category of it adopts; a protocol's are the protocols it
+        // inherits.
+        auto add_base = [&](const clang::NamedDecl* derived,
+                            const clang::NamedDecl* base,
+                            clang::SourceLocation location) {
+            if(derived && base) {
+                add_pair_relation(derived, RelationKind::Base, base, location);
+                add_pair_relation(base, RelationKind::Derived, derived, location);
+            }
+        };
+        auto add_protocols =
+            [&](const clang::NamedDecl* derived, auto&& protocols, auto&& locations) {
+                for(auto [protocol, location]: views::zip(protocols, locations)) {
+                    add_base(derived, protocol, location);
+                }
+            };
+        if(auto* ID = llvm::dyn_cast<clang::ObjCInterfaceDecl>(D)) {
+            if(ID->isThisDeclarationADefinition()) {
+                add_base(ID, ID->getSuperClass(), ID->getSuperClassLoc());
+                add_protocols(ID, ID->protocols(), ID->protocol_locs());
+            }
+            return;
+        }
+        if(auto* CD = llvm::dyn_cast<clang::ObjCCategoryDecl>(D)) {
+            add_protocols(CD->getClassInterface(), CD->protocols(), CD->protocol_locs());
+            return;
+        }
+        if(auto* PD = llvm::dyn_cast<clang::ObjCProtocolDecl>(D)) {
+            if(PD->isThisDeclarationADefinition()) {
+                add_protocols(PD, PD->protocols(), PD->protocol_locs());
+            }
+            return;
+        }
+        // `@implementation Quill` defines the class an alias names, and
+        // references the alias: a rename of the alias renames it. The
+        // semantic map keeps the class alone there, as its token shows it.
+        if(auto* IMD = llvm::dyn_cast<clang::ObjCImplementationDecl>(D)) {
+            if(const auto* alias = llvm::dyn_cast<clang::ObjCCompatibleAliasDecl>(
+                   decls::objc_class_name(IMD->getClassInterface(), IMD->getLocation()))) {
+                add_self_relation(alias, RelationKind::Reference, IMD->getLocation());
+            }
+            return;
+        }
+        // A method overrides its superclasses' methods of its selector and
+        // implements the protocols' its class adopts.
+        if(auto* MD = llvm::dyn_cast<clang::ObjCMethodDecl>(D)) {
+            llvm::SmallVector<const clang::ObjCMethodDecl*, 4> overridden;
+            MD->getOverriddenMethods(overridden);
+            if(const auto* nearest = decls::objc_overridden(*MD);
+               nearest && ranges::none_of(overridden, [&](const clang::ObjCMethodDecl* base) {
+                   return decls::normalize(base) == decls::normalize(nearest);
+               })) {
+                overridden.push_back(nearest);
+            }
+            for(const auto* base: overridden) {
+                add_pair_relation(MD, RelationKind::Interface, base, MD->getLocation());
+                add_pair_relation(base, RelationKind::Implementation, MD, MD->getLocation());
             }
             return;
         }
@@ -1139,6 +1265,9 @@ public:
             add_occurrence(occurrence.decl,
                            occurrence.owns_whole_name() ? name : clang::SourceRange(location));
         }
+        if(occurrence.later_piece) {
+            return name;
+        }
 
         // Every occurrence is mirrored as a self-relation spanning
         // the whole name, so find-references on the occurring decl
@@ -1213,7 +1342,7 @@ public:
         }
         for(auto& occurrence: resolve_occurrences(semantics, i, place_resolver)) {
             auto name = add_name(occurrence);
-            if(instantiation_entries) {
+            if(instantiation_entries || occurrence.later_piece) {
                 continue;
             }
 

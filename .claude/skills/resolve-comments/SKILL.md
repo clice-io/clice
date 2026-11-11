@@ -38,8 +38,9 @@ how it is phrased.
   or push — the main conversation commits, runs the checks and pushes.
 - Wrong, or already addressed: no change.
 - Outside the PR's scope: no change. That covers refactoring and
-  style-preference suggestions, a defect only Objective-C code reaches,
-  and a "for consistency" argument that asks for more than this PR set
+  style-preference suggestions, a defect only Objective-C code reaches
+  outside the code-reading features clice gives it, and a "for
+  consistency" argument that asks for more than this PR set
   out to do. A real defect among them is noted in the report. A field
   never set or a branch left unimplemented is assumed deliberate until
   blame or the plan says otherwise.

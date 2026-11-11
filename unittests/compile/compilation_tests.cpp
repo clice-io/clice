@@ -976,6 +976,37 @@ struct A : B {};
     ZEXPECT(collect_errors(*unit).empty());
 }
 
+ZEST_CASE(CycleGuardAfterInclude) {
+    add_file("common.h", R"(
+#pragma once
+struct Common {};
+)");
+    add_file("b.h", R"(
+#include "common.h"
+#ifndef B_H
+#define B_H
+#include "a.h"
+struct B : Common {};
+#endif
+)");
+
+    // The guard follows an include, as SDL's headers write it.
+    auto preamble = build_preamble(R"(
+#include "common.h"
+#ifndef A_H
+#define A_H
+#include "b.h"
+struct A : B {};
+#endif
+)",
+                                   "a.h");
+    ZASSERT(preamble->has_output());
+    ZEXPECT(collect_errors(*preamble).empty());
+
+    ZASSERT(compile_with_pch());
+    ZEXPECT(collect_errors(*unit).empty());
+}
+
 ZEST_CASE(RefusedPCHFallsBack) {
     add_file("shapes.h", R"(
 #pragma once

@@ -26,8 +26,8 @@ void append_quoted_path(std::string& out, llvm::StringRef path) {
 }
 
 /// The directives of a chain file that enter a header the resolver can
-/// find: `#include` and `#include_next` naming one, not a macro spelling
-/// it.
+/// find: `#include`, `#include_next` and `#import` naming one, not a macro
+/// spelling it.
 std::vector<ScanResult::IncludeInfo> includes_of(const LexicalInfo& lexical,
                                                  llvm::StringRef content) {
     std::vector<ScanResult::IncludeInfo> includes;
@@ -42,7 +42,7 @@ std::vector<ScanResult::IncludeInfo> includes_of(const LexicalInfo& lexical,
         // state gets no context: no cut matches the include chain, and it
         // compiles under its host's command alone. A self-contained one is
         // fine.
-        if(keyword == "import" || words.size() < 2 || !words[1].is_header_name()) {
+        if(words.size() < 2 || !words[1].is_header_name()) {
             continue;
         }
         auto name = words[1].text(content);

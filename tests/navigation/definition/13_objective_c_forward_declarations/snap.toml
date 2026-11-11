@@ -1,0 +1,7 @@
+[answers.shape]
+definition = ["shape.h │ @interface ⟦Shape⟧"]
+declaration = ["shape.h │ @interface ⟦Shape⟧"]
+
+[answers.drawable]
+definition = ["shape.h │ @protocol ⟦Drawable⟧"]
+declaration = ["shape.h │ @protocol ⟦Drawable⟧"]

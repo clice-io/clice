@@ -4,6 +4,7 @@ import :feature.document_symbols;
 import :feature.hierarchy;
 import :feature.protocol;
 import :index.query;
+import :index.search;
 import :semantic.symbol;
 
 namespace clice::feature {
@@ -229,18 +230,14 @@ CallGraph call_graph(const index::IndexQuery& index,
         } else {
             llvm::DenseMap<index::SymbolHash, std::vector<index::Site>> by_caller;
             collect_by_target(index, root, anchor, RelationKind::Caller, by_caller);
-            // A call through a method the root overrides may dispatch to it,
-            // save one naming that method by qualification.
-            if(info && index::is_function(info->kind)) {
-                for(auto base: index.transitive_targets(root, anchor, RelationKind::Interface)) {
-                    llvm::DenseMap<index::SymbolHash, std::vector<index::Site>> through_base;
-                    collect_by_target(index,
-                                      base.symbol,
-                                      base.anchor,
-                                      RelationKind::Caller,
-                                      through_base);
-                    auto direct = index.sites(base.symbol, base.anchor, RelationKind::Direct);
-                    for(auto& [caller, calls]: through_base) {
+            // The calls to `symbol` a site of `mark` covers, or those none
+            // covers.
+            auto add_calls =
+                [&](index::SymbolHash symbol, Fid from, RelationKind mark, bool covered) {
+                    llvm::DenseMap<index::SymbolHash, std::vector<index::Site>> through;
+                    collect_by_target(index, symbol, from, RelationKind::Caller, through);
+                    auto marks = index.sites(symbol, from, mark);
+                    for(auto& [caller, calls]: through) {
                         for(auto& call: calls) {
                             // A call a macro spells sits at the whole
                             // invocation, the name it qualifies inside.
@@ -248,13 +245,24 @@ CallGraph call_graph(const index::IndexQuery& index,
                             // one macro invocation spells share the
                             // invocation's site, so the qualified one hides
                             // the other and the override loses this caller.
-                            if(ranges::none_of(direct, [&](const index::Site& site) {
+                            if(ranges::any_of(marks, [&](const index::Site& site) {
                                    return index::covers(call, site);
-                               })) {
+                               }) == covered) {
                                 by_caller[caller].push_back(std::move(call));
                             }
                         }
                     }
+                };
+            // A call through a method the root overrides may dispatch to it,
+            // save one naming that method by qualification.
+            if(info && index::is_function(info->kind)) {
+                for(auto base: index.transitive_targets(root, anchor, RelationKind::Interface)) {
+                    add_calls(base.symbol, base.anchor, RelationKind::Direct, false);
+                }
+            }
+            if(info && index::name_form(info->flags) == index::NameForm::Selector) {
+                for(auto other: index::reached_by_selector(index, *info)) {
+                    add_calls(other.symbol, other.anchor, RelationKind::Candidate, true);
                 }
             }
             graph.callers = located_callers(index, by_caller);
@@ -453,7 +461,7 @@ std::vector<protocol::TypeHierarchyItem>
     for(auto& located: query.resolve_at(cursor)) {
         auto kind = located.symbol.kind;
         if(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
-           kind == SymbolKind::Union) {
+           kind == SymbolKind::Union || kind == SymbolKind::Protocol) {
             items.push_back(item_of<protocol::TypeHierarchyItem>(query, located, encoding));
         }
     }

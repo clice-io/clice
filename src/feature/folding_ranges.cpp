@@ -194,6 +194,22 @@ private:
             return;
         }
 
+        // LIMITATION: the braces of an `@interface`'s instance variables do
+        // not fold on their own, only the whole container does.
+        if(const auto* container = llvm::dyn_cast<clang::ObjCContainerDecl>(decl)) {
+            auto extent = unit.focus_file().produced_range(decls::written_range(container));
+            auto name = unit.focus_file().offset(container->getLocation());
+            auto block =
+                extent && name ? objc_container_block(content, *extent, *name) : std::nullopt;
+            if(block) {
+                add_range(*block,
+                          declaration_fold_kind(SymbolKind::from(container)),
+                          "...",
+                          Priority::Syntax);
+            }
+            return;
+        }
+
         if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
             if(!tag->isThisDeclarationADefinition()) {
                 return;
@@ -207,6 +223,14 @@ private:
                record && !record->isLambda() && !record->isImplicit()) {
                 collect_access_specifiers(record);
             }
+            return;
+        }
+
+        if(const auto* method = llvm::dyn_cast<clang::ObjCMethodDecl>(decl);
+           method && method->hasBody()) {
+            add_declaration_block(method->getBody()->getSourceRange(),
+                                  method->getSelectorStartLoc(),
+                                  *declaration_fold_kind(SymbolKind::from(method)));
             return;
         }
 
@@ -789,6 +813,7 @@ auto declaration_fold_kind(SymbolKind kind) -> std::optional<protocol::FoldingRa
     switch(kind) {
         case SymbolKind::Namespace: return "namespace";
         case SymbolKind::Class: return "class";
+        case SymbolKind::Protocol: return "protocol";
         case SymbolKind::Struct: return "struct";
         case SymbolKind::Union: return "union";
         case SymbolKind::Enum: return "enum";
@@ -797,6 +822,19 @@ auto declaration_fold_kind(SymbolKind kind) -> std::optional<protocol::FoldingRa
         case SymbolKind::Operator: return "functionBody";
         default: return std::nullopt;
     }
+}
+
+auto objc_container_block(llvm::StringRef content, LocalSourceRange extent, std::uint32_t name)
+    -> std::optional<LocalSourceRange> {
+    auto head = content.find('\n', name);
+    if(!content.slice(extent.begin, extent.end).ends_with("@end") || head >= extent.end) {
+        return std::nullopt;
+    }
+    auto end = line_begin(content, extent.end - 4);
+    if(end <= head + 1) {
+        return std::nullopt;
+    }
+    return LocalSourceRange{static_cast<std::uint32_t>(head), end - 1};
 }
 
 auto declaration_lines(llvm::StringRef content,
@@ -1036,6 +1074,16 @@ auto folding_ranges(SourceText& source,
         if(ranges::any_of(ambiguous, [&](const LocalSourceRange& region) {
                return region.begin < decl.extent.end && decl.extent.begin < region.end;
            })) {
+            continue;
+        }
+
+        // An Objective-C container's body has no braces: it runs to `@end`.
+        if(auto block = objc_container_block(content, decl.extent, decl.range.begin)) {
+            std::optional<protocol::FoldingRangeKind> kind;
+            if(auto info = resolve(decl.symbol)) {
+                kind = declaration_fold_kind(info->kind);
+            }
+            ranges.push_back({.range = *block, .kind = kind, .collapsed_text = "..."});
             continue;
         }
 

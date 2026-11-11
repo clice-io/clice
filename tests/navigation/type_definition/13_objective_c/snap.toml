@@ -1,0 +1,11 @@
+[answers.variable]
+type_definition = ["@interface ⟦Shape⟧ <Drawable>"]
+
+[answers.qualified_id]
+type_definition = ["@protocol ⟦Drawable⟧"]
+
+[answers.class_name]
+type_definition = ["@interface ⟦Shape⟧ <Drawable>"]
+
+[answers.protocol_name]
+type_definition = ["@protocol ⟦Drawable⟧"]

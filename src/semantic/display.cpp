@@ -293,10 +293,8 @@ std::string bare_name(const clang::NamedDecl* decl, const Options& options) {
         case clang::DeclarationName::ObjCZeroArgSelector:
         case clang::DeclarationName::ObjCOneArgSelector:
         case clang::DeclarationName::ObjCMultiArgSelector: {
-            /// FIXME: Objective-C message completion names methods by their selector:
-            /// this aborts Debug builds and is undefined in Release; `name.print` would
-            /// spell them.
-            std::unreachable();
+            result += name.getObjCSelector().getAsString();
+            break;
         }
     }
 
@@ -366,7 +364,23 @@ auto name_of(const clang::NamedDecl* decl, const Options& options) -> std::strin
     return name;
 }
 
+auto objc_container_name(const clang::ObjCContainerDecl& container) -> std::string {
+    if(llvm::isa<clang::ObjCProtocolDecl>(container)) {
+        return container.getName().str();
+    }
+    const auto* objc_class = decls::objc_class(&container);
+    std::string name = objc_class ? objc_class->getName().str() : "";
+    if(llvm::isa<clang::ObjCCategoryDecl, clang::ObjCCategoryImplDecl>(container)) {
+        name += std::format("({})", container.getName());
+    }
+    return name;
+}
+
 auto symbol_name(const clang::NamedDecl* decl) -> SymbolName {
+    if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(decl);
+       category && category->getClassInterface()) {
+        return {.text = objc_container_name(*category)};
+    }
     // A deduction guide is listed under its label rather than the
     // template's name, which completion prefers for its candidates.
     if(llvm::isa<clang::CXXDeductionGuideDecl>(decl)) {
@@ -576,9 +590,8 @@ auto printing_policy(clang::ASTContext& context, const Options& options) -> clan
         }
         policy.Bool = name->hasMacroDefinition();
     }
-    // FIXME: SuppressStrongLifetime stays off, so an Objective-C ARC parameter
-    // written `id __strong value` shows `__strong` in signature help and
-    // completion labels.
+    // ARC makes every object pointer `__strong` unless written otherwise.
+    policy.SuppressStrongLifetime = true;
     return policy;
 }
 

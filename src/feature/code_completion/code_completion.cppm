@@ -41,7 +41,10 @@ struct CodeCompletionOptions {
                   "added where the arguments are written already or the "
                   "name is not called, as when taking a function's "
                   "address. Clients without snippet support get the "
-                  "parentheses of a call alone.")
+                  "parentheses of a call alone. An Objective-C message "
+                  "takes a placeholder or an empty tab stop after each piece "
+                  "of its selector, its first piece alone with \"none\" or "
+                  "without snippet support.")
     CompletionArguments arguments = CompletionArguments::Placeholders;
 
     KANNOTATE(&bundle_overloads,

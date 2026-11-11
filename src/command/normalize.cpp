@@ -304,6 +304,20 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
             continue;
         }
 
+        // LIMITATION: Clang's header modules are dropped: a file compiles
+        // without them, so its `@import`s are errors. Projects whose
+        // commands carry -fmodules reach it. GCC's -fmodules is its C++20
+        // modules (flags_for_clang).
+        if(family != CompilerFamily::GCC && id == clang_options::OPT_fmodules) {
+            static std::once_flag reported;
+            std::call_once(reported, [] {
+                LOG_GUIDANCE(
+                    "The compile commands use Clang header modules (-fmodules), which clice does "
+                    "not support: their files compile without them, and an `@import` is an error");
+            });
+            continue;
+        }
+
         auto local = commands.local_arg(parsed, parse_args);
         if(!local) {
             continue;

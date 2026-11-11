@@ -766,6 +766,13 @@ ZEST_CASE(HoverDefinitionShape) {
     ZASSERT(card(SymbolKind::Function, "int open() { // }\n    return 0;\n}") == "int open()");
     ZASSERT(card(SymbolKind::Method, "Holder() = default") == "Holder() = default");
     ZASSERT(card(SymbolKind::Struct, "struct Point {\n    int x;\n}") == "struct Point { ... }");
+    ZASSERT(card(SymbolKind::Class,
+                 "@interface Shape : Object <Drawable> {\n    int _x;\n}\n- (void)draw;\n@end") ==
+            "@interface Shape : Object <Drawable> ... @end");
+    ZASSERT(card(SymbolKind::Class, "@implementation Shape\n- (void)draw {\n}\n@end") ==
+            "@implementation Shape ... @end");
+    ZASSERT(card(SymbolKind::Protocol, "@protocol Drawable\n- (void)draw;\n@end") ==
+            "@protocol Drawable ... @end");
     ZASSERT(card(SymbolKind::Namespace, "namespace app {\nint value;\n}") == "namespace app {}");
     ZASSERT(card(SymbolKind::Macro, "LIMIT 10") == "#define LIMIT 10");
     ZASSERT(card(SymbolKind::Variable, "int values[] = {1, 2}") == "int values[] = {1, 2}");

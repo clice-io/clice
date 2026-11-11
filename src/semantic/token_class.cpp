@@ -29,8 +29,26 @@ SemanticTokenKind kind_of(const clang::NamedDecl* decl) {
     if(llvm::isa<clang::ConceptDecl>(decl)) {
         return Concept;
     }
-    if(llvm::isa<clang::BuiltinTemplateDecl>(decl)) {
+    if(llvm::isa<clang::BuiltinTemplateDecl, clang::ObjCCompatibleAliasDecl>(decl)) {
         return TypeAlias;
+    }
+    if(llvm::isa<clang::ObjCTypeParamDecl>(decl)) {
+        return TypeParameter;
+    }
+    if(llvm::isa<clang::ObjCInterfaceDecl, clang::ObjCImplementationDecl>(decl)) {
+        return Class;
+    }
+    if(llvm::isa<clang::ObjCProtocolDecl>(decl)) {
+        return Interface;
+    }
+    if(llvm::isa<clang::ObjCCategoryDecl, clang::ObjCCategoryImplDecl>(decl)) {
+        return Namespace;
+    }
+    if(llvm::isa<clang::ObjCMethodDecl>(decl)) {
+        return Method;
+    }
+    if(llvm::isa<clang::ObjCPropertyDecl>(decl)) {
+        return Field;
     }
     if(const auto* tmpl = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
         return kind_of(tmpl->getTemplatedDecl());
@@ -104,7 +122,7 @@ std::optional<Modifier> scope_of(const clang::NamedDecl* decl) {
         if(context->isFunctionOrMethod()) {
             return Modifier::Local;
         }
-        if(context->isRecord()) {
+        if(context->isRecord() || llvm::isa<clang::ObjCContainerDecl>(context)) {
             return Modifier::Member;
         }
     }
@@ -144,6 +162,9 @@ bool is_readonly(const clang::NamedDecl* decl) {
     if(const auto* property = llvm::dyn_cast<clang::MSPropertyDecl>(decl)) {
         return !property->hasSetter() || is_readonly(property->getType());
     }
+    if(const auto* property = llvm::dyn_cast<clang::ObjCPropertyDecl>(decl)) {
+        return property->isReadOnly();
+    }
     if(llvm::isa<clang::FieldDecl, clang::VarDecl, clang::BindingDecl>(decl)) {
         return is_readonly(llvm::cast<clang::ValueDecl>(decl)->getType());
     }
@@ -156,6 +177,12 @@ bool is_readonly(const clang::NamedDecl* decl) {
 bool is_static(const clang::NamedDecl* decl) {
     if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
         return method->isStatic();
+    }
+    if(const auto* method = llvm::dyn_cast<clang::ObjCMethodDecl>(decl)) {
+        return method->isClassMethod();
+    }
+    if(const auto* property = llvm::dyn_cast<clang::ObjCPropertyDecl>(decl)) {
+        return property->isClassProperty();
     }
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
         return var->isStaticDataMember() || var->isStaticLocal();
@@ -188,7 +215,7 @@ bool is_callable(clang::QualType type) {
     }
     type = type.getNonReferenceType();
     if(type->isFunctionPointerType() || type->isMemberFunctionPointerType() ||
-       type->isFunctionType()) {
+       type->isFunctionType() || type->isBlockPointerType()) {
         return true;
     }
     const auto* record = type->getAsCXXRecordDecl();

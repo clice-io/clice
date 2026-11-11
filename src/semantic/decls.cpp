@@ -55,24 +55,47 @@ auto outer_template_parameters(const clang::Decl* decl)
 namespace {
 
 /// Where the attribute specifier holding `attr`, the first attribute of
-/// it, is written: at the `[[` its range leaves out (`[[using gnu: hot]]`
-/// starts at the namespace), a macro spelling it at the macro's name.
+/// it, is written: at the `[[` or the `__attribute__((` its range leaves
+/// out (`[[using gnu: hot]]` starts at the namespace), a macro spelling it
+/// at the macro's name.
 auto attribute_begin(const clang::Attr& attr,
                      const clang::SourceManager& sources,
                      const clang::LangOptions& lang_opts) -> clang::SourceLocation {
     auto begin = attr.getRange().getBegin();
-    if(begin.isMacroID() || !attr.isStandardAttributeSyntax() || attr.isAlignas()) {
+    if(begin.isMacroID() || attr.isAlignas()) {
         return sources.getExpansionLoc(begin);
+    }
+    auto previous = [&](clang::SourceLocation at) {
+        return clang::Lexer::findPreviousToken(at, sources, lang_opts, false);
+    };
+    if(attr.isGNUAttribute()) {
+        auto at = begin;
+        for(int parens = 0; parens < 2; parens += 1) {
+            auto paren = previous(at);
+            if(!paren || !paren->is(clang::tok::l_paren)) {
+                return begin;
+            }
+            at = paren->getLocation();
+        }
+        // A raw token: the keyword is an identifier still.
+        auto keyword = previous(at);
+        return keyword && keyword->is(clang::tok::raw_identifier) &&
+                       keyword->getRawIdentifier().starts_with("__attribute")
+                   ? keyword->getLocation()
+                   : begin;
+    }
+    if(!attr.isStandardAttributeSyntax()) {
+        return begin;
     }
     auto at = begin;
     for(int tokens = 0; tokens < 5; tokens += 1) {
-        auto previous = clang::Lexer::findPreviousToken(at, sources, lang_opts, false);
-        if(!previous) {
+        auto token = previous(at);
+        if(!token) {
             break;
         }
-        at = previous->getLocation();
-        if(previous->is(clang::tok::l_square)) {
-            auto outer = clang::Lexer::findPreviousToken(at, sources, lang_opts, false);
+        at = token->getLocation();
+        if(token->is(clang::tok::l_square)) {
+            auto outer = previous(at);
             return outer && outer->is(clang::tok::l_square) ? outer->getLocation() : begin;
         }
     }
@@ -101,12 +124,13 @@ auto written_range(const clang::Decl* decl) -> clang::SourceRange {
        described && before(described->getBeginLoc(), range.getBegin())) {
         range.setBegin(described->getBeginLoc());
     }
-    // The first attribute written before the declaration.
+    // The first attribute written before the declaration, or where clang
+    // starts it: an Objective-C container starts at its attribute's name.
     const clang::Attr* leading = nullptr;
     for(const auto* attr: decl->attrs()) {
         auto begin = attr->getRange().getBegin();
         if(attr->isImplicit() || attr->isInherited() || begin.isInvalid() ||
-           !before(begin, range.getBegin()) || applied_by_pragma(decl->getASTContext(), begin)) {
+           before(range.getBegin(), begin) || applied_by_pragma(decl->getASTContext(), begin)) {
             continue;
         }
         if(!leading || before(begin, leading->getRange().getBegin())) {
@@ -126,6 +150,23 @@ auto written_range(const clang::Decl* decl) -> clang::SourceRange {
         range.setEnd(llvm::isa<clang::NamespaceDecl>(decl)
                          ? sources.getLocForEndOfFile(sources.getFileID(range.getBegin()))
                          : decl->getLocation());
+    }
+    // An alias runs on to the class it names; clang ends it at the alias.
+    if(const auto* alias = llvm::dyn_cast<clang::ObjCCompatibleAliasDecl>(decl)) {
+        if(auto named = objc_alias_names(*alias).second; named.isValid()) {
+            range.setEnd(named);
+        }
+    }
+    // An @implementation's range stops at the `@` of its `@end`.
+    if(llvm::isa<clang::ObjCImplDecl>(decl)) {
+        const auto& options = decl->getASTContext().getLangOpts();
+        clang::Token at;
+        if(!clang::Lexer::getRawToken(range.getEnd(), at, sources, options) &&
+           at.is(clang::tok::at)) {
+            if(auto end = clang::Lexer::findNextToken(range.getEnd(), sources, options)) {
+                range.setEnd(end->getLocation());
+            }
+        }
     }
     return range;
 }
@@ -442,13 +483,240 @@ auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* 
 auto normalize(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
     assert(decl);
 
-    decl = llvm::cast<clang::NamedDecl>(decl->getCanonicalDecl());
+    decl = llvm::cast<clang::NamedDecl>(objc_defined(decl)->getCanonicalDecl());
 
     if(auto ND = instantiated_from(llvm::cast<clang::NamedDecl>(decl))) {
         return llvm::cast<clang::NamedDecl>(ND->getCanonicalDecl());
     }
 
     return decl;
+}
+
+auto objc_defined(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
+    if(const auto* implementation = llvm::dyn_cast<clang::ObjCImplementationDecl>(decl)) {
+        return implementation->getClassInterface();
+    }
+    if(const auto* implementation = llvm::dyn_cast<clang::ObjCCategoryImplDecl>(decl);
+       implementation && implementation->getCategoryDecl()) {
+        return implementation->getCategoryDecl();
+    }
+    return decl;
+}
+
+auto objc_class(const clang::DeclContext* context) -> const clang::ObjCInterfaceDecl* {
+    if(const auto* objc_class = llvm::dyn_cast<clang::ObjCInterfaceDecl>(context)) {
+        return objc_class;
+    }
+    if(const auto* implementation = llvm::dyn_cast<clang::ObjCImplDecl>(context)) {
+        return implementation->getClassInterface();
+    }
+    if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(context)) {
+        return category->getClassInterface();
+    }
+    return nullptr;
+}
+
+/// The method `selector` names in an Objective-C class itself: in its
+/// @interface, its extensions and categories, or their @implementations,
+/// which come first: they write the accessors clang declares for a property.
+static auto own_method(const clang::ObjCInterfaceDecl& objc_class,
+                       clang::Selector selector,
+                       bool instance) -> const clang::ObjCMethodDecl* {
+    auto in = [&](const clang::ObjCContainerDecl* container) -> const clang::ObjCMethodDecl* {
+        return container ? container->getMethod(selector, instance) : nullptr;
+    };
+    if(const auto* method = in(objc_class.getImplementation())) {
+        return method;
+    }
+    for(const auto* category: objc_class.visible_categories()) {
+        if(const auto* method = in(category->getImplementation())) {
+            return method;
+        }
+    }
+    if(const auto* method = in(&objc_class)) {
+        return method;
+    }
+    for(const auto* category: objc_class.visible_categories()) {
+        if(const auto* method = in(category)) {
+            return method;
+        }
+    }
+    return nullptr;
+}
+
+auto objc_dispatched(const clang::ObjCInterfaceDecl* receiver,
+                     const clang::ObjCMethodDecl& method,
+                     bool instance) -> const clang::ObjCMethodDecl* {
+    const auto* declaring = objc_class(method.getDeclContext());
+    for(const auto* objc_class = receiver;
+        objc_class && objc_class != declaring && objc_class->hasDefinition();
+        objc_class = objc_class->getSuperClass()) {
+        if(const auto* own = own_method(*objc_class, method.getSelector(), instance)) {
+            return own;
+        }
+    }
+    if(method.isImplicit() && declaring) {
+        if(const auto* written =
+               own_method(*declaring, method.getSelector(), method.isInstanceMethod());
+           written && !written->isImplicit()) {
+            return written;
+        }
+    }
+    return &method;
+}
+
+auto objc_message_name(const clang::ObjCMessageExpr& message) -> clang::SourceLocation {
+    auto selector = message.getSelector();
+    for(unsigned piece = 0; piece < message.getNumSelectorLocs(); piece += 1) {
+        if(!selector.getNameForSlot(piece).empty()) {
+            return message.getSelectorLoc(piece);
+        }
+    }
+    return message.getSelectorStartLoc();
+}
+
+auto objc_untyped(const clang::ObjCMessageExpr& message) -> bool {
+    const auto* receiver = message.getReceiverKind() == clang::ObjCMessageExpr::Instance
+                               ? message.getInstanceReceiver()
+                               : nullptr;
+    return receiver && !receiver->isObjCSelfExpr() &&
+           (receiver->getType()->isObjCIdType() || receiver->getType()->isObjCClassType());
+}
+
+auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::ObjCMethodDecl* {
+    const auto* method = message.getMethodDecl();
+    if(!method) {
+        return nullptr;
+    }
+    const auto* receiver = message.getReceiverInterface();
+    // `self` in a class method is a `Class`: the method's class's, or a
+    // subclass's.
+    if(const auto* self = message.getReceiverKind() == clang::ObjCMessageExpr::Instance
+                              ? llvm::dyn_cast<clang::DeclRefExpr>(
+                                    message.getInstanceReceiver()->IgnoreParenImpCasts())
+                              : nullptr;
+       !receiver && self && self->isObjCSelfExpr()) {
+        receiver = objc_class(self->getDecl()->getDeclContext()->getParent());
+    }
+    return objc_dispatched(receiver, *method, method->isInstanceMethod());
+}
+
+auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::ObjCPropertyDecl* {
+    const auto* implementation =
+        llvm::dyn_cast<clang::ObjCImplementationDecl>(ivar.getDeclContext());
+    if(!ivar.getSynthesize() || !implementation) {
+        return nullptr;
+    }
+    const auto* synthesis = implementation->FindPropertyImplIvarDecl(ivar.getIdentifier());
+    return synthesis && synthesis->getBeginLoc().isInvalid() ? synthesis->getPropertyDecl()
+                                                             : nullptr;
+}
+
+auto objc_alias_names(const clang::ObjCCompatibleAliasDecl& alias)
+    -> std::pair<clang::SourceLocation, clang::SourceLocation> {
+    auto& context = alias.getASTContext();
+    auto after = [&](clang::SourceLocation location) -> clang::SourceLocation {
+        if(location.isInvalid()) {
+            return {};
+        }
+        auto token = clang::Lexer::findNextToken(location,
+                                                 context.getSourceManager(),
+                                                 context.getLangOpts());
+        return token ? token->getLocation() : clang::SourceLocation();
+    };
+    auto name = after(after(alias.getLocation()));
+    return {name, after(name)};
+}
+
+auto objc_extension_paren(const clang::ObjCCategoryDecl& extension) -> clang::SourceLocation {
+    auto& context = extension.getASTContext();
+    auto paren = clang::Lexer::findNextToken(extension.getLocation(),
+                                             context.getSourceManager(),
+                                             context.getLangOpts());
+    return paren && paren->is(clang::tok::l_paren) ? paren->getLocation() : clang::SourceLocation();
+}
+
+auto objc_selector_method(const clang::ObjCInterfaceDecl& objc_class, clang::Selector selector)
+    -> const clang::ObjCMethodDecl* {
+    if(!objc_class.hasDefinition()) {
+        return nullptr;
+    }
+    for(bool instance: {true, false}) {
+        if(const auto* method = objc_class.lookupPrivateMethod(selector, instance)) {
+            return method;
+        }
+        if(const auto* method = objc_class.lookupMethod(selector, instance)) {
+            return method;
+        }
+    }
+    return nullptr;
+}
+
+auto objc_selector_pieces(const clang::ObjCSelectorExpr& expr, const clang::ASTContext& context)
+    -> llvm::SmallVector<clang::SourceLocation, 4> {
+    const auto& sources = context.getSourceManager();
+    auto token_after = [&](clang::SourceLocation location) -> std::optional<clang::Token> {
+        return location.isValid()
+                   ? clang::Lexer::findNextToken(location, sources, context.getLangOpts())
+                   : std::nullopt;
+    };
+    // `@`, `selector`, `(`, then a name and a `:` per piece, a name alone
+    // for a selector with no argument.
+    auto selector = expr.getSelector();
+    auto token = token_after(expr.getAtLoc());
+    for(int skipped = 0; skipped < 2 && token; skipped += 1) {
+        token = token_after(token->getLocation());
+    }
+    llvm::SmallVector<clang::SourceLocation, 4> pieces;
+    for(unsigned slot = 0; slot < std::max(1U, selector.getNumArgs()) && token; slot += 1) {
+        if(token->is(clang::tok::raw_identifier)) {
+            pieces.push_back(token->getLocation());
+            token = token_after(token->getLocation());
+        } else {
+            pieces.emplace_back();
+        }
+        if(selector.getNumArgs() != 0 && token && token->is(clang::tok::colon)) {
+            token = token_after(token->getLocation());
+        }
+    }
+    return pieces;
+}
+
+auto objc_class_name(const clang::ObjCInterfaceDecl* objc_class, clang::SourceLocation location)
+    -> const clang::NamedDecl* {
+    if(!objc_class) {
+        return nullptr;
+    }
+    auto& context = objc_class->getASTContext();
+    const auto& sources = context.getSourceManager();
+    auto spelling = sources.getSpellingLoc(location);
+    auto [file, offset] = sources.getDecomposedLoc(spelling);
+    auto text = sources.getBufferData(file).drop_front(offset);
+    auto name = objc_class->getName();
+    if(text.starts_with(name) &&
+       (text.size() == name.size() || !clang::isAsciiIdentifierContinue(text[name.size()]))) {
+        return objc_class;
+    }
+    auto written =
+        text.take_front(clang::Lexer::MeasureTokenLength(spelling, sources, context.getLangOpts()));
+    for(const auto* found: context.getTranslationUnitDecl()->lookup(&context.Idents.get(written))) {
+        if(const auto* alias = llvm::dyn_cast<clang::ObjCCompatibleAliasDecl>(found)) {
+            return alias;
+        }
+    }
+    return objc_class;
+}
+
+auto objc_overridden(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl* {
+    const auto* objc_class = decls::objc_class(method.getDeclContext());
+    for(const auto* base = objc_class ? objc_class->getSuperClass() : nullptr;
+        base && base->hasDefinition();
+        base = base->getSuperClass()) {
+        if(const auto* own = own_method(*base, method.getSelector(), method.isInstanceMethod())) {
+            return own;
+        }
+    }
+    return nullptr;
 }
 
 auto constructor_of(const clang::CXXConstructExpr* construct) -> const clang::CXXConstructorDecl* {

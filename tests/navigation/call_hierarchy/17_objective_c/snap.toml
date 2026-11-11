@@ -1,0 +1,66 @@
+[answers.shape_draw]
+call_hierarchy = [
+    { name = "draw", kind = "Method", at = "- (void)⟦draw⟧ { @+0", detail = "Shape::draw" },
+]
+incoming_calls = [
+    {
+        name = "draw",
+        kind = "Method",
+        at = "- (void)⟦draw⟧ { @+14",
+        detail = "Circle::draw",
+        sites = ["[super ⟦draw⟧];"],
+    },
+    {
+        name = "render",
+        kind = "Function",
+        at = "void ⟦render⟧(id thing, id<Drawable> drawable, Shape *shape) {",
+        detail = "render(id thing, id<Drawable> drawable, Shape *shape)",
+        sites = ["[thing ⟦draw⟧];", "[drawable ⟦draw⟧];", "[shape ⟦draw⟧];", "[error ⟦draw⟧];"],
+    },
+]
+outgoing_calls = []
+
+[answers.circle_draw]
+call_hierarchy = [
+    { name = "draw", kind = "Method", at = "- (void)⟦draw⟧ { @+0", detail = "Circle::draw" },
+]
+incoming_calls = [
+    {
+        name = "render",
+        kind = "Function",
+        at = "void ⟦render⟧(id thing, id<Drawable> drawable, Shape *shape) {",
+        detail = "render(id thing, id<Drawable> drawable, Shape *shape)",
+        sites = ["[thing ⟦draw⟧];", "[drawable ⟦draw⟧];", "[shape ⟦draw⟧];", "[error ⟦draw⟧];"],
+    },
+]
+outgoing_calls = [
+    {
+        name = "draw",
+        kind = "Method",
+        at = "- (void)⟦draw⟧ { @-14",
+        detail = "Shape::draw",
+        sites = ["[super ⟦draw⟧];"],
+    },
+]
+
+[answers.setter]
+call_hierarchy = [
+    { name = "setX:y:", kind = "Method", at = "main.m │ - (void)⟦setX⟧:(int)x y:(int)y {", detail = "Shape::setX:y:" },
+]
+incoming_calls = [
+    {
+        name = "shapeWithX:",
+        kind = "Method",
+        at = "main.m │ + (instancetype)⟦shapeWithX⟧:(int)x {",
+        detail = "Shape::shapeWithX:",
+        sites = ["main.m │ [shape ⟦setX⟧:x y:0];"],
+    },
+    {
+        name = "wobble",
+        kind = "Method",
+        at = "main.m │ - (void)⟦wobble⟧ {",
+        detail = "Shape::wobble",
+        sites = ["main.m │ [self ⟦setX⟧:self.x + 1 y:0];"],
+    },
+]
+outgoing_calls = []

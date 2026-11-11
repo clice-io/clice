@@ -1,13 +1,13 @@
 import * as vscode from "vscode";
+import { LANGUAGES } from "../languages";
 
-const selector: vscode.DocumentSelector = [
-    { scheme: "file", language: "c" },
-    { scheme: "file", language: "cpp" },
-    { scheme: "file", language: "cuda-cpp" },
-];
+const selector: vscode.DocumentSelector = LANGUAGES.map((language) => ({
+    scheme: "file",
+    language,
+}));
 
 /// A language status item, listed under the `{}` beside the language mode
-/// of a C, C++ or CUDA editor while it is shown; the user can pin it to the
+/// of an editor clice serves while it is shown; the user can pin it to the
 /// status bar. VS Code lists every item that exists, so hiding one disposes
 /// it.
 export class LanguageStatus implements vscode.Disposable {

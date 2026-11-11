@@ -1,0 +1,9 @@
+[test.errors]
+errors = []
+
+[test.pushes]
+pushes = [[]]
+
+[test.builds]
+compiles = 1
+pcms = 2

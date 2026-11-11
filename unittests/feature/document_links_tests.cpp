@@ -210,7 +210,7 @@ ZEST_CASE(LinksFromIncludes) {
         {.line = 3, .target = "/usr/include/second"},
     };
 
-    SourceText text(content, dialect_of("main.cpp", false));
+    SourceText text(content, dialect_of("main.cpp"));
     auto links = feature::document_links(text, includes);
     ZASSERT(links.size() == std::size_t(2));
     ZASSERT(content.substr(links[0].range.begin, links[0].range.length()) == "\"first.h\"");

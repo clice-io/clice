@@ -108,6 +108,32 @@ int x = 1;
     ZASSERT(tokens[8].is_pp_keyword);
 }
 
+ZEST_CASE(ObjectiveCDialects) {
+    const auto& objc = dialect_of("shape.m", std::nullopt, "c11");
+    ZEXPECT(objc.ObjC == 1U);
+    ZEXPECT(objc.CPlusPlus == 0U);
+    ZEXPECT(objc.LangStd == clang::LangStandard::lang_c11);
+    const auto& objcxx = dialect_of("shape.mm", std::nullopt, "c11");
+    ZEXPECT(objcxx.ObjC == 1U);
+    ZEXPECT(objcxx.CPlusPlus == 1U);
+    ZEXPECT(objcxx.LangStd ==
+            clang::getDefaultLanguageStandard(clang::Language::CXX, llvm::Triple()));
+    ZEXPECT(dialect_of("shape.h", clang::Language::ObjC).ObjC == 1U);
+    ZEXPECT(dialect_of("shape.c").ObjC == 0U);
+}
+
+ZEST_CASE(OpenCLDialects) {
+    const auto& opencl = dialect_of("kernel.cl");
+    ZEXPECT(opencl.OpenCL == 1U);
+    ZEXPECT(opencl.OpenCLCPlusPlus == 0U);
+    ZEXPECT(keyword_kind("__kernel", keywords(opencl)) != clang::tok::identifier);
+    ZEXPECT(keyword_kind("__kernel", keywords(dialect_of("kernel.cpp"))) == clang::tok::identifier);
+    ZEXPECT(dialect_of("kernel.clcpp").OpenCLCPlusPlus == 1U);
+    ZEXPECT(dialect_of("kernel.clcpp").LangStd == clang::LangStandard::lang_openclcpp10);
+    ZEXPECT(dialect_of("kernel.clcpp", std::nullopt, "clc++2021").LangStd ==
+            clang::LangStandard::lang_openclcpp2021);
+}
+
 ZEST_CASE(DigitSeparator) {
     llvm::StringRef content = "x = 1'000, y";
     Lexer lexer(content, dialect_of());

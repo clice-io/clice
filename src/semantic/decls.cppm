@@ -86,8 +86,80 @@ bool fixed_std_utility(const clang::NamedDecl* decl);
 auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl*;
 
 /// The canonical decl, folding instantiations back to the canonical decl
-/// of their pattern.
+/// of their pattern, and an Objective-C @implementation back to the
+/// @interface (or the category) it defines.
 auto normalize(const clang::NamedDecl* decl) -> const clang::NamedDecl*;
+
+/// The @interface or the category an Objective-C @implementation defines;
+/// any other decl itself.
+auto objc_defined(const clang::NamedDecl* decl) -> const clang::NamedDecl*;
+
+/// The Objective-C class whose members a context declares: an @interface,
+/// its @implementation, one of its extensions or categories; null for a
+/// protocol and for any other context.
+auto objc_class(const clang::DeclContext* context) -> const clang::ObjCInterfaceDecl*;
+
+/// The method of `method`'s selector a receiver of the Objective-C class
+/// `receiver` (null: any) runs as far as that class tells, as the code
+/// writes it. Clang names the declaration its lookup found, which for a
+/// method the class adopts from a protocol, or declares in its
+/// @implementation alone, is the protocol's or a superclass's: the class,
+/// or a superclass below the one declaring it, that has a method of the
+/// selector names it instead; and an accessor clang declares for a
+/// property is the method an @implementation writes, if this unit sees it.
+auto objc_dispatched(const clang::ObjCInterfaceDecl* receiver,
+                     const clang::ObjCMethodDecl& method,
+                     bool instance) -> const clang::ObjCMethodDecl*;
+
+/// Where an Objective-C message is named: at its first selector piece
+/// with a name, where its first reference lies, else where its selector
+/// starts.
+auto objc_message_name(const clang::ObjCMessageExpr& message) -> clang::SourceLocation;
+
+/// Whether an Objective-C message goes to `id` or `Class`, which may reach
+/// any method of its selector. `self` in a class method is a `Class` clang
+/// knows to be its class.
+auto objc_untyped(const clang::ObjCMessageExpr& message) -> bool;
+
+/// The method an Objective-C message runs as far as its receiver's static
+/// class tells (objc_dispatched).
+auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::ObjCMethodDecl*;
+
+/// The property an Objective-C instance variable stores when it
+/// synthesizes the variable with no @synthesize written; null otherwise.
+auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::ObjCPropertyDecl*;
+
+/// Where `@compatibility_alias Quill Pen;` writes the alias and the class:
+/// clang locates the declaration at its `@` alone. Invalid when a macro
+/// writes them.
+auto objc_alias_names(const clang::ObjCCompatibleAliasDecl& alias)
+    -> std::pair<clang::SourceLocation, clang::SourceLocation>;
+
+/// The `(` of an Objective-C class extension, `@interface Shape ()`, which
+/// clang does not locate; invalid when it does not follow the class's name
+/// (`@interface Box<T> ()`).
+auto objc_extension_paren(const clang::ObjCCategoryDecl& extension) -> clang::SourceLocation;
+
+/// A method of `selector` an Objective-C class answers: implemented or
+/// declared by it or a superclass, or by a protocol it adopts, an instance
+/// method before a class method; null for none.
+auto objc_selector_method(const clang::ObjCInterfaceDecl& objc_class, clang::Selector selector)
+    -> const clang::ObjCMethodDecl*;
+
+/// Where `@selector(setX:y:)` writes each piece of its selector, which
+/// clang does not locate: invalid for a piece with no name.
+auto objc_selector_pieces(const clang::ObjCSelectorExpr& expr, const clang::ASTContext& context)
+    -> llvm::SmallVector<clang::SourceLocation, 4>;
+
+/// What a name at `location` naming the Objective-C class `objc_class`
+/// writes: the class, or a `@compatibility_alias` of it.
+auto objc_class_name(const clang::ObjCInterfaceDecl* objc_class, clang::SourceLocation location)
+    -> const clang::NamedDecl*;
+
+/// The nearest superclass method an Objective-C method overrides, null for
+/// none; getOverriddenMethods leaves out one only an @implementation or a
+/// category declares.
+auto objc_overridden(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl*;
 
 /// The constructor a construction runs, as the source names it: an
 /// inherited constructor is an implicit declaration standing in for the

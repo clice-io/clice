@@ -123,8 +123,10 @@ namespace clice::index {
 /// argument is a reference there and a pasted one at the expansion,
 /// directives record the macro names no definition resolves, the overloads
 /// a name certainly stands for are Candidates apart from the resolver's
-/// Guesses, and an instantiation confirming a guess is recorded.
-constexpr inline std::uint32_t index_format_version = 60;
+/// Guesses, and an instantiation confirming a guess is recorded; v61:
+/// Objective-C entities, with the Protocol and Property kinds and the
+/// Selector name form.
+constexpr inline std::uint32_t index_format_version = 61;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it, so one past it stops the

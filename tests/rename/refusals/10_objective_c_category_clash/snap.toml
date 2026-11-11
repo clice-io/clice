@@ -1,0 +1,22 @@
+[answers.to_sibling.rename]
+error = "cannot rename `Extras`: `Shape` has a category `Sizing` already (${WS}/main.m:18)"
+
+[answers.to_free_name.rename]
+compiles = true
+
+[answers.to_free_name.rename.edits]
+"main.m" = '''
+ @end
+
+-@interface Shape (Extras)
++@interface Shape (Motion)
+ - (void)wobble;
+ @end
+…
+ @end
+
+-@implementation Shape (Extras)
++@implementation Shape (Motion)
+ - (void)wobble {
+ }
+'''

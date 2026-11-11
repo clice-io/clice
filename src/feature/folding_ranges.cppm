@@ -45,6 +45,13 @@ auto folding_ranges(CompilationUnit& unit) -> std::vector<FoldingRange>;
 /// takes over.
 auto declaration_fold_kind(SymbolKind kind) -> std::optional<protocol::FoldingRangeKind>;
 
+/// The body of an Objective-C container whose written extent is `extent`
+/// (`@interface Shape … @end`) and whose name is at `name`, which has no
+/// braces: the lines between its name's and its `@end`'s. None for any
+/// other extent, or one with no line between.
+auto objc_container_block(llvm::StringRef content, LocalSourceRange extent, std::uint32_t name)
+    -> std::optional<LocalSourceRange>;
+
 /// The lines a line-folding client folds for a declaration's `block` when
 /// its brace sits below `head` — the declaration's name, or the keyword
 /// opening the block: from the head's line, which stays visible. Nullopt

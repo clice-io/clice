@@ -83,6 +83,24 @@ int main() {}
 )");
 }
 
+ZEST_CASE(ImportedHeader) {
+    llvm::StringMap<std::string> mapping = {
+        {"Foundation/Foundation.h", "/sys/Foundation.h"},
+        {"Shape.h",                 "/proj/Shape.h"    },
+    };
+
+    ChainEntry entry{"/proj/main.m", R"(#import <Foundation/Foundation.h>
+#import "Shape.h"
+int main() {}
+)"};
+
+    auto result = prefix_of({entry}, "/proj/Shape.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.m"
+#import <Foundation/Foundation.h>
+)");
+}
+
 ZEST_CASE(MultiLevelChain) {
     llvm::StringMap<std::string> mapping = {
         {"utils.h", "/proj/utils.h"},

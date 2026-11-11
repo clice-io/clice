@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
+import { LANGUAGES } from "../languages";
 import { LanguageStatus } from "./status";
 // Protocol shapes come from the shared definition in tools/protocol —
 // type-only, so the extension bundle carries no runtime dependency on it.
@@ -16,7 +17,7 @@ export type { ContextItem };
 
 function isCppEditor(editor: vscode.TextEditor | undefined): editor is vscode.TextEditor {
     const language = editor?.document.languageId;
-    return language === "c" || language === "cpp" || language === "cuda-cpp";
+    return language !== undefined && LANGUAGES.includes(language);
 }
 
 /// A context's description, a path, as the workspace names it; nothing when
@@ -207,7 +208,7 @@ class OutlineRefresher implements vscode.Disposable {
     refresh() {
         this.registration?.dispose();
         this.registration = vscode.languages.registerDocumentSymbolProvider(
-            [{ language: "c" }, { language: "cpp" }, { language: "cuda-cpp" }],
+            LANGUAGES.map((language) => ({ language })),
             { provideDocumentSymbols: () => [] },
         );
     }

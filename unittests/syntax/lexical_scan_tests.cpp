@@ -449,6 +449,17 @@ ZEST_CASE(OpeningAlone) {
     ZASSERT(!opens("int x;\n#ifndef A_H\n#define A_H\n"));
 }
 
+ZEST_CASE(OpeningAfterIncludes) {
+    auto opens = [](llvm::StringRef content) {
+        return guard_opening(content, lexical_scan(content, dialect_of()), /*after_includes=*/true)
+            .has_value();
+    };
+    ZASSERT(opens("#include \"a.h\"\n#include <b.h>\n#ifndef C_H\n#define C_H\n"));
+    ZASSERT(opens("#ifndef C_H\n#define C_H\n"));
+    ZASSERT(!opens("#include \"a.h\"\nint x;\n#ifndef C_H\n#define C_H\n"));
+    ZASSERT(!opens("#include \"a.h\"\n#define D\n#ifndef C_H\n#define C_H\n"));
+}
+
 };  // ZEST_SUITE(LexicalScanIncludeGuard)
 
 ZEST_SUITE(BracketPairing) {

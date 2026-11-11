@@ -32,6 +32,19 @@ SymbolKind SymbolKind::from(const clang::Decl* decl) {
         return SymbolKind::Label;
     } else if(llvm::isa<clang::ConceptDecl>(decl)) {
         return SymbolKind::Concept;
+    } else if(llvm::isa<clang::ObjCInterfaceDecl,
+                        clang::ObjCImplementationDecl,
+                        clang::ObjCCategoryDecl,
+                        clang::ObjCCategoryImplDecl>(decl)) {
+        return SymbolKind::Class;
+    } else if(llvm::isa<clang::ObjCProtocolDecl>(decl)) {
+        return SymbolKind::Protocol;
+    } else if(llvm::isa<clang::ObjCMethodDecl>(decl)) {
+        return SymbolKind::Method;
+    } else if(llvm::isa<clang::ObjCPropertyDecl>(decl)) {
+        return SymbolKind::Property;
+    } else if(llvm::isa<clang::ObjCCompatibleAliasDecl>(decl)) {
+        return SymbolKind::Type;
     } else {
         return SymbolKind::Invalid;
     }
