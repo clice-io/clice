@@ -1,13 +1,15 @@
 name: docs
 
-# Publishes docs.clice.io from main's pages; pull requests check theirs in
-# main.yml's docs-check. Not a job of main.yml, whose runs on main all run
-# at once: here a push waits for the deploy under way and replaces one still
-# waiting, so an older commit's pages never land after a newer one's.
+# Publishes docs.clice.io from main's pages and the cards its tests make;
+# pull requests check theirs in main.yml's docs-check. It runs once a main
+# run completes, its cards made by then, and publishes main as it stands:
+# the newest commit's pages and the newest cards. A run waits for the deploy
+# under way and replaces one still waiting, so the site only moves forward.
 on:
-  push:
+  workflow_run:
+    workflows: [main]
+    types: [completed]
     branches: [main]
-    paths: ["docs/**"]
 
 concurrency:
   group: docs
@@ -15,13 +17,18 @@ concurrency:
 
 jobs:
   deploy:
+    # A fork's pull request from its own branch named main is not main.
+    if: ${{ github.event.workflow_run.event == 'push' }}
     permissions:
-      contents: write
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     steps:
+      # Under workflow_run, the newest commit of main.
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: ./.github/actions/download-cards
       - uses: clice-io/docs@main
         with:
           project: clice

@@ -13,8 +13,9 @@ description: Read before editing anything under docs/, and for the end-of-branch
   "Docs"), and guide/configuration.md is rendered from the config schema.
   **Never edit inside a `<!-- BEGIN GENERATED ... -->` region** — edit the
   case's `README.md` or the config annotations instead.
-- `docs/cards/` — one card per documented case, written by the cases run
-  (`UPDATE_SNAPSHOTS=1`); never edit by hand.
+- `docs/cards/` — one card per documented case, written by every cases run
+  and ignored by git; publishing and the PR docs check take the cards of
+  CI's linux-x64 run (test.yml's `docs-cards`).
 - `docs/zh/` — Chinese pages, equally real and equally hand-edited (by a
   person or a model). Each zh page must stay **segment-isomorphic** to its
   en counterpart: same sequence of markdown blocks, translated text in the
@@ -29,7 +30,7 @@ description: Read before editing anything under docs/, and for the end-of-branch
 
 | command                            | what it does                                       |
 | ---------------------------------- | -------------------------------------------------- |
-| `pixi run check-feature-docs`      | feature pages and cards match the cases (CI)       |
+| `pixi run check-feature-docs`      | feature pages match the cases (CI)                 |
 | `pixi run update-feature-docs`     | rewrite feature GENERATED regions                  |
 | `pixi run check-config-docs`       | configuration page matches the schema (CI)         |
 | `pixi run update-config-docs`      | rewrite the configuration page                     |

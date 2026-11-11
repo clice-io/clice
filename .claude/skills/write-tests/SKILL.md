@@ -28,10 +28,11 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
    fixed bug has no README.
 3. Run it alone, on the box the build ran on (the test skill):
    `CLICE_CASES=<topic>/<subtopic>/NN_name pixi run -e test-run cases-test`.
-   `UPDATE_SNAPSHOTS=1` writes its `snap.toml` (and a documented case's card
-   under `docs/cards/`) and prints what changed: review every block like
-   code. They are written on the box: `box cp $id . <case dir> docs/cards`
-   brings them back before the next `box push` overwrites them. What clice gets wrong stays in the output, with
+   `UPDATE_SNAPSHOTS=1` writes its `snap.toml` and prints what changed:
+   review every block like code. It is written on the box:
+   `box cp $id . <case dir>` brings it back before the next `box push`
+   overwrites it. Every run also writes a documented case's card under
+   `docs/cards/`, which git ignores: CI makes the cards the site draws. What clice gets wrong stays in the output, with
    `wrong = "<reason>"` on the block.
 4. Gate: `pixi run npm run check` at the repo root (strict tsc + ESLint,
    zero tolerance). Page regions and translations are synced, and
