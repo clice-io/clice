@@ -348,27 +348,40 @@ ZEST_CASE(FrameworkAndPlainDir) {
     ZEXPECT(config.dirs[1].framework);
 }
 
-ZEST_CASE(CXXSystemDirs) {
-    /// -cxx-isystem searches C++ alone, after -iframework and before the
-    /// driver's own.
+ZEST_CASE(LanguageSystemDirs) {
+    /// Each language searches its own of -c-isystem, -cxx-isystem,
+    /// -objc-isystem and -objcxx-isystem, after -isystem and before the
+    /// driver's own, whatever the command's order; Objective-C++ searches
+    /// -cxx-isystem's too.
     TempDir tmp;
-    std::vector<const char*> args = {"clang++",
-                                     "-internal-isystem",
-                                     tmp.c_path("driver"),
-                                     "-cxx-isystem",
-                                     tmp.c_path("libcxx"),
-                                     "-isystem",
-                                     tmp.c_path("system"),
-                                     "main.cpp"};
-    auto config = extract(args, tmp.root);
-    ZASSERT(config.dirs.size() == 3u);
-    ZEXPECT(config.dirs[1].path == spelled(tmp, "libcxx"));
-
-    args.insert(args.begin() + 1, {"-x", "c"});
-    config = extract(args, tmp.root);
-    ZASSERT(config.dirs.size() == 2u);
-    ZEXPECT(config.dirs[0].path == spelled(tmp, "system"));
-    ZEXPECT(config.dirs[1].path == spelled(tmp, "driver"));
+    auto dirs_of = [&](const char* language) {
+        std::vector<const char*> args = {"clang++",
+                                         "-x",
+                                         language,
+                                         "-internal-isystem",
+                                         tmp.c_path("driver"),
+                                         "-objcxx-isystem",
+                                         tmp.c_path("objcxx"),
+                                         "-objc-isystem",
+                                         tmp.c_path("objc"),
+                                         "-cxx-isystem",
+                                         tmp.c_path("cxx"),
+                                         "-c-isystem",
+                                         tmp.c_path("c"),
+                                         "-isystem",
+                                         tmp.c_path("system"),
+                                         "main.cpp"};
+        return ranges::to<std::vector>(extract(args, tmp.root).dirs |
+                                       views::transform(&SearchDir::path));
+    };
+    auto spelled_all = [&](std::initializer_list<llvm::StringRef> names) {
+        return ranges::to<std::vector>(
+            names | views::transform([&](llvm::StringRef name) { return spelled(tmp, name); }));
+    };
+    ZEXPECT(dirs_of("c") == spelled_all({"system", "c", "driver"}));
+    ZEXPECT(dirs_of("c++") == spelled_all({"system", "cxx", "driver"}));
+    ZEXPECT(dirs_of("objective-c") == spelled_all({"system", "objc", "driver"}));
+    ZEXPECT(dirs_of("objective-c++") == spelled_all({"system", "cxx", "objcxx", "driver"}));
 }
 
 ZEST_CASE(WithSysroot) {

@@ -311,6 +311,8 @@ bool names_path(unsigned id, llvm::StringRef value) {
         case OPT_isystem_after:
         case OPT_c_isystem:
         case OPT_cxx_isystem:
+        case OPT_objc_isystem:
+        case OPT_objcxx_isystem:
         case OPT_stdlibxx_isystem:
         case OPT_F:
         case OPT_iframework:

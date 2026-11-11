@@ -12,8 +12,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     // clang's layout (ParseHeaderSearchArgs, then InitHeaderSearch::Realize):
     // Quoted (-iquote) → Angled (-I and -F, then -iwithprefixbefore) →
     // System (-isystem and -iwithsysroot, -iframework, -c-isystem,
-    // -cxx-isystem, the driver's -internal-isystem, its
-    // -internal-iframework) → After
+    // -cxx-isystem, -objc-isystem, -objcxx-isystem, the driver's
+    // -internal-isystem, its -internal-iframework) → After
     // (-iwithprefix, then -idirafter). A group keeps the command's order
     // within each kind of option, wherever the options sit in the command.
     std::vector<SearchDir> quoted;
@@ -23,6 +23,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     std::vector<SearchDir> system_frameworks;
     std::vector<SearchDir> system_c;
     std::vector<SearchDir> system_cxx;
+    std::vector<SearchDir> system_objc;
+    std::vector<SearchDir> system_objcxx;
     std::vector<SearchDir> system_driver;
     std::vector<SearchDir> driver_frameworks;
     std::vector<SearchDir> after_prefixed;
@@ -34,9 +36,11 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     // Windows names no drive.
     std::string_view isysroot;
     std::string_view sysroot;
-    // -c-isystem searches C alone, -cxx-isystem C++ alone; a driver-level
-    // command without -x is read as C++'s.
+    // -c-isystem searches C alone, -cxx-isystem C++ and Objective-C++,
+    // -objc-isystem Objective-C alone, -objcxx-isystem Objective-C++ alone;
+    // a driver-level command without -x is read as C++'s.
     bool cxx = true;
+    bool objc = false;
     for(auto& arg: args) {
         if(arg.values.empty()) {
             continue;
@@ -47,7 +51,9 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
             sysroot = arg.values[0];
         } else if(arg.opt_id == OPT_x) {
             namespace types = clang::driver::types;
-            cxx = types::isCXX(types::lookupTypeForTypeSpecifier(arg.values[0]));
+            auto type = types::lookupTypeForTypeSpecifier(arg.values[0]);
+            cxx = types::isCXX(type);
+            objc = types::isObjC(type);
         }
     }
     if(!isysroot.empty()) {
@@ -89,13 +95,23 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
                     {.path = Spelling(value, base).str(), .framework = true});
                 break;
             case OPT_c_isystem:
-                if(!cxx) {
+                if(!cxx && !objc) {
                     system_c.push_back({Spelling(value, base).str()});
                 }
                 break;
             case OPT_cxx_isystem:
                 if(cxx) {
                     system_cxx.push_back({Spelling(value, base).str()});
+                }
+                break;
+            case OPT_objc_isystem:
+                if(objc && !cxx) {
+                    system_objc.push_back({Spelling(value, base).str()});
+                }
+                break;
+            case OPT_objcxx_isystem:
+                if(objc && cxx) {
+                    system_objcxx.push_back({Spelling(value, base).str()});
                 }
                 break;
             case OPT_internal_isystem:
@@ -142,6 +158,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     append(system_frameworks);
     append(system_c);
     append(system_cxx);
+    append(system_objc);
+    append(system_objcxx);
     append(system_driver);
     append(driver_frameworks);
     append(after_prefixed);
