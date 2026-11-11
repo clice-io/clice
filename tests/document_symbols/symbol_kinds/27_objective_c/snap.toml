@@ -259,7 +259,7 @@ document_symbols = [
         name = "Object",
         kind = "Class",
         at = "@interface ⟦Object⟧",
-        range = "__attribute__((⟦objc_root_class)) … @end⟧ (5 lines)",
+        range = "⟦__attribute__((objc_root_class)) … @end⟧ (5 lines)",
         children = [
             { name = "alloc", kind = "Method", at = "+ (instancetype)⟦alloc⟧;", range = "⟦+ (instancetype)alloc;⟧" },
             { name = "init", kind = "Method", at = "- (instancetype)⟦init⟧;", range = "⟦- (instancetype)init;⟧" },

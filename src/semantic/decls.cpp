@@ -55,24 +55,47 @@ auto outer_template_parameters(const clang::Decl* decl)
 namespace {
 
 /// Where the attribute specifier holding `attr`, the first attribute of
-/// it, is written: at the `[[` its range leaves out (`[[using gnu: hot]]`
-/// starts at the namespace), a macro spelling it at the macro's name.
+/// it, is written: at the `[[` or the `__attribute__((` its range leaves
+/// out (`[[using gnu: hot]]` starts at the namespace), a macro spelling it
+/// at the macro's name.
 auto attribute_begin(const clang::Attr& attr,
                      const clang::SourceManager& sources,
                      const clang::LangOptions& lang_opts) -> clang::SourceLocation {
     auto begin = attr.getRange().getBegin();
-    if(begin.isMacroID() || !attr.isStandardAttributeSyntax() || attr.isAlignas()) {
+    if(begin.isMacroID() || attr.isAlignas()) {
         return sources.getExpansionLoc(begin);
+    }
+    auto previous = [&](clang::SourceLocation at) {
+        return clang::Lexer::findPreviousToken(at, sources, lang_opts, false);
+    };
+    if(attr.isGNUAttribute()) {
+        auto at = begin;
+        for(int parens = 0; parens < 2; parens += 1) {
+            auto paren = previous(at);
+            if(!paren || !paren->is(clang::tok::l_paren)) {
+                return begin;
+            }
+            at = paren->getLocation();
+        }
+        // A raw token: the keyword is an identifier still.
+        auto keyword = previous(at);
+        return keyword && keyword->is(clang::tok::raw_identifier) &&
+                       keyword->getRawIdentifier().starts_with("__attribute")
+                   ? keyword->getLocation()
+                   : begin;
+    }
+    if(!attr.isStandardAttributeSyntax()) {
+        return begin;
     }
     auto at = begin;
     for(int tokens = 0; tokens < 5; tokens += 1) {
-        auto previous = clang::Lexer::findPreviousToken(at, sources, lang_opts, false);
-        if(!previous) {
+        auto token = previous(at);
+        if(!token) {
             break;
         }
-        at = previous->getLocation();
-        if(previous->is(clang::tok::l_square)) {
-            auto outer = clang::Lexer::findPreviousToken(at, sources, lang_opts, false);
+        at = token->getLocation();
+        if(token->is(clang::tok::l_square)) {
+            auto outer = previous(at);
             return outer && outer->is(clang::tok::l_square) ? outer->getLocation() : begin;
         }
     }
@@ -101,12 +124,13 @@ auto written_range(const clang::Decl* decl) -> clang::SourceRange {
        described && before(described->getBeginLoc(), range.getBegin())) {
         range.setBegin(described->getBeginLoc());
     }
-    // The first attribute written before the declaration.
+    // The first attribute written before the declaration, or where clang
+    // starts it: an Objective-C container starts at its attribute's name.
     const clang::Attr* leading = nullptr;
     for(const auto* attr: decl->attrs()) {
         auto begin = attr->getRange().getBegin();
         if(attr->isImplicit() || attr->isInherited() || begin.isInvalid() ||
-           !before(begin, range.getBegin()) || applied_by_pragma(decl->getASTContext(), begin)) {
+           before(range.getBegin(), begin) || applied_by_pragma(decl->getASTContext(), begin)) {
             continue;
         }
         if(!leading || before(begin, leading->getRange().getBegin())) {

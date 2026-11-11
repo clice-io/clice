@@ -1,0 +1,66 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query definition Circle"]
+stdout = '''
+{
+  "error": "no symbol is named `Circle`; name one of the closest matches by its `symbol`",
+  "candidates": [
+    {
+      "name": "circle",
+      "signature": null,
+      "kind": "Field",
+      "file": "${WS}/main.cpp",
+      "line": 2,
+      "container": "Shape",
+      "symbol": "#2e497a8424b18403"
+    }
+  ],
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query definition are"]
+stdout = '''
+{
+  "error": "no symbol is named `are`; name one of the closest matches by its `symbol`",
+  "candidates": [
+    {
+      "name": "area",
+      "signature": "(Shape shape)",
+      "kind": "Function",
+      "file": "${WS}/main.cpp",
+      "line": 7,
+      "container": null,
+      "symbol": "#ca4cfb002f4ef965"
+    }
+  ],
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query definition width"]
+stdout = '''
+{
+  "result": {
+    "name": "width",
+    "kind": "Field",
+    "symbol": "#5c8f14bfb3f2f707",
+    "documentation": null,
+    "definition": {
+      "file": "${WS}/main.cpp",
+      "startLine": 4,
+      "endLine": 4,
+      "text": "int width"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0

@@ -7,6 +7,13 @@ document_symbols = [
         at = '[[deprecated("use checked")]] [[maybe_unused]] int ⟦unchecked⟧();',
         detail = "int ()",
     },
+    {
+        name = "exported",
+        kind = "Function",
+        at = '__attribute__((visibility("default"))) int ⟦exported⟧();',
+        detail = "int ()",
+    },
+    { name = "rare", kind = "Function", at = "__attribute__((cold, noinline)) void ⟦rare⟧();", detail = "void ()" },
     { name = "made", kind = "Function", at = "[[nodiscard]] T ⟦made⟧();", detail = "template T ()" },
     {
         name = "Holder",
@@ -43,6 +50,18 @@ document_symbols = [
         kind = "Function",
         at = '[[deprecated("use checked")]] [[maybe_unused]] int ⟦unchecked⟧();',
         range = '⟦[[deprecated("use checked")]] [[maybe_unused]] int unchecked()⟧;',
+    },
+    {
+        name = "exported",
+        kind = "Function",
+        at = '__attribute__((visibility("default"))) int ⟦exported⟧();',
+        range = '⟦__attribute__((visibility("default"))) int exported()⟧;',
+    },
+    {
+        name = "rare",
+        kind = "Function",
+        at = "__attribute__((cold, noinline)) void ⟦rare⟧();",
+        range = "⟦__attribute__((cold, noinline)) void rare()⟧;",
     },
     {
         name = "made",
