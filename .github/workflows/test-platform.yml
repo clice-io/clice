@@ -279,7 +279,7 @@ jobs:
           name: cards-${{ matrix.shard }}
           path: docs/cards
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 3
 
       - name: Upload the logs of failed cases
         if: failure()
