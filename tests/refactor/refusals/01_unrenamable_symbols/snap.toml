@@ -1,6 +1,6 @@
 [test."$ clice index --jobs 2"]
 stdout = '''
-Indexed 1 translation unit in #s: 2 file shards (# KB), 14 symbols.
+Indexed 1 translation unit in #s: 2 file shards (# KB), 16 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
@@ -202,6 +202,66 @@ stdout = '''
         "conflicts": [],
         "warnings": [],
         "error": "the name here resolves to `Seconds::value` and `Meters::value`; rename them to one name in one list of renames, or one of them from its declaration",
+        "candidates": null
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename BUILD_LEVEL LEVEL --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "BUILD_LEVEL",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "LEVEL",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "the compile command or the compiler defines `BUILD_LEVEL`, which a rename cannot change",
+        "candidates": null
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename main.cpp:31:13 LEVEL --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "main.cpp:31:13",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "LEVEL",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "the compile command or the compiler defines `BUILD_LEVEL`, which a rename cannot change",
         "candidates": null
       }
     ],

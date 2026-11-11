@@ -130,6 +130,9 @@ std::string unplaced_macro(const index::SymbolInfo& macro) {
 std::expected<RenameTarget, std::string> macro_target(const index::IndexQuery& query,
                                                       const index::IndexQuery::Located& named) {
     llvm::StringRef name = named.symbol.name;
+    if(!named.site.file.valid()) {
+        return std::unexpected(unplaced_macro(named.symbol));
+    }
     auto in_system_header = [&](const index::IndexQuery::Located& macro) {
         return index::has_flag(macro.symbol.flags, index::SymbolFlags::SystemHeader);
     };

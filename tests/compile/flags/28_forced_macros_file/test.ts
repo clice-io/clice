@@ -14,6 +14,10 @@ test("headers of a macros file", async (t) => {
     for (const file of ["config.h", "inc/board.h", "prefix.h"]) {
         await t.show(file, s.diagnostics(file));
     }
+    // What BOARD_VALUE names in CONFIG_VALUE's body shows where the macro
+    // expands, in prefix.h as main.cpp's unit compiles it: the background
+    // index resolves it.
+    await s.indexed();
     for (const m of t.markers()) {
         await t.show(m.name, s.definition(m));
     }

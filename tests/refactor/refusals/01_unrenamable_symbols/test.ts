@@ -14,4 +14,7 @@ test(async (t) => {
     );
     // Its instantiations resolve the name to two fields.
     await t.cli(`refactor rename ${t.place(t.at("main.cpp", "item.|value"))} amount --dry-run`);
+    // The compile command defines it: no file holds a definition to change.
+    await t.cli("refactor rename BUILD_LEVEL LEVEL --dry-run");
+    await t.cli(`refactor rename ${t.place(t.at("main.cpp", "= |BUILD_LEVEL"))} LEVEL --dry-run`);
 });

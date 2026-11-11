@@ -27,3 +27,5 @@ int main() {
     double both = read(total) + read(Seconds{1.0});
     return compute(CONSOLE_WIDTH) + getter() + static_cast<int>(static_cast<double>(total) + both);
 }
+
+int level = BUILD_LEVEL;
