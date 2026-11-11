@@ -161,6 +161,11 @@ bool is_codegen_option(unsigned id);
 /// and anything the driver itself accepts and ignores.
 bool is_discarded_option(unsigned id);
 
+/// The positions in `args` of the files the command forces in, in the order
+/// clang enters them: every `-imacros` (whose macros alone it keeps), then
+/// every `-include`, each in command order.
+llvm::SmallVector<std::size_t> forced_files(llvm::ArrayRef<Arg> args);
+
 /// User-content options that go into the per-file patch rather than the
 /// shared canonical command: -I, -D, -U, -include, -imacros, -isystem, -iquote,
 /// -idirafter.

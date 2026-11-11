@@ -20,6 +20,22 @@ namespace clice::feature {
 
 namespace {
 
+/// The `import` declaration a unit of the module `unit` (`name` or
+/// `name:partition`, empty outside a named module) needs to reach what the
+/// module `module` exports; none when the unit is that module. The compile
+/// adds an item's `import` itself, while its `#include` waits for the
+/// server (finish_completion).
+auto import_for(llvm::StringRef module, llvm::StringRef unit) -> std::optional<std::string> {
+    auto [primary, partition] = module.split(':');
+    if(primary != unit.split(':').first) {
+        return std::format("import {};\n", primary);
+    }
+    if(!partition.empty() && module != unit) {
+        return std::format("import :{};\n", partition);
+    }
+    return std::nullopt;
+}
+
 /// The dependent expression at the completion point, in the innermost
 /// function holding it (AtPoint).
 struct AtPointFinder : clang::RecursiveASTVisitor<AtPointFinder> {

@@ -111,8 +111,9 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     auto search_from = [&](unsigned start) -> std::optional<ResolveResult> {
         // clang takes the first framework directory holding the framework:
         // a header it lacks is not looked for in the framework of a later
-        // one. clang's subframework lookup is left out: `<Sub/x.h>` written
-        // inside Umb.framework, which clang finds in its
+        // one.
+        // FIXME (low priority): clang's subframework lookup: `<Sub/x.h>`
+        // written inside Umb.framework, which clang finds in its
         // Frameworks/Sub.framework, stays unresolved here. Only the SDK's
         // umbrella frameworks rely on it; their headers never change, and
         // the compile itself, being clang's, finds them.
@@ -150,6 +151,11 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     }
 
     // 3. Quoted include: try includer's directory first.
+    // FIXME (low priority): under MSVC compatibility (clang-cl's default,
+    // -fms-compatibility) clang goes on to the directories of every file on
+    // the include stack, up to the source file, before the search
+    // directories; this looks next to the includer alone, so a header found
+    // that way, which clang flags with -Wmicrosoft-include, stays unresolved.
     if(!is_angled && includer_listing) {
         if(check_in_dir(includer_dir,
                         includer_listing,

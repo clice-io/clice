@@ -8,12 +8,21 @@ namespace clice {
 
 using namespace clang_options;
 
+std::string SearchDir::identity() const {
+    auto key = CanonicalPath(Spelling::absolute(path)).str();
+    if(framework) {
+        key += '\0';
+    }
+    return key;
+}
+
 SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef directory) {
     // clang's layout (ParseHeaderSearchArgs, then InitHeaderSearch::Realize):
     // Quoted (-iquote) → Angled (-I and -F, then -iwithprefixbefore) →
-    // System (-isystem and -iwithsysroot, -iframework, -c-isystem,
-    // -cxx-isystem, -objc-isystem, -objcxx-isystem, the driver's
-    // -internal-isystem, its -internal-iframework) → After
+    // System (-isystem and -iwithsysroot, -iframework,
+    // -iframeworkwithsysroot, -c-isystem, -cxx-isystem, -objc-isystem,
+    // -objcxx-isystem, the driver's -internal-isystem, its
+    // -internal-iframework) → After
     // (-iwithprefix, then -idirafter). A group keeps the command's order
     // within each kind of option, wherever the options sit in the command.
     std::vector<SearchDir> quoted;
@@ -21,16 +30,16 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     std::vector<SearchDir> angled_prefixed;
     std::vector<SearchDir> system;
     std::vector<SearchDir> system_frameworks;
-    std::vector<SearchDir> system_c;
-    std::vector<SearchDir> system_cxx;
-    std::vector<SearchDir> system_objc;
+    std::vector<SearchDir> sysroot_frameworks;
+    // The input language's own (-c-isystem, -cxx-isystem or -objc-isystem:
+    // one of them applies); Objective-C++ searches -cxx-isystem's, then
+    // -objcxx-isystem's.
+    std::vector<SearchDir> system_language;
     std::vector<SearchDir> system_objcxx;
     std::vector<SearchDir> system_driver;
     std::vector<SearchDir> driver_frameworks;
     std::vector<SearchDir> after_prefixed;
     std::vector<SearchDir> after;
-    std::vector<std::string> forced_macros;
-    std::vector<std::string> forced_includes;
 
     // A leading `=` names the sysroot: the last -isysroot, else the last
     // --sysroot; -iwithsysroot puts it before a path from the root, which on
@@ -95,19 +104,22 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
                 system_frameworks.push_back(
                     {.path = Spelling(value, base).str(), .framework = true});
                 break;
+            case OPT_iframeworkwithsysroot:
+                sysroot_frameworks.push_back({.path = under_sysroot(value), .framework = true});
+                break;
             case OPT_c_isystem:
                 if(!cxx && !objc) {
-                    system_c.push_back({Spelling(value, base).str()});
+                    system_language.push_back({Spelling(value, base).str()});
                 }
                 break;
             case OPT_cxx_isystem:
                 if(cxx) {
-                    system_cxx.push_back({Spelling(value, base).str()});
+                    system_language.push_back({Spelling(value, base).str()});
                 }
                 break;
             case OPT_objc_isystem:
                 if(objc && !cxx) {
-                    system_objc.push_back({Spelling(value, base).str()});
+                    system_language.push_back({Spelling(value, base).str()});
                 }
                 break;
             case OPT_objcxx_isystem:
@@ -135,9 +147,6 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
 
             case OPT_idirafter: after.push_back({make_absolute(value)}); break;
 
-            case OPT_imacros: forced_macros.emplace_back(value); break;
-            case OPT_include: forced_includes.emplace_back(value); break;
-
             // FIXME: header maps (-I foo.hmap remaps include names), which
             // only Xcode's own builds write.
             default: break;
@@ -145,8 +154,9 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     }
 
     SearchConfig config;
-    config.forced_includes = std::move(forced_macros);
-    config.forced_includes.append_range(forced_includes);
+    for(auto position: forced_files(args)) {
+        config.forced_includes.emplace_back(args[position].values[0]);
+    }
     auto append = [&](std::vector<SearchDir>& group) {
         config.dirs.insert(config.dirs.end(),
                            std::make_move_iterator(group.begin()),
@@ -159,9 +169,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     config.system_start_idx = static_cast<unsigned>(config.dirs.size());
     append(system);
     append(system_frameworks);
-    append(system_c);
-    append(system_cxx);
-    append(system_objc);
+    append(sysroot_frameworks);
+    append(system_language);
     append(system_objcxx);
     append(system_driver);
     append(driver_frameworks);
@@ -179,11 +188,7 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     auto remove_duplicates = [&](unsigned first, unsigned end) {
         llvm::StringMap<unsigned> seen;
         for(unsigned i = first; i < end; i += 1) {
-            auto key = CanonicalPath(Spelling::absolute(config.dirs[i].path)).str();
-            if(config.dirs[i].framework) {
-                key += '\0';
-            }
-            auto [it, inserted] = seen.try_emplace(key, i);
+            auto [it, inserted] = seen.try_emplace(config.dirs[i].identity(), i);
             if(inserted) {
                 continue;
             }

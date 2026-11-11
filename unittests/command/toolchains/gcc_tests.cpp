@@ -352,6 +352,31 @@ End of search list.)",
     ZEXPECT(!adjacent(argv, "-internal-isystem", frameworks));
 }
 
+ZEST_CASE(GCCListsCommandDirs) {
+    /// GCC lists the directories the command names among its own, which the
+    /// clang job made for it searches already: a -iwithprefixbefore one
+    /// stays a user directory, ahead of the system ones.
+    auto prefixed = tmp.path("prefix/inc");
+    auto driver = fake_gcc("g++",
+                           std::format(R"(Target: x86_64-linux-gnu
+ {2} -E -quiet -v query.cpp -dM
+#include <...> search starts here:
+ {0}
+ {1}
+End of search list.)",
+                                       prefixed,
+                                       tmp.path("usr/include"),
+                                       host_path("/usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus")));
+    auto prefix = tmp.path("prefix") + "/";
+    auto ref =
+        add("a.cpp", {driver.c_str(), "-iprefix", prefix.c_str(), "-iwithprefixbefore", "inc"});
+    ZASSERT(f.toolchain.resolve(ref.command, ref.language));
+    auto search = f.toolchain.search_config(ref);
+    auto found = ranges::find(search.dirs, Spelling::absolute(prefixed).str(), &SearchDir::path);
+    ZASSERT(found != search.dirs.end());
+    ZEXPECT(static_cast<unsigned>(found - search.dirs.begin()) < search.system_start_idx);
+}
+
 ZEST_CASE(OlderFrontendDirs) {
     /// A clang older than clice's whose frontend sets up some of the search
     /// list itself, which its job does not name: Apple clang 17's framework

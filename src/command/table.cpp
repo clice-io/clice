@@ -88,14 +88,8 @@ llvm::StringRef resource_dir() {
 
 llvm::SmallVector<bool> RenderOptions::left_out(llvm::ArrayRef<Arg> args) const {
     llvm::SmallVector<bool> result(args.size());
-    std::size_t entered = 0;
-    for(auto id: {clang_options::OPT_imacros, clang_options::OPT_include}) {
-        for(auto [i, arg]: views::enumerate(args)) {
-            if(arg.opt_id == id) {
-                entered += 1;
-                result[i] = entered > kept_forced;
-            }
-        }
+    for(auto [entered, position]: views::enumerate(forced_files(args))) {
+        result[position] = static_cast<std::size_t>(entered) >= kept_forced;
     }
     return result;
 }

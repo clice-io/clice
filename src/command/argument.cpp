@@ -284,6 +284,18 @@ bool is_discarded_option(unsigned id) {
     }
 }
 
+llvm::SmallVector<std::size_t> forced_files(llvm::ArrayRef<Arg> args) {
+    llvm::SmallVector<std::size_t> positions;
+    for(auto id: {OPT_imacros, OPT_include}) {
+        for(auto [position, arg]: views::enumerate(args)) {
+            if(arg.opt_id == id) {
+                positions.push_back(position);
+            }
+        }
+    }
+    return positions;
+}
+
 bool is_user_content_option(unsigned id) {
     switch(id) {
         case OPT_I:

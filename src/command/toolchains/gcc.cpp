@@ -209,13 +209,13 @@ std::vector<std::string> framework_dirs(llvm::StringRef target) {
     return dirs;
 }
 
-/// Adds to a clang job the directories of `printed`, the search list its
-/// driver printed, that the job does not search already: a clang older
-/// than clice's sets up some targets' search list in its own frontend
-/// (Darwin's framework directories before LLVM 21, all of FreeBSD's
-/// before 16), which clice's frontend leaves to the driver. They go after
-/// the job's own, where that frontend adds them.
-void add_frontend_dirs(Job& job, llvm::ArrayRef<GCCSearchDir> printed, llvm::StringRef cwd) {
+/// Adds to a clang job the directories of `printed`, a search list the
+/// compiler printed, that the job does not search already, after the job's
+/// own: GCC's whole list, which the clang job made for it leaves out, and
+/// what a clang older than clice's sets up in its own frontend (Darwin's
+/// framework directories before LLVM 21, all of FreeBSD's before 16),
+/// which clice's frontend leaves to the driver.
+void add_printed_dirs(Job& job, llvm::ArrayRef<GCCSearchDir> printed, llvm::StringRef cwd) {
     std::vector<std::string> cc1(job.args.begin() + 2, job.args.end());
     auto parse_options = cli::ParseOptions{.visibility = clang_options::CC1Option};
     llvm::BumpPtrAllocator allocator;
@@ -231,21 +231,13 @@ void add_frontend_dirs(Job& job, llvm::ArrayRef<GCCSearchDir> printed, llvm::Str
     }
     auto args = ranges::to<std::vector>(parsed_args | views::transform(&LocalArg::view));
     auto base = cwd.empty() ? Spelling::cwd() : Spelling::absolute(cwd);
-    // A directory searched for frameworks is not the same search as for
-    // plain headers.
-    auto key = [](llvm::StringRef path, bool framework) {
-        auto key = lexical(path);
-        if(framework) {
-            key += '\0';
-        }
-        return key;
-    };
     llvm::StringSet<> named;
     for(auto& dir: extract_search_config(args, base).dirs) {
-        named.insert(key(dir.path, dir.framework));
+        named.insert(dir.identity());
     }
     for(auto& dir: printed) {
-        if(!named.contains(key(Spelling(dir.path, base), dir.framework))) {
+        SearchDir searched{.path = Spelling(dir.path, base).str(), .framework = dir.framework};
+        if(!named.contains(searched.identity())) {
             job.args.insert(
                 job.args.end(),
                 {dir.framework ? "-internal-iframework" : "-internal-isystem", dir.path});
@@ -436,20 +428,19 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
         return job;
     }
     auto frameworks = framework_dirs(output.target);
-    for(std::size_t i = 0; i < output.search_dirs.size(); i += 1) {
-        auto& dir = output.search_dirs[i];
-        if(output.private_dir == i) {
-            job->args.insert(job->args.end(),
-                             {"-internal-isystem", path::join(resource_dir(), "include")});
+    std::vector<GCCSearchDir> printed;
+    for(auto [i, dir]: views::enumerate(output.search_dirs)) {
+        if(output.private_dir == static_cast<std::size_t>(i)) {
+            printed.push_back({.path = path::join(resource_dir(), "include")});
             job->shadowed.push_back(dir.path);
         }
         auto path = lexical(dir.path);
         bool framework = ranges::any_of(frameworks, [&](llvm::StringRef below) {
             return llvm::StringRef(path).ends_with(below);
         });
-        job->args.insert(job->args.end(),
-                         {framework ? "-internal-iframework" : "-internal-isystem", dir.path});
+        printed.push_back({.path = dir.path, .framework = framework});
     }
+    add_printed_dirs(*job, printed, cwd);
     return job;
 }
 
@@ -476,7 +467,7 @@ async::task<std::expected<Job, std::string>> ask_gcc_style(std::vector<std::stri
         if(!standard.empty()) {
             job.args.push_back(std::move(standard));
         }
-        add_frontend_dirs(job, output->search_dirs, cwd);
+        add_printed_dirs(job, output->search_dirs, cwd);
         co_return job;
     }
     if(output->gcc_job.empty()) {

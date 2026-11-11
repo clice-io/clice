@@ -410,8 +410,9 @@ ZEST_CASE(ResourceDirBecomesOurs) {
     // our tree and stays.
     auto driver = fake_clang(clang_job_of(
         R"("-cc1" "-triple" "x86_64-unknown-linux-gnu" "-resource-dir" "/clice-fake/lib/clang/22//" "-internal-isystem" "/clice-fake/lib/clang/22//include" "-fsanitize=address" "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22//share/asan_ignorelist.txt")"));
-    auto argv = f.resolve(
-        add("a.cpp", {driver.c_str(), "-include", "/clice-fake/lib/clang/22/include/stddef.h"}));
+    auto ref =
+        add("a.cpp", {driver.c_str(), "-include", "/clice-fake/lib/clang/22/include/stddef.h"});
+    auto argv = f.resolve(ref);
 
     ZEXPECT(adjacent(argv, "-resource-dir", resource_dir()));
     ZEXPECT(adjacent(argv, "-internal-isystem", path::join(resource_dir(), "include")));
@@ -419,6 +420,11 @@ ZEST_CASE(ResourceDirBecomesOurs) {
     ZEXPECT(contains(
         argv,
         "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22//share/asan_ignorelist.txt"));
+
+    /// Include completion tells clice's builtin headers by this spelling.
+    auto builtin_headers = Spelling::absolute(path::join(resource_dir(), "include")).str();
+    ZEXPECT(
+        ranges::contains(f.toolchain.search_config(ref).dirs, builtin_headers, &SearchDir::path));
 }
 
 ZEST_CASE(OtherBuiltinHeadersStay) {

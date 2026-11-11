@@ -391,21 +391,34 @@ ZEST_CASE(LanguageSystemDirs) {
 
 ZEST_CASE(WithSysroot) {
     /// -iwithsysroot puts the sysroot before an absolute path, among the
-    /// -isystem directories in command order.
+    /// -isystem directories in command order; -iframeworkwithsysroot does
+    /// so for a framework directory, after the -iframework ones.
     TempDir tmp;
     auto sysroot = tmp.path("sdk");
     std::vector<const char*> args = {"clang++",
                                      "-isysroot",
                                      sysroot.c_str(),
+                                     "-iframeworkwithsysroot",
+                                     "/Frameworks",
                                      "-iwithsysroot",
                                      "/inc",
+                                     "-iframework",
+                                     tmp.c_path("frameworks"),
                                      "-isystem",
                                      tmp.c_path("system"),
                                      "main.cpp"};
     auto config = extract(args, tmp.root);
-    ZASSERT(config.dirs.size() == 2u);
-    ZEXPECT(config.dirs[0].path == spelled(tmp, "sdk/inc"));
-    ZEXPECT(config.dirs[1].path == spelled(tmp, "system"));
+    std::vector<std::pair<std::string, bool>> dirs;
+    for(auto& dir: config.dirs) {
+        dirs.emplace_back(dir.path, dir.framework);
+    }
+    std::vector<std::pair<std::string, bool>> expected = {
+        {spelled(tmp, "sdk/inc"),        false},
+        {spelled(tmp, "system"),         false},
+        {spelled(tmp, "frameworks"),     true },
+        {spelled(tmp, "sdk/Frameworks"), true },
+    };
+    ZEXPECT(dirs == expected);
 }
 
 };  // ZEST_SUITE(ExtractSearchConfig)

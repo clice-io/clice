@@ -174,7 +174,7 @@ CDB 加载使用 simdjson 进行流式 JSON 解析，逐条处理记录：
 
 ### 搜索路径提取
 
-工具链查询得到 cc1 参数后，搜索路径提取会遍历这些参数，按类型将 include 路径选项分入四个层级。所有路径都会解析为绝对路径并规范化（消除 `.` 和 `..`）。System 层级内部的顺序与 clang 一致：`-isystem` 和 `-iwithsysroot`（在其绝对路径前拼接 sysroot）、`-iframework`、`-c-isystem`（仅 C）、`-cxx-isystem`（C++ 与 Objective-C++）、`-objc-isystem`（仅 Objective-C）、`-objcxx-isystem`（仅 Objective-C++）、驱动程序自己的目录、驱动程序的 framework 目录。framework 目录（Angled 层级中的 `-F`；System 层级中的 `-iframework` 和驱动程序的 `-internal-iframework`）像 clang 那样，在第一个含有 `Foo.framework` 的 framework 目录里把 `<Foo/Bar.h>` 找成 `Foo.framework/Headers/Bar.h`，找不到时再找 `Foo.framework/PrivateHeaders/Bar.h`，clice 的依赖关系和它添加的 include 都按此查找；`#include` 补全会列出其中的 framework，进入某个 framework 后再列出它的 `Headers/`。
+工具链查询得到 cc1 参数后，搜索路径提取会遍历这些参数，按类型将 include 路径选项分入四个层级。所有路径都会解析为绝对路径并规范化（消除 `.` 和 `..`）。System 层级内部的顺序与 clang 一致：`-isystem` 和 `-iwithsysroot`（在其绝对路径前拼接 sysroot）、`-iframework`、`-iframeworkwithsysroot`、`-c-isystem`（仅 C）、`-cxx-isystem`（C++ 与 Objective-C++）、`-objc-isystem`（仅 Objective-C）、`-objcxx-isystem`（仅 Objective-C++）、驱动程序自己的目录、驱动程序的 framework 目录。framework 目录（Angled 层级中的 `-F`；System 层级中的 `-iframework` 和驱动程序的 `-internal-iframework`）像 clang 那样，在第一个含有 `Foo.framework` 的 framework 目录里把 `<Foo/Bar.h>` 找成 `Foo.framework/Headers/Bar.h`，找不到时再找 `Foo.framework/PrivateHeaders/Bar.h`，clice 的依赖关系和它添加的 include 都按此查找；`#include` 补全会列出其中的 framework，进入某个 framework 后再列出它的 `Headers/`。
 
 `-iprefix` / `-iwithprefix` / `-iwithprefixbefore` 三个选项必须按出现顺序配合处理：`-iprefix` 设置前缀，后续的 `-iwithprefix` 将前缀添加到其路径之前，并将结果放入 After 层级；`-iwithprefixbefore` 则将结果放入 Angled 层级。
 

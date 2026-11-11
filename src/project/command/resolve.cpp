@@ -118,7 +118,7 @@ struct Tiers {
         selection.occurrence = search.occurrence;
         selection.forced = entry.chain.front() != entry.file ? entry.chain.front() : Fid{};
         // A header the command forces in itself has nothing to cut: the
-        // -includes ahead of it are its context. A host the user chose is
+        // forced files ahead of it are its context. A host the user chose is
         // chosen for its preprocessor state, so the header always compiles in
         // its context; else the self-containment check decides.
         if(entry.chain.size() > 1) {

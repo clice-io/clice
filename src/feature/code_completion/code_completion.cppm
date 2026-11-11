@@ -293,13 +293,6 @@ auto include_completion(const CompletionName& completing,
 auto module_completion(const CompletionName& completing, const CompletionInputs& inputs)
     -> protocol::CompletionList;
 
-/// The `import` declaration a unit of the module `unit` (`name` or
-/// `name:partition`, empty outside a named module) needs to reach what the
-/// module `module` exports; none when the unit is that module. The compile
-/// adds an item's `import` itself, while its `#include` waits for the
-/// server (finish_completion).
-auto import_for(llvm::StringRef module, llvm::StringRef unit) -> std::optional<std::string>;
-
 /// Completion items rank alike wherever they come from: a compile's
 /// candidates, the directives, the include paths and the module names.
 ///

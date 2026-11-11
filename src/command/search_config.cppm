@@ -18,6 +18,11 @@ struct SearchDir {
     /// `<Foo/Bar.h>` is `Foo.framework/Headers/Bar.h` below it, else
     /// `Foo.framework/PrivateHeaders/Bar.h`.
     bool framework = false;
+
+    /// What tells two entries apart as clang's duplicate removal does: the
+    /// directory itself, however spelled, and whether it is searched for
+    /// frameworks.
+    std::string identity() const;
 };
 
 /// Header search configuration extracted from compilation arguments.
@@ -38,10 +43,9 @@ struct SearchConfig {
     unsigned system_start_idx = 0;
 
     /// The files the command enters ahead of the file it compiles, in the
-    /// order clang enters them: every `-imacros` (whose macros alone it
-    /// keeps), then every `-include`, each in command order and as written.
-    /// clang looks a relative one up in the compile's working directory
-    /// first, then as a quoted include.
+    /// order clang enters them (forced_files), as written: clang looks a
+    /// relative one up in the compile's working directory first, then as a
+    /// quoted include.
     std::vector<std::string> forced_includes;
 
     /// The files in `dirs` its compiles do not see; null for none.

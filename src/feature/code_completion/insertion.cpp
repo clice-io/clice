@@ -155,15 +155,4 @@ auto finish_completion(protocol::CompletionList list,
     return limited;
 }
 
-auto import_for(llvm::StringRef module, llvm::StringRef unit) -> std::optional<std::string> {
-    auto [primary, partition] = module.split(':');
-    if(primary != unit.split(':').first) {
-        return std::format("import {};\n", primary);
-    }
-    if(!partition.empty() && module != unit) {
-        return std::format("import :{};\n", partition);
-    }
-    return std::nullopt;
-}
-
 }  // namespace clice::feature
