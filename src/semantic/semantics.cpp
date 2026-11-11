@@ -2184,6 +2184,9 @@ llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
     /// @selector(setX:y:)
     ///           ^~~~ ^ candidate reference to the methods of the selector:
     /// clang resolves none, and names here the class around it has
+    // LIMITATION: outside a method `@selector(...)` names no method: no
+    // class says whose. A selector passed from a function or a global
+    // initializer has no references, hover or definition.
     if(const auto* selector =
            llvm::dyn_cast_if_present<clang::ObjCSelectorExpr>(entry.node.get<clang::Stmt>())) {
         References out;

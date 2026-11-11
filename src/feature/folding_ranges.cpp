@@ -194,6 +194,8 @@ private:
             return;
         }
 
+        // LIMITATION: the braces of an `@interface`'s instance variables do
+        // not fold on their own, only the whole container does.
         if(const auto* container = llvm::dyn_cast<clang::ObjCContainerDecl>(decl)) {
             auto extent = unit.focus_file().produced_range(decls::written_range(container));
             auto name = unit.focus_file().offset(container->getLocation());
