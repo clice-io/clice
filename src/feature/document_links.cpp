@@ -5,7 +5,7 @@ import :feature.document_links;
 import :feature.protocol;
 import :index.query;
 import :index.symbol;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :syntax.lexical_scan;
 import :syntax.source_text;
 import :vfs.file_table;

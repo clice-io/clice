@@ -3,11 +3,11 @@ module clice;
 import :feature.document_symbols;
 import :feature.protocol;
 import :feature.workspace_symbols;
-import :index.site;
+import :index.query.site;
 import :index.query;
-import :index.search;
+import :index.query.locate;
 import :index.symbol;
-import :index.symbol_query;
+import :index.search.locator;
 import :vfs.path;
 
 namespace clice::feature {

@@ -1,9 +1,9 @@
 module clice;
 
 import :index.query;
-import :index.search;
+import :index.query.locate;
 import :index.shard;
-import :index.tu_index;
+import :index.indexing.tu_index;
 import :project.background;
 import :project.project;
 import :server.served_project;

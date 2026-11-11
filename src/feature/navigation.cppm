@@ -3,10 +3,10 @@
 
 module clice:feature.navigation;
 
-import :index.instantiation_shard;
+import :index.shard.instantiations;
 import :index.query;
 import :index.shard;
-import :index.site;
+import :index.query.site;
 import :index.symbol;
 import :semantic.symbol;
 import :support.prelude;

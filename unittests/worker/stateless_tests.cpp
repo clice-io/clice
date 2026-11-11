@@ -1,7 +1,7 @@
 module clice;
 
 import :feature.hover;
-import :index.tu_index;
+import :index.indexing.tu_index;
 import :semantic.display;
 import :semantic.symbol;
 import :support.text;

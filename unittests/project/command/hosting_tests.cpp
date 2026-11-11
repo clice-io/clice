@@ -9,7 +9,7 @@ module clice;
 import :command.table;
 import :compile.diagnostic;
 import :index.project_index;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :project.command;
 import :project.members;
 import :project.project;

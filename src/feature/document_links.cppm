@@ -3,7 +3,7 @@ module clice:feature.document_links;
 import :compile.compilation;
 import :index.query;
 import :index.symbol;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :support.prelude;
 import :syntax.position;
 import :syntax.source_text;

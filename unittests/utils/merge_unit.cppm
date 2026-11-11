@@ -1,9 +1,9 @@
 module clice:unittests.utils.merge_unit;
 
 import :compile.compilation;
-import :index.indexer;
+import :index.indexing;
 import :index.project_index;
-import :index.tu_index;
+import :index.indexing.tu_index;
 import :project.project;
 import :support.prelude;
 import :support.text;

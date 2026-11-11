@@ -3,7 +3,7 @@ module clice:driver.run;
 import :driver.driver;
 import :feature.query;
 import :index.query;
-import :index.writer_lock;
+import :index.database.writer_lock;
 import :project.background;
 import :project.project;
 import :server.control;

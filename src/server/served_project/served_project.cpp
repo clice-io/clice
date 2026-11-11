@@ -3,7 +3,7 @@ module clice;
 import :command.table;
 import :index.database;
 import :index.project_index;
-import :index.writer_lock;
+import :index.database.writer_lock;
 import :project.background;
 import :project.discovery;
 import :project.graph.task_graph;

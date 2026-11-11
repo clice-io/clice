@@ -1,9 +1,9 @@
 module clice:feature.semantic_tokens;
 
 import :compile.compilation;
-import :index.entries;
+import :index.query.entries;
 import :index.query;
-import :index.tu_index;
+import :index.indexing.tu_index;
 import :semantic.token_class;
 import :support.prelude;
 import :syntax.position;

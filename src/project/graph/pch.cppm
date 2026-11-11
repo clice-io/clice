@@ -1,6 +1,6 @@
 module clice:project.graph.pch;
 
-import :index.tu_index;
+import :index.indexing.tu_index;
 import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :support.failure;

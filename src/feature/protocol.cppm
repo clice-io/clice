@@ -1,6 +1,6 @@
 module clice:feature.protocol;
 
-import :index.site;
+import :index.query.site;
 import :index.symbol;
 import :support.prelude;
 import :syntax.position;

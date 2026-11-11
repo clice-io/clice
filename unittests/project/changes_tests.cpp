@@ -2,7 +2,7 @@ module clice;
 
 import :index.shard;
 import :index.symbol;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :project.background;
 import :project.graph.pcm;
 import :project.graph.task_graph;

@@ -3,7 +3,7 @@ module clice;
 import :compile.compilation;
 import :compile.inactive_regions;
 import :feature.document_symbols;
-import :index.entries;
+import :index.query.entries;
 import :index.query;
 import :index.symbol;
 import :semantic.decls;

@@ -1,11 +1,11 @@
 module clice;
 
 import :feature.hierarchy;
-import :index.indexer;
+import :index.indexing;
 import :index.query;
 import :index.shard;
-import :index.text;
-import :index.tu_index;
+import :index.query.text;
+import :index.indexing.tu_index;
 import :project.graph.task_graph;
 import :project.project;
 import :server.served_project;

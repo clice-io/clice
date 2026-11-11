@@ -3,8 +3,8 @@ module clice;
 import :feature.navigation;
 import :feature.protocol;
 import :index.query;
-import :index.search;
-import :index.symbol_query;
+import :index.query.locate;
+import :index.search.locator;
 import :support.logging;
 
 namespace clice::feature {

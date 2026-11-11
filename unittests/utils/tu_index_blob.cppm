@@ -1,8 +1,9 @@
 module clice:unittests.utils.tu_index_blob;
 
 import :index.format;
+import :index.indexing.layout;
+import :index.indexing.tu_index;
 import :index.symbol;
-import :index.tu_index;
 import :support.prelude;
 import :support.text;
 import :unittests.utils;

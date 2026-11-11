@@ -1,8 +1,8 @@
 module clice;
 
 import :feature.diagnostics;
-import :index.indexer;
-import :index.tu_index;
+import :index.indexing;
+import :index.indexing.tu_index;
 import :project.background;
 import :project.project;
 import :server.master;

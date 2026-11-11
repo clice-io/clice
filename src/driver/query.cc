@@ -6,7 +6,7 @@ import :driver.run;
 import :feature.counterparts;
 import :feature.query;
 import :index.project_index;
-import :index.symbol_query;
+import :index.search.locator;
 import :project.project;
 import :syntax.dependency_graph;
 import :vfs.path;

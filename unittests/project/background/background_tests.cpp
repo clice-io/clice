@@ -1,7 +1,7 @@
 module clice;
 
 import :index.project_index;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :project.background;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.forwarding_database;

@@ -2,8 +2,8 @@ module clice:unittests.utils.index_query_tester;
 
 import :compile.compilation;
 import :index.query;
-import :index.search;
-import :index.symbol_query;
+import :index.query.locate;
+import :index.search.locator;
 import :project.project;
 import :server.served_project;
 import :support.prelude;

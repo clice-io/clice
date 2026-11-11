@@ -1,7 +1,7 @@
 module clice:feature.workspace_symbols;
 
 import :index.query;
-import :index.site;
+import :index.query.site;
 import :index.symbol;
 import :support.prelude;
 import :syntax.position;

@@ -1,9 +1,9 @@
 module clice:unittests.utils.index_entries_tester;
 
-import :index.entries;
-import :index.indexer;
+import :index.query.entries;
+import :index.indexing;
 import :index.symbol;
-import :index.tu_index;
+import :index.indexing.tu_index;
 import :support.prelude;
 import :support.text;
 import :unittests.utils.tester;

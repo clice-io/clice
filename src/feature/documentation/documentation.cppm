@@ -2,7 +2,7 @@ module clice:feature.documentation;
 
 import :compile.compilation;
 import :index.query;
-import :index.site;
+import :index.query.site;
 import :index.symbol;
 import :semantic.comment;
 import :support.markup;

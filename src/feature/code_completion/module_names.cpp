@@ -4,7 +4,7 @@ import :feature.code_completion.cursor;
 import :feature.code_completion;
 import :feature.documentation;
 import :index.query;
-import :index.site;
+import :index.query.site;
 import :semantic.identity;
 import :semantic.symbol;
 import :support.fuzzy_matcher;

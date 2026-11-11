@@ -1,7 +1,7 @@
 module clice:feature.document_symbols;
 
 import :compile.compilation;
-import :index.entries;
+import :index.query.entries;
 import :index.query;
 import :semantic.symbol;
 import :support.prelude;

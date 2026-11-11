@@ -1,7 +1,7 @@
 module clice;
 
 import :feature.document_links;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 import :syntax.source_text;

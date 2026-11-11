@@ -10,7 +10,7 @@ import :command.argument;
 import :command.database;
 import :command.edit;
 import :command.table;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :project.background;
 import :project.command;
 import :project.members;

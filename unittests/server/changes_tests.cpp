@@ -3,7 +3,7 @@ module clice;
 import :feature.diagnostics;
 import :index.shard;
 import :index.symbol;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :project.background;
 import :project.command;
 import :project.project;

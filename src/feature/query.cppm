@@ -9,7 +9,7 @@ import :feature.hierarchy;
 import :feature.rename;
 import :index.query;
 import :index.symbol;
-import :index.symbol_query;
+import :index.search.locator;
 import :support.prelude;
 import :vfs.ids;
 import :vfs.path;

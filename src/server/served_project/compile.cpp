@@ -4,7 +4,7 @@ import :compile.compilation;
 import :compile.diagnostic;
 import :compile.tidy;
 import :feature.diagnostics;
-import :index.tu_index;
+import :index.indexing.tu_index;
 import :project.background;
 import :project.command;
 import :project.graph.pch;

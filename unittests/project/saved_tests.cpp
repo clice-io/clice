@@ -2,7 +2,7 @@ module clice;
 
 import :index.database;
 import :index.project_index;
-import :index.symbol_query;
+import :index.search.locator;
 import :project.background;
 import :project.project;
 import :unittests.utils;

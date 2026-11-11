@@ -4,7 +4,7 @@ import :driver.driver;
 import :driver.run;
 import :feature.query;
 import :feature.rename;
-import :index.symbol_query;
+import :index.search.locator;
 import :project.project;
 import :vfs.file_system;
 

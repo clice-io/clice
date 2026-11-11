@@ -5,7 +5,7 @@ import :command.search_config;
 import :feature.diagnostics;
 import :index.query;
 import :index.shard;
-import :index.tu_index;
+import :index.indexing.tu_index;
 import :project.background;
 import :project.command;
 import :project.graph.pch;

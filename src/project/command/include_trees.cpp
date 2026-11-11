@@ -1,9 +1,9 @@
 module clice;
 
 import :compile.compilation;
-import :index.include_tree;
+import :index.indexing.include_tree;
 import :index.project_index;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :project.command;
 import :project.project;
 import :support.logging;

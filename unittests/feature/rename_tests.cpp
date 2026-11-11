@@ -2,8 +2,8 @@ module clice;
 
 import :feature.rename;
 import :index.query;
-import :index.search;
-import :index.symbol_query;
+import :index.query.locate;
+import :index.search.locator;
 import :unittests.utils.merge_unit;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;

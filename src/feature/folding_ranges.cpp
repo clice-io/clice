@@ -3,7 +3,7 @@ module clice;
 import :compile.compilation;
 import :compile.inactive_regions;
 import :feature.folding_ranges;
-import :index.entries;
+import :index.query.entries;
 import :index.query;
 import :semantic.decls;
 import :semantic.semantics;

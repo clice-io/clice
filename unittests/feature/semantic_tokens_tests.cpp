@@ -9,7 +9,7 @@ module clice;
 
 import :feature.semantic_tokens.stream;
 import :feature.semantic_tokens;
-import :index.entries;
+import :index.query.entries;
 import :index.symbol;
 import :semantic.token_class;
 import :syntax.lexer;
