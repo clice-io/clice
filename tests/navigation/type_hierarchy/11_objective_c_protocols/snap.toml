@@ -15,12 +15,12 @@ supertypes = [
     { name = "Inking", kind = "Interface", at = "@protocol ⟦Inking⟧" },
 ]
 subtypes = [
-    { name = "Pen", kind = "Class", at = "@implementation ⟦Pen⟧ : Object" },
+    { name = "Pen", kind = "Class", at = "@implementation ⟦Quill⟧ : Object" },
 ]
 
 [answers.pen_class]
 type_hierarchy = [
-    { name = "Pen", kind = "Class", at = "@implementation ⟦Pen⟧ : Object" },
+    { name = "Pen", kind = "Class", at = "@implementation ⟦Quill⟧ : Object" },
 ]
 supertypes = [
     { name = "Writing", kind = "Interface", at = "@protocol ⟦Writing⟧ <Inking>" },

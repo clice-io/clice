@@ -1033,6 +1033,16 @@ public:
             }
             return;
         }
+        // `@implementation Quill` defines the class an alias names, and
+        // references the alias: a rename of the alias renames it. The
+        // semantic map keeps the class alone there, as its token shows it.
+        if(auto* IMD = llvm::dyn_cast<clang::ObjCImplementationDecl>(D)) {
+            if(const auto* alias = llvm::dyn_cast<clang::ObjCCompatibleAliasDecl>(
+                   decls::objc_class_name(IMD->getClassInterface(), IMD->getLocation()))) {
+                add_self_relation(alias, RelationKind::Reference, IMD->getLocation());
+            }
+            return;
+        }
         // A method overrides its superclasses' methods of its selector and
         // implements the protocols' its class adopts.
         if(auto* MD = llvm::dyn_cast<clang::ObjCMethodDecl>(D)) {

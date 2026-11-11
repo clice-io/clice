@@ -33,6 +33,7 @@ references = [
     "@compatibility_alias ⟦Quill⟧ Pen;",
     "@compatibility_alias Stylus ⟦Quill⟧;",
     "@interface ⟦Quill⟧ (Trim)",
+    "@implementation ⟦Quill⟧ : Object",
     "void use(⟦Quill⟧ *quill, Class kind, id thing, Box<Pen *> *box) {",
     "int count = ⟦Quill⟧.count;",
 ]
@@ -43,7 +44,7 @@ references = [
     "@interface ⟦Pen⟧ : Object {",
     "@interface ⟦Pen⟧ (Extras) <Writing>",
     "@compatibility_alias Quill ⟦Pen⟧;",
-    "@implementation ⟦Pen⟧ : Object",
+    "@implementation ⟦Quill⟧ : Object",
     "@implementation ⟦Pen⟧ (Extras)",
     "void use(Quill *quill, Class kind, id thing, Box<⟦Pen⟧ *> *box) {",
 ]

@@ -49,7 +49,7 @@ __attribute__((objc_root_class))
 - (void)trim;
 @end
 
-@implementation Pen : Object
+@implementation Quill : Object
 @synthesize width;
 
 - (void):(int)x tail:(int)y {

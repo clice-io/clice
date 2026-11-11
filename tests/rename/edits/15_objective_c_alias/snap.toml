@@ -1,3 +1,9 @@
+[answers.class.rename]
+notice = '''
+Spellings of `Pen` left alone:
+  ${WS}/main.m:52: @implementation Quill : Object (the name is written here as `Quill`)
+'''
+
 [answers.class.rename.edits]
 "main.m" = '''
 -@class Pen;
@@ -24,13 +30,6 @@
 -@compatibility_alias Quill Pen;
 +@compatibility_alias Quill Brush;
  @compatibility_alias Stylus Quill;
-
-…
- @end
-
--@implementation Pen : Object
-+@implementation Brush : Object
- @synthesize width;
 
 …
  @end
@@ -78,6 +77,11 @@
 +@interface Nib (Trim)
  - (void)trim;
  @end
+
+-@implementation Quill : Object
++@implementation Nib : Object
+ @synthesize width;
+
 …
  @end
 
