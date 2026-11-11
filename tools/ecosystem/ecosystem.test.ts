@@ -51,6 +51,7 @@ describe("projects", () => {
             "flameshot",
             "fmt/clang",
             "fmt/msvc",
+            "libobjc2",
             "linux",
             "llvm/all/llvm",
             "llvm/all/clang",
@@ -58,6 +59,8 @@ describe("projects", () => {
             "llvm/all/flang",
             "llvm/all/lldb",
             "mp-units",
+            "sdl",
+            "wxwidgets",
         ]);
         expect(named("perf")).toEqual([
             "abseil/editing",

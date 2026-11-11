@@ -216,6 +216,10 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
         return macro_target(serving, named);
     }
     auto query = serving.written_only();
+    // LIMITATION: an Objective-C property is not renamed: its getter and
+    // setter, their messages and dot syntax, and the instance variable it
+    // synthesizes would rename with it. Whoever renames a property gets the
+    // refusal.
     if(symbol.kind == SymbolKind::Property) {
         return std::unexpected(std::format(
             "renaming the Objective-C property `{}` is not supported: its accessors and the "
@@ -251,6 +255,10 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
             root = std::move(deduced.front());
             break;
         }
+        // LIMITATION: an Objective-C method is not renamed: its selector's
+        // pieces would rename in every method a message to `id` may reach,
+        // overrides and protocol requirements among them. Whoever renames a
+        // method gets the refusal.
         case index::NameForm::Selector: {
             return std::unexpected(std::format(
                 "renaming the Objective-C method `{}` is not supported: every method its "

@@ -269,7 +269,7 @@ function sampled(files: readonly string[], kind: RegExp, count: number, seed: st
     return shuffled(candidates, seed).slice(0, count).sort();
 }
 
-const SOURCE = /\.(c|cc|cpp|cxx|c\+\+|cppm|ixx|cu)$/;
+const SOURCE = /\.(c|cc|cpp|cxx|c\+\+|cppm|ixx|cu|m|mm)$/;
 
 /// `count` of the units' source files, the seed choosing which.
 export function sampleFiles(units: readonly string[], count: number, seed: string): string[] {
