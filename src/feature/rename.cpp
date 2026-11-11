@@ -784,6 +784,19 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
             }
         }
     }
+    // A category is indexed after its class (`Shape(Extras)`): another of
+    // the class's by the new name would be declared twice.
+    if(llvm::StringRef indexed = root.name; indexed != old_name) {
+        auto objc_class = indexed.split('(').first;
+        for(auto& hit: all_named(query, std::format("{}({})", objc_class, new_name))) {
+            if(!group.contains(hit.symbol.hash) && !batch.renamed.contains(hit.symbol.hash)) {
+                plan.conflicts.push_back(std::format("`{}` has a category `{}` already ({})",
+                                                     objc_class,
+                                                     std::string_view(new_name),
+                                                     where(hit.site)));
+            }
+        }
+    }
     auto reserved = [&](bool global) {
         // Both languages reserve `__x` and `_X` everywhere, and `_x` at
         // file and global namespace scope.
