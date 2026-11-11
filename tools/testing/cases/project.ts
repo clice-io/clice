@@ -35,7 +35,7 @@ export const RESERVED = new Set([
     "trace.jsonl",
 ]);
 
-export const SOURCE = /\.(c|cc|cpp|cxx|cppm|ixx|m|mm|cl|clcpp)$/;
+export const SOURCE = /\.(c|cc|cpp|cxx|cppm|ixx|m|mm|cl|clcpp|hip)$/;
 export const HEADER = /\.(h|hh|hpp|hxx)$/;
 /// The files that may carry markers; any other input copies byte for byte.
 export const MARKED = new RegExp(`${SOURCE.source}|${HEADER.source}`);

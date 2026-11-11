@@ -307,10 +307,14 @@ const clang::LangOptions& Project::dialect(Fid file, const ContextChoice* choice
     auto language = type == TY_C || type == TY_CHeader             ? clang::Language::C
                     : type == TY_ObjC || type == TY_ObjCHeader     ? clang::Language::ObjC
                     : type == TY_ObjCXX || type == TY_ObjCXXHeader ? clang::Language::ObjCXX
+                    : type == TY_CL                                ? clang::Language::OpenCL
+                    : type == TY_CLCXX                             ? clang::Language::OpenCLCXX
                                                                    : clang::Language::CXX;
     llvm::StringRef standard;
     for(auto& arg: commands.get(ref.command).args) {
-        if(arg.opt_id == clang_options::OPT_std_EQ && arg.values.size() == 1) {
+        if((arg.opt_id == clang_options::OPT_std_EQ ||
+            arg.opt_id == clang_options::OPT_cl_std_EQ) &&
+           arg.values.size() == 1) {
             standard = arg.values[0];
         }
     }

@@ -122,6 +122,15 @@ ZEST_CASE(ObjectiveCDialects) {
     ZEXPECT(dialect_of("shape.c").ObjC == 0U);
 }
 
+ZEST_CASE(OpenCLDialects) {
+    const auto& opencl = dialect_of("kernel.cl");
+    ZEXPECT(opencl.OpenCL == 1U);
+    ZEXPECT(opencl.OpenCLCPlusPlus == 0U);
+    ZEXPECT(keyword_kind("__kernel", keywords(opencl)) != clang::tok::identifier);
+    ZEXPECT(keyword_kind("__kernel", keywords(dialect_of("kernel.cpp"))) == clang::tok::identifier);
+    ZEXPECT(dialect_of("kernel.clcpp").OpenCLCPlusPlus == 1U);
+}
+
 ZEST_CASE(DigitSeparator) {
     llvm::StringRef content = "x = 1'000, y";
     Lexer lexer(content, dialect_of());

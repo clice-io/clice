@@ -1,0 +1,4 @@
+{
+  "scopeName": "source.hip",
+  "patterns": [{ "include": "source.cpp" }]
+}

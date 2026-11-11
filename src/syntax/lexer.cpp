@@ -48,10 +48,12 @@ const clang::LangOptions& dialect_of(llvm::StringRef path,
                                      std::optional<clang::Language> language,
                                      llvm::StringRef standard) {
     if(!language) {
-        language = path.ends_with(".c")    ? clang::Language::C
-                   : path.ends_with(".m")  ? clang::Language::ObjC
-                   : path.ends_with(".mm") ? clang::Language::ObjCXX
-                                           : clang::Language::CXX;
+        language = path.ends_with(".c")       ? clang::Language::C
+                   : path.ends_with(".m")     ? clang::Language::ObjC
+                   : path.ends_with(".mm")    ? clang::Language::ObjCXX
+                   : path.ends_with(".cl")    ? clang::Language::OpenCL
+                   : path.ends_with(".clcpp") ? clang::Language::OpenCLCXX
+                                              : clang::Language::CXX;
     }
     // Objective-C takes the standards of the language it extends.
     auto base = *language == clang::Language::ObjC     ? clang::Language::C
@@ -69,10 +71,12 @@ const clang::LangOptions& dialect_of(llvm::StringRef path,
 }
 
 const clang::IdentifierTable& keywords(const clang::LangOptions& dialect) {
-    auto language = dialect.ObjC
-                        ? (dialect.CPlusPlus ? clang::Language::ObjCXX : clang::Language::ObjC)
-                    : dialect.CPlusPlus ? clang::Language::CXX
-                                        : clang::Language::C;
+    auto language =
+        dialect.ObjC ? (dialect.CPlusPlus ? clang::Language::ObjCXX : clang::Language::ObjC)
+        : dialect.OpenCL
+            ? (dialect.OpenCLCPlusPlus ? clang::Language::OpenCLCXX : clang::Language::OpenCL)
+        : dialect.CPlusPlus ? clang::Language::CXX
+                            : clang::Language::C;
     const auto& raw = raw_dialect(language, dialect.LangStd);
     auto& dialects = RawDialects::get();
     std::lock_guard lock(dialects.mutex);
