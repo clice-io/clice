@@ -5,7 +5,7 @@
 <!-- The cards in the sections below are generated from the documented cases
      in tests/contexts/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 ## 依赖包含方的头文件
 

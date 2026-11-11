@@ -12,9 +12,9 @@ position on the page, and style:
     gh api 'repos/clice-io/docs/contents/tools/translations/RULES.md?ref=v1.0.0' -H 'Accept: application/vnd.github.raw'
 
 Read it first. This page adds only what is clice's: the page conventions
-of its site and its glossary. `pixi run review-doc-translations` hands
+of its site and its glossary. `pixi run docs-review` hands
 this page to the model as the glossary, so it speaks to a translator.
-The mechanics (`report`/`record`/`check`, syncing at the end of a branch)
+The mechanics (`docs-report`/`docs-record`/`docs-check`, syncing at the end of a branch)
 are in the docs skill.
 
 ## By position on the page

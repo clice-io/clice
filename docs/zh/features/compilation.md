@@ -5,7 +5,7 @@ clice 使用编译数据库中对应的命令编译每个打开的文件，与�
 <!-- The cards in the sections below are generated from the documented cases
      in tests/compile/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 ## 编译选项
 

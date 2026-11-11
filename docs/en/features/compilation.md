@@ -5,7 +5,7 @@ clice compiles each open file with its command from the compilation database, as
 <!-- The cards in the sections below are generated from the documented cases
      in tests/compile/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 ## Compile Flags
 

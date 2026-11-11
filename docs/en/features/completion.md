@@ -5,7 +5,7 @@ Candidates for what is being typed: names, members, calls, headers and modules.
 <!-- The cards in the sections below are generated from the documented cases
      in tests/code_completion/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 ## Symbols
 
