@@ -1,4 +1,5 @@
 [answers.count]
+references = ["- (int)⟦count⟧ {", "use.m │ return [super ⟦count⟧];", "use.m │ counter.count += [counter ⟦count⟧];"]
 incoming_calls = [
     {
         name = "count",
@@ -18,6 +19,7 @@ incoming_calls = [
 outgoing_calls = []
 
 [answers.set_count]
+references = ["- (void)⟦setCount⟧:(int)count {"]
 incoming_calls = [
     {
         name = "bump",
@@ -30,6 +32,7 @@ incoming_calls = [
 outgoing_calls = []
 
 [answers.tally_count]
+references = ["- (int)⟦count⟧ {", "counter.count += [counter ⟦count⟧];"]
 incoming_calls = [
     {
         name = "bump",
@@ -50,6 +53,7 @@ outgoing_calls = [
 ]
 
 [answers.bump]
+references = ["void ⟦bump⟧(Counter *counter) {"]
 incoming_calls = []
 outgoing_calls = [
     {

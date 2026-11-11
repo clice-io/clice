@@ -7,6 +7,7 @@ answers(
     async (a) => {
         for (const m of a.markers()) {
             await a.show(m.name, {
+                references: a.references(m),
                 incoming_calls: a.incomingCalls(m),
                 outgoing_calls: a.outgoingCalls(m),
             });

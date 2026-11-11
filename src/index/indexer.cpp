@@ -865,15 +865,18 @@ public:
 
         // A property's accessor clang declares is one symbol with the method
         // an @implementation, maybe in another unit, writes for it: a call
-        // to one nothing writes finds no callee. A message to `id` naming
-        // one is the property's candidate in the semantic map, and the
-        // accessor's here, where the other methods of its selector find it.
+        // to one nothing writes finds no callee. A message naming one refers
+        // to the property in the semantic map, and to the accessor here,
+        // where that method, and the other methods of its selector, find it.
         if(auto* OME = node.get<clang::ObjCMessageExpr>()) {
             const auto* method = decls::objc_message_target(*OME);
             auto name = decls::objc_message_name(*OME);
             call(method, name);
-            if(method && method->isImplicit() && decls::objc_untyped(*OME)) {
-                add_self_relation(method, RelationKind::Candidate, name);
+            if(method && method->isImplicit()) {
+                add_self_relation(method,
+                                  decls::objc_untyped(*OME) ? RelationKind::Candidate
+                                                            : RelationKind::Reference,
+                                  name);
             }
             // `[super draw]` runs the superclass's method, never an override.
             if(method && (OME->getReceiverKind() == clang::ObjCMessageExpr::SuperInstance ||
