@@ -40,10 +40,6 @@ struct Harness {
     ServedProject& served = *fixture.served;
     Project& project = served.project;
 
-    Harness() {
-        project.settings.project.skip_header_bodies = false;
-    }
-
     /// Whether a change invalidated the open document's compile: every
     /// invalidation moves its node's generation on.
     bool invalidated(Fid path_id) {

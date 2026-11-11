@@ -148,8 +148,8 @@ std::unique_ptr<index::BlobDatabase> sparse_database(CacheStore& store) {
             removals.push_back({index::BlobKind::Shard, std::to_string(i)});
         }
     }
-    require(db->write(blobs, {}), "write the values");
-    require(db->write({}, removals), "remove most of them");
+    require(db->write(blobs, {}).has_value(), "write the values");
+    require(db->write({}, removals).has_value(), "remove most of them");
     require(db->advance_read_snapshot().has_value(), "advance the snapshot");
     db->retire_old_snapshot();
     return db;
@@ -310,7 +310,8 @@ std::string populated_database(CacheStore& store, int count) {
     auto db = index::open_database(store, {});
     require(db != nullptr, "opening the database failed");
     for(int i = 0; i < count; i += 1) {
-        require(db->write({blob(index::BlobKind::Shard, std::to_string(i), large_value('t'))}, {}),
+        require(db->write({blob(index::BlobKind::Shard, std::to_string(i), large_value('t'))}, {})
+                    .has_value(),
                 "writing a blob failed");
     }
     return path::join(index::database_directory(store, {}), "index.mdb");
@@ -388,7 +389,7 @@ std::string small_records_database(CacheStore& store, int count) {
         blobs.push_back(blob(index::BlobKind::Path, key, std::string(40, 'p')));
         blobs.push_back(blob(index::BlobKind::Symbol, key, std::string(40, 'y')));
     }
-    require(db->write(blobs, {}), "writing the records failed");
+    require(db->write(blobs, {}).has_value(), "writing the records failed");
     return path::join(index::database_directory(store, {}), "index.mdb");
 }
 

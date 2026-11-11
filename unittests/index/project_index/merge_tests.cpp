@@ -66,10 +66,9 @@ ZEST_CASE(MergeRejectsGarbage) {
     ZASSERT(symbols() == 0u);
 }
 
-ZEST_CASE(SharedLocalPrecompiledInput) {
-    // An internal symbol a unit names in a file it holds no entries of is
-    // rejected, unless the unit reads that file through its precompiled
-    // header or a module: their own units wrote its entries.
+ZEST_CASE(LocalListedWithoutEntries) {
+    // A unit lists an internal symbol in files whose stored entries never
+    // name it: the index records only what the shards hold.
     TempDir tmp;
     tmp.touch("shared.h", "");
     tmp.touch("main.cpp", R"(#include "shared.h"
@@ -89,25 +88,9 @@ int use() { return 1; }
                helper,
                {.name = "helper", .scope = index::SymbolScope::Internal},
                {header_id, focus_id});
-    auto planted = tu_index_bytes(blob);
 
-    ZEXPECT(!merge(planted));
-
-    auto header = project.file_table.intern(Spelling::absolute(*header_path));
-    Input input{.file = header, .version = project.file_table.intern_version(header, 1)};
-    auto report = project.index.merge(planted, {input});
-    ZASSERT(report);
-    fx.project.take_report(*report);
-    auto focus = project.file_table.intern(Spelling::absolute(blob.paths.back()));
-    llvm::SmallVector<Fid> reached;
-    project.index.for_each_file_of_local(helper, header, [&](Fid file) {
-        reached.push_back(file);
-    });
-    ZEXPECT(reached == llvm::SmallVector<Fid>{header, focus});
-
-    // One the build saw gone still came out of the precompiled header.
-    Input gone{.file = header, .absent = true};
-    ZEXPECT(project.index.merge(planted, {gone}).has_value());
+    ZASSERT(merge(tu_index_bytes(blob)));
+    ZEXPECT(!project.index.for_each_file(helper, index::SymbolFiles::Naming, [](Fid) {}));
 }
 
 ZEST_CASE(MergeIgnoresDiskDrift) {
@@ -226,7 +209,9 @@ ZEST_CASE(KnownVariantByHash) {
     auto a = index_file(tmp, tmp.path("a.cpp"));
     ZASSERT(!a.data.empty());
     auto a_view = index::TUIndex::from_bytes(a.data);
-    auto variant = a_view.section_hash(header_section(a_view));
+    auto section = header_section(a_view);
+    auto variant =
+        index::known_at(a_view.path(a_view.section_path(section)), a_view.section_hash(section));
 
     // A result naming a variant the index does not hold commits nothing:
     // the file must run again.
@@ -240,7 +225,8 @@ ZEST_CASE(KnownVariantByHash) {
     // Once the index holds it, the bare hash counts as the file's
     // contribution like the bytes would.
     ZASSERT(merge(a.data));
-    auto b = index_file(tmp, tmp.path("b.cpp"), {}, project.index.shard(header_id)->variants());
+    auto b =
+        index_file(tmp, tmp.path("b.cpp"), {}, project.index.known_variants(b_id, {header_id}));
     auto b_view = index::TUIndex::from_bytes(b.data);
     ZASSERT(b_view.section_blob(header_section(b_view)).empty());
     ZASSERT(merge(b.data));
@@ -260,14 +246,38 @@ ZEST_CASE(KnownVariantsFromManifest) {
 
     auto a_id = project.file_table.intern(Spelling::absolute(a.tu_path));
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
-    std::vector<std::uint64_t> expected = project.index.shard(header_id)->variants();
-    expected.append_range(project.index.shard(a_id)->variants());
+    std::vector<std::uint64_t> expected;
+    for(auto file: {header_id, a_id}) {
+        for(auto variant: project.index.shard(file)->variants()) {
+            expected.push_back(index::known_at(project.file_table.resolve(file), variant));
+        }
+    }
     ranges::sort(expected);
     ZEXPECT(project.index.known_variants(a_id, project.dep_graph.include_closure(a_id)) ==
             expected);
 
     auto other = project.file_table.intern(Spelling::absolute(tmp.path("other.cpp")));
     ZEXPECT(project.index.known_variants(other, project.dep_graph.include_closure(other)).empty());
+}
+
+ZEST_CASE(CopiedHeaderSentWhole) {
+    // The same header at another path — an install moved, a vendored copy —
+    // is no variant its unit's last index knows there: its entries travel
+    // in full and merge.
+    TempDir tmp;
+    llvm::StringRef header = "#pragma once\ninline int shared_fn() { return 1; }\n";
+    tmp.touch("old/shared.h", header);
+    tmp.touch("new/shared.h", header);
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
+    auto first = index_file(tmp, tmp.path("a.cpp"), {"-I" + tmp.path("old")});
+    ZASSERT(merge(first.data));
+
+    auto a_id = project.file_table.intern(Spelling::absolute(first.tu_path));
+    auto known = project.index.known_variants(a_id, project.dep_graph.include_closure(a_id));
+    auto moved = index_file(tmp, tmp.path("a.cpp"), {"-I" + tmp.path("new")}, known);
+    ZASSERT(merge(moved.data));
+    auto copy = project.file_table.intern(Spelling::absolute(tmp.path("new/shared.h")));
+    ZEXPECT(project.index.shard(copy) != nullptr);
 }
 
 ZEST_CASE(HeaderRegenerationReplaces) {
@@ -869,11 +879,12 @@ void a() {}
     ZEXPECT(!box());
 }
 
-ZEST_CASE(HeaderInternalUnkeyed) {
+ZEST_CASE(HeaderInternalInstantiated) {
     // A type of a.h's anonymous namespace: what Box<A>::show resolves names
-    // it outside box.h, which only a unit walking the instantiation lists
-    // among the files naming `print`. No key is offered for it, so when
-    // a.cpp stops instantiating, a2.cpp still leads from a.h to the record.
+    // it in box.h, which holds no entry of it. a.cpp walks the instantiation
+    // and lists box.h for `print`; a2.cpp skips the walk and still uses what
+    // it resolved, so box.h stays among the files instantiating `print`
+    // when a.cpp stops.
     tmp.touch("a.h", R"(#pragma once
 namespace {
 struct A { void print(); };
@@ -881,7 +892,7 @@ struct A { void print(); };
 )");
     ZASSERT(index("a.cpp"));
     f.clear_staleness_cache();
-    ZEXPECT(f.known_instantiations(id("a2.cpp")).empty());
+    ZEXPECT(!f.known_instantiations(id("a2.cpp")).empty());
     ZASSERT(index("a2.cpp"));
     tmp.touch("a.cpp", R"(#include "box.h"
 #include "a.h"
@@ -899,11 +910,11 @@ void a() {}
         return true;
     });
     ZASSERT(print);
-    llvm::SmallVector<Fid> reached;
-    f.project.index.for_each_file_of_local(*print, id("a.h"), [&](Fid file) {
-        reached.push_back(file);
+    llvm::SmallVector<Fid> instantiating;
+    f.project.index.for_each_file(*print, index::SymbolFiles::Instantiating, [&](Fid file) {
+        instantiating.push_back(file);
     });
-    ZEXPECT(ranges::contains(reached, id("box.h")));
+    ZEXPECT(instantiating == llvm::SmallVector<Fid>{id("box.h")});
 }
 
 ZEST_CASE(GoneKeyReruns) {

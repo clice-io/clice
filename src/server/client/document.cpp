@@ -102,17 +102,18 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
     auto& [path, path_id, served, version, ticket] = document;
     auto& session = ticket.session;
     std::optional<index::IndexSource> source;
-    auto from_index = [&] {
+    auto from_index = [&](llvm::ArrayRef<std::uint32_t> only_in) {
         return feature::semantic_tokens(served->text_of(*session),
                                         served->query(),
                                         *source,
-                                        served->project.settings.semantic_tokens);
+                                        served->project.settings.semantic_tokens,
+                                        only_in);
     };
     std::vector<feature::SemanticToken> tokens;
     switch(co_await pick_route(document, {.lexes_whole_buffer = true}, &source)) {
         case Route::Outdated: co_await async::fail(content_modified());
         case Route::Index: {
-            tokens = from_index();
+            tokens = from_index({});
             break;
         }
         case Route::Empty: co_return codec::raw_value{"null"};
@@ -130,7 +131,7 @@ LSPClient::RawResult LSPClient::send_tokens(ResolvedDoc document,
             }
             tokens = std::move(*ast);
             if(auto skipped = other_contexts(*served, *session, source); !skipped.empty()) {
-                tokens = feature::merge(std::move(tokens), from_index(), skipped);
+                tokens = feature::merge(std::move(tokens), from_index(skipped), skipped);
             }
             break;
         }
@@ -188,7 +189,7 @@ void LSPClient::register_document_requests() {
             offset &&
             feature::on_directive_line(session->text(), *offset, project.dialect(path_id));
         auto directive_card =
-            [&](llvm::ArrayRef<index::DocumentLink> links) -> std::optional<codec::raw_value> {
+            [&](llvm::ArrayRef<feature::DocumentLink> links) -> std::optional<codec::raw_value> {
             auto* link = feature::link_at(links, *offset);
             if(!link) {
                 return std::nullopt;

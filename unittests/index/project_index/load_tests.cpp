@@ -151,7 +151,7 @@ ZEST_CASE(RunsAcrossSessions) {
     auto& search = f.project.index.search_index();
     ZASSERT(search.run_count() == 2u);
     auto hits = [&](llvm::StringRef name) {
-        return search.search(*index::SymbolQuery::parse(name), 10, {}).hits.size();
+        return search.search(*index::Locator::parse(name), 10, {}).hits.size();
     };
     ZEXPECT(hits("old_local") == 0u);
     ZEXPECT(hits("new_local") == 1u);
@@ -178,7 +178,7 @@ ZEST_CASE(RunsSpanManySegments) {
     };
     auto hits = [](IndexerFixture& f, llvm::StringRef text) {
         return f.project.index.search_index()
-            .search(*index::SymbolQuery::parse(text), 10, {})
+            .search(*index::Locator::parse(text), 10, {})
             .hits.size();
     };
     {
@@ -247,8 +247,7 @@ ZEST_CASE(LostSegmentRebuildsSearch) {
     ZEXPECT(f.project.index.search_update_due(index::SearchRebuild::Idle));
     f.save(index::SearchRebuild::Idle);
     ZASSERT(f.project.index.search_index().loaded());
-    auto hits =
-        f.project.index.search_index().search(*index::SymbolQuery::parse("value"), 10, {}).hits;
+    auto hits = f.project.index.search_index().search(*index::Locator::parse("value"), 10, {}).hits;
     ZEXPECT(hits.size() == 1u);
     std::uint32_t stored = 0;
     f.project.database->for_each_key(index::BlobKind::SearchSegment,
@@ -379,8 +378,7 @@ ZEST_CASE(PersistedInternalsSearched) {
     f.save(index::SearchRebuild::Idle);
     ZASSERT(f.project.index.search_index().loaded());
     ZEXPECT(f.project.index.search_pending_files().empty());
-    auto hits =
-        f.project.index.search_index().search(*index::SymbolQuery::parse("rows"), 10, {}).hits;
+    auto hits = f.project.index.search_index().search(*index::Locator::parse("rows"), 10, {}).hits;
     ZASSERT(hits.size() == 1u);
     llvm::StringRef file = f.project.file_table.resolve(f.project.index.fid_of(hits.front().file));
     ZEXPECT(file.ends_with("b.cpp"));
@@ -940,7 +938,6 @@ ZEST_CASE(VersionsLiveWhileNamed) {
         }
         f.save();
         shared = versions(f);
-        ZEXPECT(IndexInternals::unit_count(f.project.index) == 2u);
         f.drop_index(f.project.file_table.intern(Spelling::absolute(tmp.path("b.cpp"))));
         f.save();
         ZEXPECT(versions(f) == shared - 1);
@@ -950,7 +947,6 @@ ZEST_CASE(VersionsLiveWhileNamed) {
     open_store(tmp, f.project);
     f.list_units(tmp, {{"a.cpp"}, {"b.cpp"}});
     f.load();
-    ZEXPECT(IndexInternals::unit_count(f.project.index) == 1u);
     ZASSERT(!f.needs_reindex(tmp.path("a.cpp")));
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 2; }\n");
     auto indexed = index_file(tmp, tmp.path("a.cpp"));

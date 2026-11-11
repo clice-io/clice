@@ -61,8 +61,8 @@ enum class BlobKind : std::uint8_t {
     Internals,
     /// Per-symbol records (encode_record) of the external symbols.
     Symbol,
-    /// Per-symbol records (SharedLocalBlob) of the symbols below external
-    /// scope several files hold.
+    /// Per-symbol records (encode_record) of the symbols below external
+    /// scope several files hold: their files alone.
     SharedLocal,
     /// The members the persisted index was saved with (SavedMembers), key
     /// "cdb": which databases listed each file, and the provisional members.
@@ -152,9 +152,10 @@ public:
 
     /// Persist `puts`, then delete `removes`, all or nothing: the records
     /// of the index reference each other, so a batch commits whole or not
-    /// at all. False when nothing committed. A full LMDB map fails the
-    /// batch and latches the grow request `grow()` serves.
-    virtual bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<BlobKey> removes) = 0;
+    /// at all. The error says why nothing committed. A full LMDB map fails
+    /// the batch and latches the grow request `grow()` serves.
+    virtual std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                                   llvm::ArrayRef<BlobKey> removes) = 0;
 
     virtual void for_each_key(BlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) = 0;
 

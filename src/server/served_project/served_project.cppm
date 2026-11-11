@@ -3,6 +3,7 @@ module clice:server.served_project;
 import :command.database;
 import :command.search_config;
 import :feature.diagnostics;
+import :feature.document_links;
 import :index.query;
 import :index.shard;
 import :index.indexing.tu_index;
@@ -26,6 +27,7 @@ import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
 import :worker.pool;
+import :worker.preamble_index;
 import :worker.protocol;
 
 namespace clice {
@@ -94,12 +96,21 @@ struct KeptAnswers {
 template <typename Params>
 std::optional<typename protocol::RequestTraits<Params>::Result> kept_answer(const KeptAnswers& kept,
                                                                             const Params& params) {
+    using Result = typename protocol::RequestTraits<Params>::Result;
+    // These results are optionals themselves: an empty one is no answer
+    // kept, not a kept answer of none.
+    auto held = [](const auto& answer) -> std::optional<Result> {
+        if(!answer) {
+            return std::nullopt;
+        }
+        return std::optional<Result>(std::in_place, answer);
+    };
     if constexpr(std::same_as<Params, worker::SemanticTokensParams>) {
-        return kept.semantic_tokens ? std::optional(kept.semantic_tokens) : std::nullopt;
+        return held(kept.semantic_tokens);
     } else if constexpr(std::same_as<Params, worker::FoldingRangeParams>) {
-        return kept.folding_ranges ? std::optional(kept.folding_ranges) : std::nullopt;
+        return held(kept.folding_ranges);
     } else if constexpr(std::same_as<Params, worker::DocumentSymbolParams>) {
-        return kept.document_symbols ? std::optional(kept.document_symbols) : std::nullopt;
+        return held(kept.document_symbols);
     } else if constexpr(std::same_as<Params, worker::DocumentLinkParams>) {
         return kept.document_links;
     } else if constexpr(std::same_as<Params, worker::InlayHintParams>) {
@@ -177,7 +188,7 @@ struct DocumentCompile {
     /// The pch.idx index of the preamble's PCH the parse loaded, while it
     /// is the preamble's (Project::preamble_index): held here, it stays
     /// loaded while a compile of a document reads it.
-    std::shared_ptr<index::TUIndex> preamble_index;
+    std::shared_ptr<worker::PreambleIndex> preamble_index;
 
     /// The generation of the document's graph node the compile ran at
     /// (TaskGraph::generation): the compile describes the buffer and what it
@@ -649,6 +660,12 @@ public:
         return project.index_query.reading(open_buffers());
     }
 
+    /// Compile the open documents, any project's, edited since their last
+    /// compile: no index describes such a buffer meanwhile (IndexQuery::
+    /// serving), so an answer reading every file — references, a
+    /// hierarchy — would lack its entries without a word.
+    async::task<> compile_outdated();
+
     /// query(), also asking the other projects the master serves when it is
     /// taken, each over its own open documents (index::IndexQuery::asking):
     /// what navigation, references, the hierarchies, hover, workspace
@@ -674,13 +691,13 @@ public:
 
     /// The preamble include links of a document's active PCH; empty when
     /// there is no PCH or its preamble no longer matches the buffer.
-    std::vector<index::DocumentLink> preamble_links(const Session& session) const;
+    std::vector<feature::DocumentLink> preamble_links(const Session& session) const;
 
     /// The include-like directive links of a document's whole buffer: the
     /// PCH's cached preamble links, then the worker's AST's for the rest,
     /// and the index's in the code the compile skipped. Module names go
     /// through the ordinary index pipeline, not these.
-    async::task<std::vector<index::DocumentLink>, ipc::Error>
+    async::task<std::vector<feature::DocumentLink>, ipc::Error>
         directive_links(const Ticket& ticket, async::cancellation_token token);
 
     /// Whether a dispatch of `kind` may reach a worker: its record does not

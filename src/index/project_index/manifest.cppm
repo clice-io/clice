@@ -13,18 +13,6 @@ struct ResolvedInclude {
     std::string target;
 };
 
-/// A symbol below external scope more than one of a TU's files names, with
-/// those files: the TU's own, the ones its instantiations and expansions
-/// resolve in, and the ones declaring it behind the precompiled header or a
-/// module. No project-wide table lists such a symbol: this is how a query
-/// reaches its entries in files other than the one it started from.
-struct SharedLocal {
-    std::uint64_t symbol = 0;
-    std::vector<VersionID> files;
-
-    friend bool operator==(const SharedLocal&, const SharedLocal&) = default;
-};
-
 /// The instantiation resolutions a TU uses in one file — the ones it walked
 /// and the ones the known keys it skipped there stand for — by the identity
 /// of their set (index::use_hash), which the file's instantiation blob
@@ -77,9 +65,6 @@ struct TUManifest {
     /// the TU.
     std::vector<VersionID> imports;
 
-    /// Sorted by symbol.
-    std::vector<SharedLocal> shared_locals;
-
     /// One entry per file holding instantiation resolutions the TU uses: what
     /// keeps those resolutions alive.
     std::vector<InstantiationUse> instantiations;
@@ -88,8 +73,8 @@ struct TUManifest {
 };
 
 /// Visit the raw id of every version a manifest names — its TU's, its
-/// include tree's, its contributions', its failed lookups', its imports',
-/// its shared locals' and its instantiation uses' — by reference, const as
+/// include tree's, its contributions', its failed lookups', its imports'
+/// and its instantiation uses' — by reference, const as
 /// `manifest` is.
 template <typename Manifest, typename Visit>
     requires std::same_as<std::remove_const_t<Manifest>, TUManifest>
@@ -106,11 +91,6 @@ void for_each_version(Manifest& manifest, Visit&& visit) {
     }
     for(auto& version: manifest.imports) {
         visit(version.raw);
-    }
-    for(auto& local: manifest.shared_locals) {
-        for(auto& version: local.files) {
-            visit(version.raw);
-        }
     }
     for(auto& use: manifest.instantiations) {
         visit(use.file.raw);

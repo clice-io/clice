@@ -1,7 +1,7 @@
 /// The records the project index keeps in the database besides shards,
 /// instantiation shards and manifests, decoded: the header, a file's
 /// record and its dependents, the internal names it declares, a symbol's
-/// record, a shared local's and a file version's. Files are named by path
+/// record and a file version's. Files are named by path
 /// ids throughout and file versions by version ids, the database's own ids
 /// (ProjectIndex maps them to the file table's).
 
@@ -28,8 +28,6 @@ struct Header {
     std::uint32_t next_path = 0;
 
     std::uint32_t next_version = 0;
-
-    std::uint32_t unit_count = 0;
 
     std::vector<std::uint32_t> search_segments;
 
@@ -143,10 +141,6 @@ struct InternalName {
 /// InternalsBlob decoded, ascending by hash.
 using Internals = std::vector<InternalName>;
 
-/// SharedLocalBlob decoded: each listed file set (path ids, ascending) and
-/// how many units list it, ascending by set.
-using SharedLocalSets = std::vector<std::pair<std::vector<std::uint32_t>, std::uint32_t>>;
-
 std::vector<std::byte> encode_record(const Header& header);
 
 std::vector<std::byte> encode_record(const FileRecord& file);
@@ -158,13 +152,13 @@ std::vector<std::byte> encode_record(const Internals& internals);
 /// A symbol's record, packed by hand: it is the most numerous record, and a
 /// blob's header and placement pairs would double it. The name, the
 /// arguments and the signature, each its size as a varint and its bytes;
-/// the parent, 8 bytes little-endian; the canonical file's path id plus one
-/// (0 for none), the token modifiers and the flags as varints; the kind and
-/// the token kind, a byte each; the reference files' set, its size as a
-/// varint and its bytes; the instantiation files' set to the end.
+/// the parent, 8 bytes little-endian; the token modifiers and the flags as
+/// varints; the kind and the token kind, a byte each; the reference, the
+/// declaration and the definition files' sets, each its size as a varint
+/// and its bytes; the instantiation files' set to the end. A symbol below
+/// external scope has a record of its files alone, once several hold its
+/// entries.
 std::vector<std::byte> encode_record(const Symbol& symbol);
-
-std::vector<std::byte> encode_record(const SharedLocalSets& local);
 
 /// A version record, 12 bytes: the path id, 4 bytes little-endian, and the
 /// content hash, 8.
@@ -186,8 +180,6 @@ std::optional<Symbol> decode_symbol(llvm::StringRef data);
 /// Add the parts of the symbol record `data` to `bytes`, as measure_blob
 /// does a blob's fields; nothing for bytes that are no record.
 void measure_symbol(llvm::StringRef data, FieldBytes& bytes);
-
-std::optional<SharedLocalSets> decode_shared_local(llvm::StringRef data);
 
 std::optional<PersistedVersion> decode_version(llvm::StringRef data);
 

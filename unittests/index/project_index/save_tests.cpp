@@ -30,12 +30,13 @@ struct WriteLog final : ForwardingDatabase {
     std::vector<std::vector<index::BlobKind>> writes;
     std::size_t refused = 0;
 
-    bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
+    std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                           llvm::ArrayRef<index::BlobKey> removes) override {
         writes.emplace_back();
         for(auto& put: puts) {
             writes.back().push_back(put.kind);
         }
-        bool committed = real->write(puts, removes);
+        auto committed = real->write(puts, removes);
         if(!committed) {
             refused += 1;
         }
@@ -72,9 +73,7 @@ async::task<> async_save() {
 
 /// How many hits the persisted search index alone gives `text`.
 std::size_t index_hits(llvm::StringRef text) {
-    return project.index.search_index()
-        .search(*index::SymbolQuery::parse(text), 10, {})
-        .hits.size();
+    return project.index.search_index().search(*index::Locator::parse(text), 10, {}).hits.size();
 }
 
 std::uint32_t stored_segments() {
@@ -190,8 +189,12 @@ ZEST_CASE(RefusedGrowthKeepsBatch) {
 
         bool full = true;
 
-        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
-            return !full && real->write(puts, removes);
+        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
+            if(full) {
+                return std::unexpected("refused");
+            }
+            return real->write(puts, removes);
         }
 
         Growth grow() override {
@@ -212,12 +215,14 @@ ZEST_CASE(RefusedGrowthKeepsBatch) {
     ZASSERT(project.index.shard(file) != nullptr);
     ZASSERT(project.index.pending_shard_writes() == 1u);
     ZASSERT(project.has_unsaved_state());
+    ZEXPECT(project.unsaved_bytes != 0u);
 
     probe->full = false;
     fx.save();
     ZASSERT(project.index.pending_shard_writes() == 0u);
     ZASSERT(project.index.last_save_shards() == 1u);
     ZASSERT(!project.has_unsaved_state());
+    ZEXPECT(project.unsaved_bytes == 0u);
 }
 
 ZEST_CASE(MidSaveMergeKept) {
@@ -344,7 +349,7 @@ ZEST_CASE(RebuildKeepsPendingFindable) {
 
     auto indexed = [&](index::SymbolHash hash) {
         auto symbol = project.index.find_symbol(hash);
-        auto query = index::SymbolQuery::parse(std::format(R"("{}")", symbol->name.str()));
+        auto query = index::Locator::parse(std::format(R"("{}")", symbol->name.str()));
         auto hits = project.index.search_index().search(*query, 10, {}).hits;
         return ranges::any_of(hits, [&](auto& hit) { return hit.hash == hash; });
     };
@@ -388,7 +393,7 @@ ZEST_CASE(RebuildThroughUnnamedScopes) {
     ZASSERT(search.loaded());
 
     auto hits = [&](llvm::StringRef text) {
-        return search.search(*index::SymbolQuery::parse(text), 10, {}).hits.size();
+        return search.search(*index::Locator::parse(text), 10, {}).hits.size();
     };
     ZEXPECT(hits("ns::kSize") == 1u);
     ZEXPECT(hits("::kSize") == 0u);
@@ -555,9 +560,8 @@ ZEST_CASE(CountBucketsRequalify) {
     open_store(tmp, project);
     ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
     fx.save(index::SearchRebuild::Idle);
-    auto hits = project.index.search_index()
-                    .search(*index::SymbolQuery::parse(R"("shared_fn")"), 10, {})
-                    .hits;
+    auto hits =
+        project.index.search_index().search(*index::Locator::parse(R"("shared_fn")"), 10, {}).hits;
     ZASSERT(hits.size() == 1u);
     auto shared = hits.front().hash;
     std::uint32_t requalified = 0;
@@ -608,8 +612,12 @@ ZEST_CASE(FailedSaveKeepsSearch) {
         bool fail_write = false;
         bool fail_advance = false;
 
-        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
-            return !fail_write && real->write(puts, removes);
+        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
+            if(fail_write) {
+                return std::unexpected("refused");
+            }
+            return real->write(puts, removes);
         }
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
@@ -630,7 +638,7 @@ ZEST_CASE(FailedSaveKeepsSearch) {
     project.database = std::move(flaky);
     auto hits = [&](llvm::StringRef name) {
         return project.index.search_index()
-            .search(*index::SymbolQuery::parse(name), 10, {})
+            .search(*index::Locator::parse(name), 10, {})
             .hits.size();
     };
 
@@ -795,8 +803,12 @@ ZEST_CASE(FailedWriteNotCounted) {
 
         bool fail = true;
 
-        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
-            return !fail && real->write(puts, removes);
+        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
+            if(fail) {
+                return std::unexpected("refused");
+            }
+            return real->write(puts, removes);
         }
     };
 
@@ -868,10 +880,11 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
         bool fail = false;
         bool poisoned = false;
 
-        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
+        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
             if(fail) {
                 poisoned = true;
-                return false;
+                return std::unexpected("damaged");
             }
             return real->write(puts, removes);
         }
@@ -942,9 +955,11 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
             return real->read(kind, key);
         }
 
-        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
-            written = real->write(puts, removes);
-            return written;
+        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
+            auto committed = real->write(puts, removes);
+            written = committed.has_value();
+            return committed;
         }
 
         bool corrupted() const override {

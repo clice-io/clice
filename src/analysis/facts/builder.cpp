@@ -813,7 +813,7 @@ void FactsBuilder::classify(index::SymbolHash hash) {
         // pasted where the macro is defined.
         if(!facts.files[owner].source) {
             ConfiguringMacro configuring{.entity = id};
-            index.for_each_reference_file(hash, [&](Fid file) {
+            index.for_each_file(hash, index::SymbolFiles::Naming, [&](Fid file) {
                 if(id_of(file) != none || index.indexed(file)) {
                     return;
                 }

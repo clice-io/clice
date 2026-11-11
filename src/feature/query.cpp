@@ -47,7 +47,7 @@ Result<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
     // it is the shard fetch's answer.
     auto& files = ctx.query.file_table();
     auto file = files.intern(path);
-    if(!ctx.query.indexes(file)) {
+    if(!ctx.query.project().shard(file)) {
         ctx.unindexed.emplace_back(files.display(file));
         return std::nullopt;
     }
@@ -60,7 +60,7 @@ Result<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
 /// shard for it, which the caller answers as not found with the file
 /// noted. A path filter spelling a path names its file or directory by
 /// identity, a relative one from the current directory.
-Result<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
+Result<bool> anchor_paths(Context& ctx, index::Locator& query) {
     auto anchor = [&](std::string& path) -> Result<bool> {
         Spelling spelled(path, ctx.cwd);
         auto file = indexed_file(ctx, spelled);
@@ -130,7 +130,7 @@ SymbolEntry symbol_entry(Context& ctx, const index::IndexQuery::Located& located
 /// The symbols a locator names, held to its filters: an id or a place
 /// names its symbols outright, which a pattern's lookup filters itself.
 /// An id's paths name the file holding its entries, no filter.
-std::vector<index::IndexQuery::Located> located_by(Context& ctx, const index::SymbolQuery& query) {
+std::vector<index::IndexQuery::Located> located_by(Context& ctx, const index::Locator& query) {
     auto located = index::locate(ctx.query, query);
     if(query.by_pattern()) {
         return located;
@@ -152,13 +152,16 @@ std::vector<index::IndexQuery::Located> located_by(Context& ctx, const index::Sy
 /// The symbols a locator names; none is an unknown symbol. A locator
 /// naming a file the index has no shard for answers as unknown and notes
 /// the file.
-Result<std::vector<index::IndexQuery::Located>> resolve(Context& ctx, index::SymbolQuery query) {
+Result<std::vector<index::IndexQuery::Located>> resolve(Context& ctx, index::Locator query) {
     auto anchored = anchor_paths(ctx, query);
     if(!anchored) {
         return std::unexpected(anchored.error());
     }
     auto candidates =
         *anchored ? located_by(ctx, query) : std::vector<index::IndexQuery::Located>();
+    if(candidates.empty() && *anchored) {
+        candidates = index::predefined_macros(ctx.query, query);
+    }
     if(candidates.empty()) {
         return std::unexpected("symbol not found");
     }
@@ -179,10 +182,9 @@ std::unexpected<std::string> ambiguous(Context& ctx,
 
 /// Resolve a locator to exactly one symbol. A name none spells exactly
 /// names none: its closest matches are listed for the caller to pick.
-Result<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQuery query) {
+Result<index::IndexQuery::Located> resolve_unique(Context& ctx, index::Locator query) {
     std::optional<std::string> name;
-    if(query.by_pattern() && query.mode == index::SymbolQuery::Mode::Fuzzy &&
-       !query.pattern.empty()) {
+    if(query.by_pattern() && query.mode == index::Locator::Mode::Fuzzy && !query.pattern.empty()) {
         name = query.pattern;
     }
     auto candidates = resolve(ctx, std::move(query));
@@ -207,8 +209,8 @@ Result<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQue
 
 /// Hold a name query to the whole name: a near match is no symbol to act
 /// on, and a pattern names many. False for a pattern.
-bool hold_to_whole_name(index::SymbolQuery& locator) {
-    using Mode = index::SymbolQuery::Mode;
+bool hold_to_whole_name(index::Locator& locator) {
+    using Mode = index::Locator::Mode;
     if(!locator.by_pattern() || locator.mode == Mode::Exact) {
         return true;
     }
@@ -243,7 +245,7 @@ bool one_overload_set(llvm::ArrayRef<const index::IndexQuery::Located*> symbols)
 /// The rename target of the symbols a locator names: one symbol's, or,
 /// for a name the overloads of one scope spell, all of theirs — renamed
 /// together, a call a template leaves open between them stays theirs.
-Result<RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
+Result<RenameTarget> target_of(Context& ctx, index::Locator locator) {
     if(!hold_to_whole_name(locator)) {
         return std::unexpected("a rename names its symbol by its whole name, not by a pattern");
     }
@@ -344,7 +346,7 @@ std::vector<GraphEntry> graph_entries(llvm::ArrayRef<CallEdge> edges) {
 }  // namespace
 
 Result<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, std::size_t limit) {
-    auto query = index::SymbolQuery::parse(text);
+    auto query = index::Locator::parse(text);
     if(!query) {
         return std::unexpected(query.error());
     }
@@ -358,6 +360,7 @@ Result<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, std
     }
     auto located =
         query->by_pattern() ? index::search(ctx.query, *query, limit) : located_by(ctx, *query);
+    located = index::every_definition(ctx.query, std::move(located));
     if(located.size() > limit) {
         located.resize(limit);
     }
@@ -367,7 +370,7 @@ Result<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, std
     return result;
 }
 
-Result<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) {
+Result<ReadSymbolResult> read_symbol(Context& ctx, index::Locator locator) {
     auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
@@ -452,7 +455,7 @@ Result<DocumentSymbolsResult>
     return result;
 }
 
-Result<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
+Result<DefinitionResult> definition(Context& ctx, index::Locator locator) {
     auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
@@ -473,20 +476,40 @@ Result<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
                              hash,
                              anchor,
                              defined ? RelationKind::Definition : RelationKind::Declaration);
-    if(definition) {
-        auto lines = lines_of(definition->extent);
-        result.definition = LocationEntry{
-            .file = std::string(definition->extent.path),
+    auto entry = [](const index::Site& extent, std::string text) {
+        auto lines = lines_of(extent);
+        return LocationEntry{
+            .file = std::string(extent.path),
             .start_line = lines.start,
             .end_line = lines.end,
-            .text = std::move(definition->text),
+            .text = std::move(text),
         };
+    };
+    if(!definition) {
+        // A macro no file defines names where it comes from.
+        if(!resolved->site.file.valid()) {
+            result.definition = entry(resolved->site, "");
+        }
+        return result;
     }
+    if(defined) {
+        for(auto& other: ctx.query.definitions(hash, anchor)) {
+            if(index::site_key(other.extent) == index::site_key(definition->extent)) {
+                continue;
+            }
+            if(auto text = ctx.query.serving_text(other.extent.file)) {
+                auto range = other.extent.range;
+                result.other_definitions.push_back(
+                    entry(other.extent, text->substr(range.begin, range.length())));
+            }
+        }
+    }
+    result.definition = entry(definition->extent, std::move(definition->text));
     return result;
 }
 
 Result<ReferencesResult> references(Context& ctx,
-                                    index::SymbolQuery locator,
+                                    index::Locator locator,
                                     bool include_declaration) {
     auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
@@ -596,9 +619,7 @@ PlannedRename rename(Context& ctx,
     return planned;
 }
 
-Result<CallGraphResult> call_graph(Context& ctx,
-                                   index::SymbolQuery locator,
-                                   CallGraphOptions options) {
+Result<CallGraphResult> call_graph(Context& ctx, index::Locator locator, CallGraphOptions options) {
     auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
@@ -612,7 +633,7 @@ Result<CallGraphResult> call_graph(Context& ctx,
     };
 }
 
-Result<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQuery locator) {
+Result<std::vector<index::SymbolHash>> declaration(Context& ctx, index::Locator locator) {
     if(!hold_to_whole_name(locator)) {
         return std::unexpected("a declaration is named by its whole name, not by a pattern");
     }
@@ -642,12 +663,12 @@ Result<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQu
 }
 
 Result<std::vector<index::IndexQuery::Located>> named_symbols(Context& ctx,
-                                                              index::SymbolQuery locator) {
+                                                              index::Locator locator) {
     hold_to_whole_name(locator);
     return resolve(ctx, std::move(locator));
 }
 
-Result<ImplementationResult> implementation(Context& ctx, index::SymbolQuery locator) {
+Result<ImplementationResult> implementation(Context& ctx, index::Locator locator) {
     auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {
         return std::unexpected(resolved.error());
@@ -660,7 +681,7 @@ Result<ImplementationResult> implementation(Context& ctx, index::SymbolQuery loc
 }
 
 Result<TypeHierarchyResult> type_hierarchy(Context& ctx,
-                                           index::SymbolQuery locator,
+                                           index::Locator locator,
                                            TypeHierarchyOptions options) {
     auto resolved = resolve_unique(ctx, std::move(locator));
     if(!resolved) {

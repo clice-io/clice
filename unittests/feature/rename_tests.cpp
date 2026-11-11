@@ -86,7 +86,7 @@ RenamePlan plan(const feature::RenameTarget& target, llvm::StringRef new_name) {
 
 /// The rename target of the one symbol the query `name` finds.
 feature::RenameTarget target(llvm::StringRef name) {
-    auto hits = index::locate(query, *index::SymbolQuery::parse(name));
+    auto hits = index::locate(query, *index::Locator::parse(name));
     ZASSERT(hits.size() == 1U);
     auto found = feature::rename_target(query, hits.front());
     ZASSERT(found);
@@ -116,7 +116,7 @@ std::string applied(const feature::BatchPlan& plan, llvm::StringRef path) {
 
 /// Rename the one symbol the query `name` finds.
 std::expected<RenamePlan, std::string> rename(llvm::StringRef name, llvm::StringRef new_name) {
-    auto hits = index::locate(query, *index::SymbolQuery::parse(name));
+    auto hits = index::locate(query, *index::Locator::parse(name));
     if(hits.size() != 1) {
         return std::unexpected(
             std::format("{} symbols match `{}`", hits.size(), std::string_view(name)));

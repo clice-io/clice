@@ -252,12 +252,11 @@ void IndexQuery::for_each_preamble(llvm::function_ref<bool(const IndexSource&)> 
         // The preamble shard's entries are buffer offsets of the file that
         // built the blob: serve them only for that very file and only while
         // the buffer still starts with the exact preamble text the blob was
-        // built from. The prefix comparison validates the described region
-        // directly — body edits never move preamble entries — so no dirty-flag
-        // gating is needed on top.
+        // built from (OpenBuffer::preamble_current) — body edits never move
+        // preamble entries, so no dirty-flag gating is needed on top.
         auto last = state->focus_file();
         if(files.find(Spelling::absolute(state->path(last))) != buffer.file ||
-           !state->matches_preamble(buffer.text)) {
+           !buffer.preamble_current) {
             continue;
         }
         if(!visit(buffer_source(IndexSource::Kind::PreambleShard, buffer, state->shard_of(last)))) {
@@ -350,17 +349,9 @@ const InstantiationShard* IndexQuery::instantiations_of(Fid file, const Shard& s
                                                                                     : nullptr;
 }
 
-const Shard* IndexQuery::shard_matching(Fid file, llvm::StringRef text) const {
-    auto* shard = index.shard(file);
-    return shard && shard->matches_content(text) ? shard : nullptr;
-}
-
 std::shared_ptr<TUIndex> IndexQuery::preamble_index(Fid file) const {
     auto* buffer = buffer_of(file);
-    if(!buffer || !buffer->preamble || !buffer->preamble->matches_preamble(buffer->text)) {
-        return nullptr;
-    }
-    return buffer->preamble;
+    return buffer && buffer->preamble_current ? buffer->preamble : nullptr;
 }
 
 bool IndexQuery::visit_overlay_relations(const TUIndex& state,
@@ -445,18 +436,16 @@ void IndexQuery::for_each_disk_file(SymbolHash hash,
                                     Fid anchor,
                                     RelationKind kind,
                                     llvm::function_ref<void(Fid)> visit) const {
-    if(index.find_symbol(hash)) {
-        if(kind.is_one_of(RelationKind::Definition)) {
-            index.for_each_definition_file(hash, visit);
-        } else {
-            index.for_each_reference_file(hash, visit);
-        }
+    auto which = kind.is_one_of(RelationKind::Definition)    ? SymbolFiles::Defining
+                 : kind.is_one_of(RelationKind::Declaration) ? SymbolFiles::Declaring
+                                                             : SymbolFiles::Naming;
+    index.for_each_file(hash, which, visit);
+    if(index.find_symbol(hash) || !anchor.valid()) {
         return;
     }
-    if(!anchor.valid()) {
-        return;
-    }
-    index.for_each_file_of_local(hash, anchor, visit);
+    // The anchor holds an entry of a symbol below external scope, whether
+    // or not other files do.
+    visit(anchor);
     // An open buffer's compile names the files declaring the locals it reads
     // through a precompiled header or a module, whose builds indexed them:
     // no unit of the buffer's lists them in the shared locals yet.
@@ -528,7 +517,7 @@ void IndexQuery::for_each_relation(SymbolHash hash,
         };
         for_each_disk_file(hash, anchor, kind, visit);
         if(with_instantiations) {
-            index.for_each_instantiation_file(hash, visit);
+            index.for_each_file(hash, SymbolFiles::Instantiating, visit);
         }
         return completed;
     };
@@ -618,8 +607,8 @@ Fid IndexQuery::definition_file(SymbolHash hash) const {
     if(!identity || !has_flag(identity->flags, SymbolFlags::HasDefinition)) {
         return {};
     }
-    // A symbol record never retracts a definition: a file reindexed or edited
-    // without it keeps the flag until another unit defines the symbol.
+    // The record follows the stored shard, which an open buffer edited
+    // since, or a variant no unit contributes any more, may not serve.
     Fid file{identity->file};
     auto* shard = declaring_shard(file);
     return shard && shard->has_relation(hash, RelationKind::Definition) ? file : Fid{};
@@ -787,15 +776,13 @@ std::optional<SymbolInfo> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) c
         }
     }
     // An instantiation or an expansion names it in a file other than its
-    // own: the files the shared locals list for it hold its declaration.
-    if(anchor.valid()) {
-        index.for_each_file_of_local(hash, anchor, [&](Fid file) {
-            auto* shard = found ? nullptr : index.shard(file);
-            if(auto identity = shard ? shard->find_symbol(hash) : std::nullopt) {
-                adopt(*identity);
-            }
-        });
-    }
+    // own: the files holding its entries hold its declaration.
+    index.for_each_file(hash, SymbolFiles::Naming, [&](Fid file) {
+        auto* shard = found ? nullptr : index.shard(file);
+        if(auto identity = shard ? shard->find_symbol(hash) : std::nullopt) {
+            adopt(*identity);
+        }
+    });
     return found;
 }
 
@@ -908,34 +895,22 @@ std::optional<IndexQuery::Placed> IndexQuery::canonical_placed(SymbolHash hash, 
         return placed;
     }
     // A declaration stands in only for a symbol nothing defines. A
-    // reported definition may sit in a file whose shard is not serving —
-    // withheld as stale, or an open buffer that moved on from it — and
-    // then stays unavailable (`clice query` reports such a symbol as not
-    // found). A deleted file holds nothing anymore, and a definition
-    // deleted since its report leaves no such relation behind.
-    if(reported_defined(hash, anchor)) {
-        bool unavailable = false;
-        for_each_disk_file(hash, anchor, RelationKind::Definition, [&](Fid file) {
-            auto* shard = index.shard(file);
-            if(unavailable || !shard || serving(file) || files.disk.seen_missing(file)) {
-                return;
-            }
-            unavailable = shard->has_relation(hash, RelationKind::Definition);
-        });
-        if(unavailable) {
-            return std::nullopt;
+    // definition may sit in a file whose shard is not serving — withheld
+    // as stale, or an open buffer that moved on from it — and then stays
+    // unavailable (`clice query` reports such a symbol as not found). A
+    // deleted file holds nothing anymore.
+    bool unavailable = false;
+    for_each_disk_file(hash, anchor, RelationKind::Definition, [&](Fid file) {
+        auto* shard = index.shard(file);
+        if(unavailable || !shard || serving(file) || files.disk.seen_missing(file)) {
+            return;
         }
+        unavailable = shard->has_relation(hash, RelationKind::Definition);
+    });
+    if(unavailable) {
+        return std::nullopt;
     }
     return first_placed(hash, anchor, RelationKind::Declaration);
-}
-
-bool IndexQuery::reported_defined(SymbolHash hash, Fid anchor) const {
-    if(auto info = symbol_info(hash, anchor);
-       info && has_flag(info->flags, SymbolFlags::HasDefinition)) {
-        return true;
-    }
-    auto identity = index.find_symbol(hash);
-    return identity && has_flag(identity->flags, SymbolFlags::HasDefinition);
 }
 
 std::vector<IndexQuery::Located> IndexQuery::located_targets(SymbolHash hash,

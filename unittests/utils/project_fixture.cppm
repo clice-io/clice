@@ -31,17 +31,13 @@ struct ProjectFixture {
     }
 
     /// Open `path`, its last compile having read `read`, as the server
-    /// adopts a compiled document: its node joins the graph, the disk under
-    /// it is current, and unless its compile skips the bodies of its
-    /// headers, its index is left to it.
+    /// adopts a compiled document: its node joins the graph, and the disk
+    /// under it is current.
     Fid open_document(llvm::StringRef path, llvm::SmallVector<Fid> read = {}) {
         auto file = intern(path);
         open_files.push_back({.file = file, .read = std::move(read)});
         project.graph.add(ast_node(file));
         files.disk.current(file);
-        if(!project.settings.project.skip_header_bodies) {
-            project.background_index.leave_to_document(file);
-        }
         return file;
     }
 };

@@ -1,0 +1,75 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query symbol-search \"draw path:a.h\""]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "draw",
+        "signature": "()",
+        "kind": "Method",
+        "file": "${WS}/a.cpp",
+        "line": 2,
+        "container": "Widget",
+        "symbol": "#38d475f4ce990c14"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query symbol-search path:a.h"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "Widget",
+        "signature": null,
+        "kind": "Struct",
+        "file": "${WS}/a.h",
+        "line": 2,
+        "container": null,
+        "symbol": "#5b52580eb5b8875a"
+      },
+      {
+        "name": "draw",
+        "signature": "()",
+        "kind": "Method",
+        "file": "${WS}/a.cpp",
+        "line": 2,
+        "container": "Widget",
+        "symbol": "#38d475f4ce990c14"
+      },
+      {
+        "name": "free_function",
+        "signature": "()",
+        "kind": "Function",
+        "file": "${WS}/a.cpp",
+        "line": 3,
+        "container": null,
+        "symbol": "#758b8dadf482777f"
+      },
+      {
+        "name": "hide",
+        "signature": "()",
+        "kind": "Method",
+        "file": "${WS}/a.h",
+        "line": 4,
+        "container": "Widget",
+        "symbol": "#1122e728677fec01"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0

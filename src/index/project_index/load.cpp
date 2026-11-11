@@ -23,10 +23,10 @@ LoadResult ProjectIndex::open(BlobDatabase& db) {
     }
     header = std::move(*decoded);
     this->db = &db;
-    pending_symbols.insert(header.search_pending.begin(), header.search_pending.end());
+    search.pending_symbols.insert(header.search_pending.begin(), header.search_pending.end());
     for(auto path: header.search_pending_files) {
         if(auto file = fid_of(path); file.valid()) {
-            pending_files.insert(file);
+            search.pending_files.insert(file);
         }
     }
     for(auto path: header.owed_units) {
@@ -47,9 +47,9 @@ LoadResult ProjectIndex::open(BlobDatabase& db) {
                 break;
             }
         }
-        if(run.size() != end - first || !search.replace(0, std::move(run))) {
+        if(run.size() != end - first || !search.index.replace(0, std::move(run))) {
             LOG_INFO("The search index does not load; it is built again");
-            search.clear();
+            search.index.clear();
             drop_search_runs(static_cast<std::uint32_t>(header.search_run_ends.size()));
             break;
         }

@@ -115,21 +115,6 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
         LOG_DEBUG("Rejecting TU index: reference file past the path table");
         return {};
     }
-    // The merge adds them to the records its pass over the external
-    // symbols left.
-    auto& other_entries = root.other_definition_entries;
-    if(other_entries.size() != root.other_definition_files.size() ||
-       !ranges::is_sorted(other_entries) ||
-       ranges::any_of(other_entries,
-                      [&](std::uint32_t entry) {
-                          return entry >= symbol_count ||
-                                 static_cast<SymbolScope>(root.symbol_scopes[entry]) !=
-                                     SymbolScope::External;
-                      }) ||
-       ranges::any_of(root.other_definition_files, past_paths)) {
-        LOG_DEBUG("Rejecting TU index: malformed other definition files");
-        return {};
-    }
     // section_of binary-searches the section table by path id and shard_of
     // trusts the result, so the ids must ascend strictly — a repeated or
     // out-of-order id would attribute one file's index to another.
@@ -328,18 +313,6 @@ void TUIndex::for_each_instantiation_file(
     }
 }
 
-void TUIndex::for_each_other_definition(
-    llvm::function_ref<void(SymbolHash, std::uint32_t path_id)> callback) const {
-    if(!loaded()) {
-        return;
-    }
-    auto& root = view_of(data);
-    for(auto&& [entry, path_id]:
-        views::zip(root.other_definition_entries, root.other_definition_files)) {
-        callback(root.symbol_hashes[entry], path_id);
-    }
-}
-
 void TUIndex::for_each_symbol(
     llvm::function_ref<bool(SymbolHash, const SymbolView&, llvm::ArrayRef<std::uint32_t>)> callback)
     const {
@@ -427,79 +400,6 @@ llvm::SmallVector<std::uint32_t, 4> TUIndex::instantiation_sections_naming(Symbo
         }
     }
     return sections;
-}
-
-std::optional<std::vector<TUSharedLocal>>
-    TUIndex::shared_locals(const llvm::BitVector& held) const {
-    std::vector<TUSharedLocal> result;
-    bool valid = true;
-    for_each_symbol(
-        [&](SymbolHash hash, const SymbolView& identity, llvm::ArrayRef<std::uint32_t> files) {
-            if(identity.scope == SymbolScope::External || files.size() < 2) {
-                return true;
-            }
-            if(ranges::any_of(files, [&](std::uint32_t path_id) { return !held.test(path_id); })) {
-                valid = false;
-                return false;
-            }
-            result.push_back({
-                .symbol = hash,
-                .paths = {files.begin(), files.end()}
-            });
-            return true;
-        });
-    if(!valid) {
-        return std::nullopt;
-    }
-    return result;
-}
-
-bool TUIndex::matches_preamble(llvm::StringRef text) const {
-    if(!loaded()) {
-        return false;
-    }
-    auto& root = view_of(data);
-    auto& size = root.preamble_size;
-    return text.size() >= size && llvm::xxh3_64bits(text.take_front(size)) == root.preamble_hash;
-}
-
-std::vector<DocumentLink> TUIndex::links() const {
-    if(!loaded()) {
-        return {};
-    }
-    auto& entries = view_of(data).links;
-
-    std::vector<DocumentLink> links;
-    links.reserve(entries.size());
-    for(std::uint32_t i = 0; i < entries.size(); i += 1) {
-        auto& entry = entries[i];
-        links.push_back(DocumentLink{
-            .range = entry.range,
-            .target = std::string(entry.target),
-        });
-    }
-    return links;
-}
-
-llvm::ArrayRef<std::uint32_t> TUIndex::inactive_regions() const {
-    if(!loaded()) {
-        return {};
-    }
-    return view_of(data).inactive_regions;
-}
-
-llvm::ArrayRef<std::uint8_t> TUIndex::open_conditionals() const {
-    if(!loaded()) {
-        return {};
-    }
-    return view_of(data).open_conditionals;
-}
-
-llvm::StringRef TUIndex::preamble_diagnostics() const {
-    if(!loaded()) {
-        return {};
-    }
-    return llvm::StringRef(view_of(data).diagnostics);
 }
 
 }  // namespace clice::index

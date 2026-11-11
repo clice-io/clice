@@ -1,0 +1,5 @@
+[test.father]
+workspace_symbols = [
+    { name = "father()", kind = "Function", at = "main.c │ void ⟦father⟧(void) {}" },
+    { name = "father()", kind = "Function", at = "weak.c │ __attribute__((weak)) void ⟦father⟧(void) {}" },
+]

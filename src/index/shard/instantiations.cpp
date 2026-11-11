@@ -520,6 +520,30 @@ void InstantiationShard::records_of(
     });
 }
 
+std::vector<SymbolHash> InstantiationShard::named_symbols() const {
+    if(!buffer) {
+        return {};
+    }
+    auto& root = view_of(bytes());
+    auto table = RecordTable::of(root);
+    llvm::BitVector named(root.symbol_hashes.size());
+    for(std::uint32_t record = 0; record < table.size(); record += 1) {
+        named.set(table.targets[record]);
+        if(has_from(table.kind_of(record))) {
+            named.set(table.froms[record]);
+        }
+    }
+    std::vector<SymbolHash> symbols;
+    for(auto id: named.set_bits()) {
+        symbols.push_back(root.symbol_hashes[id]);
+    }
+    return symbols;
+}
+
+bool InstantiationShard::names(SymbolHash symbol) const {
+    return ranges::binary_search(named_symbols(), symbol);
+}
+
 void InstantiationShard::for_each_record(
     llvm::function_ref<bool(const InstantiationRecord&)> callback) const {
     if(!buffer) {

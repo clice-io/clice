@@ -9,6 +9,7 @@ import :settings.rules;
 import :settings.settings;
 import :support.logging;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -91,15 +92,13 @@ ZEST_CASE(ModuleLintScanParity) {
 ZEST_SUITE(UnitIndex) {
 
 ZEST_CASE(OutdatedRerunsInFull) {
-    // Two headers with the same bytes share one variant identity. Only
-    // x1.h stores it, so b.cpp's x2.h section matches a known hash while
-    // its own file stores nothing: that result must not commit, and the
-    // rerun sends every section.
+    // b.cpp is told x.h's variant is stored and names it by hash alone;
+    // the variant leaves the index before the result arrives. That result
+    // must not commit, and the rerun sends every section.
     TempDir tmp;
-    tmp.touch("x1.h", "#pragma once\nint f();\n");
-    tmp.touch("x2.h", "#pragma once\nint f();\n");
-    tmp.touch("a.cpp", "#include \"x1.h\"\nint a() { return f(); }\n");
-    tmp.touch("b.cpp", "#include \"x1.h\"\n#include \"x2.h\"\nint b() { return f(); }\n");
+    tmp.touch("x.h", "#pragma once\nint f();\n");
+    tmp.touch("a.cpp", "#include \"x.h\"\nint a() { return f(); }\n");
+    tmp.touch("b.cpp", "#include \"x.h\"\nint b() { return f(); }\n");
 
     IndexerFixture f;
     write_cdb(tmp,
@@ -113,8 +112,8 @@ ZEST_CASE(OutdatedRerunsInFull) {
 
     auto a = index_file(tmp, tmp.path("a.cpp"));
     ZASSERT(f.merge(a.data));
-    auto x2_id = f.project.file_table.intern(Spelling::absolute(tmp.path("x2.h")));
-    ZASSERT(!f.project.index.shard(x2_id));
+    auto x_id = f.project.file_table.intern(Spelling::absolute(tmp.path("x.h")));
+    ZASSERT(f.project.index.shard(x_id));
 
     auto b_id = f.project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
     std::vector<UnitResult::Status> results;
@@ -129,6 +128,13 @@ ZEST_CASE(OutdatedRerunsInFull) {
         for(int run = 0; run < 2; run += 1) {
             UnitRequest request;
             request.index = true;
+            // Asked as the result arrives, before it merges.
+            request.outdated = [&f, x_id, run] {
+                if(run == 0) {
+                    IndexInternals::retire_shard(f.project.index, x_id);
+                }
+                return false;
+            };
             results.push_back((co_await f.project.compile_unit(b_id, std::move(request)))->status);
         }
 
@@ -143,7 +149,7 @@ ZEST_CASE(OutdatedRerunsInFull) {
 
     using enum UnitResult::Status;
     ZEXPECT(results == (std::vector<UnitResult::Status>{Preempted, Completed}));
-    ZEXPECT(f.project.index.shard(x2_id) != nullptr);
+    ZEXPECT(f.project.index.shard(x_id) != nullptr);
 }
 
 ZEST_CASE(BuildsIndexModules) {

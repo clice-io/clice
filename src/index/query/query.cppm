@@ -78,6 +78,11 @@ struct OpenBuffer {
     /// shared by the buffers sharing the preamble; null for none.
     std::shared_ptr<TUIndex> preamble;
 
+    /// Whether the buffer still starts with the exact preamble that index
+    /// was built from: only then do its entries of the buffer's own
+    /// preamble region, offsets into that text, serve.
+    bool preamble_current = false;
+
     /// The last compile's file index merged with the file's shard's
     /// entries in the code the compile skipped, which the file's other
     /// contexts compile, while the buffer is the text both indexed; it
@@ -247,13 +252,12 @@ inline bool is_function(SymbolKind kind) {
 ///   gated: a hash identifies one symbol, so even a stale shard answers
 ///   them correctly.
 ///
-/// The symbol records list the files holding an external symbol's entries,
-/// and only an external one's: every question about a symbol's entries also
-/// takes an `anchor`, a file holding one of them — the cursor's file, the
-/// file a relation was read from, a located symbol's site. Any other
-/// symbol's entries are the anchor's and those in the files the TUs' shared
-/// locals list for it (ProjectIndex::for_each_file_of_local). External symbols
-/// ignore the anchor.
+/// The symbol records list the files holding the entries of an external
+/// symbol, and of one below external scope only once several files hold
+/// them: every question about a symbol's entries also takes an `anchor`, a
+/// file holding one of them — the cursor's file, the file a relation was
+/// read from, a located symbol's site — where the entries of a symbol
+/// without a record are. External symbols ignore the anchor.
 class IndexQuery {
 public:
     /// A null gate never withholds. It reads no open document: every file
@@ -292,20 +296,10 @@ public:
     bool with_preamble(const IndexSource& source,
                        llvm::function_ref<void(const Shard&)> visit) const;
 
-    /// Whether the project index holds a shard of `file`.
-    bool indexes(Fid file) const {
-        return index.shard(file) != nullptr;
-    }
-
     /// The files whose text the index no longer describes: an open buffer
     /// edited since both its compile and its shard, a file changed on disk
     /// since it was indexed — which its file record tells, no shard read.
     std::vector<Fid> outdated_files() const;
-
-    /// The file's shard when `text` is byte-identical to the content it
-    /// indexed (clause 4's content gate alone): disk-truth products such as
-    /// manifest edges are only meaningful against text the index described.
-    const Shard* shard_matching(Fid file, llvm::StringRef text) const;
 
     /// An open buffer's PCH index while the buffer still starts with the
     /// exact preamble the index was built from; null otherwise.
@@ -574,13 +568,9 @@ private:
     /// first_site with the declaration's extent.
     std::optional<Placed> first_placed(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
-    /// Whether some unit reported a definition of the symbol: an open
-    /// session's table knows only its own unit, the symbol records all.
-    bool reported_defined(SymbolHash hash, Fid anchor) const;
-
-    /// The disk files that may hold the symbol's `kind` relations, by its
-    /// scope (see the class comment on anchors): for a definition of a
-    /// symbol of the project table, the files its record says define it.
+    /// The disk files that may hold the symbol's `kind` relations: the
+    /// files its record says define, declare or name it, and for a symbol
+    /// below external scope the anchor (see the class comment).
     void for_each_disk_file(SymbolHash hash,
                             Fid anchor,
                             RelationKind kind,

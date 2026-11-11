@@ -8,20 +8,20 @@ import :vfs.path;
 namespace clice::testing {
 namespace {
 
-using index::SymbolQuery;
-using Mode = SymbolQuery::Mode;
+using index::Locator;
+using Mode = Locator::Mode;
 
-SymbolQuery parsed(llvm::StringRef text) {
-    auto query = SymbolQuery::parse(text);
-    return query ? *query : SymbolQuery{};
+Locator parsed(llvm::StringRef text) {
+    auto query = Locator::parse(text);
+    return query ? *query : Locator{};
 }
 
 std::string error_of(llvm::StringRef text) {
-    auto query = SymbolQuery::parse(text);
+    auto query = Locator::parse(text);
     return query ? "" : query.error();
 }
 
-std::vector<std::string> scope_names(const SymbolQuery& query) {
+std::vector<std::string> scope_names(const Locator& query) {
     std::vector<std::string> names;
     for(auto& segment: query.scope) {
         names.push_back(segment.name + segment.args);
@@ -43,7 +43,7 @@ llvm::SmallVector<index::ScopeEntry> chain(std::initializer_list<llvm::StringRef
     return entries;
 }
 
-ZEST_SUITE(SymbolQuery) {
+ZEST_SUITE(Locator) {
 
 ZEST_CASE(Modes) {
     auto fuzzy = parsed("foo");
@@ -278,7 +278,7 @@ ZEST_CASE(Scope) {
     ZEXPECT(index::in_scope(parsed("INNER::paint"), chain({"inner"})));
 }
 
-};  // ZEST_SUITE(SymbolQuery)
+};  // ZEST_SUITE(Locator)
 
 }  // namespace
 }  // namespace clice::testing

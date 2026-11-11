@@ -35,6 +35,7 @@ import :vfs.cache_store;
 import :vfs.file_table;
 import :vfs.path;
 import :worker.pool;
+import :worker.preamble_index;
 import :worker.protocol;
 
 namespace clice {
@@ -55,17 +56,6 @@ struct ContextChoices {
     std::string bytes;
 
     bool dirty = false;
-};
-
-/// Who compiles a unit (Project::compiled_by).
-enum class CompiledBy : std::uint8_t {
-    /// An open document's own compile: its index stands for the unit's
-    /// until the document closes (BackgroundIndex::leave_to_document).
-    Document,
-    /// A build: its PCM's, or that of the precompiled header it writes.
-    Build,
-    /// Its own compile (compile_unit).
-    Itself,
 };
 
 /// An open document, as a change of the project's inputs needs it: the
@@ -230,6 +220,12 @@ struct Project {
     /// A compact copy of the database failed this session, or could not
     /// replace the file: the file shrinks no more until the next session.
     bool shrink_failed = false;
+
+    /// The bytes of the batch the database refused at the last save, which
+    /// stay in memory for the next one; zero once a save commits. The first
+    /// refusal in a row tells the user, and a server stops indexing while
+    /// they are too many (ServedProject::checkpoint_task).
+    std::uint64_t unsaved_bytes = 0;
 
     /// The generation of context-affecting project state: the include graph,
     /// the include trees — a tree moves its host's contexts — and the
@@ -929,7 +925,7 @@ struct Project {
     /// re-adopts the corrupt pair from the precompiled records and silently
     /// degrades again. With the pair gone the next acquisition is a miss and
     /// rebuilds both halves. It stays loaded while someone holds it.
-    std::shared_ptr<index::TUIndex> preamble_index(llvm::StringRef pch_key);
+    std::shared_ptr<worker::PreambleIndex> preamble_index(llvm::StringRef pch_key);
 
     /// Forget the entries whose pairs the store's LRU evicted from disk (inside
     /// a commit, maybe on a worker thread), or the content-keyed map grows
@@ -1068,10 +1064,6 @@ struct Project {
     /// Its run then waits on the build rather than compiling the unit again
     /// (compile_unit), but for the products only a compile brings.
     bool compiled_by_build(Fid unit);
-
-    /// Who compiles `unit`: an open document it was left to, else a build
-    /// (compiled_by_build), else its own run.
-    CompiledBy compiled_by(Fid unit);
 
     /// Whether the unit's index holds: built under its command of now, from
     /// inputs that hold (ProjectIndex::needs_reindex).

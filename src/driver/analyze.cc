@@ -210,7 +210,7 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
                 return std::unexpected(std::format("--move-entity {}: expected <locator>=<header>",
                                                    std::string_view(move)));
             }
-            auto locator = index::SymbolQuery::parse(text);
+            auto locator = index::Locator::parse(text);
             if(!locator) {
                 return std::unexpected(
                     std::format("--move-entity {}: {}", std::string_view(move), locator.error()));

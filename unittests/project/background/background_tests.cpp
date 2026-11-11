@@ -482,9 +482,10 @@ ZEST_CASE(SaveStartsOwedPass) {
 
         bool poisoned = false;
 
-        bool write(llvm::ArrayRef<Blob>, llvm::ArrayRef<index::BlobKey>) override {
+        std::expected<void, std::string> write(llvm::ArrayRef<Blob>,
+                                               llvm::ArrayRef<index::BlobKey>) override {
             poisoned = true;
-            return false;
+            return std::unexpected("damaged");
         }
 
         bool corrupted() const override {

@@ -4,6 +4,7 @@ import :compile.inactive_regions;
 import :feature.document_links;
 import :feature.protocol;
 import :index.query;
+import :index.shard;
 import :index.symbol;
 import :index.project_index.manifest;
 import :syntax.lexical_scan;
@@ -12,8 +13,8 @@ import :vfs.file_table;
 
 namespace clice::feature {
 
-auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink> {
-    std::vector<index::DocumentLink> links;
+auto document_links(CompilationUnit& unit) -> std::vector<feature::DocumentLink> {
+    std::vector<feature::DocumentLink> links;
 
     auto focus = unit.focus_file();
     auto directives_it = unit.directives().find(focus.file());
@@ -31,7 +32,7 @@ auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink> {
         auto range = find_directive_argument(focus.lexical(), content, offset);
         if(!range)
             return;
-        links.push_back(index::DocumentLink{.range = *range, .target = target.str()});
+        links.push_back(feature::DocumentLink{.range = *range, .target = target.str()});
     };
 
     for(const auto& include: directives.includes) {
@@ -60,16 +61,16 @@ auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink> {
 
     // Directives are collected grouped by kind; the reply promises
     // document order.
-    ranges::sort(links, {}, [](const index::DocumentLink& link) { return link.range.begin; });
+    ranges::sort(links, {}, [](const feature::DocumentLink& link) { return link.range.begin; });
 
     return links;
 }
 
 auto document_links(SourceText& source, llvm::ArrayRef<index::ResolvedInclude> includes)
-    -> std::vector<index::DocumentLink> {
+    -> std::vector<feature::DocumentLink> {
     auto positions = source.positions();
 
-    std::vector<index::DocumentLink> links;
+    std::vector<feature::DocumentLink> links;
     for(const auto& include: includes) {
         auto line = include.line == 0 ? std::nullopt : positions.line_bounds(include.line - 1);
         if(!line) {
@@ -82,47 +83,51 @@ auto document_links(SourceText& source, llvm::ArrayRef<index::ResolvedInclude> i
         links.push_back({.range = *range, .target = include.target});
     }
 
-    ranges::sort(links, [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
+    ranges::sort(links, [](const feature::DocumentLink& lhs, const feature::DocumentLink& rhs) {
         return std::tie(lhs.range.begin, lhs.target) < std::tie(rhs.range.begin, rhs.target);
     });
     auto duplicates =
-        ranges::unique(links, [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
-            return lhs.range == rhs.range && lhs.target == rhs.target;
-        });
+        ranges::unique(links,
+                       [](const feature::DocumentLink& lhs, const feature::DocumentLink& rhs) {
+                           return lhs.range == rhs.range && lhs.target == rhs.target;
+                       });
     links.erase(duplicates.begin(), duplicates.end());
 
     return links;
 }
 
 auto document_links(SourceText& source, const index::IndexQuery& query, Fid file)
-    -> std::vector<index::DocumentLink> {
-    if(!query.shard_matching(file, source.text())) {
+    -> std::vector<feature::DocumentLink> {
+    // The included files are the stored text's: they describe the buffer
+    // only while it is that text.
+    auto* shard = query.project().shard(file);
+    if(!shard || !shard->matches_content(source.text())) {
         return {};
     }
     return document_links(source, query.project().resolved_includes(file));
 }
 
-auto merge(std::vector<index::DocumentLink> ast,
-           llvm::ArrayRef<index::DocumentLink> index,
-           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<index::DocumentLink> {
+auto merge(std::vector<feature::DocumentLink> ast,
+           llvm::ArrayRef<feature::DocumentLink> index,
+           llvm::ArrayRef<std::uint32_t> skipped) -> std::vector<feature::DocumentLink> {
     auto count = ast.size();
     for(const auto& link: index) {
         if(inactive_at(skipped, link.range.begin) &&
-           ranges::none_of(ast, [&](const index::DocumentLink& known) {
+           ranges::none_of(ast, [&](const feature::DocumentLink& known) {
                return known.range == link.range && known.target == link.target;
            })) {
             ast.push_back(link);
         }
     }
     if(ast.size() != count) {
-        ranges::stable_sort(ast, {}, [](const index::DocumentLink& link) {
+        ranges::stable_sort(ast, {}, [](const feature::DocumentLink& link) {
             return link.range.begin;
         });
     }
     return ast;
 }
 
-auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,
+auto to_protocol(llvm::ArrayRef<feature::DocumentLink> links,
                  const PositionMap& map,
                  PositionEncoding encoding,
                  FileTable& files) -> std::vector<protocol::DocumentLink> {
@@ -136,16 +141,16 @@ auto to_protocol(llvm::ArrayRef<index::DocumentLink> links,
     return result;
 }
 
-auto directive_location(FileTable& files, const index::DocumentLink& link) -> protocol::Location {
+auto directive_location(FileTable& files, const feature::DocumentLink& link) -> protocol::Location {
     return protocol::Location{
         .uri = to_uri(files.display_identity(link.target)),
         .range = protocol::Range{},
     };
 }
 
-auto link_at(llvm::ArrayRef<index::DocumentLink> links, std::uint32_t offset)
-    -> const index::DocumentLink* {
-    auto it = ranges::find_if(links, [&](const index::DocumentLink& link) {
+auto link_at(llvm::ArrayRef<feature::DocumentLink> links, std::uint32_t offset)
+    -> const feature::DocumentLink* {
+    auto it = ranges::find_if(links, [&](const feature::DocumentLink& link) {
         return link.range.contains(offset);
     });
     return it != links.end() ? &*it : nullptr;

@@ -1,5 +1,6 @@
 module clice;
 
+import :feature.document_links;
 import :feature.documentation;
 import :feature.hover.card;
 import :feature.hover;
@@ -135,6 +136,10 @@ auto hover_info(const index::IndexQuery& query,
     if(info->kind == SymbolKind::Module) {
         return module_hover(query, cursor, *info, documentation);
     }
+    // LIMITATION: the index holds a symbol's declared text, its scopes and
+    // its comment, no type facts: the card lacks the `aka` line and the
+    // value the AST's shows, while a document has no AST — evicted, its
+    // worker paused or crashed, read-only, or just opened.
     std::string definition;
     auto text = index::declared_text(query, symbol, cursor.site.file, RelationKind::Definition);
     if(!text) {
@@ -189,7 +194,7 @@ bool on_directive_line(llvm::StringRef text,
 auto directive_hover(llvm::StringRef text,
                      const PositionMap& map,
                      FileTable& files,
-                     const index::DocumentLink& link,
+                     const feature::DocumentLink& link,
                      protocol::MarkupKind kind,
                      PositionEncoding encoding) -> std::optional<protocol::Hover> {
     if(link.range.end > text.size()) {

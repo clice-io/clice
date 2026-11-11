@@ -38,16 +38,6 @@ std::vector<std::uint8_t> file_set(const Bitmap& ids) {
     return bytes;
 }
 
-/// A bit above SymbolFlags in a symbol record's flags: its other definition
-/// files follow its reference files, a record defined in one file holding
-/// no bytes for them.
-constexpr std::uint32_t defined_elsewhere = 1u << 16;
-
-std::uint32_t encoded_flags(const Symbol& symbol) {
-    return static_cast<std::uint16_t>(symbol.flags) |
-           (symbol.other_definition_files.isEmpty() ? 0 : defined_elsewhere);
-}
-
 template <typename Seq>
 std::optional<Bitmap> file_set_of(const Seq& bytes) {
     return read_file_set(llvm::ArrayRef<std::uint8_t>(bytes.data(), bytes.size()));
@@ -145,7 +135,6 @@ std::vector<std::byte> encode_record(const Header& header) {
     blob.format_version = index_format_version;
     blob.next_path = header.next_path;
     blob.next_version = header.next_version;
-    blob.unit_count = header.unit_count;
     blob.search_segments = header.search_segments;
     blob.search_run_ends = header.search_run_ends;
     blob.next_segment = header.next_segment;
@@ -171,8 +160,7 @@ std::optional<Header> decode_header(llvm::StringRef data) {
         return strictly_ascending(segments) && segments.back() < root->next_segment &&
                strictly_ascending(ends) && ends.front() > 0 && ends.back() == segments.size();
     };
-    if(!root || root->unit_count > root->next_path || !runs_ok() ||
-       !strictly_ascending(root->search_pending) ||
+    if(!root || !runs_ok() || !strictly_ascending(root->search_pending) ||
        ranges::any_of(root->search_pending, [](SymbolHash hash) { return reserved_key(hash); }) ||
        !named(root->search_pending_files) || !named(root->owed_units)) {
         return std::nullopt;
@@ -180,7 +168,6 @@ std::optional<Header> decode_header(llvm::StringRef data) {
     return Header{
         .next_path = root->next_path,
         .next_version = root->next_version,
-        .unit_count = root->unit_count,
         .search_segments = {root->search_segments.begin(),      root->search_segments.end()},
         .search_run_ends = {root->search_run_ends.begin(),      root->search_run_ends.end()},
         .next_segment = root->next_segment,
@@ -350,19 +337,14 @@ std::vector<std::byte> encode_record(const Symbol& symbol) {
     for(std::uint32_t shift = 0; shift < 64; shift += 8) {
         bytes.push_back(static_cast<std::uint8_t>(symbol.parent >> shift));
     }
-    write_varint(bytes, symbol.file == no_file ? 0 : std::uint64_t(symbol.file) + 1);
     write_varint(bytes, symbol.token_class.modifiers);
-    write_varint(bytes, encoded_flags(symbol));
+    write_varint(bytes, static_cast<std::uint16_t>(symbol.flags));
     bytes.push_back(symbol.kind.value());
     bytes.push_back(static_cast<std::uint8_t>(symbol.token_class.kind));
-    auto sized_set = [&](const Bitmap& ids) {
-        auto set = file_set(ids);
+    for(auto* ids: {&symbol.reference_files, &symbol.declaration_files, &symbol.definition_files}) {
+        auto set = file_set(*ids);
         write_varint(bytes, set.size());
         bytes.insert(bytes.end(), set.begin(), set.end());
-    };
-    sized_set(symbol.reference_files);
-    if(!symbol.other_definition_files.isEmpty()) {
-        sized_set(symbol.other_definition_files);
     }
     append_file_set(bytes, symbol.instantiation_files);
     auto* data = reinterpret_cast<const std::byte*>(bytes.data());
@@ -402,12 +384,11 @@ std::optional<Symbol> decode_symbol(llvm::StringRef data) {
         parent |= SymbolHash(bytes[at]) << shift;
         at += 1;
     }
-    auto file = number(std::uint64_t(no_file));
-    auto modifiers = file ? number(std::numeric_limits<std::uint32_t>::max()) : std::nullopt;
-    auto flags = modifiers ? number(std::numeric_limits<std::uint16_t>::max() | defined_elsewhere)
-                           : std::nullopt;
-    if(!flags || reserved_key(parent) || bytes.size() - at < 2 ||
-       !all_token_kinds(bytes.slice(at + 1, 1))) {
+    auto modifiers = number(std::numeric_limits<std::uint32_t>::max());
+    auto flags = modifiers ? number(std::numeric_limits<std::uint16_t>::max()) : std::nullopt;
+    // A record's files say whether the symbol is defined, never its flags.
+    if(!flags || has_flag(static_cast<SymbolFlags>(*flags), SymbolFlags::HasDefinition) ||
+       reserved_key(parent) || bytes.size() - at < 2 || !all_token_kinds(bytes.slice(at + 1, 1))) {
         return std::nullopt;
     }
     auto kind = bytes[at];
@@ -418,19 +399,10 @@ std::optional<Symbol> decode_symbol(llvm::StringRef data) {
         return part ? read_file_set(*part) : std::nullopt;
     };
     auto references = sized_set();
-    if(!references) {
-        return std::nullopt;
-    }
-    Bitmap others;
-    if(*flags & defined_elsewhere) {
-        auto read = sized_set();
-        if(!read || read->isEmpty()) {
-            return std::nullopt;
-        }
-        others = std::move(*read);
-    }
-    auto instantiations = read_file_set(bytes.drop_front(at));
-    if(!instantiations) {
+    auto declarations = references ? sized_set() : std::nullopt;
+    auto definitions = declarations ? sized_set() : std::nullopt;
+    auto instantiations = definitions ? read_file_set(bytes.drop_front(at)) : std::nullopt;
+    if(!instantiations || !definitions->isSubset(*declarations)) {
         return std::nullopt;
     }
     return Symbol{
@@ -439,12 +411,12 @@ std::optional<Symbol> decode_symbol(llvm::StringRef data) {
         .signature = text(*signature),
         .parent = parent,
         .kind = SymbolKind(kind),
-        .flags = static_cast<SymbolFlags>(*flags & ~defined_elsewhere),
+        .flags = static_cast<SymbolFlags>(*flags),
         .token_class = {.kind = static_cast<SemanticTokenKind>(token_kind),
                         .modifiers = static_cast<std::uint32_t>(*modifiers)},
-        .file = *file == 0 ? no_file : static_cast<std::uint32_t>(*file - 1),
-        .other_definition_files = std::move(others),
         .reference_files = std::move(*references),
+        .declaration_files = std::move(*declarations),
+        .definition_files = std::move(*definitions),
         .instantiation_files = std::move(*instantiations),
     };
 }
@@ -461,54 +433,21 @@ void measure_symbol(llvm::StringRef data, FieldBytes& bytes) {
         }
         return encoded.size();
     };
-    auto references = file_set(symbol->reference_files).size();
     bytes.add("text",
               varints({symbol->name.size(), symbol->args.size(), symbol->signature.size()}) +
                   symbol->name.size() + symbol->args.size() + symbol->signature.size());
     bytes.add("parent", sizeof(SymbolHash));
-    bytes.add("file, modifiers, flags, kinds",
-              varints({symbol->file == no_file ? 0 : std::uint64_t(symbol->file) + 1,
-                       symbol->token_class.modifiers,
-                       encoded_flags(*symbol)}) +
+    bytes.add("modifiers, flags, kinds",
+              varints({symbol->token_class.modifiers, static_cast<std::uint16_t>(symbol->flags)}) +
                   2);
-    bytes.add("reference files", varints({references}) + references);
-    if(!symbol->other_definition_files.isEmpty()) {
-        auto others = file_set(symbol->other_definition_files).size();
-        bytes.add("other definition files", varints({others}) + others);
-    }
+    auto sized = [&](llvm::StringRef name, const Bitmap& ids) {
+        auto size = file_set(ids).size();
+        bytes.add(name, varints({size}) + size);
+    };
+    sized("reference files", symbol->reference_files);
+    sized("declaration files", symbol->declaration_files);
+    sized("definition files", symbol->definition_files);
     bytes.add("instantiation files", file_set(symbol->instantiation_files).size());
-}
-
-std::vector<std::byte> encode_record(const SharedLocalSets& local) {
-    SharedLocalBlob blob;
-    for(auto& [files, units]: local) {
-        Bitmap set;
-        for(auto file: files) {
-            set.add(file);
-        }
-        blob.sets.push_back({.units = units, .files = file_set(set)});
-    }
-    return encode(blob);
-}
-
-std::optional<SharedLocalSets> decode_shared_local(llvm::StringRef data) {
-    auto* root = view_record<SharedLocalBlob>(data);
-    if(!root) {
-        return std::nullopt;
-    }
-    SharedLocalSets local;
-    for(auto& set: root->sets) {
-        auto files = file_set_of(set.files);
-        if(!files || files->isEmpty() || set.units == 0) {
-            return std::nullopt;
-        }
-        std::vector<std::uint32_t> listed(files->begin(), files->end());
-        if(!local.empty() && listed <= local.back().first) {
-            return std::nullopt;
-        }
-        local.emplace_back(std::move(listed), set.units);
-    }
-    return local;
 }
 
 std::vector<std::byte> encode_record(const PersistedVersion& version) {

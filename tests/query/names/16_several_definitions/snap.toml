@@ -1,0 +1,64 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query symbol-search father"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "father",
+        "signature": "()",
+        "kind": "Function",
+        "file": "${WS}/main.c",
+        "line": 1,
+        "container": null,
+        "symbol": "#ec7471bd7aa66b7a"
+      },
+      {
+        "name": "father",
+        "signature": "()",
+        "kind": "Function",
+        "file": "${WS}/weak.c",
+        "line": 1,
+        "container": null,
+        "symbol": "#ec7471bd7aa66b7a"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query definition father"]
+stdout = '''
+{
+  "result": {
+    "name": "father",
+    "kind": "Function",
+    "symbol": "#ec7471bd7aa66b7a",
+    "documentation": null,
+    "definition": {
+      "file": "${WS}/main.c",
+      "startLine": 1,
+      "endLine": 1,
+      "text": "void father(void) {}"
+    },
+    "otherDefinitions": [
+      {
+        "file": "${WS}/weak.c",
+        "startLine": 1,
+        "endLine": 1,
+        "text": "__attribute__((weak)) void father(void) {}"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0

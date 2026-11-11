@@ -3,8 +3,11 @@ module clice;
 import :command.file_kind;
 import :index.query;
 import :index.query.locate;
+import :index.query.site;
 import :index.search;
 import :index.indexing.tu_index;
+import :semantic.identity;
+import :semantic.symbol;
 import :semantic.token_class;
 import :support.logging;
 
@@ -38,7 +41,7 @@ struct RankedHits {
     bool exhausted = true;
 };
 
-RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std::uint32_t limit) {
+RankedHits ranked_search(const IndexQuery& index, const Locator& query, std::uint32_t limit) {
     const auto& project = index.project();
     auto& files = index.file_table();
     std::vector<Ranked> hits;
@@ -77,8 +80,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
     // run's snapshot, and the open sessions' — is judged symbol by symbol
     // against the same query.
     NameRanker ranker(query);
-    bool scoped =
-        query.absolute || !query.scope.empty() || query.mode == SymbolQuery::Mode::Members;
+    bool scoped = query.absolute || !query.scope.empty() || query.mode == Locator::Mode::Members;
     // Candidates share their containers: each is looked up once per
     // search, not once per candidate through every open session's table.
     llvm::DenseMap<SymbolHash, std::optional<SymbolInfo>> scopes;
@@ -89,21 +91,25 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
         }
         return it->second;
     };
+    // `declared`: the files declaring the symbol, the one file of a symbol
+    // below external scope.
     auto consider = [&](SymbolHash hash,
                         const SymbolView& identity,
-                        llvm::StringRef path,
+                        llvm::ArrayRef<llvm::StringRef> declared,
                         std::uint32_t reference_files,
                         Fid anchor) {
         if(!searchable(identity.kind, identity.name, identity.flags) || seen.contains(hash) ||
            (query.nameable_only && identity.scope != SymbolScope::External &&
-            !is_header_path(path))) {
+            ranges::none_of(declared, is_header_path))) {
             return;
         }
         if(!query.kinds.empty() && !ranges::contains(query.kinds, identity.kind)) {
             return;
         }
-        if(!query.paths.empty() && ranges::none_of(query.paths, [&](const std::string& wanted) {
-               return !path.empty() && path_matches(wanted, path);
+        if(!query.paths.empty() && ranges::none_of(declared, [&](llvm::StringRef path) {
+               return ranges::any_of(query.paths, [&](const std::string& wanted) {
+                   return path_matches(wanted, path);
+               });
            })) {
             return;
         }
@@ -140,11 +146,13 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
     };
     auto consider_symbol =
         [&](SymbolHash hash, const SymbolView& symbol, std::uint32_t references) {
-            llvm::StringRef path;
-            if(symbol.file != no_file) {
-                path = files.resolve(Fid{symbol.file});
+            llvm::SmallVector<llvm::StringRef, 4> declared;
+            if(!query.paths.empty()) {
+                project.for_each_file(hash, SymbolFiles::Declaring, [&](Fid file) {
+                    declared.push_back(files.resolve(file));
+                });
             }
-            consider(hash, symbol, path, references, {});
+            consider(hash, symbol, declared, references, {});
         };
     if(scan_records) {
         project.for_each_symbol(
@@ -169,7 +177,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
         if(auto* shard = index.declaring_shard(file)) {
             shard->for_each_local_symbol([&](SymbolHash hash, const SymbolView& identity) {
                 if(identity.scope == SymbolScope::Internal && shard->declares(hash)) {
-                    consider(hash, identity, path, 0, file);
+                    consider(hash, identity, {path}, 0, file);
                 }
                 return true;
             });
@@ -184,11 +192,11 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
                    project.find_symbol(hash)) {
                     return true;
                 }
-                llvm::StringRef path;
+                llvm::SmallVector<llvm::StringRef, 1> declared;
                 if(identity.file != no_file) {
-                    path = state.path(identity.file);
+                    declared.push_back(state.path(identity.file));
                 }
-                consider(hash, identity, path, references_of(hash), {});
+                consider(hash, identity, declared, references_of(hash), {});
                 return true;
             });
         return true;
@@ -218,7 +226,7 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
             }
             shard->for_each_local_symbol([&](SymbolHash hash, const SymbolView& identity) {
                 if(shard->declares(hash)) {
-                    consider(hash, identity, path, 0, file);
+                    consider(hash, identity, {path}, 0, file);
                 }
                 return true;
             });
@@ -235,8 +243,39 @@ RankedHits ranked_search(const IndexQuery& index, const SymbolQuery& query, std:
 
 }  // namespace
 
+std::optional<Site> predefined_site(const SymbolInfo& symbol) {
+    if(symbol.kind != SymbolKind::Macro) {
+        return std::nullopt;
+    }
+    for(auto [command_line, name]:
+        {std::pair(true, "<command line>"), std::pair(false, "<built-in>")}) {
+        if(symbol.hash == EntityTable::predefined_macro(symbol.name, command_line)) {
+            return Site{.path = name};
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<IndexQuery::Located> every_definition(const IndexQuery& index,
+                                                  std::vector<IndexQuery::Located> symbols) {
+    std::vector<IndexQuery::Located> result;
+    for(auto& located: symbols) {
+        auto definitions = index.definitions(located.symbol.hash, located.site.file);
+        if(definitions.size() < 2) {
+            result.push_back(std::move(located));
+            continue;
+        }
+        for(auto& definition: definitions) {
+            result.push_back({.symbol = located.symbol,
+                              .site = std::move(definition.site),
+                              .extent = std::move(definition.extent)});
+        }
+    }
+    return result;
+}
+
 std::vector<IndexQuery::Located> search(const IndexQuery& index,
-                                        const SymbolQuery& query,
+                                        const Locator& query,
                                         std::uint32_t limit) {
     Timer timer;
     if(limit == 0 || !query.by_pattern()) {
@@ -256,6 +295,9 @@ std::vector<IndexQuery::Located> search(const IndexQuery& index,
                 results.push_back({.symbol = std::move(hit.symbol),
                                    .site = placed->site,
                                    .extent = placed->extent});
+            } else if(auto site = predefined_site(hit.symbol)) {
+                results.push_back(
+                    {.symbol = std::move(hit.symbol), .site = *site, .extent = *site});
             }
         }
         if(results.size() == limit || ranked.exhausted) {
@@ -273,7 +315,7 @@ std::vector<IndexQuery::Located> search(const IndexQuery& index,
 Completables completables(const IndexQuery& index, llvm::StringRef prefix, std::uint32_t limit) {
     // Of the kinds a namespace's names have: a class's members, which a
     // scope's subtree holds more of, would crowd them out of the ranking.
-    SymbolQuery query{
+    Locator query{
         .pattern = prefix.str(),
         .kinds = {SymbolKind::Macro,
                   SymbolKind::Namespace,
@@ -334,7 +376,7 @@ Completables completables(const IndexQuery& index, llvm::StringRef prefix, std::
 }
 
 std::optional<IndexQuery::Cursor> cursor_at(const IndexQuery& index,
-                                            const SymbolQuery::Position& place) {
+                                            const Locator::Position& place) {
     assert(place.column);
     auto file = index.file_table().intern(Spelling::absolute(place.path));
     // A stale index describes text that no longer exists: resolving the
@@ -358,7 +400,7 @@ std::optional<IndexQuery::Cursor> cursor_at(const IndexQuery& index,
 
 /// The ranking of `query` down to every symbol spelling the name exactly,
 /// however many.
-static RankedHits exact_search(const IndexQuery& index, const SymbolQuery& query) {
+static RankedHits exact_search(const IndexQuery& index, const Locator& query) {
     for(std::uint32_t limit = 64;; limit *= 4) {
         auto ranked = ranked_search(index, query, limit);
         if(ranked.exhausted || (!ranked.hits.empty() && ranked.hits.back().rank.tier > 1)) {
@@ -367,7 +409,7 @@ static RankedHits exact_search(const IndexQuery& index, const SymbolQuery& query
     }
 }
 
-std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQuery& query) {
+std::vector<IndexQuery::Located> locate(const IndexQuery& index, const Locator& query) {
     if(query.handle) {
         Fid anchor;
         if(!query.paths.empty()) {
@@ -451,11 +493,36 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const SymbolQue
     return results;
 }
 
+std::vector<IndexQuery::Located> predefined_macros(const IndexQuery& index, const Locator& query) {
+    std::vector<IndexQuery::Located> macros;
+    auto add = [&](std::optional<SymbolInfo> symbol) {
+        if(auto site = symbol ? predefined_site(*symbol) : std::nullopt) {
+            macros.push_back({.symbol = std::move(*symbol), .site = *site, .extent = *site});
+        }
+    };
+    if(query.handle) {
+        add(index.symbol_info(*query.handle));
+    } else if(query.position && query.position->column) {
+        if(auto cursor = cursor_at(index, *query.position)) {
+            for(auto symbol: cursor->symbols) {
+                add(index.symbol_info(symbol, cursor->site.file));
+            }
+        }
+    } else if(query.by_pattern()) {
+        for(auto& hit: exact_search(index, query).hits) {
+            if(hit.rank.tier == 0) {
+                add(std::move(hit.symbol));
+            }
+        }
+    }
+    return macros;
+}
+
 std::vector<IndexQuery::Target> reached_by_selector(const IndexQuery& index,
                                                     const SymbolInfo& method) {
     auto ranked = exact_search(
         index,
-        {.mode = SymbolQuery::Mode::Exact, .pattern = method.name, .kinds = {SymbolKind::Method}});
+        {.mode = Locator::Mode::Exact, .pattern = method.name, .kinds = {SymbolKind::Method}});
     std::vector<IndexQuery::Target> reached;
     for(auto& hit: ranked.hits) {
         auto& other = hit.symbol;

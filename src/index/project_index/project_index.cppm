@@ -118,21 +118,34 @@ struct SaveBatch {
     std::uint32_t shards = 0;
 };
 
+/// Which of the files holding a symbol's entries a question reads.
+enum class SymbolFiles : std::uint8_t {
+    /// Every file whose entries name the symbol.
+    Naming,
+    /// The files declaring it, the ones defining it among them.
+    Declaring,
+    Defining,
+    /// The files whose instantiations and macro expansions name it.
+    Instantiating,
+};
+
 /// The project's index: a view of one read snapshot of the database plus,
 /// in a writer, the changes no save has committed yet. Every session reads
 /// the same way — a record is read when something asks for it, checked
 /// then, and kept — and opening reads only the header. The records:
 ///
-/// - per external symbol, its facts and the files referencing it (the
-///   cross-file query fan-out),
+/// - one manifest per indexed TU (replaced wholesale by its reindex),
+/// - per file its shard and its instantiation shard,
+///
+/// and what derives from those two, following every change of them:
+///
 /// - per file, what the units read of it, what its shard stores, the units
 ///   depending on it and how they resolved its `#include` lines, and the
-///   names of internal linkage it declares,
-/// - per symbol below external scope several files hold, the file sets the
-///   units list for it,
-/// - one manifest per indexed TU (replaced wholesale by its reindex), the
-///   source the per-file records derive from,
-/// - per file its shard and its instantiation shard,
+///   names of internal linkage it declares (from the manifests),
+/// - per external symbol, its facts as units report them and the files
+///   naming, declaring and defining it (from the shards): the cross-file
+///   query fan-out,
+/// - per symbol below external scope several files hold, those files alike,
 /// - the name search index and the entries it does not describe.
 ///
 /// A record failing its checks means a bug or damaged storage, never a
@@ -164,16 +177,13 @@ public:
     /// How many files reference the symbol; 0 for an unknown hash.
     std::uint32_t reference_count(SymbolHash hash) const;
 
-    /// The files referencing the symbol, as the file table's ids.
-    void for_each_reference_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const;
-
-    /// The files units defined the symbol in, as its record reports them:
-    /// `Symbol::file` and the other definition files; a namespace's, the
-    /// files naming it.
-    void for_each_definition_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const;
-
-    /// The files whose instantiation shards name the symbol.
-    void for_each_instantiation_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const;
+    /// The files whose stored entries hold `which` of the symbol, as the
+    /// file table's ids. False, visiting none, for a symbol without a
+    /// record: an unknown one, or one below external scope a single file
+    /// holds, whose entries are that file's.
+    bool for_each_file(SymbolHash hash,
+                       SymbolFiles which,
+                       llvm::function_ref<void(Fid)> visit) const;
 
     /// Every symbol, in no particular order — a scan of every symbol
     /// record; `visit` returns false to stop.
@@ -220,15 +230,6 @@ public:
     /// precompiled header (TUManifest::imports).
     void for_each_importer(Fid input, llvm::function_ref<void(Fid)> visit) const;
 
-    /// The files holding entries of a symbol below external scope: `anchor`,
-    /// a file that holds some, and the files of every TU's shared local
-    /// (TUManifest::shared_locals) for it that lists a file reached. A
-    /// `static` in a header is thus reached in every unit including the
-    /// header or reading it through a precompiled header. Each file once.
-    void for_each_file_of_local(SymbolHash hash,
-                                Fid anchor,
-                                llvm::function_ref<void(Fid)> visit) const;
-
     /// The includes of a document as units resolved them, the input of the
     /// document links computed from the index: every way a unit resolved its `#include` lines at
     /// its shard's content generation. Empty when the file was never indexed.
@@ -265,18 +266,18 @@ public:
     /// adds them as a run. Both persist with the header: it lists the
     /// runs' segments and carries the pending entries.
     const SearchIndex& search_index() const {
-        return search;
+        return search.index;
     }
 
     const llvm::DenseSet<SymbolHash>& search_pending() const {
-        return pending_symbols;
+        return search.pending_symbols;
     }
 
     /// The files whose names of internal linkage, in no symbol record,
     /// changed since the newest run's snapshot: a search reads them from the
     /// files' shards.
     const llvm::DenseSet<Fid>& search_pending_files() const {
-        return pending_files;
+        return search.pending_files;
     }
 
     /// The units a rebuild of a file they contribute to discarded the
@@ -426,22 +427,6 @@ public:
     /// Whether index state remains that no save committed.
     bool has_unsaved_state() const;
 
-    /// The symbol's entry to change: the changed entry when there is one,
-    /// else a copy of the stored one, else a fresh one. Its file and file
-    /// sets are path ids.
-    Symbol& edit(SymbolHash hash);
-
-    /// Merge a TU's external symbols straight off the serialized TU index;
-    /// `file_ids_map` maps the TU-local ids of `index`'s path table to pool
-    /// ids. A symbol whose stored facts the TU changes nothing of is not
-    /// touched. `added` receives the hashes of the symbols without a record yet
-    /// or whose name, arguments, parent, file or flags the merge changed, or
-    /// whose reference count crossed a power of two — what a name search
-    /// keyed on the records must re-read.
-    void merge_symbols(const TUIndex& index,
-                       llvm::ArrayRef<Fid> file_ids_map,
-                       llvm::SmallVectorImpl<SymbolHash>* added = nullptr);
-
     /// Install (or replace) a TU's manifest, update the file records it
     /// changes and refresh the live masks of the files whose contribution
     /// or use set changed. Returns those files.
@@ -461,10 +446,10 @@ private:
     friend struct testing::IndexInternals;
 
     /// The records of one kind as the index sees them: the ones changed
-    /// since the last save, the ones a running save writes, and copies of
-    /// the ones read from the database. A removed record is an empty
-    /// optional. StringMap boxes its entries, so a view of one survives
-    /// later reads.
+    /// since the last save, the ones a running save writes, and the ones
+    /// read from the database — decoded copies, or for shards views of the
+    /// read snapshot. A removed record is an empty optional. StringMap
+    /// boxes its entries, so a view of one survives later reads.
     template <typename Value>
     struct Records {
         BlobKind kind;
@@ -477,7 +462,8 @@ private:
     };
 
     /// The newest `key` record of `records`: changed, written, cached or
-    /// read from the database, `decode` turning its bytes into the value.
+    /// read from the database, `decode` turning its bytes into the value —
+    /// the buffer itself for a value that keeps it.
     template <typename Value, typename Decode>
     const Value* read(Records<Value>& records, llvm::StringRef key, Decode&& decode) const {
         for(auto* held: {&records.changed, &records.written, &records.cached}) {
@@ -488,7 +474,11 @@ private:
         std::optional<Value> value;
         if(db) {
             if(auto blob = db->read(records.kind, key)) {
-                value = decode(blob.buffer->getBuffer());
+                if constexpr(std::invocable<Decode&, std::unique_ptr<llvm::MemoryBuffer>>) {
+                    value = decode(std::move(blob.buffer));
+                } else {
+                    value = decode(blob.buffer->getBuffer());
+                }
                 if(!value) {
                     damaged_record(records.kind, key);
                 }
@@ -496,6 +486,18 @@ private:
         }
         auto& entry = records.cached.try_emplace(key, std::move(value)).first->second;
         return entry ? &*entry : nullptr;
+    }
+
+    /// The newest `key` record of `records` the index holds in memory, to
+    /// change in place; null for one it holds none of.
+    template <typename Value>
+    static Value* resident(Records<Value>& records, llvm::StringRef key) {
+        for(auto* held: {&records.changed, &records.written, &records.cached}) {
+            if(auto it = held->find(key); it != held->end()) {
+                return it->second ? &*it->second : nullptr;
+            }
+        }
+        return nullptr;
     }
 
     /// The `key` record of `records` to change, starting from read's.
@@ -563,7 +565,52 @@ private:
 
     Dependents& change_dependents(Fid file);
 
+    /// The record of an external symbol.
     const Symbol* symbol(SymbolHash hash) const;
+
+    /// The record of `hash`'s files: an external symbol's, else the one of
+    /// a symbol below external scope several files hold.
+    const Symbol* files_of(SymbolHash hash) const;
+
+    /// Merge the facts of a TU's external symbols straight off the
+    /// serialized TU index: a symbol whose stored facts the TU changes
+    /// nothing of is not touched. `added` receives the hashes of the
+    /// symbols without a record yet or whose name, arguments, parent or
+    /// flags the merge changed — what a name search keyed on the records
+    /// must re-read.
+    void merge_facts(const TUIndex& index, llvm::SmallVectorImpl<SymbolHash>& added);
+
+    /// Give each symbol below external scope the TU names in several files
+    /// (`file_ids_map` maps its path ids) a record of the files whose stored
+    /// entries mention it.
+    void list_locals(const TUIndex& index, llvm::ArrayRef<Fid> file_ids_map);
+
+    /// `file`'s shard goes from `before` to `after`, null for none: the
+    /// records of the symbols either mentions follow, and one no file
+    /// holds an entry of any more goes.
+    void update_symbols(Fid file, const Shard* before, const Shard* after);
+
+    /// The same for `file`'s instantiation shard.
+    void update_symbols(Fid file,
+                        const InstantiationShard* before,
+                        const InstantiationShard* after);
+
+    /// The record of a symbol, `local` for one below external scope, to
+    /// change; null for a symbol without one: an external one no unit
+    /// described, a local one a single file holds.
+    Symbol* change_symbol(SymbolHash hash, bool local);
+
+    /// What a search reads of the symbol's record changed, or no file holds
+    /// an entry of the symbol any more: the record goes then.
+    void symbol_changed(SymbolHash hash, bool local, const Symbol& record);
+
+    /// Make `replacement` the file's shard, none for an unloaded one: the
+    /// single place a file's stored entries change, which its file record,
+    /// the symbol records and the search index follow.
+    void replace_shard(Fid file, Shard replacement);
+
+    /// The same for the file's instantiation shard.
+    void replace_instantiations(Fid file, InstantiationShard replacement);
 
     /// The path id the database names `file` by, none for a file it never
     /// named.
@@ -615,9 +662,6 @@ private:
     /// the next save removes them.
     void drop_search_runs(std::uint32_t runs);
 
-    /// Retire a file's instantiation shard, now or at the next save.
-    void retire_instantiations(Fid file);
-
     /// Add every TU contributing to `file`'s shard to the report's
     /// reindexes. Used when the file's resident index is lost while its
     /// manifests still read fresh: no in-process event would ever rebuild
@@ -654,7 +698,7 @@ private:
 
     mutable Records<Symbol> symbol_records{.kind = BlobKind::Symbol};
 
-    mutable Records<SharedLocalSets> shared_local_records{.kind = BlobKind::SharedLocal};
+    mutable Records<Symbol> local_records{.kind = BlobKind::SharedLocal};
 
     /// Path id -> portable name.
     mutable Records<std::string> path_records{.kind = BlobKind::Path};
@@ -662,12 +706,16 @@ private:
     /// Version id -> the file version.
     mutable Records<PersistedVersion> version_records{.kind = BlobKind::Version};
 
-    /// Manifests no save has committed (an empty optional for a dropped
-    /// one), and the ones a running save writes; the others are read from
-    /// the database each time, never kept.
-    llvm::DenseMap<Fid, std::optional<TUManifest>> changed_manifests;
+    /// The manifests no save has committed and the ones a running save
+    /// writes; the others are read from the database each time, never kept.
+    Records<TUManifest> manifest_records{.kind = BlobKind::TUManifest};
 
-    llvm::DenseMap<Fid, std::optional<TUManifest>> written_manifests;
+    /// The shards and the instantiation shards, keyed like the file records.
+    /// A changed one owns its bytes; one read from the database borrows the
+    /// read snapshot, and a miss is remembered as a removed record.
+    mutable Records<Shard> shard_records{.kind = BlobKind::Shard};
+
+    mutable Records<InstantiationShard> instantiation_records{.kind = BlobKind::InstantiationShard};
 
     /// Path id <-> file table id, as met.
     mutable llvm::DenseMap<std::uint32_t, Fid> path_fids;
@@ -680,38 +728,6 @@ private:
 
     mutable llvm::DenseMap<VersionID, std::uint32_t> version_ids;
 
-    /// Shards read or merged so far, keyed by the file table's ids; a miss
-    /// is remembered as an empty shard. A node-based map: a query keeps
-    /// pointers to the shards it read while its fan-out reads others.
-    mutable std::map<Fid, Shard> shards;
-
-    /// Per-file instantiation blobs, held like `shards`.
-    mutable std::map<Fid, InstantiationShard> instantiations;
-
-    /// The shards and instantiation shards merges or compactions replaced
-    /// since the last save (their bytes are the index's own), and the ones
-    /// the running save writes.
-    llvm::DenseSet<Fid> changed_shards;
-
-    llvm::DenseSet<Fid> changed_instantiations;
-
-    /// What the running save writes of them, and retires.
-    llvm::DenseSet<Fid> written_shards;
-
-    llvm::DenseSet<Fid> written_instantiations;
-
-    llvm::DenseSet<Fid> written_retired_shards;
-
-    llvm::DenseSet<Fid> written_retired_instantiations;
-
-    std::uint32_t writing_shards = 0;
-
-    /// Shards and instantiation shards retired since the last save, whose
-    /// blobs it removes.
-    llvm::DenseSet<Fid> retired_shards;
-
-    llvm::DenseSet<Fid> retired_instantiations;
-
     /// Files the next save looks at for compaction: their live variant or
     /// use set changed, or a unit that walked instantiation keys there ran
     /// again or left.
@@ -720,30 +736,45 @@ private:
     /// Files whose internals record the next save rewrites.
     llvm::DenseSet<Fid> internals_changed;
 
-    SearchIndex search;
+    /// The name search index with what it has not taken in yet.
+    struct Search {
+        SearchIndex index;
 
-    llvm::DenseSet<SymbolHash> pending_symbols;
+        /// The symbols and the files changed since the newest run's
+        /// snapshot (search_pending, search_pending_files).
+        llvm::DenseSet<SymbolHash> pending_symbols;
 
-    llvm::DenseSet<Fid> pending_files;
+        llvm::DenseSet<Fid> pending_files;
 
-    llvm::DenseSet<Fid> owed;
+        /// While a run is built, the symbols and the files merges change:
+        /// they stay pending after the build, which read them before the
+        /// change.
+        struct BuildChanges {
+            llvm::DenseSet<SymbolHash> symbols;
 
-    /// While a search index is built, the symbols and the files merges
-    /// change: they stay pending after the build, which read them before
-    /// the change.
-    struct SearchBuildChanges {
-        llvm::DenseSet<SymbolHash> symbols;
+            llvm::DenseSet<Fid> files;
+        };
 
-        llvm::DenseSet<Fid> files;
+        std::optional<BuildChanges> changed_during_build;
+
+        /// The segments built since the last save, which the next one
+        /// writes, and the ones the header stopped listing, which it
+        /// removes.
+        std::vector<BlobDatabase::Blob> writes;
+
+        llvm::SmallVector<std::uint32_t> drops;
+
+        void symbol_changed(SymbolHash hash) {
+            pending_symbols.insert(hash);
+            if(changed_during_build) {
+                changed_during_build->symbols.insert(hash);
+            }
+        }
     };
 
-    std::optional<SearchBuildChanges> changed_during_search_build;
+    Search search;
 
-    /// The search segments built since the last save, which the next one
-    /// writes, and the ones the header stopped listing, which it removes.
-    std::vector<BlobDatabase::Blob> search_writes;
-
-    llvm::SmallVector<std::uint32_t> search_drops;
+    llvm::DenseSet<Fid> owed;
 
     /// Outdated units (mark_outdated), with when they became outdated in
     /// milliseconds since the epoch, the clock built_at uses.

@@ -257,9 +257,6 @@ struct BackgroundOptions {
 /// passes run once its owner starts it: a server that indexes when its
 /// project opened, `clice index` at once, `clice lint --index` after its
 /// own pass.
-///
-/// An open document's own compile can serve a unit's index instead
-/// (leave_to_document), which a command-line run has none of.
 class BackgroundIndex {
 public:
     explicit BackgroundIndex(Project& project) : project(project) {}
@@ -336,22 +333,6 @@ public:
     /// the background index refuses finishes its attempt at once
     /// (on_attempt_finished): none will ever run.
     void index_first(Fid file, bool diagnostics = false);
-
-    /// An open document's own compile serves the file's index from now on: a
-    /// reindex booked for a dependency alone is not run (Project::
-    /// compiled_by). One booked for the file's own content still is: the
-    /// document's index is no persisted one.
-    void leave_to_document(Fid file);
-
-    /// The file's document closed or moved to another project: its index is
-    /// the background's again, and a reindex is booked, unless the file is
-    /// gone or its index failed for good, which waits for a change.
-    void take_back(Fid file);
-
-    /// Whether an open document's compile serves the file's index.
-    bool left_to_document(Fid file) const {
-        return documents_compile.contains(file);
-    }
 
     /// The last run's skipped-body diagnostics of the file; null for none,
     /// or once a reindex booked for a change of its inputs dropped them.
@@ -502,9 +483,6 @@ private:
 
     /// The last skipped-body diagnostics of every file, open or not.
     llvm::DenseMap<Fid, SkippedDiagnostics> skipped;
-
-    /// The files whose index an open document's compile serves.
-    llvm::DenseSet<Fid> documents_compile;
 
     std::size_t indexed_units = 0;
 

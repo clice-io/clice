@@ -77,8 +77,8 @@ std::vector<CanonicalRef> declaring_headers(const index::IndexQuery& query,
                                             const IncludeRequest& request,
                                             Fid file) {
     auto& files = query.file_table();
-    index::SymbolQuery symbol_query;
-    symbol_query.mode = index::SymbolQuery::Mode::Exact;
+    index::Locator symbol_query;
+    symbol_query.mode = index::Locator::Mode::Exact;
     symbol_query.pattern = request.name;
     for(auto segment: llvm::split(llvm::StringRef(request.scope), "::")) {
         if(!segment.empty()) {

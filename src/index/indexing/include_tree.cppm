@@ -48,13 +48,8 @@ struct IncludeTree {
     std::uint32_t node_of(clang::FileID fid) const;
 
     /// The path of the file `fid` refers to. A fid without a node resolves
-    /// to the focus file's path.
-    ///
-    /// FIXME: Synthetic buffers (<built-in>, <command line>) also resolve
-    /// to the focus file here. Once macro definitions from those buffers
-    /// are indexed (see add_macro in directive.cpp), give them named path
-    /// entries so consumers can route them to a preview document instead
-    /// of misattributing them.
+    /// to the focus file's path: nothing of the synthetic buffers
+    /// (<built-in>, <command line>) is indexed.
     std::uint32_t path_id(clang::FileID fid) const {
         auto node = node_of(fid);
         if(node != no_node) {

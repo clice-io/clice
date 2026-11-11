@@ -16,7 +16,7 @@ constexpr std::uint32_t no_entry = ~0u;
 /// Deeper parent chains than this only come from corrupt bytes.
 constexpr std::uint32_t max_chain = 64;
 
-using Mode = SymbolQuery::Mode;
+using Mode = Locator::Mode;
 
 using Root = codec::blob::view_t<SearchIndexBlob>;
 
@@ -147,9 +147,9 @@ std::vector<std::byte> encode_segment(llvm::ArrayRef<Node> nodes,
         auto& entry = entry_of(id);
         if(id < count) {
             if(entry.local) {
-                assert(entry.file != no_file && "an entry of internal linkage names its file");
+                assert(entry.files.size() == 1 && "an entry of internal linkage names its file");
                 blob.local_entries.push_back(id);
-                blob.local_paths.push_back(entry.file);
+                blob.local_paths.push_back(entry.files.front());
             }
             blob.qualities.push_back(nodes[members[id]].quality);
         }
@@ -281,8 +281,8 @@ std::vector<std::byte> encode_segment(llvm::ArrayRef<Node> nodes,
         if(entry.kind.value() < kind_count) {
             kinds[entry.kind.value()].add(id);
         }
-        if(entry.file != no_file) {
-            files[entry.file].add(id);
+        for(auto file: entry.files) {
+            files[file].add(id);
         }
     }
     for(auto& bitmap: kinds) {
@@ -531,7 +531,7 @@ bool ranks_after(const NameRank& lhs,
     return lhs_hash > rhs_hash;
 }
 
-NameRanker::NameRanker(const SymbolQuery& query) :
+NameRanker::NameRanker(const Locator& query) :
     query(query), lower_pattern(llvm::StringRef(query.pattern).lower()),
     exact(query.mode == Mode::Fuzzy ? llvm::StringRef(query.pattern) : llvm::StringRef(),
           MatchOptions{.inside_word = true}) {
@@ -1082,7 +1082,7 @@ bool SearchIndex::damaged() const {
     return ranges::any_of(segments, [](auto& segment) { return segment->damaged; });
 }
 
-SearchResult SearchIndex::search(const SymbolQuery& query,
+SearchResult SearchIndex::search(const Locator& query,
                                  std::uint32_t limit,
                                  llvm::function_ref<llvm::StringRef(std::uint32_t)> path_of) const {
     if(segments.empty() || limit == 0 || !query.by_pattern()) {
@@ -1167,7 +1167,7 @@ SearchResult SearchIndex::search(const SymbolQuery& query,
                 containers.push_back(no_entry);
             } else {
                 auto& last = query.scope.back();
-                llvm::ArrayRef<SymbolQuery::Segment> above = query.scope;
+                llvm::ArrayRef<Locator::Segment> above = query.scope;
                 above = above.drop_back();
                 for(auto entry: segment.lower_range(llvm::StringRef(last.name).lower())) {
                     auto [spelled, current] = newest(segment, entry);

@@ -11,6 +11,21 @@ struct MaskColumnsOf;
 
 struct LiveFilter;
 
+/// What a file's stored entries say of a symbol: they name it — hold a
+/// relation of it or to it — and maybe declare or define it.
+struct Mention {
+    SymbolHash symbol = 0;
+
+    /// Below external scope: the shard's own table describes it.
+    bool local = false;
+
+    bool declares = false;
+
+    bool defines = false;
+
+    friend bool operator==(const Mention&, const Mention&) = default;
+};
+
 /// Zero-copy reader over a shard blob, plus the live-variant mask the
 /// indexer maintains: a variant whose last contributing TU was removed or
 /// replaced stops serving immediately, and its entries are erased for real by
@@ -108,6 +123,14 @@ public:
     /// Visit every live relation, grouped by symbol in ascending hash
     /// order, relations in (kind, range, payload) order within each group.
     void for_each_relation(llvm::function_ref<bool(SymbolHash, const Relation&)> callback) const;
+
+    /// Every symbol the stored entries mention, of any variant, in
+    /// ascending hash order: what the symbol records keep of the file.
+    void for_each_mention(llvm::function_ref<void(const Mention&)> callback) const;
+
+    /// What the stored entries say of `symbol`; none when they do not
+    /// mention it.
+    std::optional<Mention> mention(SymbolHash symbol) const;
 
     /// Look up a local symbol; the strings borrow the blob.
     std::optional<SymbolView> find_symbol(SymbolHash hash) const;

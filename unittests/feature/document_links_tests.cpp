@@ -14,7 +14,7 @@ namespace {
 
 ZEST_SUITE(document_links, Tester) {
 
-std::vector<index::DocumentLink> links;
+std::vector<feature::DocumentLink> links;
 
 void run(llvm::StringRef source, llvm::StringRef standard = "-std=c++17") {
     add_files("main.cpp", source);

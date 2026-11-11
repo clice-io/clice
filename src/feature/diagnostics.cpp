@@ -611,6 +611,16 @@ FileDiagnostic crash_note(const CrashNote& note) {
                     retry));
 }
 
+FileDiagnostic unsaved_inputs_note(llvm::ArrayRef<std::string> files) {
+    bool one = files.size() == 1;
+    return file_warning(
+        std::format("This file was compiled against {} on disk, not {} unsaved "
+                    "text: saving {} may clear the errors here.",
+                    llvm::join(files, ", "),
+                    one ? "its" : "their",
+                    one ? "it" : "them"));
+}
+
 protocol::Diagnostic to_protocol(
     const FileDiagnostic& diagnostic,
     bool related_information,

@@ -30,7 +30,7 @@ struct IndexQueryTester : Tester {
     Fid header_id;
 
     std::vector<index::IndexQuery::Located> search(llvm::StringRef text, std::size_t limit = 10) {
-        return index::search(query(), *index::SymbolQuery::parse(text), limit);
+        return index::search(query(), *index::Locator::parse(text), limit);
     }
 
     /// Compile the added sources as the background index does and merge the

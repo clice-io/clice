@@ -339,13 +339,6 @@ bool Project::compiled_by_build(Fid unit) {
            commands.pch_output(select_command(unit).ref.command);
 }
 
-CompiledBy Project::compiled_by(Fid unit) {
-    if(background_index.left_to_document(unit)) {
-        return CompiledBy::Document;
-    }
-    return compiled_by_build(unit) ? CompiledBy::Build : CompiledBy::Itself;
-}
-
 bool Project::index_holds(Fid unit) {
     return index.indexed_command(unit) == command_identity(unit) && !index.needs_reindex(unit);
 }
@@ -372,6 +365,7 @@ IndexTransfer Project::request_index(Fid unit, worker::IndexRequest& request) {
         request.known_instantiations = index.known_instantiations(unit, std::move(include_closure));
     }
     request.standard_library_instantiations = settings.project.standard_library_instantiations;
+    request.library_bodies = settings.project.index_library_bodies;
     IndexTransfer transfer;
     if(store) {
         transfer.file = store->begin_transfer();

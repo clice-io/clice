@@ -36,15 +36,13 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
     // deduplicate cascade storms — may take the shortcut.
     bool content_changed = reindexes.pending_reason(path_id) == ReindexReason::ContentChanged;
     bool diagnostics = reindexes.wants_diagnostics(path_id);
-    auto compiled_by = project.compiled_by(path_id);
-    if(content_changed ||
-       (compiled_by != CompiledBy::Document && (diagnostics || !project.index_holds(path_id)))) {
+    if(content_changed || diagnostics || !project.index_holds(path_id)) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
         Timer timer;
         // A build compiling the unit indexes it but brings no such
         // diagnostics: only a booking asking for them compiles it for them.
         bool wants_skipped =
-            options.skipped_diagnostics && (compiled_by != CompiledBy::Build || diagnostics);
+            options.skipped_diagnostics && (!project.compiled_by_build(path_id) || diagnostics);
         auto result = co_await project.compile_unit(
             path_id,
             {.index = true,
@@ -436,18 +434,6 @@ void BackgroundIndex::index_first(Fid file, bool diagnostics) {
     // The file someone is reading beats the bulk backlog.
     reindexes.move_to_front(file);
     schedule(/*immediate=*/true);
-}
-
-void BackgroundIndex::leave_to_document(Fid file) {
-    documents_compile.insert(file);
-}
-
-void BackgroundIndex::take_back(Fid file) {
-    documents_compile.erase(file);
-    if(!project.file_table.disk.seen_missing(file) && !failed(file) &&
-       enqueue(file, ReindexReason::DepsOnly)) {
-        schedule();
-    }
 }
 
 void BackgroundIndex::forget(Fid file) {

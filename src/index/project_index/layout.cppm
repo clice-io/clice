@@ -1,5 +1,5 @@
 /// The persisted layouts of the project index's records: the header, a
-/// file's records, a shared local's and a unit's manifest.
+/// file's records and a unit's manifest.
 
 module clice:index.project_index.layout;
 
@@ -18,9 +18,6 @@ struct HeaderBlobOf {
 
     /// The id the next file version the manifests name receives.
     std::uint32_t next_version = 0;
-
-    /// The units the database holds a manifest of.
-    std::uint32_t unit_count = 0;
 
     /// The search index's segments, ascending, oldest run first, and where
     /// each run ends among them; the id the next segment receives.
@@ -129,22 +126,6 @@ struct InternalsBlobOf {
 
 using InternalsBlob = InternalsBlobOf<codec::blob::Owned>;
 
-/// A file set (append_file_set) and how many units list it.
-template <template <typename> typename Seq>
-struct ListedFilesOf {
-    std::uint32_t units = 0;
-    Seq<std::uint8_t> files;
-};
-
-/// A symbol below external scope several files hold: the file sets the
-/// units list for it (TUManifest::shared_locals), each once.
-template <template <typename> typename Seq>
-struct SharedLocalBlobOf {
-    Seq<ListedFilesOf<Seq>> sets;
-};
-
-using SharedLocalBlob = SharedLocalBlobOf<codec::blob::Owned>;
-
 /// The manifest's persisted form. Its file versions are the ids of the
 /// database's version records, which every other field indexes by their
 /// position; a path appears twice when the modules a unit imports were
@@ -187,12 +168,6 @@ struct TUManifestBlobOf {
     /// Sets of versions, as postings below their count.
     Seq<std::uint8_t> absent;
     Seq<std::uint8_t> imports;
-
-    /// TUManifest::shared_locals as columns: the symbols ascending, each
-    /// one's file versions back to back.
-    Seq<std::uint64_t> local_symbols;
-    Seq<std::uint32_t> local_file_ends;
-    Seq<std::uint32_t> local_files;
 
     /// TUManifest::instantiations as columns: per file its version and its
     /// use.

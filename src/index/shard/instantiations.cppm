@@ -176,6 +176,13 @@ public:
     void records_of(SymbolHash symbol,
                     llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
 
+    /// The symbols the stored records name, as a target or a `from`, live
+    /// or not, ascending: what the symbol records keep of the file.
+    std::vector<SymbolHash> named_symbols() const;
+
+    /// Whether a stored record names `symbol`.
+    bool names(SymbolHash symbol) const;
+
     /// Every live record, in stored order.
     void for_each_record(llvm::function_ref<bool(const InstantiationRecord&)> callback) const;
 

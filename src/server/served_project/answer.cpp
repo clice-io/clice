@@ -9,6 +9,7 @@ import :server.served_project;
 import :support.logging;
 import :syntax.scan;
 import :vfs.file_system;
+import :worker.preamble_index;
 import :worker.protocol;
 
 namespace clice {
@@ -175,6 +176,7 @@ std::vector<index::OpenBuffer> ServedProject::open_buffers() const {
         auto& session = *server.find_session(path_id);
         auto& compiled = document.latest;
         auto* merged = merged_index(*this, path_id, document);
+        auto preamble = compiled ? compiled->preamble_index : nullptr;
         open.push_back({
             .file = path_id,
             .text = session.text(),
@@ -182,7 +184,9 @@ std::vector<index::OpenBuffer> ServedProject::open_buffers() const {
             .positions = session.positions(),
             .index = compiled ? compiled->index : nullptr,
             .current = current(path_id),
-            .preamble = compiled ? compiled->preamble_index : nullptr,
+            .preamble =
+                preamble ? std::shared_ptr<index::TUIndex>(preamble, &preamble->index) : nullptr,
+            .preamble_current = preamble && preamble->matches(session.text()),
             .merged = merged ? merged->shard : nullptr,
         });
     }
@@ -210,6 +214,23 @@ bool ServedProject::merge_again(Fid file) const {
     document->merged.reset();
     auto* merged = merged_index(*this, file, *document);
     return before != (merged ? merged->additions : 0);
+}
+
+async::task<> ServedProject::compile_outdated() {
+    // Listed first: a compile suspends, and documents and projects come and
+    // go meanwhile.
+    std::vector<std::pair<std::shared_ptr<ServedProject>, std::shared_ptr<Session>>> owed;
+    for(auto& served: server.projects) {
+        auto reads = served->query();
+        for(auto& [path_id, document]: served->documents) {
+            if(document.compiles && !reads.serving(path_id)) {
+                owed.emplace_back(served, server.find_session(path_id));
+            }
+        }
+    }
+    for(auto& [served, session]: owed) {
+        co_await served->ensure_compiled(std::move(session), {.ast = false});
+    }
 }
 
 index::IndexQuery ServedProject::query_all() const {
@@ -257,12 +278,14 @@ ScanResult ServedProject::declared_module(Fid path_id, llvm::StringRef text) {
                             llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden)));
 }
 
-std::vector<index::DocumentLink> ServedProject::preamble_links(const Session& session) const {
-    auto state = query().preamble_index(session.path_id);
-    return state ? state->links() : std::vector<index::DocumentLink>{};
+std::vector<feature::DocumentLink> ServedProject::preamble_links(const Session& session) const {
+    auto* document = find_document(session.path_id);
+    auto preamble = document->latest ? document->latest->preamble_index : nullptr;
+    return preamble && preamble->matches(session.text()) ? preamble->links
+                                                         : std::vector<feature::DocumentLink>{};
 }
 
-async::task<std::vector<index::DocumentLink>, ipc::Error>
+async::task<std::vector<feature::DocumentLink>, ipc::Error>
     ServedProject::directive_links(const Ticket& ticket, async::cancellation_token token) {
     auto result = co_await ast_request(ticket,
                                        feature::RequestKind::DocumentLink,

@@ -60,9 +60,9 @@ std::vector<index::Site> mismatched_declarations(const index::IndexQuery& index,
             return {};
         }
     }
-    index::SymbolQuery query{.mode = index::SymbolQuery::Mode::Exact,
-                             .absolute = true,
-                             .pattern = info->name};
+    index::Locator query{.mode = index::Locator::Mode::Exact,
+                         .absolute = true,
+                         .pattern = info->name};
     for(auto& container: index.container_chain(hash, anchor)) {
         query.scope.push_back({.name = container.name});
     }

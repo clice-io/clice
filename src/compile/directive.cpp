@@ -54,9 +54,9 @@ private:
         }
 
         auto written = argument_spelling(loc);
-        /// FIXME: A macro defined in <built-in> or <command line> (`-D`) gets no
-        /// definition record, so definition, references and symbol search on a
-        /// `-D` macro find no symbol; hover still shows it.
+        // What <built-in> and <command line> (`-D`) define and name lies in
+        // no file: such a macro has its uses alone, and the index tells
+        // where it comes from by its entity (EntityTable::predefined_macro).
         if(unit.is_builtin_file(unit.file_id(written))) {
             return;
         }

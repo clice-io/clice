@@ -363,23 +363,6 @@ ZEST_CASE(FromRejectsOutOfRangePathIds) {
     }
 }
 
-ZEST_CASE(FromRejectsOtherDefinitions) {
-    // The merge adds each pair to the record of an external symbol of the
-    // table: a pair naming anything else would reach no record.
-    auto with = [](std::uint32_t entry, std::uint32_t file, index::SymbolScope scope) {
-        auto blob = tu_index_blob();
-        blob.paths = {"/proj/main.c", "/proj/main.h"};
-        add_symbol(blob, 42, {.name = "counter", .scope = scope, .file = 0}, {0, 1});
-        blob.other_definition_entries = {entry};
-        blob.other_definition_files = {file};
-        return index::TUIndex::from_bytes(tu_index_bytes(blob)).loaded();
-    };
-    ZASSERT(with(0, 1, index::SymbolScope::External));
-    ZEXPECT(!with(1, 1, index::SymbolScope::External));
-    ZEXPECT(!with(0, 2, index::SymbolScope::External));
-    ZEXPECT(!with(0, 1, index::SymbolScope::Internal));
-}
-
 ZEST_CASE(FromRejectsEmptyPathTable) {
     // The builder ends every path table with the focus file, and
     // consumers address focus_file() unchecked — a TU index with no

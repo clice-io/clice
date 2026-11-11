@@ -105,6 +105,10 @@ struct DefinitionResult {
     std::optional<std::string> documentation;
     /// Its definition, or its declaration when nothing defines it.
     std::optional<LocationEntry> definition;
+    /// Its other definitions when several places define it: a weak function
+    /// and its strong one, the `main` of each program.
+    KANNOTATE(&other_definitions, presence = omit_if_default)
+    std::vector<LocationEntry> other_definitions;
 };
 
 struct ReferenceEntry {
@@ -165,7 +169,7 @@ struct ImplementationResult {
 struct RenameRequest {
     /// The locator as written, for the answer.
     std::string text;
-    index::SymbolQuery locator;
+    index::Locator locator;
     std::string new_name;
 
     /// The line of the rename list asking for it; absent on the command
@@ -253,17 +257,17 @@ struct PlannedRename {
     }
 };
 
-/// The symbols a locator (index::SymbolQuery) matches, best first, at most
+/// The symbols a locator (index::Locator) matches, best first, at most
 /// `limit` of them.
 Result<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, std::size_t limit);
 
-/// A `locator` (index::SymbolQuery) names one symbol: by the `symbol` an
+/// A `locator` (index::Locator) names one symbol: by the `symbol` an
 /// answer carries, by a name query, or by a place. Several candidates are
 /// an error listing them in Context::candidates; none is "symbol not
 /// found".
 
 /// The symbol's definition as text.
-Result<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator);
+Result<ReadSymbolResult> read_symbol(Context& ctx, index::Locator locator);
 
 /// The document-level symbols defined in the file, its text lexed in the
 /// dialect `dialect` gives.
@@ -272,15 +276,11 @@ Result<DocumentSymbolsResult>
                      const Spelling& path,
                      llvm::function_ref<const clang::LangOptions&(Fid file)> dialect);
 
-Result<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator);
+Result<DefinitionResult> definition(Context& ctx, index::Locator locator);
 
-Result<ReferencesResult> references(Context& ctx,
-                                    index::SymbolQuery locator,
-                                    bool include_declaration);
+Result<ReferencesResult> references(Context& ctx, index::Locator locator, bool include_declaration);
 
-Result<CallGraphResult> call_graph(Context& ctx,
-                                   index::SymbolQuery locator,
-                                   CallGraphOptions options);
+Result<CallGraphResult> call_graph(Context& ctx, index::Locator locator, CallGraphOptions options);
 
 /// Plan the renames together within `scope` (see plan_renames): what
 /// would change, what the index cannot guarantee, and what keeps the change
@@ -296,20 +296,19 @@ PlannedRename rename(Context& ctx,
 /// of that name are left out. Named by its whole name, never a pattern;
 /// several other candidates are an error listing them in
 /// Context::candidates.
-Result<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQuery locator);
+Result<std::vector<index::SymbolHash>> declaration(Context& ctx, index::Locator locator);
 
 /// Every symbol a locator names, a bare name taken as the whole name, with
 /// where it was found; none is "symbol not found".
-Result<std::vector<index::IndexQuery::Located>> named_symbols(Context& ctx,
-                                                              index::SymbolQuery locator);
+Result<std::vector<index::IndexQuery::Located>> named_symbols(Context& ctx, index::Locator locator);
 
 /// What implements the symbol (feature::implementation): the
 /// classes deriving from a class, the overrides of a function, at any
 /// depth; a function nothing overrides, its definitions.
-Result<ImplementationResult> implementation(Context& ctx, index::SymbolQuery locator);
+Result<ImplementationResult> implementation(Context& ctx, index::Locator locator);
 
 Result<TypeHierarchyResult> type_hierarchy(Context& ctx,
-                                           index::SymbolQuery locator,
+                                           index::Locator locator,
                                            TypeHierarchyOptions options);
 
 }  // namespace clice::feature::query

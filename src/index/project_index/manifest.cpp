@@ -75,14 +75,6 @@ std::vector<std::byte> serialize_manifest(const TUManifest& manifest,
     blob.absent = version_set(manifest.absent, version_count);
     blob.imports = version_set(manifest.imports, version_count);
 
-    for(auto& local: manifest.shared_locals) {
-        blob.local_symbols.push_back(local.symbol);
-        for(auto version: local.files) {
-            blob.local_files.push_back(version.raw);
-        }
-        blob.local_file_ends.push_back(static_cast<std::uint32_t>(blob.local_files.size()));
-    }
-
     for(auto& use: manifest.instantiations) {
         blob.instantiation_files.push_back(use.file.raw);
         blob.instantiation_uses.push_back(use.use);
@@ -192,26 +184,6 @@ std::optional<PersistedManifest> deserialize_manifest(llvm::StringRef data) {
     }
     manifest.absent = std::move(*absent);
     manifest.imports = std::move(*imports);
-
-    if(root.local_file_ends.size() != root.local_symbols.size() ||
-       !covering_ends(root.local_file_ends, root.local_files.size())) {
-        return std::nullopt;
-    }
-    std::uint32_t begin = 0;
-    for(std::uint32_t i = 0; i < root.local_symbols.size(); i += 1) {
-        if(reserved_key(root.local_symbols[i]) ||
-           (i > 0 && root.local_symbols[i] <= root.local_symbols[i - 1])) {
-            return std::nullopt;
-        }
-        auto end = root.local_file_ends[i];
-        auto& local = manifest.shared_locals.emplace_back();
-        local.symbol = root.local_symbols[i];
-        for(auto version:
-            llvm::ArrayRef<std::uint32_t>(root.local_files).slice(begin, end - begin)) {
-            local.files.push_back(VersionID{version});
-        }
-        begin = end;
-    }
 
     if(root.instantiation_uses.size() != root.instantiation_files.size() ||
        ranges::any_of(root.instantiation_uses,

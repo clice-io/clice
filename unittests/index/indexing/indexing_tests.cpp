@@ -2,6 +2,7 @@ module clice;
 
 import :compile.diagnostic;
 import :compile.inactive_regions;
+import :feature.document_links;
 import :feature.semantic_tokens;
 import :index.format;
 import :index.indexing.include_tree;
@@ -18,6 +19,7 @@ import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
 import :unittests.utils.tu_index_blob;
 import :unittests.utils;
+import :worker.preamble_index;
 
 namespace clice::testing {
 
@@ -43,6 +45,8 @@ struct DecodedIndex {
     /// Non-focus sections keyed by path id.
     std::vector<std::pair<std::uint32_t, DecodedShard>> file_indices;
     index::SymbolTable symbols{};
+    /// The file each symbol is placed at (SymbolView::file).
+    llvm::DenseMap<index::SymbolHash, std::uint32_t> files{};
 };
 
 DecodedIndex tu_index;
@@ -86,7 +90,7 @@ void decode_index(std::span<const std::byte> bytes) {
         symbol.kind = identity.kind;
         symbol.scope = identity.scope;
         symbol.flags = identity.flags;
-        symbol.file = identity.file;
+        tu_index.files[hash] = identity.file;
         return &symbol;
     };
     view.for_each_symbol([&](index::SymbolHash hash,
@@ -1362,7 +1366,9 @@ ZEST_CASE(KnownVariantsSkipped) {
         }
     }
     ZASSERT(header < full_view.section_count());
-    std::vector<std::uint64_t> known = {full_view.section_hash(header)};
+    std::vector<std::uint64_t> known = {
+        index::known_at(full_view.path(full_view.section_path(header)),
+                        full_view.section_hash(header))};
     auto table_names = [](const index::TUIndex& view) {
         std::vector<std::string> names;
         view.for_each_symbol([&](index::SymbolHash,
@@ -1382,7 +1388,7 @@ ZEST_CASE(KnownVariantsSkipped) {
     // every symbol it names and the internal ones still travel.
     decode_index(index::build_tu_index(*unit, {.known_variants = known}));
     auto& view = tu_index.view;
-    ZASSERT(view.section_hash(header) == known.front());
+    ZASSERT(view.section_hash(header) == full_view.section_hash(header));
     ZASSERT(view.section_blob(header).empty());
     ZASSERT(view.shard_of(focus_id).loaded());
     ZASSERT(table_names(view) == std::vector<std::string>{"internal", "shared", "user"});
@@ -1816,17 +1822,20 @@ ZEST_CASE(CanonicalFile) {
         LOG_FATAL("header.h is not in the path table");
     }();
 
+    auto file_of = [&](llvm::StringRef name) {
+        return tu_index.files.lookup(symbol_named(name).first);
+    };
     auto twice = symbol_named("declared_twice").second;
     ZASSERT(has(twice, index::SymbolFlags::HasDefinition));
-    ZASSERT(twice.file == focus_path);
+    ZASSERT(file_of("declared_twice") == focus_path);
 
     auto only = symbol_named("header_only").second;
     ZASSERT(!has(only, index::SymbolFlags::HasDefinition));
-    ZASSERT(only.file == header_path);
+    ZASSERT(file_of("header_only") == header_path);
 
     auto defined = symbol_named("header_defined").second;
     ZASSERT(has(defined, index::SymbolFlags::HasDefinition));
-    ZASSERT(defined.file == header_path);
+    ZASSERT(file_of("header_defined") == header_path);
     ZASSERT(has(defined, index::SymbolFlags::Completable));
 
     // A focus-only build keeps no header entries: a symbol the focus file
@@ -1834,8 +1843,8 @@ ZEST_CASE(CanonicalFile) {
     decode_index(index::build_tu_index(*unit));
     auto used = symbol_named("header_only").second;
     ZASSERT(!has(used, index::SymbolFlags::HasDefinition));
-    ZASSERT(used.file == index::no_file);
-    ZASSERT(symbol_named("main_only").second.file == tu_index.view.focus_file());
+    ZASSERT(file_of("header_only") == index::no_file);
+    ZASSERT(file_of("main_only") == tu_index.view.focus_file());
 }
 
 ZEST_CASE(PreambleDefaultArgument) {
@@ -2590,6 +2599,42 @@ ZEST_CASE(LibraryTemplatesUnresolved) {
     ZEXPECT(fills(tu_index.focus_file_index) == 2);
 }
 
+ZEST_CASE(LibraryBodiesLeftOut) {
+    // A library header's index holds what it declares, and what its
+    // functions name inside only when asked; the user's header is indexed
+    // whole either way.
+    constexpr llvm::StringLiteral functions = R"(
+        int helper();
+        inline int twice() { return helper() + helper(); }
+        struct Holder {
+            Holder() : value(helper()) {}
+            int value;
+        };
+    )";
+    auto helpers_in = [&](llvm::StringRef file) -> std::ptrdiff_t {
+        for(auto& [path, shard]: tu_index.file_indices) {
+            if(tu_index.view.path(path).ends_with(file)) {
+                return ranges::count_if(shard.occurrences,
+                                        [&](const index::Occurrence& occurrence) {
+                                            return tu_index.symbols[occurrence.target].name ==
+                                                   "helper";
+                                        });
+            }
+        }
+        return -1;
+    };
+
+    kind = CompilationKind::Whole;
+    add_file("lib", std::format("#pragma GCC system_header\nnamespace lib {{{}}}", functions));
+    add_file("own.h", std::format("namespace own {{{}}}", functions));
+    build_index("#include \"lib\"\n#include \"own.h\"\n");
+    ZEXPECT(helpers_in("own.h") == 4);
+    ZEXPECT(helpers_in("lib") == 1);
+
+    decode_index(index::build_tu_index(*unit, {.library_bodies = true}));
+    ZEXPECT(helpers_in("lib") == 4);
+}
+
 };  // ZEST_SUITE(Indexer)
 
 /// A TU index blob holding only the minimal path table verification demands,
@@ -2601,18 +2646,46 @@ std::string blob_of_version(std::uint32_t version) {
     return tu_index_bytes(blob);
 }
 
+/// A `.pch.idx` whose TU index is of `version`.
+std::string pair_of_version(std::uint32_t version) {
+    auto bytes =
+        worker::encode_preamble_index("", as_bytes(blob_of_version(version)), {}, {}, {}, {});
+    return std::string(as_chars(bytes));
+}
+
 ZEST_SUITE(PreambleIndex, Tester) {
 
 TempDir dir;
-std::shared_ptr<index::TUIndex> state;
 
-std::vector<index::DocumentLink> links;
+/// The pair as the production gate opened it, and its TU index.
+std::shared_ptr<worker::PreambleIndex> pair;
+index::TUIndex* state = nullptr;
+
+std::vector<feature::DocumentLink> links;
 std::vector<std::uint32_t> inactive;
 std::vector<std::uint8_t> conditionals;
 std::string diagnostics;
 
-/// Compile, build a preamble TU index, persist it as the `.pch.idx` pair
-/// and load it back through the production gate.
+/// Persist the unit's index with this state as `name`, a `.pch.idx`, and
+/// open it through the production gate.
+void store(llvm::StringRef name,
+           llvm::ArrayRef<feature::DocumentLink> links = {},
+           llvm::ArrayRef<std::uint32_t> inactive = {},
+           llvm::ArrayRef<std::uint8_t> conditionals = {},
+           llvm::StringRef diagnostics = {}) {
+    dir.touch(name,
+              as_chars(worker::encode_preamble_index(unit->focus_file().content(),
+                                                     index::build_tu_index(*unit),
+                                                     links,
+                                                     inactive,
+                                                     conditionals,
+                                                     diagnostics)));
+    pair = worker::open_preamble_index(dir.path(name));
+    ZASSERT(pair != nullptr);
+    state = &pair->index;
+}
+
+/// Compile and store the unit's index with a state of every kind.
 void build_state(std::source_location location = std::source_location::current()) {
     // Not an open file's compile: the preamble's index covers every file.
     kind = CompilationKind::Whole;
@@ -2625,11 +2698,7 @@ void build_state(std::source_location location = std::source_location::current()
     conditionals = {1, 0, 2};
     diagnostics = R"([{"range":{},"message":"'M' macro redefined"}])";
 
-    dir.touch(
-        "state.pch.idx",
-        as_chars(index::build_preamble_index(*unit, links, inactive, conditionals, diagnostics)));
-    state = load_pch_index(dir.path("state.pch.idx"));
-    ZASSERT(state != nullptr);
+    store("state.pch.idx", links, inactive, conditionals, diagnostics);
 }
 
 index::SymbolHash hash_of(llvm::StringRef name,
@@ -2684,9 +2753,7 @@ ZEST_CASE(ForcedIncludeServed) {
     params.input.arguments.insert(params.input.arguments.end() - 1, TestVFS::path("forced.h"));
     ZASSERT(try_compile());
 
-    dir.touch("state.pch.idx", as_chars(index::build_preamble_index(*unit, {}, {}, {}, {})));
-    state = load_pch_index(dir.path("state.pch.idx"));
-    ZASSERT(state != nullptr);
+    store("state.pch.idx");
 
     bool found = false;
     lookup_headers(hash_of("forced_value"),
@@ -2806,14 +2873,13 @@ int main() { return 0; }
 )");
     build_state();
 
-    auto loaded_links = state->links();
-    ZASSERT(loaded_links.size() == 1);
-    ZEXPECT(loaded_links[0].range == LocalSourceRange(12, 20));
-    ZEXPECT(loaded_links[0].target == "/include/foo.h");
+    ZASSERT(pair->links.size() == 1);
+    ZEXPECT(pair->links[0].range == LocalSourceRange(12, 20));
+    ZEXPECT(pair->links[0].target == "/include/foo.h");
 
-    ZEXPECT(state->inactive_regions() == llvm::ArrayRef<std::uint32_t>(inactive));
-    ZEXPECT(state->open_conditionals() == llvm::ArrayRef<std::uint8_t>(conditionals));
-    ZEXPECT(state->preamble_diagnostics() == diagnostics);
+    ZEXPECT(pair->inactive_regions == inactive);
+    ZEXPECT(pair->open_conditionals == conditionals);
+    ZEXPECT(pair->diagnostics == diagnostics);
 
     // A TU index with no header sections answers lookups with silence,
     // not UB.
@@ -2826,10 +2892,10 @@ int main() { return 0; }
 }
 
 ZEST_CASE(RejectBadBlob) {
-    ZEXPECT(load_pch_index(dir.path("missing.pch.idx")) == nullptr);
+    ZEXPECT(worker::open_preamble_index(dir.path("missing.pch.idx")) == nullptr);
 
     dir.touch("garbage.pch.idx", "not a blob at all");
-    ZEXPECT(load_pch_index(dir.path("garbage.pch.idx")) == nullptr);
+    ZEXPECT(worker::open_preamble_index(dir.path("garbage.pch.idx")) == nullptr);
 }
 
 ZEST_CASE(RejectVersionMismatch) {
@@ -2837,8 +2903,8 @@ ZEST_CASE(RejectVersionMismatch) {
     // before this build's — must load as missing, so the PCH pair rebuilds
     // instead of serving stale data.
     for(auto version: {0u, index::index_format_version - 1}) {
-        dir.touch("stale.pch.idx", blob_of_version(version));
-        ZEXPECT(load_pch_index(dir.path("stale.pch.idx")) == nullptr);
+        dir.touch("stale.pch.idx", pair_of_version(version));
+        ZEXPECT(worker::open_preamble_index(dir.path("stale.pch.idx")) == nullptr);
     }
 }
 
@@ -2846,8 +2912,8 @@ ZEST_CASE(AcceptCurrentVersionBlob) {
     // Positive control for RejectVersionMismatch: the same blob carrying the
     // CURRENT version loads — the rejection comes from the version's value,
     // not from the blob's shape.
-    dir.touch("current.pch.idx", blob_of_version(index::index_format_version));
-    ZEXPECT(load_pch_index(dir.path("current.pch.idx")) != nullptr);
+    dir.touch("current.pch.idx", pair_of_version(index::index_format_version));
+    ZEXPECT(worker::open_preamble_index(dir.path("current.pch.idx")) != nullptr);
 }
 
 ZEST_CASE(RejectCorruptBlob) {
@@ -2862,16 +2928,16 @@ int main() { return 0; }
     ZASSERT(bytes.size() > 8);
 
     dir.touch("truncated.pch.idx", bytes.take_front(bytes.size() / 2));
-    ZEXPECT(load_pch_index(dir.path("truncated.pch.idx")) == nullptr);
+    ZEXPECT(worker::open_preamble_index(dir.path("truncated.pch.idx")) == nullptr);
 
-    // Bytes 4-7 carry the layout fingerprint; a blob of another layout
-    // must be rejected up front.
+    // The first bytes say how large the state before the TU index is: one
+    // past the file is no pair.
     std::string clobbered = bytes.str();
-    for(std::size_t i = 4; i < 8; i += 1) {
+    for(std::size_t i = 0; i < 8; i += 1) {
         clobbered[i] = 'X';
     }
     dir.touch("clobbered.pch.idx", clobbered);
-    ZEXPECT(load_pch_index(dir.path("clobbered.pch.idx")) == nullptr);
+    ZEXPECT(worker::open_preamble_index(dir.path("clobbered.pch.idx")) == nullptr);
 }
 
 ZEST_CASE(RejectCorruptSectionBlob) {
@@ -2887,10 +2953,8 @@ int main() { return 0; }
     ZASSERT(read);
     std::string bytes = std::move(*read);
 
-    auto view = index::TUIndex::from_bytes(bytes);
-    ZASSERT(view.loaded());
-    ZASSERT(view.section_count() > 0);
-    auto blob = view.section_blob(0);
+    ZASSERT(state->section_count() > 0);
+    auto blob = state->section_blob(0);
     auto pos = llvm::StringRef(bytes).find(blob);
     ZASSERT(pos != llvm::StringRef::npos);
     for(std::size_t i = 0; i < blob.size(); i += 1) {
@@ -2898,7 +2962,7 @@ int main() { return 0; }
     }
 
     dir.touch("bad_section.pch.idx", bytes);
-    ZEXPECT(load_pch_index(dir.path("bad_section.pch.idx")) == nullptr);
+    ZEXPECT(worker::open_preamble_index(dir.path("bad_section.pch.idx")) == nullptr);
 }
 
 ZEST_CASE(SourcePathAndPrefix) {
@@ -2910,17 +2974,13 @@ int other = 1;
 
     ZEXPECT(state->path(state->focus_file()).ends_with("main.cpp"));
 
-    // The preamble text itself is not stored; the TU index keeps only the
+    // The preamble text itself is not stored; the pair keeps only the
     // identity of the exact prefix it was built from.
     auto content = unit->focus_file().content();
-    ZEXPECT(state->matches_preamble(content));
-    ZEXPECT(state->matches_preamble(content.str() + "\nint more = 2;"));
-    ZEXPECT(!state->matches_preamble(content.drop_back(1)));
-    ZEXPECT(!state->matches_preamble("int changed = 0;"));
-
-    // An ordinary TU index never serves preamble state.
-    auto ordinary = index::build_tu_index(*unit);
-    ZEXPECT(!index::TUIndex::from_bytes(as_chars(ordinary)).matches_preamble(content));
+    ZEXPECT(pair->matches(content));
+    ZEXPECT(pair->matches(content.str() + "\nint more = 2;"));
+    ZEXPECT(!pair->matches(content.drop_back(1)));
+    ZEXPECT(!pair->matches("int changed = 0;"));
 }
 
 };  // ZEST_SUITE(PreambleIndex)
@@ -3208,7 +3268,7 @@ ZEST_CASE(KnownKeysSkipped) {
     ZASSERT(found.size() == 1u);
     auto key = found.front().key;
 
-    std::uint64_t known[] = {key};
+    std::uint64_t known[] = {index::known_at(view.path(view.focus_file()), key)};
     build(code, {.known_instantiations = known});
     auto section = focus_section();
     ZASSERT(section);
@@ -3302,7 +3362,7 @@ ZEST_CASE(MacroBodyNamesResolved) {
     ZEXPECT(keys().empty());
 }
 
-ZEST_CASE(ForeignInternalUnkeyed) {
+ZEST_CASE(ForeignInternalKeyed) {
     add_file("run.h", R"(
         template <typename T>
         void run(T t) { t.go(); }
@@ -3317,9 +3377,10 @@ ZEST_CASE(ForeignInternalUnkeyed) {
     auto section = section_of("run.h");
     ZASSERT(section);
     const auto& shard = view.instantiation_shard(*section);
-    // Only the units walking it list run.h among the files naming the
-    // internal `go`: a skipped key could not stand for it.
-    ZEXPECT(shard.keys().empty());
+    // What resolves to the internal `go` has a key like any other: the
+    // index reads the files instantiating a symbol off the stored
+    // resolutions, whichever unit walked them.
+    ZEXPECT(shard.keys().size() == 1u);
     ZEXPECT(shard.resolutions().size() == 1u);
 }
 
@@ -3357,7 +3418,7 @@ ZEST_CASE(WrappedSignatureNamesParameter) {
         ranges::none_of(resolved(), [](const Resolved& record) { return record.target == "c"; }));
 }
 
-ZEST_CASE(ForeignCallerUnkeyed) {
+ZEST_CASE(ForeignCallerKeyed) {
     add_file("box.h", R"(
         namespace {
         struct Box {
@@ -3379,9 +3440,9 @@ ZEST_CASE(ForeignCallerUnkeyed) {
     auto section = section_of("put.h");
     ZASSERT(section);
     const auto& shard = view.instantiation_shard(*section);
-    // The call's target is external, but its caller is the internal `put`
-    // box.h declares.
-    ZEXPECT(shard.keys().empty());
+    // The call's target is external, its caller the internal `put` box.h
+    // declares.
+    ZEXPECT(shard.keys().size() == 1u);
     ZEXPECT(shard.resolutions().size() == 1u);
 }
 

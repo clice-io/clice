@@ -130,11 +130,15 @@ auto semantic_tokens(SourceText& source,
                      const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
 
 /// The same from the index serving the file, `source`'s text the one it
-/// indexed or a buffer byte-identical to it.
+/// indexed or a buffer byte-identical to it. With `only_in` (flat begin/end
+/// offset pairs), the index classifies the names in those ranges alone,
+/// which is all a merge into the AST's tokens reads: a symbol lookup per
+/// name of a large file costs more than the AST's answer.
 auto semantic_tokens(SourceText& source,
                      const index::IndexQuery& query,
                      const index::IndexSource& index,
-                     const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
+                     const SemanticTokensOptions& options,
+                     llvm::ArrayRef<std::uint32_t> only_in = {}) -> std::vector<SemanticToken>;
 
 /// The tokens the AST gives (`ast`), the code its context skipped
 /// (`skipped`, flat begin/end offset pairs as InactiveScan's) classified as

@@ -18,7 +18,7 @@ namespace {
 ZEST_SUITE(IndexSearch, IndexQueryTester) {
 
 std::vector<index::IndexQuery::Located> locate(llvm::StringRef text) {
-    return index::locate(query(), *index::SymbolQuery::parse(text));
+    return index::locate(query(), *index::Locator::parse(text));
 }
 
 ZEST_CASE(SearchSymbols) {
@@ -171,7 +171,7 @@ ZEST_CASE(LocalsAndCursors) {
 
     // A cursor on the file's own static function resolves through the
     // serving source, which no symbol record names.
-    index::SymbolQuery at;
+    index::Locator at;
     at.position = {.path = project.file_table.resolve(focus_id).str(), .line = 3, .column = 21};
     auto located = index::locate(query(), at);
     ZASSERT(located.size() == std::size_t(1));
@@ -296,9 +296,8 @@ ZEST_CASE(ScopedSearchReadsOpenBuffers) {
     auto open = open_buffers(8);
     auto query = project.index_query.reading(std::move(open));
     for(auto name: {"fn0_1", "fn7_1"}) {
-        auto found = index::search(query,
-                                   *index::SymbolQuery::parse(std::format("app::shared::{}", name)),
-                                   10);
+        auto found =
+            index::search(query, *index::Locator::parse(std::format("app::shared::{}", name)), 10);
         ZASSERT(!found.empty());
         ZEXPECT(found.front().symbol.name == name);
     }

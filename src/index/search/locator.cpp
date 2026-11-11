@@ -8,7 +8,7 @@ namespace clice::index {
 
 namespace {
 
-using Mode = SymbolQuery::Mode;
+using Mode = Locator::Mode;
 
 bool is_space(char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r';
@@ -108,12 +108,12 @@ std::pair<llvm::StringRef, llvm::StringRef> split_args(llvm::StringRef segment) 
     return {segment, {}};
 }
 
-std::optional<SymbolQuery::Position> parse_position(llvm::StringRef term) {
+std::optional<Locator::Position> parse_position(llvm::StringRef term) {
     auto [head, last] = term.rsplit(':');
     if(!is_digits(last) || head.empty()) {
         return std::nullopt;
     }
-    SymbolQuery::Position position;
+    Locator::Position position;
     auto [path, middle] = head.rsplit(':');
     if(is_digits(middle) && !path.empty()) {
         position.path = path.str();
@@ -152,7 +152,7 @@ std::optional<SymbolHash> parse_handle(llvm::StringRef term) {
     return hash;
 }
 
-std::expected<void, std::string> parse_name(SymbolQuery& query, llvm::StringRef term) {
+std::expected<void, std::string> parse_name(Locator& query, llvm::StringRef term) {
     // Quotes around a qualified name quote its last segment.
     if(quoted(term) && term.contains("::")) {
         auto inner = term.drop_front().drop_back();
@@ -234,21 +234,21 @@ std::string without_spaces(llvm::StringRef text) {
     return out;
 }
 
-bool segment_matches(const SymbolQuery::Segment& segment, const ScopeEntry& entry) {
+bool segment_matches(const Locator::Segment& segment, const ScopeEntry& entry) {
     return llvm::StringRef(segment.name).equals_insensitive(entry.name) &&
            args_match(segment.args, entry.args);
 }
 
 }  // namespace
 
-std::expected<SymbolQuery, std::string> SymbolQuery::parse(llvm::StringRef text) {
+std::expected<Locator, std::string> Locator::parse(llvm::StringRef text) {
     auto terms = split(text, [](llvm::StringRef rest) -> std::size_t {
         return is_space(rest.front()) ? 1 : 0;
     });
     if(!terms) {
         return std::unexpected(terms.error());
     }
-    SymbolQuery query;
+    Locator query;
     bool named = false;
     for(llvm::StringRef term: *terms) {
         if(term.empty()) {
@@ -359,7 +359,7 @@ llvm::SmallVector<llvm::StringRef, 4> glob_literals(llvm::StringRef pattern) {
     return result;
 }
 
-void SymbolQuery::resolve_paths(const Spelling& directory) {
+void Locator::resolve_paths(const Spelling& directory) {
     for(auto& wanted: paths) {
         if(wanted == "." || wanted == ".." ||
            ranges::any_of(wanted, [](char c) { return path::is_separator(c); })) {
@@ -375,7 +375,7 @@ bool path_matches(llvm::StringRef wanted, llvm::StringRef file) {
     return llvm::StringRef(path::filename(file)) == wanted;
 }
 
-bool segments_match(llvm::ArrayRef<SymbolQuery::Segment> segments,
+bool segments_match(llvm::ArrayRef<Locator::Segment> segments,
                     llvm::ArrayRef<ScopeEntry> chain,
                     bool exact) {
     if(exact) {
@@ -393,16 +393,15 @@ bool segments_match(llvm::ArrayRef<SymbolQuery::Segment> segments,
     return next == segments.size();
 }
 
-bool chain_ends_with(llvm::ArrayRef<SymbolQuery::Segment> segments,
-                     llvm::ArrayRef<ScopeEntry> chain) {
+bool chain_ends_with(llvm::ArrayRef<Locator::Segment> segments, llvm::ArrayRef<ScopeEntry> chain) {
     return chain.size() >= segments.size() &&
            segments_match(segments, chain.take_back(segments.size()), true);
 }
 
-bool in_scope(const SymbolQuery& query, llvm::ArrayRef<ScopeEntry> chain) {
-    llvm::ArrayRef<SymbolQuery::Segment> scope = query.scope;
+bool in_scope(const Locator& query, llvm::ArrayRef<ScopeEntry> chain) {
+    llvm::ArrayRef<Locator::Segment> scope = query.scope;
     if(query.absolute) {
-        if(query.mode == SymbolQuery::Mode::Subtree) {
+        if(query.mode == Locator::Mode::Subtree) {
             return chain.size() >= scope.size() &&
                    segments_match(scope, chain.take_front(scope.size()), true);
         }
@@ -411,7 +410,7 @@ bool in_scope(const SymbolQuery& query, llvm::ArrayRef<ScopeEntry> chain) {
     if(query.qualified_lookup) {
         return chain_ends_with(scope, chain);
     }
-    if(query.mode == SymbolQuery::Mode::Members && !scope.empty()) {
+    if(query.mode == Locator::Mode::Members && !scope.empty()) {
         return !chain.empty() && segments_match(scope.take_back(1), chain.take_back(1), true) &&
                segments_match(scope.drop_back(), chain.drop_back(), false);
     }

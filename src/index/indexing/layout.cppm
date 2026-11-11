@@ -39,13 +39,6 @@ struct InstantiationSectionOf {
 
 using InstantiationSection = InstantiationSectionOf<codec::blob::Owned>;
 
-/// A DocumentLink as the TU index of a preamble persists it.
-template <template <typename> typename Seq>
-struct LinkOf {
-    LocalSourceRange range;
-    Seq<char> target;
-};
-
 /// The TU index's serialized layout. Only the indexer materializes it (and
 /// tests planting shapes it never emits); every consumer reads the bytes
 /// through the TUIndex reader.
@@ -85,7 +78,8 @@ struct TUIndexBlobOf {
     Seq<std::uint16_t> symbol_flags;
     Seq<std::uint8_t> symbol_token_kinds;
     Seq<std::uint32_t> symbol_token_modifiers;
-    /// Path ids, `no_file` for a symbol without a declaring relation.
+    /// The path id of a file declaring each (SymbolView::file), `no_file` for
+    /// a symbol without a declaring relation.
     Seq<std::uint32_t> symbol_files;
     Seq<std::uint32_t> symbol_reference_ends;
     Seq<std::uint32_t> symbol_references;
@@ -95,13 +89,6 @@ struct TUIndexBlobOf {
     Seq<std::uint32_t> symbol_instantiation_ends;
     Seq<std::uint32_t> symbol_instantiations;
 
-    /// The symbols of the table more than one file of the TU defines, a
-    /// pair per file beside `symbol_files`' one: the symbol's entry,
-    /// ascending, and the path id. Empty in most TU indexes: a C variable
-    /// two files tentatively define, a typedef two system headers repeat.
-    Seq<std::uint32_t> other_definition_entries;
-    Seq<std::uint32_t> other_definition_files;
-
     /// One entry per file with an index, ascending by path id.
     Seq<FileSectionOf<Seq>> sections;
 
@@ -109,23 +96,9 @@ struct TUIndexBlobOf {
     /// resolve something in or skipped a known key of, ascending by path id.
     Seq<InstantiationSectionOf<Seq>> instantiations;
 
-    /// Preamble ride-alongs, empty on ordinary TU indexes: identity of the
-    /// exact preamble text the PCH was built from (matches_preamble), and
-    /// the PCH-derived feature state spliced into focus-file results.
-    std::uint64_t preamble_hash = 0;
-    std::uint32_t preamble_size = 0;
-    Seq<LinkOf<Seq>> links;
-    Seq<std::uint32_t> inactive_regions;
-    Seq<std::uint8_t> open_conditionals;
-
     /// The places the parse's failed lookups looked that held no file
     /// (CompilationUnit::absent).
     Seq<Seq<char>> absent;
-
-    /// Preamble ride-along: the diagnostics the preamble's build raised,
-    /// as published (a JSON array of LSP diagnostics) — a compile that
-    /// consumes the PCH never raises them again.
-    Seq<char> diagnostics;
 };
 
 using TUIndexBlob = TUIndexBlobOf<codec::blob::Owned>;

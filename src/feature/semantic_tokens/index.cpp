@@ -104,10 +104,20 @@ auto semantic_tokens(SourceText& source,
 auto semantic_tokens(SourceText& source,
                      const index::IndexQuery& query,
                      const index::IndexSource& index,
-                     const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
+                     const SemanticTokensOptions& options,
+                     llvm::ArrayRef<std::uint32_t> only_in) -> std::vector<SemanticToken> {
+    auto entries = index::extract_entries(*index.shard);
+    if(!only_in.empty()) {
+        auto outside = [&](const auto& entry) {
+            return !inactive_at(only_in, entry.range.begin);
+        };
+        std::erase_if(entries.decls, outside);
+        std::erase_if(entries.occurrences, outside);
+        std::erase_if(entries.writes, outside);
+    }
     return semantic_tokens(
         source,
-        index::extract_entries(*index.shard),
+        entries,
         [&](index::SymbolHash hash) { return query.symbol_info(hash, index.file); },
         options);
 }

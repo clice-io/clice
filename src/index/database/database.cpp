@@ -278,13 +278,11 @@ public:
                  MDB_dbi dbi,
                  MDB_txn* txn,
                  std::string path,
-                 bool read_only,
                  std::optional<OpenLock> open_lock) :
-        env(env), dbi(dbi), txn(txn), path(std::move(path)), read_only_(read_only),
-        open_lock(std::move(open_lock)) {}
+        env(env), dbi(dbi), txn(txn), path(std::move(path)), open_lock(std::move(open_lock)) {}
 
     bool read_only() const override {
-        return read_only_;
+        return open_lock.has_value();
     }
 
     ~LmdbDatabase() override {
@@ -297,7 +295,7 @@ public:
             remove_database_files(path);
         }
         // A shrink cancelled between the copy and the swap leaves its copy.
-        if(!read_only_) {
+        if(!read_only()) {
             fs::remove(path + "-compact");
         }
     }
@@ -324,16 +322,21 @@ public:
         return rc != MDB_NOTFOUND;
     }
 
-    bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<BlobKey> removes) override {
+    std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                           llvm::ArrayRef<BlobKey> removes) override {
         // The grow request answers the last write alone.
         map_full.store(false, std::memory_order_relaxed);
-        auto fail_all = [&](int rc, llvm::StringRef stage) {
+        auto fail_all = [&](int rc, llvm::StringRef stage) -> std::expected<void, std::string> {
+            note_error(rc);
             if(rc == MDB_MAP_FULL) {
                 map_full.store(true, std::memory_order_relaxed);
+                auto [size, grown] = growth();
+                if(auto refused = growth_refused(env, grown - size)) {
+                    return std::unexpected(
+                        std::format("it cannot grow to {}: {}", format_bytes(grown), *refused));
+                }
             }
-            note_error(rc);
-            LOG_WARN("Index database write failed ({}): {}", stage, mdb_strerror(rc));
-            return false;
+            return std::unexpected(std::format("{} failed: {}", stage, mdb_strerror(rc)));
         };
         clear_dead_readers(env);
         MDB_txn* wtxn = nullptr;
@@ -363,7 +366,7 @@ public:
         if(int rc = cover_declared_pages(env)) {
             LOG_WARN("Cannot extend the index database over its pages: {}", mdb_strerror(rc));
         }
-        return true;
+        return {};
     }
 
     void for_each_key(BlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) override {
@@ -410,15 +413,9 @@ public:
         if(!map_full.load(std::memory_order_relaxed)) {
             return Growth::None;
         }
-        MDB_envinfo info;
-        mdb_env_info(env, &info);
-        auto grown = std::max<std::size_t>(info.me_mapsize * 2, lmdb_small_mapsize);
-        if(auto refused = growth_refused(env, grown - info.me_mapsize)) {
-            LOG_GUIDANCE(
-                "The index database cannot grow to {}: {}; the index is not saved until "
-                "that changes",
-                format_bytes(grown),
-                *refused);
+        // The write a full map refused said why it cannot grow.
+        auto [size, grown] = growth();
+        if(growth_refused(env, grown - size)) {
             return Growth::Refused;
         }
         // set_mapsize demands no live transaction in this process, so
@@ -637,6 +634,13 @@ private:
         mdb_cursor_close(cursor);
     }
 
+    /// The map's size and the size a full map grows to.
+    std::pair<std::size_t, std::size_t> growth() const {
+        MDB_envinfo info;
+        mdb_env_info(env, &info);
+        return {info.me_mapsize, std::max<std::size_t>(info.me_mapsize * 2, lmdb_small_mapsize)};
+    }
+
     /// Latch corruption-family read errors for the loader's rebuild
     /// decision; everything else stays "missing or transiently unreadable".
     void note_error(int rc) {
@@ -676,11 +680,8 @@ private:
 
     bool condemned = false;
 
-    bool read_only_ = false;
-
     /// A reader's lock on the `-open` file, held as long as the database
-    /// is open; the writer holds none, and neither does a reader that cannot
-    /// open the file, in a directory it may not write.
+    /// is open; the writer holds none.
     std::optional<OpenLock> open_lock;
 };
 
@@ -808,6 +809,10 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
             return nullptr;
         }
         configure(env, mapsize);
+        // LIMITATION: a reader takes LMDB's own lock too, so a database
+        // whose lock file it may not write — another user's index — opens
+        // for no `clice query`; one on a read-only mount does, where LMDB
+        // skips the lock.
         unsigned flags = lmdb_flags | (read_only ? MDB_RDONLY : 0);
         // True = the failure was repaired by deleting the database and the
         // loop should retry; false = give up with persistence disabled.
@@ -947,12 +952,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
                 return nullptr;
             }
         }
-        return std::make_unique<LmdbDatabase>(env,
-                                              dbi,
-                                              txn,
-                                              std::move(path),
-                                              read_only,
-                                              std::move(open_lock));
+        return std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), std::move(open_lock));
     }
 }
 

@@ -22,21 +22,28 @@ struct TUIndexOptions {
     /// A Whole compile always indexes every file.
     bool all_files = false;
 
-    /// Variant identities the receiver already stores, sorted. A section
-    /// whose hash is among them travels as the bare hash, and an external
-    /// symbol only such sections name stays out of the table: the
-    /// receiver took both in with the variant.
+    /// The variants the receiver already stores, each as its file knows it
+    /// (known_at), sorted. A section whose hash is among them travels as
+    /// the bare hash, and an external symbol only such sections name stays
+    /// out of the table: the receiver took both in with the variant.
     llvm::ArrayRef<std::uint64_t> known_variants;
 
-    /// The keys of the instantiations the receiver already holds, sorted:
-    /// an instantiation whose key is among them is not walked, and its
-    /// file's section lists the key as skipped.
+    /// The keys of the instantiations the receiver already holds, each as
+    /// its file knows it (known_at), sorted: an instantiation whose key is
+    /// among them is not walked, and its file's section lists the key as
+    /// skipped.
     llvm::ArrayRef<std::uint64_t> known_instantiations;
 
     /// Walk the standard library's own instantiations and macro expansions
     /// too (decls::in_standard_library): what `std::sort` resolves in the
     /// library's text. Without, they are neither walked nor keyed.
     bool standard_library_instantiations = false;
+
+    /// Index the bodies of the functions library headers define too
+    /// (SemanticsOptions::library_bodies): the names they use inside.
+    /// Without, a library header's index holds its declarations alone —
+    /// the focus file's own text is always indexed whole.
+    bool library_bodies = false;
 };
 
 /// Index one TU and encode the result as its TU index blob: the include
@@ -47,18 +54,5 @@ struct TUIndexOptions {
 /// times are one union blob. The TU index blob travels worker→server over IPC
 /// and is dismantled into the three persistent layers on arrival.
 std::vector<std::byte> build_tu_index(CompilationUnit& unit, const TUIndexOptions& options = {});
-
-/// The preamble variant: a preamble is a TU cut off at the preamble
-/// bound, and its index is the same TU index blob — persisted verbatim as
-/// the PCH's `.pch.idx` pair — plus the preamble-specific fields ordinary
-/// TU index blobs leave empty: the identity of the exact preamble text, and
-/// the PCH-derived feature state spliced into focus-file results
-/// (document links, inactive regions, the open conditional stack at the
-/// bound, the diagnostics as published).
-std::vector<std::byte> build_preamble_index(CompilationUnit& unit,
-                                            llvm::ArrayRef<DocumentLink> links,
-                                            llvm::ArrayRef<std::uint32_t> inactive_regions,
-                                            llvm::ArrayRef<std::uint8_t> open_conditionals,
-                                            llvm::StringRef diagnostics);
 
 }  // namespace clice::index

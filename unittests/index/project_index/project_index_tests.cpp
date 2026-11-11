@@ -40,16 +40,16 @@ index::SymbolHash find_symbol(const index::ProjectIndex& project, llvm::StringRe
     return found;
 }
 
-/// The files a symbol's bitmap names, as the pool's ids.
-std::vector<std::uint32_t> reference_files(const index::ProjectIndex& project,
-                                           index::SymbolHash hash) {
+/// The files of a symbol's record, as the pool's ids.
+std::vector<std::uint32_t> files_of(const index::ProjectIndex& project,
+                                    index::SymbolHash hash,
+                                    index::SymbolFiles which = index::SymbolFiles::Naming) {
     std::vector<std::uint32_t> files;
-    project.for_each_reference_file(hash, [&](Fid file) { files.push_back(file.raw); });
+    project.for_each_file(hash, which, [&](Fid file) { files.push_back(file.raw); });
     return files;
 }
 
-/// The TU-local id -> pool id mapping merge_symbols() consumes, as merge()
-/// computes it.
+/// The TU-local id -> pool id mapping, as merge() computes it.
 llvm::SmallVector<Fid> intern_paths(const index::TUIndex& view, clice::FileTable& pool) {
     llvm::SmallVector<Fid> ids;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
@@ -84,7 +84,7 @@ ZEST_CASE(MergeCollectsExternalSymbols) {
     index::ProjectIndex project{pool};
     auto view = build_view();
     ZASSERT(view.loaded());
-    project.merge_symbols(view, intern_paths(view, pool));
+    ZASSERT(project.merge(view.bytes(), {}).has_value());
 
     auto external = find_symbol(project, "external_fn");
     ZASSERT(external != 0);
@@ -110,7 +110,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     index::ProjectIndex project{pool};
     auto view = build_view();
     ZASSERT(view.loaded());
-    project.merge_symbols(view, intern_paths(view, pool));
+    ZASSERT(project.merge(view.bytes(), {}).has_value());
 
     // A declaration-only unit places the symbol at its declaring header.
     auto hash = find_symbol(project, "shared_fn");
@@ -124,8 +124,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     ZASSERT(header);
     ZASSERT(declared->file == header->raw);
 
-    // The defining unit moves the canonical file to its definition and
-    // adds its bits to the union.
+    // The defining unit's file defines it, and its bits join the union.
     Tester definer;
     definer.add_file("shared.h", R"(
         namespace lib { int shared_fn(); }
@@ -139,7 +138,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     auto definer_bytes = index::build_tu_index(*definer.unit);
     auto definer_view = index::TUIndex::from_bytes(as_chars(definer_bytes));
     ZASSERT(definer_view.loaded());
-    project.merge_symbols(definer_view, intern_paths(definer_view, pool));
+    ZASSERT(project.merge(definer_view.bytes(), {}).has_value());
 
     auto defined = project.find_symbol(hash);
     ZASSERT(defined);
@@ -149,26 +148,21 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     ZASSERT(definition);
     ZASSERT(defined->file == definition->raw);
     ZASSERT(project.reference_count(hash) == 3u);
+    ZASSERT(files_of(project, hash, index::SymbolFiles::Defining) == std::vector{definition->raw});
 
-    // The table never retracts a unit's report, so a definition that
-    // moved to another unit must still win the file over the old bit.
-    Tester mover;
-    mover.add_file("shared.h", R"(
-        namespace lib { int shared_fn(); }
-    )");
-    mover.add_focus("moved.cpp", R"(
-        #include "shared.h"
-        int lib::shared_fn() { return 2; }
-    )");
-    mover.kind = CompilationKind::Whole;
-    ZASSERT(mover.compile());
-    auto mover_bytes = index::build_tu_index(*mover.unit);
-    auto mover_view = index::TUIndex::from_bytes(as_chars(mover_bytes));
-    ZASSERT(mover_view.loaded());
-    project.merge_symbols(mover_view, intern_paths(mover_view, pool));
-    auto moved = pool.find(Spelling::absolute(mover_view.path(mover_view.focus_file())));
-    ZASSERT(moved);
-    ZASSERT(project.find_symbol(hash)->file == moved->raw);
+    // The definition leaves the unit: its file names the symbol no more,
+    // and the record follows the shard.
+    Tester emptied;
+    emptied.add_focus("lib.cpp", "int unrelated = 0;\n");
+    emptied.kind = CompilationKind::Whole;
+    ZASSERT(emptied.compile());
+    auto emptied_bytes = index::build_tu_index(*emptied.unit);
+    ZASSERT(project.merge(as_chars(emptied_bytes), {}).has_value());
+    auto declared_again = project.find_symbol(hash);
+    ZASSERT(declared_again);
+    ZASSERT(!index::has_flag(declared_again->flags, index::SymbolFlags::HasDefinition));
+    ZASSERT(declared_again->file == header->raw);
+    ZASSERT(project.reference_count(hash) == 2u);
 }
 
 ZEST_CASE(MergePicksOneSpelling) {
@@ -191,8 +185,8 @@ ZEST_CASE(MergePicksOneSpelling) {
         index::ProjectIndex project{pool};
         auto first_view = index::TUIndex::from_bytes(*first);
         auto second_view = index::TUIndex::from_bytes(*second);
-        project.merge_symbols(first_view, intern_paths(first_view, pool));
-        project.merge_symbols(second_view, intern_paths(second_view, pool));
+        IndexInternals::merge_facts(project, first_view);
+        IndexInternals::merge_facts(project, second_view);
         ZASSERT(project.find_symbol(42)->args == "<int>");
     }
 }
@@ -213,8 +207,8 @@ ZEST_CASE(LatestSignatureStands) {
     index::ProjectIndex project{pool};
     auto before_view = index::TUIndex::from_bytes(before_bytes);
     auto after_view = index::TUIndex::from_bytes(after_bytes);
-    project.merge_symbols(before_view, intern_paths(before_view, pool));
-    project.merge_symbols(after_view, intern_paths(after_view, pool));
+    IndexInternals::merge_facts(project, before_view);
+    IndexInternals::merge_facts(project, after_view);
     ZASSERT(project.find_symbol(42)->signature == "(int count)");
 }
 
@@ -245,8 +239,16 @@ ZEST_CASE(DefinitionDecidesSignature) {
         index::ProjectIndex project{pool};
         auto first_view = index::TUIndex::from_bytes(*first);
         auto second_view = index::TUIndex::from_bytes(*second);
-        project.merge_symbols(first_view, intern_paths(first_view, pool));
-        project.merge_symbols(second_view, intern_paths(second_view, pool));
+        IndexInternals::merge_facts(project, first_view);
+        // The shards of the defining unit say its file defines the symbol.
+        if(first == &defines_bytes) {
+            auto file =
+                IndexInternals::path_id(project, pool.intern(Spelling::absolute("/proj/main.cpp")));
+            auto& defined = IndexInternals::symbol(project, 42);
+            defined.declaration_files.add(file);
+            defined.definition_files.add(file);
+        }
+        IndexInternals::merge_facts(project, second_view);
         ZASSERT(project.find_symbol(42)->signature == "(int count)");
     }
 }
@@ -277,35 +279,29 @@ ZEST_CASE(DefinitionDecidesTokenKind) {
         index::ProjectIndex project{pool};
         auto first_view = index::TUIndex::from_bytes(*first);
         auto second_view = index::TUIndex::from_bytes(*second);
-        project.merge_symbols(first_view, intern_paths(first_view, pool));
-        project.merge_symbols(second_view, intern_paths(second_view, pool));
+        IndexInternals::merge_facts(project, first_view);
+        IndexInternals::merge_facts(project, second_view);
         ZASSERT(project.find_symbol(42)->token_class.kind == SemanticTokenKind::Class);
     }
 }
 
-ZEST_CASE(DefinitionFilesFromUnits) {
+ZEST_CASE(DefinitionFilesFromShards) {
     // A weak and a strong definition, each a unit's: both files define the
-    // symbol, whichever merges first.
-    auto unit_defining = [](llvm::StringRef path) {
-        auto blob = tu_index_blob();
-        blob.paths = {path.str()};
-        add_symbol(blob,
-                   42,
-                   {
-                       .name = "father",
-                       .kind = SymbolKind::Function,
-                       .flags = index::SymbolFlags::HasDefinition,
-                       .file = 0,
-                   },
-                   {0});
-        return tu_index_bytes(blob);
+    // symbol, whichever merges first, and a unit merged again changes
+    // nothing.
+    auto unit_defining = [](llvm::StringRef name, llvm::StringRef text) {
+        Tester tester;
+        tester.add_focus(name, text);
+        tester.kind = CompilationKind::Whole;
+        ZASSERT(tester.compile("-std=c17"));
+        return index::build_tu_index(*tester.unit);
     };
-    auto weak = unit_defining("/proj/weak.c");
-    auto strong = unit_defining("/proj/main.c");
+    auto weak = unit_defining("weak.c", "__attribute__((weak)) void father(void) {}\n");
+    auto strong = unit_defining("main.c", "void father(void) {}\n");
     clice::FileTable pool;
     auto names = [&](index::ProjectIndex& project, index::SymbolHash hash) {
         std::vector<std::string> files;
-        project.for_each_definition_file(hash, [&](Fid file) {
+        project.for_each_file(hash, index::SymbolFiles::Defining, [&](Fid file) {
             files.push_back(std::string(path::filename(pool.resolve(file))));
         });
         ranges::sort(files);
@@ -316,33 +312,13 @@ ZEST_CASE(DefinitionFilesFromUnits) {
             std::pair{&strong, &weak  }
     }) {
         index::ProjectIndex project{pool};
-        auto first_view = index::TUIndex::from_bytes(*first);
-        auto second_view = index::TUIndex::from_bytes(*second);
-        project.merge_symbols(first_view, intern_paths(first_view, pool));
-        project.merge_symbols(second_view, intern_paths(second_view, pool));
-        project.merge_symbols(first_view, intern_paths(first_view, pool));
-        ZEXPECT(names(project, 42) == std::vector<std::string>{"main.c", "weak.c"});
+        ZASSERT(project.merge(as_chars(*first), {}).has_value());
+        ZASSERT(project.merge(as_chars(*second), {}).has_value());
+        ZASSERT(project.merge(as_chars(*first), {}).has_value());
+        auto father = find_symbol(project, "father");
+        ZASSERT(father != 0);
+        ZEXPECT(names(project, father) == std::vector<std::string>{"main.c", "weak.c"});
     }
-
-    // One unit defining it in two of its files.
-    auto both = tu_index_blob();
-    both.paths = {"/proj/a.c", "/proj/a.h"};
-    add_symbol(both,
-               43,
-               {
-                   .name = "counter",
-                   .kind = SymbolKind::Variable,
-                   .flags = index::SymbolFlags::HasDefinition,
-                   .file = 0,
-               },
-               {0, 1});
-    both.other_definition_entries = {0};
-    both.other_definition_files = {1};
-    auto both_bytes = tu_index_bytes(both);
-    index::ProjectIndex project{pool};
-    auto view = index::TUIndex::from_bytes(both_bytes);
-    project.merge_symbols(view, intern_paths(view, pool));
-    ZEXPECT(names(project, 43) == std::vector<std::string>{"a.c", "a.h"});
 }
 
 ZEST_CASE(TentativeDefinitionsBothFiles) {
@@ -357,11 +333,11 @@ ZEST_CASE(TentativeDefinitionsBothFiles) {
     index::ProjectIndex project{pool};
     auto view = build_view();
     ZASSERT(view.loaded());
-    project.merge_symbols(view, intern_paths(view, pool));
+    ZASSERT(project.merge(view.bytes(), {}).has_value());
     auto counter = find_symbol(project, "counter");
     ZASSERT(counter != 0);
     std::vector<std::string> files;
-    project.for_each_definition_file(counter, [&](Fid file) {
+    project.for_each_file(counter, index::SymbolFiles::Defining, [&](Fid file) {
         files.push_back(std::string(path::filename(pool.resolve(file))));
     });
     ranges::sort(files);
@@ -509,13 +485,8 @@ ZEST_CASE(MergedRecordsRoundTrip) {
     index::ProjectIndex project{pool};
     auto view = build_view();
     ZASSERT(view.loaded());
-    auto file_ids_map = intern_paths(view, pool);
-    project.merge_symbols(view, file_ids_map);
-    auto focus = file_ids_map[view.focus_file()];
-    index::TUManifest manifest;
-    manifest.built_at = 1;
-    manifest.tu_version = pool.intern_version(focus, view.content_hash(view.focus_file()));
-    project.apply_manifest(focus, std::move(manifest));
+    ZASSERT(project.merge(view.bytes(), {}).has_value());
+    auto focus = intern_paths(view, pool)[view.focus_file()];
     commit(project, *db);
 
     clice::FileTable fresh;
@@ -525,7 +496,7 @@ ZEST_CASE(MergedRecordsRoundTrip) {
     ZASSERT(symbol != 0);
     auto fresh_id = fresh.find(Spelling::absolute(pool.resolve(focus)));
     ZASSERT(fresh_id);
-    ZASSERT(ranges::contains(reference_files(loaded, symbol), fresh_id->raw));
+    ZASSERT(ranges::contains(files_of(loaded, symbol), fresh_id->raw));
     ZASSERT(loaded.indexed(*fresh_id));
 }
 
@@ -547,18 +518,18 @@ ZEST_CASE(SymbolRecordsRoundTrip) {
         auto file = pool.intern(Spelling::absolute(std::format("/proj/{}.h", i)));
         paths.push_back(IndexInternals::path_id(project, file));
     }
-    auto& scope = project.edit(10);
+    auto& scope = IndexInternals::symbol(project, 10);
     scope.name = "ns";
     scope.kind = SymbolKind::Namespace;
     scope.reference_files.add(paths[0]);
-    auto& member = project.edit(20);
+    auto& member = IndexInternals::symbol(project, 20);
     member.name = "f";
     member.args = "<int>";
     member.parent = 10;
-    member.file = paths[1];
+    member.declaration_files.add(paths[1]);
     member.reference_files.add(paths[1]);
     member.reference_files.add(paths[2]);
-    auto& outsider = project.edit(30);
+    auto& outsider = IndexInternals::symbol(project, 30);
     outsider.name = "g";
     outsider.parent = 999;
     for(auto path: paths) {
@@ -586,8 +557,7 @@ ZEST_CASE(SymbolRecordsRoundTrip) {
         ZEXPECT(outsider->parent == 999u);
         ZEXPECT(index.reference_count(10) == 1u);
         ZEXPECT(index.reference_count(30) == 4u);
-        std::vector<std::uint32_t> referencing;
-        index.for_each_reference_file(30, [&](Fid file) { referencing.push_back(file.raw); });
+        auto referencing = files_of(index, 30);
         ranges::sort(referencing);
         std::vector<std::uint32_t> expected{id_of("/proj/0.h"),
                                             id_of("/proj/1.h"),
@@ -595,12 +565,9 @@ ZEST_CASE(SymbolRecordsRoundTrip) {
                                             id_of("/proj/3.h")};
         ranges::sort(expected);
         ZEXPECT(referencing == expected);
-        std::vector<std::uint32_t> instantiating;
-        index.for_each_instantiation_file(30, [&](Fid file) { instantiating.push_back(file.raw); });
-        ZEXPECT(instantiating == std::vector{id_of("/proj/3.h")});
-        std::size_t none = 0;
-        index.for_each_instantiation_file(20, [&](Fid) { none += 1; });
-        ZEXPECT(none == 0u);
+        ZEXPECT(files_of(index, 30, index::SymbolFiles::Instantiating) ==
+                std::vector{id_of("/proj/3.h")});
+        ZEXPECT(files_of(index, 20, index::SymbolFiles::Instantiating).empty());
     };
     check(project, pool);
 
@@ -623,7 +590,7 @@ ZEST_CASE(LazyShardsStayPut) {
 
     clice::FileTable writer_files;
     index::ProjectIndex writer{writer_files};
-    writer.edit(7).name = "x";
+    IndexInternals::symbol(writer, 7).name = "x";
     commit(writer, *db);
 
     constexpr std::uint32_t count = 300;
@@ -659,136 +626,72 @@ ZEST_CASE(LazyShardsStayPut) {
     ZASSERT(project.shard(files.intern(Spelling::absolute("/proj/none.cpp"))) == nullptr);
 }
 
-ZEST_CASE(SharedLocalAcrossUnits) {
-    // One hash in two places: a `static` in util.h, which a.cpp includes
-    // and b.cpp reads through its precompiled header, and a namespace of
-    // the same name nested in an anonymous namespace of other.h, which
-    // only c.cpp includes. A walk steps from a.cpp to b.cpp through the
-    // header they share, and never into c.cpp's files — in the writer and
-    // in a reader of the persisted records.
+ZEST_CASE(LocalSymbolAcrossFiles) {
+    // A header's `static` function is one symbol in every file naming it:
+    // its record lists them once a unit names it in several, in the writer
+    // and in a reader of the persisted records, and a file whose shard
+    // names it no more leaves.
     TempDir tmp;
     auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
     ZASSERT(store);
     auto db = index::open_database(*store, {});
     ZASSERT(db != nullptr);
 
-    constexpr index::SymbolHash helper = 99;
+    auto unit_of = [](llvm::StringRef name, llvm::StringRef text) {
+        Tester tester;
+        tester.add_file("util.h", "static int helper() { return 1; }\n");
+        tester.add_focus(name, text);
+        tester.kind = CompilationKind::Whole;
+        ZASSERT(tester.compile());
+        return index::build_tu_index(*tester.unit);
+    };
+    llvm::StringRef caller = "#include \"util.h\"\nint call() { return helper(); }\n";
+    auto a = unit_of("a.cpp", caller);
+    auto b = unit_of("b.cpp", caller);
+
+    auto view = index::TUIndex::from_bytes(as_chars(a));
+    ZASSERT(view.loaded());
+    index::SymbolHash helper = 0;
+    view.for_each_symbol([&](index::SymbolHash hash,
+                             const index::SymbolView& symbol,
+                             llvm::ArrayRef<std::uint32_t>) {
+        if(symbol.name == "helper") {
+            helper = hash;
+        }
+        return helper == 0;
+    });
+    ZASSERT(helper != 0);
+
     clice::FileTable pool;
     index::ProjectIndex writer{pool};
-    auto util = pool.intern_version(pool.intern(Spelling::absolute("/proj/util.h")), 0xaaaa);
-    auto other = pool.intern_version(pool.intern(Spelling::absolute("/proj/other.h")), 0xbbbb);
-    llvm::SmallVector<Fid> units;
-    for(auto name: {"/proj/a.cpp", "/proj/b.cpp", "/proj/c.cpp"}) {
-        auto tu = pool.intern(Spelling::absolute(name));
-        auto header = llvm::StringRef(name).ends_with("c.cpp") ? other : util;
-        index::TUManifest manifest;
-        manifest.built_at = 1;
-        manifest.tu_version = pool.intern_version(tu, 0x1111);
-        manifest.nodes = {
-            {manifest.tu_version.raw, ~0u, 1},
-            {header.raw,              0,   1},
-        };
-        manifest.contributions = {
-            {manifest.tu_version, 1}
-        };
-        if(llvm::StringRef(name).ends_with("b.cpp")) {
-            manifest.imports = {header};
-        } else {
-            manifest.contributions.emplace_back(header, 2);
-        }
-        manifest.shared_locals = {
-            {.symbol = helper, .files = {manifest.tu_version, header}}
-        };
-        writer.apply_manifest(tu, std::move(manifest));
-        units.push_back(tu);
-    }
+    ZASSERT(writer.merge(as_chars(a), {}).has_value());
+    ZASSERT(writer.merge(as_chars(b), {}).has_value());
+    ZEXPECT(!writer.find_symbol(helper));
 
-    auto check = [&](const index::ProjectIndex& index, clice::FileTable& table) {
-        auto ids = [&](std::initializer_list<llvm::StringRef> names) {
-            llvm::SmallVector<Fid> fids;
-            for(auto name: names) {
-                fids.push_back(table.intern(Spelling::absolute(name)));
-            }
-            ranges::sort(fids);
-            return fids;
+    auto names =
+        [&](const index::ProjectIndex& index, clice::FileTable& table, index::SymbolFiles which) {
+            std::vector<std::string> files;
+            index.for_each_file(helper, which, [&](Fid file) {
+                files.push_back(std::string(path::filename(table.resolve(file))));
+            });
+            ranges::sort(files);
+            return files;
         };
-        for(auto group: {ids({"/proj/a.cpp", "/proj/b.cpp", "/proj/util.h"}),
-                         ids({"/proj/c.cpp", "/proj/other.h"})}) {
-            for(auto start: group) {
-                llvm::SmallVector<Fid> reached;
-                index.for_each_file_of_local(helper, start, [&](Fid file) {
-                    reached.push_back(file);
-                });
-                ranges::sort(reached);
-                ZEXPECT(reached == group);
-            }
-        }
-    };
-    check(writer, pool);
+    auto everywhere = std::vector<std::string>{"a.cpp", "b.cpp", "util.h"};
+    ZEXPECT(names(writer, pool, index::SymbolFiles::Naming) == everywhere);
+    ZEXPECT(names(writer, pool, index::SymbolFiles::Defining) ==
+            std::vector<std::string>{"util.h"});
 
     commit(writer, *db);
-
     clice::FileTable files;
     index::ProjectIndex reader{files};
     ZASSERT(reader.open(*db) == index::LoadResult::Loaded);
-    check(reader, files);
+    ZEXPECT(names(reader, files, index::SymbolFiles::Naming) == everywhere);
 
-    // A unit leaving takes its set along: c.cpp's files no longer answer,
-    // while the sets of a.cpp and b.cpp still join them through util.h.
-    writer.remove_manifest(units[2]);
-    llvm::SmallVector<Fid> reached;
-    writer.for_each_file_of_local(helper,
-                                  pool.intern(Spelling::absolute("/proj/c.cpp")),
-                                  [&](Fid file) { reached.push_back(file); });
-    ZEXPECT(reached.size() == 1u);
-    llvm::SmallVector<Fid> joined;
-    writer.for_each_file_of_local(helper,
-                                  pool.intern(Spelling::absolute("/proj/a.cpp")),
-                                  [&](Fid file) { joined.push_back(file); });
-    ZEXPECT(joined.size() == 3u);
-}
-
-ZEST_CASE(SharedLocalSetsCounted) {
-    // Two units list the same files for a symbol: the set answers until
-    // the last of them leaves.
-    constexpr index::SymbolHash helper = 99;
-    clice::FileTable pool;
-    index::ProjectIndex index{pool};
-    auto x = pool.intern(Spelling::absolute("/proj/x.h"));
-    auto x_version = pool.intern_version(x, 0xaaaa);
-    auto y_version = pool.intern_version(pool.intern(Spelling::absolute("/proj/y.h")), 0xbbbb);
-    llvm::SmallVector<Fid> units;
-    for(auto name: {"/proj/a.cpp", "/proj/b.cpp"}) {
-        auto tu = pool.intern(Spelling::absolute(name));
-        index::TUManifest manifest;
-        manifest.built_at = 1;
-        manifest.tu_version = pool.intern_version(tu, 0x1111);
-        manifest.nodes = {
-            {manifest.tu_version.raw, ~0u, 1},
-            {x_version.raw,           0,   1},
-            {y_version.raw,           1,   1},
-        };
-        manifest.contributions = {
-            {manifest.tu_version, 1},
-            {x_version,           2},
-            {y_version,           3},
-        };
-        manifest.shared_locals = {
-            {.symbol = helper, .files = {x_version, y_version}}
-        };
-        index.apply_manifest(tu, std::move(manifest));
-        units.push_back(tu);
-    }
-    auto reached = [&] {
-        std::size_t count = 0;
-        index.for_each_file_of_local(helper, x, [&](Fid) { count += 1; });
-        return count;
-    };
-    ZEXPECT(reached() == 2u);
-    index.remove_manifest(units[0]);
-    ZEXPECT(reached() == 2u);
-    index.remove_manifest(units[1]);
-    ZEXPECT(reached() == 1u);
+    auto quiet = unit_of("b.cpp", "#include \"util.h\"\nint call() { return 0; }\n");
+    ZASSERT(writer.merge(as_chars(quiet), {}).has_value());
+    ZEXPECT(names(writer, pool, index::SymbolFiles::Naming) ==
+            std::vector<std::string>{"a.cpp", "util.h"});
 }
 
 };  // ZEST_SUITE(ProjectIndex)

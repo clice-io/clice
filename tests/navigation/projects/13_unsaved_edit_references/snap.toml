@@ -1,0 +1,35 @@
+[test.clean]
+references = [
+    "impl.cpp │ int ⟦area⟧(int x) { return x * 2; }",
+    "main.cpp │ int use_a() { return ⟦area⟧(1); }",
+    "main.cpp │ int use_b() { return ⟦area⟧(2); }",
+    "int other() { return ⟦area⟧(3); }",
+    "shapes.h │ int ⟦area⟧(int x);",
+]
+
+[test.edited]
+references = [
+    "impl.cpp │ int ⟦area⟧(int x) { return x * 2; }",
+    "main.cpp │ int use_a() { return ⟦area⟧(1); }",
+    "main.cpp │ int use_b() { return ⟦area⟧(2); }",
+    "int other() { return ⟦area⟧(3); }",
+    "shapes.h │ int ⟦area⟧(int x);",
+]
+
+[test."asked in main.cpp"]
+references = [
+    "impl.cpp │ int ⟦area⟧(int x) { return x * 2; }",
+    "int use_a() { return ⟦area⟧(1); }",
+    "int use_b() { return ⟦area⟧(2); }",
+    "other.cpp │ int other() { return ⟦area⟧(3); }",
+    "shapes.h │ int ⟦area⟧(int x);",
+]
+
+[test.compiled]
+references = [
+    "impl.cpp │ int ⟦area⟧(int x) { return x * 2; }",
+    "main.cpp │ int use_a() { return ⟦area⟧(1); }",
+    "main.cpp │ int use_b() { return ⟦area⟧(2); }",
+    "int other() { return ⟦area⟧(3); }",
+    "shapes.h │ int ⟦area⟧(int x);",
+]

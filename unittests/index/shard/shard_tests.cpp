@@ -749,26 +749,39 @@ ZEST_CASE(MergedLocalFlagsUnion) {
     // Variants of one file can see different facts of a local symbol (a
     // definition behind `#ifdef`, `struct` declaring what `class` defines);
     // the merged table keeps their union and the definition's token kind in
-    // either merge order.
+    // either merge order, and the symbol is defined while a variant holds
+    // a definition.
     llvm::StringRef content = "static int helper();\n";
-    auto variant = [&](index::SymbolFlags flags, SemanticTokenKind token_kind) {
-        auto file_index = simple_index({
-            {{11, 17}, 7}
-        });
-        auto bytes = index::write_shard(
-            file_index,
-            [&](index::SymbolHash) -> std::optional<index::SymbolView> {
-                return index::SymbolView{.name = "helper",
-                                         .kind = SymbolKind::Function,
-                                         .scope = index::SymbolScope::Internal,
-                                         .flags = flags,
-                                         .token_class = {.kind = token_kind}};
-            },
-            content);
-        return make_shard(bytes);
-    };
-    auto defining = variant(index::SymbolFlags::HasDefinition, SemanticTokenKind::Class);
-    auto declaring = variant(index::SymbolFlags::None, SemanticTokenKind::Struct);
+    auto variant =
+        [&](RelationKind::Kind declared, index::SymbolFlags flags, SemanticTokenKind token_kind) {
+            auto file_index = simple_index({
+                {{11, 17}, 7}
+            });
+            index::Relation relation{
+                .kind = declared,
+                .range = {11, 17}
+            };
+            relation.set_extent({0, 20});
+            file_index.relations[7] = {relation};
+            auto bytes = index::write_shard(
+                file_index,
+                [&](index::SymbolHash) -> std::optional<index::SymbolView> {
+                    return index::SymbolView{.name = "helper",
+                                             .kind = SymbolKind::Function,
+                                             .scope = index::SymbolScope::Internal,
+                                             .flags = flags,
+                                             .token_class = {.kind = token_kind}};
+                },
+                content);
+            return make_shard(bytes);
+        };
+    auto defining =
+        variant(RelationKind::Definition, index::SymbolFlags::None, SemanticTokenKind::Class);
+    auto declaring = variant(RelationKind::Declaration,
+                             index::SymbolFlags::Deprecated,
+                             SemanticTokenKind::Struct);
+    ZEXPECT(index::has_flag(defining.find_symbol(7)->flags, index::SymbolFlags::HasDefinition));
+    ZEXPECT(!index::has_flag(declaring.find_symbol(7)->flags, index::SymbolFlags::HasDefinition));
 
     for(auto [first, second]: {
             std::pair{&defining,  &declaring},
@@ -780,6 +793,7 @@ ZEST_CASE(MergedLocalFlagsUnion) {
         auto identity = merged.find_symbol(7);
         ZASSERT(identity);
         ZASSERT(index::has_flag(identity->flags, index::SymbolFlags::HasDefinition));
+        ZASSERT(index::has_flag(identity->flags, index::SymbolFlags::Deprecated));
         ZASSERT(identity->token_class.kind == SemanticTokenKind::Class);
     }
 }

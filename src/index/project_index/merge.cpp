@@ -255,41 +255,12 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         instantiation_replacements.emplace_back(global_id, std::move(replacement));
     }
 
-    // The files the unit holds entries of: its own sections, the
-    // resolutions it uses, and what it reads through the precompiled header
-    // or its modules, whose own units wrote the entries there.
-    llvm::BitVector held(view.path_count());
-    for(auto local_id: views::keys(section_contributions)) {
-        held.set(local_id);
-    }
-    for(auto local_id:
-        views::transform(unit_uses, [](auto& entry) { return entry.second.first; })) {
-        held.set(local_id);
-    }
-    llvm::DenseSet<Fid> read_precompiled;
-    for(auto& dep: imports) {
-        read_precompiled.insert(dep.file);
-    }
-    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        if(read_precompiled.contains(file_ids_map[i])) {
-            held.set(i);
-        }
-    }
-    auto shared_locals = view.shared_locals(held);
-    if(!shared_locals) {
-        LOG_WARN(
-            "The index of {} is not merged: a symbol below external scope names a file the unit holds "
-            "no entries of",
-            tu_path);
-        return std::unexpected(MergeError::Invalid);
-    }
-
-    // The first commit.
-    llvm::SmallVector<SymbolHash> added;
-    merge_symbols(view, file_ids_map, &added);
-    pending_symbols.insert(added.begin(), added.end());
-    if(changed_during_search_build) {
-        changed_during_search_build->symbols.insert(added.begin(), added.end());
+    // The first commit: what the external symbols are, before the shards
+    // below say which files hold their entries.
+    llvm::SmallVector<SymbolHash> described;
+    merge_facts(view, described);
+    for(auto hash: described) {
+        search.symbol_changed(hash);
     }
 
     // Intern a FileVersion per file of the parse: the consumed-content hash
@@ -325,13 +296,6 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     for(auto [local_id, variant]: section_contributions) {
         manifest.contributions.emplace_back(version_of[local_id], variant);
     }
-    for(auto& local: *shared_locals) {
-        SharedLocal entry{.symbol = local.symbol};
-        for(auto path_id: local.paths) {
-            entry.files.push_back(version_of[path_id]);
-        }
-        manifest.shared_locals.push_back(std::move(entry));
-    }
     for(auto [local_id, use]:
         views::transform(unit_uses, [](auto& entry) -> auto& { return entry.second; })) {
         manifest.instantiations.push_back({.file = version_of[local_id], .use = use});
@@ -365,27 +329,27 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     }
 
     for(auto& [global_id, replacement]: replacements) {
-        auto& record = change_file(global_id);
-        record.generation = replacement.content_hash();
-        record.stored = replacement.variants();
-        shards[global_id] = std::move(replacement);
-        changed_shards.insert(global_id);
-        retired_shards.erase(global_id);
+        replace_shard(global_id, std::move(replacement));
         report.add_index_changed(global_id);
-        search_file_changed(global_id);
     }
     // A file's instantiations live with its shard of the same generation.
     for(auto path_id: rebuilt_ids) {
         auto* held = instantiation_shard(path_id);
-        if(held && held->content_hash() != shards.find(path_id)->second.content_hash()) {
-            retire_instantiations(path_id);
+        if(held && held->content_hash() != shard(path_id)->content_hash()) {
+            replace_instantiations(path_id, {});
         }
     }
     for(auto& [global_id, replacement]: instantiation_replacements) {
-        instantiations[global_id] = std::move(replacement);
-        changed_instantiations.insert(global_id);
-        retired_instantiations.erase(global_id);
+        replace_instantiations(global_id, std::move(replacement));
         report.add_index_changed(global_id);
+    }
+    list_locals(view, file_ids_map);
+    // A symbol the unit describes that no stored entry mentions — the
+    // template of an instantiation resolving nothing — keeps no record.
+    for(auto hash: described) {
+        if(auto* record = symbol(hash); record && record->in_no_file()) {
+            symbol_records.changed[number_key(hash)] = std::nullopt;
+        }
     }
 
     // Replace this TU's manifest wholesale: files it no longer touches lose
@@ -404,9 +368,9 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // failed — or that reads fresh by hash after a revert, which is why
     // ContentChanged — has no in-process event left to rebuild its index.
     for(auto path_id: rebuilt_ids) {
-        auto& shard = shards.find(path_id)->second;
+        auto* rebuilt = shard(path_id);
         for_each_contribution(path_id, [&](Fid tu, std::uint64_t variant) {
-            if(!shard.has_variant(variant)) {
+            if(!rebuilt->has_variant(variant)) {
                 owe(tu, report);
             }
         });
@@ -439,11 +403,12 @@ std::vector<std::uint64_t> ProjectIndex::known_variants(Fid tu,
     std::vector<std::uint64_t> known;
     for(auto file: expected) {
         if(auto* record = file_record(file)) {
-            known.append_range(record->stored);
+            for(auto variant: record->stored) {
+                known.push_back(known_at(files.resolve(file), variant));
+            }
         }
     }
     ranges::sort(known);
-    known.erase(ranges::unique(known).begin(), known.end());
     return known;
 }
 
@@ -475,20 +440,13 @@ std::vector<std::uint64_t>
         }
         held->for_each_key([&](const InstantiationShard::Key& key) {
             if(walk_holds(*key.producer)) {
-                known.push_back(key.key);
+                known.push_back(known_at(files.resolve(file), key.key));
             }
             return true;
         });
     }
     ranges::sort(known);
-    known.erase(ranges::unique(known).begin(), known.end());
     return known;
-}
-
-void ProjectIndex::retire_instantiations(Fid path_id) {
-    instantiations[path_id] = InstantiationShard();
-    changed_instantiations.erase(path_id);
-    retired_instantiations.insert(path_id);
 }
 
 void ProjectIndex::drop(Fid tu_path_id, IndexReport& report) {

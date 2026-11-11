@@ -19,6 +19,7 @@ import :unittests.utils.tu_index_blob;
 import :unittests.utils;
 import :vfs.file_system;
 import :vfs.path;
+import :worker.preamble_index;
 
 namespace clice::testing {
 namespace {
@@ -52,7 +53,13 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     ZASSERT(full_index.loaded());
 
     auto blob_path = dir.path("overlay.pch.idx");
-    dir.touch("overlay.pch.idx", as_chars(index::build_preamble_index(*unit, {}, {}, {}, {})));
+    dir.touch("overlay.pch.idx",
+              as_chars(worker::encode_preamble_index(unit->focus_file().content(),
+                                                     index::build_tu_index(*unit),
+                                                     {},
+                                                     {},
+                                                     {},
+                                                     {})));
 
     kind = CompilationKind::Content;
     ZASSERT(compile());
@@ -420,11 +427,11 @@ ZEST_CASE(PreviewFromDisk) {
         path_id,
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))));
     ZASSERT(project.index.shard(path_id)->positions().text().empty());
-    auto& symbol = project.index.edit(symbol_hash);
+    auto& symbol = IndexInternals::symbol(project.index, symbol_hash);
     symbol.name = "value";
-    symbol.flags = index::SymbolFlags::HasDefinition;
-    symbol.file = path_id.raw;
     symbol.reference_files.add(path_id.raw);
+    symbol.declaration_files.add(path_id.raw);
+    symbol.definition_files.add(path_id.raw);
 
     auto definition =
         index::declared_text(disk_query, symbol_hash, Fid{}, RelationKind::Definition);
@@ -462,7 +469,7 @@ ZEST_CASE(PreviewDropsLineEnd) {
         project.index,
         path_id,
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))));
-    project.index.edit(symbol_hash).reference_files.add(path_id.raw);
+    IndexInternals::symbol(project.index, symbol_hash).reference_files.add(path_id.raw);
 
     auto references = disk_query.sites(symbol_hash, Fid{}, RelationKind::Reference);
     ZASSERT(references.size() == 1U);
@@ -552,7 +559,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
         project.index,
         header_id,
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes))));
-    project.index.edit(foo).reference_files.add(header_id.raw);
+    IndexInternals::symbol(project.index, foo).reference_files.add(header_id.raw);
 
     auto def = index_query().first_site(foo, Fid{}, RelationKind::Definition);
     ZASSERT(def);

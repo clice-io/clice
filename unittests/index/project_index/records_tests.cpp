@@ -65,7 +65,6 @@ ZEST_CASE(HeaderRoundTrip) {
     index::Header header{
         .next_path = 12,
         .next_version = 30,
-        .unit_count = 7,
         .search_segments = {3, 4, 9},
         .search_run_ends = {2, 3},
         .next_segment = 10,
@@ -78,7 +77,6 @@ ZEST_CASE(HeaderRoundTrip) {
     ZASSERT(read);
     ZEXPECT(read->next_path == 12);
     ZEXPECT(read->next_version == 30);
-    ZEXPECT(read->unit_count == 7);
     ZEXPECT(read->search_segments == header.search_segments);
     ZEXPECT(read->search_run_ends == header.search_run_ends);
     ZEXPECT(read->next_segment == 10u);
@@ -86,12 +84,8 @@ ZEST_CASE(HeaderRoundTrip) {
     ZEXPECT(read->search_pending_files == header.search_pending_files);
     ZEXPECT(read->owed_units == header.owed_units);
 
-    // More units than path ids handed out, or a pending file past them,
-    // is no header, nor is a pending symbol of a reserved hash.
-    header.unit_count = 13;
-    auto crowded = aligned(index::encode_record(header));
-    ZEXPECT(!index::decode_header(crowded->getBuffer()));
-    header.unit_count = 7;
+    // A pending file past the path ids handed out is no header, nor is a
+    // pending symbol of a reserved hash.
     header.search_pending_files = {2, 12};
     auto past = aligned(index::encode_record(header));
     ZEXPECT(!index::decode_header(past->getBuffer()));
@@ -221,17 +215,20 @@ ZEST_CASE(SymbolRoundTrip) {
         .signature = "(char c) const",
         .parent = 0x0123456789abcdef,
         .kind = SymbolKind::Method,
-        .flags = index::SymbolFlags::HasDefinition,
+        .flags = index::SymbolFlags::Deprecated,
         .token_class = {.kind = SemanticTokenKind::Method, .modifiers = 3},
-        .file = 2,
     };
     symbol.reference_files = ids({2, 5, 9, 400});
-    symbol.other_definition_files = ids({9, 400});
+    symbol.declaration_files = ids({2, 9, 400});
+    symbol.definition_files = ids({9, 400});
     symbol.instantiation_files = ids({5});
     auto buffer = aligned(index::encode_record(symbol));
     auto read = index::decode_symbol(buffer->getBuffer());
     ZASSERT(read);
     ZEXPECT(*read == symbol);
+    auto view = read->view();
+    ZEXPECT(index::has_flag(view.flags, index::SymbolFlags::HasDefinition));
+    ZEXPECT(view.file == 9u);
 
     // Arguments past 64 KiB, as a deep expression template spells them.
     symbol.args = "<" + std::string(70000, 'T') + ">";
@@ -241,17 +238,28 @@ ZEST_CASE(SymbolRoundTrip) {
     ZEXPECT(*read == symbol);
 
     // A symbol no file declares and no instantiation names.
-    symbol.file = index::no_file;
-    symbol.other_definition_files = {};
+    symbol.declaration_files = {};
+    symbol.definition_files = {};
     symbol.instantiation_files = {};
     auto bare = aligned(index::encode_record(symbol));
     read = index::decode_symbol(bare->getBuffer());
     ZASSERT(read);
     ZEXPECT(*read == symbol);
+    ZEXPECT(read->view().file == index::no_file);
+
+    // No record says whether the symbol is defined, and every file defining
+    // it declares it.
+    symbol.flags = index::SymbolFlags::HasDefinition;
+    auto flagged = aligned(index::encode_record(symbol));
+    ZEXPECT(!index::decode_symbol(flagged->getBuffer()));
+    symbol.flags = index::SymbolFlags::None;
+    symbol.definition_files = ids({5});
+    auto undeclared = aligned(index::encode_record(symbol));
+    ZEXPECT(!index::decode_symbol(undeclared->getBuffer()));
 }
 
 ZEST_CASE(SymbolBytesChecked) {
-    index::Symbol symbol{.name = "name", .file = index::no_file};
+    index::Symbol symbol{.name = "name"};
     auto bytes = index::encode_record(symbol);
     auto decode = [&] {
         return index::decode_symbol(as_chars(bytes));
@@ -259,17 +267,17 @@ ZEST_CASE(SymbolBytesChecked) {
     ZASSERT(decode());
 
     // The record: the three texts (5 + 1 + 1 bytes), the parent (8), the
-    // file, the modifiers and the flags (a byte each), the kind, the token
-    // kind and the reference files' size.
-    ZASSERT(bytes.size() == std::size_t(21));
-    bytes[19] = std::byte(0xff);
+    // modifiers and the flags (a byte each), the kind, the token kind and
+    // the sizes of the reference, declaration and definition files.
+    ZASSERT(bytes.size() == std::size_t(22));
+    bytes[18] = std::byte(0xff);
     ZEXPECT(!decode());
-    bytes[19] = std::byte(0);
+    bytes[18] = std::byte(0);
     bytes[0] = std::byte(30);
     ZEXPECT(!decode());
     bytes[0] = std::byte(4);
 
-    // The file, the modifiers and the flags past their widths.
+    // The modifiers and the flags past their widths.
     auto with = [&](std::uint32_t at, std::uint64_t value) {
         std::vector<std::uint8_t> varint;
         index::write_varint(varint, value);
@@ -280,16 +288,14 @@ ZEST_CASE(SymbolBytesChecked) {
         }
         return index::decode_symbol(as_chars(changed));
     };
-    ZASSERT(with(15, index::no_file));
-    ZEXPECT(!with(15, std::uint64_t(index::no_file) + 1));
-    ZEXPECT(!with(16, std::uint64_t(1) << 32));
-    ZEXPECT(!with(17, 0x20000));
-    // Other definition files said to follow, and none there.
-    ZEXPECT(!with(17, 0x10000));
+    ZASSERT(with(15, std::numeric_limits<std::uint32_t>::max()));
+    ZEXPECT(!with(15, std::uint64_t(1) << 32));
+    ZASSERT(with(16, 0xfffe));
+    ZEXPECT(!with(16, 0x10000));
 
-    // Cut inside the parent, before the token kind, or before the reference
-    // files' size.
-    for(std::size_t size: {10, 19, 20}) {
+    // Cut inside the parent, before the token kind, or before the size of
+    // a set of files.
+    for(std::size_t size: {10, 18, 19, 21}) {
         auto cut = bytes;
         cut.resize(size);
         ZEXPECT(!index::decode_symbol(as_chars(cut)));
@@ -308,26 +314,6 @@ ZEST_CASE(InternalsRoundTrip) {
     ZEXPECT((*read)[1].name == "Hidden");
     ZEXPECT((*read)[1].args == "<T>");
     ZEXPECT((*read)[1].parent == 4u);
-}
-
-ZEST_CASE(SharedLocalRoundTrip) {
-    index::SharedLocalSets sets = {
-        {{1, 4}, 2},
-        {{3},    1},
-    };
-    auto buffer = aligned(index::encode_record(sets));
-    auto read = index::decode_shared_local(buffer->getBuffer());
-    ZASSERT(read);
-    ZEXPECT(*read == sets);
-
-    // A set no unit lists is no record, nor are sets out of order.
-    sets[1].second = 0;
-    auto unlisted = aligned(index::encode_record(sets));
-    ZEXPECT(!index::decode_shared_local(unlisted->getBuffer()));
-    sets[1].second = 1;
-    std::swap(sets[0], sets[1]);
-    auto unordered = aligned(index::encode_record(sets));
-    ZEXPECT(!index::decode_shared_local(unordered->getBuffer()));
 }
 
 };  // ZEST_SUITE(ProjectRecords)

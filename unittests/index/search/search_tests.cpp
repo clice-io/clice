@@ -16,7 +16,7 @@ using index::SearchIndex;
 using index::SearchSnapshot;
 using index::SymbolFlags;
 using index::SymbolHash;
-using index::SymbolQuery;
+using index::Locator;
 
 /// A snapshot built entry by entry; hashes are the entry numbers from 1,
 /// path ids the positions in `paths`.
@@ -50,7 +50,7 @@ struct Corpus {
             .parent = parent,
             .kind = kind,
             .flags = flags,
-            .file = file,
+            .files = {file},
             .reference_files = references,
         });
         by_qualified[(qualified + args).str()] = hash;
@@ -130,7 +130,7 @@ std::vector<std::string> names(const Corpus& corpus,
                                const SearchIndex& built,
                                llvm::StringRef text,
                                std::size_t limit = 10) {
-    auto query = SymbolQuery::parse(text);
+    auto query = Locator::parse(text);
     std::vector<std::string> out;
     if(!query) {
         out.push_back("error: " + query.error());
@@ -160,9 +160,9 @@ ZEST_CASE(Loads) {
     junk.push_back(llvm::MemoryBuffer::getMemBufferCopy("junk"));
     ZEXPECT(!empty.replace(0, std::move(junk)));
     ZEXPECT(!empty.loaded());
-    ZEXPECT(empty.search(*SymbolQuery::parse("foo"), 10, {}).hits.empty());
-    ZEXPECT(built.search(*SymbolQuery::parse("foo"), 100, {}).exhausted);
-    ZEXPECT(!built.search(*SymbolQuery::parse("foo"), 2, {}).exhausted);
+    ZEXPECT(empty.search(*Locator::parse("foo"), 10, {}).hits.empty());
+    ZEXPECT(built.search(*Locator::parse("foo"), 100, {}).exhausted);
+    ZEXPECT(!built.search(*Locator::parse("foo"), 2, {}).exhausted);
 }
 
 ZEST_CASE(DamagedPosting) {
@@ -280,7 +280,7 @@ ZEST_CASE(FuzzyRanking) {
     ZEXPECT(names(corpus, built, "up") == (Names{"upper_bound", "unique_ptr"}));
     // A short query keys the first two words in the index and in a row.
     ZEXPECT(names(corpus, built, "qu").empty());
-    auto short_query = *SymbolQuery::parse("qu");
+    auto short_query = *Locator::parse("qu");
     index::NameRanker short_ranker(short_query);
     ZEXPECT(!short_ranker.rank("zap_bar_quux", "", 1).has_value());
     ZEXPECT(short_ranker.rank("zap_quux", "", 1));
@@ -353,7 +353,7 @@ ZEST_CASE(QualifiedLookup) {
     corpus.add("lib::detail::cell_copy", SymbolKind::Function);
     auto built = corpus.build();
     auto found = [&](bool absolute, bool qualified_lookup) {
-        SymbolQuery query{
+        Locator query{
             .scope = {{.name = "lib"}},
             .absolute = absolute,
             .pattern = "cell",
@@ -386,7 +386,7 @@ ZEST_CASE(QualifiedLookupContiguous) {
     corpus.add("outer::lib::detail", SymbolKind::Namespace);
     corpus.add("outer::lib::detail::cell_move", SymbolKind::Function);
     auto built = corpus.build();
-    SymbolQuery query{
+    Locator query{
         .scope = {{.name = "lib"}, {.name = "detail"}},
         .pattern = "cell",
         .qualified_lookup = true,
@@ -498,7 +498,7 @@ ZEST_CASE(MatchesFullScan) {
     ZEXPECT(names(corpus, built, "gc", 100).size() == std::size_t(2));
     for(llvm::StringRef text:
         {"get", "cfg", "getcon", "readbuf", "Name", "ent", "buf", "path", "setval", "conf"}) {
-        auto query = SymbolQuery::parse(text);
+        auto query = Locator::parse(text);
         index::NameRanker ranker(*query);
 
         struct Scored {
@@ -545,7 +545,7 @@ ZEST_CASE(LocalHitsNameFile) {
     corpus.snapshot.entries[1].local = true;
     auto built = corpus.build();
     std::vector<std::pair<std::string, std::string>> hits;
-    for(auto& hit: built.search(*SymbolQuery::parse("helper"), 10, {}).hits) {
+    for(auto& hit: built.search(*Locator::parse("helper"), 10, {}).hits) {
         hits.emplace_back(corpus.name_of(hit.hash),
                           hit.file == index::no_file ? "" : corpus.paths[hit.file]);
     }
@@ -568,7 +568,7 @@ ZEST_CASE(NameableOnlyLeavesSourceLocals) {
     corpus.snapshot.entries[0].local = true;
     corpus.snapshot.entries[2].local = true;
     auto built = corpus.build();
-    auto query = *SymbolQuery::parse("helper");
+    auto query = *Locator::parse("helper");
     query.nameable_only = true;
     std::vector<std::string> names;
     for(auto& hit:
@@ -646,17 +646,17 @@ ZEST_CASE(NewerRunsHide) {
                      .name = "food",
                      .kind = SymbolKind::Function,
                      .flags = SymbolFlags::HasDefinition,
-                     .file = 0}},
+                     .files = {0}}},
         .covered = {1},
     };
     ZASSERT(built.replace(0, Corpus::segments(change)));
     ZEXPECT(built.run_count() == 2u);
-    auto query = *SymbolQuery::parse("foo");
+    auto query = *Locator::parse("foo");
     auto hits = built.search(query, 10, {}).hits;
     ZASSERT(hits.size() == 1u);
     ZEXPECT(hits.front().hash == foo);
-    ZEXPECT(built.search(*SymbolQuery::parse("helper"), 10, {}).hits.empty());
-    ZEXPECT(built.search(*SymbolQuery::parse("other"), 10, {}).hits.size() == 1u);
+    ZEXPECT(built.search(*Locator::parse("helper"), 10, {}).hits.empty());
+    ZEXPECT(built.search(*Locator::parse("other"), 10, {}).hits.size() == 1u);
 
     std::vector<SymbolHash> symbols;
     std::vector<std::uint32_t> files;
@@ -671,7 +671,7 @@ ZEST_CASE(NewerRunsHide) {
     SearchSnapshot none;
     ZASSERT(built.replace(1, Corpus::segments(none)));
     ZEXPECT(built.run_count() == 2u);
-    ZEXPECT(built.search(*SymbolQuery::parse("helper"), 10, {}).hits.size() == 1u);
+    ZEXPECT(built.search(*Locator::parse("helper"), 10, {}).hits.size() == 1u);
     std::vector<std::unique_ptr<llvm::MemoryBuffer>> junk;
     junk.push_back(llvm::MemoryBuffer::getMemBufferCopy("junk"));
     ZEXPECT(!built.replace(1, std::move(junk)));

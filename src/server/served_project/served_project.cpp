@@ -14,6 +14,7 @@ import :server.master;
 import :server.served_project;
 import :settings.settings;
 import :support.logging;
+import :support.text;
 import :support.version;
 import :vfs.cache_store;
 import :vfs.path;
@@ -34,6 +35,11 @@ ServedProject::ServedProject(MasterServer& server, CanonicalPath root) :
         }
         if(!document->compiles && !query().serving(path_id)) {
             start_compiling(path_id);
+            // The editor holds what the index gave while the attempt ran,
+            // nothing: it pulls again, from the compile now.
+            if(auto* client = this->server.client) {
+                client->index_changed({path_id});
+            }
         }
         show_skipped_diagnostics(path_id);
     });
@@ -383,7 +389,6 @@ void ServedProject::release(Fid path_id) {
     project.graph.invalidate(ast_node(path_id));
     project.buffer_scans.forget(path_id);
     documents.erase(path_id);
-    project.background_index.take_back(path_id);
     server.return_freed_memory();
     LOG_DEBUG("Released {}", path);
 }
@@ -392,6 +397,10 @@ void ServedProject::record_saved(Fid path_id) {
     if(broken()) {
         return;
     }
+    // LIMITATION: the editor's compile indexes the buffer for the reads of
+    // this session alone, never for the project's index: each save of an
+    // open source also compiles it in the background, in full.
+    //
     // The open files the save made stale show what their background run
     // finds as soon as it can (show_skipped_diagnostics).
     if(project.settings.project.skip_header_bodies) {
@@ -434,12 +443,26 @@ async::task<> ServedProject::metadata_flush_task() {
 }
 
 async::task<> ServedProject::checkpoint_task() {
+    // What the saves the database refuses may leave in memory before the
+    // background index waits for one to commit.
+    constexpr std::uint64_t unsaved_limit = 256ull << 20;
+    std::optional<ScopedPause> waiting;
     while(true) {
         // Time is the feature: the checkpoints' pace.
         co_await async::sleep(checkpoint_interval());
         co_await project.checkpoint();
         if(project.index.last_save_shards() > 0) {
             server.hooks.happened(LoopEvent::Checkpoint);
+        }
+        if(project.unsaved_bytes <= unsaved_limit) {
+            waiting.reset();
+        } else if(!waiting) {
+            LOG_GUIDANCE(
+                "Background indexing waits until the index can be saved under {}: {} of "
+                "it are unsaved",
+                project.store->root_dir(),
+                format_bytes(project.unsaved_bytes));
+            waiting.emplace(project.background_index);
         }
     }
 }

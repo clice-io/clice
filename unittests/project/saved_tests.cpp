@@ -66,9 +66,11 @@ ZEST_CASE(CorruptSaveKeepsPending) {
 
         bool written = false;
 
-        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
-            written = real->write(puts, removes);
-            return written;
+        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
+            auto committed = real->write(puts, removes);
+            written = committed.has_value();
+            return committed;
         }
 
         bool corrupted() const override {
@@ -237,7 +239,7 @@ struct ShrinkProject {
 
     std::size_t hits(llvm::StringRef name) {
         return f.project.index.search_index()
-            .search(*index::SymbolQuery::parse(name), 10, {})
+            .search(*index::Locator::parse(name), 10, {})
             .hits.size();
     }
 
@@ -354,7 +356,7 @@ ZEST_CASE(SaveWaitsForShrink) {
     open_store(p.tmp, again.project);
     again.load();
     ZEXPECT(again.project.index.search_index()
-                .search(*index::SymbolQuery::parse("second_value"), 10, {})
+                .search(*index::Locator::parse("second_value"), 10, {})
                 .hits.size() == 1u);
 }
 

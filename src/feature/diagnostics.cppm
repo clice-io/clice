@@ -284,6 +284,11 @@ struct CrashNote {
 /// brings it back.
 FileDiagnostic crash_note(const CrashNote& note);
 
+/// The warning at a file's top saying that its compile, which reported
+/// errors, read `files` from disk while their documents hold unsaved text:
+/// a compile never reads another document's buffer.
+FileDiagnostic unsaved_inputs_note(llvm::ArrayRef<std::string> files);
+
 /// The LSP form of `diagnostic`, shown on the file at `path` whose
 /// compiled text `positions` maps, its positions counted in `encoding`; a
 /// note in another file is placed in the text `note_positions` reads of it,

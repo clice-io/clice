@@ -29,7 +29,7 @@ import :vfs.path;
 
 namespace clice::index {
 
-struct SymbolQuery {
+struct Locator {
     enum class Mode : std::uint8_t {
         /// The pattern as a subsequence, ranked by score.
         Fuzzy,
@@ -95,7 +95,7 @@ struct SymbolQuery {
     std::optional<Position> position;
 
     /// Parse a query; the error names what could not be read.
-    static std::expected<SymbolQuery, std::string> parse(llvm::StringRef text);
+    static std::expected<Locator, std::string> parse(llvm::StringRef text);
 
     /// Take the path filters spelling a path as identities, relative ones
     /// from `directory`; a bare file name stays a name.
@@ -137,7 +137,7 @@ bool glob_matches(llvm::StringRef pattern, llvm::StringRef name);
 /// The literal runs between a glob pattern's wildcards.
 llvm::SmallVector<llvm::StringRef, 4> glob_literals(llvm::StringRef pattern);
 
-/// Whether `file` satisfies an anchored `path:` term (SymbolQuery::resolve_paths):
+/// Whether `file` satisfies an anchored `path:` term (Locator::resolve_paths):
 /// a bare file name by name, a path by being that file or lying under that
 /// directory.
 bool path_matches(llvm::StringRef wanted, llvm::StringRef file);
@@ -151,20 +151,19 @@ struct ScopeEntry {
 /// Whether scope segments name a container chain (outermost first):
 /// entry for entry when `exact`, else in order with gaps allowed. Names
 /// compare case-insensitively, arguments through args_match.
-bool segments_match(llvm::ArrayRef<SymbolQuery::Segment> segments,
+bool segments_match(llvm::ArrayRef<Locator::Segment> segments,
                     llvm::ArrayRef<ScopeEntry> chain,
                     bool exact);
 
 /// Whether a container chain ends with the scopes the segments name, each
 /// a member of the one before, as a qualified lookup finds them.
-bool chain_ends_with(llvm::ArrayRef<SymbolQuery::Segment> segments,
-                     llvm::ArrayRef<ScopeEntry> chain);
+bool chain_ends_with(llvm::ArrayRef<Locator::Segment> segments, llvm::ArrayRef<ScopeEntry> chain);
 
 /// Whether a symbol whose containers are `chain` (outermost first, inline
 /// namespaces left out) lies where the query looks: in exactly the
 /// scope's chain when absolute, else anywhere below a container the
 /// scope's segments lead to in order — or, for a members listing,
 /// directly in it.
-bool in_scope(const SymbolQuery& query, llvm::ArrayRef<ScopeEntry> chain);
+bool in_scope(const Locator& query, llvm::ArrayRef<ScopeEntry> chain);
 
 }  // namespace clice::index

@@ -53,10 +53,6 @@ ZEST_CASE(ManifestRoundTrip) {
     };
     manifest.absent = {VersionID{3}};
     manifest.imports = {VersionID{4}, VersionID{5}};
-    manifest.shared_locals = {
-        {.symbol = 5, .files = {VersionID{0}, VersionID{2}}},
-        {.symbol = 9, .files = {VersionID{2}, VersionID{1}}},
-    };
     std::vector<std::uint32_t> versions = {3, 10, 11, 200, 201, 202, 300, 301, 70000};
 
     auto buf = index::serialize_manifest(manifest, versions);
@@ -99,39 +95,6 @@ ZEST_CASE(ManifestVersionSetsRejected) {
 
 ZEST_CASE(ManifestJunkRejected) {
     ZASSERT(!index::deserialize_manifest("not a blob").has_value());
-}
-
-ZEST_CASE(ManifestSharedLocalRejected) {
-    index::TUManifestBlob valid;
-    valid.format_version = index::index_format_version;
-    valid.contribution_count = 1;
-    valid.contributions = {1, 0, 0, 0, 0, 0, 0, 0, 0};
-    valid.local_symbols = {5, 7};
-    valid.local_file_ends = {1, 2};
-    valid.local_files = {0, 0};
-    give_versions(valid, 2);
-
-    auto decodes = [&](const index::TUManifestBlob& layout) {
-        return index::deserialize_manifest(as_chars(index::encode(layout))).has_value();
-    };
-    ZASSERT(decodes(valid));
-
-    auto layout = valid;
-    layout.local_symbols = {7, 5};
-    ZASSERT(!decodes(layout));
-
-    layout = valid;
-    layout.local_file_ends = {1};
-    ZASSERT(!decodes(layout));
-
-    layout = valid;
-    layout.local_file_ends = {1, 1};
-    ZASSERT(!decodes(layout));
-
-    // The symbols key a DenseMap at load.
-    layout = valid;
-    layout.local_symbols = {5, ~0ull};
-    ZASSERT(!decodes(layout));
 }
 
 ZEST_CASE(ManifestCorruptUsesRejected) {

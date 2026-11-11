@@ -50,11 +50,12 @@ struct SearchEntry {
     SymbolHash parent = 0;
     SymbolKind kind;
     SymbolFlags flags = SymbolFlags::None;
-    /// The path id of the file declaring it, or no_file.
-    std::uint32_t file = no_file;
+    /// The path ids of the files declaring it; of a name of internal
+    /// linkage, the one file whose shard holds it.
+    llvm::SmallVector<std::uint32_t, 2> files;
     std::uint32_t reference_files = 0;
     /// Of internal linkage: no symbol record names the symbol, whose
-    /// entries live in `file`'s shard.
+    /// entries live in the shard of its one file.
     bool local = false;
 };
 
@@ -106,7 +107,7 @@ bool ranks_after(const NameRank& lhs,
 /// matcher is.
 class NameRanker {
 public:
-    explicit NameRanker(const SymbolQuery& query);
+    explicit NameRanker(const Locator& query);
 
     /// The rank of a symbol named `name` with `args` and standing
     /// `quality` — none when it does not match the pattern. `lenient`
@@ -120,7 +121,7 @@ public:
     }
 
 private:
-    const SymbolQuery& query;
+    const Locator& query;
 
     std::string lower_pattern;
 
@@ -193,8 +194,8 @@ public:
     /// At most `limit` hits, best first. Empty for a query by id or
     /// place. `path_of` spells a file (a path id); it is asked only when the
     /// query names paths or keeps the names of internal linkage of headers
-    /// alone (SymbolQuery::nameable_only).
-    SearchResult search(const SymbolQuery& query,
+    /// alone (Locator::nameable_only).
+    SearchResult search(const Locator& query,
                         std::uint32_t limit,
                         llvm::function_ref<llvm::StringRef(std::uint32_t)> path_of) const;
 

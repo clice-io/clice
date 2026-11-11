@@ -16,6 +16,7 @@ import :syntax.preamble;
 import :vfs.cache_store;
 import :vfs.file_table;
 import :vfs.path;
+import :worker.preamble_index;
 import :worker.protocol;
 
 namespace clice {
@@ -34,6 +35,7 @@ void forget_pairs(Project& project, llvm::StringRef pch_key) {
     auto& entry = it->second;
     entry.discard(project.store ? &*project.store : nullptr, "pch");
     entry.index_path.clear();
+    entry.index_verified = false;
     entry.index.reset();
     entry.built_index.reset();
     if(!entry.failure && !entry.consumes) {
@@ -217,7 +219,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     // consumer pays that walk on the event loop.
     std::optional<std::string> pch_path;
     std::optional<std::string> index_path;
-    std::shared_ptr<index::TUIndex> loaded;
+    std::shared_ptr<worker::PreambleIndex> loaded;
     co_await async::queue([&] {
         auto committed = project.store->commit(std::move(pending));
         if(!committed) {
@@ -232,7 +234,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         // published, discard the PCH too — the next attempt rebuilds both.
         if(auto index = project.store->commit(std::move(*pending_idx))) {
             index_path = std::move(*index);
-            loaded = load_pch_index(*index_path);
+            loaded = worker::open_preamble_index(*index_path);
         }
         // A committed pch.idx index that fails verification is as unusable as
         // an uncommitted one: discard the pair rather than publish a PCH
@@ -269,6 +271,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     entry.base = request.base;
     entry.base_blob = std::move(base_blob);
     entry.index_path = index_path.value_or("");
+    entry.index_verified = loaded != nullptr;
     // Replace the previous blob's mapping (same key, rebuilt content);
     // in-flight holders of the old shared_ptr stay valid. Handed to a parse
     // still waiting for it: with none, nothing would ever take it.
@@ -286,38 +289,14 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
 
 }  // namespace
 
-std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path) {
-    auto file = fs::File::open(path);
-    if(!file) {
-        return nullptr;
-    }
-    auto buffer = llvm::MemoryBuffer::getOpenFile(file->native_handle(),
-                                                  path,
-                                                  /*FileSize=*/-1,
-                                                  /*RequiresNullTerminator=*/false,
-                                                  /*IsVolatile=*/false);
-    if(!buffer) {
-        return nullptr;
-    }
-    // A stale or truncated pair must never crash the server: the TU index
-    // is deep-verified, and every embedded shard blob once — queries then
-    // run unchecked. Anything failing reads as "pair missing" and the PCH
-    // is rebuilt.
-    auto tu_index = index::TUIndex::from_buffer(std::move(*buffer));
-    if(!tu_index.loaded() || !tu_index.verify_shards()) {
-        return nullptr;
-    }
-    return std::make_shared<index::TUIndex>(std::move(tu_index));
-}
-
-std::shared_ptr<index::TUIndex> PCHEntry::load_index() {
+std::shared_ptr<worker::PreambleIndex> PCHEntry::load_index() {
     if(auto held = index.lock()) {
         return held;
     }
     if(index_path.empty()) {
         return nullptr;
     }
-    auto loaded = load_pch_index(index_path);
+    auto loaded = worker::open_preamble_index(index_path, index_verified);
     if(!loaded) {
         // Unreadable blob: clear the path so queries don't retry the
         // mmap + verification on every call. The pair now looks
@@ -325,6 +304,7 @@ std::shared_ptr<index::TUIndex> PCHEntry::load_index() {
         LOG_WARN("Cannot open the PCH index {}", index_path);
         index_path.clear();
     }
+    index_verified = loaded != nullptr;
     index = loaded;
     return loaded;
 }
@@ -658,7 +638,7 @@ void Project::pch_consume_succeeded(llvm::StringRef pch_key) {
     }
 }
 
-std::shared_ptr<index::TUIndex> Project::preamble_index(llvm::StringRef pch_key) {
+std::shared_ptr<worker::PreambleIndex> Project::preamble_index(llvm::StringRef pch_key) {
     auto it = pchs.find(pch_key);
     if(it == pchs.end()) {
         return nullptr;

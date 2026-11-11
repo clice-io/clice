@@ -7,12 +7,13 @@ import :support.prelude;
 
 namespace clice::index {
 
-/// A symbol below external scope more than one of a TU's files names,
-/// with those files as the TU index's path ids.
-struct TUSharedLocal {
-    SymbolHash symbol = 0;
-    llvm::SmallVector<std::uint32_t, 2> paths;
-};
+/// A variant's identity or an instantiation's key as the file at `path`
+/// knows it. The same bytes at another path — a header copied, an install
+/// moved — are stored for that path or not at all, so what a unit may leave
+/// out is told per file.
+inline std::uint64_t known_at(llvm::StringRef path, std::uint64_t hash) {
+    return hash ^ llvm::xxh3_64bits(path);
+}
 
 /// Zero-copy reader over a TU index blob: the tree, the per-file blob
 /// hashes and the blob bytes themselves are read straight off the
@@ -129,11 +130,6 @@ public:
     void for_each_instantiation_file(
         llvm::function_ref<bool(SymbolHash, llvm::ArrayRef<std::uint32_t> files)> callback) const;
 
-    /// Visit each file beside its canonical one (SymbolView::file) that
-    /// defines a symbol of the table, as a path id.
-    void for_each_other_definition(
-        llvm::function_ref<void(SymbolHash, std::uint32_t path_id)> callback) const;
-
     /// Visit every symbol of the table in ascending hash order: hash,
     /// identity, and its reference files as path ids. The table leaves out
     /// the file-local symbols no other file names (see find_symbol) and the
@@ -167,35 +163,6 @@ public:
     /// instantiation files' for an external symbol of the table, its
     /// reference files' for another, else the file-local symbol's own.
     llvm::SmallVector<std::uint32_t, 4> instantiation_sections_naming(SymbolHash hash) const;
-
-    /// The symbols below external scope more than one of the TU's files
-    /// names (Symbol::reference_files), sorted by symbol. Nullopt when a
-    /// symbol's reference files are not all among the `held` path ids.
-    std::optional<std::vector<TUSharedLocal>> shared_locals(const llvm::BitVector& held) const;
-
-    /// Whether `text` still begins with the exact preamble this TU index
-    /// was built from — the gate for serving preamble-derived state
-    /// against a live buffer (the entries are offsets into that prefix).
-    /// Compared by hash: the text itself is not stored. Always false for
-    /// an ordinary TU index.
-    bool matches_preamble(llvm::StringRef text) const;
-
-    /// Document links of the preamble region, materialized from the
-    /// TU index; empty for an ordinary one.
-    std::vector<DocumentLink> links() const;
-
-    /// Inactive regions within the preamble (flat begin/end offset
-    /// pairs); empty for an ordinary TU index. Borrows the TU index.
-    llvm::ArrayRef<std::uint32_t> inactive_regions() const;
-
-    /// Conditional stack still open at the preamble bound; empty for an
-    /// ordinary TU index. Borrows the TU index.
-    llvm::ArrayRef<std::uint8_t> open_conditionals() const;
-
-    /// The diagnostics the preamble's build raised, as the build presented
-    /// them (a JSON array of feature::FileDiagnostic); empty for an ordinary
-    /// TU index. Borrows the TU index.
-    llvm::StringRef preamble_diagnostics() const;
 
 private:
     /// The section holding `path_id`'s entries, or nullopt when the file had
