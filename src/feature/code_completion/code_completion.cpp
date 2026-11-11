@@ -142,7 +142,8 @@ auto code_complete(const CompletionInputs& inputs)
 
     // A number names nothing.
     if(auto typed = offset ? Prefix::from(text, *offset).spelling : llvm::StringRef();
-       completing.directive.empty() && !typed.empty() && !clang::isDigit(typed.front())) {
+       inputs.options.all_scopes && completing.directive.empty() && !typed.empty() &&
+       !clang::isDigit(typed.front())) {
         return offer_names(inputs.query, inputs.graph, typed);
     }
     return CompileCompletion{};
