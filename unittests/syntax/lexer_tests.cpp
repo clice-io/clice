@@ -129,6 +129,9 @@ ZEST_CASE(OpenCLDialects) {
     ZEXPECT(keyword_kind("__kernel", keywords(opencl)) != clang::tok::identifier);
     ZEXPECT(keyword_kind("__kernel", keywords(dialect_of("kernel.cpp"))) == clang::tok::identifier);
     ZEXPECT(dialect_of("kernel.clcpp").OpenCLCPlusPlus == 1U);
+    ZEXPECT(dialect_of("kernel.clcpp").LangStd == clang::LangStandard::lang_openclcpp10);
+    ZEXPECT(dialect_of("kernel.clcpp", std::nullopt, "clc++2021").LangStd ==
+            clang::LangStandard::lang_openclcpp2021);
 }
 
 ZEST_CASE(DigitSeparator) {

@@ -21,3 +21,10 @@ int tally(Tally& tally) {
     auto step = [&] { return [counter next]; };
     return tally.total() + step();
 }
+
+[[using gnu: cold]] void fail();
+[[deprecated("x")]] int legacy();
+[[nodiscard, maybe_unused]] static int spare() {
+    return 0;
+}
+[[gnu::cold]] void halt();

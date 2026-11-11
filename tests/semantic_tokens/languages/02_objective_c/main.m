@@ -70,3 +70,16 @@ void render(id thing, id<Drawable> drawable, Shape *shape) {
     }
     (void)selector;
 }
+
+@interface Square : Shape
+@end
+
+@implementation Square
+- (void)drawShape:(Shape *)shape {
+    @try {
+        [self draw];
+    } @catch (...) {
+        [shape draw];
+    }
+}
+@end

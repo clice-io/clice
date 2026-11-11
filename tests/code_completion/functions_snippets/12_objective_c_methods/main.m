@@ -35,3 +35,17 @@ void use(Shape *shape) {
 - ar§(untyped_declaration) {
 }
 @end
+
+@protocol Drawable
+- (void)draw;
+@end
+
+@compatibility_alias Stylus Shape;
+
+void sketch(Shape *shape) {
+    [Sha§(class_receiver) unit];
+    id<Dra§(protocol)> drawable;
+    int wide = shape.wi§(property);
+    [Sty§(alias) unit];
+    SEL later = @selector(moveToX:y§(selector_piece));
+}

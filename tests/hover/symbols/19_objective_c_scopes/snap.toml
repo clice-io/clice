@@ -27,3 +27,23 @@ int x
 ```
 '''
 range = "width = ⟦x⟧ + y;"
+
+[answers.category_param.hover]
+markdown = '''
+**parameter** `factor` · method `-[Pen(Sizing) scaled:]`
+
+```cpp
+int factor
+```
+'''
+range = "return ⟦factor⟧ * 2;"
+
+[answers.class_method_param.hover]
+markdown = '''
+**parameter** `strokes` · method `+[Marker inkFor:]`
+
+```cpp
+int strokes
+```
+'''
+range = "return ⟦strokes⟧ + 1;"

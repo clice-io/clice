@@ -70,3 +70,7 @@ void render(id thing, id<Drawable> drawable, Shape *shape) {
     }
     (void)selector;
 }
+
+@protocol Forward;
+@class Later;
+@compatibility_alias Figure Shape;

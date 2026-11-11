@@ -64,3 +64,61 @@ stdout = '''
 }
 '''
 exit = 0
+
+[test."$ clice query definition wid"]
+stdout = '''
+{
+  "error": "no symbol is named `wid`; name one of the closest matches by its `symbol`",
+  "candidates": [
+    {
+      "name": "Width",
+      "signature": null,
+      "kind": "Field",
+      "file": "${WS}/main.cpp",
+      "line": 3,
+      "container": "Shape",
+      "symbol": "#abf57cc1d04d760e"
+    },
+    {
+      "name": "width",
+      "signature": null,
+      "kind": "Field",
+      "file": "${WS}/main.cpp",
+      "line": 4,
+      "container": "Shape",
+      "symbol": "#5c8f14bfb3f2f707"
+    }
+  ],
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query definition \"are*\""]
+stdout = '''
+{
+  "result": {
+    "name": "area",
+    "kind": "Function",
+    "symbol": "#ca4cfb002f4ef965",
+    "documentation": null,
+    "definition": {
+      "file": "${WS}/main.cpp",
+      "startLine": 7,
+      "endLine": 7,
+      "text": "int area(Shape shape)"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query definition \"are kind:field\""]
+stdout = '''
+{
+  "error": "symbol not found",
+  "stale": []
+}
+'''
+exit = 1

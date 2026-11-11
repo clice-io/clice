@@ -87,6 +87,12 @@ bool should_ignore_token(TokenKind kind) {
 
 namespace {
 
+/// An Objective-C method's own `self` or `_cmd`.
+bool objc_method_parameter(const clang::VarDecl* var) {
+    return llvm::isa<clang::ImplicitParamDecl>(var) &&
+           llvm::isa<clang::ObjCMethodDecl>(var->getDeclContext());
+}
+
 bool is_implicit(const clang::Stmt* statement) {
     // Some Stmts are implicit and shouldn't be traversed, but there's no
     // "implicit" attribute on Stmt/Expr.
@@ -119,8 +125,9 @@ bool is_implicit(const clang::Stmt* statement) {
     if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(statement)) {
         // An implicit variable (the coroutine promise, range-for holders)
         // has no written name; its references sit on the keyword that
-        // desugars to them.
-        if(auto* VD = llvm::dyn_cast<clang::VarDecl>(DRE->getDecl()); VD && VD->isImplicit()) {
+        // desugars to them. Objective-C's `self` and `_cmd` are written.
+        if(auto* VD = llvm::dyn_cast<clang::VarDecl>(DRE->getDecl());
+           VD && VD->isImplicit() && !objc_method_parameter(VD)) {
             return true;
         }
         // A qualified one names a static call or subscript operator as
@@ -1773,7 +1780,11 @@ void stmt_references(const clang::Stmt* S,
         /// if (int x = f())
         ///         ^ clang tests the condition variable through an implicit
         ///           reference at its declaration, which is no use of it
+        /// `self` and `_cmd` are keywords as `this` is: no reference.
         auto* var = llvm::dyn_cast<clang::VarDecl>(DRE->getDecl());
+        if(var && objc_method_parameter(var)) {
+            return;
+        }
         if(!var || !var->isCXXCondDecl() || DRE->getLocation() != var->getLocation()) {
             refer_name(out, DRE->getDecl(), RelationKind::Reference, DRE->getNameInfo());
         }

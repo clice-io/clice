@@ -64,3 +64,45 @@ void §(bump)bump(Counter *counter) {
     (void)counter.limit;
     (void)counter.count;
 }
+
+@interface Leaf (Sharing)
++ (int)fresh;
++ (int)again;
+@end
+
+@implementation Leaf (Sharing)
++ (int)§(fresh)fresh {
+    return [super shared];
+}
+
++ (int)§(again)again {
+    return [self shared];
+}
+@end
+
+__attribute__((objc_root_class))
+@interface Meter
+@property(nonatomic) int level;
+@end
+
+@interface Dial : Meter
+@end
+
+@interface Needle : Dial
+@end
+
+@implementation Meter
+@end
+
+@implementation Dial
+- (int)§(dial_level)level {
+    return 1;
+}
+@end
+
+@implementation Needle
+@end
+
+int §(gauge)gauge(Needle *needle) {
+    return needle.level;
+}

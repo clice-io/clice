@@ -264,6 +264,7 @@ ZEST_CASE(DialectOfLanguage) {
     tmp.touch("shape.m", "");
     tmp.touch("shape.mm", "");
     tmp.touch("kernel.cl", "");
+    tmp.touch("kernel.clcpp", "");
     FileTable files;
     Project project{files};
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
@@ -284,6 +285,9 @@ ZEST_CASE(DialectOfLanguage) {
     ZEXPECT(bool(opencl.OpenCL));
     ZEXPECT((opencl.LangStd == clang::LangStandard::lang_opencl30));
     ZEXPECT(keyword_kind("__global", keywords(opencl)) != clang::tok::identifier);
+    auto& openclcxx = project.dialect(add("clang -cl-std=clc++2021", "kernel.clcpp"), nullptr);
+    ZEXPECT(bool(openclcxx.OpenCLCPlusPlus));
+    ZEXPECT((openclcxx.LangStd == clang::LangStandard::lang_openclcpp2021));
 }
 
 ZEST_CASE(IdentityIsEffectiveCommand) {

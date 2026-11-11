@@ -8,4 +8,7 @@ test(async (t) => {
     await t.cli("query definition Circle");
     await t.cli("query definition are");
     await t.cli("query definition width");
+    await t.cli("query definition wid");
+    await t.cli(["query", "definition", "are*"]);
+    await t.cli(["query", "definition", "are kind:field"]);
 });

@@ -99,3 +99,36 @@ void use(Quill *quill, Class kind, id thing, Box<Pen *> *box) {
     (void)size;
     (void)count;
 }
+
+@protocol Sizing
+@property(nonatomic) int §(extent)extent;
+@end
+
+@interface Brush : Object
+@property(nonatomic) int §(bristles)bristles;
+@property(nonatomic) int §(handle)handle;
+- (void)setX:(int)x §(set_y)y:(int)y;
+- (void)§(unnamed_piece)tail:(int)a :(int)b;
+@end
+
+@implementation Brush
+@synthesize bristles;
+@dynamic §(dynamic)handle;
+
+- (void)setX:(int)x y:(int)y {
+    §(bristles_ivar)bristles = x + y;
+}
+
+- (void)tail:(int)a :(int)b {
+    SEL moving = @selector(setX:§(selector_y)y:);
+    SEL trailing = @selector(§(selector_unnamed)tail::);
+    (void)moving;
+    (void)trailing;
+}
+@end
+
+int paint(Brush *brush, id<Sizing> sized) {
+    brush.handle = brush.bristles;
+    sized.§(extent_use)extent = brush.handle;
+    return sized.extent;
+}

@@ -151,6 +151,12 @@ auto written_range(const clang::Decl* decl) -> clang::SourceRange {
                          ? sources.getLocForEndOfFile(sources.getFileID(range.getBegin()))
                          : decl->getLocation());
     }
+    // An alias runs on to the class it names; clang ends it at the alias.
+    if(const auto* alias = llvm::dyn_cast<clang::ObjCCompatibleAliasDecl>(decl)) {
+        if(auto named = objc_alias_names(*alias).second; named.isValid()) {
+            range.setEnd(named);
+        }
+    }
     // An @implementation's range stops at the `@` of its `@end`.
     if(llvm::isa<clang::ObjCImplDecl>(decl)) {
         const auto& options = decl->getASTContext().getLangOpts();
@@ -579,10 +585,20 @@ auto objc_untyped(const clang::ObjCMessageExpr& message) -> bool {
 
 auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::ObjCMethodDecl* {
     const auto* method = message.getMethodDecl();
-    return method ? objc_dispatched(message.getReceiverInterface(),
-                                    *method,
-                                    message.isInstanceMessage())
-                  : nullptr;
+    if(!method) {
+        return nullptr;
+    }
+    const auto* receiver = message.getReceiverInterface();
+    // `self` in a class method is a `Class`: the method's class's, or a
+    // subclass's.
+    if(const auto* self = message.getReceiverKind() == clang::ObjCMessageExpr::Instance
+                              ? llvm::dyn_cast<clang::DeclRefExpr>(
+                                    message.getInstanceReceiver()->IgnoreParenImpCasts())
+                              : nullptr;
+       !receiver && self && self->isObjCSelfExpr()) {
+        receiver = objc_class(self->getDecl()->getDeclContext()->getParent());
+    }
+    return objc_dispatched(receiver, *method, method->isInstanceMethod());
 }
 
 auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::ObjCPropertyDecl* {

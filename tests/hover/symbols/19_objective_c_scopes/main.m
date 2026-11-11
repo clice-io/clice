@@ -99,3 +99,23 @@ void use(Quill *quill, Class kind, id thing, Box<Pen *> *box) {
     (void)size;
     (void)count;
 }
+
+@interface Pen (Sizing)
+- (int)scaled:(int)factor;
+@end
+
+@implementation Pen (Sizing)
+- (int)scaled:(int)factor {
+    return §(category_param)factor * 2;
+}
+@end
+
+@interface Marker : Object
++ (int)inkFor:(int)strokes;
+@end
+
+@implementation Marker
++ (int)inkFor:(int)strokes {
+    return §(class_method_param)strokes + 1;
+}
+@end

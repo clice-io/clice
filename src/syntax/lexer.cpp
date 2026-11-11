@@ -61,10 +61,16 @@ const clang::LangOptions& dialect_of(llvm::StringRef path,
                                                        : *language;
     auto kind = clang::getDefaultLanguageStandard(base, llvm::Triple());
     if(!standard.empty()) {
-        auto parsed = clang::LangStandard::getLangKind(standard);
-        if(parsed != clang::LangStandard::lang_unspecified &&
-           clang::LangStandard::getLangStandardForKind(parsed).getLanguage() == base) {
-            kind = parsed;
+        if(auto parsed = clang::LangStandard::getLangKind(standard);
+           parsed != clang::LangStandard::lang_unspecified) {
+            // Clang files C++ for OpenCL's standards under OpenCL.
+            const auto& known = clang::LangStandard::getLangStandardForKind(parsed);
+            auto of = known.getLanguage() == clang::Language::OpenCL && known.isCPlusPlus()
+                          ? clang::Language::OpenCLCXX
+                          : known.getLanguage();
+            if(of == base) {
+                kind = parsed;
+            }
         }
     }
     return raw_dialect(*language, kind);

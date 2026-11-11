@@ -70,8 +70,15 @@ Moves the shape.
 '''
 range = "[shape setX:x ⟦y⟧:0];"
 
-[answers.self]
-hover = {}
+[answers.self.hover]
+markdown = '''
+**self**
+
+```cpp
+Shape *const
+```
+'''
+range = "[⟦self⟧ setX:self.x + 1 y:0];"
 
 [answers.property_use.hover]
 markdown = '''

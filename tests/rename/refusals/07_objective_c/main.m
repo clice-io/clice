@@ -1,11 +1,11 @@
 #import "shape.h"
 
-@interface Shape ()
+@interface Shape §(extension)()
 @property(nonatomic, copy) NSString *name;
 @end
 
 @implementation Shape
-@synthesize x = _x;
+@synthesize x = §(synthesize_ivar)_x;
 
 static int shapes;
 
@@ -18,7 +18,7 @@ static int shapes;
 }
 
 - (int)area {
-    return _x * _x;
+    return §(synthesized_ivar)_x * _x;
 }
 
 - (void)setX:(int)x y:(int)y {

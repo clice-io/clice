@@ -92,6 +92,20 @@ incoming_calls = [
         detail = "Leaf::reset",
         sites = ["return super.⟦shared⟧;"],
     },
+    {
+        name = "fresh",
+        kind = "Method",
+        at = "+ (int)⟦fresh⟧ {",
+        detail = "Leaf::fresh",
+        sites = ["return [super ⟦shared⟧];"],
+    },
+    {
+        name = "again",
+        kind = "Method",
+        at = "+ (int)⟦again⟧ {",
+        detail = "Leaf::again",
+        sites = ["return [self ⟦shared⟧];"],
+    },
 ]
 outgoing_calls = []
 
@@ -189,5 +203,65 @@ outgoing_calls = [
         at = "- (int)⟦limit⟧ {",
         detail = "Counter::limit",
         sites = ["[counter setTotal:[counter ⟦limit⟧]];", "(void)counter.⟦limit⟧;"],
+    },
+]
+
+[answers.fresh]
+call_hierarchy = [
+    { name = "fresh", kind = "Method", at = "+ (int)⟦fresh⟧ {", detail = "Leaf::fresh" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "shared",
+        kind = "Method",
+        at = "+ (int)⟦shared⟧ { @-34",
+        detail = "Counter::shared",
+        sites = ["return [super ⟦shared⟧];"],
+    },
+]
+
+[answers.again]
+call_hierarchy = [
+    { name = "again", kind = "Method", at = "+ (int)⟦again⟧ {", detail = "Leaf::again" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "shared",
+        kind = "Method",
+        at = "+ (int)⟦shared⟧ { @-38",
+        detail = "Counter::shared",
+        sites = ["return [self ⟦shared⟧];"],
+    },
+]
+
+[answers.dial_level]
+call_hierarchy = [
+    { name = "level", kind = "Method", at = "- (int)⟦level⟧ {", detail = "Dial::level" },
+]
+incoming_calls = [
+    {
+        name = "gauge",
+        kind = "Function",
+        at = "int ⟦gauge⟧(Needle *needle) {",
+        detail = "gauge(Needle *needle)",
+        sites = ["return needle.⟦level⟧;"],
+    },
+]
+outgoing_calls = []
+
+[answers.gauge]
+call_hierarchy = [
+    { name = "gauge", kind = "Function", at = "int ⟦gauge⟧(Needle *needle) {", detail = "gauge(Needle *needle)" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "level",
+        kind = "Method",
+        at = "- (int)⟦level⟧ {",
+        detail = "Dial::level",
+        sites = ["return needle.⟦level⟧;"],
     },
 ]

@@ -85,6 +85,32 @@ items = [
     { label = "area", kind = "Method", insert = "(int)area" },
 ]
 
+[default.class_receiver.completion]
+items = [
+    { label = "shape", kind = "Variable", detail = "Shape *", insert = "shape" },
+    { label = "Shape", kind = "Class", insert = "Shape" },
+]
+
+[default.protocol.completion]
+items = [
+    { label = "Drawable", kind = "Interface", insert = "Drawable" },
+]
+
+[default.property.completion]
+items = [
+    { label = "width", kind = "Property", detail = "int", insert = "width" },
+]
+
+[default.alias.completion]
+items = [
+    { label = "Stylus", kind = "TypeParameter", insert = "Stylus" },
+]
+
+[default.selector_piece.completion]
+items = [
+    { label = "y:", kind = "Method", insert = "y:" },
+]
+
 [delimiters.message.completion]
 items = [
     { label = "moveToX:(int)", kind = "Method", detail = "void", insert = "moveToX:$1", snippet = true },
@@ -166,6 +192,32 @@ items = [
     { label = "area", kind = "Method", insert = "(int)area" },
 ]
 
+[delimiters.class_receiver.completion]
+items = [
+    { label = "shape", kind = "Variable", detail = "Shape *", insert = "shape" },
+    { label = "Shape", kind = "Class", insert = "Shape" },
+]
+
+[delimiters.protocol.completion]
+items = [
+    { label = "Drawable", kind = "Interface", insert = "Drawable" },
+]
+
+[delimiters.property.completion]
+items = [
+    { label = "width", kind = "Property", detail = "int", insert = "width" },
+]
+
+[delimiters.alias.completion]
+items = [
+    { label = "Stylus", kind = "TypeParameter", insert = "Stylus" },
+]
+
+[delimiters.selector_piece.completion]
+items = [
+    { label = "y:", kind = "Method", insert = "y:" },
+]
+
 [none.message.completion]
 items = [
     { label = "moveToX:(int)", kind = "Method", detail = "void", insert = "moveToX:" },
@@ -239,4 +291,36 @@ items = [
 [none.untyped_declaration.completion]
 items = [
     { label = "area", kind = "Method", insert = "(int)area" },
+]
+
+[none.class_receiver.completion]
+items = [
+    { label = "shape", kind = "Variable", detail = "Shape *", insert = "shape" },
+    { label = "Shape", kind = "Class", insert = "Shape" },
+]
+
+[none.protocol.completion]
+items = [
+    { label = "Drawable", kind = "Interface", insert = "Drawable" },
+]
+
+[none.property.completion]
+items = [
+    { label = "width", kind = "Property", detail = "int", insert = "width" },
+]
+
+[none.alias.completion]
+items = [
+    { label = "Stylus", kind = "TypeParameter", insert = "Stylus" },
+]
+
+[none.selector_piece.completion]
+items = [
+    { label = "y:", kind = "Method", insert = "y:" },
+]
+
+["plain text client".message.completion]
+items = [
+    { label = "moveToX:(int)", kind = "Method", detail = "void", insert = "moveToX:" },
+    { label = "moveToX:(int) y:(int)", kind = "Method", detail = "void", insert = "moveToX:" },
 ]

@@ -53,3 +53,59 @@ references = [
     "@implementation ⟦Pen⟧ (Extras)",
     "void use(Quill *quill, Class kind, id thing, Box<⟦Pen⟧ *> *box) {",
 ]
+
+[answers.extent]
+references = ["@property(nonatomic) int ⟦extent⟧;", "sized.⟦extent⟧ = brush.handle;", "return sized.⟦extent⟧;"]
+
+[answers.bristles]
+references = ["@property(nonatomic) int ⟦bristles⟧;", "@synthesize ⟦bristles⟧;", "brush.handle = brush.⟦bristles⟧;"]
+
+[answers.handle]
+references = [
+    "@property(nonatomic) int ⟦handle⟧;",
+    "@dynamic ⟦handle⟧;",
+    "brush.⟦handle⟧ = brush.bristles;",
+    "sized.extent = brush.⟦handle⟧;",
+]
+
+[answers.set_y]
+references = [
+    "- (void)⟦setX⟧:(int)x y:(int)y;",
+    "- (void)⟦setX⟧:(int)x y:(int)y {",
+    "SEL moving = @selector(⟦setX⟧:y:);",
+]
+
+[answers.unnamed_piece]
+references = [
+    "- (void)⟦tail⟧:(int)a :(int)b;",
+    "- (void)⟦tail⟧:(int)a :(int)b {",
+    "SEL trailing = @selector(⟦tail⟧::);",
+]
+
+[answers.dynamic]
+references = [
+    "@property(nonatomic) int ⟦handle⟧;",
+    "@dynamic ⟦handle⟧;",
+    "brush.⟦handle⟧ = brush.bristles;",
+    "sized.extent = brush.⟦handle⟧;",
+]
+
+[answers.bristles_ivar]
+references = ["⟦bristles⟧ = x + y;"]
+
+[answers.selector_y]
+references = [
+    "- (void)⟦setX⟧:(int)x y:(int)y;",
+    "- (void)⟦setX⟧:(int)x y:(int)y {",
+    "SEL moving = @selector(⟦setX⟧:y:);",
+]
+
+[answers.selector_unnamed]
+references = [
+    "- (void)⟦tail⟧:(int)a :(int)b;",
+    "- (void)⟦tail⟧:(int)a :(int)b {",
+    "SEL trailing = @selector(⟦tail⟧::);",
+]
+
+[answers.extent_use]
+references = ["@property(nonatomic) int ⟦extent⟧;", "sized.⟦extent⟧ = brush.handle;", "return sized.⟦extent⟧;"]

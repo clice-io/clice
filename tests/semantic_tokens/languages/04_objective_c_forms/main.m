@@ -99,3 +99,23 @@ void use(Quill *quill, Class kind, id thing, Box<Pen *> *box) {
     (void)size;
     (void)count;
 }
+
+@interface NSNumber : Object
++ (NSNumber *)numberWithInt:(int)value;
+@end
+
+@interface NSString : Object
+@end
+
+void box(int value) {
+    Class<Writing> c;
+    Pen<Writing> *s;
+    NSNumber *answer = @42;
+    NSNumber *boxed = @(value);
+    NSString *text = @ "text";
+    (void)c;
+    (void)s;
+    (void)answer;
+    (void)boxed;
+    (void)text;
+}

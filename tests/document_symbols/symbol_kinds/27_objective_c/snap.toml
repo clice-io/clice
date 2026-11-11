@@ -72,6 +72,9 @@ document_symbols = [
             { name = "error", kind = "Variable", at = "} @catch (Shape *⟦error⟧) {", detail = "Shape *" },
         ],
     },
+    { name = "Forward", kind = "Interface", at = "@protocol ⟦Forward⟧;", detail = "protocol" },
+    { name = "Later", kind = "Class", at = "@class ⟦Later⟧;", detail = "class" },
+    { name = "Figure", kind = "Class", at = "@compatibility_alias ⟦Figure⟧ Shape;" },
 ]
 
 [answers."main.m extents"]
@@ -177,6 +180,14 @@ document_symbols = [
                 range = "} @catch (⟦Shape *error⟧) {",
             },
         ],
+    },
+    { name = "Forward", kind = "Interface", at = "@protocol ⟦Forward⟧;", range = "⟦@protocol Forward⟧;" },
+    { name = "Later", kind = "Class", at = "@class ⟦Later⟧;", range = "⟦@class Later⟧;" },
+    {
+        name = "Figure",
+        kind = "Class",
+        at = "@compatibility_alias ⟦Figure⟧ Shape;",
+        range = "⟦@compatibility_alias Figure Shape⟧;",
     },
 ]
 
