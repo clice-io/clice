@@ -84,7 +84,7 @@ jobs:
       cases_shards: "[1, 2, 3, 4]"
 
   # What the docs site draws for the documented cases (docs.yml, main.yml's
-  # docs-check): one artifact once all of linux-x64's suites passed, so a
+  # docs-site): one artifact once all of linux-x64's suites passed, so a
   # run that has it has every card.
   docs-cards:
     needs: linux-x64

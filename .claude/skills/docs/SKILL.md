@@ -14,8 +14,9 @@ description: Read before editing anything under docs/, and for the end-of-branch
   **Never edit inside a `<!-- BEGIN GENERATED ... -->` region** — edit the
   case's `README.md` or the config annotations instead.
 - `docs/cards/` — one card per documented case, written by every cases run
-  and ignored by git; publishing and the PR docs check take the cards of
-  CI's linux-x64 run (test.yml's `docs-cards`).
+  and ignored by git; publishing (docs.yml) and the site build of pull
+  requests (main.yml's `docs-site`) take the cards of CI's linux-x64 run
+  (test.yml's `docs-cards`).
 - `docs/zh/` — Chinese pages, equally real and equally hand-edited (by a
   person or a model). Each zh page must stay **segment-isomorphic** to its
   en counterpart: same sequence of markdown blocks, translated text in the
@@ -28,13 +29,13 @@ description: Read before editing anything under docs/, and for the end-of-branch
 
 ## Commands (pixi)
 
-| command                | what it does                                                                                                          |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `pixi run docs-update` | rewrite every GENERATED region: the feature pages' from the cases, the configuration page's from the schema           |
-| `pixi run docs-check`  | every docs check, as CI runs it: the GENERATED regions are current, zh is isomorphic to en and all pairs are attested |
-| `pixi run docs-report` | translator worklist: drifted segments with texts                                                                      |
-| `pixi run docs-record` | re-attest hash pairs after deliberate edits                                                                           |
-| `pixi run docs-review` | model review of zh pages, segment by segment                                                                          |
+| command                | what it does                                                                                                         |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `pixi run docs-update` | rewrite every GENERATED region: the feature pages' from the cases, the configuration page's from the schema          |
+| `pixi run docs-check`  | what CI's lint docs job checks: the GENERATED regions are current, zh is isomorphic to en and all pairs are attested |
+| `pixi run docs-report` | translator worklist: drifted segments with texts                                                                     |
+| `pixi run docs-record` | re-attest hash pairs after deliberate edits                                                                          |
+| `pixi run docs-review` | model review of zh pages, segment by segment                                                                         |
 
 ## Translation contract
 
@@ -77,7 +78,10 @@ subagent this skill and `git diff --name-only origin/main...HEAD`; its
 brief is:
 
 1. If documented cases or config annotations changed:
-   `pixi run docs-update` rewrites the en GENERATED regions.
+   `pixi run docs-update` rewrites the en GENERATED regions. The
+   configuration page renders the committed schema: after a config
+   annotation changed, first rewrite it with the built clice,
+   `clice inspect config-schema > docs/public/clice-config.schema.json`.
 2. `pixi run docs-report` lists every broken pair with both
    texts. Translate each new or drifted en segment into the zh page,
    keeping the skeleton (same block kind, list marker, heading depth,

@@ -104,7 +104,7 @@ jobs:
   # in inline code is a Vue interpolation), and so can a card. The cards come
   # from this run's tests, or from main's when it runs none. Its own job,
   # since the action switches node.
-  docs-check:
+  docs-site:
     needs: [changes, test]
     if: ${{ always() && github.event_name == 'pull_request' && needs.changes.outputs.docs == 'true' && contains(fromJSON('["success", "skipped"]'), needs.test.result) }}
     permissions:
@@ -228,7 +228,7 @@ jobs:
     needs:
       - changes
       - lint
-      - docs-check
+      - docs-site
       - vscode
       - zed
       - test
@@ -240,6 +240,6 @@ jobs:
         uses: re-actors/alls-green@v1.2.2
         with:
           allowed-skips: >-
-            lint,docs-check,vscode,zed,
+            lint,docs-site,vscode,zed,
             test,instant-vscode
           jobs: ${{ toJSON(needs) }}
