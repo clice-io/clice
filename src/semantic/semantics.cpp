@@ -1132,8 +1132,7 @@ void refer_protocols(References& out, auto&& protocols, auto&& locations) {
     }
 }
 
-/// The Objective-C declarations: whether `D` is one, its references added.
-bool objc_decl_references(const clang::Decl* D, References& out) {
+void decl_references(const clang::Decl* D, References& out, types::TemplateResolver* resolver) {
     /// @interface Shape : NSObject <Drawable>   @class Shape;
     ///            ^~~~ declaration   ^~~~ reference to each protocol, and
     /// to the class from a forward declaration, which tells a reader nothing
@@ -1149,7 +1148,7 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
         if(declares) {
             refer_protocols(out, ID->protocols(), ID->protocol_locs());
         }
-        return true;
+        return;
     }
 
     /// @implementation Shape
@@ -1160,7 +1159,7 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
               decls::objc_class_name(IMD->getSuperClass(), IMD->getSuperClassLoc()),
               RelationKind::Reference,
               IMD->getSuperClassLoc());
-        return true;
+        return;
     }
 
     /// @interface Shape (Extras) <Drawable>   @interface Shape ()
@@ -1177,7 +1176,7 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
             refer(out, CD, RelationKind::Declaration, name);
         }
         refer_protocols(out, CD->protocols(), CD->protocol_locs());
-        return true;
+        return;
     }
 
     /// @implementation Shape (Extras)
@@ -1188,7 +1187,7 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
               RelationKind::Reference,
               CID->getLocation());
         refer(out, CID, RelationKind::Definition, CID->getCategoryNameLoc());
-        return true;
+        return;
     }
 
     /// @protocol Drawable <NSObject>   @protocol Drawable;
@@ -1203,7 +1202,7 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
         if(defines) {
             refer_protocols(out, PD->protocols(), PD->protocol_locs());
         }
-        return true;
+        return;
     }
 
     /// - (void)setX:(double)x y:(double)y;
@@ -1216,14 +1215,14 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
                        MD->isThisDeclarationADefinition() ? RelationKind::Definition
                                                           : RelationKind::Declaration,
                        pieces);
-        return true;
+        return;
     }
 
     /// @property (nonatomic) double x;
     ///                              ^~~~ declaration
     if(auto* PD = llvm::dyn_cast<clang::ObjCPropertyDecl>(D)) {
         refer(out, PD, RelationKind::Declaration, PD->getLocation());
-        return true;
+        return;
     }
 
     /// @synthesize name = _name;
@@ -1235,7 +1234,7 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
     /// synthesizes with no @synthesize written is nowhere.
     if(auto* PID = llvm::dyn_cast<clang::ObjCPropertyImplDecl>(D)) {
         if(PID->getBeginLoc().isInvalid()) {
-            return true;
+            return;
         }
         refer(out, PID->getPropertyDecl(), RelationKind::Reference, PID->getLocation());
         const auto* ivar = PID->getPropertyIvarDecl();
@@ -1247,7 +1246,7 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
                   ivar->getSynthesize() ? RelationKind::Definition : RelationKind::Reference,
                   location);
         }
-        return true;
+        return;
     }
 
     /// @compatibility_alias Quill Pen;
@@ -1262,15 +1261,6 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
                   RelationKind::Reference,
                   name);
         }
-        return true;
-    }
-    return false;
-}
-
-/// The per-decl-kind extraction below is ported verbatim from the former
-/// SemanticVisitor: the same decls, the same roles, the same name locations.
-void decl_references(const clang::Decl* D, References& out, types::TemplateResolver* resolver) {
-    if(objc_decl_references(D, out)) {
         return;
     }
 

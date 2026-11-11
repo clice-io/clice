@@ -16,12 +16,13 @@ const clang::LangOptions& raw_dialect(clang::Language language, clang::LangStand
 /// The dialect a raw lex of `path` runs in: `language` when the command
 /// compiling the text is known, else by the extension — C for .c files,
 /// Objective-C for .m and Objective-C++ for .mm ones, OpenCL C for .cl and
-/// C++ for OpenCL for .clcpp ones, C++ otherwise.
-/// `standard` is the -std value (-cl-std for OpenCL) of a command that compiles the text, when
-/// known: a newer standard's extra keywords (`concept` in C++17 code) would shadow identifiers.
-/// Absent, unknown or contradicting values fall back to the driver's default standard — the dialect
-/// a -std-less command compiles. With nothing known, that is C++'s, which lexes directive lines,
-/// braces and statements as any dialect past C89 does.
+/// C++ for OpenCL for .clcpp ones, C++ otherwise. `standard` is the -std
+/// value (-cl-std for OpenCL) of a command that compiles the text, when
+/// known: a newer standard's extra keywords (`concept` in C++17 code)
+/// would shadow identifiers. Absent, unknown or contradicting values fall
+/// back to the driver's default standard — the dialect a -std-less command
+/// compiles. With nothing known, that is C++'s, which lexes directive
+/// lines, braces and statements as any dialect past C89 does.
 const clang::LangOptions& dialect_of(llvm::StringRef path = {},
                                      std::optional<clang::Language> language = std::nullopt,
                                      llvm::StringRef standard = {});

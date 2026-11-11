@@ -426,7 +426,7 @@ std::vector<index::Site> type_definition(const index::IndexQuery& index,
         // A type is its own type definition.
         if(auto info = index.symbol_info(symbol, anchor);
            info && (is_class(info->kind) || info->kind == SymbolKind::Enum ||
-                    info->kind == SymbolKind::Type)) {
+                    info->kind == SymbolKind::Protocol || info->kind == SymbolKind::Type)) {
             found.push_back({.symbol = symbol, .anchor = anchor});
         } else {
             found = declared_type({.symbol = symbol, .anchor = anchor});

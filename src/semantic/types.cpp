@@ -84,6 +84,16 @@ auto decls_of(clang::QualType type, TemplateResolver* resolver)
         return result;
     }
 
+    /// Shape<Drawable>, id<Drawable> — the class, else the protocols.
+    if(const auto* object = llvm::dyn_cast<clang::ObjCObjectType>(type.getTypePtr());
+       object && !llvm::isa<clang::ObjCInterfaceType>(object)) {
+        if(const auto* objc_class = object->getInterface()) {
+            return {objc_class};
+        }
+        return llvm::SmallVector<const clang::NamedDecl*, 1>(object->qual_begin(),
+                                                             object->qual_end());
+    }
+
     if(auto TST = type->getAs<clang::TemplateSpecializationType>()) {
         auto decl = TST->getTemplateName().getAsTemplateDecl();
 
@@ -171,6 +181,8 @@ auto unwrap(clang::QualType type) -> clang::QualType {
             type = adjusted->getOriginalType();
         } else if(auto* pointer = llvm::dyn_cast<clang::PointerType>(written)) {
             type = pointer->getPointeeType();
+        } else if(auto* object = llvm::dyn_cast<clang::ObjCObjectPointerType>(written)) {
+            type = object->getPointeeType();
         } else if(auto* reference = llvm::dyn_cast<clang::ReferenceType>(written)) {
             type = reference->getPointeeType();
         } else if(auto* array = llvm::dyn_cast<clang::ArrayType>(written)) {

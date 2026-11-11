@@ -52,10 +52,9 @@ bool has_blank_line(llvm::StringRef text) {
 /// Whether code between a comment and a declaration ends what the comment
 /// is about: a statement, a block, a directive, an Objective-C container's
 /// head (`@protocol Drawable`) or a label such as `public:` (`::` is no
-/// label). Code ending in a list it leaves open, a
-/// template's parameters (`template <`, `template <class T,`) or a
-/// function's (`f(`), holds the declaration: the comment is about what owns
-/// the list.
+/// label). Code ending in a list it leaves open, a template's parameters
+/// (`template <`, `template <class T,`) or a function's (`f(`), holds the
+/// declaration: the comment is about what owns the list.
 bool separates(llvm::StringRef gap) {
     if(gap.find_first_of(";{}#@") != llvm::StringRef::npos) {
         return true;

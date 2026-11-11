@@ -364,12 +364,22 @@ auto name_of(const clang::NamedDecl* decl, const Options& options) -> std::strin
     return name;
 }
 
+auto objc_container_name(const clang::ObjCContainerDecl& container) -> std::string {
+    if(llvm::isa<clang::ObjCProtocolDecl>(container)) {
+        return container.getName().str();
+    }
+    const auto* objc_class = decls::objc_class(&container);
+    std::string name = objc_class ? objc_class->getName().str() : "";
+    if(llvm::isa<clang::ObjCCategoryDecl, clang::ObjCCategoryImplDecl>(container)) {
+        name += std::format("({})", container.getName());
+    }
+    return name;
+}
+
 auto symbol_name(const clang::NamedDecl* decl) -> SymbolName {
     if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(decl);
        category && category->getClassInterface()) {
-        return {.text = std::format("{}({})",
-                                    category->getClassInterface()->getName(),
-                                    category->getName())};
+        return {.text = objc_container_name(*category)};
     }
     // A deduction guide is listed under its label rather than the
     // template's name, which completion prefers for its candidates.

@@ -230,7 +230,7 @@ private:
            method && method->hasBody()) {
             add_declaration_block(method->getBody()->getSourceRange(),
                                   method->getSelectorStartLoc(),
-                                  "functionBody");
+                                  *declaration_fold_kind(SymbolKind::from(method)));
             return;
         }
 

@@ -276,17 +276,8 @@ struct Scope {
 /// The scope an Objective-C container gives its members: its class, named
 /// with the category, `()` for an extension; a protocol.
 auto objc_scope(const clang::ObjCContainerDecl& container) -> Scope {
-    if(const auto* protocol = llvm::dyn_cast<clang::ObjCProtocolDecl>(&container)) {
-        return {.kind = "protocol", .name = protocol->getName().str()};
-    }
-    const auto* objc_class = decls::objc_class(&container);
-    std::string name = objc_class ? objc_class->getName().str() : "";
-    if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(&container)) {
-        name += std::format("({})", category->getName());
-    } else if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryImplDecl>(&container)) {
-        name += std::format("({})", category->getName());
-    }
-    return {.kind = "class", .name = std::move(name)};
+    return {.kind = llvm::isa<clang::ObjCProtocolDecl>(container) ? "protocol" : "class",
+            .name = display::objc_container_name(container)};
 }
 
 auto scope_of(const clang::Decl* decl, const display::Options& options) -> Scope {
@@ -370,7 +361,7 @@ auto scope_of(const clang::Decl* decl, const display::Options& options) -> Scope
 /// a nameless entity's as presented (`(anonymous struct)`, `(lambda)`).
 auto title_name(const clang::NamedDecl* decl, const display::Options& options) -> std::string {
     if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(decl)) {
-        return objc_scope(*category).name;
+        return display::objc_container_name(*category);
     }
     auto name = display::name_of(decl, {.suppress_ctor_template_args = true, .qualified = false});
     if(name.empty()) {

@@ -115,12 +115,10 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
     }
     // A build is expected to fail on the user's errors, or for an operational
     // reason (memory-pressure preemption, crash/restart window).
-    auto expected = result.has_value() ? result.value().has_user_errors
-                                       : worker::is_operational_error(result.error());
     auto& message = result.has_value() ? result.value().error : result.error().message;
-    Inputs read;
     if(result.has_value() && result.value().has_user_errors) {
-        read = project.read_inputs(result.value(), before);
+        auto& built = result.value();
+        auto read = project.read_inputs(built, before);
         if(rewritten_since(project.file_table, read)) {
             LOG_INFO(
                 "The {} build of {} failed on files rewritten since it read them; it runs "
@@ -129,19 +127,16 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
                 label);
             co_return std::unexpected(Result::Stale);
         }
-    }
-    if(expected) {
-        std::string shown = message;
-        if(result.has_value() && result.value().has_user_errors && result.value().error_count > 1) {
-            auto more = result.value().error_count - 1;
+        std::string shown = built.error;
+        if(built.error_count > 1) {
             shown = std::format("{} (and {}, all in the worker's log)",
-                                result.value().first_error,
-                                counted(more, "more error", "more errors"));
+                                built.first_error,
+                                counted(built.error_count - 1, "more error", "more errors"));
         }
         LOG_WARN("The {} build of {} failed: {}", what, label, shown);
-        if(result.has_value()) {
-            fail(failed_build({}, result.value().first_error), std::move(read));
-        }
+        fail(failed_build({}, built.first_error), std::move(read));
+    } else if(!result.has_value() && worker::is_operational_error(result.error())) {
+        LOG_WARN("The {} build of {} failed: {}", what, label, message);
     } else if constexpr(pch) {
         LOG_ANOMALY(PCHBuildFail, "PCH build failed for {}: {}", label, message);
     } else {

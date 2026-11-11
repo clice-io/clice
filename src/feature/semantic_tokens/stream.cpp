@@ -4,6 +4,7 @@ import :feature.semantic_tokens.stream;
 import :feature.semantic_tokens;
 import :semantic.comment;
 import :semantic.token_class;
+import :syntax.lexer;
 import :syntax.source_text;
 import :syntax.token;
 
@@ -264,34 +265,10 @@ std::size_t number_suffix(llvm::StringRef text) {
 }
 
 /// The words an Objective-C `@` makes keywords: `@interface`, `@end`.
-bool is_objc_keyword(llvm::StringRef spelling) {
-    return ranges::contains(std::array{"autoreleasepool",
-                                       "available",
-                                       "catch",
-                                       "class",
-                                       "compatibility_alias",
-                                       "defs",
-                                       "dynamic",
-                                       "encode",
-                                       "end",
-                                       "finally",
-                                       "implementation",
-                                       "import",
-                                       "interface",
-                                       "optional",
-                                       "package",
-                                       "private",
-                                       "property",
-                                       "protected",
-                                       "protocol",
-                                       "public",
-                                       "required",
-                                       "selector",
-                                       "synchronized",
-                                       "synthesize",
-                                       "throw",
-                                       "try"},
-                            spelling);
+bool is_objc_keyword(llvm::StringRef spelling, const clang::LangOptions& lang_opts) {
+    auto& table = keywords(lang_opts);
+    auto it = table.find(spelling);
+    return it != table.end() && it->second->getObjCKeywordID() != clang::tok::objc_not_keyword;
 }
 
 class TokenStream {
@@ -391,7 +368,7 @@ private:
                     emit(token.range, {{.kind = Kind::String}, false});
                 } else if(following_kind == clang::tok::numeric_constant) {
                     emit(token.range, {{.kind = Kind::Number}, false});
-                } else if(is_objc_keyword(following.text(content))) {
+                } else if(is_objc_keyword(following.text(content), lang_opts)) {
                     emit(token.range, {{.kind = Kind::Keyword}, false});
                     objc_keyword = following.range.begin;
                 }

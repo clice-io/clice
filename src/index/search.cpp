@@ -459,8 +459,7 @@ std::vector<IndexQuery::Target> reached_by_selector(const IndexQuery& index,
     std::vector<IndexQuery::Target> reached;
     for(auto& hit: ranked.hits) {
         auto& other = hit.symbol;
-        if(other.name == method.name && other.hash != method.hash &&
-           name_form(other.flags) == NameForm::Selector &&
+        if(other.hash != method.hash && name_form(other.flags) == NameForm::Selector &&
            other.token_class.has(SemanticTokenModifier::Static) ==
                method.token_class.has(SemanticTokenModifier::Static)) {
             reached.push_back({.symbol = other.hash, .anchor = hit.anchor});

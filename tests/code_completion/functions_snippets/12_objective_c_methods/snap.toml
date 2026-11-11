@@ -53,9 +53,20 @@ items = [
     { label = "moveToX:y:", kind = "Method", insert = "moveToX:y:" },
 ]
 
+[default.selector_written.completion]
+items = [
+    { label = "moveToX:", kind = "Method", insert = "moveToX" },
+    { label = "moveToX:y:", kind = "Method", insert = "moveToX" },
+]
+
 [default.super_message.completion]
 items = [
     { label = "moveToX:x y:y", kind = "Method", detail = "void", insert = "moveToX:x y:y" },
+]
+
+[default.super_written.completion]
+items = [
+    { label = "moveToX:x y:y", kind = "Method", detail = "void", insert = "moveToX" },
 ]
 
 [default.declaration.completion]
@@ -123,9 +134,20 @@ items = [
     { label = "moveToX:y:", kind = "Method", insert = "moveToX:y:" },
 ]
 
+[delimiters.selector_written.completion]
+items = [
+    { label = "moveToX:", kind = "Method", insert = "moveToX" },
+    { label = "moveToX:y:", kind = "Method", insert = "moveToX" },
+]
+
 [delimiters.super_message.completion]
 items = [
     { label = "moveToX:x y:y", kind = "Method", detail = "void", insert = "moveToX:x y:y" },
+]
+
+[delimiters.super_written.completion]
+items = [
+    { label = "moveToX:x y:y", kind = "Method", detail = "void", insert = "moveToX" },
 ]
 
 [delimiters.declaration.completion]
@@ -187,9 +209,20 @@ items = [
     { label = "moveToX:y:", kind = "Method", insert = "moveToX:y:" },
 ]
 
+[none.selector_written.completion]
+items = [
+    { label = "moveToX:", kind = "Method", insert = "moveToX" },
+    { label = "moveToX:y:", kind = "Method", insert = "moveToX" },
+]
+
 [none.super_message.completion]
 items = [
     { label = "moveToX:x y:y", kind = "Method", detail = "void", insert = "moveToX:x y:y" },
+]
+
+[none.super_written.completion]
+items = [
+    { label = "moveToX:x y:y", kind = "Method", detail = "void", insert = "moveToX" },
 ]
 
 [none.declaration.completion]

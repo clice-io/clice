@@ -870,17 +870,20 @@ public:
         // where that method, and the other methods of its selector, find it.
         if(auto* OME = node.get<clang::ObjCMessageExpr>()) {
             const auto* method = decls::objc_message_target(*OME);
+            if(!method) {
+                return;
+            }
             auto name = decls::objc_message_name(*OME);
             call(method, name);
-            if(method && method->isImplicit()) {
+            if(method->isImplicit()) {
                 add_self_relation(method,
                                   decls::objc_untyped(*OME) ? RelationKind::Candidate
                                                             : RelationKind::Reference,
                                   name);
             }
             // `[super draw]` runs the superclass's method, never an override.
-            if(method && (OME->getReceiverKind() == clang::ObjCMessageExpr::SuperInstance ||
-                          OME->getReceiverKind() == clang::ObjCMessageExpr::SuperClass)) {
+            if(OME->getReceiverKind() == clang::ObjCMessageExpr::SuperInstance ||
+               OME->getReceiverKind() == clang::ObjCMessageExpr::SuperClass) {
                 add_self_relation(method, RelationKind::Direct, name);
             }
             return;
@@ -895,27 +898,27 @@ public:
             }
             const auto* object = type->getAsObjCInterfaceType();
             const auto* receiver = object ? object->getInterface() : nullptr;
-            auto accessor = [&](bool getter) -> const clang::ObjCMethodDecl* {
-                if(OPRE->isImplicitProperty()) {
-                    return getter ? OPRE->getImplicitPropertyGetter()
-                                  : OPRE->getImplicitPropertySetter();
+            auto call_accessor = [&](const clang::ObjCMethodDecl* method) {
+                if(!method) {
+                    return;
                 }
-                const auto* property = OPRE->getExplicitProperty();
-                return getter ? property->getGetterMethodDecl() : property->getSetterMethodDecl();
+                const auto* called =
+                    decls::objc_dispatched(receiver, *method, method->isInstanceMethod());
+                call(called, OPRE->getLocation());
+                add_self_relation(called, RelationKind::Reference, OPRE->getLocation());
+                if(OPRE->isSuperReceiver()) {
+                    add_self_relation(called, RelationKind::Direct, OPRE->getLocation());
+                }
             };
-            for(bool getter: {true, false}) {
-                if(!(getter ? OPRE->isMessagingGetter() : OPRE->isMessagingSetter())) {
-                    continue;
-                }
-                if(const auto* method = accessor(getter)) {
-                    const auto* called =
-                        decls::objc_dispatched(receiver, *method, method->isInstanceMethod());
-                    call(called, OPRE->getLocation());
-                    add_self_relation(called, RelationKind::Reference, OPRE->getLocation());
-                    if(OPRE->isSuperReceiver()) {
-                        add_self_relation(called, RelationKind::Direct, OPRE->getLocation());
-                    }
-                }
+            const auto* property =
+                OPRE->isExplicitProperty() ? OPRE->getExplicitProperty() : nullptr;
+            if(OPRE->isMessagingGetter()) {
+                call_accessor(property ? property->getGetterMethodDecl()
+                                       : OPRE->getImplicitPropertyGetter());
+            }
+            if(OPRE->isMessagingSetter()) {
+                call_accessor(property ? property->getSetterMethodDecl()
+                                       : OPRE->getImplicitPropertySetter());
             }
             return;
         }

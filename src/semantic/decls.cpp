@@ -538,19 +538,6 @@ static auto own_method(const clang::ObjCInterfaceDecl& objc_class,
     return nullptr;
 }
 
-/// An accessor clang declares for a property as its class's
-/// @implementation writes it, if it does.
-static auto objc_written(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl* {
-    if(!method.isImplicit()) {
-        return &method;
-    }
-    const auto* objc_class = decls::objc_class(method.getDeclContext());
-    const auto* own = objc_class
-                          ? own_method(*objc_class, method.getSelector(), method.isInstanceMethod())
-                          : nullptr;
-    return own && !own->isImplicit() ? own : &method;
-}
-
 auto objc_dispatched(const clang::ObjCInterfaceDecl* receiver,
                      const clang::ObjCMethodDecl& method,
                      bool instance) -> const clang::ObjCMethodDecl* {
@@ -559,10 +546,17 @@ auto objc_dispatched(const clang::ObjCInterfaceDecl* receiver,
         objc_class && objc_class != declaring && objc_class->hasDefinition();
         objc_class = objc_class->getSuperClass()) {
         if(const auto* own = own_method(*objc_class, method.getSelector(), instance)) {
-            return objc_written(*own);
+            return own;
         }
     }
-    return objc_written(method);
+    if(method.isImplicit() && declaring) {
+        if(const auto* written =
+               own_method(*declaring, method.getSelector(), method.isInstanceMethod());
+           written && !written->isImplicit()) {
+            return written;
+        }
+    }
+    return &method;
 }
 
 auto objc_message_name(const clang::ObjCMessageExpr& message) -> clang::SourceLocation {
@@ -659,7 +653,7 @@ auto objc_selector_pieces(const clang::ObjCSelectorExpr& expr, const clang::ASTC
     }
     llvm::SmallVector<clang::SourceLocation, 4> pieces;
     for(unsigned slot = 0; slot < std::max(1U, selector.getNumArgs()) && token; slot += 1) {
-        if(token->is(clang::tok::raw_identifier) || token->is(clang::tok::identifier)) {
+        if(token->is(clang::tok::raw_identifier)) {
             pieces.push_back(token->getLocation());
             token = token_after(token->getLocation());
         } else {

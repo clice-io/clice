@@ -750,23 +750,16 @@ private:
             definition = tag->isThisDeclarationADefinition();
         } else if(const auto* method = llvm::dyn_cast<clang::ObjCMethodDecl>(named)) {
             name_range = method->getSelectorStartLoc();
-            definition = method->isThisDeclarationADefinition();
-        } else if(const auto* protocol = llvm::dyn_cast<clang::ObjCProtocolDecl>(named)) {
-            definition = protocol->isThisDeclarationADefinition();
         } else if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryDecl>(named)) {
             name_range = category->IsClassExtension() ? decls::objc_extension_paren(*category)
                                                       : category->getCategoryNameLoc();
             if(name_range.isInvalid()) {
                 return true;
             }
-            definition = false;
         } else if(const auto* category = llvm::dyn_cast<clang::ObjCCategoryImplDecl>(named)) {
             name_range = category->getCategoryNameLoc();
-        } else if(llvm::isa<clang::ObjCInterfaceDecl, clang::ObjCPropertyDecl>(named)) {
-            definition = false;
         } else if(const auto* alias = llvm::dyn_cast<clang::ObjCCompatibleAliasDecl>(named)) {
             name_range = decls::objc_alias_names(*alias).first;
-            definition = false;
         }
 
         // A fragment's members outline at its top level.

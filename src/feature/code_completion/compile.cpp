@@ -998,7 +998,7 @@ auto selector_rest(const clang::ObjCMethodDecl& method, unsigned start) -> std::
         return selector.getNameForSlot(0).str();
     }
     std::string rest;
-    for(auto piece = start; piece < selector.getNumArgs(); ++piece) {
+    for(auto piece = start; piece < selector.getNumArgs(); piece += 1) {
         rest += selector.getNameForSlot(piece);
         rest += ':';
     }
@@ -1659,7 +1659,8 @@ public:
                     item.label = chunk.Text;
                 }
             }
-            item.insert = llvm::StringRef(item.insert).rtrim().str();
+            item.insert = colon_follows ? llvm::StringRef(item.label).rtrim(':').str()
+                                        : llvm::StringRef(item.insert).rtrim().str();
             item.signature = llvm::StringRef(item.signature).rtrim().str();
             if(auto typed = pattern.getAllTypedText(); typed != item.label) {
                 item.filter = std::move(typed);
@@ -1880,9 +1881,9 @@ public:
                                                                     getAllocator(),
                                                                     getCodeCompletionTUInfo(),
                                                                     /*IncludeBriefComments=*/false);
+            item.return_type = extract_return_type(ccs);
             if(llvm::isa<clang::ObjCMethodDecl>(declaration)) {
                 item.signature = pattern_tail(ccs);
-                item.return_type = extract_return_type(ccs);
                 if(candidate.DeclaringEntity) {
                     // A method's declaration after its return type.
                     item.insert = pattern_text(ccs, /*whole=*/true);
@@ -1904,7 +1905,6 @@ public:
             bool method = llvm::isa_and_present<clang::CXXMethodDecl>(declaration->getAsFunction());
             std::size_t parameters;
             item.signature = extract_signature(ccs, /*qualifiers=*/method, &parameters);
-            item.return_type = extract_return_type(ccs);
             // Where Sema gives a parameter list and a type, they are printed
             // as every feature prints them.
             if(!readable) {
@@ -2006,19 +2006,17 @@ public:
             candidate.Declaration = shown_declaration(candidate.Declaration);
             auto* declaration = candidate.Declaration;
             offered.insert(declaration->getCanonicalDecl());
-            auto name = display::name_of(declaration,
-                                         {
-                                             .suppress_ctor_template_args = true,
-                                             .qualified = false,
-                                         });
             const auto* method = llvm::dyn_cast<clang::ObjCMethodDecl>(declaration);
-            if(method) {
-                name = selector_rest(*method, candidate.StartParameter);
-                if(candidate.DeclaringEntity &&
-                   !declared_selectors.insert(method->getSelector().getAsString()).second) {
-                    return;
-                }
+            if(method && candidate.DeclaringEntity &&
+               !declared_selectors.insert(method->getSelector().getAsString()).second) {
+                return;
             }
+            auto name = method ? selector_rest(*method, candidate.StartParameter)
+                               : display::name_of(declaration,
+                                                  {
+                                                      .suppress_ctor_template_args = true,
+                                                      .qualified = false,
+                                                  });
             // Sema offers every name in scope, of which the typed prefix
             // keeps a few: what follows is too costly to spend on the rest.
             if(!match(name)) {
@@ -2044,7 +2042,7 @@ public:
             };
             // A message's item is named by the selector's piece the cursor
             // is at, the pieces after it are its signature.
-            if(method && llvm::count(name, ':') > 1) {
+            if(method && ranges::count(name, ':') > 1) {
                 item.label = name.substr(0, name.find(':') + 1);
                 item.filter = name;
             }
@@ -2128,9 +2126,12 @@ public:
                     // After `@selector(` Sema offers every selector it knows,
                     // from the piece the cursor is at.
                     if(context.getKind() == clang::CodeCompletionContext::CCC_SelectorName) {
+                        auto typed = pattern.getAllTypedText();
                         add({
-                            .label = pattern.getAllTypedText(),
+                            .label = typed,
                             .kind = protocol::CompletionItemKind::Method,
+                            .insert = colon_follows ? llvm::StringRef(typed).split(':').first.str()
+                                                    : std::string(),
                             .relevance = priority_weight(candidate.Priority),
                         });
                         break;

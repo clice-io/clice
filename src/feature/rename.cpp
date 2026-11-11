@@ -296,9 +296,9 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
                        .kinds = {SymbolKind::Property}})
             .empty()) {
         for(auto& site: query.sites(root.symbol.hash, root.site.file, RelationKind::Reference)) {
-            auto named = query.symbol_at(site.file, site.range.begin);
-            if(named && ranges::any_of(named->symbols, [&](index::SymbolHash symbol) {
-                   auto info = query.symbol_info(symbol, site.file);
+            auto cursor = query.symbol_at(site.file, site.range.begin);
+            if(cursor && ranges::any_of(cursor->symbols, [&](index::SymbolHash hash) {
+                   auto info = query.symbol_info(hash, site.file);
                    return info && info->kind == SymbolKind::Property;
                })) {
                 return std::unexpected(

@@ -20,11 +20,13 @@ void use(Shape *shape) {
     int area = shape.ar§(method_as_property);
     Shape *unit = Shape.un§(class_method_as_property);
     SEL moving = @selector(mo§(selector));
+    SEL renamed = @selector(mo§(selector_written):y:);
 }
 
 @implementation Square
 - (void)moveToX:(int)x y:(int)y {
     [super mo§(super_message)];
+    [super mo§(super_written):x y:y];
 }
 - (void)mo§(declaration) {
 }
