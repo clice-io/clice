@@ -6,9 +6,9 @@ incoming_calls = [
     {
         name = "count",
         kind = "Method",
-        at = "- (int)⟦count⟧ { @+13",
+        at = "- (int)⟦count⟧ { @+17",
         detail = "Counter::count",
-        sites = ["return super.⟦count⟧; @+14"],
+        sites = ["return super.⟦count⟧; @+18"],
     },
 ]
 outgoing_calls = []
@@ -58,9 +58,9 @@ incoming_calls = [
     {
         name = "count",
         kind = "Method",
-        at = "- (int)⟦count⟧ { @+6",
+        at = "- (int)⟦count⟧ { @+10",
         detail = "Leaf::count",
-        sites = ["return super.⟦count⟧; @+7"],
+        sites = ["return super.⟦count⟧; @+11"],
     },
     {
         name = "bump",
@@ -74,11 +74,26 @@ outgoing_calls = [
     {
         name = "count",
         kind = "Method",
-        at = "- (int)⟦count⟧ { @-13",
+        at = "- (int)⟦count⟧ { @-17",
         detail = "Base::count",
         sites = ["return super.⟦count⟧; @+1"],
     },
 ]
+
+[answers.counter_shared]
+call_hierarchy = [
+    { name = "shared", kind = "Method", at = "+ (int)⟦shared⟧ { @+0", detail = "Counter::shared" },
+]
+incoming_calls = [
+    {
+        name = "reset",
+        kind = "Method",
+        at = "+ (int)⟦reset⟧ {",
+        detail = "Leaf::reset",
+        sites = ["return super.⟦shared⟧;"],
+    },
+]
+outgoing_calls = []
 
 [answers.leaf_count]
 call_hierarchy = [
@@ -97,9 +112,24 @@ outgoing_calls = [
     {
         name = "count",
         kind = "Method",
-        at = "- (int)⟦count⟧ { @-6",
+        at = "- (int)⟦count⟧ { @-10",
         detail = "Counter::count",
         sites = ["return super.⟦count⟧; @+1"],
+    },
+]
+
+[answers.leaf_shared]
+call_hierarchy = [
+    { name = "reset", kind = "Method", at = "+ (int)⟦reset⟧ {", detail = "Leaf::reset" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "shared",
+        kind = "Method",
+        at = "+ (int)⟦shared⟧ { @-10",
+        detail = "Counter::shared",
+        sites = ["return super.⟦shared⟧;"],
     },
 ]
 
@@ -149,7 +179,7 @@ outgoing_calls = [
     {
         name = "count",
         kind = "Method",
-        at = "- (int)⟦count⟧ { @-17",
+        at = "- (int)⟦count⟧ { @-25",
         detail = "Counter::count",
         sites = ["(void)counter.⟦count⟧;"],
     },

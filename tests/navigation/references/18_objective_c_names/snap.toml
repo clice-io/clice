@@ -14,7 +14,12 @@ references = [
 ]
 
 [answers.tail]
-references = ["- (void):(int)x ⟦tail⟧:(int)y;", "- (void):(int)x ⟦tail⟧:(int)y {", "[quill :1 ⟦tail⟧:2];"]
+references = [
+    "- (void):(int)x ⟦tail⟧:(int)y; @+0",
+    "- (void):(int)x ⟦tail⟧:(int)y {",
+    "[quill :1 ⟦tail⟧:2];",
+    "[thing :3 ⟦tail⟧:4];",
+]
 
 [answers.class_draw]
 references = ["+ (void)⟦draw⟧;", "+ (void)⟦draw⟧ {", "[kind ⟦draw⟧];"]

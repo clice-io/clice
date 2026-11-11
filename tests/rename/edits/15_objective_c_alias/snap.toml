@@ -1,7 +1,7 @@
 [answers.class.rename]
 notice = '''
 Spellings of `Pen` left alone:
-  ${WS}/main.m:52: @implementation Quill : Object (the name is written here as `Quill`)
+  ${WS}/main.m:53: @implementation Quill : Object (the name is written here as `Quill`)
 '''
 
 [answers.class.rename.edits]

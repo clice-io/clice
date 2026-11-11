@@ -870,22 +870,27 @@ public:
         // accessor's here, where the other methods of its selector find it.
         if(auto* OME = node.get<clang::ObjCMessageExpr>()) {
             const auto* method = decls::objc_message_target(*OME);
-            call(method, OME->getSelectorStartLoc());
+            auto name = decls::objc_message_name(*OME);
+            call(method, name);
             if(method && method->isImplicit() && decls::objc_untyped(*OME)) {
-                add_self_relation(method, RelationKind::Candidate, OME->getSelectorStartLoc());
+                add_self_relation(method, RelationKind::Candidate, name);
+            }
+            // `[super draw]` runs the superclass's method, never an override.
+            if(method && (OME->getReceiverKind() == clang::ObjCMessageExpr::SuperInstance ||
+                          OME->getReceiverKind() == clang::ObjCMessageExpr::SuperClass)) {
+                add_self_relation(method, RelationKind::Direct, name);
             }
             return;
         }
         // `shape.count` calls its accessors, `+=` both; `super.count` the
         // superclass's, never an override.
         if(auto* OPRE = node.get<clang::ObjCPropertyRefExpr>()) {
-            const clang::ObjCInterfaceDecl* receiver = nullptr;
-            if(OPRE->isClassReceiver()) {
-                receiver = OPRE->getClassReceiver();
-            } else if(const auto* pointer =
-                          OPRE->getReceiverType(context)->getAsObjCInterfacePointerType()) {
-                receiver = pointer->getInterfaceDecl();
+            auto type = OPRE->getReceiverType(context);
+            if(const auto* pointer = type->getAsObjCInterfacePointerType()) {
+                type = pointer->getPointeeType();
             }
+            const auto* object = type->getAsObjCInterfaceType();
+            const auto* receiver = object ? object->getInterface() : nullptr;
             auto accessor = [&](bool getter) -> const clang::ObjCMethodDecl* {
                 if(OPRE->isImplicitProperty()) {
                     return getter ? OPRE->getImplicitPropertyGetter()
@@ -1340,13 +1345,6 @@ public:
                     add_self_relation(occurrence.decl, RelationKind::Write, name);
                 }
                 add_specialized_type(occurrence.decl, name);
-            }
-            // `[super draw]` runs the superclass's method, never an override.
-            const auto* message = semantics.node(i).node.get<clang::ObjCMessageExpr>();
-            if(occurrence.kind.is_one_of(RelationKind::Reference) && message &&
-               (message->getReceiverKind() == clang::ObjCMessageExpr::SuperInstance ||
-                message->getReceiverKind() == clang::ObjCMessageExpr::SuperClass)) {
-                add_self_relation(occurrence.decl, RelationKind::Direct, name);
             }
             if(occurrence.kind.is_one_of(RelationKind::Reference,
                                          RelationKind::Candidate,

@@ -1,6 +1,13 @@
 [answers.count]
 incoming_calls = [
     {
+        name = "count",
+        kind = "Method",
+        at = "use.m │ - (int)⟦count⟧ {",
+        detail = "Tally::count",
+        sites = ["use.m │ return [super ⟦count⟧];"],
+    },
+    {
         name = "bump",
         kind = "Function",
         at = "use.m │ void ⟦bump⟧(Counter *counter) {",
@@ -21,6 +28,26 @@ incoming_calls = [
     },
 ]
 outgoing_calls = []
+
+[answers.tally_count]
+incoming_calls = [
+    {
+        name = "bump",
+        kind = "Function",
+        at = "void ⟦bump⟧(Counter *counter) {",
+        detail = "bump(Counter *counter)",
+        sites = ["counter.⟦count⟧ += [counter count];", "counter.count += [counter ⟦count⟧];"],
+    },
+]
+outgoing_calls = [
+    {
+        name = "count",
+        kind = "Method",
+        at = "counter.m │ - (int)⟦count⟧ {",
+        detail = "Counter::count",
+        sites = ["return [super ⟦count⟧];"],
+    },
+]
 
 [answers.bump]
 incoming_calls = []

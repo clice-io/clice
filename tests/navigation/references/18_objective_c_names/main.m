@@ -40,6 +40,7 @@ __attribute__((objc_root_class))
 - (void)tidy;
 - (int)§(object_ink)ink;
 - (int)§(object_dry)isDry;
+- (void):(int)x tail:(int)y;
 @end
 
 @compatibility_alias §(quill)Quill §(pen)Pen;
@@ -90,6 +91,7 @@ void use(Quill *quill, Class kind, id thing, Box<Pen *> *box) {
     [thing draw];
     [thing ink];
     [thing isDry];
+    [thing :3 tail:4];
     id writing = @protocol(Writing);
     [[box first] write];
     int count = Quill.count;

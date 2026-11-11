@@ -1,6 +1,7 @@
 __attribute__((objc_root_class))
 @interface Base
 @property(nonatomic) int count;
+@property(class, nonatomic, readonly) int shared;
 @end
 
 @interface Counter : Base
@@ -18,6 +19,10 @@ __attribute__((objc_root_class))
 - (int)§(base_count)count {
     return 0;
 }
+
++ (int)shared {
+    return 0;
+}
 @end
 
 @implementation Counter
@@ -31,11 +36,19 @@ __attribute__((objc_root_class))
 - (int)§(count)count {
     return super.count;
 }
+
++ (int)§(counter_shared)shared {
+    return 1;
+}
 @end
 
 @implementation Leaf
 - (int)§(leaf_count)count {
     return super.count;
+}
+
++ (int)§(leaf_shared)reset {
+    return super.shared;
 }
 @end
 

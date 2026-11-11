@@ -111,6 +111,11 @@ auto objc_dispatched(const clang::ObjCInterfaceDecl* receiver,
                      const clang::ObjCMethodDecl& method,
                      bool instance) -> const clang::ObjCMethodDecl*;
 
+/// Where an Objective-C message is named: at its first selector piece
+/// with a name, where its first reference lies, else where its selector
+/// starts.
+auto objc_message_name(const clang::ObjCMessageExpr& message) -> clang::SourceLocation;
+
 /// Whether an Objective-C message goes to `id` or `Class`, which may reach
 /// any method of its selector. `self` in a class method is a `Class` clang
 /// knows to be its class.

@@ -541,6 +541,16 @@ auto objc_dispatched(const clang::ObjCInterfaceDecl* receiver,
     return objc_written(method);
 }
 
+auto objc_message_name(const clang::ObjCMessageExpr& message) -> clang::SourceLocation {
+    auto selector = message.getSelector();
+    for(unsigned piece = 0; piece < message.getNumSelectorLocs(); piece += 1) {
+        if(!selector.getNameForSlot(piece).empty()) {
+            return message.getSelectorLoc(piece);
+        }
+    }
+    return message.getSelectorStartLoc();
+}
+
 auto objc_untyped(const clang::ObjCMessageExpr& message) -> bool {
     const auto* receiver = message.getReceiverKind() == clang::ObjCMessageExpr::Instance
                                ? message.getInstanceReceiver()
