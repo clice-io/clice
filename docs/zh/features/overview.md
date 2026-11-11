@@ -8,7 +8,7 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节介绍已
 
 <!-- The status matrix counts the documented cases each feature page shows,
      in the order of the sidebar. Do not edit the region between the
-     GENERATED markers by hand — run `pixi run update-feature-docs`. -->
+     GENERATED markers by hand — run `pixi run docs-update`. -->
 
 <!-- BEGIN GENERATED OVERVIEW -->
 

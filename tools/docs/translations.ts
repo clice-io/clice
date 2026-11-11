@@ -1,8 +1,8 @@
 /// Runs the translation checker, @clice-io/translate from clice-io/docs,
-/// at the release the lint workflow's docs job pins, so a local run and CI
-/// run the same checker: a sparse checkout of it under .cache/ with its
-/// dependencies installed. Stands in until the package is on npm and the
-/// pixi tasks call `npx @clice-io/translate@1` directly.
+/// at an exact release, locally and in CI alike: a sparse checkout of it
+/// under .cache/ with its dependencies installed. Stands in until the
+/// package is on npm and the pixi tasks call `npx @clice-io/translate@1`
+/// directly.
 
 import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import * as fs from "node:fs";
@@ -21,10 +21,7 @@ function run(command: string, args: string[], options: SpawnSyncOptions = {}): v
     }
 }
 
-const workflow = fs.readFileSync(path.join(REPO_ROOT, ".github/workflows/lint.yml"), "utf8");
-const release =
-    /uses: clice-io\/docs\/check-translations@(\S+)/.exec(workflow)?.[1] ??
-    fail("lint.yml does not run clice-io/docs/check-translations");
+const release = "v1.0.0";
 const checkout = path.join(REPO_ROOT, ".cache", `clice-docs-${release}`);
 
 if (!fs.existsSync(checkout)) {

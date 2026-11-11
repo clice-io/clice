@@ -21,6 +21,7 @@ jobs:
       asset_name: clice.x86_64-unknown-linux-gnu.tar.gz
       editor: true
       compat: true
+      cards: true
 
   linux-x64-debug:
     uses: ./.github/workflows/test-platform.yml
@@ -81,3 +82,16 @@ jobs:
       target: aarch64-w64-mingw32
       asset_name: clice.aarch64-w64-mingw32.zip
       cases_shards: "[1, 2, 3, 4]"
+
+  # What the docs site draws for the documented cases (docs.yml, main.yml's
+  # docs-site): one artifact once all of linux-x64's suites passed, so a
+  # run that has it has every card.
+  docs-cards:
+    needs: linux-x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/upload-artifact/merge@v7
+        with:
+          name: docs-cards
+          pattern: cards-*
+          delete-merged: true

@@ -5,7 +5,7 @@ What a header means depends on the file that includes it: the macros and declara
 <!-- The cards in the sections below are generated from the documented cases
      in tests/contexts/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 ## Headers That Need Their Includer
 

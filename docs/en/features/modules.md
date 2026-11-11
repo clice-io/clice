@@ -5,7 +5,7 @@ clice builds the modules a file imports when the file opens, so module units and
 <!-- The cards in the sections below are generated from the documented cases
      in tests/modules/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 ## Imports
 

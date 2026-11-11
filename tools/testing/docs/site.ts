@@ -1,10 +1,8 @@
 /// The documentation the cases make, against what the repository holds: the
 /// generated regions of the pages under docs/en, keyed `<topic>/<subtopic>`,
 /// each listing that section's documented cases; the features overview,
-/// each feature page's cases counted by status; and docs/cards, one card
-/// per documented case, which the cases run writes. `update` rewrites the
-/// regions and deletes the cards no case owns; `check` fails where pages,
-/// cases and cards disagree.
+/// each feature page's cases counted by status. `update` rewrites the
+/// regions; `check` fails where pages and cases disagree.
 ///
 /// Usage: node tools/testing/docs/site.ts check|update
 
@@ -15,7 +13,6 @@ import { renderMarkdownTable, rewriteRegions } from "../../docs/generated.ts";
 import { loadCases } from "../cases/case.ts";
 import { REPO_ROOT } from "../../repo.ts";
 import { CASES_DIR } from "../cases/project.ts";
-import { CARDS_DIR, cardPath } from "./cards.ts";
 import { regionItems, status } from "./pages.ts";
 
 const SECTION = {
@@ -135,29 +132,10 @@ for (const key of new Set(documented.map((c) => `${c.topic}/${c.subtopic}`))) {
     }
 }
 
-const owned = new Set(documented.map((c) => cardPath(c.id)));
-for (const c of documented) {
-    if (!fs.existsSync(cardPath(c.id))) {
-        problems.push(`${c.id}: no card; the cases run writes it under UPDATE_SNAPSHOTS=1`);
-    }
-}
-if (fs.existsSync(CARDS_DIR)) {
-    for (const card of files(CARDS_DIR, ".json")) {
-        if (owned.has(card)) {
-            continue;
-        }
-        if (mode === "update") {
-            fs.rmSync(card);
-        } else {
-            problems.push(`${path.relative(REPO_ROOT, card)}: no documented case owns it`);
-        }
-    }
-}
-
 if (problems.length > 0) {
     console.error(problems.join("\n"));
     if (mode === "check") {
-        console.error("pixi run update-feature-docs rewrites the regions and drops orphan cards");
+        console.error("pixi run docs-update rewrites the regions");
     }
     process.exit(1);
 }

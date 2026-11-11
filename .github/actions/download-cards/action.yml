@@ -1,0 +1,39 @@
+name: "Download cards"
+description: "The cards of the newest push to main that made them (test.yml's docs-cards), in docs/cards"
+
+inputs:
+  commit:
+    description: "A commit of main: cards made after it are passed over; empty takes the newest"
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download main's newest cards
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        COMMIT: ${{ inputs.commit }}
+      run: |
+        # Newest push first; a run whose linux-x64 suites failed, or that
+        # ran no tests, has no docs-cards.
+        runs=$(gh api "repos/$GH_REPO/actions/workflows/main.yml/runs?branch=main&event=push&per_page=100" \
+          --jq '.workflow_runs[] | "\(.id) \(.head_sha)"')
+        while read -r run sha; do
+          [[ -z "$COMMIT" || "$sha" == "$COMMIT" ]] || continue
+          COMMIT=""
+          found=$(gh api "repos/$GH_REPO/actions/runs/$run/artifacts?name=docs-cards" \
+            --jq '.artifacts[] | select(.expired | not) | .id')
+          if [[ -n "$found" ]]; then
+            gh run download "$run" --name docs-cards --dir docs/cards
+            echo "The cards of https://github.com/$GH_REPO/actions/runs/$run"
+            exit 0
+          fi
+        done <<< "$runs"
+        if [[ -n "$COMMIT" ]]; then
+          echo "::error title=No cards::$COMMIT has no run among the last 100 of main"
+        else
+          echo "::error title=No cards::none of the last 100 runs of main has a docs-cards artifact"
+        fi
+        exit 1

@@ -13,8 +13,10 @@ description: Read before editing anything under docs/, and for the end-of-branch
   "Docs"), and guide/configuration.md is rendered from the config schema.
   **Never edit inside a `<!-- BEGIN GENERATED ... -->` region** — edit the
   case's `README.md` or the config annotations instead.
-- `docs/cards/` — one card per documented case, written by the cases run
-  (`UPDATE_SNAPSHOTS=1`); never edit by hand.
+- `docs/cards/` — one card per documented case, written by every cases run
+  and ignored by git; publishing (docs.yml) and the site build of pull
+  requests (main.yml's `docs-site`) take the cards of CI's linux-x64 run
+  (test.yml's `docs-cards`).
 - `docs/zh/` — Chinese pages, equally real and equally hand-edited (by a
   person or a model). Each zh page must stay **segment-isomorphic** to its
   en counterpart: same sequence of markdown blocks, translated text in the
@@ -27,16 +29,13 @@ description: Read before editing anything under docs/, and for the end-of-branch
 
 ## Commands (pixi)
 
-| command                            | what it does                                       |
-| ---------------------------------- | -------------------------------------------------- |
-| `pixi run check-feature-docs`      | feature pages and cards match the cases (CI)       |
-| `pixi run update-feature-docs`     | rewrite feature GENERATED regions                  |
-| `pixi run check-config-docs`       | configuration page matches the schema (CI)         |
-| `pixi run update-config-docs`      | rewrite the configuration page                     |
-| `pixi run check-doc-translations`  | hard gate: zh isomorphic to en, all pairs attested |
-| `pixi run report-doc-translations` | translator worklist: drifted segments with texts   |
-| `pixi run record-doc-translations` | re-attest hash pairs after deliberate edits        |
-| `pixi run review-doc-translations` | model review of zh pages, segment by segment       |
+| command                | what it does                                                                                                         |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `pixi run docs-update` | rewrite every GENERATED region: the feature pages' from the cases, the configuration page's from the schema          |
+| `pixi run docs-check`  | what CI's lint docs job checks: the GENERATED regions are current, zh is isomorphic to en and all pairs are attested |
+| `pixi run docs-report` | translator worklist: drifted segments with texts                                                                     |
+| `pixi run docs-record` | re-attest hash pairs after deliberate edits                                                                          |
+| `pixi run docs-review` | model review of zh pages, segment by segment                                                                         |
 
 ## Translation contract
 
@@ -47,12 +46,11 @@ before any edit touching translated pages:
 
     gh api 'repos/clice-io/docs/contents/tools/translations/RULES.md?ref=v1.0.0' -H 'Accept: application/vnd.github.raw'
 
-CI runs `clice-io/docs/check-translations` in the lint workflow's docs
-job, pinned to an exact release; the pixi tasks above run that same
-release locally (`tools/docs/translations.ts` reads the pin, until the
-package is on npm and the tasks call `npx @clice-io/translate@1`). A new
-release is adopted by bumping the pin in lint.yml and the RULES.md
-references here and in the translate-docs skill. What clice adds on top:
+The pixi tasks above run it at an exact release, locally and in the lint
+workflow's docs job alike: `tools/docs/translations.ts` holds the pin,
+until the package is on npm and the tasks call `npx @clice-io/translate@1`.
+A new release is adopted by bumping that pin and the RULES.md references
+here and in the translate-docs skill. What clice adds on top:
 
 - In clice the frontmatter that translates is index.md's (the VitePress
   home page), and the bold paragraph whose shape must survive is a
@@ -61,11 +59,11 @@ references here and in the translate-docs skill. What clice adds on top:
 - The formatter of step 4 in RULES.md's workflow is `pixi run format`
   (it canonicalizes table padding, emphasis style and CJK spacing).
 - The workflow applies to generated regions too: after
-  `update-feature-docs` changes an en feature page, the zh page must
+  `docs-update` changes an en page, the zh page must
   receive the translated equivalent in the same PR — batched at the end of
   the branch, see below.
 - The wording — clice's page conventions and glossary — is the
-  translate-docs skill. `review-doc-translations [page...]` passes that
+  translate-docs skill. `docs-review [page...]` passes that
   skill to the model as the glossary; review its diff, then `format` and
   `record`. Prefer it over handing a model whole pages: the code blocks
   would only burn its context.
@@ -80,18 +78,19 @@ subagent this skill and `git diff --name-only origin/main...HEAD`; its
 brief is:
 
 1. If documented cases or config annotations changed:
-   `pixi run update-feature-docs` and `pixi run update-config-docs`
-   rewrite the en GENERATED regions.
-2. `pixi run report-doc-translations` lists every broken pair with both
+   `pixi run docs-update` rewrites the en GENERATED regions. The
+   configuration page renders the committed schema: after a config
+   annotation changed, first rewrite it with the built clice,
+   `clice inspect config-schema > docs/public/clice-config.schema.json`.
+2. `pixi run docs-report` lists every broken pair with both
    texts. Translate each new or drifted en segment into the zh page,
    keeping the skeleton (same block kind, list marker, heading depth,
    nested code byte-identical) and the terminology of the surrounding
    page; delete zh segments whose en segment is gone. For whole new
    pages, or dozens of drifted pages, copy the en page over the zh one
    and run `review` on it (machine drafting, RULES.md).
-3. `pixi run format`, then `pixi run record-doc-translations`, then
-   `pixi run check-doc-translations`, `check-feature-docs` and
-   `check-config-docs` — all green.
+3. `pixi run format`, then `pixi run docs-record`, then
+   `pixi run docs-check` — green.
 4. Report back: pages touched, how many segments were translated, and
    anything deliberately left as is.
 
