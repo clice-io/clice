@@ -193,6 +193,9 @@ std::string cl_search_path(llvm::StringRef ccbin) {
     if(path::is_absolute(ccbin)) {
         directory = fs::is_directory(ccbin) ? ccbin.str() : std::string(path::parent(ccbin));
     } else if(sys::find_program(found, "cl")) {
+        // LIMITATION: the newest toolset, even when the build pinned an older
+        // one (-vcvars_ver) and several are installed: _MSC_VER and the STL
+        // headers follow the newest.
         std::string toolchain;
         llvm::ToolsetLayout layout;
         if(llvm::findVCToolChainViaSetupConfig(*llvm::vfs::getRealFileSystem(),

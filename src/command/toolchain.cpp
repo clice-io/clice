@@ -133,19 +133,6 @@ std::vector<std::string> files_under(const Spelling& dir) {
     return names;
 }
 
-/// clice's builtin headers, by their paths relative to its resource
-/// directory's include/.
-const llvm::StringSet<>& resource_headers() {
-    const static auto headers = [] {
-        llvm::StringSet<> headers;
-        for(auto& name: files_under(Spelling::absolute(path::join(resource_dir(), "include")))) {
-            headers.insert(name);
-        }
-        return headers;
-    }();
-    return headers;
-}
-
 /// What the compiles of a job whose search list is `search` do not see of
 /// the builtin headers of another compiler in its `shadowed` directories,
 /// clang's own placed right before each: those clang has as well, and past
@@ -163,7 +150,7 @@ std::shared_ptr<const vfs::HiddenFiles> hidden_files(const SearchConfig& search,
             continue;
         }
         for(auto& name: files_under(dir)) {
-            if(!resource_headers().contains(name)) {
+            if(builtin_header(name) == BuiltinHeader::None) {
                 continue;
             }
             hidden[dir.str()].insert(name);
@@ -387,6 +374,10 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
     auto forwarded_from = forwarded_start(tokens, command);
     // An external clang may be newer than the linked one: a flag our cc1
     // does not know parses as unknown, and its values as inputs; both go.
+    // LIMITATION: so do Apple clang's own cc1 flags (-clang-vendor-feature=,
+    // -fno-odr-hash-protocols), and the macros only its fork predefines
+    // (TARGET_OS_ARROW, __ARM_ARCH_8_3__) stay undefined; code testing
+    // them is rare, and no difference has been seen.
     auto parse_options = cli::ParseOptions{.visibility = clang_options::CC1Option};
     std::vector<cli::ParsedArg> kept;
     llvm::StringRef triple;
@@ -425,8 +416,6 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
 
     Frontend result{.driver = commands.intern(job.args[0]).data(),
                     .job_resource_dir = commands.intern(job_resource_dir)};
-    result.own_resource_dir =
-        llvm::Triple(triple).isWindowsGNUEnvironment() && fs::is_directory(job_resource_dir);
     auto builtin_headers = path::join(resource_dir(), "include");
     std::vector<std::string> shadowed = job.shadowed;
     std::vector<LocalArg> staged;
@@ -450,11 +439,9 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
             continue;
         }
         auto theirs = *local;
-        if(!result.own_resource_dir) {
-            for(auto& value: local->values) {
-                if(auto ours = ours_for(local->opt_id, value, job_resource_dir)) {
-                    value = commands.intern(*ours).data();
-                }
+        for(auto& value: local->values) {
+            if(auto ours = ours_for(local->opt_id, value, job_resource_dir)) {
+                value = commands.intern(*ours).data();
             }
         }
         staged.push_back(std::move(*local));
@@ -523,11 +510,9 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& query)
             continue;
         }
         auto& staged_arg = staged.emplace_back(local(arg));
-        if(!query.own_resource_dir) {
-            for(auto& value: staged_arg.values) {
-                if(auto ours = ours_for(arg.opt_id, value, query.job_resource_dir)) {
-                    value = commands.intern(*ours).data();
-                }
+        for(auto& value: staged_arg.values) {
+            if(auto ours = ours_for(arg.opt_id, value, query.job_resource_dir)) {
+                value = commands.intern(*ours).data();
             }
         }
     }
@@ -760,17 +745,11 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
     };
 
     std::size_t last_user_content = argv.size();
-    std::size_t includes = 0;
-    for(auto& arg: rc.args) {
-        if(!opts.shadowed_dirs && names_search_dir(arg.opt_id) &&
-           ranges::contains(rc.shadowed, llvm::StringRef(arg.values[0]))) {
+    auto left_out = opts.left_out(rc.args);
+    for(auto [i, arg]: views::enumerate(rc.args)) {
+        if(left_out[i] || (!opts.shadowed_dirs && names_search_dir(arg.opt_id) &&
+                           ranges::contains(rc.shadowed, llvm::StringRef(arg.values[0])))) {
             continue;
-        }
-        if(arg.opt_id == clang_options::OPT_include) {
-            includes += 1;
-            if(includes > opts.kept_includes) {
-                continue;
-            }
         }
         render_arg(arg, emit);
         if(arg.cls == ArgClass::UserContent) {

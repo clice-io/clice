@@ -11,9 +11,7 @@ import :server.extension;
 import :server.master;
 import :server.served_project;
 import :support.json;
-import :syntax.completion;
 import :syntax.include_resolver;
-import :syntax.scan;
 import :syntax.source_text;
 import :vfs.dir_cache;
 import :vfs.file_system;
@@ -159,74 +157,52 @@ void LSPClient::register_editing() {
         project.start_compiling(path_id);
         auto pause = ScopedPause(project.project.background_index);
 
-        llvm::StringRef trigger;
-        if(params.context && params.context->trigger_character) {
-            trigger = *params.context->trigger_character;
-        }
         auto& settings = project.project.settings;
-        auto& files = project.project.file_table;
         auto encoding = server.position_encoding;
-        auto resolved = std::string(files.resolve(path_id));
-        auto positions = session->positions();
-        vfs::Scope scope(files.dirs);
-        auto start = feature::start_completion({
+        auto answer = feature::code_complete({
             .file = path_id,
-            .path = resolved,
-            .text = session->text(),
-            .positions = positions,
-            .position = params.position,
+            .source = project.text_of(*session),
+            .params = params,
             .encoding = encoding,
-            .trigger_character = trigger,
-            .dialect = project.dialect(path_id),
             .options = settings.code_completion,
             .client = completion_client,
             .graph = project.project.dep_graph,
-            .files = files,
             .search = [&] { return project.search_of(path_id); },
             .declared_module =
                 [&](llvm::StringRef text) { return project.declared_module(path_id, text); },
-            .open_modules =
+            .open_units =
                 [&] {
-                    std::vector<OpenModule> open;
+                    std::vector<feature::OpenUnit> open;
                     for(auto& [file, opened]: server.documents) {
-                        if(file == path_id || opened.owner != &project ||
-                           !project.project.is_unit(file)) {
-                            continue;
-                        }
-                        auto unit = scan_quick(opened.session->text());
-                        if(!unit.need_preprocess) {
-                            open.push_back({
-                                .file = file,
-                                .name = unit.provided_module().str(),
-                                .internal = unit.is_internal_partition(),
-                            });
+                        if(file != path_id && opened.owner == &project &&
+                           project.project.is_unit(file)) {
+                            open.push_back({.file = file, .text = opened.session->text()});
                         }
                     }
                     return open;
                 },
-            .scope = scope,
             .query = project.query(),
             .documentation = settings.documentation,
         });
-        if(std::holds_alternative<feature::NoCompletion>(start)) {
+        if(std::holds_alternative<feature::NoCompletion>(answer)) {
             co_return codec::raw_value{"[]"};
         }
-        if(auto* list = std::get_if<protocol::CompletionList>(&start)) {
+        if(auto* list = std::get_if<protocol::CompletionList>(&answer)) {
             co_return to_raw(*list);
         }
-        auto& compile = std::get<feature::CompileCompletion>(start);
-        feature::offer_names(project.query(), project.project.dep_graph, compile);
-        auto result = co_await project
-                          .stateless_request(ticket,
-                                             feature::RequestKind::Completion,
-                                             positions.offset_clamped(params.position, encoding),
-                                             worker::CompletionParams{
-                                                 .client = completion_client,
-                                                 .encoding = encoding,
-                                                 .names = compile,
-                                             },
-                                             ctx.cancellation)
-                          .or_fail();
+        auto& compile = std::get<feature::CompileCompletion>(answer);
+        auto result =
+            co_await project
+                .stateless_request(ticket,
+                                   feature::RequestKind::Completion,
+                                   session->positions().offset_clamped(params.position, encoding),
+                                   worker::CompletionParams{
+                                       .client = completion_client,
+                                       .encoding = encoding,
+                                       .names = compile,
+                                   },
+                                   ctx.cancellation)
+                .or_fail();
         if(!result.include) {
             co_return std::move(result.list);
         }
@@ -241,7 +217,6 @@ void LSPClient::register_editing() {
                                                     project.project.dep_graph,
                                                     path_id,
                                                     project.search_of(path_id),
-                                                    scope,
                                                     settings.code_completion.limit));
     });
 

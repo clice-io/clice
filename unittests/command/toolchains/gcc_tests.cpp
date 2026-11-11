@@ -1,6 +1,7 @@
 module clice;
 
 import :command.edit;
+import :command.search_config;
 import :command.table;
 import :command.toolchains.gcc;
 import :compile.compilation;
@@ -118,9 +119,10 @@ LIBRARY_PATH=/usr/lib/gcc/x86_64-pc-cygwin/14/:/usr/lib/gcc/x86_64-pc-cygwin/14/
 }
 
 ZEST_CASE(FrameworkDir) {
-    constexpr llvm::StringRef err = R"(Target: aarch64-apple-darwin24
+    /// clang marks a framework directory in the list it prints.
+    constexpr llvm::StringRef err = R"(Target: arm64-apple-darwin24.6.0
 #include <...> search starts here:
- /opt/homebrew/Cellar/gcc/15.1.0/lib/gcc/current/gcc/aarch64-apple-darwin24/15/include
+ /Library/Developer/CommandLineTools/usr/lib/clang/17/include
  /Library/Developer/CommandLineTools/SDKs/MacOSX15.sdk/usr/include
  /Library/Developer/CommandLineTools/SDKs/MacOSX15.sdk/System/Library/Frameworks (framework directory)
 End of search list.)";
@@ -286,22 +288,19 @@ echo ' "{}" "-cc1" "-triple" "arm64-apple-macosx15.0.0" "-E"' >&2
 ZEST_CASE(GCCSetsUpClang) {
     /// A GCC whose output names its target, a macro of its specs, a CPU
     /// clang does not know, and a search list with its private include
-    /// directory and a framework directory.
-    auto frameworks = tmp.path("sysroot/Frameworks");
+    /// directory.
     auto driver = fake_gcc("x86_64-linux-gnu-g++",
                            std::format(R"(Target: x86_64-linux-gnu
- {5} -E -quiet -v -D_REENTRANT query.cpp -mtune=intel -march=x86-64 -dM
+ {4} -E -quiet -v -D_REENTRANT query.cpp -mtune=intel -march=x86-64 -dM
 #include <...> search starts here:
  {0}
  {1}
  {2}
- {3} (framework directory)
 End of search list.
-LIBRARY_PATH={4}/)",
+LIBRARY_PATH={3}/)",
                                        tmp.path("gcc/include/c++"),
                                        tmp.path("gcc/13/include"),
                                        tmp.path("sysroot/usr/include"),
-                                       frameworks,
                                        tmp.path("gcc/13"),
                                        host_path("/usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus")));
     auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-c", "-g"}));
@@ -330,7 +329,199 @@ LIBRARY_PATH={4}/)",
                                          tmp.path("gcc/13/include"),
                                          tmp.path("sysroot/usr/include")};
     ZEXPECT(dirs == expected);
+}
+
+ZEST_CASE(GCCFrameworkDirs) {
+    /// Homebrew's GCC lists the SDK's framework directory as a plain one:
+    /// it is searched as clang's driver searches it for the target.
+    auto frameworks = tmp.path("sdk/System/Library/Frameworks");
+    auto driver = fake_gcc(
+        "g++-15",
+        std::format(R"(Target: aarch64-apple-darwin24
+ {2} -E -quiet -v query.cpp -mmacosx-version-min=15.0.0 -dM
+#include <...> search starts here:
+ {0}
+ {1}
+End of search list.)",
+                    tmp.path("sdk/usr/include"),
+                    frameworks,
+                    host_path("/opt/homebrew/libexec/gcc/aarch64-apple-darwin24/15/cc1plus")));
+    auto argv = f.resolve(add("a.cpp", {driver.c_str()}));
     ZEXPECT(adjacent(argv, "-internal-iframework", frameworks));
+    ZEXPECT(adjacent(argv, "-internal-isystem", tmp.path("sdk/usr/include")));
+    ZEXPECT(!adjacent(argv, "-internal-isystem", frameworks));
+}
+
+ZEST_CASE(GCCListsCommandDirs) {
+    /// GCC lists the directories the command names among its own, which the
+    /// clang job made for it searches already: a -iwithprefixbefore one
+    /// stays a user directory, ahead of the system ones.
+    auto prefixed = tmp.path("prefix/inc");
+    auto driver = fake_gcc("g++",
+                           std::format(R"(Target: x86_64-linux-gnu
+ {2} -E -quiet -v query.cpp -dM
+#include <...> search starts here:
+ {0}
+ {1}
+End of search list.)",
+                                       prefixed,
+                                       tmp.path("usr/include"),
+                                       host_path("/usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus")));
+    auto prefix = tmp.path("prefix") + "/";
+    auto ref =
+        add("a.cpp", {driver.c_str(), "-iprefix", prefix.c_str(), "-iwithprefixbefore", "inc"});
+    ZASSERT(f.toolchain.resolve(ref.command, ref.language));
+    auto search = f.toolchain.search_config(ref);
+    auto found = ranges::find(search.dirs, Spelling::absolute(prefixed).str(), &SearchDir::path);
+    ZASSERT(found != search.dirs.end());
+    ZEXPECT(static_cast<unsigned>(found - search.dirs.begin()) < search.system_start_idx);
+}
+
+ZEST_CASE(OlderFrontendDirs) {
+    /// A clang older than clice's whose frontend sets up some of the search
+    /// list itself, which its job does not name: Apple clang 17's framework
+    /// directory, and a target's whole list (FreeBSD's before clang 16),
+    /// its builtin headers among it. They follow the job's own, the builtin
+    /// headers clice's; a directory the job names stays once.
+    auto resource = tmp.path("clang-15");
+    tmp.mkdir("clang-15/include");
+    auto driver = fake_gcc(
+        "clang",
+        std::format(
+            R"(Target: x86_64-unknown-freebsd13
+{5}
+#include <...> search starts here:
+ {1}
+ {2}
+ {0}/include
+ {3}
+ {4} (framework directory)
+End of search list.)",
+            resource,
+            tmp.path("c++/v1"),
+            tmp.path("usr/local/include"),
+            tmp.path("usr/include"),
+            tmp.path("Frameworks"),
+            clang_job_of(
+                std::format(
+                    R"("-cc1" "-triple" "x86_64-unknown-freebsd13" "-E" "-resource-dir" "{0}" "-internal-isystem" "{1}" "-x" "c++" "query.cpp")",
+                    resource,
+                    tmp.path("c++/v1")),
+                host_path("/usr/bin/clang-15"))));
+    auto argv = f.resolve(add("a.cpp", {driver.c_str()}));
+    std::vector<std::string> dirs;
+    for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
+        if(llvm::StringRef(argv[i]).starts_with("-internal-")) {
+            dirs.push_back(std::format("{} {}", argv[i], argv[i + 1]));
+        }
+    }
+    std::vector<std::string> expected = {
+        "-internal-isystem " + tmp.path("c++/v1"),
+        "-internal-isystem " + tmp.path("usr/local/include"),
+        "-internal-isystem " + path::join(resource_dir(), "include"),
+        "-internal-isystem " + resource + "/include",
+        "-internal-isystem " + tmp.path("usr/include"),
+        "-internal-iframework " + tmp.path("Frameworks"),
+    };
+    ZEXPECT(dirs == expected);
+}
+
+ZEST_CASE(OlderFrontendNamedDirs) {
+    /// A directory the job reaches under its sysroot or a prefix is the
+    /// job's own, though the older frontend prints it composed; searched
+    /// for frameworks too, it is that search the job leaves out.
+    auto driver = fake_gcc(
+        "clang",
+        std::format(
+            R"(Target: x86_64-apple-darwin23
+{3}
+#include <...> search starts here:
+ {1}/inc
+ {0}/usr/include
+ {0}/System/Library/Frameworks
+ {2}
+ {0}/System/Library/Frameworks (framework directory)
+End of search list.)",
+            tmp.path("sdk"),
+            tmp.path("prefix"),
+            tmp.path("usr/local/include"),
+            clang_job_of(
+                std::format(
+                    R"("-cc1" "-triple" "x86_64-apple-macosx14.0.0" "-E" "-isysroot" "{0}" "-iwithsysroot" "/usr/include" "-iwithsysroot" "/System/Library/Frameworks" "-iprefix" "{1}/" "-iwithprefixbefore" "inc" "-x" "c++" "query.cpp")",
+                    tmp.path("sdk"),
+                    tmp.path("prefix")),
+                host_path("/usr/bin/clang-20"))));
+    auto argv = f.resolve(add("a.cpp", {driver.c_str()}));
+    std::vector<std::string> added;
+    for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
+        if(llvm::StringRef(argv[i]).starts_with("-internal-") &&
+           llvm::StringRef(argv[i + 1]).starts_with(tmp.root)) {
+            added.push_back(std::format("{} {}", argv[i], argv[i + 1]));
+        }
+    }
+    std::vector<std::string> expected = {
+        "-internal-isystem " + tmp.path("usr/local/include"),
+        "-internal-iframework " + tmp.path("sdk") + "/System/Library/Frameworks",
+    };
+    ZEXPECT(added == expected);
+}
+
+ZEST_CASE(CSystemDirs) {
+    /// clang's driver passes C_INCLUDE_PATH on as -c-isystem and
+    /// CPLUS_INCLUDE_PATH as -cxx-isystem: a C file searches the first, as
+    /// the job's own directory, ahead of the driver's.
+    auto driver = fake_gcc(
+        "clang",
+        std::format(
+            R"(Target: x86_64-unknown-linux-gnu
+{3}
+#include <...> search starts here:
+ {0}
+ {2}
+End of search list.)",
+            tmp.path("c"),
+            tmp.path("cxx"),
+            tmp.path("libc"),
+            clang_job_of(std::format(
+                R"("-cc1" "-triple" "x86_64-unknown-linux-gnu" "-E" "-internal-isystem" "{2}" "-c-isystem" "{0}" "-cxx-isystem" "{1}" "-x" "c" "query.c")",
+                tmp.path("c"),
+                tmp.path("cxx"),
+                tmp.path("libc")))));
+    auto ref = add("a.c", {driver.c_str(), "-c"});
+    auto argv = f.resolve(ref);
+    ZEXPECT(!adjacent(argv, "-internal-isystem", tmp.path("c")));
+    std::vector<std::string> dirs;
+    for(auto& dir: f.toolchain.search_config(ref).dirs) {
+        if(llvm::StringRef(dir.path).starts_with(Spelling::absolute(tmp.root).str())) {
+            dirs.push_back(dir.path);
+        }
+    }
+    std::vector<std::string> expected = {
+        Spelling::absolute(tmp.path("c")).str(),
+        Spelling::absolute(tmp.path("libc")).str(),
+    };
+    ZEXPECT(dirs == expected);
+
+    /// A C++ file's job carries C_INCLUDE_PATH too, which it does not search.
+    auto cxx_driver = fake_gcc(
+        "clang++",
+        std::format(
+            R"(Target: x86_64-unknown-linux-gnu
+{2}
+#include <...> search starts here:
+ {1}
+End of search list.)",
+            tmp.path("c"),
+            tmp.path("cxx"),
+            clang_job_of(std::format(
+                R"("-cc1" "-triple" "x86_64-unknown-linux-gnu" "-E" "-c-isystem" "{0}" "-cxx-isystem" "{1}" "-x" "c++" "query.cpp")",
+                tmp.path("c"),
+                tmp.path("cxx")))));
+    auto cxx_ref = add("b.cpp", {cxx_driver.c_str(), "-c"});
+    ZASSERT(f.toolchain.resolve(cxx_ref.command, cxx_ref.language));
+    auto cxx_dirs = f.toolchain.search_config(cxx_ref).dirs | views::transform(&SearchDir::path);
+    ZEXPECT(!ranges::contains(cxx_dirs, Spelling::absolute(tmp.path("c")).str()));
+    ZEXPECT(ranges::contains(cxx_dirs, Spelling::absolute(tmp.path("cxx")).str()));
 }
 
 ZEST_CASE(GCCPrivateHeaders) {

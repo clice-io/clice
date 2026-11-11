@@ -28,6 +28,12 @@
 #include <xray/xray_interface.h>
 #endif
 
+// A clang of another version than clice's, for MinGW, keeps builtin
+// headers <windows.h> breaks on beside clice's frontend.
+#if defined(__MINGW32__)
+#include <windows.h>
+#endif
+
 #ifndef COMPAT_DEFINE
 #error "the build's own define is missing"
 #endif

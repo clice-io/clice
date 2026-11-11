@@ -1,23 +1,31 @@
 module clice;
 
-import :syntax.completion;
-import :syntax.dependency_graph;
+import :command.search_config;
+import :command.table;
+import :feature.code_completion.cursor;
+import :feature.code_completion;
 import :syntax.lexer;
+import :syntax.position;
 import :unittests.utils;
+import :vfs.dir_cache;
+import :vfs.path;
 
 namespace clice::testing {
 namespace {
 
+using feature::CompletionName;
+using feature::WrittenDesignator;
+
 bool follows_access_operator(llvm::StringRef text, std::uint32_t offset) {
-    return clice::follows_access_operator(text, offset, dialect_of());
+    return feature::follows_access_operator(text, offset, dialect_of());
 }
 
 std::vector<WrittenDesignator> written_designators(llvm::StringRef text, std::uint32_t offset) {
-    return clice::written_designators(text, offset, dialect_of());
+    return feature::written_designators(text, offset, dialect_of());
 }
 
 CompletionName completion_name(llvm::StringRef text, std::uint32_t offset) {
-    return clice::completion_name(text, offset, dialect_of());
+    return feature::completion_name(text, offset, dialect_of());
 }
 
 ZEST_SUITE(FollowsAccessOperator) {
@@ -391,157 +399,37 @@ ZEST_CASE(ModuleDeclaration) {
 
 };  // ZEST_SUITE(CompletionName)
 
-ZEST_SUITE(CompleteModuleImport) {
+ZEST_SUITE(IncludeCompletion) {
 
-ZEST_CASE(PrefixMatch) {
-    clice::DependencyGraph modules;
-    modules.add_module("std", Fid{1});
-    modules.add_module("std.io", Fid{2});
-    modules.add_module("std.net", Fid{3});
-    modules.add_module("my_lib", Fid{4});
-
-    auto results = complete_module_import(module_providers(modules), "std", {});
-    ZEXPECT(results.size() == 3u);
-    for(auto& name: results) {
-        ZEXPECT(name.starts_with("std"));
-    }
-}
-
-ZEST_CASE(EmptyPrefix) {
-    clice::DependencyGraph modules;
-    modules.add_module("std", Fid{1});
-    modules.add_module("my_lib", Fid{2});
-
-    auto results = complete_module_import(module_providers(modules), "", {});
-    ZEXPECT(results.size() == 2u);
-}
-
-ZEST_CASE(NoMatch) {
-    clice::DependencyGraph modules;
-    modules.add_module("std", Fid{1});
-    modules.add_module("my_lib", Fid{2});
-
-    auto results = complete_module_import(module_providers(modules), "xyz", {});
-    ZEXPECT(results.empty());
-}
-
-ZEST_CASE(EmptyModules) {
-    clice::DependencyGraph modules;
-    auto results = complete_module_import(module_providers(modules), "std", {});
-    ZEXPECT(results.empty());
-}
-
-ZEST_CASE(DottedPrefix) {
-    clice::DependencyGraph modules;
-    modules.add_module("std", Fid{1});
-    modules.add_module("std.io", Fid{2});
-    modules.add_module("std.core", Fid{3});
-    modules.add_module("boost.asio", Fid{4});
-
-    auto results = complete_module_import(module_providers(modules), "std.", {});
-    ZEXPECT(results.size() == 2u);
-    for(auto& name: results) {
-        ZEXPECT(name.starts_with("std."));
-    }
-}
-
-ZEST_CASE(PrefixIsFullName) {
-    clice::DependencyGraph modules;
-    modules.add_module("std", Fid{1});
-    modules.add_module("std.io", Fid{2});
-
-    auto results = complete_module_import(module_providers(modules), "std", {});
-    ZEXPECT(results.size() == 2u);
-}
-
-ZEST_CASE(OwnPartitionsOnly) {
-    clice::DependencyGraph modules;
-    modules.add_module("foo", Fid{1});
-    modules.add_module("foo:core", Fid{2});
-    modules.add_module("foo:utils", Fid{3});
-    modules.add_module("bar", Fid{4});
-    modules.add_module("bar:impl", Fid{5});
-
-    auto names = complete_module_import(module_providers(modules), "", {.module_name = "foo"});
-    ZEXPECT(names == std::vector<std::string>{":core", ":utils", "bar"});
-    auto partitions =
-        complete_module_import(module_providers(modules), ":", {.module_name = "foo:utils"});
-    ZEXPECT(partitions == std::vector<std::string>{":core"});
-    ZEXPECT(complete_module_import(module_providers(modules), ":", {}).empty());
-    ZEXPECT(
-        complete_module_import(module_providers(modules), "foo:", {.module_name = "foo"}).empty());
-}
-
-ZEST_CASE(DottedModuleNames) {
-    clice::DependencyGraph modules;
-    modules.add_module("a", Fid{1});
-    modules.add_module("a.b", Fid{2});
-    modules.add_module("a.b:p", Fid{3});
-    modules.add_module("a.b:q", Fid{4});
-    modules.add_module("a:r", Fid{5});
-
-    auto names = complete_module_import(module_providers(modules), "", {.module_name = "a.b:q"});
-    ZEXPECT(names == std::vector<std::string>{":p", "a"});
-}
-
-ZEST_CASE(InterfaceSkipsInternal) {
-    clice::DependencyGraph modules;
-    modules.add_module("m", Fid{1});
-    modules.add_module("m:api", Fid{2});
-    modules.add_module("m:detail", Fid{3}, true);
-
-    std::vector<std::string> interface_only{":api"};
-    std::vector<std::string> both{":api", ":detail"};
-    ZEXPECT(complete_module_import(module_providers(modules),
-                                   ":",
-                                   {.module_name = "m", .is_interface_unit = true}) ==
-            interface_only);
-    ZEXPECT(complete_module_import(module_providers(modules), ":", {.module_name = "m"}) == both);
-    ZEXPECT(complete_module_import(module_providers(modules), ":", {.module_name = "m:impl"}) ==
-            both);
-    ZEXPECT(complete_module_import(module_providers(modules),
-                                   ":",
-                                   {.module_name = "m:api", .is_interface_unit = true})
-                .empty());
-}
-
-ZEST_CASE(OpenBuffersDeclare) {
-    clice::DependencyGraph modules;
-    modules.add_module("old_name", Fid{1});
-    modules.add_module("kept", Fid{2});
-    modules.add_module("m:detail", Fid{3}, true);
-
-    // The buffer renames its module, a new unit declares one, an internal
-    // partition becomes an interface one.
-    auto providers = module_providers(modules,
-                                      {
-                                          {.file = Fid{1}, .name = "new_name"},
-                                          {.file = Fid{4}, .name = "fresh"   },
-                                          {.file = Fid{3}, .name = "m:detail"},
+ZEST_CASE(InternalBuiltinsLast) {
+    /// clang's builtin headers that must not be included directly follow
+    /// the others: no case's command searches clice's own.
+    llvm::StringRef text = "#include <amd";
+    std::vector<std::uint32_t> lines = {0};
+    PositionMap map(text, lines);
+    auto completing = completion_name(text, text.size());
+    SearchConfig config;
+    config.dirs.push_back(
+        {.path = Spelling::absolute(path::join(resource_dir(), "include")).str(), .driver = true});
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    auto list = feature::include_completion(completing,
+                                            text,
+                                            map,
+                                            PositionEncoding::UTF16,
+                                            "",
+                                            config,
+                                            scope,
+                                            0);
+    ranges::sort(list.items, {}, [](const protocol::CompletionItem& item) {
+        return std::tie(static_cast<const std::optional<std::string>&>(item.sort_text), item.label);
     });
-    ZEXPECT(complete_module_import(providers, "", {}) ==
-            std::vector<std::string>{"fresh", "kept", "new_name"});
-    ZEXPECT(
-        complete_module_import(providers, ":", {.module_name = "m", .is_interface_unit = true}) ==
-        std::vector<std::string>{":detail"});
+    auto labels =
+        ranges::to<std::vector>(list.items | views::transform(&protocol::CompletionItem::label));
+    ZEXPECT(labels == std::vector<std::string>{"amdhsa_abi.h", "amdgpuintrin.h"});
 }
 
-};  // ZEST_SUITE(CompleteModuleImport)
-
-ZEST_SUITE(CompleteModuleDeclaration) {
-
-ZEST_CASE(PrimaryInterfacesOnly) {
-    clice::DependencyGraph modules;
-    modules.add_module("math", Fid{1});
-    modules.add_module("math:detail", Fid{2});
-    modules.add_module("matrix", Fid{3});
-    modules.add_module("io", Fid{4});
-
-    ZEXPECT(complete_module_declaration(module_providers(modules), "ma") ==
-            std::vector<std::string>{"math", "matrix"});
-}
-
-};  // ZEST_SUITE(CompleteModuleDeclaration)
+};  // ZEST_SUITE(IncludeCompletion)
 
 }  // namespace
 }  // namespace clice::testing

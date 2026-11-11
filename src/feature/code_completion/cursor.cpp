@@ -1,55 +1,14 @@
 module clice;
 
+import :feature.code_completion.cursor;
 import :support.text;
-import :syntax.completion;
-import :syntax.dependency_graph;
-import :syntax.include_resolver;
 import :syntax.lexer;
-import :syntax.scan;
-import :vfs.path;
 
-namespace clice {
+namespace clice::feature {
 
-namespace {
-
-bool is_module_name_char(char c) {
+static bool is_module_name_char(char c) {
     return is_identifier_char(c) || c == '.' || c == ':';
 }
-
-/// Clang's own include-completion filter widened by the fragment
-/// extensions projects include (`.inl`, `.ipp`, `.def`, ...): header
-/// extensions everywhere, extensionless files (the standard library's,
-/// Qt's, frameworks') only where such headers live.
-bool looks_like_header(llvm::StringRef name,
-                       llvm::StringRef dir,
-                       llvm::StringRef search_dir,
-                       bool system) {
-    auto extension = llvm::StringRef(path::extension(name)).lower();
-    if(ranges::contains(std::array{".h",
-                                   ".hh",
-                                   ".hpp",
-                                   ".hxx",
-                                   ".h++",
-                                   ".inc",
-                                   ".inl",
-                                   ".ipp",
-                                   ".tcc",
-                                   ".tpp",
-                                   ".txx",
-                                   ".def",
-                                   ".cuh"},
-                        extension)) {
-        return true;
-    }
-    if(name.contains('.')) {
-        return false;
-    }
-    auto dir_name = path::filename(dir);
-    return system || dir_name.starts_with("Qt") || dir_name == "ActiveQt" ||
-           dir.ends_with(".framework/Headers") || path::filename(search_dir) == "include";
-}
-
-}  // namespace
 
 bool follows_access_operator(llvm::StringRef text,
                              std::uint32_t offset,
@@ -339,130 +298,4 @@ CompletionName completion_name(llvm::StringRef text,
             closed};
 }
 
-auto module_providers(const DependencyGraph& graph, llvm::ArrayRef<OpenModule> open)
-    -> ModuleProviders {
-    ModuleProviders providers;
-    for(auto& entry: graph.modules()) {
-        for(auto file: entry.getValue()) {
-            if(ranges::contains(open, file, &OpenModule::file)) {
-                continue;
-            }
-            providers.modules[entry.getKey()].push_back(file);
-            if(graph.internal_partition(file)) {
-                providers.internal.insert(file);
-            }
-        }
-    }
-    for(const auto& each: open) {
-        if(each.name.empty()) {
-            continue;
-        }
-        providers.modules[each.name].push_back(each.file);
-        if(each.internal) {
-            providers.internal.insert(each.file);
-        }
-    }
-    return providers;
-}
-
-std::vector<std::string> complete_module_declaration(const ModuleProviders& providers,
-                                                     llvm::StringRef prefix) {
-    std::vector<std::string> results;
-    for(auto& entry: providers.modules) {
-        auto name = entry.getKey();
-        if(!name.contains(':') && name.starts_with(prefix)) {
-            results.push_back(name.str());
-        }
-    }
-    ranges::sort(results);
-    return results;
-}
-
-std::vector<std::string> complete_module_import(const ModuleProviders& providers,
-                                                llvm::StringRef prefix,
-                                                const ScanResult& unit) {
-    auto [module, own_partition] = llvm::StringRef(unit.module_name).split(':');
-    std::vector<std::string> results;
-    for(auto& entry: providers.modules) {
-        // A partition is imported by its own module alone, by the partition
-        // name; a unit never imports its own module or itself.
-        auto [owner, partition] = entry.getKey().split(':');
-        std::string name;
-        if(partition.empty()) {
-            if(owner == module) {
-                continue;
-            }
-            name = owner.str();
-        } else {
-            if(module.empty() || owner != module || partition == own_partition ||
-               (unit.is_interface_unit && providers.internal.contains(entry.getValue().front()))) {
-                continue;
-            }
-            name = std::format(":{}", partition);
-        }
-        if(name.starts_with(prefix)) {
-            results.push_back(std::move(name));
-        }
-    }
-    ranges::sort(results);
-    return results;
-}
-
-std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
-                                                    llvm::StringRef includer_dir,
-                                                    llvm::StringRef prefix,
-                                                    bool angled,
-                                                    vfs::Scope& scope) {
-    llvm::StringRef dir_prefix;
-    llvm::StringRef file_prefix = prefix;
-    auto slash_pos = prefix.rfind('/');
-    if(slash_pos != llvm::StringRef::npos) {
-        dir_prefix = prefix.slice(0, slash_pos);
-        file_prefix = prefix.slice(slash_pos + 1, llvm::StringRef::npos);
-    }
-
-    std::vector<IncludeCandidate> results;
-    llvm::StringSet<> seen;
-
-    auto collect =
-        [&](llvm::StringRef search_dir, bool system, std::uint32_t tier, std::uint32_t position) {
-            llvm::SmallString<256> dir(search_dir);
-            if(!dir_prefix.empty()) {
-                path::push(dir, dir_prefix);
-            }
-            for(auto& entry: scope.list(dir).entries) {
-                auto name = entry.getKey();
-                if(!name.starts_with(file_prefix) || seen.contains(name)) {
-                    continue;
-                }
-
-                bool is_dir = entry.getValue();
-                if(!is_dir && !looks_like_header(name, dir, search_dir, system)) {
-                    continue;
-                }
-
-                seen.insert(name);
-                std::uint32_t hidden = name.starts_with(".");
-                std::uint32_t reserved = name.starts_with("_");
-                results.push_back({name.str(),
-                                   is_dir,
-                                   (hidden << 20) | (tier << 17) | (reserved << 16) | position});
-            }
-        };
-
-    // A quoted include looks next to the file that contains it first.
-    if(!angled) {
-        collect(includer_dir, false, 0, 0);
-    }
-    for(unsigned i = angled ? config.angled_start_idx : 0; i < config.dirs.size(); i += 1) {
-        std::uint32_t tier = i < config.angled_start_idx   ? 1
-                             : i < config.system_start_idx ? 2
-                             : config.dirs[i].driver       ? 4
-                                                           : 3;
-        collect(config.dirs[i].path, i >= config.system_start_idx, tier, i + 1);
-    }
-
-    return results;
-}
-
-}  // namespace clice
+}  // namespace clice::feature

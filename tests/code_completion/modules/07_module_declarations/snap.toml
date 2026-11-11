@@ -1,4 +1,10 @@
 [answers.implementation.completion]
 items = [
     { label = "math", kind = "Module", insert = "math", replace = "module ⟦ma⟧;" },
+    { label = "matrix", kind = "Module", insert = "matrix", replace = "module ⟦ma⟧;" },
+]
+
+[answers.words.completion]
+items = [
+    { label = "app.compat", kind = "Module", insert = "app.compat", replace = "module ⟦comp⟧;" },
 ]

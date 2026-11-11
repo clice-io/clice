@@ -1,14 +1,14 @@
-module clice:syntax.completion;
+/// What the text around the completion point says is being completed,
+/// before any compile: the name under the cursor, a directive's, a header's
+/// or a module's, the access operator before it, the designators written.
 
-import :command.search_config;
+module clice:feature.code_completion.cursor;
+
 import :support.prelude;
-import :syntax.dependency_graph;
-import :syntax.scan;
+import :syntax.lexer;
 import :syntax.token;
-import :vfs.dir_cache;
-import :vfs.file_table;
 
-namespace clice {
+namespace clice::feature {
 
 /// The name the cursor is completing, where the text tells: a directive's
 /// name, a header name, or the name of an import or a module declaration.
@@ -85,63 +85,35 @@ std::vector<WrittenDesignator> written_designators(llvm::StringRef text,
                                                    std::uint32_t offset,
                                                    const clang::LangOptions& dialect);
 
-/// The module an open unit's buffer declares (ScanResult::provided_module),
-/// which the graph learns once the file is saved.
-struct OpenModule {
-    Fid file;
-    std::string name;
-    bool internal = false;
+/// The identifier the completion point sits in.
+struct Prefix {
+    /// From its start to the cursor: what candidates are matched against.
+    LocalSourceRange typed;
+
+    /// Through its end: what a chosen candidate replaces.
+    LocalSourceRange whole;
+
+    llvm::StringRef spelling;
+
+    static auto from(llvm::StringRef content, std::uint32_t offset) -> Prefix {
+        assert(offset <= content.size());
+
+        auto start = offset;
+        while(start > 0 && is_identifier_char(content[start - 1])) {
+            start -= 1;
+        }
+
+        auto end = offset;
+        while(end < content.size() && is_identifier_char(content[end])) {
+            end += 1;
+        }
+
+        return Prefix{
+            .typed = LocalSourceRange(start, offset),
+            .whole = LocalSourceRange(start, end),
+            .spelling = content.substr(start, offset - start),
+        };
+    }
 };
 
-/// The modules the project provides and the units providing them: the
-/// graph's, an open unit's as its buffer declares it (`open`).
-struct ModuleProviders {
-    llvm::StringMap<llvm::SmallVector<Fid, 2>> modules;
-
-    /// The providers of internal partitions.
-    llvm::DenseSet<Fid> internal;
-};
-
-auto module_providers(const DependencyGraph& graph, llvm::ArrayRef<OpenModule> open = {})
-    -> ModuleProviders;
-
-/// The names an implementation unit's module declaration can take that
-/// start with `prefix`: the modules the interfaces provide.
-std::vector<std::string> complete_module_declaration(const ModuleProviders& providers,
-                                                     llvm::StringRef prefix);
-
-/// The names an `import` in the unit whose module declaration `unit`
-/// scanned can take that start with `prefix`: the other provided modules,
-/// and the partitions of the unit's own module but its own, spelled
-/// `:partition` — in an interface unit, its interface partitions only.
-std::vector<std::string> complete_module_import(const ModuleProviders& providers,
-                                                llvm::StringRef prefix,
-                                                const ScanResult& unit);
-
-/// Entry in the include path completion result.
-struct IncludeCandidate {
-    std::string name;
-    bool is_directory = false;
-
-    /// Where the search found it, ascending: the includer's directory, the
-    /// quoted then the angled search directories, the system ones the
-    /// command names, last the toolchain's own; in search order within each,
-    /// after the others of its group when the name is reserved (`_`-led: a
-    /// library's internals, libc++'s `__algorithm/`, MinGW's `_mingw.h`).
-    /// A hidden name (`.git/`) follows all the others.
-    std::uint32_t order = 0;
-};
-
-/// Return header and directory names matching a prefix in the given search paths.
-/// @param config        The command's search directories.
-/// @param includer_dir  Directory of the file being edited, searched first by "" includes.
-/// @param prefix        Partially-typed include path (e.g. "vec" or "sys/").
-/// @param angled        True for <> includes, false for "" includes.
-/// @param scope         The request's directory listings.
-std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
-                                                    llvm::StringRef includer_dir,
-                                                    llvm::StringRef prefix,
-                                                    bool angled,
-                                                    vfs::Scope& scope);
-
-}  // namespace clice
+}  // namespace clice::feature

@@ -86,6 +86,31 @@ llvm::StringRef resource_dir() {
     return dir;
 }
 
+llvm::SmallVector<bool> RenderOptions::left_out(llvm::ArrayRef<Arg> args) const {
+    llvm::SmallVector<bool> result(args.size());
+    for(auto [entered, position]: views::enumerate(forced_files(args))) {
+        result[position] = static_cast<std::size_t>(entered) >= kept_forced;
+    }
+    return result;
+}
+
+BuiltinHeader builtin_header(llvm::StringRef name) {
+    struct Entry {
+        llvm::StringLiteral name;
+        BuiltinHeader kind;
+    };
+
+    constexpr static Entry entries[] = {
+#define BUILTIN_HEADER(NAME, KIND) {NAME, BuiltinHeader::KIND},
+#include "builtin_headers.inc"
+#undef BUILTIN_HEADER
+    };
+    auto found = ranges::lower_bound(entries, name, {}, [](const Entry& entry) {
+        return llvm::StringRef(entry.name);
+    });
+    return found != ranges::end(entries) && found->name == name ? found->kind : BuiltinHeader::None;
+}
+
 void CommandTable::set_project_root(CanonicalRef path) {
     root = path;
 }
@@ -313,13 +338,10 @@ std::vector<const char*> CommandTable::render_driver(const CommandRef& ref,
     auto state = language_state_at_slot(command.args);
     std::size_t last_user_content = argv.size();
 
-    std::size_t includes = 0;
-    for(auto& arg: command.args) {
-        if(arg.opt_id == clang_options::OPT_include) {
-            includes += 1;
-            if(includes > opts.kept_includes) {
-                continue;
-            }
+    auto left_out = opts.left_out(command.args);
+    for(auto [i, arg]: views::enumerate(command.args)) {
+        if(left_out[i]) {
+            continue;
         }
         switch(arg.cls) {
             case ArgClass::Semantic:

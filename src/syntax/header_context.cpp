@@ -37,6 +37,11 @@ std::vector<ScanResult::IncludeInfo> includes_of(const LexicalInfo& lexical,
         }
         auto words = lexical.words(directive);
         auto keyword = words.front().text(content);
+        // LIMITATION: a header entered through a macro (`#include
+        // FT_FREETYPE_H`, Boost.PP's iteration) that needs its includer's
+        // state gets no context: no cut matches the include chain, and it
+        // compiles under its host's command alone. A self-contained one is
+        // fine.
         if(keyword == "import" || words.size() < 2 || !words[1].is_header_name()) {
             continue;
         }

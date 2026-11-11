@@ -10,7 +10,7 @@ namespace clice {
 struct GCCSearchDir {
     std::string path;
 
-    /// Listed as a macOS framework directory.
+    /// Marked as a framework directory: clang marks its, GCC none.
     bool framework = false;
 };
 
@@ -76,10 +76,12 @@ async::task<std::expected<GCCStyleOutput, std::string>>
 /// The job clang's own driver builds for `args` (a driver, its flags and
 /// the input) set up as GCC set itself up: GCC's target, the options GCC's
 /// driver gave its cc1 job that clang's driver knows, and GCC's header
-/// search list in place of clang's own idea of the system headers. clang's
-/// builtin headers go right before GCC's own, which the job shadows: those
-/// are GCC's versions of the same headers, which clang cannot parse, among
-/// headers only GCC has (omp.h, a vendor's intrinsics).
+/// search list in place of clang's own idea of the system headers, its
+/// directories searched as frameworks where clang's driver searches them
+/// so for the target. clang's builtin headers go right before GCC's own,
+/// which the job shadows: those are GCC's versions of the same headers,
+/// which clang cannot parse, among headers only GCC has (omp.h, a vendor's
+/// intrinsics).
 std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
                                              llvm::ArrayRef<std::string> args,
                                              llvm::StringRef cwd);

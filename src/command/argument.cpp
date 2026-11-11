@@ -284,6 +284,18 @@ bool is_discarded_option(unsigned id) {
     }
 }
 
+llvm::SmallVector<std::size_t> forced_files(llvm::ArrayRef<Arg> args) {
+    llvm::SmallVector<std::size_t> positions;
+    for(auto id: {OPT_imacros, OPT_include}) {
+        for(auto [position, arg]: views::enumerate(args)) {
+            if(arg.opt_id == id) {
+                positions.push_back(position);
+            }
+        }
+    }
+    return positions;
+}
+
 bool is_user_content_option(unsigned id) {
     switch(id) {
         case OPT_I:
@@ -309,7 +321,10 @@ bool names_path(unsigned id, llvm::StringRef value) {
         case OPT_iquote:
         case OPT_idirafter:
         case OPT_isystem_after:
+        case OPT_c_isystem:
         case OPT_cxx_isystem:
+        case OPT_objc_isystem:
+        case OPT_objcxx_isystem:
         case OPT_stdlibxx_isystem:
         case OPT_F:
         case OPT_iframework:

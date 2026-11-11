@@ -5,6 +5,23 @@ load("//bazel:defs.bzl", "CLICE_COPTS", "COPTS", "LINKOPTS", "release_packages")
 
 xclang_resource_dir(name = "resource_dir")
 
+# The builtin headers of the resource directory, each as BUILTIN_HEADER(name,
+# kind) by its path below include/, sorted: Internal for one that says it
+# must not be included directly ("Never use <avxintrin.h> directly"), Public
+# for the rest. An upgrade of xclang regenerates it.
+genrule(
+    name = "builtin_headers_inc",
+    srcs = [":resource_dir"],
+    outs = ["builtin_headers.inc"],
+    cmd = """
+for f in $(SRCS); do
+  case "$$f" in */lib/clang/*/include/*) ;; *) continue ;; esac
+  if grep -q 'Never use <[^>]*> directly' "$$f"; then kind=Internal; else kind=Public; fi
+  echo "BUILTIN_HEADER(\\"$${f#*/lib/clang/*/include/}\\", $$kind)"
+done | LC_ALL=C sort > $@
+""",
+)
+
 cc_library(
     name = "version",
     srcs = ["//bazel:version_cpp"],
@@ -39,7 +56,7 @@ cc_library(
     hdrs = glob(
         ["src/%s/**/*.%s" % (layer, suffix) for layer in CORE for suffix in ["h", "inc"]],
         allow_empty = True,
-    ),
+    ) + [":builtin_headers_inc"],
     copts = CLICE_COPTS,
     features = ["cpp_modules"],
     module_interfaces = ["src/module.cppm"] + glob(["src/%s/**/*.cppm" % layer for layer in CORE]),

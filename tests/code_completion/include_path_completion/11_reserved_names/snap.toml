@@ -5,5 +5,6 @@ items = [
     { label = "vector.h", kind = "File", insert = "vector.h>", replace = "#include <rsvlast/⟦>⟧" },
     { label = "__detail/", kind = "Folder", insert = "__detail", replace = "#include <rsvlast/⟦⟧>" },
     { label = "_config.h", kind = "File", insert = "_config.h>", replace = "#include <rsvlast/⟦>⟧" },
+    { label = "notes.txt", kind = "File", insert = "notes.txt>", replace = "#include <rsvlast/⟦>⟧" },
     { label = ".build/", kind = "Folder", insert = ".build", replace = "#include <rsvlast/⟦⟧>" },
 ]

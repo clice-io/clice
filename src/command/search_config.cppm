@@ -9,9 +9,20 @@ struct Arg;
 
 struct SearchDir {
     std::string path;
+
     /// Added by the driver (-internal-isystem and kin) rather than written
     /// by the user: the toolchain's own headers.
     bool driver = false;
+
+    /// A framework directory (-F, -iframework, -internal-iframework):
+    /// `<Foo/Bar.h>` is `Foo.framework/Headers/Bar.h` below it, else
+    /// `Foo.framework/PrivateHeaders/Bar.h`.
+    bool framework = false;
+
+    /// What tells two entries apart as clang's duplicate removal does: the
+    /// directory itself, however spelled, and whether it is searched for
+    /// frameworks.
+    std::string identity() const;
 };
 
 /// Header search configuration extracted from compilation arguments.
@@ -31,9 +42,10 @@ struct SearchConfig {
     /// start; the After dirs (-idirafter, -iwithprefix) follow them.
     unsigned system_start_idx = 0;
 
-    /// The files the command includes ahead of the file it compiles (`-include`),
-    /// in order and as written: clang looks a relative one up in the
-    /// compile's working directory first, then as a quoted include.
+    /// The files the command enters ahead of the file it compiles, in the
+    /// order clang enters them (forced_files), as written: clang looks a
+    /// relative one up in the compile's working directory first, then as a
+    /// quoted include.
     std::vector<std::string> forced_includes;
 
     /// The files in `dirs` its compiles do not see; null for none.
