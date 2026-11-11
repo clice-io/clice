@@ -66,6 +66,16 @@ void Project::merge_build_index(Fid unit,
     }
 }
 
+/// Whether a file a build read holds other bytes by now: a save rewrites
+/// a file in place, and a build reading it then may read it half written,
+/// a change no one sees when the save leaves the bytes as they were.
+static bool rewritten_since(FileTable& files, const Inputs& read) {
+    return ranges::any_of(read, [&](const Input& input) {
+        return !input.absent && input.version.valid() &&
+               files.check_version(input.version) == vfs::DiskState::CheckResult::Stale;
+    });
+}
+
 template <typename Params>
 static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
     send_build(Project& project,
@@ -108,6 +118,18 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
     auto expected = result.has_value() ? result.value().has_user_errors
                                        : worker::is_operational_error(result.error());
     auto& message = result.has_value() ? result.value().error : result.error().message;
+    Inputs read;
+    if(result.has_value() && result.value().has_user_errors) {
+        read = project.read_inputs(result.value(), before);
+        if(rewritten_since(project.file_table, read)) {
+            LOG_INFO(
+                "The {} build of {} failed on files rewritten since it read them; it runs "
+                "again",
+                what,
+                label);
+            co_return std::unexpected(Result::Stale);
+        }
+    }
     if(expected) {
         std::string shown = message;
         if(result.has_value() && result.value().has_user_errors && result.value().error_count > 1) {
@@ -118,8 +140,7 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
         }
         LOG_WARN("The {} build of {} failed: {}", what, label, shown);
         if(result.has_value()) {
-            fail(failed_build({}, result.value().first_error),
-                 project.read_inputs(result.value(), before));
+            fail(failed_build({}, result.value().first_error), std::move(read));
         }
     } else if constexpr(pch) {
         LOG_ANOMALY(PCHBuildFail, "PCH build failed for {}: {}", label, message);
