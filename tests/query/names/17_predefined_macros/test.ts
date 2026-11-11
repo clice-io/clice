@@ -9,4 +9,5 @@ test(async (t) => {
     await t.cli("query definition FOO");
     await t.cli("query symbol-search FOO");
     await t.cli("query definition __cplusplus");
+    await t.cli(["query", "definition", "main.cpp:2:13 kind:function"]);
 });

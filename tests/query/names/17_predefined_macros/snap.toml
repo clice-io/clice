@@ -87,3 +87,12 @@ stdout = '''
 }
 '''
 exit = 0
+
+[test."$ clice query definition \"main.cpp:2:13 kind:function\""]
+stdout = '''
+{
+  "error": "symbol not found",
+  "stale": []
+}
+'''
+exit = 1

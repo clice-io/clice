@@ -96,6 +96,43 @@ ZEST_CASE(CorruptSaveKeepsPending) {
     ZASSERT(kept.buffer->getBuffer() == "choices");
 }
 
+ZEST_CASE(RefusedSaveCounted) {
+    // A write the database refuses leaves the batch pending and counted as
+    // unsaved; the save that commits takes it and clears the count.
+    struct Refusing final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
+
+        bool refuse = true;
+
+        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
+            if(refuse) {
+                return std::unexpected("no space left on device");
+            }
+            return real->write(puts, removes);
+        }
+    };
+
+    TempDir tmp;
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    auto refusing = std::make_unique<Refusing>(std::move(f.project.database));
+    auto* database = refusing.get();
+    f.project.database = std::move(refusing);
+    f.project.choices.bytes = "choices";
+    f.project.choices.dirty = true;
+
+    f.save();
+    ZASSERT(f.project.choices.dirty);
+    ZEXPECT(f.project.unsaved_bytes >= 7u);
+
+    database->refuse = false;
+    f.save();
+    ZASSERT(!f.project.choices.dirty);
+    ZEXPECT(f.project.unsaved_bytes == 0u);
+}
+
 ZEST_CASE(UnownedContextsPassThrough) {
     // A process with no editor (the batch commands) never rewrites the
     // context choices, yet carries their bytes into a database replacing a

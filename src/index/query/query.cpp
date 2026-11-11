@@ -448,7 +448,8 @@ void IndexQuery::for_each_disk_file(SymbolHash hash,
     visit(anchor);
     // An open buffer's compile names the files declaring the locals it reads
     // through a precompiled header or a module, whose builds indexed them:
-    // no unit of the buffer's lists them in the shared locals yet.
+    // the symbol has no record listing them until the buffer's own unit is
+    // indexed.
     if(buffer_of(anchor)) {
         for_each_session_index([&](const TUIndex& state) {
             for(auto path_id: state.paths_naming(hash, false)) {

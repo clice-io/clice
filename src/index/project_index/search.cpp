@@ -5,6 +5,7 @@ import :index.project_index;
 import :index.project_index.records;
 import :index.search;
 import :index.shard;
+import :index.symbol;
 import :support.logging;
 import :support.text;
 

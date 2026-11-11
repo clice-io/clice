@@ -347,10 +347,9 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // A symbol the unit describes that no stored entry mentions — the
     // template of an instantiation resolving nothing — keeps no record.
     for(auto hash: described) {
-        if(auto* record = symbol(hash); record && record->in_no_file()) {
-            symbol_records.changed[number_key(hash)] = std::nullopt;
-        }
+        fileless.emplace_back(hash, false);
     }
+    drop_fileless_symbols();
 
     // Replace this TU's manifest wholesale: files it no longer touches lose
     // their contribution here, which is also what retires their variants —

@@ -8,8 +8,8 @@
 
 ## 支持的问题
 
-- `symbol-search [<locator>] [--limit <n>]` 列出[定位串](#locators)（locator）匹配到的符号，最佳匹配排在最前，并附上各符号的种类、文件、行号、所属容器和 `symbol`；函数还会附上区分其各个重载的 `signature`。
-- `definition <locator>`、`read-symbol <locator>`、`references <locator> [--include-declaration]`、`call-graph <locator> [--direction callers|callees|both]`、`type-hierarchy <locator> [--direction supertypes|subtypes|both]` 和 `implementation <locator>` 针对定位串指明的那一个符号作答：没有任何定义时，`definition` 给出它的声明；每条引用都会指明它所在的函数；`implementation` 列出类之下各层的所有派生类，或函数之下各层的所有重写函数。定位串匹配到多个符号时，会把它们作为 `candidates` 列出；没有符号与该名称完全一致（包括大小写）时，不指明任何符号，同样把最接近的匹配列出来，哪怕只有一个。`definition` 和 `read-symbol` 还会给出符号的 `documentation`：以 markdown 形式给出它的文档注释，读法与编辑器的悬停一致——解析 `@param`、`@return` 和 `@copydoc`，没有注释的重写函数显示它所重写函数的文档。
+- `symbol-search [<locator>] [--limit <n>]` 列出[定位串](#locators)（locator）匹配到的符号，最佳匹配排在最前，并附上各符号的种类、文件、行号、所属容器和 `symbol`；函数还会附上区分其各个重载的 `signature`。在多处定义的符号——弱函数和它的强定义、每个程序各自的 `main`——会在每一处定义各列一次；没有任何文件定义的宏则列在 `<command line>`（编译命令中的某个 `-D`）或 `<built-in>`（编译器自带的宏）。
+- `definition <locator>`、`read-symbol <locator>`、`references <locator> [--include-declaration]`、`call-graph <locator> [--direction callers|callees|both]`、`type-hierarchy <locator> [--direction supertypes|subtypes|both]` 和 `implementation <locator>` 针对定位串指明的那一个符号作答：没有任何定义时，`definition` 给出它的声明；在多处定义时，把其余定义作为 `otherDefinitions` 给出；没有任何文件定义的宏，则给出 `<command line>` 或 `<built-in>`；每条引用都会指明它所在的函数；`implementation` 列出类之下各层的所有派生类，或函数之下各层的所有重写函数。定位串匹配到多个符号时，会把它们作为 `candidates` 列出；没有符号与该名称完全一致（包括大小写）时，不指明任何符号，同样把最接近的匹配列出来，哪怕只有一个。`definition` 和 `read-symbol` 还会给出符号的 `documentation`：以 markdown 形式给出它的文档注释，读法与编辑器的悬停一致——解析 `@param`、`@return` 和 `@copydoc`，没有注释的重写函数显示它所重写函数的文档。
 - `document-symbols <file>` 给出该文件的大纲。
 - `project-files [--filter all|source|header|module]` 列出构建涉及的文件；`file-deps <file> [--direction includes|includers|both] [--depth <n>]` 沿包含关系图查询，`impact-analysis <file>` 则沿包含关系图以及导入该文件所属模块的文件查询。
 - `counterparts <file>` 列出与该文件配对的文件——头文件的源文件、源文件的头文件、模块的接口单元和实现单元——最佳的排在最前，每个都附上理由，并把编辑器无需询问就会直接打开的那一个标为 `preferred`（参见[切换源文件／头文件](../features/navigation.md#switch-source-header)）。

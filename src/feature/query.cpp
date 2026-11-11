@@ -127,11 +127,15 @@ SymbolEntry symbol_entry(Context& ctx, const index::IndexQuery::Located& located
     return entry;
 }
 
-/// The symbols a locator names, held to its filters: an id or a place
-/// names its symbols outright, which a pattern's lookup filters itself.
-/// An id's paths name the file holding its entries, no filter.
+/// The symbols a locator names, a macro no file defines among them, held
+/// to its filters: an id or a place names its symbols outright, which a
+/// pattern's lookup filters itself. An id's paths name the file holding
+/// its entries, no filter.
 std::vector<index::IndexQuery::Located> located_by(Context& ctx, const index::Locator& query) {
     auto located = index::locate(ctx.query, query);
+    if(located.empty()) {
+        located = index::predefined_macros(ctx.query, query);
+    }
     if(query.by_pattern()) {
         return located;
     }
@@ -159,9 +163,6 @@ Result<std::vector<index::IndexQuery::Located>> resolve(Context& ctx, index::Loc
     }
     auto candidates =
         *anchored ? located_by(ctx, query) : std::vector<index::IndexQuery::Located>();
-    if(candidates.empty() && *anchored) {
-        candidates = index::predefined_macros(ctx.query, query);
-    }
     if(candidates.empty()) {
         return std::unexpected("symbol not found");
     }

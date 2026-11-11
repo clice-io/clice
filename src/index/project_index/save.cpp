@@ -110,6 +110,7 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
         assert(replacement.loaded() && "a freshly written instantiation blob must verify");
         replace_instantiations(file, std::move(replacement));
     }
+    drop_fileless_symbols();
 
     // The names of internal linkage the compacted shards declare, for the
     // search index's next build.

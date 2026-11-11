@@ -6,7 +6,10 @@ import :index.format;
 import :index.shard;
 import :index.shard.layout;
 import :index.shard.tables;
+import :index.symbol;
+import :semantic.symbol;
 import :support.text;
+import :syntax.token;
 
 namespace clice::index {
 

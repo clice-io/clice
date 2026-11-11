@@ -22,6 +22,7 @@ struct IndexInternals {
                             bool written = false) {
         if(written) {
             index.replace_shard(file, std::move(shard));
+            index.drop_fileless_symbols();
             return;
         }
         auto& record = index.change_file(file);
@@ -33,6 +34,7 @@ struct IndexInternals {
     /// Retire `file`'s shard, as a compaction finding no live variant does.
     static void retire_shard(index::ProjectIndex& index, Fid file) {
         index.replace_shard(file, {});
+        index.drop_fileless_symbols();
     }
 
     /// The record of the external symbol `hash`, to set up by hand.

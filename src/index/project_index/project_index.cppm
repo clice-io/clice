@@ -601,8 +601,13 @@ private:
     Symbol* change_symbol(SymbolHash hash, bool local);
 
     /// What a search reads of the symbol's record changed, or no file holds
-    /// an entry of the symbol any more: the record goes then.
+    /// an entry of the symbol any more.
     void symbol_changed(SymbolHash hash, bool local, const Symbol& record);
+
+    /// Remove the records the replacements since the last call left in no
+    /// file. Only once every replacement of one change is applied: a symbol
+    /// leaving one file may enter the next.
+    void drop_fileless_symbols();
 
     /// Make `replacement` the file's shard, none for an unloaded one: the
     /// single place a file's stored entries change, which its file record,
@@ -699,6 +704,10 @@ private:
     mutable Records<Symbol> symbol_records{.kind = BlobKind::Symbol};
 
     mutable Records<Symbol> local_records{.kind = BlobKind::SharedLocal};
+
+    /// The symbols, with whether each is below external scope, whose record
+    /// a replacement left in no file (drop_fileless_symbols).
+    llvm::SmallVector<std::pair<SymbolHash, bool>> fileless;
 
     /// Path id -> portable name.
     mutable Records<std::string> path_records{.kind = BlobKind::Path};

@@ -694,6 +694,92 @@ ZEST_CASE(LocalSymbolAcrossFiles) {
             std::vector<std::string>{"a.cpp", "util.h"});
 }
 
+ZEST_CASE(LocalBehindPrecompiledHeader) {
+    // A unit reading util.h through its precompiled header names the
+    // header's `static` function and writes none of the header's entries:
+    // the function's record lists util.h once another unit's entries of it
+    // are stored, before the first unit merges or after.
+    auto unit_of = [](llvm::StringRef name, llvm::StringRef text, bool precompiled) {
+        Tester tester;
+        tester.add_file("util.h", "static int helper() { return 1; }\n");
+        tester.add_focus(name, text);
+        if(precompiled) {
+            ZASSERT(tester.compile_with_pch());
+        } else {
+            tester.kind = CompilationKind::Whole;
+            ZASSERT(tester.compile());
+        }
+        return index::build_tu_index(*tester.unit);
+    };
+    auto consumer =
+        unit_of("main.cpp", "#include \"util.h\"\nint call() { return helper(); }\n", true);
+    auto other = unit_of("other.cpp", "#include \"util.h\"\nint other() { return 0; }\n", false);
+
+    auto view = index::TUIndex::from_bytes(as_chars(consumer));
+    ZASSERT(view.loaded());
+    index::SymbolHash helper = 0;
+    view.for_each_symbol([&](index::SymbolHash hash,
+                             const index::SymbolView& symbol,
+                             llvm::ArrayRef<std::uint32_t>) {
+        if(symbol.name == "helper") {
+            helper = hash;
+        }
+        return helper == 0;
+    });
+    ZASSERT(helper != 0);
+
+    for(auto [first, second]: {
+            std::pair{&consumer, &other   },
+            std::pair{&other,    &consumer}
+    }) {
+        clice::FileTable pool;
+        index::ProjectIndex project{pool};
+        ZASSERT(project.merge(as_chars(*first), {}).has_value());
+        ZASSERT(project.merge(as_chars(*second), {}).has_value());
+        auto names = [&](index::SymbolFiles which) {
+            std::vector<std::string> files;
+            project.for_each_file(helper, which, [&](Fid file) {
+                files.push_back(std::string(path::filename(pool.resolve(file))));
+            });
+            ranges::sort(files);
+            return files;
+        };
+        ZEXPECT(names(index::SymbolFiles::Naming) ==
+                std::vector<std::string>{"main.cpp", "util.h"});
+        ZEXPECT(names(index::SymbolFiles::Defining) == std::vector<std::string>{"util.h"});
+    }
+}
+
+ZEST_CASE(SymbolMovesBetweenFiles) {
+    // A function moved from one header of a unit to the other leaves one
+    // shard and enters the other in the same merge: its record follows,
+    // whichever shard the merge replaces first.
+    llvm::StringRef function = "inline int moved() { return 0; }\n";
+    auto unit_with = [&](bool in_first) {
+        Tester tester;
+        tester.add_file("first.h", std::format("extern int first;\n{}", in_first ? function : ""));
+        tester.add_file("second.h",
+                        std::format("extern int second;\n{}", in_first ? "" : function));
+        tester.add_focus("main.cpp", "#include \"first.h\"\n#include \"second.h\"\n");
+        tester.kind = CompilationKind::Whole;
+        ZASSERT(tester.compile());
+        return index::build_tu_index(*tester.unit);
+    };
+
+    clice::FileTable pool;
+    index::ProjectIndex project{pool};
+    for(bool in_first: {true, false, true}) {
+        ZASSERT(project.merge(as_chars(unit_with(in_first)), {}).has_value());
+        auto moved = find_symbol(project, "moved");
+        ZASSERT(moved != 0);
+        std::vector<std::string> files;
+        project.for_each_file(moved, index::SymbolFiles::Naming, [&](Fid file) {
+            files.push_back(std::string(path::filename(pool.resolve(file))));
+        });
+        ZEXPECT(files == std::vector<std::string>{in_first ? "first.h" : "second.h"});
+    }
+}
+
 };  // ZEST_SUITE(ProjectIndex)
 
 }  // namespace

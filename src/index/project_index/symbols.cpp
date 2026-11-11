@@ -7,6 +7,8 @@ import :index.project_index.records;
 import :index.shard;
 import :index.shard.instantiations;
 import :index.symbol;
+import :semantic.symbol;
+import :semantic.token_class;
 
 namespace clice::index {
 
@@ -257,11 +259,22 @@ Symbol* ProjectIndex::change_symbol(SymbolHash hash, bool local) {
 
 void ProjectIndex::symbol_changed(SymbolHash hash, bool local, const Symbol& record) {
     if(record.in_no_file()) {
-        (local ? local_records : symbol_records).changed[number_key(hash)] = std::nullopt;
+        fileless.emplace_back(hash, local);
     }
     if(!local) {
         search.symbol_changed(hash);
     }
+}
+
+void ProjectIndex::drop_fileless_symbols() {
+    for(auto [hash, local]: fileless) {
+        auto& records = local ? local_records : symbol_records;
+        auto key = number_key(hash);
+        if(auto* record = read(records, key, decode_symbol); record && record->in_no_file()) {
+            records.changed[key] = std::nullopt;
+        }
+    }
+    fileless.clear();
 }
 
 void ProjectIndex::update_symbols(Fid file, const Shard* before, const Shard* after) {
@@ -275,10 +288,7 @@ void ProjectIndex::update_symbols(Fid file, const Shard* before, const Shard* af
     }
     auto apply = [&](const Mention* old, const Mention* fresh) {
         auto& either = fresh ? *fresh : *old;
-        // A symbol below external scope gains a file once a unit lists the
-        // symbol in several (list_locals): most stay in the one file, and
-        // asking for the record of each would cost every shard its locals.
-        if((old && fresh && *old == *fresh) || (either.local && !old)) {
+        if(old && fresh && *old == *fresh) {
             return;
         }
         auto* record = change_symbol(either.symbol, either.local);

@@ -2599,6 +2599,34 @@ ZEST_CASE(LibraryTemplatesUnresolved) {
     ZEXPECT(fills(tu_index.focus_file_index) == 2);
 }
 
+ZEST_CASE(LibraryOverloadSetsUnnamed) {
+    // `mark(t)` in a library's template names the overloads the unit
+    // declared before the header: the header's entries leave the set out,
+    // and a unit declaring one more stores the same variant of it.
+    auto variant = [](llvm::StringRef before) {
+        Tester tester;
+        tester.add_file("lib", R"(#pragma GCC system_header
+template <typename T>
+void refill(T t) { mark(t); }
+)");
+        tester.add_focus("main.cpp", std::format("{}#include \"lib\"\n", before));
+        tester.kind = CompilationKind::Whole;
+        ZASSERT(tester.compile());
+        auto bytes = index::build_tu_index(*tester.unit);
+        auto view = index::TUIndex::from_bytes(as_chars(bytes));
+        ZASSERT(view.loaded());
+        std::optional<std::uint64_t> hash;
+        for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
+            if(view.path(view.section_path(i)).ends_with("lib")) {
+                hash = view.section_hash(i);
+            }
+        }
+        ZASSERT(hash.has_value());
+        return *hash;
+    };
+    ZEXPECT(variant("void mark(int);\n") == variant("void mark(int);\nvoid mark(long);\n"));
+}
+
 ZEST_CASE(LibraryBodiesLeftOut) {
     // A library header's index holds what it declares, and what its
     // functions name inside only when asked; the user's header is indexed
