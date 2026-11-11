@@ -47,6 +47,9 @@ std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm
     std::string found;
     if(auto error = sys::find_program(found, name, search)) {
         std::string target;
+        // LIMITATION: the headers Cygwin's installer writes as such links
+        // (ncurses' ncurses.h -> curses.h) are read by clice's compiles as
+        // the link file itself: nothing follows them but the driver here.
         if(error == std::errc::permission_denied && fs::cygwin::read_symlink(target, found)) {
             return std::unexpected(
                 std::format("Driver {} is a Cygwin symlink to {}: name the program it links to",

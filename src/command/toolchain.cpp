@@ -374,6 +374,10 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
     auto forwarded_from = forwarded_start(tokens, command);
     // An external clang may be newer than the linked one: a flag our cc1
     // does not know parses as unknown, and its values as inputs; both go.
+    // LIMITATION: so do Apple clang's own cc1 flags (-clang-vendor-feature=,
+    // -fno-odr-hash-protocols), and the macros only its fork predefines
+    // (TARGET_OS_ARROW, __ARM_ARCH_8_3__) stay undefined; code testing
+    // them is rare, and no difference has been seen.
     auto parse_options = cli::ParseOptions{.visibility = clang_options::CC1Option};
     std::vector<cli::ParsedArg> kept;
     llvm::StringRef triple;

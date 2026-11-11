@@ -147,8 +147,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
 
             case OPT_idirafter: after.push_back({make_absolute(value)}); break;
 
-            // FIXME: header maps (-I foo.hmap remaps include names), which
-            // only Xcode's own builds write.
+            // LIMITATION: header maps (-I foo.hmap remaps include names),
+            // which only Xcode's own builds write, are not read.
             default: break;
         }
     }

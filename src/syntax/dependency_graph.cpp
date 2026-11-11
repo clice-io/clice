@@ -475,6 +475,9 @@ struct ScannedText {
 /// Read and lex the file at `path`, a stable pointer from the FileTable
 /// that outlives the task. Runs on the thread pool.
 std::expected<ScannedText, vfs::FileError> read_and_scan(const char* path) {
+    // LIMITATION: the disk's text: an open file's unsaved #include reaches
+    // the graph only once it is saved, and the header it names has no host
+    // until then.
     auto observed = vfs::read_observed(path);
     if(!observed) {
         return std::unexpected(std::move(observed.error()));
@@ -534,6 +537,10 @@ struct FileScanner {
                                 std::shared_ptr<const ScanResult>& scan,
                                 std::uint64_t& hash,
                                 llvm::function_ref<void(Fid, ScanContext)> reach) {
+        // LIMITATION: a file is scanned under the first configuration that
+        // reaches it: a header two units reach through different -I orders
+        // (config_a/config.h and config_b/config.h behind one shared.h)
+        // gets no host from the other's until that unit is indexed.
         auto reached = [&](Fid target, std::optional<unsigned> found_dir_idx) {
             if(graph.contexts(target).empty()) {
                 ScanContext target_context{.group = context.group, .found_dir_idx = found_dir_idx};
