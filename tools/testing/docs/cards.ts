@@ -1,9 +1,9 @@
 /// A documented case as the docs site draws it: its page, its sources with
 /// the markers taken out and their offsets kept, and its output as the run
 /// left it, every place with the range it came from, so the site draws
-/// answers into the code without reading snap.toml's text. Every run checks
-/// a documented case's card against `docs/cards/<id>.json`, which the docs
-/// sync hands to the site; UPDATE_SNAPSHOTS=1 rewrites it.
+/// answers into the code without reading snap.toml's text. Every run writes
+/// the cards of the documented cases it ran as `docs/cards/<id>.json`, which
+/// no commit holds: CI hands the cards of its linux-x64 run to the docs site.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -37,8 +37,6 @@ export interface CardBlock {
     marker?: string;
     value: CardValue;
 }
-
-export const CARDS_DIR = path.join(REPO_ROOT, "docs", "cards");
 
 export interface Card {
     id: string;
@@ -115,26 +113,11 @@ export function cardOf(c: Case, snapshot: Snapshot, configs: Configs): Card {
     };
 }
 
-export function cardPath(id: string): string {
-    return path.join(CARDS_DIR, `${id}.json`);
-}
-
-/// A documented case's card against its file: UPDATE_SNAPSHOTS=1 rewrites
-/// it, a run otherwise fails where they differ.
-export function checkCard(c: Case, snapshot: Snapshot, configs: Configs): void {
+export function writeCard(c: Case, snapshot: Snapshot, configs: Configs): void {
     if (c.readme === undefined) {
         return;
     }
-    const file = cardPath(c.id);
-    const text = `${JSON.stringify(cardOf(c, snapshot, configs), null, 2)}\n`;
-    if (fs.existsSync(file) && fs.readFileSync(file, "utf8") === text) {
-        return;
-    }
-    if (process.env["UPDATE_SNAPSHOTS"] !== "1") {
-        throw new Error(
-            `${c.id}: its card differs from ${path.relative(REPO_ROOT, file)} (UPDATE_SNAPSHOTS=1 rewrites it)`,
-        );
-    }
+    const file = path.join(REPO_ROOT, "docs", "cards", `${c.id}.json`);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, text);
+    fs.writeFileSync(file, `${JSON.stringify(cardOf(c, snapshot, configs), null, 2)}\n`);
 }

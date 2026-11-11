@@ -52,16 +52,16 @@ node_modules/
 .vscode-test/
 
 # A case under tests/ is whatever project its check needs: the build
-# output names above are inputs there. The docs cards follow the cases' paths.
+# output names above are inputs there.
 !tests/**/*build*/
 !tests/**/temp/
 !tests/**/cache/
-!docs/cards/**/cache/
 !tests/**/out/
 !tests/**/dist/
 
 # Python & Testing
 __pycache__/
+/docs/cards/
 .pytest_cache/
 unittests/Local/
 

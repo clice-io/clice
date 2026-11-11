@@ -1,0 +1,1 @@
+module app.ui:detail;

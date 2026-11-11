@@ -53,7 +53,7 @@ Resolution results for angle-bracket includes (e.g., `<vector>`) can be cached a
 
 Rather than processing all files at once, scanning unfolds in waves:
 
-- **Wave 0**: Scan every translation unit of the build (parallel I/O + lexical scanning) — the database's entries, the sources rules claim and the provisional members (see [Command Resolution](command-resolve.md#rules-and-members)) — and resolve each command's forced includes (`-include`) the way the compiler does -- the compile's working directory first, then the search paths as for a quoted include
+- **Wave 0**: Scan every translation unit of the build (parallel I/O + lexical scanning) — the database's entries, the sources rules claim and the provisional members (see [Command Resolution](command-resolve.md#rules-and-members)) — and resolve each command's forced includes (every `-imacros`, then every `-include`) the way the compiler does -- the compile's working directory first, then the search paths as for a quoted include
 - **Path resolution**: Map discovered include names to file paths, identifying newly discovered headers
 - **Wave 1**: Scan the newly discovered headers, discovering their includes...
 - Repeat until no new files are found
@@ -68,7 +68,7 @@ DependencyGraph stores include relationships between files and supports both for
 
 **Reverse includes**: Given a file, returns all files that directly include it. This is a reverse index built in bulk after all forward includes have been established. It is used for "finding host source files" -- BFS upward from the target header along reverse edges, collecting the translation units on the way and the roots above them.
 
-**Forced includes**: The headers a source file's compilation commands include ahead of its text (`-include`, such as the `cmake_pch.hxx` of a CMake precompiled header) are scanned like any header, so their own includes and their import syntax are part of the graph. The link from the source file to a forced header is kept apart from the include edges: no directive in the source file's text names it, so no cut of that text reproduces it. Host lookup climbs it to the units forcing the header in, and a header context entered through it starts at the forced header (see [Compilation Context](compilation-context.md)).
+**Forced includes**: The headers a source file's compilation commands include ahead of its text (`-include`, such as the `cmake_pch.hxx` of a CMake precompiled header, and `-imacros`, such as Zephyr's `autoconf.h`, whose macros alone the compile keeps) are scanned like any header, so their own includes and their import syntax are part of the graph. The link from the source file to a forced header is kept apart from the include edges: no directive in the source file's text names it, so no cut of that text reproduces it. Host lookup climbs it to the units forcing the header in, and a header context entered through it starts at the forced header (see [Compilation Context](compilation-context.md)).
 
 **Module mapping**: A mapping from module names to module interface unit file paths, used for C++20 module dependency resolution. Only interface units (`export module`) are registered in the mapping. A module name may map to multiple paths (when the same module is discovered in different compilation configurations).
 
@@ -139,4 +139,3 @@ Fast scanning and background indexing are complementary: fast scanning guarantee
 - **Macro-ized includes**: Includes of the form `#include MACRO_NAME` cannot be resolved by the fast scanner -- they require macro expansion to determine the actual header name. This pattern is relatively uncommon in real projects; affected files are correctly handled during precise compilation.
 - **Conditional compilation precision**: Includes from all conditional branches are recorded, making the include graph larger than the actual one. This is safe for host lookup (nothing is missed) but may cause relevance judgments to be overly broad.
 - **Case sensitivity**: On case-insensitive file systems (macOS, Windows), if the case of an include does not match the file name, resolution may fail.
-- **Framework search paths**: macOS Framework directories (`-F`, `-iframework`) are not yet supported; Framework includes of the form `<Foo/Bar.h>` cannot be resolved correctly.

@@ -3,7 +3,7 @@
 <!-- The cards in the sections below are generated from the documented cases
      in tests/semantic_tokens/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 clice colors every token of a document: names by what they declare or name,
 keywords, literals, comments, operators and directives by their spelling. It

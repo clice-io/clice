@@ -21,3 +21,9 @@ items = [
     { label = ":util", kind = "Module" },
     { label = "math", kind = "Module" },
 ]
+
+[answers.qualified.completion]
+items = []
+
+[answers.outside.completion]
+items = []

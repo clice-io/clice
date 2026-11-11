@@ -18,6 +18,12 @@ if(COMPAT_MODULES)
   set_target_properties(compat_modules PROPERTIES CXX_SCAN_FOR_MODULES ON)
 endif()
 
+if(COMPAT_IMPORT_STD)
+  add_library(compat_std STATIC std/use_std.cpp)
+  target_compile_features(compat_std PUBLIC cxx_std_23)
+  set_target_properties(compat_std PROPERTIES CXX_SCAN_FOR_MODULES ON)
+endif()
+
 if(COMPAT_SYCL)
   add_library(compat_sycl STATIC sycl/kernel.cpp)
   target_include_directories(compat_sycl PRIVATE include)

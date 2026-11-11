@@ -1,0 +1,13 @@
+[answers.quoted.completion]
+items = [
+    { label = "wsnap_view", kind = "File", insert = 'wsnap_view"', replace = '#include "⟦wsnap_view"⟧' },
+    { label = "wsnap_viewport.h", kind = "File", insert = 'wsnap_viewport.h"', replace = '#include "⟦wsnap_view"⟧' },
+    { label = "old_wsnap_view.h", kind = "File", insert = 'old_wsnap_view.h"', replace = '#include "⟦wsnap_view"⟧' },
+]
+
+[answers.angled.completion]
+items = [
+    { label = "wsnap_view", kind = "File", insert = "wsnap_view>", replace = "#include <⟦wsnap_view>⟧" },
+    { label = "wsnap_viewport.h", kind = "File", insert = "wsnap_viewport.h>", replace = "#include <⟦wsnap_view>⟧" },
+    { label = "old_wsnap_view.h", kind = "File", insert = "old_wsnap_view.h>", replace = "#include <⟦wsnap_view>⟧" },
+]

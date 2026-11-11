@@ -162,10 +162,6 @@ private:
         /// own paths may name too.
         llvm::StringRef job_resource_dir;
 
-        /// The job keeps its own clang resource tree: a matched LLVM-MinGW
-        /// installation, whose builtin headers and libc++ belong together.
-        bool own_resource_dir = false;
-
         /// The directories of another compiler's builtin headers the job
         /// keeps behind clang's own (GCC's, another clang's), as `args`
         /// names them.

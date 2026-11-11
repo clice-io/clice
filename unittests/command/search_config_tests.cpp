@@ -58,22 +58,27 @@ ZEST_CASE(ReordersDirectoryGroups) {
 }
 
 ZEST_CASE(KeepsForcedIncludes) {
-    // In command order and as written: their lookup starts from the
-    // working directory, which extraction does not determine.
+    // In the order clang enters them, every -imacros before every
+    // -include, and as written: their lookup starts from the working
+    // directory, which extraction does not determine.
     TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-include",
                                      "b.h",
+                                     "-imacros",
+                                     "m.h",
                                      "-include-pch",
                                      "p.pch",
                                      "-I",
                                      tmp.c_path("inc"),
                                      "-include",
                                      "a.h",
+                                     "-imacros",
+                                     "n.h",
                                      "main.cpp"};
     auto config = extract(args, tmp.root);
 
-    ZASSERT(config.forced_includes == (std::vector<std::string>{"b.h", "a.h"}));
+    ZASSERT(config.forced_includes == (std::vector<std::string>{"m.h", "n.h", "b.h", "a.h"}));
 }
 
 ZEST_CASE(MarksDriverDirs) {
@@ -297,6 +302,123 @@ ZEST_CASE(LastSysrootWins) {
     config = extract(args, tmp.root);
     ZASSERT(config.dirs.size() == 1u);
     ZEXPECT(config.dirs[0].path == spelled(tmp, "three/inc"));
+}
+
+ZEST_CASE(FrameworkDirs) {
+    /// -F among the angled directories in command order, -iframework after
+    /// the -isystem ones, the driver's -internal-iframework after its own.
+    TempDir tmp;
+    std::vector<const char*> args = {"clang++",
+                                     "-internal-iframework",
+                                     tmp.c_path("driver_frameworks"),
+                                     "-internal-isystem",
+                                     tmp.c_path("driver"),
+                                     "-iframework",
+                                     tmp.c_path("system_frameworks"),
+                                     "-isystem",
+                                     tmp.c_path("system"),
+                                     "-F",
+                                     tmp.c_path("frameworks"),
+                                     "-I",
+                                     tmp.c_path("user"),
+                                     "main.cpp"};
+    auto config = extract(args, tmp.root);
+    ZASSERT(config.dirs.size() == 6u);
+    ZEXPECT(config.system_start_idx == 2u);
+    std::vector<std::pair<std::string, bool>> dirs;
+    for(auto& dir: config.dirs) {
+        dirs.emplace_back(dir.path, dir.framework);
+    }
+    std::vector<std::pair<std::string, bool>> expected = {
+        {spelled(tmp, "frameworks"),        true },
+        {spelled(tmp, "user"),              false},
+        {spelled(tmp, "system"),            false},
+        {spelled(tmp, "system_frameworks"), true },
+        {spelled(tmp, "driver"),            false},
+        {spelled(tmp, "driver_frameworks"), true },
+    };
+    ZEXPECT(dirs == expected);
+    ZEXPECT(config.dirs[5].driver);
+}
+
+ZEST_CASE(FrameworkAndPlainDir) {
+    /// One directory searched for frameworks and for plain headers is two
+    /// entries, as in clang.
+    TempDir tmp;
+    std::vector<const char*> args =
+        {"clang++", "-I", tmp.c_path("lib"), "-F", tmp.c_path("lib"), "main.cpp"};
+    auto config = extract(args, tmp.root);
+    ZASSERT(config.dirs.size() == 2u);
+    ZEXPECT(!config.dirs[0].framework);
+    ZEXPECT(config.dirs[1].framework);
+}
+
+ZEST_CASE(LanguageSystemDirs) {
+    /// Each language searches its own of -c-isystem, -cxx-isystem,
+    /// -objc-isystem and -objcxx-isystem, after -isystem and before the
+    /// driver's own, whatever the command's order; Objective-C++ searches
+    /// -cxx-isystem's too.
+    TempDir tmp;
+    auto dirs_of = [&](const char* language) {
+        std::vector<const char*> args = {"clang++",
+                                         "-x",
+                                         language,
+                                         "-internal-isystem",
+                                         tmp.c_path("driver"),
+                                         "-objcxx-isystem",
+                                         tmp.c_path("objcxx"),
+                                         "-objc-isystem",
+                                         tmp.c_path("objc"),
+                                         "-cxx-isystem",
+                                         tmp.c_path("cxx"),
+                                         "-c-isystem",
+                                         tmp.c_path("c"),
+                                         "-isystem",
+                                         tmp.c_path("system"),
+                                         "main.cpp"};
+        return ranges::to<std::vector>(extract(args, tmp.root).dirs |
+                                       views::transform(&SearchDir::path));
+    };
+    auto spelled_all = [&](std::initializer_list<llvm::StringRef> names) {
+        return ranges::to<std::vector>(
+            names | views::transform([&](llvm::StringRef name) { return spelled(tmp, name); }));
+    };
+    ZEXPECT(dirs_of("c") == spelled_all({"system", "c", "driver"}));
+    ZEXPECT(dirs_of("c++") == spelled_all({"system", "cxx", "driver"}));
+    ZEXPECT(dirs_of("objective-c") == spelled_all({"system", "objc", "driver"}));
+    ZEXPECT(dirs_of("objective-c++") == spelled_all({"system", "cxx", "objcxx", "driver"}));
+}
+
+ZEST_CASE(WithSysroot) {
+    /// -iwithsysroot puts the sysroot before an absolute path, among the
+    /// -isystem directories in command order; -iframeworkwithsysroot does
+    /// so for a framework directory, after the -iframework ones.
+    TempDir tmp;
+    auto sysroot = tmp.path("sdk");
+    std::vector<const char*> args = {"clang++",
+                                     "-isysroot",
+                                     sysroot.c_str(),
+                                     "-iframeworkwithsysroot",
+                                     "/Frameworks",
+                                     "-iwithsysroot",
+                                     "/inc",
+                                     "-iframework",
+                                     tmp.c_path("frameworks"),
+                                     "-isystem",
+                                     tmp.c_path("system"),
+                                     "main.cpp"};
+    auto config = extract(args, tmp.root);
+    std::vector<std::pair<std::string, bool>> dirs;
+    for(auto& dir: config.dirs) {
+        dirs.emplace_back(dir.path, dir.framework);
+    }
+    std::vector<std::pair<std::string, bool>> expected = {
+        {spelled(tmp, "sdk/inc"),        false},
+        {spelled(tmp, "system"),         false},
+        {spelled(tmp, "frameworks"),     true },
+        {spelled(tmp, "sdk/Frameworks"), true },
+    };
+    ZEXPECT(dirs == expected);
 }
 
 };  // ZEST_SUITE(ExtractSearchConfig)

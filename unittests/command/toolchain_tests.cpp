@@ -410,8 +410,9 @@ ZEST_CASE(ResourceDirBecomesOurs) {
     // our tree and stays.
     auto driver = fake_clang(clang_job_of(
         R"("-cc1" "-triple" "x86_64-unknown-linux-gnu" "-resource-dir" "/clice-fake/lib/clang/22//" "-internal-isystem" "/clice-fake/lib/clang/22//include" "-fsanitize=address" "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22//share/asan_ignorelist.txt")"));
-    auto argv = f.resolve(
-        add("a.cpp", {driver.c_str(), "-include", "/clice-fake/lib/clang/22/include/stddef.h"}));
+    auto ref =
+        add("a.cpp", {driver.c_str(), "-include", "/clice-fake/lib/clang/22/include/stddef.h"});
+    auto argv = f.resolve(ref);
 
     ZEXPECT(adjacent(argv, "-resource-dir", resource_dir()));
     ZEXPECT(adjacent(argv, "-internal-isystem", path::join(resource_dir(), "include")));
@@ -419,6 +420,11 @@ ZEST_CASE(ResourceDirBecomesOurs) {
     ZEXPECT(contains(
         argv,
         "-fsanitize-system-ignorelist=/clice-fake/lib/clang/22//share/asan_ignorelist.txt"));
+
+    /// Include completion tells clice's builtin headers by this spelling.
+    auto builtin_headers = Spelling::absolute(path::join(resource_dir(), "include")).str();
+    ZEXPECT(
+        ranges::contains(f.toolchain.search_config(ref).dirs, builtin_headers, &SearchDir::path));
 }
 
 ZEST_CASE(OtherBuiltinHeadersStay) {
@@ -472,34 +478,21 @@ ZEST_CASE(AliasedBuiltinHeaders) {
     ZEXPECT(hidden.hides(path::join(theirs, "stddef.h")));
 }
 
-ZEST_CASE(MinGWKeepsResourceDir) {
-    // A matched LLVM-MinGW installation keeps the resource tree it derives
-    // (the query hands it none), also when warmed (the driver gone, only the
-    // warmed cache can resolve); another target's tree becomes ours.
-    tmp.mkdir("llvm-mingw/lib/clang/22/include");
-    auto external = tmp.path("llvm-mingw/lib/clang/22");
-    auto job = [&](llvm::StringRef triple) {
-        return clang_job_of(std::format(
-            R"("-cc1" "-triple" "{0}" "-resource-dir" "{1}" "-internal-isystem" "{1}/include")",
-            triple,
-            external));
-    };
-
-    auto mingw = fake_driver("x86_64-w64-mingw32-clang++",
-                             std::format(R"(case " $* " in *" -resource-dir "*) exit 1 ;; esac
-echo '{}' >&2
-)",
-                                         job("x86_64-w64-windows-gnu")));
-    auto ref = add("a.cpp", {mingw.c_str()});
-    llvm::SmallVector<CommandRef> refs = {ref};
-    f.toolchain.warm(refs);
-    ZASSERT(fs::remove(mingw));
-    auto argv = f.resolve(ref);
-    ZEXPECT(adjacent(argv, "-resource-dir", external));
-    ZEXPECT(!contains(argv, resource_dir()));
-
-    auto other = fake_clang(job("x86_64-unknown-linux-gnu"));
-    ZEXPECT(adjacent(f.resolve(add("b.cpp", {other.c_str()})), "-resource-dir", resource_dir()));
+ZEST_CASE(MinGWBuiltinHeaders) {
+    /// A MinGW clang's builtin headers give way to clice's like any other
+    /// clang's, theirs right behind: clang 20's beside clice's frontend
+    /// break <windows.h> in C++.
+    tmp.mkdir("llvm-mingw/lib/clang/20/include");
+    auto external = tmp.path("llvm-mingw/lib/clang/20");
+    auto driver = fake_clang(clang_job_of(
+        std::format(
+            R"("-cc1" "-triple" "x86_64-w64-windows-gnu" "-resource-dir" "{0}" "-internal-isystem" "{0}/include")",
+            external),
+        host_path("/usr/bin/clang-20")));
+    auto argv = f.resolve(add("a.cpp", {driver.c_str()}));
+    ZEXPECT(adjacent(argv, "-resource-dir", resource_dir()));
+    ZEXPECT(adjacent(argv, "-internal-isystem", path::join(resource_dir(), "include")));
+    ZEXPECT(adjacent(argv, "-internal-isystem", external + "/include"));
 }
 
 ZEST_CASE(ForeignBuiltinHeaders) {

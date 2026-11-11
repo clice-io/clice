@@ -3,7 +3,7 @@
 <!-- The cards in the sections below are generated from the documented cases
      in tests/inlay_hints/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 clice 为代码中未显式给出的信息渲染内联标注：调用处的参数名、推导出的类型、按位置进行聚合初始化时对应的字段名，以及右花括号或 `#endif` 所结束的结构。每种提示在 `[inlay_hints]` 配置节中都有各自的开关；下面各节会说明哪些提示默认关闭。
 

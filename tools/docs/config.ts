@@ -236,7 +236,7 @@ function main(argv: string[]): number {
         console.log(`updated ${DOC_PATH}`);
         return 0;
     }
-    console.error(`config docs: ${DOC_PATH} is stale; run 'docs/config.ts update'`);
+    console.error(`config docs: ${DOC_PATH} is stale; run 'pixi run docs-update'`);
     return 1;
 }
 

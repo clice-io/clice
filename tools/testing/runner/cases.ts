@@ -1,6 +1,6 @@
 /// Every case under tests/: each registered test a vitest test, and once
 /// they all ran, the case's output against its snap.toml, and a documented
-/// case's card against docs/cards. CLICE_CASES=<path prefix> runs the
+/// case's card written under docs/cards. CLICE_CASES=<path prefix> runs the
 /// cases under it, CLICE_CASES_SHARD=i/n one of n shards, CLICE_KEEP_LOGS=<dir>
 /// keeps the logs of the cases that fail.
 
@@ -10,7 +10,7 @@ import { runRegistered } from "@clice/tools/testing/cases/context";
 import { checkOutput, recorded, type Blocks } from "@clice/tools/testing/cases/output";
 import { CASES_DIR } from "@clice/tools/testing/cases/project";
 import { loadScript, type Registered } from "@clice/tools/testing/cases/script";
-import { checkCard } from "@clice/tools/testing/docs/cards";
+import { writeCard } from "@clice/tools/testing/docs/cards";
 import { dropKeptLogs } from "@clice/tools/testing/logs/logs";
 
 const prefix = process.env["CLICE_CASES"] ?? "";
@@ -71,7 +71,7 @@ for (const c of cases) {
                         : [],
                 ),
             );
-            checkCard(c, checkOutput(c, snapshot), configs);
+            writeCard(c, checkOutput(c, snapshot), configs);
             dropKeptLogs(c.id);
         });
     });

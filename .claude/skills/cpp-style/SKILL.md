@@ -104,6 +104,11 @@ defending against ghosts.
   crashes the server. But graceful degradation is not scattered null
   checks: per the redundancy rule, defend only against states that can
   occur. The Debug (ASan + assertions) test surface is the safety net.
+- A gap a real workflow can reach that the maintainer accepted rather
+  than fixed lives in the code, not on the board: `// LIMITATION:` where a
+  fix would go, saying what goes wrong and who reaches it. `FIXME` is for
+  what is still to be fixed. When a user hits a limitation, it becomes an
+  issue again.
 
 ## Error Handling (control flow)
 

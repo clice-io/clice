@@ -14,13 +14,13 @@ Language Server Protocol features available when using clice as an editor backen
 
 <!-- The status matrix counts the documented cases each feature page shows,
      in the order of the sidebar. Do not edit the region between the
-     GENERATED markers by hand — run `pixi run update-feature-docs`. -->
+     GENERATED markers by hand — run `pixi run docs-update`. -->
 
 <!-- BEGIN GENERATED OVERVIEW -->
 
 | Feature                                   | Status                                   |
 | ----------------------------------------- | ---------------------------------------- |
-| [Code Completion](./completion.md)        | 49 supported                             |
+| [Code Completion](./completion.md)        | 52 supported                             |
 | [Hover](./hover.md)                       | 72 supported                             |
 | [Signature Help](./signature-help.md)     | 21 supported · 1 partial · 2 unsupported |
 | [Code Navigation](./navigation.md)        | 115 supported · 8 unsupported            |

@@ -5,7 +5,7 @@ Candidates for what is being typed: names, members, calls, headers and modules.
 <!-- The cards in the sections below are generated from the documented cases
      in tests/code_completion/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 ## Symbols
 
@@ -460,7 +460,7 @@ tests/code_completion/directives/01_directive_names
 
 ## Include Paths
 
-After `#include`, header names complete: a quoted one from the includer's own directory first, then from the include directories, the system's last. Only files that look like headers are candidates: header extensions everywhere, extensionless files in system directories and other places such headers live.
+After `#include`, header names complete. A typed name matches a whole name first, then a prefix, then words of a name (`view` finds `string_view`); names that match alike list a quoted one's from the includer's own directory first, then from the include directories, the system's last. Files that look like headers come before the others: header extensions everywhere, extensionless files in system directories and other places such headers live; a source or text file, and a builtin header of clang's that must not be included directly (`<avxintrin.h>`), follow. A framework directory offers its frameworks, and past one their headers.
 
 <!-- BEGIN GENERATED ITEMS: code_completion/include_path_completion -->
 
@@ -518,7 +518,7 @@ tests/code_completion/include_path_completion/04_sibling_headers
 
 **Nearest headers first**
 
-Header names list the includer's directory first, then the quoted include directories, the others in order, the system's last; a name two directories hold is listed once, from the first
+Header names that match alike list the includer's directory first, then the quoted include directories, the others in order, the system's last; a name two directories hold is listed once, from the first
 
 ```case
 tests/code_completion/include_path_completion/09_header_order
@@ -538,11 +538,35 @@ tests/code_completion/include_path_completion/11_reserved_names
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Framework headers**
+
+In a framework directory (`-F`, `-iframework`, the SDK's on macOS) the frameworks complete as directories, and past one their headers: `<Foo/Bar.h>` is `Foo.framework/Headers/Bar.h`
+
+```case
+tests/code_completion/include_path_completion/13_frameworks
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Words of names**
+
+A typed name matches a whole name first, then a prefix, then the words of a name, ahead of the order of the directories: `wsnap_view` lists the system's `wsnap_view`, then `wsnap_viewport.h`, then `old_wsnap_view.h`
+
+```case
+tests/code_completion/include_path_completion/14_name_words
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Module Import
 
-After `import` or `export import`, module names complete: the unit's own partitions first, then the modules whose interface lies nearest the file.
+After `import` or `export import`, module names complete. A typed name matches a whole name first, then a prefix, then words of a name (`compat` finds `app.compat`); names that match alike list the unit's own partitions first, then the modules whose interface lies nearest the file.
 
 <!-- BEGIN GENERATED ITEMS: code_completion/modules -->
 
@@ -606,6 +630,18 @@ A module offered after `import` shows the comment above its interface unit's mod
 
 ```case
 tests/code_completion/modules/14_module_documentation
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Words of module names**
+
+A typed name matches a whole module name first, then a prefix, then the words of a name, ahead of where the interface lies: `compat` lists the distant `compat`, then the nearby `compat_legacy` and `app.compat`
+
+```case
+tests/code_completion/modules/15_name_words
 ```
 
 <!-- END CAPABILITY -->

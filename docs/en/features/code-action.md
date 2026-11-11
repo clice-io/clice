@@ -3,7 +3,7 @@
 <!-- The cards in the sections below are generated from the documented cases
      in tests/code_actions/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 clice offers code actions on a selection: refactorings that generate or reshape code from what the compiler knows about it, quick fixes for names no header declares, and the fixes the compiler and clang-tidy attach to their diagnostics. Every action is computed to completion when it is offered, so applying one never waits on a second request; edits carry the document version they were computed for, and an editor refuses them once the buffer moved on. The same actions run headless through `clice inspect code-action`.
 

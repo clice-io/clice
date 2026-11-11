@@ -14,7 +14,7 @@ CUDA 和 HIP 文件编译的是设备端，因为 Clang 先运行这一步。Ope
 
 <!-- The status matrix counts the documented cases each feature page shows,
      in the order of the sidebar. Do not edit the region between the
-     GENERATED markers by hand — run `pixi run update-feature-docs`. -->
+     GENERATED markers by hand — run `pixi run docs-update`. -->
 
 <!-- BEGIN GENERATED OVERVIEW -->
 

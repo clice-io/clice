@@ -1,10 +1,10 @@
 module clice;
 
+import :compile.compilation;
 import :feature.code_actions.action;
 import :feature.code_actions;
-import :feature.code_completion.item;
-import :feature.code_completion.names;
-import :feature.code_completion.whole_buffer;
+import :feature.code_completion.cursor;
+import :feature.code_completion.typed_names;
 import :feature.code_completion;
 import :feature.documentation;
 import :index.search;
@@ -14,12 +14,252 @@ import :semantic.identity;
 import :semantic.template_resolver;
 import :support.fuzzy_matcher;
 import :support.markup;
-import :syntax.completion;
 import :syntax.lexer;
 
 namespace clice::feature {
 
 namespace {
+
+/// The `import` declaration a unit of the module `unit` (`name` or
+/// `name:partition`, empty outside a named module) needs to reach what the
+/// module `module` exports; none when the unit is that module. The compile
+/// adds an item's `import` itself, while its `#include` waits for the
+/// server (finish_completion).
+auto import_for(llvm::StringRef module, llvm::StringRef unit) -> std::optional<std::string> {
+    auto [primary, partition] = module.split(':');
+    if(primary != unit.split(':').first) {
+        return std::format("import {};\n", primary);
+    }
+    if(!partition.empty() && module != unit) {
+        return std::format("import :{};\n", partition);
+    }
+    return std::nullopt;
+}
+
+/// The dependent expression at the completion point, in the innermost
+/// function holding it (AtPoint).
+struct AtPointFinder : clang::RecursiveASTVisitor<AtPointFinder> {
+    AtPointFinder(CompilationUnit& unit, std::uint32_t target) : unit(unit), target(target) {}
+
+    bool at(clang::SourceLocation loc) {
+        return unit.focus_file().offset(loc) == target;
+    }
+
+    bool holds(const clang::Stmt* body) {
+        if(!body) {
+            return false;
+        }
+        auto begin = unit.focus_file().offset(body->getBeginLoc());
+        return begin && *begin <= target && target <= unit.seen_at(body->getEndLoc()).offset;
+    }
+
+    bool VisitFunctionDecl(clang::FunctionDecl* function) {
+        if(holds(function->getBody())) {
+            context = function;
+        }
+        return true;
+    }
+
+    bool VisitLambdaExpr(clang::LambdaExpr* lambda) {
+        if(holds(lambda->getBody())) {
+            context = lambda->getCallOperator();
+        }
+        return true;
+    }
+
+    bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* access) {
+        if(at(access->getMemberLoc())) {
+            member = access;
+        }
+        return !found();
+    }
+
+    bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* name) {
+        if(at(name->getLocation())) {
+            qualifier = name->getQualifierLoc();
+        }
+        return !found();
+    }
+
+    bool VisitDependentNameTypeLoc(clang::DependentNameTypeLoc name) {
+        if(at(name.getNameLoc())) {
+            qualifier = name.getQualifierLoc();
+        }
+        return !found();
+    }
+
+    bool found() const {
+        return member || qualifier;
+    }
+
+    CompilationUnit& unit;
+
+    std::uint32_t target;
+
+    clang::FunctionDecl* context = nullptr;
+
+    clang::CXXDependentScopeMemberExpr* member = nullptr;
+
+    clang::NestedNameSpecifierLoc qualifier;
+};
+
+/// The dependent expression at the completion point as the whole buffer's
+/// compile parses it, in the innermost function holding it.
+struct AtPoint {
+    CompilationUnit& unit;
+
+    clang::FunctionDecl* context = nullptr;
+
+    clang::CXXDependentScopeMemberExpr* member = nullptr;
+
+    /// Of a name a dependent scope qualifies, in an expression or a type.
+    clang::NestedNameSpecifierLoc qualifier;
+};
+
+/// A second compile of the whole buffer a completion runs on, for what only
+/// the code after the completion point tells. Its parse reads a name at the
+/// point, where there may be none yet, so that the expression there parses
+/// whole. Run at most once, when asked.
+class WholeBuffer {
+public:
+    explicit WholeBuffer(const CompilationParams& completion);
+
+    /// The expression at the point, the template `templated` around it
+    /// instantiated as the code after the point first does: the compile
+    /// skips the focus file's function bodies but those that may instantiate
+    /// it, and stops at the call that does (CompilationParams::Instantiating).
+    /// For the variable of a range-based `for`, `loop`, the statement there
+    /// alone tells. None when nothing after the point calls the template, as
+    /// `completion` has the macros before it, when the compile did not
+    /// complete and when nothing dependent stands at the point.
+    auto instantiated(const clang::NamedDecl* templated, bool loop, CompilationUnit& completion)
+        -> std::optional<AtPoint>;
+
+    /// The compile once it completed; null before.
+    CompilationUnit* unit();
+
+private:
+    /// Whether the code after the point spells `name`, or a macro whose
+    /// expansion does.
+    bool called_after(llvm::StringRef name, clang::Preprocessor& pp);
+
+private:
+    CompilationInput input;
+
+    std::uint32_t point;
+
+    /// Where the name its parse reads at the point starts.
+    std::uint32_t target = 0;
+
+    std::shared_ptr<std::atomic_bool> stop;
+
+    std::unique_ptr<CompilationUnit> compiled;
+};
+
+WholeBuffer::WholeBuffer(const CompilationParams& completion) :
+    input(completion.input), point(completion.completion.offset), stop(completion.stop) {
+    auto& text = input.buffers.find(input.focus)->second;
+    auto whole = Prefix::from(text, point).whole;
+    target = whole.begin;
+    if(whole.length() == 0) {
+        text.insert(point, " __clice_completion");
+        target = point + 1;
+    }
+}
+
+auto WholeBuffer::instantiated(const clang::NamedDecl* templated,
+                               bool loop,
+                               CompilationUnit& completion) -> std::optional<AtPoint> {
+    if(!compiled) {
+        // The resolver binds no class template's parameters through its
+        // instantiations: a member of one learns nothing more here, but for
+        // the statement at the point.
+        bool member = llvm::isa<clang::CXXRecordDecl>(templated);
+        if(member && !loop) {
+            return std::nullopt;
+        }
+        // A call after the point names the template it calls, a constructor
+        // its class; one nothing calls yet goes without the compile. A lambda
+        // in a function is called in the body holding the point; any body may
+        // call an operator, a conversion or a lambda elsewhere.
+        std::optional<llvm::StringSet<>> names;
+        const auto* named = templated;
+        if(auto* constructor = llvm::dyn_cast<clang::CXXConstructorDecl>(templated)) {
+            named = constructor->getParent();
+        }
+        auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(templated);
+        if(auto* name = named->getIdentifier()) {
+            if(!loop && !called_after(name->getName(), completion.sema().getPreprocessor())) {
+                return std::nullopt;
+            }
+            names.emplace().insert(name->getName());
+        } else if(method && method->getParent()->isLambda() &&
+                  method->getParent()->getParentFunctionOrMethod()) {
+            names.emplace();
+        }
+        std::optional<std::uint32_t> declared;
+        if(!member) {
+            declared = completion.produced_at(templated->getLocation()).offset;
+        }
+        compiled = compile({
+            .kind = CompilationKind::Content,
+            .input = input,
+            .instantiating =
+                CompilationParams::Instantiating{
+                                                 .point = point,
+                                                 .names = std::move(names),
+                                                 .templated = declared,
+                                                 },
+            .stop = stop,
+        });
+    }
+    auto* whole = unit();
+    if(!whole) {
+        return std::nullopt;
+    }
+    AtPointFinder finder(*whole, target);
+    for(auto* decl: whole->top_level_decls()) {
+        if(!finder.TraverseDecl(decl)) {
+            break;
+        }
+    }
+    if(!finder.found() || !finder.context) {
+        return std::nullopt;
+    }
+    return AtPoint{
+        .unit = *whole,
+        .context = finder.context,
+        .member = finder.member,
+        .qualifier = finder.qualifier,
+    };
+}
+
+bool WholeBuffer::called_after(llvm::StringRef name, clang::Preprocessor& pp) {
+    auto& text = input.buffers.find(input.focus)->second;
+    clang::Lexer lexer({},
+                       pp.getLangOpts(),
+                       text.data(),
+                       text.data() + point,
+                       text.data() + text.size());
+    auto spells = [&](llvm::StringRef word) {
+        return word == name;
+    };
+    llvm::DenseMap<const clang::MacroInfo*, bool> read;
+    clang::Token token;
+    for(bool end = false; !end;) {
+        end = lexer.LexFromRawLexer(token);
+        if(token.is(clang::tok::raw_identifier) &&
+           (spells(token.getRawIdentifier()) ||
+            macro_spells(pp, token.getRawIdentifier(), spells, read))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+CompilationUnit* WholeBuffer::unit() {
+    return compiled && compiled->completed() ? compiled.get() : nullptr;
+}
 
 auto completion_kind(const clang::NamedDecl* decl) -> protocol::CompletionItemKind {
     if(auto* function = llvm::dyn_cast<clang::FunctionTemplateDecl>(decl)) {
@@ -828,9 +1068,9 @@ public:
             bool& more_names) :
         clang::CodeCompleteConsumer(sema_options(options)), unit(unit), focus(unit.focus_file()),
         text(focus.content()), offset(offset), encoding(encoding), output(output),
-        documented(documented), options(options), argument_style(options.arguments), client(client),
-        names(names), whole_buffer(whole_buffer), includes_pending(includes_pending),
-        more_names(more_names), info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
+        documented(documented), options(options), client(client), names(names),
+        whole_buffer(whole_buffer), includes_pending(includes_pending), more_names(more_names),
+        info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
         // Sema asks first thing in a completion, before it reads any name.
@@ -839,7 +1079,7 @@ public:
         if(whole_buffer && !typed_names_open) {
             typed_names_open = true;
             if(auto typed = Prefix::from(text, offset).spelling; !typed.empty()) {
-                typed_names = TypedNames::open(unit.sema(), typed, scope_candidate_limit);
+                typed_names = TypedNames::open(unit.sema(), typed);
             }
         }
         return info.getAllocator();
@@ -1459,7 +1699,7 @@ public:
         auto insert_call =
             [&](Candidate& item, const clang::CodeCompletionString& ccs, bool called_here) {
                 if(arguments_follow(llvm::isa_and_present<clang::TemplateDecl>(item.documented)) ||
-                   !called_here || argument_style == CompletionArguments::None) {
+                   !called_here || options.arguments == CompletionArguments::None) {
                     return;
                 }
                 auto complete = item.label + "()";
@@ -1473,7 +1713,7 @@ public:
                 auto snippet = build_snippet(ccs);
                 if(snippet.empty()) {
                     item.insert = std::move(complete);
-                } else if(argument_style == CompletionArguments::Placeholders) {
+                } else if(options.arguments == CompletionArguments::Placeholders) {
                     item.insert = std::move(snippet);
                     item.snippet = true;
                 } else {
@@ -1623,7 +1863,7 @@ public:
                             preferred.isNull() ||
                                 (!result.isNull() && !preferred->isDependentType() &&
                                  initializes(sema.getASTContext(), result, preferred)));
-            } else if(argument_style != CompletionArguments::None && client.snippets &&
+            } else if(options.arguments != CompletionArguments::None && client.snippets &&
                       !arguments_follow(true) && !context.isUsingDeclaration() &&
                       llvm::isa<clang::ClassTemplateDecl,
                                 clang::TypeAliasTemplateDecl,
@@ -1633,7 +1873,7 @@ public:
                 // name alone does not name a type.
                 if(snippet.empty()) {
                     item.insert = item.label + "<>";
-                } else if(argument_style == CompletionArguments::Placeholders) {
+                } else if(options.arguments == CompletionArguments::Placeholders) {
                     item.insert = std::move(snippet);
                     item.snippet = true;
                 } else {
@@ -2015,7 +2255,7 @@ public:
             scan(ast.getTranslationUnitDecl());
 
             auto import_at = action::import_insertion(content, sema.getLangOpts());
-            llvm::StringRef own = module ? module->getPrimaryModuleInterfaceName() : "";
+            llvm::StringRef own = module ? module->getTopLevelModuleName() : "";
             // As qualified lookup finds them: through the inline and the
             // anonymous namespaces in the scope too.
             auto visible = [&](clang::DeclContext* scope, llvm::StringRef name) {
@@ -2117,16 +2357,13 @@ public:
                    (imported && !named_module && !imports)) {
                     continue;
                 }
-                std::string import;
+                std::optional<std::string> import;
                 if(imported) {
-                    auto name = candidate.module.empty() ? llvm::StringRef("std")
-                                                         : llvm::StringRef(candidate.module);
-                    auto [primary, partition] = name.split(':');
-                    if(primary != own) {
-                        import = std::format("import {};\n", primary);
-                    } else if(!partition.empty() && candidate.module != module->Name) {
-                        import = std::format("import :{};\n", partition);
-                    } else {
+                    import =
+                        import_for(candidate.module.empty() ? llvm::StringRef("std")
+                                                            : llvm::StringRef(candidate.module),
+                                   own);
+                    if(!import) {
                         continue;
                     }
                 }
@@ -2160,7 +2397,7 @@ public:
                     item.bundle = item.label;
                 }
                 // Not knowing the parameters, a call takes its parentheses.
-                if(argument_style != CompletionArguments::None &&
+                if(options.arguments != CompletionArguments::None &&
                    !arguments_follow(candidate.is_template)) {
                     if(function && !expects_function(context.getPreferredType())) {
                         item.insert = client.snippets ? escape_snippet(item.label) + "($0)"
@@ -2176,7 +2413,7 @@ public:
                 if(imported) {
                     item.edits.push_back({
                         .range = {import_at, import_at},
-                        .text = std::move(import)
+                        .text = std::move(*import)
                     });
                 } else {
                     item.include = candidate.symbol;
@@ -2324,8 +2561,6 @@ private:
 
     const CodeCompletionOptions& options;
 
-    CompletionArguments argument_style;
-
     const CompletionClient& client;
 
     const CompileCompletion& names;
@@ -2439,8 +2674,9 @@ auto code_complete(CompilationParams params,
         };
     }
 
-    Completion completion{.list = completion_list(std::move(items), limit)};
-    completion.list.is_incomplete = completion.list.is_incomplete || cut || more_names;
+    Completion completion{
+        .list = {.is_incomplete = cut || more_names, .items = std::move(items)},
+    };
     if(includes) {
         auto insertion = action::include_insertion(*unit);
         if(auto position = unit->focus_file().positions().position(insertion.offset, encoding)) {

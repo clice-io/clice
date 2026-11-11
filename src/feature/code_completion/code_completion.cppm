@@ -2,16 +2,16 @@ module clice:feature.code_completion;
 
 import :command.search_config;
 import :compile.compilation;
+import :feature.code_completion.cursor;
 import :feature.documentation;
 import :index.query;
 import :support.json;
 import :support.prelude;
-import :syntax.completion;
 import :syntax.dependency_graph;
 import :syntax.position;
 import :syntax.scan;
+import :syntax.source_text;
 import :vfs.dir_cache;
-import :vfs.file_table;
 import :vfs.ids;
 
 namespace clice::feature {
@@ -97,8 +97,10 @@ struct CodeCompletionOptions {
     std::uint32_t limit = 100;
 };
 
-/// What the client takes from a completion item, from its completion
-/// capabilities.
+/// What the editor's completion supports, read once from the LSP
+/// capabilities it sends at the handshake (`completionItem.snippetSupport`,
+/// `insertReplaceSupport`, `documentationFormat`), whose nested optionals
+/// the completion and the worker computing it need not read again.
 struct CompletionClient {
     /// Insert texts may carry placeholders.
     bool snippets = false;
@@ -167,10 +169,6 @@ struct Completion {
 /// other scopes the index offers for the name typed (ScopeCandidate), and
 /// whether it holds more of them.
 struct CompileCompletion {
-    /// The name typed before the point, whose candidates offer_names takes;
-    /// none before its first character, in a number and in a directive.
-    std::optional<std::string> prefix;
-
     std::vector<ScopeCandidate> candidates;
     bool more_candidates = false;
 };
@@ -179,32 +177,20 @@ struct CompileCompletion {
 /// Sema reads the names the typed one matches where it lists names
 /// (TypedNames), and all of them where nothing is typed yet.
 auto code_complete(CompilationParams params,
-                   const CodeCompletionOptions& options = {},
-                   const DocumentationOptions& documentation = {},
-                   const CompletionClient& client = {},
+                   const CodeCompletionOptions& options,
+                   const DocumentationOptions& documentation,
+                   const CompletionClient& client,
                    PositionEncoding encoding = PositionEncoding::UTF16,
                    const CompileCompletion& names = {}) -> Completion;
-
-/// The reply listing `items` under `code_completion.limit`: the best ranked
-/// stay, ties by label, and a list cut short is marked incomplete.
-auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
-    -> protocol::CompletionList;
 
 /// The most names one completion takes from the index (ScopeCandidate), and
 /// reads of the files its compile loads where a name is typed (TypedNames).
 constexpr inline std::size_t scope_candidate_limit = 100;
 
-/// The project's names the index offers for the name `compile` types
-/// (ScopeCandidate), with whether it holds more: those the file reaches,
-/// and those it reaches once it includes or imports what declares them.
-void offer_names(const index::IndexQuery& query,
-                 const DependencyGraph& graph,
-                 CompileCompletion& compile);
-
 /// A completion's reply finished (Completion): an item naming what the
 /// file does not include yet takes the `#include` of the header declaring
-/// it, at `include`; one whose header is unknown goes. The
-/// list is then cut to `limit`.
+/// it, at `include`; one whose header is unknown goes. The list is then cut
+/// to `limit`.
 auto finish_completion(protocol::CompletionList list,
                        const IncludePlace& include,
                        llvm::ArrayRef<ScopeCandidate> candidates,
@@ -212,8 +198,78 @@ auto finish_completion(protocol::CompletionList list,
                        const DependencyGraph& graph,
                        Fid file,
                        const SearchConfig& search,
-                       vfs::Scope& scope,
                        std::uint32_t limit) -> protocol::CompletionList;
+
+/// The buffer of an open translation unit, which may declare another module
+/// than the graph knows until the file is saved, or one where the graph
+/// knows none.
+struct OpenUnit {
+    Fid file;
+    llvm::StringRef text;
+};
+
+/// A completion request as the server has it before any compile.
+struct CompletionInputs {
+    /// The file completed in and its text, read in the file's dialect.
+    Fid file;
+    SourceText& source;
+
+    /// The request, its positions in `encoding`, the one the client and the
+    /// server agreed on.
+    const protocol::CompletionParams& params;
+    PositionEncoding encoding;
+
+    const CodeCompletionOptions& options;
+    const CompletionClient& client;
+
+    /// The project: the dependency graph names the modules.
+    const DependencyGraph& graph;
+
+    /// The header search of the file's command, asked only where an
+    /// include path is completed.
+    llvm::function_ref<SearchConfig()> search;
+
+    /// The module declaration of the text given, read by the preprocessor
+    /// under the file's command: asked where an import is completed below
+    /// a declaration a conditional holds.
+    llvm::function_ref<ScanResult(llvm::StringRef)> declared_module;
+
+    /// The buffers of the project's other open translation units, asked
+    /// where a module name is completed.
+    llvm::function_ref<std::vector<OpenUnit>()> open_units;
+
+    /// The project's index: the names it offers a compile, the
+    /// documentation of the modules a module name completes with.
+    const index::IndexQuery& query;
+    const DocumentationOptions& documentation;
+};
+
+/// A trigger character opened nothing to complete: the client gets no
+/// items.
+struct NoCompletion {};
+
+/// The completion at a point, as far as the server answers it alone. A
+/// client without request-side gating (nvim, zed) forwards every keystroke
+/// of an advertised trigger character: space is advertised only so that
+/// `import ` opens module suggestions, the others for include paths and
+/// member or scope access, and any other use of them completes nothing. A
+/// directive name, an include path and a module name are completed here;
+/// other code by a compile, given the index's names for the name typed:
+/// those the file reaches, and those it reaches once it includes or imports
+/// what declares them.
+auto code_complete(const CompletionInputs& inputs)
+    -> std::variant<NoCompletion, protocol::CompletionList, CompileCompletion>;
+
+/// The directives a directive name being typed (`completing`) may name,
+/// as a compile's completion offers them: `#elif`, `#else` and `#endif`
+/// inside a conditional block (CompletionName::conditional). A directive's
+/// arguments come as placeholders with statement snippets.
+auto directive_completion(const CompletionName& completing,
+                          const PositionMap& map,
+                          PositionEncoding encoding,
+                          const clang::LangOptions& dialect,
+                          const CodeCompletionOptions& options,
+                          const CompletionClient& client) -> protocol::CompletionList;
 
 /// The paths an `#include` being typed (`completing`) may go on with in
 /// `text`, the file at `path`, as `search` finds them: a directory leaves
@@ -227,76 +283,64 @@ auto include_completion(const CompletionName& completing,
                         vfs::Scope& scope,
                         std::uint32_t limit) -> protocol::CompletionList;
 
-/// The directives a directive name being typed (`completing`) may name,
-/// as a compile's completion offers them: `#elif`, `#else` and `#endif`
-/// inside a conditional block (CompletionName::conditional). A directive's
-/// arguments come as placeholders with statement snippets.
-auto directive_completion(const CompletionName& completing,
-                          const PositionMap& map,
-                          PositionEncoding encoding,
-                          const clang::LangOptions& dialect,
-                          const CodeCompletionOptions& options,
-                          const CompletionClient& client) -> protocol::CompletionList;
+/// The modules an `import` or a module declaration being typed
+/// (`completing`) may name, each with its documentation: the better the
+/// name typed matches, the earlier; then the unit's own partitions first,
+/// then the modules whose interface lies nearest the file — the fewest
+/// directories up from it to one holding the interface.
+/// The other open units provide what their buffers declare, the file what
+/// its text does.
+auto module_completion(const CompletionName& completing, const CompletionInputs& inputs)
+    -> protocol::CompletionList;
 
-/// A completion request as the server has it before any compile.
-struct CompletionInputs {
-    /// The file completed in, its path and text, and the point completed at
-    /// in the client's encoding.
-    Fid file;
-    llvm::StringRef path;
-    llvm::StringRef text;
-    const PositionMap& positions;
-    protocol::Position position;
-    PositionEncoding encoding;
+/// Completion items rank alike wherever they come from: a compile's
+/// candidates, the directives, the include paths and the module names.
+///
+/// How strongly the context asks for a candidate, apart from how its name
+/// matches: clang's priority — locals before members before the rest, a
+/// type the context expects ahead of all, macros last — as a factor around
+/// 1, the priority of a keyword.
+inline float priority_weight(unsigned priority) {
+    return std::max(0.05F, (90.0F - static_cast<float>(priority)) / 50.0F);
+}
 
-    /// The character whose typing asked; empty for a request the user made.
-    llvm::StringRef trigger_character;
+/// Ascending sort text for a candidate scoring `score`, at most 8; `order`
+/// breaks ties.
+inline std::string sort_text(float score, std::optional<std::uint32_t> order) {
+    auto text = std::format("{:.4f}", 8.0F - score);
+    if(order) {
+        text += std::format("{:05}", *order);
+    }
+    return text;
+}
 
-    /// The dialect the file is lexed in.
-    const clang::LangOptions& dialect;
+/// The reply listing `items` under `code_completion.limit`: the best ranked
+/// stay, ties by label, and a list cut short is marked incomplete.
+inline auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
+    -> protocol::CompletionList {
+    protocol::CompletionList list{.is_incomplete = false, .items = std::move(items)};
+    if(limit != 0 && list.items.size() > limit) {
+        ranges::sort(list.items, {}, [](const protocol::CompletionItem& item) {
+            return std::tie(static_cast<const std::optional<std::string>&>(item.sort_text),
+                            item.label);
+        });
+        list.items.resize(limit);
+        list.is_incomplete = true;
+    }
+    return list;
+}
 
-    const CodeCompletionOptions& options;
-    const CompletionClient& client;
-
-    /// The project: the dependency graph names the modules.
-    const DependencyGraph& graph;
-    FileTable& files;
-
-    /// The header search of the file's command, asked only where an
-    /// include path is completed.
-    llvm::function_ref<SearchConfig()> search;
-
-    /// The module declaration of the text given, read by the preprocessor
-    /// under the file's command: asked where an import is completed below
-    /// a declaration a conditional holds.
-    llvm::function_ref<ScanResult(llvm::StringRef)> declared_module;
-
-    /// The modules the other open units' buffers declare, asked where a
-    /// module name is completed.
-    llvm::function_ref<std::vector<OpenModule>()> open_modules;
-    vfs::Scope& scope;
-
-    /// The project's index, which documents the modules a module name
-    /// completes with.
-    const index::IndexQuery& query;
-    const DocumentationOptions& documentation;
-};
-
-/// A trigger character opened nothing to complete: the client gets no
-/// items.
-struct NoCompletion {};
-
-/// How a completion request is answered: not at all, before any compile,
-/// or by a compile of the code.
-using CompletionStart = std::variant<NoCompletion, protocol::CompletionList, CompileCompletion>;
-
-/// The completion at a point, as far as the server answers it alone. A
-/// client without request-side gating (nvim, zed) forwards every keystroke
-/// of an advertised trigger character: space is advertised only so that
-/// `import ` opens module suggestions, the others for include paths and
-/// member or scope access, and any other use of them completes nothing. A
-/// directive name, an include path and a module name are completed here;
-/// other code by a compile, which offer_names gives the index's names.
-auto start_completion(const CompletionInputs& inputs) -> CompletionStart;
+/// Text a snippet takes literally: `$` and `\` would otherwise start or
+/// escape a snippet construct, and inside a placeholder `}` would end it.
+inline auto escape_snippet(llvm::StringRef text, bool placeholder = false) -> std::string {
+    std::string escaped;
+    for(char c: text) {
+        if(c == '$' || c == '\\' || (placeholder && c == '}')) {
+            escaped += '\\';
+        }
+        escaped += c;
+    }
+    return escaped;
+}
 
 }  // namespace clice::feature

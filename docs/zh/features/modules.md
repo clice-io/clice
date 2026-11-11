@@ -5,7 +5,7 @@ clice 会在文件打开时构建该文件导入的模块，因此模块单元�
 <!-- The cards in the sections below are generated from the documented cases
      in tests/modules/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 ## 导入
 

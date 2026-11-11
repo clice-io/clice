@@ -40,6 +40,10 @@ on:
       compat:
         type: boolean
         default: false
+      # Uploads the documented cases' cards, as cards-<shard>.
+      cards:
+        type: boolean
+        default: false
       # CLICE_TEST_JITTER for the suites: random delays of up to this many
       # milliseconds where the server's own work races a test's actions.
       jitter:
@@ -267,6 +271,15 @@ jobs:
           CLICE_TEST_JITTER: ${{ inputs.jitter }}
           CLICE_KEEP_LOGS: ${{ runner.temp }}/case-logs
         run: pixi run -e test-run cases-test ${{ inputs.build_type }} ${{ matrix.shard }}/${{ strategy.job-total }}
+
+      - name: Upload the cards
+        if: inputs.cards
+        uses: actions/upload-artifact@v7
+        with:
+          name: cards-${{ matrix.shard }}
+          path: docs/cards
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Upload the logs of failed cases
         if: failure()

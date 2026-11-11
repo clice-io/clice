@@ -3,7 +3,7 @@
 <!-- The cards in the sections below are generated from the documented cases
      in tests/semantic_tokens/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
-     `pixi run update-feature-docs`. -->
+     `pixi run docs-update`. -->
 
 clice 为文档中的每个 Token 着色：名称按其声明或指代的实体着色，关键字、字面量、注释、运算符和指令按其写法着色。它使用一套为 C 和 C++ 设计的自有词汇，而不是标准 LSP 的那一套：类型别名、模板类型参数和非类型模板参数是三种不同的种类，`controlFlow` 这样的修饰符则表明关键字、函数或宏如何影响控制流。clice 的 VS Code 和 Neovim 扩展能为这一切着色；其他编辑器只为它们认识的名称着色，可以通过配置把 clice 的名称改成这些名称。
 

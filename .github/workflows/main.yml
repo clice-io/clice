@@ -39,8 +39,12 @@ jobs:
             format:
               - '**/*.{h,c,cc,cpp,cppm,hpp,py,ts,js,mjs,css,lua,md,yml,yaml,json,toml}'
               - '**/.clang-{format,tidy}'
+            # What the site draws: the pages, and the cards the cases and
+            # their tools make.
             docs:
               - 'docs/**'
+              - 'tests/**'
+              - 'tools/testing/**'
             vscode:
               - 'editors/vscode/**'
               - '.github/workflows/publish-vscode.yml'
@@ -95,19 +99,31 @@ jobs:
     with:
       format: ${{ needs.changes.outputs.format == 'true' }}
 
-  # Builds the site with this PR's pages, as docs.yml will after the merge: a
-  # page that reads fine on GitHub can still fail VitePress (`{{` in inline
-  # code is a Vue interpolation). Its own job, since the action switches node.
-  docs-check:
-    needs: changes
-    if: ${{ needs.changes.outputs.docs == 'true' && github.event_name == 'pull_request' }}
+  # Builds the site with this PR's pages and cards, as docs.yml will after
+  # the merge: a page that reads fine on GitHub can still fail VitePress (`{{`
+  # in inline code is a Vue interpolation), and so can a card. The cards come
+  # from this run's tests, or from main's when it runs none. Its own job,
+  # since the action switches node.
+  docs-site:
+    needs: [changes, test]
+    if: ${{ always() && github.event_name == 'pull_request' && needs.changes.outputs.docs == 'true' && contains(fromJSON('["success", "skipped"]'), needs.test.result) }}
     permissions:
       contents: read
+      actions: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Download this run's cards
+        if: ${{ needs.test.result == 'success' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: docs-cards
+          path: docs/cards
+      - name: Download main's cards
+        if: ${{ needs.test.result == 'skipped' }}
+        uses: ./.github/actions/download-cards
       - uses: clice-io/docs@main
         with:
           project: clice
@@ -212,7 +228,7 @@ jobs:
     needs:
       - changes
       - lint
-      - docs-check
+      - docs-site
       - vscode
       - zed
       - test
@@ -224,6 +240,6 @@ jobs:
         uses: re-actors/alls-green@v1.2.2
         with:
           allowed-skips: >-
-            lint,docs-check,vscode,zed,
+            lint,docs-site,vscode,zed,
             test,instant-vscode
           jobs: ${{ toJSON(needs) }}

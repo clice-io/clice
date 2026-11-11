@@ -290,8 +290,8 @@ struct SelectedCommand {
     /// The file the host's command forces in that the compile enters the
     /// header through, where the chain starts — the header itself when the
     /// command forces it in; invalid for a chain from the host's text. The
-    /// header's compile leaves out that -include and the ones after it,
-    /// which the host's compile enters after the header.
+    /// header's compile leaves out that forced file and the ones clang
+    /// enters after it, which the host's compile enters after the header.
     Fid forced;
 
     /// Where the host's compile enters the header; none while its include

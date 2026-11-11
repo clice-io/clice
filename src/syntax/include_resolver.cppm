@@ -23,6 +23,7 @@ struct ResolveResult {
 struct ResolvedSearchDir {
     llvm::StringRef path;
     const vfs::Listing* listing;  // Never null after resolve_search_config().
+    bool framework = false;
 };
 
 /// Pre-resolved version of SearchConfig — all directory lookups are resolved

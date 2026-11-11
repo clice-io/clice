@@ -387,6 +387,102 @@ ZEST_CASE(NormalizationMatchesVolume) {
     ZASSERT(result.has_value() == insensitive);
 }
 
+ZEST_CASE(FrameworkHeaders) {
+    /// <Foo/Bar.h> in a framework directory is Foo.framework/Headers/Bar.h,
+    /// else Foo.framework/PrivateHeaders/Bar.h; nothing there is found as
+    /// in a plain directory.
+    TempDir tmp;
+    tmp.touch("Frameworks/Foo.framework/Headers/Bar.h");
+    tmp.touch("Frameworks/Foo.framework/PrivateHeaders/Internal.h");
+
+    SearchConfig config;
+    config.dirs.push_back({.path = tmp.path("Frameworks"), .framework = true});
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    auto bar = resolve_include("Foo/Bar.h", true, "", false, 0, config, scope);
+    ZASSERT(bar);
+    ZEXPECT(fs::equivalent(bar->path.str(), tmp.path("Frameworks/Foo.framework/Headers/Bar.h"))
+                .value_or(false));
+    ZEXPECT(bar->found_dir_idx == 0u);
+
+    auto internal = resolve_include("Foo/Internal.h", true, "", false, 0, config, scope);
+    ZASSERT(internal);
+    ZEXPECT(fs::equivalent(internal->path.str(),
+                           tmp.path("Frameworks/Foo.framework/PrivateHeaders/Internal.h"))
+                .value_or(false));
+
+    ZEXPECT(!resolve_include("Foo.framework/Headers/Bar.h", true, "", false, 0, config, scope));
+    ZEXPECT(!resolve_include("Bar.h", true, "", false, 0, config, scope));
+}
+
+ZEST_CASE(FrameworkHeaderArgument) {
+    /// A framework's header is included as <Foo/Bar.h>, a private one too.
+    TempDir tmp;
+    tmp.touch("Frameworks/Foo.framework/Headers/Bar.h");
+    tmp.touch("Frameworks/Foo.framework/PrivateHeaders/Internal.h");
+    tmp.touch("src/main.cpp");
+
+    SearchConfig config;
+    config.dirs.push_back({.path = tmp.path("Frameworks"), .framework = true});
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    IncludeArguments arguments(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
+    auto header =
+        CanonicalPath(Spelling::absolute(tmp.path("Frameworks/Foo.framework/Headers/Bar.h")));
+    ZEXPECT(arguments.of(header) == std::optional<std::string>("<Foo/Bar.h>"));
+    auto internal = CanonicalPath(
+        Spelling::absolute(tmp.path("Frameworks/Foo.framework/PrivateHeaders/Internal.h")));
+    ZEXPECT(arguments.of(internal) == std::optional<std::string>("<Foo/Internal.h>"));
+}
+
+ZEST_CASE(FirstFrameworkWins) {
+    /// As in clang, the first framework directory holding a framework is
+    /// its only one: a header it lacks is not looked for in a later copy of
+    /// the framework, but still in a later plain directory.
+    TempDir tmp;
+    tmp.touch("first/Foo.framework/Headers/A.h");
+    tmp.touch("second/Foo.framework/Headers/B.h");
+
+    SearchConfig config;
+    config.dirs.push_back({.path = tmp.path("first"), .framework = true});
+    config.dirs.push_back({.path = tmp.path("second"), .framework = true});
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    ZEXPECT(resolve_include("Foo/A.h", true, "", false, 0, config, scope));
+    ZEXPECT(!resolve_include("Foo/B.h", true, "", false, 0, config, scope));
+
+    tmp.touch("plain/Foo/B.h");
+    config.dirs.push_back({tmp.path("plain")});
+    auto plain = resolve_include("Foo/B.h", true, "", false, 0, config, scope);
+    ZASSERT(plain);
+    ZEXPECT(plain->found_dir_idx == 2u);
+}
+
+ZEST_CASE(VersionedFrameworkArgument, skip = Windows) {
+    /// A versioned framework's Headers/ links into Versions/<version>/,
+    /// where its headers are by identity.
+    TempDir tmp;
+    tmp.touch("Frameworks/Foo.framework/Versions/A/Headers/Bar.h");
+    tmp.touch("src/main.cpp");
+    ZASSERT(
+        !fs::create_directory_symlink("A", tmp.path("Frameworks/Foo.framework/Versions/Current")));
+    ZASSERT(!fs::create_directory_symlink("Versions/Current/Headers",
+                                          tmp.path("Frameworks/Foo.framework/Headers")));
+
+    SearchConfig config;
+    config.dirs.push_back({.path = tmp.path("Frameworks"), .framework = true});
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    IncludeArguments arguments(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
+    auto header = CanonicalPath(
+        Spelling::absolute(tmp.path("Frameworks/Foo.framework/Versions/A/Headers/Bar.h")));
+    ZEXPECT(arguments.of(header) == std::optional<std::string>("<Foo/Bar.h>"));
+}
+
 // TODO: add tests for:
 // - #include_next crossing segment boundaries (angled→system)
 // - #include_next at last search dir (should return nullopt)

@@ -1,0 +1,14 @@
+["headers of a macros file"."config.h"]
+diagnostics = []
+
+["headers of a macros file"."inc/board.h"]
+diagnostics = []
+
+["headers of a macros file"."prefix.h"]
+diagnostics = []
+
+["headers of a macros file".config]
+definition = ["inc/board.h │ #define ⟦BOARD_VALUE⟧ 3"]
+
+["headers of a macros file".prefix]
+definition = ["config.h │ #define ⟦CONFIG_VALUE⟧ BOARD_VALUE"]

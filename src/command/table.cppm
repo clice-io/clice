@@ -98,19 +98,39 @@ struct RenderOptions {
     /// command's own user-content flags so the host's -include runs first.
     const char* preamble = nullptr;
 
-    /// How many of the command's `-include`s to keep, in order: the ones
-    /// past them are left out.
-    std::size_t kept_includes = std::numeric_limits<std::size_t>::max();
+    /// How many of the command's forced files to keep, in the order clang
+    /// enters them (SearchConfig::forced_includes): the ones past them are
+    /// left out.
+    std::size_t kept_forced = std::numeric_limits<std::size_t>::max();
 
     /// Keep the directories of another compiler's builtin headers that
     /// clang's own shadow; a command another tool reads leaves them out,
     /// since it cannot hide the files of them clang's stand in for.
     bool shadowed_dirs = true;
+
+    /// Which of `args` these options leave out, by position.
+    llvm::SmallVector<bool> left_out(llvm::ArrayRef<Arg> args) const;
 };
 
 /// Get the resource directory for clang builtin headers. Computed once
 /// from the current executable path using Driver::GetResourcesPath.
 llvm::StringRef resource_dir();
+
+/// What the include/ of resource_dir() has as a path below it.
+enum class BuiltinHeader : std::uint8_t {
+    None,
+
+    /// A header code includes itself (`<stddef.h>`, `<immintrin.h>`).
+    Public,
+
+    /// A part of another builtin header that must not be included directly
+    /// (`<avxintrin.h>`, which `<immintrin.h>` includes).
+    Internal,
+};
+
+/// The builtin header `name` (`/`-separated), as the build that made clice
+/// found it in its resource directory.
+BuiltinHeader builtin_header(llvm::StringRef name);
 
 /// Every command clice knows, as the FileTable holds every file: each
 /// structured command stored once, its strings interned (pointer-comparable)

@@ -155,6 +155,16 @@ files.
   path the driver derived from its resource dir stays external
   (`src/command/toolchain.cpp`). Check: `ToolchainTests.ResourceDirBecomesOurs`, the
   case `tests/compile/flags/03_sanitizers`.
+- **Include completion lists `vaesintrin.h` among the headers code
+  includes, or another compiler's copy of a builtin header clang gained
+  stays visible.** clice knows the builtin headers of its resource
+  directory from `builtin_headers.inc`, which the `builtin_headers_inc`
+  genrule (`BUILD.bazel`) writes from `:resource_dir` at build time,
+  marking Internal the ones that say "Never use <x> directly". A release
+  that moves them out of `lib/clang/<major>/include/`, or words that error
+  otherwise, empties the table or its Internal entries. Check:
+  `bazel-bin/builtin_headers.inc` lists `stddef.h` as Public and
+  `avxintrin.h` as Internal; `CompleteIncludePath.InternalBuiltinsLast`.
 - **A clang assertion aborts a Debug run** (`Qualifier must be dependent`,
   say) where RelWithDebInfo passes. Only the ASan libclang has assertions on:
   the abort is a clice bug the release build swallows. Fix clice; never turn
