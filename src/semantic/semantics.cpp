@@ -1135,11 +1135,18 @@ void refer_protocols(References& out, auto&& protocols, auto&& locations) {
 /// The Objective-C declarations: whether `D` is one, its references added.
 bool objc_decl_references(const clang::Decl* D, References& out) {
     /// @interface Shape : NSObject <Drawable>   @class Shape;
-    ///            ^~~~ declaration   ^~~~ reference to each protocol
-    /// The @implementation defines the class.
+    ///            ^~~~ declaration   ^~~~ reference to each protocol, and
+    /// to the class from a forward declaration, which tells a reader nothing
+    /// of it and which headers repeat by the hundred: a class of the SDK,
+    /// which no @implementation defines, is declared by its @interface
+    /// alone. The @implementation defines the class.
     if(auto* ID = llvm::dyn_cast<clang::ObjCInterfaceDecl>(D)) {
-        refer(out, ID, RelationKind::Declaration, ID->getLocation());
-        if(ID->isThisDeclarationADefinition()) {
+        bool declares = ID->isThisDeclarationADefinition();
+        refer(out,
+              ID,
+              declares ? RelationKind::Declaration : RelationKind::Reference,
+              ID->getLocation());
+        if(declares) {
             refer_protocols(out, ID->protocols(), ID->protocol_locs());
         }
         return true;
@@ -1185,12 +1192,13 @@ bool objc_decl_references(const clang::Decl* D, References& out) {
     }
 
     /// @protocol Drawable <NSObject>   @protocol Drawable;
-    ///           ^~~~ definition        ^~~~ declaration
+    ///           ^~~~ definition        ^~~~ reference, as a class's
+    ///                                  forward declaration is
     if(auto* PD = llvm::dyn_cast<clang::ObjCProtocolDecl>(D)) {
         bool defines = PD->isThisDeclarationADefinition();
         refer(out,
               PD,
-              defines ? RelationKind::Definition : RelationKind::Declaration,
+              defines ? RelationKind::Definition : RelationKind::Reference,
               PD->getLocation());
         if(defines) {
             refer_protocols(out, PD->protocols(), PD->protocol_locs());

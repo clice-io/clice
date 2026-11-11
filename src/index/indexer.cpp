@@ -885,8 +885,9 @@ public:
             }
             return;
         }
-        // `shape.count` calls its accessors, `+=` both; `super.count` the
-        // superclass's, never an override.
+        // `shape.count` calls its accessors, `+=` both, and refers to them
+        // as a message does; `super.count` calls the superclass's, never an
+        // override.
         if(auto* OPRE = node.get<clang::ObjCPropertyRefExpr>()) {
             auto type = OPRE->getReceiverType(context);
             if(const auto* pointer = type->getAsObjCInterfacePointerType()) {
@@ -910,6 +911,7 @@ public:
                     const auto* called =
                         decls::objc_dispatched(receiver, *method, method->isInstanceMethod());
                     call(called, OPRE->getLocation());
+                    add_self_relation(called, RelationKind::Reference, OPRE->getLocation());
                     if(OPRE->isSuperReceiver()) {
                         add_self_relation(called, RelationKind::Direct, OPRE->getLocation());
                     }

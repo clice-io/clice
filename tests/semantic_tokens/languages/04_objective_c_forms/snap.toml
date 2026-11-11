@@ -1,9 +1,9 @@
 [answers."main.m"]
 semantic_tokens = [
     { at = "⟦@class⟧ Pen;", type = "keyword" },
-    { at = "@class ⟦Pen⟧;", type = "class", modifiers = ["declaration", "global"] },
+    { at = "@class ⟦Pen⟧;", type = "class", modifiers = ["global"] },
     { at = "⟦@protocol⟧ Inking;", type = "keyword" },
-    { at = "@protocol ⟦Inking⟧;", type = "interface", modifiers = ["declaration", "global"] },
+    { at = "@protocol ⟦Inking⟧;", type = "interface", modifiers = ["global"] },
     { at = "⟦@protocol⟧ Inking", type = "keyword" },
     { at = "@protocol ⟦Inking⟧", type = "interface", modifiers = ["definition", "global"] },
     { at = "⟦-⟧ (void)refill;", type = "keyword" },
