@@ -151,8 +151,10 @@ auto name_of(const clang::NamedDecl* decl, const Options& options = {}) -> std::
 
 /// The name a declaration goes by in the index and the outline: its bare
 /// name, a constructor's without its class template's arguments, a
-/// deduction guide's label (`<deduction guide for Box>`); a nameless
-/// entity's presentation, `unnamed` set.
+/// deduction guide's label (`<deduction guide for Box>`), an Objective-C
+/// category's with its class's, as clang prints it (`Shape(Extras)`, a
+/// class extension `Shape()`), which a search for the class finds; a
+/// nameless entity's presentation, `unnamed` set.
 struct SymbolName {
     std::string text;
     bool unnamed = false;

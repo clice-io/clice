@@ -43,7 +43,7 @@ document_symbols = [
         ],
     },
     {
-        name = "Extras",
+        name = "Shape(Extras)",
         kind = "Class",
         at = "@implementation Shape (⟦Extras⟧)",
         detail = "category implementation",
@@ -129,7 +129,7 @@ document_symbols = [
         ],
     },
     {
-        name = "Extras",
+        name = "Shape(Extras)",
         kind = "Class",
         at = "@implementation Shape (⟦Extras⟧)",
         range = "⟦@implementation Shape (Extras) … @end⟧ (5 lines)",
@@ -228,7 +228,7 @@ document_symbols = [
         ],
     },
     {
-        name = "Extras",
+        name = "Shape(Extras)",
         kind = "Class",
         at = "@interface Shape (⟦Extras⟧)",
         detail = "category",
@@ -311,7 +311,7 @@ document_symbols = [
         ],
     },
     {
-        name = "Extras",
+        name = "Shape(Extras)",
         kind = "Class",
         at = "@interface Shape (⟦Extras⟧)",
         range = "⟦@interface Shape (Extras) … @end⟧ (3 lines)",

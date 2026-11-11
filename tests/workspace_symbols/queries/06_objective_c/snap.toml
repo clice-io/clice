@@ -1,5 +1,6 @@
 [answers.Shape]
 workspace_symbols = [
+    { name = "Shape()", kind = "Class", at = "main.m │ @interface Shape ⟦(⟧)" },
     { name = "Shape", kind = "Class", at = "main.m │ @implementation ⟦Shape⟧" },
     { name = "shapes", kind = "Variable", at = "main.m │ static int ⟦shapes⟧;" },
     {
@@ -8,6 +9,7 @@ workspace_symbols = [
         at = "main.m │ + (instancetype)⟦shapeWithX⟧:(int)x {",
         container = "Shape",
     },
+    { name = "Shape(Extras)", kind = "Class", at = "main.m │ @implementation Shape (⟦Extras⟧)" },
 ]
 
 [answers.setX]

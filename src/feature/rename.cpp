@@ -14,6 +14,17 @@ namespace clice::feature {
 
 namespace {
 
+/// The name a symbol's declarations write: an Objective-C category's own,
+/// which the index names after its class (`Shape(Extras)`); empty for a
+/// class extension (`Shape()`). No other named class's name ends in `)`.
+llvm::StringRef written_name(const index::SymbolInfo& symbol) {
+    llvm::StringRef name = symbol.name;
+    if(symbol.kind == SymbolKind::Class && name.ends_with(")")) {
+        return name.drop_back().rsplit('(').second;
+    }
+    return name;
+}
+
 /// The offsets in `text[begin, end)` where `name` stands as a whole
 /// identifier.
 llvm::SmallVector<std::uint32_t, 1>
@@ -214,7 +225,7 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
     if(!renamable(symbol.kind)) {
         return std::unexpected(std::format("`{}` cannot be renamed", symbol.name));
     }
-    if(index::has_flag(symbol.flags, index::SymbolFlags::Unnamed)) {
+    if(index::has_flag(symbol.flags, index::SymbolFlags::Unnamed) || written_name(symbol).empty()) {
         return std::unexpected(std::format("{} has no name to rename", symbol.name));
     }
 
@@ -388,7 +399,7 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
     if(!text) {
         return std::unexpected(std::format("{} changed since it was indexed", site.path));
     }
-    llvm::StringRef name = found->symbol.symbol.name;
+    auto name = written_name(found->symbol.symbol);
     auto offsets = spellings(*text, site.range.begin, site.range.end, name);
     if(offsets.empty()) {
         return std::unexpected(
@@ -460,7 +471,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     // A rename edits names as the text spells them: a macro's also where
     // the expansions of a body resolve one to it.
     auto query = macro ? serving : serving.written_only();
-    RenamePlan plan{.old_name = root.name, .new_name = new_name.str()};
+    RenamePlan plan{.old_name = written_name(root).str(), .new_name = new_name.str()};
     llvm::StringRef old_name = plan.old_name;
     if(new_name == old_name) {
         return plan;
@@ -966,7 +977,7 @@ RenamePlan plan_rename(const index::IndexQuery& query,
                        llvm::StringRef new_name,
                        const RenameScope& scope,
                        const RenameBatch& batch) {
-    llvm::StringSet<> names{target.symbol.symbol.name, new_name};
+    llvm::StringSet<> names{written_name(target.symbol.symbol), new_name};
     return plan_rename(query,
                        files,
                        target,
@@ -999,7 +1010,7 @@ BatchPlan plan_renames(const index::IndexQuery& query,
 
     llvm::StringSet<> names;
     for(auto& [target, new_name]: renamings) {
-        names.insert(target.symbol.symbol.name);
+        names.insert(written_name(target.symbol.symbol));
         names.insert(new_name);
     }
     auto outdated = outdated_files(query, files, scope, names);
@@ -1007,7 +1018,7 @@ BatchPlan plan_renames(const index::IndexQuery& query,
     BatchPlan result;
     for(std::uint32_t i = 0; i < renamings.size(); i += 1) {
         auto& [target, new_name] = renamings[i];
-        auto& old_name = target.symbol.symbol.name;
+        auto old_name = written_name(target.symbol.symbol).str();
         if(auto& earlier = repeats[i]) {
             auto& plan =
                 result.plans.emplace_back(RenamePlan{.old_name = old_name, .new_name = new_name});
