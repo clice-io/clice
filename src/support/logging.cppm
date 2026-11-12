@@ -349,6 +349,14 @@ void reset_anomaly_for_testing();
 /// Whether perf lines (LOG_PERF) are written: CLICE_PERF set.
 bool perf_lines();
 
+/// Whether the server traces its LSP messages: CLICE_LSP_TRACE set.
+bool lsp_trace_enabled();
+
+/// An LSP message the server received (`incoming`) or sent, with the time,
+/// into the session's `trace.log`, which grows and moves aside as the log
+/// does.
+void trace_lsp(bool incoming, std::string_view message);
+
 }  // namespace clice::logging
 
 namespace clice {

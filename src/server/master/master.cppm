@@ -30,9 +30,6 @@ struct ServerOptions {
     KANNOTATE(&port, description = "Socket mode TCP port")
     int port = 0;
 
-    KANNOTATE(&record, description = "Record LSP input to file for replay testing")
-    std::string record;
-
     KANNOTATE(&workspace, description = "Workspace root directory (optional, skips LSP initialize)")
     std::string workspace;
 };

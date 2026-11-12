@@ -1119,8 +1119,8 @@ export class Serve extends Client {
         });
     }
 
-    /// Start a server that waits for the client to speak first: a replay
-    /// sends the initialize it recorded, a test `initialize()` or its own.
+    /// Start a server that waits for the client to speak first: a test's
+    /// `initialize()` or its own.
     spawn(): Promise<void> {
         return this.steps.run("spawn the server", () => {
             this.launch();

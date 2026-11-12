@@ -42,16 +42,27 @@ std::optional<PipeOutput> editor;
 std::optional<FileOutput> console;
 bool color = false;
 
-std::optional<FileOutput> file;
-std::string file_path;
-
 /// The largest a log file grows before it moves aside; tests lower it.
 std::uint64_t max_file_bytes = 0;
 
-/// The latest lines logged before the log file opened, up to 4 MiB of
-/// them, which it starts with: a server opens it with its first project.
-std::deque<std::string> early;
-std::size_t early_bytes = 0;
+/// A file of the session's log directory: lines written before it opens
+/// are kept, the latest 4 MiB of them, which it starts with (a server opens
+/// its files with its first project); grown past max_file_bytes, it moves
+/// to `<name>.1.log`, the one before going.
+struct LogFile {
+    std::optional<FileOutput> output;
+
+    std::string path;
+
+    std::deque<std::string> early;
+
+    std::size_t early_bytes = 0;
+};
+
+/// The process's log, and the LSP messages the server traces
+/// (lsp_trace_enabled).
+LogFile file;
+LogFile trace;
 
 /// The local time's offset from UTC in seconds, as of the latest line: a
 /// crash's line reads it, the handler unable to ask the time zone.
@@ -159,45 +170,77 @@ void shed_over_capacity(PipeOutput& output) {
     pending.erase(start, cut - start);
 }
 
-/// Lines go to `fresh` from now on, under the log's descriptor number: a
-/// crash's trace written meanwhile on another thread goes to one file or
-/// the other, and the file before is closed, so that one rotated out frees
-/// its space.
-std::error_code log_to(fs::File fresh) {
+/// Lines of `log` go to `fresh` from now on, under the descriptor number
+/// it had: a crash's trace written meanwhile on another thread goes to one
+/// file or the other, and the file before is closed, so that one rotated out
+/// frees its space.
+std::error_code log_to(LogFile& log, fs::File fresh) {
     auto size = fresh.status().transform([](const fs::Status& status) { return status.size; });
-    if(file) {
-        if(auto error = std::move(fresh).into_descriptor(file->fd)) {
+    if(log.output) {
+        if(auto error = std::move(fresh).into_descriptor(log.output->fd)) {
             return error;
         }
-        file->size = size.value_or(0);
+        log.output->size = size.value_or(0);
         return {};
     }
     auto fd = std::move(fresh).into_descriptor();
     if(!fd) {
         return fd.error();
     }
-    file = FileOutput{.fd = *fd, .size = size.value_or(0)};
-    crash_fd = *fd;
+    log.output = FileOutput{.fd = *fd, .size = size.value_or(0)};
     return {};
 }
 
-/// The log file moves to `<name>.1.log`, the one before going, and a fresh
+/// The file moves to `<name>.1.log`, the one before going, and a fresh
 /// `<name>.log` goes on, saying so on its first line.
-void rotate() {
-    auto older = file_path;
+void rotate(LogFile& log) {
+    auto older = log.path;
     fs::path::set_extension(older, ".1.log");
-    file->size = 0;
-    if(auto error = fs::rename(file_path, older)) {
-        file->last_error = error;
+    log.output->size = 0;
+    if(auto error = fs::rename(log.path, older)) {
+        log.output->last_error = error;
         return;
     }
-    auto fresh = fs::File::open(file_path, {.append = true, .create = true});
-    if(auto error = fresh ? log_to(std::move(*fresh)) : fresh.error()) {
-        file->last_error = error;
-        fs::rename(older, file_path);
+    auto fresh = fs::File::open(log.path, {.append = true, .create = true});
+    if(auto error = fresh ? log_to(log, std::move(*fresh)) : fresh.error()) {
+        log.output->last_error = error;
+        fs::rename(older, log.path);
         return;
     }
-    write(*file, std::format("[logging] the lines before are in {}\n", fs::path::filename(older)));
+    write(*log.output,
+          std::format("[logging] the lines before are in {}\n", fs::path::filename(older)));
+}
+
+/// Write `line` to `log`, or keep it until the file opens.
+void write(LogFile& log, std::string line) {
+    if(!log.output) {
+        log.early_bytes += line.size();
+        log.early.push_back(std::move(line));
+        while(log.early_bytes > (std::size_t{4} << 20)) {
+            log.early_bytes -= log.early.front().size();
+            log.early.pop_front();
+        }
+        return;
+    }
+    if(log.output->size + line.size() > max_file_bytes) {
+        rotate(log);
+    }
+    write(*log.output, line);
+}
+
+/// Open `log` as `path`, the lines kept so far written first.
+std::error_code open(LogFile& log, std::string path) {
+    auto opened = fs::File::open(path, {.append = true, .create = true});
+    if(auto error = opened ? log_to(log, std::move(*opened)) : opened.error()) {
+        return error;
+    }
+    log.path = std::move(path);
+    for(auto& line: log.early) {
+        write(*log.output, line);
+    }
+    log.early.clear();
+    log.early_bytes = 0;
+    return {};
 }
 
 /// Where `path` is in `text` from `from` on: on Windows, which reads a path
@@ -498,26 +541,43 @@ bool file_logger(std::string_view dir) {
     }
     std::string path(dir);
     fs::path::push(path, std::format("{}.log", process_name));
-    auto opened = fs::File::open(path, {.append = true, .create = true});
     std::unique_lock lock(mutex);
-    if(auto error = opened ? log_to(std::move(*opened)) : opened.error()) {
+    max_file_bytes = env_integer("CLICE_TEST_LOG_FILE_BYTES").value_or(std::uint64_t{64} << 20);
+    if(auto error = open(file, path)) {
         lock.unlock();
         LOG_ERROR("Cannot open the log file {}: {}", path, error.message());
         return false;
     }
-    file_path = std::move(path);
-    max_file_bytes = env_integer("CLICE_TEST_LOG_FILE_BYTES").value_or(std::uint64_t{64} << 20);
-    for(auto& line: early) {
-        write(*file, line);
+    crash_fd = file.output->fd;
+    // Only the server traces, from its first message on.
+    if(!trace.early.empty()) {
+        std::string trace_path(dir);
+        fs::path::push(trace_path, "trace.log");
+        if(auto error = open(trace, trace_path)) {
+            lock.unlock();
+            LOG_ERROR("Cannot open the LSP trace {}: {}", trace_path, error.message());
+        }
     }
-    early.clear();
-    early_bytes = 0;
     return true;
 }
 
 bool perf_lines() {
     const static bool wanted = !env_string("CLICE_PERF").value_or("").empty();
     return wanted;
+}
+
+bool lsp_trace_enabled() {
+    const static bool wanted = !env_string("CLICE_LSP_TRACE").value_or("").empty();
+    return wanted;
+}
+
+void trace_lsp(bool incoming, std::string_view message) {
+    auto line = std::format("[{:%F %T}] {} {}\n",
+                            local(chrono::system_clock::now()),
+                            incoming ? "<-" : "->",
+                            message);
+    std::lock_guard lock(mutex);
+    write(trace, std::move(line));
 }
 
 void log(Level level, std::source_location location, std::string text) {
@@ -532,7 +592,7 @@ void log(Level level, std::source_location location, std::string text) {
                             location.line(),
                             text);
     std::lock_guard lock(mutex);
-    bool mirror = reader != StderrReader::Pool || !file;
+    bool mirror = reader != StderrReader::Pool || !file.output;
     if(mirror && level >= options.stderr_level) {
         if(editor) {
             write(*editor, line);
@@ -545,19 +605,7 @@ void log(Level level, std::source_location location, std::string text) {
                   std::format("{}{}:{} {}\n", paint, name, *paint ? "\x1b[0m" : "", text));
         }
     }
-    if(!file) {
-        early_bytes += line.size();
-        early.push_back(std::move(line));
-        while(early_bytes > (std::size_t{4} << 20)) {
-            early_bytes -= early.front().size();
-            early.pop_front();
-        }
-        return;
-    }
-    if(file->size + line.size() > max_file_bytes) {
-        rotate();
-    }
-    write(*file, line);
+    write(file, std::move(line));
 }
 
 void fatal(std::source_location location, std::string text) {

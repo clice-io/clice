@@ -1,4 +1,4 @@
-/// Promise helpers shared by the test client and the replay runner.
+/// Promise helpers shared by the test clients and the ecosystem harness.
 
 /// The rejection of `withTimeout`: a caller that must tell a hang from any
 /// other failure checks for it with `instanceof`.

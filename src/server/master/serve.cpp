@@ -8,6 +8,47 @@ import :support.version;
 
 namespace clice {
 
+namespace {
+
+/// The editor's transport, every message both ways traced (logging::trace_lsp).
+struct TracedTransport : ipc::Transport {
+    explicit TracedTransport(std::unique_ptr<ipc::Transport> inner) : inner(std::move(inner)) {}
+
+    async::task<std::string, ipc::ReadError> read_message() override {
+        auto message = co_await inner->read_message().or_fail();
+        logging::trace_lsp(true, message);
+        co_return message;
+    }
+
+    async::task<void, ipc::Error> write_message(std::string_view payload) override {
+        logging::trace_lsp(false, payload);
+        co_await inner->write_message(payload).or_fail();
+    }
+
+    async::task<void, ipc::Error> write_messages(std::span<const std::string> payloads) override {
+        for(auto& payload: payloads) {
+            logging::trace_lsp(false, payload);
+        }
+        co_await inner->write_messages(payloads).or_fail();
+    }
+
+    async::task<void, ipc::Error> close_output() override {
+        co_await inner->close_output().or_fail();
+    }
+
+    ipc::Result<void> close() override {
+        return inner->close();
+    }
+
+    std::size_t remote_max_payload() const noexcept override {
+        return inner->remote_max_payload();
+    }
+
+    std::unique_ptr<ipc::Transport> inner;
+};
+
+}  // namespace
+
 /// Runs `serving` until the shutdown token fires or it ends on its own. A
 /// cancelled request still waits for its worker's answer, so the server
 /// stops — its pool first, killing a worker that would never answer —
@@ -128,14 +169,13 @@ int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
             return 1;
         }
 
-        std::unique_ptr<ipc::Transport> final_transport = std::move(*transport);
-        if(!opts.record.empty()) {
-            final_transport =
-                std::make_unique<ipc::RecordingTransport>(std::move(final_transport), opts.record);
+        std::unique_ptr<ipc::Transport> editor = std::move(*transport);
+        if(logging::lsp_trace_enabled()) {
+            editor = std::make_unique<TracedTransport>(std::move(editor));
         }
 
         server.client_on_host = true;
-        ipc::JSONPeer lsp_peer(loop, std::move(final_transport));
+        ipc::JSONPeer lsp_peer(loop, std::move(editor));
         LSPClient lsp_client(server, lsp_peer);
 
         loop.schedule(

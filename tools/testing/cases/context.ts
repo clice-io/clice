@@ -6,7 +6,6 @@ import { running } from "../../client/process.ts";
 import { Workspace } from "../../client/workspace.ts";
 import { withTimeout } from "../../promise.ts";
 import { runCommand, splitCommand, type CommandOptions, type CommandRun } from "../cli/run.ts";
-import { replay } from "../server/replay.ts";
 import { block, type ShowOptions, type Shown } from "../render/shown.ts";
 import { keepLogs } from "../logs/logs.ts";
 import { Serve, gateLogs, type Faults, type ServerOptions } from "../server/serve.ts";
@@ -30,9 +29,6 @@ export interface TestContext {
     spawn(options?: ServerOptions): Promise<Serve>;
     /// Run a command in the copy; its transcript joins the output.
     cli(command: string | readonly string[], options?: CommandOptions): Promise<CommandRun>;
-    /// Play the case's trace.jsonl, an editor's recorded session, to a new
-    /// server.
-    replay(): Promise<void>;
     /// A block of the output: what a request of a server answers, passed as
     /// the request itself, `t.show("hover", s.hover(at))`; text, lines or a
     /// number as they are; or a record of these, one block each. The copy
@@ -151,12 +147,6 @@ class TestRun implements TestContext {
         }
         this.output.transcript(run.label, run.transcript);
         return run;
-    }
-
-    async replay(): Promise<void> {
-        const s = this.serve({});
-        await s.spawn();
-        await replay(s, path.join(this.case.dir, "trace.jsonl"));
     }
 
     async show(label: string, value: Shown, options: ShowOptions = {}): Promise<void> {
