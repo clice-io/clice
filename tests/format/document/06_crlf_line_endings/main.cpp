@@ -1,4 +1,7 @@
-// Formatting keeps the CRLF line endings.
+// Formatting keeps the CRLF line endings, sorting the includes too.
+#include "zeta.h"
+#include "alpha.h"
+
 int    add(   int   a  ,  int   b  ) {
 return   a+b ;
 }
