@@ -5,8 +5,7 @@
 
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { ANOMALY_PATTERN, logFiles } from "../../process_gate.ts";
-import { readLogs, undeclaredErrors } from "../logs/logs.ts";
+import { logFaults, logFiles, readLogLines } from "../../process_gate.ts";
 
 /// What the logs of each copy under `dir` hold that they must not; a copy
 /// no server logged under fails too, as a gate reading nothing passes
@@ -23,14 +22,8 @@ export function gateLogs(dir: string): string[] {
             failures.push(`${entry.name}: no server logged under ${copy}`);
             continue;
         }
-        const lines = readLogs(copy, files);
-        // A worker's crash is an anomaly, the server's own a fatal line.
-        const bad = [
-            ...undeclaredErrors(lines, []),
-            ...lines.filter((line) => ANOMALY_PATTERN.test(line.text)),
-        ];
-        for (const line of new Set(bad)) {
-            failures.push(`${entry.name}: ${line.file}: ${line.text}`);
+        for (const fault of logFaults(readLogLines(files))) {
+            failures.push(`${entry.name}: ${path.relative(copy, fault.line.file)}: ${fault.line.text}`);
         }
     }
     return failures;

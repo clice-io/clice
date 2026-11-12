@@ -1,0 +1,8 @@
+namespace std {
+
+template <typename T>
+void call(T t) {
+    t.go();
+}
+
+}  // namespace std

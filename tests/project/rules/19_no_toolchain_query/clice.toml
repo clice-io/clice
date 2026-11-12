@@ -1,0 +1,3 @@
+[[rules]]
+patterns = ["quiet.cpp"]
+query_toolchain = false

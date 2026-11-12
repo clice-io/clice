@@ -18,7 +18,7 @@ test("open file index via file", async (t) => {
 
 // Without a cache store there is nowhere to put the file: the index is
 // dropped with a warning on the file, and the AST still answers.
-test("oversized index without store", async (t) => {
+test("oversized index without store", { errors: ["Cannot create the log"] }, async (t) => {
     t.disk.write("big.cpp", BIG);
     t.disk.write(".clice", "not a directory\n");
     const s = await t.start({ env: LIMIT });

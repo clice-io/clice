@@ -11,7 +11,7 @@ test("open", async (t) => {
     await t.show("plain", s.diagnostics("boot.s"));
 });
 
-test("inspect", async (t) => {
+test("inspect", { errors: ["entry.S: not a C-family source file"] }, async (t) => {
     await t.cli("inspect semantic-tokens entry.S");
 });
 

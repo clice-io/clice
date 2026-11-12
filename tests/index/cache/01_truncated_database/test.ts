@@ -21,13 +21,13 @@ async function damaged(t: TestContext, cut: (database: string) => number): Promi
 // end of the file. A page is the system's (16 KiB on Apple silicon): the
 // first meta page records it in its free database's pad, past the page
 // header, the magic, the version, the address and the map size.
-test("cut after the meta pages", async (t) => {
+test("cut after the meta pages", { errors: ["cannot be opened"] }, async (t) => {
     await damaged(
         t,
         (database) => 2 * fs.readFileSync(path.join(t.root, database)).readUInt32LE(40),
     );
 });
 
-test("emptied", async (t) => {
+test("emptied", { errors: ["cannot be opened"] }, async (t) => {
     await damaged(t, () => 0);
 });

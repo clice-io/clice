@@ -6,4 +6,5 @@ test(async (t) => {
     await t.cli("index");
     await t.cli("analyze modules impact");
     await t.cli("analyze modules impact --annotation compile_time.json");
+    await t.cli("analyze modules file app/main.cpp --annotation compile_time.json");
 });

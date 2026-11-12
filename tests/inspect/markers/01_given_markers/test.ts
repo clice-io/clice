@@ -6,7 +6,7 @@ import { test } from "@clice/tools/testing";
 // code actions without a place have nothing to answer. It refuses a place
 // outside the text, a name both a point and a range, and a directory.
 
-test(async (t) => {
+test({ errors: ["outside the text", "a point and a range", "not a source file"] }, async (t) => {
     const source = t.disk.read("main.cpp");
     const markers = (table: object): string => {
         t.disk.write("markers.json", JSON.stringify(table));

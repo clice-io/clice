@@ -125,7 +125,7 @@ test("unknown selection falls back untouched", async (t) => {
     await t.show("state", t.disk.read(".clice/state.json"));
 });
 
-test("batch index per configuration", async (t) => {
+test("batch index per configuration", { errors: ["No index cache at"] }, async (t) => {
     await t.cli("index --configuration release --jobs 2");
     expect(libraries(t)).toEqual(["release"]);
     // The default configuration's library was never written.

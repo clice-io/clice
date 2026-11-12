@@ -1,12 +1,11 @@
 /// Workspace — a directory a clice server is pointed at, with relative-path
-/// file operations and its servers' logs as members, so callers never
-/// juggle absolute paths or raw fs calls.
+/// file operations as members, so callers never juggle absolute paths or
+/// raw fs calls.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { URI } from "vscode-uri";
-import { logFiles } from "../process_gate.ts";
 
 /// The harness-wide canonical URI spelling: percent-decoded. vscode-uri
 /// encodes the drive colon (file:///c%3A/...) while the server emits it
@@ -88,28 +87,6 @@ export class Workspace {
     /// Remove the whole workspace directory.
     remove(): void {
         fs.rmSync(this.root, { recursive: true, force: true });
-    }
-
-    /// The text of every log file named `name` ("master.log", "SF-0.log")
-    /// the servers wrote (logFiles), one session directory each; empty when
-    /// none was written.
-    log(name: string): string {
-        return logFiles(this.root)
-            .filter((file) => path.basename(file) === name)
-            .map((file) => fs.readFileSync(file, "utf8"))
-            .join("");
-    }
-
-    /// The workers that crashed on `request` for `file`, counted from the
-    /// crash lines the master logs with the worker's name in front.
-    workerCrashes(request: string, file: string): number {
-        const marker = `] clice worker crashed in: clice/worker/${request} `;
-        return this.log("master.log")
-            .split(/\r?\n/)
-            .filter((line) => {
-                const at = line.indexOf(marker);
-                return at >= 0 && namesFile(file, line.slice(at + marker.length));
-            }).length;
     }
 }
 

@@ -7,7 +7,8 @@ import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { runProcess } from "../../client/process.ts";
+import { parse } from "shell-quote";
+import { crashed, ending as ended, runProcess, type ProcessResult } from "../../client/process.ts";
 import { cliceExecutable } from "../../client/session.ts";
 import { serverEnv } from "../../process_gate.ts";
 import { recordInvocation, recordToml } from "../coverage/record.ts";
@@ -206,46 +207,24 @@ export function stdoutText(stdout: string, root: string): string {
     );
 }
 
-/// Split a command line as a POSIX shell does for plain words and double
-/// or single quotes; nothing else is shell syntax here.
+/// Split a command line as a POSIX shell does, its globs and variables
+/// kept as written: a case's command is words and quotes, no shell syntax.
 export function splitCommand(line: string): string[] {
-    const words: string[] = [];
-    let word = "";
-    let quote: string | null = null;
-    let started = false;
-    for (const char of line) {
-        if (quote !== null) {
-            if (char === quote) {
-                quote = null;
-            } else {
-                word += char;
-            }
-        } else if (char === '"' || char === "'") {
-            quote = char;
-            started = true;
-        } else if (char === " ") {
-            if (started) {
-                words.push(word);
-            }
-            word = "";
-            started = false;
-        } else {
-            word += char;
-            started = true;
+    return parse(line, (name) => `$${name}`).map((entry) => {
+        if (typeof entry === "string") {
+            return entry;
         }
-    }
-    if (quote !== null) {
-        throw new Error(`unterminated quote in: ${line}`);
-    }
-    if (started) {
-        words.push(word);
-    }
-    return words;
+        if ("op" in entry && entry.op === "glob") {
+            return entry.pattern;
+        }
+        throw new Error(`shell syntax in a command line: ${line}`);
+    });
 }
 
 export interface CommandRun {
     /// `$ clice …`, the transcript block's label.
     label: string;
+    pid: number | undefined;
     /// stdout, stderr at warning and above, the exit, the files written.
     transcript: Table;
     status: number | null;
@@ -292,12 +271,7 @@ function spawnRedirected(
     cwd: string,
     env: NodeJS.ProcessEnv,
     mode: StdoutMode,
-): Promise<{
-    status: number | null;
-    signal: NodeJS.Signals | null;
-    stdout: string;
-    stderr: string;
-}> {
+): Promise<ProcessResult> {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clice-stdout-"));
     const fifo = path.join(dir, "out.fifo");
     const opened: number[] = [];
@@ -362,7 +336,13 @@ function spawnRedirected(
                 fs.closeSync(fd);
             }
             fs.rmSync(dir, { recursive: true, force: true });
-            resolve({ status, signal, stdout, stderr });
+            resolve({
+                ...(child.pid === undefined ? {} : { pid: child.pid }),
+                status,
+                signal,
+                stdout,
+                stderr,
+            });
         });
     });
 }
@@ -375,12 +355,7 @@ function spawnClice(
     env: NodeJS.ProcessEnv,
     interrupt: CommandOptions["interrupt"],
     input?: string,
-): Promise<{
-    status: number | null;
-    signal: NodeJS.Signals | null;
-    stdout: string;
-    stderr: string;
-}> {
+): Promise<ProcessResult> {
     if (interrupt === undefined) {
         return runProcess(cliceExecutable(), args, {
             cwd,
@@ -425,7 +400,13 @@ function spawnClice(
                 reject(new Error(`clice ${args.join(" ")} ${how} before its pause point`));
                 return;
             }
-            resolve({ status, signal: sig, stdout, stderr });
+            resolve({
+                ...(child.pid === undefined ? {} : { pid: child.pid }),
+                status,
+                signal: sig,
+                stdout,
+                stderr,
+            });
         });
     });
 }
@@ -512,6 +493,7 @@ export async function runCommand(
             ...args.map((arg) => quote(normalize(arg, root))),
             ...(options.stdout === undefined ? [] : [`(stdout: ${options.stdout})`]),
         ].join(" "),
+        pid: result.pid,
         transcript: {
             ...(stdout === "" || options.stdout !== undefined ? {} : { stdout }),
             ...(stderr === "" ? {} : { stderr }),
@@ -524,4 +506,17 @@ export async function runCommand(
         stderr: result.stderr,
         json,
     };
+}
+
+/// How a run ended that nothing the test arranged explains: a signal it
+/// did not send, or on Windows an unhandled exception. A reader that left
+/// (`stdout: "closed early"` or `"fifo gone"`) ends a run as SIGPIPE does.
+export function undeclaredDeath(run: CommandRun, options: CommandOptions): string | undefined {
+    const left = options.stdout === "closed early" || options.stdout === "fifo gone";
+    const sent: string[] = [...(options.interrupt?.signals ?? []), ...(left ? ["SIGPIPE"] : [])];
+    const result = { status: run.status, signal: run.signal, stdout: "", stderr: "" };
+    if (!crashed(result) || (run.signal !== null && sent.includes(run.signal))) {
+        return undefined;
+    }
+    return `${run.label} ${ended(result)}, which the test did not cause`;
 }

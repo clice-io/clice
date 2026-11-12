@@ -164,10 +164,10 @@ its issue id and a `why` for the reader, like a case's `wrong`. One matches the
 failures of its job (`configuration`, `part`, `platform` when given) whose
 `kind`, `request`, `file` (a path or a pattern) and `detail` (a pattern over
 what the failure says) it names. It is as narrow as its failure: one naming
-a kind alone would hide the next failure of that kind. A `detail` that tells
-what the whole failure holds starts at its beginning, `(?<![\s\S])`: under the
-`m` flag `^` matches at every line, and the lookaheads of a later line see only
-the rest.
+a kind alone would hide the next failure of that kind. Over a diff (two
+answers that differ), a `detail` names the lines its matches touch: the
+failure is known once the known issues name every line the diff changes, and
+a line none names still fails it.
 
 ## The regression
 
@@ -177,8 +177,11 @@ A job, on a cold cache:
 2. **Index** it all with `clice index`, time, memory and the index's size
    recorded. Every unit clice fails, or reports errors on, is compiled again
    by the project's compiler with its database command, checking the code
-   only: a unit the compiler rejects too is the project's, listed, not
-   failed.
+   only: a unit the compiler rejects too, for an error on the line of clice's
+   first or worded as it, is the project's, listed, not failed. A compiler
+   that rejects it for other errors confirms nothing, and one that did not
+   compile the file (a missing tool, an option it refuses) could not check
+   it.
 3. **Sweep** sampled files: the job's `sample` sources the seed picks (by
    default the date; the same seed, the same files) on a runner asking three
    files at once, fewer on one with less memory that asks fewer (a sweep
@@ -251,8 +254,9 @@ each process by role: master, each worker, clangd), its CPU seconds, and for
 clice the server's own breakdown from its `[perf:*]` log lines, which it writes when `CLICE_PERF` is set, as the job sets it. Answers' sizes
 are recorded beside their times (items, locations, tokens), so a time is read
 beside the work it bought. A perf job **fails** only when a clice run fails
-(a crash, its workers' too, which its logs tell; a hang; an error answer; an
-unclean exit), or when its time runs out before a scenario begins: no
+(a crash, its workers' too, which its logs tell; a hang; an anomaly its logs
+tell; an error answer; an unclean exit), the worst of its reasons naming the
+failure, or when its time runs out before a scenario begins: no
 scenario begins, and no wait goes on, past 320 minutes into the job. A
 clangd run that fails, or the baseline's, is listed. Numbers never fail:
 where clice spends more than the baseline (a time, memory, disk or CPU; a

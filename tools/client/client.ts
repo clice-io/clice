@@ -9,11 +9,13 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { Writable } from "node:stream";
 import * as proto from "vscode-languageserver-protocol";
 import {
     createProtocolConnection,
     StreamMessageReader,
     StreamMessageWriter,
+    type DataCallback,
 } from "vscode-languageserver-protocol/node";
 import { URI } from "vscode-uri";
 import {
@@ -84,6 +86,39 @@ class ServerWriter extends StreamMessageWriter {
         this.queue = written.catch(() => undefined);
         return written;
     }
+}
+
+/// Reads the server's messages for the connection, and shows each first to
+/// the taps set on it: a caller waiting for replies the connection does
+/// not expect.
+class ServerReader extends StreamMessageReader {
+    readonly taps = new Set<(message: proto.Message) => void>();
+
+    override listen(callback: DataCallback): proto.Disposable {
+        return super.listen((message) => {
+            for (const tap of this.taps) {
+                tap(message);
+            }
+            callback(message);
+        });
+    }
+}
+
+/// `messages` framed as the connection frames each, in one buffer.
+async function framed(messages: readonly proto.Message[]): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+    const sink = new Writable({
+        write(chunk: Buffer, _encoding, done) {
+            chunks.push(chunk);
+            done();
+        },
+    });
+    const writer = new StreamMessageWriter(sink);
+    for (const message of messages) {
+        await writer.write(message);
+    }
+    writer.dispose();
+    return Buffer.concat(chunks);
 }
 
 export interface StartOptions {
@@ -179,6 +214,7 @@ export class CliceClient {
     child: ChildProcessWithoutNullStreams;
     protected connection: proto.ProtocolConnection;
     private writer: ServerWriter;
+    private reader: ServerReader;
 
     diagnostics = new Map<string, proto.Diagnostic[]>();
     /// Every publishDiagnostics received, in order.
@@ -236,10 +272,8 @@ export class CliceClient {
     private constructor(child: ChildProcessWithoutNullStreams) {
         this.child = child;
         this.writer = new ServerWriter(child.stdin);
-        this.connection = createProtocolConnection(
-            new StreamMessageReader(child.stdout),
-            this.writer,
-        );
+        this.reader = new ServerReader(child.stdout);
+        this.connection = createProtocolConnection(this.reader, this.writer);
         this.exited = new Promise((resolve) => {
             child.on("exit", (code) => {
                 resolve(code);
@@ -393,57 +427,24 @@ export class CliceClient {
             messages.flatMap((message) => ("id" in message ? [String(message.id)] : [])),
         );
         const responses = new Map<string, proto.ResponseMessage>();
-        const { stdout: reader, stdin } = this.child;
         const answered = new Promise<Map<string, proto.ResponseMessage>>((resolve) => {
             if (pending.size === 0) {
                 resolve(responses);
                 return;
             }
-            // Attached mid-stream, the first chunk may begin inside a
-            // message: a frame is found by the end of its header, and the
-            // length the header names.
-            let buffer = Buffer.alloc(0);
-            const onData = (chunk: Buffer): void => {
-                buffer = Buffer.concat([buffer, chunk]);
-                for (;;) {
-                    const end = buffer.indexOf("\r\n\r\n");
-                    if (end < 0) {
-                        break;
-                    }
-                    const header = buffer.subarray(0, end).toString("latin1");
-                    const named = /Content-Length: (\d+)/i.exec(
-                        header.slice(header.lastIndexOf("Content-Length:")),
-                    );
-                    const length = Number(named?.[1] ?? 0);
-                    if (buffer.length < end + 4 + length) {
-                        break;
-                    }
-                    const body = buffer.subarray(end + 4, end + 4 + length).toString("utf-8");
-                    buffer = buffer.subarray(end + 4 + length);
-                    const message = JSON.parse(body) as proto.Message;
-                    if (proto.Message.isResponse(message) && pending.delete(String(message.id))) {
-                        responses.set(String(message.id), message);
-                    }
+            const tap = (message: proto.Message): void => {
+                if (proto.Message.isResponse(message) && pending.delete(String(message.id))) {
+                    responses.set(String(message.id), message);
                 }
                 if (pending.size === 0) {
-                    reader.off("data", onData);
+                    this.reader.taps.delete(tap);
                     resolve(responses);
                 }
             };
-            reader.on("data", onData);
+            this.reader.taps.add(tap);
         });
-        void this.writer.enqueue(() => {
-            stdin.write(
-                Buffer.concat(
-                    messages.map((message) => {
-                        const body = Buffer.from(JSON.stringify(message), "utf-8");
-                        return Buffer.concat([
-                            Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, "ascii"),
-                            body,
-                        ]);
-                    }),
-                ),
-            );
+        void this.writer.enqueue(async () => {
+            this.child.stdin.write(await framed(messages));
         });
         return answered;
     }

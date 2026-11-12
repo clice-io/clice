@@ -12,12 +12,14 @@ afterEach(() => {
     }
 });
 
+const SESSION = path.join(".clice", "logs", "2026-11-13_09-00-00_4242");
+
 /// A directory of copies, each with the master log of one session.
 function copies(logs: Record<string, string[] | null>): string {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-editors-gate-"));
     roots.push(root);
     for (const [copy, lines] of Object.entries(logs)) {
-        const dir = path.join(root, copy, ".clice", "logs", "session");
+        const dir = path.join(root, copy, SESSION);
         fs.mkdirSync(dir, { recursive: true });
         if (lines !== null) {
             fs.writeFileSync(path.join(dir, "master.log"), `${lines.join("\n")}\n`);
@@ -42,9 +44,9 @@ test("an error, a fatal line and an anomaly fail, a warning does not", () => {
         }),
     );
     expect(failures).toEqual([
-        "a: master.log: [t] [error] [x.cpp:2] broken",
-        "a: master.log: [t] [fatal] clice crashed",
-        "b: master.log: [t] [info] [pool.cpp:3] [anomaly:StaleAnswer] told stale",
+        `a: ${path.join(SESSION, "master.log")}: [t] [error] [x.cpp:2] broken`,
+        `a: ${path.join(SESSION, "master.log")}: [t] [fatal] clice crashed`,
+        `b: ${path.join(SESSION, "master.log")}: [t] [info] [pool.cpp:3] [anomaly:StaleAnswer] told stale`,
     ]);
 });
 

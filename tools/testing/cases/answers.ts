@@ -11,8 +11,8 @@ import { Inspect } from "../inspect/inspect.ts";
 import type { Client } from "../render/client.ts";
 import { block, type ShowOptions, type Shown } from "../render/shown.ts";
 import { plain, type Table } from "../render/value.ts";
-import { keepLogs } from "../logs/logs.ts";
-import { Serve, gateLogs } from "../server/serve.ts";
+import { gateLogs, keepLogs, type Started } from "../logs/logs.ts";
+import { Serve } from "../server/serve.ts";
 import { SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
 import { at, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
 import type { Case } from "./case.ts";
@@ -174,13 +174,15 @@ async function onInspect(
         compareIndex: true,
     });
     const shows: Shows = { output: new Output(), compared: new Output() };
+    const indexed: Started[] = [];
     const run = async (): Promise<void> => {
         // inspect reads an index where one was built, as every process
         // resolving a header does.
         if (options.indexing === true) {
-            const indexed = await runCommand(root, ["index"]);
-            if (indexed.status !== 0) {
-                throw new Error(`clice index failed:\n${indexed.stderr}`);
+            const index = await runCommand(root, ["index"]);
+            indexed.push({ label: index.label, pid: index.pid, stderr: index.stderr });
+            if (index.status !== 0) {
+                throw new Error(`clice index failed:\n${index.stderr}`);
             }
         }
         await fn(contextOf(c, client, root, shows));
@@ -190,13 +192,17 @@ async function onInspect(
         gateCompile(c, "clice inspect", await client.compileErrors());
         gateIndex(c, client.indexDifferences());
     };
+    let failure: { error: unknown } | undefined;
     try {
         await withTimeout(run(), SCRIPT_DEADLINE_MS, "the test hung");
-        return shows;
-    } finally {
-        client.close();
-        remove(c, root);
+    } catch (error) {
+        failure = { error };
     }
+    client.close();
+    const gated = gateLogs(root, [...indexed, ...client.started], {}, failure !== undefined);
+    remove(c, root);
+    throwFailures(failure, gated);
+    return shows;
 }
 
 /// The server opens every source, module interfaces first and the entry
@@ -261,7 +267,7 @@ async function onServer(
         console.log(`steps:\n${steps.render()}`);
     }
     const failed = failure !== undefined;
-    const gated = [...(await s.finish(failed)), ...gateLogs(workspace, {}, failed)];
+    const gated = [...(await s.finish(failed)), ...gateLogs(root, s.started(), {}, failed)];
     remove(c, root);
     throwFailures(failure, gated);
     return shows;

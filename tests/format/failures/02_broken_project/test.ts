@@ -4,7 +4,7 @@ import { test } from "@clice/tools/testing";
 // exit 2: the rules keeping files out would be gone, and the build's file
 // set incomplete. Nothing is rewritten.
 
-test("a broken configuration", async (t) => {
+test("a broken configuration", { errors: ["TOML parse error"] }, async (t) => {
     t.disk.write("clice.toml", "[[rules\npatterns = [\n");
     await t.cli("format");
 });

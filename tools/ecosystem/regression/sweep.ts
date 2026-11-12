@@ -24,6 +24,7 @@ import { writeToml } from "../../testing/render/value.ts";
 import { Serve } from "../../testing/server/serve.ts";
 import { StepRecord } from "../../testing/server/steps.ts";
 import { KEYWORDS, lex } from "../lex.ts";
+import { loggingDir } from "../prepare.ts";
 import { spread } from "../database.ts";
 import {
     residentNow,
@@ -348,9 +349,13 @@ export interface SweepRun {
     serverExit: string[];
     /// The work the server still had once every file closed.
     unsettled?: string;
-    /// The files the server opened with errors; an error a warning raised
+    /// The files the server opened with errors, each in a file of the
+    /// checkout's (`file` relative) or outside it; an error a warning raised
     /// names the warning's group.
-    serverErrors: { file: string; errors: { text: string; group?: string }[] }[];
+    serverErrors: {
+        file: string;
+        errors: { file: string; line: number; column: number; message: string; group?: string }[];
+    }[];
     /// The files left unasked when the sweep ran out of time, and those it
     /// ran out of time in.
     unasked: string[];
@@ -476,6 +481,16 @@ async function sweepFile(
         const started = Date.now();
         const child = server.client.child;
         const alive = () => child.exitCode === null && child.signalCode === null;
+        // inspect compiles the file in one context: the server answers from
+        // that context alone, not from the code its other contexts compile.
+        try {
+            await server.showOtherContexts(file, false);
+        } catch (error) {
+            // The server's exit reports its death.
+            if (alive()) {
+                throw error;
+            }
+        }
         for (const ask of [opened, ...compared, ...navigation]) {
             // A hung request holds the document in its worker, and a dead
             // server answers nothing: the file's other requests would only
@@ -531,7 +546,10 @@ async function sweepFile(
         run.serverErrors.push({
             file,
             errors: opening.map(({ location, message, code }) => ({
-                text: `${location.path}:${String(location.range.start.line + 1)}:${String(location.range.start.character + 1)}: ${message}`,
+                file: location.path,
+                line: location.range.start.line + 1,
+                column: location.range.start.character + 1,
+                message,
                 ...(code?.startsWith("-W") === true ? { group: code.slice(2) } : {}),
             })),
         });
@@ -614,7 +632,14 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
     const steps = new StepRecord();
     const server = new Serve(
         new Workspace(options.root),
-        { capabilities: EDITOR_CAPABILITIES, config: { project: { enable_indexing: false } } },
+        {
+            capabilities: EDITOR_CAPABILITIES,
+            config: {
+                // Logs where the job reads them, whichever project of the
+                // checkout opens first.
+                project: { enable_indexing: false, logging_dir: loggingDir(options.root) },
+            },
+        },
         { marks, steps, disk: new Disk(options.root, {}, steps) },
     );
     let watching: { pid: number; start: Resident; watch: TreeWatch } | undefined;

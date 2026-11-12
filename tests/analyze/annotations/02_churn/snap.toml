@@ -60,3 +60,105 @@ stdout = '''
 ]
 '''
 exit = 0
+
+[test."$ clice analyze modules file core/str.h"]
+stdout = '''
+{
+  "path": "core/str.h",
+  "module": "core",
+  "source": false,
+  "annotations": [
+    {
+      "name": "churn",
+      "unit": "commits",
+      "value": 1
+    }
+  ],
+  "uses": [],
+  "usedBy": [
+    {
+      "module": "app",
+      "entities": [
+        "Str::n"
+      ]
+    },
+    {
+      "module": "core",
+      "entities": [
+        "Str",
+        "Str::n"
+      ]
+    },
+    {
+      "module": "util",
+      "entities": [
+        "Str",
+        "length"
+      ]
+    }
+  ],
+  "affinity": [
+    {
+      "module": "core",
+      "entities": 2
+    },
+    {
+      "module": "util",
+      "entities": 2
+    },
+    {
+      "module": "app",
+      "entities": 1
+    }
+  ]
+}
+'''
+exit = 0
+
+[test."$ clice analyze modules file core/str.h --churn-since="]
+stdout = '''
+{
+  "path": "core/str.h",
+  "module": "core",
+  "source": false,
+  "annotations": [],
+  "uses": [],
+  "usedBy": [
+    {
+      "module": "app",
+      "entities": [
+        "Str::n"
+      ]
+    },
+    {
+      "module": "core",
+      "entities": [
+        "Str",
+        "Str::n"
+      ]
+    },
+    {
+      "module": "util",
+      "entities": [
+        "Str",
+        "length"
+      ]
+    }
+  ],
+  "affinity": [
+    {
+      "module": "core",
+      "entities": 2
+    },
+    {
+      "module": "util",
+      "entities": 2
+    },
+    {
+      "module": "app",
+      "entities": 1
+    }
+  ]
+}
+'''
+exit = 0

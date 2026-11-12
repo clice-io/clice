@@ -1,5 +1,5 @@
-/// The product surface the suites left unexercised. Runs after serve, features
-/// and cli, each run with the same CLICE_COVERAGE_DIR.
+/// The product surface the cases left unexercised: runs after them, over
+/// the records every shard wrote under CLICE_COVERAGE_DIR.
 
 import * as path from "node:path";
 import { expect, test } from "vitest";

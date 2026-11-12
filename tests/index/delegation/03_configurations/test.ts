@@ -2,7 +2,7 @@ import { test } from "@clice/tools/testing";
 
 // The server indexes one configuration: asked for another, it refuses
 // rather than answer with the wrong build.
-test(async (t) => {
+test({ errors: ["indexes configuration 'debug', not 'release'"] }, async (t) => {
     const s = await t.start({ args: ["serve", "--configuration", "debug"] });
     await s.indexed();
     await t.cli("index --configuration release");

@@ -31,6 +31,7 @@ import {
     median,
     nowMs,
     pause,
+    RunFailure,
     Session,
     sizeOf,
     VISIBLE,
@@ -360,7 +361,8 @@ export class Perf {
             await s.open(opened.file);
             const { ended, files, idle } = await s.idle(true, bound);
             if (!idle) {
-                throw new Error(
+                throw new RunFailure(
+                    "hang",
                     `${s.server}: the background index is not idle after ${String(Math.round((nowMs() - s.started) / 60_000))} minutes`,
                 );
             }

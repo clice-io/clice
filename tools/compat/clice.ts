@@ -4,7 +4,8 @@
 /// entries as clice reads them and the commands it compiles with.
 
 import * as path from "node:path";
-import { run } from "./scenario.ts";
+import { ending, runProcess } from "../client/process.ts";
+import { STEP_MS } from "./scenario.ts";
 
 export interface LintRun {
     status: number | null;
@@ -31,7 +32,10 @@ export interface EntryCommands {
 
 /// `clice lint`: the parse of every unit.
 export async function lint(clice: string, root: string, env: NodeJS.ProcessEnv): Promise<LintRun> {
-    const linted = await run(clice, ["lint", "--workspace", root], { env });
+    const linted = await runProcess(clice, ["lint", "--workspace", root], {
+        env,
+        timeout: STEP_MS,
+    });
     return { status: linted.status, report: linted.stdout, log: linted.stderr };
 }
 
@@ -43,15 +47,13 @@ export async function fileCommands(
     file: string,
     env: NodeJS.ProcessEnv,
 ): Promise<EntryCommands[]> {
-    const ran = await run(
+    const ran = await runProcess(
         clice,
         ["command", path.resolve(root, file), "--workspace", root, "--json"],
-        { env },
+        { env, timeout: STEP_MS },
     );
     if (ran.status !== 0) {
-        throw new Error(
-            `clice command ${file}: ${ran.error ?? `exit ${ran.status}`}\n${ran.stdout}\n${ran.stderr}`,
-        );
+        throw new Error(`clice command ${file}: ${ending(ran)}\n${ran.stdout}\n${ran.stderr}`);
     }
     return (JSON.parse(ran.stdout) as { commands: EntryCommands[] }).commands;
 }

@@ -20,6 +20,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CliceClient } from "@clice/tools/client";
+import { sessionLogs, sessionsIn } from "@clice/tools/process_gate";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 const STARTUP_TIMEOUT = 300_000;
@@ -136,12 +137,8 @@ async function until<T>(zed: ChildProcess, found: () => T | undefined, what: str
 /// Whether a clice server started for `dir` is ready: past the handshake,
 /// it writes its session log.
 function cliceReady(dir: string): boolean {
-    const logs = path.join(dir, ".clice", "logs");
-    return (
-        fs.existsSync(logs) &&
-        fs
-            .readdirSync(logs, { recursive: true, encoding: "utf8" })
-            .some((name) => path.basename(name) === "master.log")
+    return sessionLogs(sessionsIn(path.join(dir, ".clice", "logs"))).some(
+        (log) => path.basename(log) === "master.log",
     );
 }
 

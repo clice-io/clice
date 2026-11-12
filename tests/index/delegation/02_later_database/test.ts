@@ -16,7 +16,7 @@ test("none at first", async (t) => {
 
 // A database listing no unit opens the project: the server answers there
 // is nothing to index, then indexes once the database lists one.
-test("empty at first", async (t) => {
+test("empty at first", { errors: ["build has no translation units"] }, async (t) => {
     t.disk.database({});
     const s = await t.start();
     await s.sync();

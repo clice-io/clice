@@ -7,7 +7,8 @@ regression({
             why: "in templates and macro arguments the open file's highlights hold more than the unit's own",
             kind: "disagree",
             request: "highlights",
-            detail: /^(?![\s\S]*\n-\s+\{)/,
+            // Every line the server adds.
+            detail: /^\+\s.*$/m,
         },
         {
             issue: "10-21#17",
@@ -15,8 +16,7 @@ regression({
             kind: "disagree",
             request: "semanticTokens",
             file: "absl/debugging/stacktrace.cc",
-            // That token missing, and no other difference.
-            detail: /(?<![\s\S])(?=[\s\S]*^-\s+\{ at = "#include ⟦ABSL_STACKTRACE_INL_HEADER⟧", type = "macro" \},$)(?![\s\S]*^(?!--- inspect$|\+\+\+ server$)[-+](?!\s+\{ at = "#include ⟦ABSL_STACKTRACE_INL_HEADER⟧", type = "macro" \},$).*$)/m,
+            detail: /^-\s+\{ at = "#include ⟦ABSL_STACKTRACE_INL_HEADER⟧", type = "macro" \},$/m,
         },
     ],
 });
@@ -81,15 +81,6 @@ perf(
     {
         configuration: "clang",
         platforms: ["linux"],
-        known: [
-            {
-                issue: "10-23#25",
-                why: "under 1000 MB the background index stalls, waiting for headroom no running work frees",
-                kind: "hang",
-                request: "limitedIndex",
-                file: "absl/container/internal/raw_hash_set_test.cc, 1000 MB",
-            },
-        ],
     },
     async (p) => {
         await p.limitedIndex(rawHashSet, { mb: 1500 });

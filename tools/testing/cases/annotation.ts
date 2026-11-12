@@ -108,25 +108,3 @@ export function parseAnnotations(text: string): AnnotatedSource {
         namelessOffsets,
     };
 }
-
-/// Named markers sorted by name, then unnamed ones as `nameless_<i>` in
-/// source order — the key order snapshots render in. Twin of
-/// marker_points/marker_ranges in src/driver/inspect.cc.
-export function markerPoints(source: AnnotatedSource): [string, number][] {
-    const named = [...source.offsets.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    const nameless: [string, number][] = source.namelessOffsets.map((offset, i) => [
-        `nameless_${i}`,
-        offset,
-    ]);
-    return [...named, ...nameless];
-}
-
-export function markerRanges(source: AnnotatedSource): [string, [number, number]][] {
-    // Named ranges sorted by name; the single allowed nameless range comes
-    // last, matching the named-then-nameless order everywhere else.
-    const named = [...source.ranges.entries()]
-        .filter(([name]) => name !== "")
-        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    const nameless = source.ranges.get("");
-    return nameless ? [...named, ["nameless_0", nameless]] : named;
-}

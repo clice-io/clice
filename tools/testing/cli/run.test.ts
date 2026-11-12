@@ -3,7 +3,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, test } from "vitest";
 import { elideCrash } from "../render/lsp.ts";
-import { normalize, rootRelative, splitCommand, stdoutText } from "./run.ts";
+import {
+    normalize,
+    rootRelative,
+    splitCommand,
+    stdoutText,
+    undeclaredDeath,
+    type CommandRun,
+} from "./run.ts";
 
 describe("splitCommand", () => {
     test("quotes group words", () => {
@@ -18,8 +25,46 @@ describe("splitCommand", () => {
         expect(splitCommand(`format ""`)).toEqual(["format", ""]);
     });
 
-    test("an open quote is refused", () => {
-        expect(() => splitCommand(`query symbol-search "a`)).toThrow(/unterminated/);
+    test("globs and variables stay as written, shell syntax is refused", () => {
+        expect(splitCommand("analyze modules --scope core/** --out $OUT")).toEqual([
+            "analyze",
+            "modules",
+            "--scope",
+            "core/**",
+            "--out",
+            "$OUT",
+        ]);
+        expect(() => splitCommand("index | head")).toThrow(/shell syntax/);
+        expect(() => splitCommand("index # comment")).toThrow(/shell syntax/);
+    });
+});
+
+describe("undeclaredDeath", () => {
+    const ended = (status: number | null, signal: NodeJS.Signals | null): CommandRun => ({
+        label: "$ clice index",
+        pid: 4242,
+        transcript: {},
+        status,
+        signal,
+        stdout: "",
+        stderr: "",
+        json: undefined,
+    });
+
+    test("a signal the test did not send fails", () => {
+        expect(undeclaredDeath(ended(null, "SIGSEGV"), {})).toBe(
+            "$ clice index crashed (SIGSEGV), which the test did not cause",
+        );
+        expect(undeclaredDeath(ended(null, "SIGPIPE"), { stdout: "merged" })).toBeDefined();
+    });
+
+    test("the signals the test sent, or a reader that left, do not", () => {
+        const interrupt = { units: 1, signals: ["SIGTERM", "SIGHUP"] as NodeJS.Signals[] };
+        expect(undeclaredDeath(ended(null, "SIGHUP"), { interrupt })).toBeUndefined();
+        expect(undeclaredDeath(ended(null, "SIGPIPE"), { stdout: "closed early" })).toBeUndefined();
+        expect(undeclaredDeath(ended(null, "SIGPIPE"), { stdout: "fifo gone" })).toBeUndefined();
+        expect(undeclaredDeath(ended(130, null), { interrupt })).toBeUndefined();
+        expect(undeclaredDeath(ended(1, null), {})).toBeUndefined();
     });
 });
 

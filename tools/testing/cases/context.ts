@@ -5,10 +5,16 @@ import * as path from "node:path";
 import { running } from "../../client/process.ts";
 import { Workspace } from "../../client/workspace.ts";
 import { withTimeout } from "../../promise.ts";
-import { runCommand, splitCommand, type CommandOptions, type CommandRun } from "../cli/run.ts";
+import {
+    runCommand,
+    splitCommand,
+    undeclaredDeath,
+    type CommandOptions,
+    type CommandRun,
+} from "../cli/run.ts";
 import { block, type ShowOptions, type Shown } from "../render/shown.ts";
-import { keepLogs } from "../logs/logs.ts";
-import { Serve, gateLogs, type Faults, type ServerOptions } from "../server/serve.ts";
+import { gateLogs, keepLogs, type Faults, type Started } from "../logs/logs.ts";
+import { Serve, type ServerOptions } from "../server/serve.ts";
 import { SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
 import { markerOf, runAnswers } from "./answers.ts";
 import { at, locate, type Anchor, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
@@ -60,6 +66,9 @@ class TestRun implements TestContext {
     private readonly steps = new StepRecord();
     private readonly errors: RegExp[];
     private readonly serves: Serve[] = [];
+    /// The commands the test ran, and how those that died unasked ended.
+    private readonly commands: Started[] = [];
+    private readonly deaths: string[] = [];
     /// The crashes the test's commands provoke on purpose.
     private readonly commandFaults: Faults[] = [];
     /// The kills the test's commands were told to cause so far.
@@ -145,6 +154,11 @@ class TestRun implements TestContext {
                 kill: { ...kill, taken: this.workspace.exists(`${killFile}.taken`) },
             });
         }
+        this.commands.push({ label: run.label, pid: run.pid, stderr: run.stderr });
+        const death = undeclaredDeath(run, options);
+        if (death !== undefined) {
+            this.deaths.push(death);
+        }
         this.output.transcript(run.label, run.transcript);
         return run;
     }
@@ -202,13 +216,14 @@ class TestRun implements TestContext {
         if (failed) {
             console.log(`steps:\n${this.steps.render()}`);
         }
-        const errors: unknown[] = [];
+        const errors: unknown[] = this.deaths.map((death) => new Error(death));
         for (const s of this.serves) {
             errors.push(...(await s.finish(failed)));
         }
         errors.push(
             ...gateLogs(
-                this.workspace,
+                this.root,
+                [...this.serves.flatMap((s) => s.started()), ...this.commands],
                 {
                     errors: this.errors,
                     servers: this.serves.map((s) => s.faults()),

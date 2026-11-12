@@ -12,6 +12,7 @@ import { cliceExecutable } from "../../client/session.ts";
 import { serverEnv } from "../../process_gate.ts";
 import { locate, type Anchor, type MarkerAnchor } from "../cases/anchors.ts";
 import { recordConfig, recordInvocation } from "../coverage/record.ts";
+import type { Started } from "../logs/logs.ts";
 import type {
     Action,
     Call,
@@ -249,6 +250,8 @@ export class Inspect extends Client {
     private readonly differences: string[] = [];
     private readonly compareIndex: boolean;
     private runs = 0;
+    /// Every run so far, for the log gate.
+    readonly started: Started[] = [];
 
     /// `sources` are the copy's source files: those importing a module
     /// cannot compile alone and have no answer here.
@@ -747,6 +750,11 @@ export class Inspect extends Client {
         const result = await runProcess(cliceExecutable(), args, {
             env: serverEnv(),
             timeout: this.timeout,
+        });
+        this.started.push({
+            label: `clice inspect ${feature} ${file}`,
+            pid: result.pid,
+            stderr: result.stderr,
         });
         if (result.status !== 0) {
             throw new Error(`clice inspect ${ending(result)}:\n${result.stderr}`);
