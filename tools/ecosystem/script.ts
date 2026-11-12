@@ -313,17 +313,16 @@ export function knownIssues(job: Job, platform: Platform, failure: Failure): Kno
             return false;
         }
         const global = new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`);
-        let names = false;
-        for (const match of failure.detail.matchAll(global)) {
+        const touched = [...failure.detail.matchAll(global)].flatMap((match) => {
             const end = match.index + match[0].length;
-            changed.forEach((line, index) => {
-                if (match.index < line.end && end > line.start) {
-                    named.add(index);
-                    names = true;
-                }
-            });
+            return changed.flatMap((line, index) =>
+                match.index < line.end && end > line.start ? [index] : [],
+            );
+        });
+        for (const index of touched) {
+            named.add(index);
         }
-        return names;
+        return touched.length > 0;
     });
     return named.size === changed.length ? naming : [];
 }
