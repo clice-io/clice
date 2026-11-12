@@ -142,6 +142,18 @@ auto hover_info(const index::IndexQuery& query,
     // worker paused or crashed, read-only, or just opened.
     std::string definition;
     auto text = index::declared_text(query, symbol, cursor.site.file, RelationKind::Definition);
+    // The card of an Objective-C class or category shows its @interface,
+    // as the AST's does, not the @implementation defining it.
+    if(text && text->text.starts_with("@implementation")) {
+        if(auto interface = index::declared_text(
+               query,
+               symbol,
+               cursor.site.file,
+               RelationKind::Declaration,
+               [](llvm::StringRef declared) { return declared.starts_with("@interface"); })) {
+            text = std::move(interface);
+        }
+    }
     if(!text) {
         text = index::declared_text(query, symbol, cursor.site.file, RelationKind::Declaration);
     }

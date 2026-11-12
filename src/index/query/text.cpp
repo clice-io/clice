@@ -8,8 +8,11 @@ import :syntax.source_text;
 
 namespace clice::index {
 
-std::optional<DeclaredText>
-    declared_text(const IndexQuery& index, SymbolHash hash, Fid anchor, RelationKind kind) {
+std::optional<DeclaredText> declared_text(const IndexQuery& index,
+                                          SymbolHash hash,
+                                          Fid anchor,
+                                          RelationKind kind,
+                                          llvm::function_ref<bool(llvm::StringRef)> accept) {
     // Live sources first: buffer-true indexes also know symbols the project
     // table has never seen (an unsaved definition), the preamble region
     // holds the buffer's own macros, and an overlay is the only source for
@@ -32,9 +35,13 @@ std::optional<DeclaredText>
                                     return true;
                                 }
                                 auto range = extent->range;
+                                auto declared = text->substr(range.begin, range.length());
+                                if(accept && !accept(declared)) {
+                                    return true;
+                                }
                                 found = DeclaredText{
                                     .extent = *extent,
-                                    .text = std::string(text->substr(range.begin, range.length())),
+                                    .text = declared.str(),
                                 };
                                 return false;
                             });

@@ -184,15 +184,12 @@ markdown = '''
 '''
 range = "@protocol ⟦Drawable⟧"
 
-[test.interface]
-wrong = "the index card of an Objective-C class shows the head of its @implementation, which names neither its superclass nor its protocols; the AST card shows its @interface"
-
 [test.interface.index]
 markdown = '''
 **class** `Shape`
 
 ```cpp
-@implementation Shape ... @end
+@interface Shape : Object <Drawable> ... @end
 ```
 '''
 range = "@interface ⟦Shape⟧ : Object <Drawable> {"
@@ -210,15 +207,12 @@ markdown = '''
 '''
 range = "@interface ⟦Shape⟧ : Object <Drawable> {"
 
-[test.implementation]
-wrong = "the index card of an Objective-C class shows the head of its @implementation, which names neither its superclass nor its protocols; the AST card shows its @interface"
-
 [test.implementation.index]
 markdown = '''
 **class** `Shape`
 
 ```cpp
-@implementation Shape ... @end
+@interface Shape : Object <Drawable> ... @end
 ```
 '''
 range = "@implementation ⟦Shape⟧"
