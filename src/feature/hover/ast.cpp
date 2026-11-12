@@ -617,12 +617,16 @@ struct CardStyle {
 };
 
 /// Lay out code a card shows, a printed declaration or an expansion: it is
-/// printed as one line, not as anyone wrote it.
-void reformat(CompilationUnit& unit, std::string& code) {
+/// printed as one line, not as anyone wrote it. Without `search`, the lines
+/// stay as they are, past the style's column limit.
+void reformat(CompilationUnit& unit, std::string& code, bool search = true) {
     if(code.empty()) {
         return;
     }
-    auto& style = unit.get<CardStyle>().style;
+    auto style = unit.get<CardStyle>().style;
+    if(!search) {
+        style.ColumnLimit = 0;
+    }
     auto replacements =
         clang::format::reformat(style, code, {clang::tooling::Range(0, code.size())});
     auto formatted = clang::tooling::applyAllReplacements(code, replacements);
@@ -1475,24 +1479,30 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
         return {};
     };
 
-    /// Joined until it holds `shown_characters` bytes, laid out when small
-    /// and shallow enough, and shown up to `shown_lines` lines and
-    /// `shown_characters` characters. clang-format's line breaking takes
-    /// seconds on a long or deeply nested expansion, and on a block inside an
-    /// expression (a statement expression, a struct in a sizeof), which it
-    /// lays out again for every way of breaking the line around it: the
-    /// kernel's REG_FIELD_GET, 18 KB of tokens 20 brackets deep, took 77 s,
-    /// 600 bytes of it 4 s, 1 KB of it with no block 16 deep 150 ms. Past
-    /// `layout_limit` bytes or `layout_depth` brackets, or with such a block,
-    /// the expansion shows as its tokens joined.
+    /// Joined until it holds `joined_limit` bytes, laid out, and shown up
+    /// to `shown_lines` lines and `shown_characters` characters. Cut while
+    /// joining, the text has its open brackets closed past a mark for the
+    /// layout to reach its end, and is shown up to the mark. clang-format's
+    /// search for the best line breaks takes seconds on a long or deeply
+    /// nested expansion, and on a block inside an expression (a statement
+    /// expression, a struct in a sizeof), which it lays out again for every
+    /// way of breaking the line around it: the kernel's REG_FIELD_GET, 18 KB
+    /// 20 brackets deep, took 77 s, 300 bytes of it 1.3 s. Past
+    /// `search_limit` bytes or `search_depth` brackets, or with such a
+    /// block, each statement goes on a line of its own and the layout keeps
+    /// the lines as they are: 18 KB in 50 ms.
     constexpr std::size_t shown_lines = 40;
     constexpr std::size_t shown_characters = 4096;
-    constexpr std::size_t layout_limit = 1024;
-    constexpr std::size_t layout_depth = 8;
+    constexpr std::size_t joined_limit = 2 * shown_characters;
+    constexpr std::size_t search_limit = 1024;
+    constexpr std::size_t search_depth = 8;
+    constexpr llvm::StringLiteral cut_mark = "/*...*/";
     std::string text;
-    /// The brackets open where the text ends: `(` for a parenthesis or a
-    /// square bracket, `{` for a brace.
-    std::string open;
+    /// The separators where a statement ends, before the next token.
+    std::vector<std::size_t> statement_ends;
+    bool statement_ended = false;
+    /// What closes each bracket open where the text ends.
+    std::string closers;
     std::size_t deepest = 0;
     bool block_in_expression = false;
     bool cut = false;
@@ -1504,41 +1514,63 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
             if(at.isInvalid() || !seen.insert(at).second) {
                 continue;
             }
-            if(text.size() >= shown_characters) {
+            if(text.size() >= joined_limit) {
                 cut = true;
                 break;
             }
+            auto kind = token.kind();
             if(!text.empty()) {
+                if(statement_ended || kind == clang::tok::r_brace) {
+                    statement_ends.push_back(text.size());
+                }
                 text += ' ';
             }
             text += unit.token_spelling(token.location());
-            switch(token.kind()) {
-                case clang::tok::l_paren:
-                case clang::tok::l_square: open.push_back('('); break;
+            statement_ended = kind == clang::tok::semi || kind == clang::tok::l_brace;
+            switch(kind) {
+                case clang::tok::l_paren: closers.push_back(')'); break;
+                case clang::tok::l_square: closers.push_back(']'); break;
                 case clang::tok::l_brace:
-                    block_in_expression = block_in_expression || open.contains('(');
-                    open.push_back('{');
+                    block_in_expression = block_in_expression ||
+                                          closers.find_first_of(")]") != std::string::npos;
+                    closers.push_back('}');
                     break;
                 case clang::tok::r_paren:
                 case clang::tok::r_square:
                 case clang::tok::r_brace:
-                    if(!open.empty()) {
-                        open.pop_back();
+                    if(!closers.empty()) {
+                        closers.pop_back();
                     }
                     break;
                 default: break;
             }
-            deepest = std::max(deepest, open.size());
+            deepest = std::max(deepest, closers.size());
         }
         if(cut) {
             break;
         }
     }
-    if(!cut && text.size() <= layout_limit && deepest <= layout_depth && !block_in_expression) {
-        reformat(unit, text);
+    bool search = text.size() <= search_limit && deepest <= search_depth && !block_in_expression;
+    if(!search) {
+        for(auto at: statement_ends) {
+            text[at] = '\n';
+        }
+    }
+    if(cut) {
+        text += ' ';
+        text += cut_mark;
+        for(auto closer: views::reverse(closers)) {
+            text += ' ';
+            text += closer;
+        }
+    }
+    reformat(unit, text, search);
+    llvm::StringRef laid = text;
+    if(cut) {
+        laid = laid.take_front(laid.rfind(cut_mark)).rtrim();
     }
     llvm::SmallVector<llvm::StringRef> lines;
-    llvm::StringRef(text).split(lines, '\n');
+    laid.split(lines, '\n');
     bool truncated = cut || lines.size() > shown_lines;
     auto shown = llvm::join(llvm::ArrayRef(lines).take_front(shown_lines), "\n");
     if(auto kept = take_characters(shown, shown_characters); kept.size() < shown.size()) {
