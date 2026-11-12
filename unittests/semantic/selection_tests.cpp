@@ -193,16 +193,16 @@ ZEST_CASE(Types) {
     )",
                   "RecordTypeLoc");
     EXPECT_SELECT(R"(§⟦§void⟧ (*S)(int) = nullptr;)", "BuiltinTypeLoc");
-    /// EXPECT_SELECT(R"(§⟦void (*S)§()(int)⟧ = nullptr;)", "FunctionProtoTypeLoc");
+    EXPECT_SELECT(R"(§⟦void (*S)§()(int)⟧ = nullptr;)", "FunctionProtoTypeLoc");
     EXPECT_SELECT(R"(§⟦void (§*S)(int)⟧ = nullptr;)", "PointerTypeLoc");
-    /// EXPECT_SELECT(R"(§⟦void §()(*S)(int)⟧ = nullptr;)", "ParenTypeLoc");
+    EXPECT_SELECT(R"(§⟦void §()(*S)(int)⟧ = nullptr;)", "ParenTypeLoc");
     EXPECT_SELECT(R"(§⟦§void⟧ foo();)", "BuiltinTypeLoc");
     EXPECT_SELECT(R"(§⟦void foo§()()⟧;)", "FunctionProtoTypeLoc");
     EXPECT_SELECT(R"(const int x = 1, y = 2; §⟦i§nt⟧ array[x][10][y];)", "BuiltinTypeLoc");
     EXPECT_SELECT(R"(int (*getFunc(§⟦do§uble⟧))(int);)", "BuiltinTypeLoc");
     EXPECT_SELECT(R"(class X{}; §⟦int X::§*⟧y[10];)", "MemberPointerTypeLoc");
     EXPECT_SELECT(R"(const §⟦a§uto⟧ x = 42;)", "AutoTypeLoc");
-    /// EXPECT_SELECT(R"(§⟦decltype§()(1)⟧ b;)", "DecltypeTypeLoc");
+    EXPECT_SELECT(R"(§⟦decltype§()(1)⟧ b;)", "DecltypeTypeLoc");
     EXPECT_SELECT(R"(§⟦de§cltype(a§uto)⟧ a = 1;)", "AutoTypeLoc");
     EXPECT_SELECT(R"(
         typedef int Foo;
