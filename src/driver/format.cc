@@ -32,7 +32,6 @@ struct Format {
 
     ProjectOptions where;
     JobsOption jobs;
-    LogLevelOption log;
 };
 
 struct Request {

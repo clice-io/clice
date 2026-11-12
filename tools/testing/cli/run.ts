@@ -17,7 +17,7 @@ import { resourceRoot } from "../render/paths.ts";
 import type { Table } from "../render/value.ts";
 
 /// A log line below warning, which the command's stderr shows under
-/// --log-level; or a line of a worker's log a crash report quotes, whose
+/// CLICE_LOG_LEVEL; or a line of a worker's log a crash report quotes, whose
 /// source lines and threads every change of the worker moves.
 const QUIET_LINE = /^(?:trace|debug|info): |^\s+\[/;
 

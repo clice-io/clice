@@ -53,7 +53,6 @@ struct Convert {
     std::variant<DatabaseToConvert, CommandToConvert> input;
 
     ProjectOptions where;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Command,
@@ -70,7 +69,6 @@ struct Command {
     bool json = false;
 
     ProjectOptions where;
-    LogLevelOption log;
     KANNOTATE(&operation, cli::meta_var = "<operation>")
     std::optional<std::variant<Convert>> operation;
 };

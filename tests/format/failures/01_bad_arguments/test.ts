@@ -11,10 +11,6 @@ test("a non-source file argument", async (t) => {
     await t.cli("format notes.md");
 });
 
-test("an invalid log level", async (t) => {
-    await t.cli("format --log-level loud");
-});
-
 test("an invalid job count", async (t) => {
     await t.cli("format --jobs many");
 });

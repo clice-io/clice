@@ -11,13 +11,11 @@ KANNOTATE_TYPE(struct Serve, description = "Start LSP server");
 struct Serve {
     ServerOptions server;
     ConfigurationOption build;
-    LogLevelOption log{.log_level = logging::Level::Info};
 };
 
 /// Not through dispatch: the server installs a stderr logger of its own,
 /// which a client that does not drain stderr cannot block (run_serve_mode).
 int run_serve(Serve& serve) {
-    serve.log.apply();
     return run_serve_mode(serve.server, serve.build.configuration);
 }
 

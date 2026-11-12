@@ -40,14 +40,12 @@ struct Stats {
     bool variants = false;
 
     ProjectOptions where;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Symbol, description = "What the persisted index records about symbols");
 struct Symbol {
     SymbolTarget target;
     ProjectOptions where;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct File,
@@ -55,7 +53,6 @@ KANNOTATE_TYPE(struct File,
 struct File {
     FileTarget target;
     ProjectOptions where;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(
@@ -64,7 +61,6 @@ KANNOTATE_TYPE(
 struct Unit {
     FileTarget target;
     ProjectOptions where;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Index, description = "Index a project ahead of time");
@@ -72,7 +68,6 @@ struct Index {
     ProjectOptions where;
     JobsOption jobs;
     JsonReportOption report;
-    LogLevelOption log;
     KANNOTATE(&operation, cli::meta_var = "<operation>")
     std::optional<std::variant<Stats, Symbol, File, Unit>> operation;
 };

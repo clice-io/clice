@@ -27,7 +27,6 @@ struct Scan {
     std::optional<std::uint32_t> runs;
 
     ProjectOptions where;
-    LogLevelOption log;
 };
 
 struct ScannedFile {

@@ -83,10 +83,6 @@ CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice \
 
 Preparing LLVM or the kernel takes a long build and several gigabytes of disk.
 
-## Trace an Editor's Session
-
-With `CLICE_LSP_TRACE=1` in its environment, a server writes every LSP message it receives (`<-`) and sends (`->`), with the time, to `trace.log` in its session's log directory, beside `master.log`; like the logs, a trace past 64 MiB moves to `trace.1.log` and goes on. An editor passes the variable to the server it starts (VS Code: `clice.serverEnv`).
-
 ## Debug
 
 If you want to attach a debugger to clice, start it in socket mode independently, then connect a client.

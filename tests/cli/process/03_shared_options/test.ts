@@ -1,11 +1,12 @@
 import { test } from "@clice/tools/testing";
 
-// Options most commands share: a log level, a workspace, a job count; and
-// what a command run from a subdirectory works on.
+// Options most commands share: a workspace, a job count; the log level
+// every command takes from its environment; and what a command run from a
+// subdirectory works on.
 
 test("log level", async (t) => {
-    await t.cli("index --log-level bogus");
-    await t.cli("index --log-level error --jobs 1");
+    await t.cli("index --jobs 1", { env: { CLICE_LOG_LEVEL: "bogus" } });
+    await t.cli("index --jobs 1", { env: { CLICE_LOG_LEVEL: "error" } });
 });
 
 test("a job count by its short name", async (t) => {

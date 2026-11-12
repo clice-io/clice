@@ -47,7 +47,6 @@ struct Merge {
     std::string file;
 
     OutputOptions output;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Modularize,
@@ -78,7 +77,6 @@ struct Modularize {
 
     OutputOptions output;
     ProjectOptions where;
-    LogLevelOption log;
     KANNOTATE(&operation, cli::meta_var = "<operation>")
     std::optional<std::variant<Merge>> operation;
 };

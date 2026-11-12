@@ -462,6 +462,28 @@ void write(FileOutput& output, std::string_view text) {
 
 void stderr_logger(std::string_view name, StderrReader stderr_reader) {
     this_thread = 0;
+    constexpr std::pair<std::string_view, Level> names[] = {
+        {"trace", Level::Trace},
+        {"debug", Level::Debug},
+        {"info",  Level::Info },
+        {"warn",  Level::Warn },
+        {"error", Level::Error},
+        {"fatal", Level::Fatal},
+        {"off",   Level::Off  },
+    };
+    auto given = env_string("CLICE_LOG_LEVEL").value_or("");
+    auto named = ranges::find(names, given, &std::pair<std::string_view, Level>::first);
+    // An editor shows the server's lines in its output panel; a terminal
+    // reader wants to see what went wrong.
+    auto level = named != ranges::end(names)            ? named->second
+                 : stderr_reader == StderrReader::Editor ? Level::Info
+                                                         : Level::Warn;
+    // A session log keeps info whatever stderr shows: it tells what a run did.
+    options.level = std::min(level, Level::Info);
+    // The pool relays each line of a worker's stderr as a warning: one with
+    // no log file to write keeps its lower levels out of it.
+    options.stderr_level = stderr_reader == StderrReader::Pool ? Level::Warn : level;
+    bool refused = false;
     {
         std::lock_guard lock(mutex);
         process_name = name;
@@ -469,14 +491,19 @@ void stderr_logger(std::string_view name, StderrReader stderr_reader) {
         if(reader != StderrReader::Editor) {
             console = FileOutput{.fd = 2};
             color = sys::shows_colors(2);
-            return;
-        }
-        editor = pipe_output({.fd = 2});
-        if(editor->pipe != PipeSwitch::Refused) {
-            return;
+        } else {
+            editor = pipe_output({.fd = 2});
+            refused = editor->pipe == PipeSwitch::Refused;
         }
     }
-    LOG_WARN("stderr is a pipe that cannot stop blocking clice: lines go to the log file alone");
+    if(refused) {
+        LOG_WARN("stderr is a pipe that cannot stop blocking clice: lines go to the log file alone");
+    }
+    if(!given.empty() && named == ranges::end(names)) {
+        LOG_WARN("CLICE_LOG_LEVEL is {}, none of trace, debug, info, warn, error, fatal and off: "
+                 "it is ignored",
+                 given);
+    }
 }
 
 void set_project_roots(llvm::ArrayRef<std::string> paths) {

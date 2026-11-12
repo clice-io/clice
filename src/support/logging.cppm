@@ -97,6 +97,7 @@ enum class Level : std::uint8_t {
     Off,
 };
 
+/// The levels stderr_logger sets.
 struct Options {
     /// Lines below it are written nowhere.
     Level level = Level::Info;
@@ -225,8 +226,10 @@ struct FileOutput {
 void write(FileOutput& output, std::string_view text);
 
 /// Log the process's lines to stderr, under `name`, which its log file
-/// takes (file_logger); lines no log file takes yet are kept for it. Called
-/// from main, before any other thread starts.
+/// takes (file_logger); lines no log file takes yet are kept for it. The
+/// levels are CLICE_LOG_LEVEL's, an editor's server's info and every other
+/// process's warnings without it. Called from main, before any other thread
+/// starts.
 void stderr_logger(std::string_view name, StderrReader reader = StderrReader::Terminal);
 
 /// The lines the calling thread logs write paths under these project roots

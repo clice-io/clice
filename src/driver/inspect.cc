@@ -1066,7 +1066,6 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
 template <std::size_t I>
 struct Feature {
     Options inspect;
-    LogLevelOption log;
 };
 
 /// The options of features[I], which the index answers too.
@@ -1080,7 +1079,6 @@ struct IndexedFeature {
                   "AST is not current")
     bool index = false;
 
-    LogLevelOption log;
 };
 
 /// The options of features[I], which audits its work.
@@ -1094,7 +1092,6 @@ struct AuditedFeature {
                   "leaves a choice open")
     bool audit = false;
 
-    LogLevelOption log;
 };
 
 template <std::size_t I>
@@ -1129,7 +1126,6 @@ int run(AuditedFeature<I>& feature) {
 
 KANNOTATE_TYPE(struct ConfigSchema, description = "The JSON schema of the clice configuration");
 struct ConfigSchema {
-    LogLevelOption log;
 };
 
 int run(ConfigSchema&) {

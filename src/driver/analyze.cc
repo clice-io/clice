@@ -81,7 +81,6 @@ struct Edge {
     std::vector<std::string> modules;
 
     ModelOptions model;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Module,
@@ -94,7 +93,6 @@ struct Module {
     std::string module;
 
     ModelOptions model;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(
@@ -104,27 +102,23 @@ struct File {
     FileTarget target;
     ModelOptions model;
     WeightOptions weights;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Obstacles,
                description = "What a mechanical rewrite into modules cannot carry over");
 struct Obstacles {
     ModelOptions model;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Macros, description = "The macros crossing modules");
 struct Macros {
     ModelOptions model;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Impact, description = "What a change to each module rebuilds");
 struct Impact {
     ModelOptions model;
     WeightOptions weights;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Interface,
@@ -137,7 +131,6 @@ struct Interface {
     std::optional<std::string> module;
 
     ModelOptions model;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Modules,
@@ -148,7 +141,6 @@ struct Modules {
 
     ModelOptions model;
     WeightOptions weights;
-    LogLevelOption log;
     KANNOTATE(&operation, cli::meta_var = "<view>")
     std::optional<std::variant<Edge, Module, File, Obstacles, Macros, Impact, Interface>> operation;
 };

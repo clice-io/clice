@@ -13,7 +13,7 @@ vim.lsp.enable('clice')
 For this directory's config, without nvim-lspconfig or ahead of its copy, copy `lsp/clice.lua` into the `after/lsp/` directory of your config, which takes precedence over nvim-lspconfig's; or append this directory to `runtimepath`, which also dims inactive preprocessor branches (`plugin/clice.lua`). The config runs `clice` from `PATH`; to run another binary:
 
 ```lua
-vim.lsp.config('clice', { cmd = { '/path/to/clice', 'serve', '--log-level', 'warn' } })
+vim.lsp.config('clice', { cmd = { '/path/to/clice', 'serve' } })
 ```
 
 Neovim runs a clice for each project root: the nearest directory above the file that holds a `clice.toml`, else a `compile_commands.json`, else a `.git` (before Neovim 0.11.3, the nearest that holds any of them).
