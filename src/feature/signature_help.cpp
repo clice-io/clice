@@ -480,6 +480,15 @@ clang::QualType built_from_pack(clang::Sema& sema,
     if(!pattern || !pattern->hasBody(definition)) {
         return {};
     }
+    /// The pattern clang reports can be another than the one instantiated
+    /// (a specialization merged across modules): its parameters must be
+    /// the ones the specialization's arguments bind.
+    if(const auto* described = pattern->getDescribedFunctionTemplate()) {
+        const auto* arguments = specialization.getTemplateSpecializationArgs();
+        if(!arguments || arguments->size() != described->getTemplateParameters()->size()) {
+            return {};
+        }
+    }
     PackConstruction finder{.pack = definition->parameters().back()};
     finder.TraverseStmt(definition->getBody());
     if(finder.built.isNull() || !finder.built->isDependentType()) {

@@ -48,7 +48,8 @@ const clang::NamedDecl* Builder::in_pattern(const clang::NamedDecl* decl) {
     // text names the definition's, that declaration's signature its own.
     const auto* definition = pattern->getDefinition();
     if(const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(found->second);
-       param && definition && param->getDeclContext() != definition && expression_begin.isValid()) {
+       param && definition && param->getDeclContext() != definition &&
+       param->getFunctionScopeIndex() < definition->getNumParams() && expression_begin.isValid()) {
         auto at = unit.seen_location(expression_begin);
         auto range = definition->getSourceRange();
         if(!unit.before(at, unit.seen_location(range.getBegin())) &&

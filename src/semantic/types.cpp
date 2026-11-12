@@ -284,7 +284,9 @@ auto deduced_param_type(const clang::ParmVarDecl* param, clang::TemplateTypeParm
     auto* params = template_decl->getTemplateParameters();
     auto parameters = params->asArray();
     auto* found = ranges::find(parameters, written.getDecl());
-    assert(found != params->end() && "auto TTP is not from enclosing function?");
+    if(found == parameters.end()) {
+        return {};
+    }
 
     // The helper keeps its clangd signature, which speaks mutable pointers;
     // it only reads through them.

@@ -720,7 +720,7 @@ void add_bindings(std::vector<HoverInfo::Binding>& bindings,
                   llvm::ArrayRef<clang::TemplateArgument> arguments,
                   clang::ASTContext& context,
                   const display::Options& options) {
-    for(const auto& [index, argument]: views::enumerate(arguments)) {
+    for(const auto& [index, argument]: views::enumerate(arguments.take_front(params.size()))) {
         auto position = static_cast<unsigned>(index);
         const auto* param = params.getParam(position);
         if(param->getName().empty() || param->isImplicit() || argument.getIsDefaulted() ||

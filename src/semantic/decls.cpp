@@ -41,6 +41,64 @@ auto own_template_parameters(const clang::Decl* decl) -> const clang::TemplatePa
     return nullptr;
 }
 
+namespace {
+
+/// The parameter list a substitution's associated declaration stands for,
+/// as clang's getReplacedTemplateParameter reads it.
+auto replaced_parameters(const clang::Decl* associated) -> const clang::TemplateParameterList* {
+    if(const auto* list = own_template_parameters(associated)) {
+        return list;
+    }
+    if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(associated)) {
+        auto from = spec->getSpecializedTemplateOrPartial();
+        if(const auto* partial = from.dyn_cast<clang::ClassTemplatePartialSpecializationDecl*>()) {
+            return partial->getTemplateParameters();
+        }
+        return llvm::cast<clang::ClassTemplateDecl*>(from)->getTemplateParameters();
+    }
+    if(const auto* spec = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(associated)) {
+        auto from = spec->getSpecializedTemplateOrPartial();
+        if(const auto* partial = from.dyn_cast<clang::VarTemplatePartialSpecializationDecl*>()) {
+            return partial->getTemplateParameters();
+        }
+        return llvm::cast<clang::VarTemplateDecl*>(from)->getTemplateParameters();
+    }
+    if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(associated)) {
+        const auto* described = record->getDescribedClassTemplate();
+        return described ? described->getTemplateParameters() : nullptr;
+    }
+    if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(associated)) {
+        const auto* info = function->getTemplateSpecializationInfo();
+        return info ? info->getTemplate()->getTemplateParameters() : nullptr;
+    }
+    return nullptr;
+}
+
+template <typename Param>
+auto replaced_parameter(const clang::Decl* associated, unsigned index) -> const Param* {
+    const auto* list = replaced_parameters(associated);
+    return list && index < list->size() ? llvm::dyn_cast<Param>(list->getParam(index)) : nullptr;
+}
+
+}  // namespace
+
+auto replaced_parameter(const clang::SubstTemplateTypeParmType& type)
+    -> const clang::TemplateTypeParmDecl* {
+    /// A deduced placeholder's substitution is associated with the
+    /// invented parameter itself.
+    if(const auto* param = llvm::dyn_cast<clang::TemplateTypeParmDecl>(type.getAssociatedDecl())) {
+        return param;
+    }
+    return replaced_parameter<clang::TemplateTypeParmDecl>(type.getAssociatedDecl(),
+                                                           type.getIndex());
+}
+
+auto replaced_parameter(const clang::SubstNonTypeTemplateParmPackExpr& expr)
+    -> const clang::NonTypeTemplateParmDecl* {
+    return replaced_parameter<clang::NonTypeTemplateParmDecl>(expr.getAssociatedDecl(),
+                                                              expr.getIndex());
+}
+
 auto outer_template_parameters(const clang::Decl* decl)
     -> llvm::ArrayRef<clang::TemplateParameterList*> {
     if(const auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(decl)) {
@@ -803,9 +861,9 @@ auto only_instantiation(clang::ParmVarDecl* decl) -> clang::ParmVarDecl* {
             break;
         ++ParamIdx;
     }
-    assert(ParamIdx < TemplateFunction->getNumParams() && "Couldn't find param in list?");
-    assert(ParamIdx < InstantiatedFunction->getNumParams() &&
-           "Instantiated function has fewer (non-pack) parameters?");
+    if(ParamIdx >= InstantiatedFunction->getNumParams()) {
+        return nullptr;
+    }
     return InstantiatedFunction->getParamDecl(ParamIdx);
 }
 
@@ -849,8 +907,8 @@ auto underlying_pack_type(const clang::ParmVarDecl* param) -> const clang::Templ
     }
 
     if(const auto* subst_type = llvm::dyn_cast<clang::SubstTemplateTypeParmType>(type)) {
-        const auto* decl = subst_type->getReplacedParameter();
-        if(decl->isParameterPack()) {
+        const auto* decl = replaced_parameter(*subst_type);
+        if(decl && decl->isParameterPack()) {
             return decl->getTypeForDecl()->castAs<clang::TemplateTypeParmType>();
         }
     }
