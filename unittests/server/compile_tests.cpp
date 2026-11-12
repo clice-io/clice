@@ -969,7 +969,7 @@ ZEST_CASE(PCHCrashStopsDocument) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
+    ZEXPECT(anomalies.trapped == std::vector{logging::AnomalyId::WorkerCrash});
 }
 
 ZEST_CASE(PCHCrashStopsBuild) {
@@ -1007,7 +1007,7 @@ ZEST_CASE(PCHCrashStopsBuild) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
+    ZEXPECT(anomalies.trapped == std::vector{logging::AnomalyId::WorkerCrash});
 }
 
 ZEST_CASE(QueuedRequestStops) {
@@ -1039,7 +1039,6 @@ ZEST_CASE(QueuedRequestStops) {
             ZEXPECT(result.value().list.data == "null");
         };
         co_await async::when_all(complete(), complete());
-        ZEXPECT(anomalies.count(logging::AnomalyId::WorkerCrash) == 1u);
         auto notes = session->crash_notes();
         ZASSERT(notes.size() == 1u);
         ZEXPECT(notes[0].kind == feature::RequestKind::Completion);
@@ -1052,7 +1051,7 @@ ZEST_CASE(QueuedRequestStops) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
+    ZEXPECT(anomalies.trapped == std::vector{logging::AnomalyId::WorkerCrash});
 }
 
 ZEST_CASE(ClientCancelSparesCompile) {
@@ -1256,7 +1255,6 @@ ZEST_CASE(PoisonPreambleShared) {
         ZEXPECT(crashed(second));
         ZASSERT(!co_await build(third));
         ZEXPECT(crashed(third));
-        ZEXPECT(anomalies.count(logging::AnomalyId::WorkerCrash) == 1u);
 
         co_await fixture.server.pool.stop();
         done = true;
@@ -1265,7 +1263,7 @@ ZEST_CASE(PoisonPreambleShared) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
+    ZEXPECT(anomalies.trapped == std::vector{logging::AnomalyId::WorkerCrash});
 }
 
 ZEST_CASE(AbandonedPCHKeepsNoIndex) {
