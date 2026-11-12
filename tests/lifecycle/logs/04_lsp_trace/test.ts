@@ -39,7 +39,7 @@ function traced(t: TestContext): Traced[] {
     return sent;
 }
 
-test(async (t) => {
+test("a server its editor starts", async (t) => {
     const s = await t.start({ env: { CLICE_LSP_TRACE: "1" } });
     await s.diagnostics("main.cpp");
     await s.stop();
