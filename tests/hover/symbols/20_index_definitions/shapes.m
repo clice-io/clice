@@ -21,3 +21,10 @@ __attribute__((objc_root_class))
 - (void)run {
 }
 @end
+
+__attribute__((objc_subclassing_restricted))
+@interface §(attributed)Final : Object
+@end
+
+@implementation Final
+@end
