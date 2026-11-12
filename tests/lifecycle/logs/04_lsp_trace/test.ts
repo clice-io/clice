@@ -20,8 +20,8 @@ test(async (t) => {
             return `${direction ?? "?"} ${message.method ?? `reply ${String(message.id)}`}`;
         });
     expect(messages.slice(0, 2)).toEqual(["<- initialize", "-> reply 0"]);
-    expect(messages.filter((message) => message.startsWith("<- textDocument/didOpen"))).toEqual(
-        ["<- textDocument/didOpen"],
-    );
+    expect(messages.filter((message) => message.startsWith("<- textDocument/didOpen"))).toEqual([
+        "<- textDocument/didOpen",
+    ]);
     expect(messages.at(-1)).toBe("<- exit");
 });

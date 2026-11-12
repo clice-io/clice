@@ -475,7 +475,7 @@ void stderr_logger(std::string_view name, StderrReader stderr_reader) {
     auto named = ranges::find(names, given, &std::pair<std::string_view, Level>::first);
     // An editor shows the server's lines in its output panel; a terminal
     // reader wants to see what went wrong.
-    auto level = named != ranges::end(names)            ? named->second
+    auto level = named != ranges::end(names)             ? named->second
                  : stderr_reader == StderrReader::Editor ? Level::Info
                                                          : Level::Warn;
     // A session log keeps info whatever stderr shows: it tells what a run did.
@@ -497,15 +497,17 @@ void stderr_logger(std::string_view name, StderrReader stderr_reader) {
         }
     }
     if(refused) {
-        LOG_WARN("stderr is a pipe that cannot stop blocking clice: lines go to the log file alone");
+        LOG_WARN(
+            "stderr is a pipe that cannot stop blocking clice: lines go to the log file alone");
     }
     // Once a process, and not by a worker, whose master said so already.
     static bool reported = false;
     if(!given.empty() && named == ranges::end(names) && stderr_reader != StderrReader::Pool &&
        !std::exchange(reported, true)) {
-        LOG_WARN("CLICE_LOG_LEVEL is {}, none of trace, debug, info, warn, error, fatal and off: "
-                 "it is ignored",
-                 given);
+        LOG_WARN(
+            "CLICE_LOG_LEVEL is {}, none of trace, debug, info, warn, error, fatal and off: "
+            "it is ignored",
+            given);
     }
 }
 

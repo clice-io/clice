@@ -16,9 +16,7 @@ test(async (t) => {
     let cancel = false;
     for (let length = 1; length <= typed.length; length++) {
         s.edit("main.cpp", {
-            text: t.disk
-                .read("main.cpp")
-                .replace(after, `${after}    ${typed.slice(0, length)}\n`),
+            text: t.disk.read("main.cpp").replace(after, `${after}    ${typed.slice(0, length)}\n`),
         });
         const call = t.at("main.cpp", "|add(1, 2)");
         const range = s.range(t.at("main.cpp", "add(1, 2)"));

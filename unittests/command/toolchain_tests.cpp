@@ -167,7 +167,8 @@ ZEST_CASE(HungQueryStopped) {
     ScopedEnv bound("CLICE_TEST_PROGRAM_BOUND_MS", "200");
     auto driver = fake_driver("clang", "exec sleep 600\n");
     auto ref = add("a.cpp", {driver.c_str(), "--target=x86_64-unknown-linux-gnu"});
-    ZEXPECT(llvm::StringRef(f.failure(ref)).ends_with(" did not finish within 200 ms and was stopped"));
+    ZEXPECT(
+        llvm::StringRef(f.failure(ref)).ends_with(" did not finish within 200 ms and was stopped"));
     auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
     ZEXPECT(adjacent(rendered.argv, "-triple", "x86_64-unknown-linux-gnu"));
 }

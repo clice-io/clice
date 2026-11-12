@@ -1077,7 +1077,6 @@ struct IndexedFeature {
                   "Answer from the file's index, as the server does while the file's "
                   "AST is not current")
     bool index = false;
-
 };
 
 /// The options of features[I], which audits its work.
@@ -1090,7 +1089,6 @@ struct AuditedFeature {
                   "Where the work goes in the whole file, and where it gives up or "
                   "leaves a choice open")
     bool audit = false;
-
 };
 
 template <std::size_t I>
@@ -1124,8 +1122,7 @@ int run(AuditedFeature<I>& feature) {
 }
 
 KANNOTATE_TYPE(struct ConfigSchema, description = "The JSON schema of the clice configuration");
-struct ConfigSchema {
-};
+struct ConfigSchema {};
 
 int run(ConfigSchema&) {
     auto schema = Settings::json_schema();

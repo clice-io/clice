@@ -1530,8 +1530,8 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
                 case clang::tok::l_paren: closers.push_back(')'); break;
                 case clang::tok::l_square: closers.push_back(']'); break;
                 case clang::tok::l_brace:
-                    block_in_expression = block_in_expression ||
-                                          closers.find_first_of(")]") != std::string::npos;
+                    block_in_expression =
+                        block_in_expression || closers.find_first_of(")]") != std::string::npos;
                     closers.push_back('}');
                     break;
                 case clang::tok::r_paren:

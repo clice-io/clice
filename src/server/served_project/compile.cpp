@@ -134,11 +134,11 @@ void ServedProject::retry_after_save(Session& session) {
     auto selection = project.select_command(path_id, command_request(path_id));
     if(selection.self_containment) {
         auto compiled = latest_at(path_id, session.version);
-        bool errs = !compiled || ranges::any_of(compiled->output->diagnostics.own,
-                                                [](const feature::FileDiagnostic& diagnostic) {
-                                                    return diagnostic.level >=
-                                                           DiagnosticLevel::Error;
-                                                });
+        bool errs =
+            !compiled || ranges::any_of(compiled->output->diagnostics.own,
+                                        [](const feature::FileDiagnostic& diagnostic) {
+                                            return diagnostic.level >= DiagnosticLevel::Error;
+                                        });
         if(project.header_saved(*selection.self_containment,
                                 project.file_table.intern_version(path_id, session.source->hash()),
                                 errs)) {

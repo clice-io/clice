@@ -29,19 +29,18 @@ async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::
     // Hang detection: a compiler or wrapper that never exits (one reading
     // its input, a hung network mount) would block its caller for good;
     // the cancel kills it with what it started.
-    auto captured = co_await async::with_timeout(async::process::capture({
-                                                     .program = file,
-                                                     .args = std::move(arguments),
-                                                     .env_changes = std::move(env_changes),
-                                                     .cwd = std::move(cwd),
-                                                     .creation = {.exit_with_parent =
-                                                                      can_exit_with_parent},
-                                                 }),
-                                                 bound);
+    auto captured =
+        co_await async::with_timeout(async::process::capture({
+                                         .program = file,
+                                         .args = std::move(arguments),
+                                         .env_changes = std::move(env_changes),
+                                         .cwd = std::move(cwd),
+                                         .creation = {.exit_with_parent = can_exit_with_parent},
+                                     }),
+                                     bound);
     if(captured.is_cancelled()) {
-        co_return std::unexpected(std::format("{} did not finish within {} ms and was stopped",
-                                              file,
-                                              bound.count()));
+        co_return std::unexpected(
+            std::format("{} did not finish within {} ms and was stopped", file, bound.count()));
     }
     if(!captured) {
         co_return std::unexpected(

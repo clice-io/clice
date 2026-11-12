@@ -23,7 +23,9 @@ export function gateLogs(dir: string): string[] {
             continue;
         }
         for (const fault of logFaults(readLogLines(files))) {
-            failures.push(`${entry.name}: ${path.relative(copy, fault.line.file)}: ${fault.line.text}`);
+            failures.push(
+                `${entry.name}: ${path.relative(copy, fault.line.file)}: ${fault.line.text}`,
+            );
         }
     }
     return failures;

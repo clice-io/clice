@@ -218,7 +218,7 @@ declared fails the test, and so does a declared one that never happened.
 | Option                     | Means                                                                                             |
 | -------------------------- | ------------------------------------------------------------------------------------------------- |
 | `except: { win32: "…" }`   | platforms the test has no meaning on, each with the reason; there it is listed as not applicable  |
-| `errors: ["…"]`            | the error-level log lines the test provokes; any other fails, and so does one no line matches      |
+| `errors: ["…"]`            | the error-level log lines the test provokes; any other fails, and so does one no line matches     |
 | `paths: { server: "…" }`   | (answers) one client alone, where the other cannot answer; `inspect` likewise                     |
 | `paths: { separate: "…" }` | (answers) both clients pinned apart where they answer differently on purpose; agreeing then fails |
 | `config: { … }`            | (answers) options in clice.toml's shape, taken by both clients                                    |
