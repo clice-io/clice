@@ -6,6 +6,7 @@ import * as path from "path";
 import { PassThrough } from "stream";
 import * as vscode from "vscode";
 
+import type { ClientHandle } from "../client";
 import { inactiveSpans } from "../feature/inactive";
 import { serverOutput, TraceChannel } from "../log";
 import { exited, retire } from "../process";
@@ -142,6 +143,241 @@ suite("server environment setting", function () {
         assert.deepStrictEqual(env, {
             PATH: "C:\\cygwin64\\bin;C:\\Windows",
             windir: "C:\\Windows",
+        });
+    });
+});
+
+type Writable<T> = { -readonly [K in keyof T]: T[K] };
+
+/// A message the extension showed: its text and the actions it offered.
+interface Message {
+    text: string;
+    actions: string[];
+}
+
+const cpptools = "ms-vscode.cpptools";
+const clangd = "llvm-vs-code-extensions.vscode-clangd";
+
+/// The conflict check's warning, naming `names`.
+function conflictWarning(names: string): Message {
+    return {
+        text:
+            `clice provides the C/C++ language features, and running ${names} alongside it ` +
+            "duplicates completion and diagnostics. Disable the conflicting language features?",
+        actions: ["Disable", "Never ask again"],
+    };
+}
+
+/// Where `section.key` is set: in the user's settings, the workspace's, the
+/// folder's.
+function scopes(section: string, key: string) {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    const inspected = vscode.workspace.getConfiguration(section, folder?.uri).inspect(key);
+    return {
+        user: inspected?.globalValue,
+        workspace: inspected?.workspaceValue,
+        folder: inspected?.workspaceFolderValue,
+    };
+}
+
+// Which other C/C++ extensions are installed, and what the user answers, the
+// test says through the API it shares with the extension. Runs before any
+// other suite activates the extension: the check hears of extension changes
+// through the event it subscribes to at activation.
+suite("conflicting extensions", function () {
+    /// Fires the extension's `vscode.extensions.onDidChange`, as installing
+    /// or enabling an extension does. The check decides before it waits on
+    /// anything: once this has fired, a warning it gives has been shown.
+    const extensionsChanged = new vscode.EventEmitter<void>();
+    const messageShown = new vscode.EventEmitter<void>();
+    /// The extensions reported installed beside the real ones.
+    let installed: string[] = [];
+    /// What the user answers the warning.
+    let answer: string | undefined;
+    let warnings: Message[] = [];
+    let notes: Message[] = [];
+    const restore: (() => void)[] = [];
+
+    function client(): ClientHandle {
+        const extension = vscode.extensions.getExtension<{ client: ClientHandle }>(
+            "clice-io.clice",
+        );
+        assert.ok(extension?.isActive, "extension not active");
+        return extension.exports.client;
+    }
+
+    const warned = (count: number) =>
+        until([messageShown.event], () => warnings.length === count, `warning ${count}`);
+
+    suiteSetup(async function () {
+        this.timeout(60 * 1000);
+        if (!executable) {
+            if (process.env.CI) {
+                throw new Error("CLICE_EXECUTABLE must be set in CI");
+            }
+            this.skip();
+        }
+        const extension = vscode.extensions.getExtension("clice-io.clice");
+        assert.ok(
+            extension && !extension.isActive,
+            "the extension started before the test could announce extension changes to it",
+        );
+        const extensions = vscode.extensions;
+        const descriptor = Object.getOwnPropertyDescriptor(extensions, "onDidChange");
+        assert.ok(descriptor, "vscode.extensions has its own onDidChange");
+        const changed = extensions.onDidChange;
+        const announced: vscode.Event<void> = (listener, thisArgs, disposables) => {
+            const both = vscode.Disposable.from(
+                changed(listener, thisArgs),
+                extensionsChanged.event(listener, thisArgs),
+            );
+            disposables?.push(both);
+            return both;
+        };
+        Object.defineProperty(extensions, "onDidChange", {
+            configurable: true,
+            get: () => announced,
+        });
+        try {
+            await extension.activate();
+        } finally {
+            Object.defineProperty(extensions, "onDidChange", descriptor);
+        }
+        assert.ok(client().isRunning(), "clice runs");
+    });
+
+    suiteTeardown(function () {
+        extensionsChanged.dispose();
+        messageShown.dispose();
+    });
+
+    setup(function () {
+        installed = [];
+        answer = undefined;
+        warnings = [];
+        notes = [];
+        const extensions = vscode.extensions as Writable<typeof vscode.extensions>;
+        const window = vscode.window as Writable<typeof vscode.window>;
+        const { getExtension } = extensions;
+        const { showWarningMessage, showInformationMessage } = window;
+        extensions.getExtension = ((id: string) =>
+            installed.includes(id)
+                ? ({ id } as vscode.Extension<unknown>)
+                : getExtension(id)) as typeof getExtension;
+        const record =
+            (shown: Message[], reply: () => string | undefined) =>
+            (text: string, ...actions: string[]) => {
+                shown.push({ text, actions });
+                messageShown.fire();
+                return Promise.resolve(reply());
+            };
+        window.showWarningMessage = record(
+            warnings,
+            () => answer,
+        ) as unknown as typeof showWarningMessage;
+        // Dismissed: the offer to reload would reload the window under test.
+        window.showInformationMessage = record(
+            notes,
+            () => undefined,
+        ) as unknown as typeof showInformationMessage;
+        restore.push(() => {
+            extensions.getExtension = getExtension;
+            window.showWarningMessage = showWarningMessage;
+            window.showInformationMessage = showInformationMessage;
+        });
+    });
+
+    teardown(async function () {
+        for (const each of restore.splice(0)) {
+            each();
+        }
+        for (const [section, key] of [
+            ["clangd", "enable"],
+            ["C_Cpp", "intelliSenseEngine"],
+        ]) {
+            const config = vscode.workspace.getConfiguration(section);
+            await config.update(key, undefined, vscode.ConfigurationTarget.Global);
+            await config.update(key, undefined, vscode.ConfigurationTarget.Workspace);
+        }
+    });
+
+    test("named once as clice starts, and turned off on Disable", async function () {
+        this.timeout(120 * 1000);
+        // As a repository's .vscode/settings.json does, which outranks the
+        // user's settings.
+        await vscode.workspace
+            .getConfiguration("clangd")
+            .update("enable", true, vscode.ConfigurationTarget.Workspace);
+        installed = [cpptools, clangd];
+        answer = "Disable";
+        await vscode.commands.executeCommand("clice.restart");
+        await until([messageShown.event], () => notes.length > 0, "the offer to reload");
+        assert.deepStrictEqual(warnings, [conflictWarning("C/C++ (cpptools), clangd")]);
+        assert.deepStrictEqual(notes, [
+            {
+                text: "clice: conflicting language features disabled — reload the window to fully apply.",
+                actions: ["Reload Window"],
+            },
+        ]);
+        assert.deepStrictEqual(scopes("clangd", "enable"), {
+            user: false,
+            workspace: undefined,
+            folder: undefined,
+        });
+        assert.deepStrictEqual(scopes("C_Cpp", "intelliSenseEngine"), {
+            user: "disabled",
+            workspace: undefined,
+            folder: undefined,
+        });
+    });
+
+    test("an installed one with its language features off is none", async function () {
+        const user = vscode.ConfigurationTarget.Global;
+        // cpptools kept for its debugger.
+        await vscode.workspace
+            .getConfiguration("C_Cpp")
+            .update("intelliSenseEngine", "disabled", user);
+        await vscode.workspace.getConfiguration("clangd").update("enable", false, user);
+        installed = [cpptools, clangd];
+        extensionsChanged.fire();
+        assert.deepStrictEqual(warnings, []);
+
+        await vscode.workspace
+            .getConfiguration("C_Cpp")
+            .update("intelliSenseEngine", "default", user);
+        extensionsChanged.fire();
+        await warned(1);
+        assert.deepStrictEqual(warnings, [conflictWarning("C/C++ (cpptools)")]);
+        assert.deepStrictEqual(notes, []);
+    });
+
+    test("no warning while clice is not running", async function () {
+        this.timeout(120 * 1000);
+        installed = [clangd];
+        await client().current.stop();
+        extensionsChanged.fire();
+        assert.deepStrictEqual(warnings, []);
+
+        await vscode.commands.executeCommand("clice.restart");
+        await warned(1);
+        assert.deepStrictEqual(warnings, [conflictWarning("clangd")]);
+    });
+
+    // Last: the choice holds for the rest of the run.
+    test("Never ask again stops the warnings", async function () {
+        this.timeout(120 * 1000);
+        installed = [clangd];
+        answer = "Never ask again";
+        extensionsChanged.fire();
+        await warned(1);
+        await vscode.commands.executeCommand("clice.restart");
+        extensionsChanged.fire();
+        assert.deepStrictEqual(warnings, [conflictWarning("clangd")]);
+        assert.deepStrictEqual(notes, []);
+        assert.deepStrictEqual(scopes("clangd", "enable"), {
+            user: undefined,
+            workspace: undefined,
+            folder: undefined,
         });
     });
 });
