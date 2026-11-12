@@ -1,3 +1,4 @@
 # The command asks for deferred template bodies, as code written for
-# MSVC's lookup rules does.
+# MSVC's lookup rules does: the constructor's body has no AST and folds at
+# its braces, where reading it crashed the worker before (clice#693).
 flags = ["-fdelayed-template-parsing"]

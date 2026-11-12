@@ -202,7 +202,7 @@ inline auto square = [](int x) { ... }
 range = "int total = lazy.run() + ⟦square⟧(2) + base_run() + top_run();"
 
 [locations.get]
-wrong = "should list where Lazy<int>::run() reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+wrong = "should also list the call in Lazy<int>::run(), as clice query references does: the editor instantiates that body while it prepares the file's includes, a step whose references it does not keep"
 definition = ["include/extra.h │ static int ⟦get⟧() {"]
 declaration = ["include/extra.h │ static int ⟦get⟧() {"]
 references = ["include/extra.h │ static int ⟦get⟧() {", "return total + IntTraits::⟦get⟧() + Probe{}.later();"]
@@ -218,7 +218,7 @@ static int get()
 range = "return total + IntTraits::⟦get⟧() + Probe{}.later();"
 
 [locations.later]
-wrong = "should list where dependent<Probe> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+wrong = "should also list the call in dependent<Probe>, as clice query references does: the editor instantiates that body while it prepares the file's includes, a step whose references it does not keep"
 definition = ["include/extra.h │ int ⟦later⟧() const {"]
 declaration = ["include/extra.h │ int ⟦later⟧() const {"]
 references = ["include/extra.h │ int ⟦later⟧() const {", "return total + IntTraits::get() + Probe{}.⟦later⟧();"]

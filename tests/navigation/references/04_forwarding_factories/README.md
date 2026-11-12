@@ -1,5 +1,5 @@
 ---
-issues: [clangd#716, clangd#1872]
+issues: [clangd#716]
 ---
 
 # References through forwarding functions

@@ -10,7 +10,7 @@ auto x = T()
 range = "auto ⟦x⟧ = T();"
 
 [answers.own_specialization]
-wrong = "from_call of Holder<W<T>> is a W<W<T>>: the frames of the lookup that found it bind T again in what the call already returned in the caller's terms"
+wrong = "from_call of Holder<W<T>> is a W<W<T>>, so the type should read W<W<T>>: it wraps T in W once too often"
 
 [answers.own_specialization.hover]
 markdown = '''

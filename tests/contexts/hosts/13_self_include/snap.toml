@@ -21,7 +21,7 @@ symbols = [
 ]
 
 [open.contexts]
-wrong = "the copy objects.c includes of itself is no context to switch to: the second pass never shows from the AST"
+wrong = "objects.c includes itself for a second pass over its table, which should be offered as a context to switch to: without it the editor never compiles the second pass"
 contexts = [
     { label = "-std=c++20 -std=c11", description = "${WS}", host = "objects.c" },
 ]
