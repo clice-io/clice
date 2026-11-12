@@ -370,6 +370,13 @@ async::task<> MasterServer::stop() {
             for(auto& project: server.projects) {
                 co_await project->project.stop_feeding();
             }
+            // A removed project still shutting down feeds the pool too; one
+            // that ends meanwhile leaves the list.
+            for(auto weak: std::vector(server.removed_projects)) {
+                if(auto project = weak.lock()) {
+                    co_await project->project.stop_feeding();
+                }
+            }
             server.stop_step = "stopping the workers";
             co_await server.pool.stop();
             server.stop_step = "stopping the looks at files";

@@ -305,8 +305,9 @@ struct Project {
 
     async::task_group<> tree_tasks;
 
-    /// stop_feeding() ran.
-    bool feeding_stopped = false;
+    /// stop_feeding() began, and ended.
+    bool feeding_stopping = false;
+    async::event feeding_stopped;
 
     /// The task graph the PCH, PCM and unit nodes build on, the server's
     /// AST nodes beside them. Its attempts use everything above.
@@ -1186,7 +1187,8 @@ struct Project {
     /// queue through it, requeueing every file. A cancelled tree run still
     /// waits for its worker's answer, which a hung worker gives only once the
     /// pool kills it: shutdown() waits for the runs. Once: the master stops
-    /// every project's feeding before its pool, then shuts each down.
+    /// every project's feeding before its pool, then shuts each down, and a
+    /// second call waits for the first to end.
     async::task<> stop_feeding();
 
     /// The shutdown once its owner's compiles are quiesced (contract 11):

@@ -375,11 +375,13 @@ chrono::milliseconds checkpoint_interval() {
 }
 
 async::task<> Project::stop_feeding() {
-    if(std::exchange(feeding_stopped, true)) {
+    if(std::exchange(feeding_stopping, true)) {
+        co_await feeding_stopped.wait();
         co_return;
     }
     tree_tasks.cancel();
     co_await background_index.stop();
+    feeding_stopped.set();
 }
 
 async::task<> Project::shutdown() {
