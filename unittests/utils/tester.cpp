@@ -323,13 +323,4 @@ bool Tester::compile_driver(llvm::StringRef standard) {
     return try_compile();
 }
 
-void Tester::clear() {
-    params = CompilationParams();
-    unit.reset();
-    sources.all_files.clear();
-    src_path.clear();
-    vfs.reset();
-    module_files.clear();
-}
-
 }  // namespace clice::testing

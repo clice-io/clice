@@ -111,10 +111,6 @@ struct Tester {
         ZASSERT(decl);
         return decl;
     }
-
-    /// Reset per-compile state so one case can compile several sources.
-    /// The database persists — entries are append-only and harmless.
-    void clear();
 };
 
 }  // namespace clice::testing
