@@ -349,9 +349,13 @@ export interface SweepRun {
     serverExit: string[];
     /// The work the server still had once every file closed.
     unsettled?: string;
-    /// The files the server opened with errors; an error a warning raised
+    /// The files the server opened with errors, each in a file of the
+    /// checkout's (`file` relative) or outside it; an error a warning raised
     /// names the warning's group.
-    serverErrors: { file: string; errors: { text: string; group?: string }[] }[];
+    serverErrors: {
+        file: string;
+        errors: { file: string; line: number; column: number; message: string; group?: string }[];
+    }[];
     /// The files left unasked when the sweep ran out of time, and those it
     /// ran out of time in.
     unasked: string[];
@@ -532,7 +536,10 @@ async function sweepFile(
         run.serverErrors.push({
             file,
             errors: opening.map(({ location, message, code }) => ({
-                text: `${location.path}:${String(location.range.start.line + 1)}:${String(location.range.start.character + 1)}: ${message}`,
+                file: location.path,
+                line: location.range.start.line + 1,
+                column: location.range.start.character + 1,
+                message,
                 ...(code?.startsWith("-W") === true ? { group: code.slice(2) } : {}),
             })),
         });

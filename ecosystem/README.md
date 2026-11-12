@@ -177,8 +177,11 @@ A job, on a cold cache:
 2. **Index** it all with `clice index`, time, memory and the index's size
    recorded. Every unit clice fails, or reports errors on, is compiled again
    by the project's compiler with its database command, checking the code
-   only: a unit the compiler rejects too is the project's, listed, not
-   failed.
+   only: a unit the compiler rejects too, for an error on the line of clice's
+   first or worded as it, is the project's, listed, not failed. A compiler
+   that rejects it for other errors confirms nothing, and one that did not
+   compile the file (a missing tool, an option it refuses) could not check
+   it.
 3. **Sweep** sampled files: the job's `sample` sources the seed picks (by
    default the date; the same seed, the same files) on a runner asking three
    files at once, fewer on one with less memory that asks fewer (a sweep
