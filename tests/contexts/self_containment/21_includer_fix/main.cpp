@@ -1,4 +1,3 @@
-struct Host {};
-int broken = ;
 #include "h.h"
+struct Host {};
 int main() { make(); }

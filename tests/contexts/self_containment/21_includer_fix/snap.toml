@@ -1,0 +1,13 @@
+[test.tied]
+diagnostics = [
+    {
+        at = "inline ⟦Host⟧ make() { return {}; }",
+        severity = "error",
+        message = "unknown type name 'Host'",
+        source = "clang",
+        code = "err_unknown_typename",
+    },
+]
+
+[test.fixed]
+diagnostics = []
