@@ -19,74 +19,79 @@ import { parsed, residentNow, watchTree } from "./memory.ts";
 import type { Order, PerfResults, RunResult } from "./perf/results.ts";
 import { prepare, withoutOrderOnly } from "./prepare.ts";
 import {
+    loadProjects,
+    platformsOf,
     validated,
     type Configuration,
     type Platform,
     type Project,
     type Step,
 } from "./project.ts";
+import { perfResults, regressionResults } from "./fixtures.ts";
 import type { Results } from "./regression/regression.ts";
 import { regressionReport } from "./report.ts";
 import { historyOf, roundReport, type Earlier } from "./round.ts";
-import { allJobs, findJob, knownIssues, positionOf, sortKnown, type Job } from "./script.ts";
+import {
+    allJobs,
+    artifactName,
+    findJob,
+    knownIssues,
+    positionOf,
+    sortKnown,
+    type Job,
+} from "./script.ts";
 
 function scratch(): string {
     return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "clice-ecosystem-")));
 }
 
 describe("projects", () => {
-    test("every project's script registers its jobs, a regression job per part", async () => {
+    test("every project registers jobs over what it builds, a regression job per part", async () => {
         const jobs = await allJobs();
-        const named = (kind: Job["kind"]) =>
-            jobs.filter((job) => job.kind === kind).map((job) => job.name);
-        expect(named("regression")).toEqual([
-            "abseil/clang",
-            "abseil/gcc",
-            "abseil/msvc",
-            "clice",
-            "cpython",
-            "cuda",
-            "curl",
-            "eigen",
-            "flameshot",
-            "fmt/clang",
-            "fmt/msvc",
-            "libobjc2",
-            "linux",
-            "llvm/all/llvm",
-            "llvm/all/clang",
-            "llvm/all/mlir",
-            "llvm/all/flang",
-            "llvm/all/lldb",
-            "mp-units",
-            "sdl",
-            "wxwidgets",
-        ]);
-        expect(named("perf")).toEqual([
-            "abseil/editing",
-            "abseil/sessions",
-            "abseil/endurance",
-            "abseil/index-load",
-            "abseil/limited",
-            "abseil/msvc",
-            "cuda/sessions",
-            "curl/sessions",
-            "eigen/sessions",
-            "flameshot/sessions",
-            "fmt/editing",
-            "fmt/sessions",
-            "fmt/msvc",
-            "linux/startup",
-            "llvm/index",
-            "llvm/cold",
-            "llvm/sessions",
-            "llvm/all",
-            "mp-units/editing",
-            "sqlite/amalgamation",
-        ]);
-        const gcc = jobs.find((job) => job.name === "abseil/gcc");
-        expect(gcc?.platforms).toEqual(["linux"]);
-        expect(gcc?.config.packages).toEqual(["g++-13"]);
+        const unregistered = loadProjects().filter(
+            (project) => !jobs.some((job) => job.project.name === project.name),
+        );
+        expect(unregistered.map((project) => project.name)).toEqual([]);
+        expect(jobs.filter((job) => !job.name.startsWith(job.project.name))).toEqual([]);
+        const elsewhere = jobs.filter((job) =>
+            job.platforms.some((platform) => !platformsOf(job.config).includes(platform)),
+        );
+        expect(elsewhere.map((job) => job.name)).toEqual([]);
+        // A configuration that splits its database is regressed a part a
+        // job; one that does not, in one job.
+        const regressed = jobs.flatMap((job) => (job.kind === "regression" ? [job] : []));
+        const configurations = new Set(
+            regressed.map((job) => `${job.project.name} ${job.configuration}`),
+        );
+        for (const configuration of configurations) {
+            const ofIt = regressed.filter(
+                (job) => `${job.project.name} ${job.configuration}` === configuration,
+            );
+            const parts = Object.keys(ofIt[0]?.config.parts ?? { "": [] });
+            expect(
+                ofIt.map((job) => job.part ?? ""),
+                configuration,
+            ).toEqual(parts);
+        }
+        const artifacts = jobs.flatMap((job) =>
+            job.platforms.map((platform) => artifactName(job.kind, job.name, platform)),
+        );
+        expect(artifacts.filter((name, i) => artifacts.indexOf(name) !== i)).toEqual([]);
+    });
+
+    test("a known issue names a configuration, part and platform its job has", async () => {
+        const stray = (await allJobs()).flatMap((job) =>
+            job.known
+                .filter(
+                    (known) =>
+                        (known.configuration !== undefined &&
+                            !(known.configuration in job.project.configurations)) ||
+                        (known.part !== undefined && !(known.part in (job.config.parts ?? {}))) ||
+                        (known.platform !== undefined && !job.platforms.includes(known.platform)),
+                )
+                .map((known) => `${job.kind} ${job.name}: ${known.issue}`),
+        );
+        expect(stray).toEqual([]);
     });
 
     test("a project.toml that cannot be what it says is an error", () => {
@@ -563,20 +568,7 @@ describe("memory", () => {
 });
 
 describe("report", () => {
-    const base: Results = {
-        job: "p",
-        platform: "linux",
-        about: "v1",
-        commit: "c",
-        clice: "k",
-        seed: "s",
-        compilerRejects: [],
-        logErrors: [],
-        failures: [],
-        known: [],
-        unseen: [],
-        accepted: [],
-    };
+    const base = regressionResults();
 
     test("failures with their reproduction, numbers beside the previous round's", () => {
         const index = {
@@ -723,28 +715,18 @@ describe("round", () => {
         files: unknown,
         failures: Results["failures"] = [],
         serverSeconds = 60,
-    ): Results => ({
-        job: "p",
-        platform: "linux",
-        about: "v1",
-        commit: "c",
-        clice: "k",
-        seed: "s",
-        compilerRejects: [],
-        logErrors: [],
-        failures,
-        known: [],
-        unseen: [],
-        accepted: [],
-        sweep: {
-            files: files as string[],
-            serverOnly: [],
-            requests: 1,
-            inspectSeconds: 60,
-            serverSeconds,
-            slow: [],
-        },
-    });
+    ): Results =>
+        regressionResults({
+            failures,
+            sweep: {
+                files: files as string[],
+                serverOnly: [],
+                requests: 1,
+                inspectSeconds: 60,
+                serverSeconds,
+                slow: [],
+            },
+        });
     const hang = { kind: "hang", file: "a.cpp", request: "hover", detail: "timed out", repro: "r" };
     const earlier = (date: string, results: Results): Earlier => ({ run: 1, date, results });
 
@@ -785,30 +767,13 @@ describe("round", () => {
         platform,
         artifact: `perf-q-sessions-${platform}`,
         conclusion: "success",
-        perf: {
+        perf: perfResults({
             job: "q/sessions",
             platform,
-            about: "",
-            commit: "",
-            clice: "k",
-            env: {
-                platform,
-                release: "",
-                arch: "",
-                cpus: 4,
-                cpuModel: "",
-                memoryMB: 0,
-                node: "",
-                date: "",
-            },
             binaries: { clice: "c", baseline: "/t/baseline/v0.1.7/clice/bin/clice" },
-            clangdArgs: [],
             runs,
-            failures: [],
-            known: [],
-            unseen: [],
             slower,
-        },
+        }),
     });
     const row = (
         measure: string,

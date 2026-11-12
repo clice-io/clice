@@ -4,6 +4,7 @@
 /// spends more of than a baseline.
 
 import { expect, test } from "vitest";
+import { perfResults } from "../fixtures.ts";
 import { perfReport } from "../report.ts";
 import { slower, tables } from "./compare.ts";
 import { TimeoutError } from "../../promise.ts";
@@ -32,30 +33,7 @@ function run(
 }
 
 function results(runs: RunResult[]): PerfResults {
-    return {
-        job: "p/editing",
-        platform: "linux",
-        about: "",
-        commit: "c",
-        clice: "k",
-        env: {
-            platform: "linux",
-            release: "",
-            arch: "x64",
-            cpus: 4,
-            cpuModel: "cpu",
-            memoryMB: 16000,
-            node: "",
-            date: "",
-        },
-        binaries: { clice: "/c", clangd: "/d" },
-        clangdArgs: [],
-        runs,
-        failures: [],
-        known: [],
-        unseen: [],
-        slower: [],
-    };
+    return perfResults({ runs });
 }
 
 test("a measure's medians and p90s per server, and the ratio of the medians", () => {
