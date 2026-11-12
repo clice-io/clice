@@ -268,6 +268,15 @@ ZEST_CASE(DocumentRuler) {
     ZASSERT(d.as_plain_text() == "foo\n\nfoo");
 }
 
+ZEST_CASE(CodeBlockPlainText) {
+    Document d;
+    d.add_code_block("foo\n  bar\n  baz");
+    ZASSERT(d.as_plain_text() == "foo\n  bar\n  baz");
+
+    d.add_code_block("foo");
+    ZASSERT(d.as_plain_text() == "foo\n  bar\n  baz\n\nfoo");
+}
+
 ZEST_CASE(BulletListRender) {
     BulletList l;
     // Flat list
