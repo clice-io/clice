@@ -4,7 +4,10 @@
 // of an incomplete template argument, an inline variable, strings of control
 // characters, of characters outside UTF-16's basic plane, of a lone
 // surrogate and of bytes no UTF-8 reads, of a pointer of another type, of
-// text past ASCII, bytes, a whole number in a double.
+// text past ASCII, bytes, a whole number in a double; an unsigned wrapped
+// around, a negative __int128, an address cast to an integer or an enum, a
+// local static constexpr, a record whose fields have default initializers
+// and a braced temporary bound to a reference.
 
 namespace symbolic_enum_value {
 enum class Status { Idle = -4, Ready = 12 };
@@ -82,4 +85,39 @@ constexpr const void* §(untyped_pointer)opaque = u"\U0001F600";
 const char* §(utf8_text)greeting = "你好，世界";
 constexpr double §(whole_double)total = 1500.0;
 
+}
+
+namespace wide_integers {
+constexpr unsigned long §(wrapped_unsigned)wrapped = -1;
+constexpr __int128_t §(negative_int128)negative = -4;
+}
+
+namespace address_casts {
+using uintptr_t = unsigned long long;
+enum Handle : uintptr_t {};
+unsigned global_var;
+void cast() {
+    Handle §(enum_address)handle = static_cast<Handle>(reinterpret_cast<uintptr_t>(&global_var));
+    uintptr_t §(integer_address)address = reinterpret_cast<uintptr_t>(&global_var);
+}
+}
+
+namespace local_constant {
+void tune() {
+    constexpr static auto §(local_static_constexpr)step = 1;
+}
+}
+
+namespace default_members {
+struct Settings {
+    int retries = 2;
+};
+Settings §(defaulted_fields)settings;
+}
+
+namespace braced_temporary {
+struct Token {};
+void make() {
+    Token&& §(rvalue_braced)token = {};
+}
 }

@@ -4,6 +4,9 @@ prepare_rename = {}
 [answers.operator.prepare_rename]
 error = "`operator+` is named by the language, not by an identifier"
 
+[answers.constructor_paren.prepare_rename]
+error = "no name of `Gauge` is written here"
+
 [answers.dependent.prepare_rename]
 error = "the name here resolves to `Point::x` and `Size::x`; rename them to one name in one list of renames, or one of them from its declaration"
 

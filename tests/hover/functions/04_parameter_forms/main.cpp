@@ -1,7 +1,8 @@
 // Parameter cards for the forms clang prints apart from how they are written:
 // parameters of function type, written as one or through an alias, explicit
 // object parameters, a parameter with an attribute, a definition that
-// inherits its default argument from the declaration before it.
+// inherits its default argument from the declaration before it, a default
+// argument, shown as written and with no value.
 
 namespace function_type {
 void retry(int §(function_type)attempt(int));
@@ -25,4 +26,9 @@ void open(int §(inherited_default)mode) {}
 
 namespace attributed {
 void report([[maybe_unused]] int §(attributed)code);
+}
+
+namespace default_argument {
+struct Socket {};
+void connect(Socket* §(pointer_default)socket = nullptr);
 }

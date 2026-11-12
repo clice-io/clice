@@ -1,0 +1,237 @@
+[test.macro.index]
+markdown = '''
+**macro** `LIMIT`
+
+```cpp
+#define LIMIT 10
+```
+'''
+range = "#define ⟦LIMIT⟧ 10"
+
+[test.macro.ast]
+markdown = '''
+**macro** `LIMIT`
+
+```cpp
+#define LIMIT 10
+```
+'''
+range = "#define ⟦LIMIT⟧ 10"
+
+[test.function.index]
+markdown = '''
+**function** `twice`
+
+```cpp
+int twice(int x)
+```
+'''
+range = "int ⟦twice⟧(int x) {"
+
+[test.function.ast]
+markdown = '''
+**function** `twice`
+
+```cpp
+int twice(int x)
+```
+'''
+range = "int ⟦twice⟧(int x) {"
+
+[test.comment_in_body.index]
+markdown = '''
+**function** `open`
+
+```cpp
+int open()
+```
+'''
+range = "int ⟦open⟧() { // }"
+
+[test.comment_in_body.ast]
+markdown = '''
+**function** `open`
+
+```cpp
+int open()
+```
+'''
+range = "int ⟦open⟧() { // }"
+
+[test.defaulted.index]
+markdown = '''
+**method** `Holder` · struct `Holder`
+
+```cpp
+Holder() = default
+```
+'''
+range = "⟦Holder⟧() = default;"
+
+[test.defaulted.ast]
+markdown = '''
+**method** `Holder` · struct `Holder`
+
+```cpp
+Holder() = default
+```
+'''
+range = "⟦Holder⟧() = default;"
+
+[test.record.index]
+markdown = '''
+**struct** `Point`
+
+```cpp
+struct Point { ... }
+```
+'''
+range = "struct ⟦Point⟧ {"
+
+[test.record.ast]
+markdown = '''
+**struct** `Point`
+
+```cpp
+struct Point {
+  int x;
+}
+```
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "struct ⟦Point⟧ {"
+
+[test.namespace.index]
+markdown = '''
+**namespace** `app`
+
+```cpp
+namespace app {}
+```
+'''
+range = "namespace ⟦app⟧ {"
+
+[test.namespace.ast]
+markdown = '''
+**namespace** `app`
+
+```cpp
+namespace app {}
+```
+'''
+range = "namespace ⟦app⟧ {"
+
+[test.variable.index]
+markdown = '''
+**variable** `values`
+
+```cpp
+int values[] = {1, 2}
+```
+'''
+range = "int ⟦values⟧[] = {1, 2};"
+
+[test.variable.ast]
+markdown = '''
+**variable** `values`
+
+```cpp
+int values[] = {1, 2}
+```
+**Value:** `{1, 2}`
+'''
+range = "int ⟦values⟧[] = {1, 2};"
+
+[test.exported.index]
+markdown = '''
+**function** `entry`
+
+```cpp
+export int entry()
+```
+'''
+range = "export int ⟦entry⟧() {"
+
+[test.exported.ast]
+markdown = '''
+**function** `entry`
+
+```cpp
+export int entry()
+```
+'''
+range = "export int ⟦entry⟧() {"
+
+[test.protocol.index]
+markdown = '''
+**protocol** `Drawable`
+
+```cpp
+@protocol Drawable ... @end
+```
+'''
+range = "@protocol ⟦Drawable⟧"
+
+[test.protocol.ast]
+markdown = '''
+**protocol** `Drawable`
+
+```cpp
+@protocol Drawable
+@end
+```
+'''
+range = "@protocol ⟦Drawable⟧"
+
+[test.interface]
+wrong = "the index card of an Objective-C class shows the head of its @implementation, which names neither its superclass nor its protocols; the AST card shows its @interface"
+
+[test.interface.index]
+markdown = '''
+**class** `Shape`
+
+```cpp
+@implementation Shape ... @end
+```
+'''
+range = "@interface ⟦Shape⟧ : Object <Drawable> {"
+
+[test.interface.ast]
+markdown = '''
+**class** `Shape`
+
+```cpp
+@interface Shape : Object <Drawable> {
+  int _x;
+}
+@end
+```
+'''
+range = "@interface ⟦Shape⟧ : Object <Drawable> {"
+
+[test.implementation]
+wrong = "the index card of an Objective-C class shows the head of its @implementation, which names neither its superclass nor its protocols; the AST card shows its @interface"
+
+[test.implementation.index]
+markdown = '''
+**class** `Shape`
+
+```cpp
+@implementation Shape ... @end
+```
+'''
+range = "@implementation ⟦Shape⟧"
+
+[test.implementation.ast]
+markdown = '''
+**class** `Shape`
+
+```cpp
+@interface Shape : Object <Drawable> {
+  int _x;
+}
+@end
+```
+'''
+range = "@implementation ⟦Shape⟧"

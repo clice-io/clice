@@ -169,3 +169,13 @@ long
 ```
 '''
 range = "long* allocated = new ⟦auto⟧(35L);"
+
+[answers.auto_keyword_end.hover]
+markdown = '''
+**auto**
+
+```cpp
+long
+```
+'''
+range = "⟦auto⟧ ending = 36L;"

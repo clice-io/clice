@@ -1,7 +1,9 @@
 // An operator token shows the operator function it calls: class-specific
 // new and delete, a global ::new running a constructor, a constructor call
-// in parentheses, a call and a subscript operator, and a != rewritten to
-// the defaulted <=>.
+// in parentheses, a call and a subscript operator, a != rewritten to the
+// defaulted <=>, and the == a class template's defaulted friend <=> declares,
+// without the comment above the <=>. A builtin -> has no card, a cast keyword
+// its expression's.
 
 namespace std {
 struct strong_ordering {
@@ -52,3 +54,20 @@ struct Revision {
 };
 
 bool changed = Revision{2} !§(spaceship_neq)= Revision{3};
+
+template <typename T>
+struct Version {
+    // Compares the parts in order.
+    friend auto operator<=>(Version, Version) = default;
+};
+
+static_assert(Version<void>() =§(friend_spaceship_eq)= Version<void>());
+
+namespace builtin_tokens {
+struct Node {
+    int value;
+    int read() const { return this§(builtin_arrow)->value; }
+};
+
+long widened = static§(cast_keyword)_cast<long>(3);
+}

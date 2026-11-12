@@ -8,6 +8,16 @@ Unknown missing
 '''
 range = "Unknown ⟦missing⟧;"
 
+[answers.unknown_with_initializer.hover]
+markdown = '''
+**variable** `fallback`
+
+```cpp
+Unknown fallback
+```
+'''
+range = "Unknown ⟦fallback⟧ = undeclared_fallback;"
+
 [answers.parameter.hover]
 markdown = '''
 **parameter** `value` · function `consume`
@@ -28,6 +38,16 @@ Undeclared member
 '''
 range = "Undeclared ⟦member⟧;"
 
+[answers.after_broken_field.hover]
+markdown = '''
+**field** `count` · struct `Record`
+
+```cpp
+int count
+```
+'''
+range = "int ⟦count⟧;"
+
 [answers.broken_default.hover]
 markdown = '''
 **parameter** `delay` · function `reconnect`
@@ -47,3 +67,57 @@ int ceiling
 ```
 '''
 range = "int ⟦ceiling⟧ = undeclared_ceiling;"
+
+[answers.broken_binding.hover]
+markdown = '''
+**variable** `lone`
+
+```cpp
+auto [lone] = 1
+```
+'''
+range = "auto [⟦lone⟧] = 1;"
+
+[answers.unconverted_default.hover]
+markdown = '''
+**parameter** `socket` · function `open`
+
+```cpp
+Socket socket = nullptr
+```
+'''
+range = "void open(Socket ⟦socket⟧ = nullptr);"
+
+[answers.definition_parameter.hover]
+markdown = '''
+**parameter** `delay` · method `Connection::retry`
+
+```cpp
+Delay delay
+```
+'''
+range = "void Connection::retry(Delay ⟦delay⟧) {}"
+
+[answers.broken_body.hover]
+markdown = '''
+**method** `set_level` · struct `Gauge`
+
+```cpp
+void set_level(float)
+```
+'''
+range = "void ⟦set_level⟧(float) { level = convert(undeclared_level); }"
+
+[answers.defined_in_return_type.hover]
+markdown = '''
+**struct** `Reply`
+
+```cpp
+struct Reply {
+  int field;
+}
+```
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "⟦Reply⟧ reply;"

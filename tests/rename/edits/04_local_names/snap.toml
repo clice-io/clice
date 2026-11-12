@@ -25,3 +25,17 @@ compiles = true
 +    return doubled;
  }
 '''
+
+[answers.defined.rename]
+compiles = true
+
+[answers.defined.rename.edits]
+"main.cpp" = '''
+
+ int combine(int first, int second);
+-int combine(int value, int second) {
+-    return value + second;
++int combine(int first, int second) {
++    return first + second;
+ }
+'''

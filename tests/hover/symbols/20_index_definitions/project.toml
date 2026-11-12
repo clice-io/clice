@@ -1,0 +1,6 @@
+# Objective-C without an SDK: the Apple target fixes the runtime, and the
+# sample declares its own root class.
+[units]
+"main.cpp" = []
+"math.cppm" = []
+"shapes.m" = ["-std=gnu11", "--target=arm64-apple-macos13", "-fobjc-arc"]

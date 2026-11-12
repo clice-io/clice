@@ -31,3 +31,7 @@ Spellings of `compute` left alone:
 -int again() { return compute(3); }
 +int again() { return evaluate(3); }
 '''
+
+[answers.prepare_macro.prepare_rename]
+at = "int use() { return compute(2) + ⟦CALL⟧; }"
+placeholder = "CALL"

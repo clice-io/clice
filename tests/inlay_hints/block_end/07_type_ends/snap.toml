@@ -1,0 +1,14 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "};⟨// struct Plain⟩" },
+    { line = "};⟨// class Kind⟩" },
+    { line = "};⟨// union Either⟩" },
+    { line = "};⟨// enum Mode⟩" },
+    { line = "};⟨// enum class Level⟩" },
+    { line = "}  ;⟨// struct Spaced⟩" },
+    { line = "}⟨// struct Split⟩" },
+    { line = "}⟨// struct⟩" },
+    { line = "}      ;⟨// struct Wide⟩" },
+    { line = "};};⟨// struct Outer⟩" },
+    { line = "};⟨// struct FromMacro⟩" },
+]

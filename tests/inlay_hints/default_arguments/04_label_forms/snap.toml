@@ -1,0 +1,34 @@
+[unlimited."main.cpp"]
+inlay_hints = [
+    { line = 'configure(⟨first:⟩1⟨, name: "this default is longer than the limit"⟩);' },
+    { line = "place(⟨at:⟩0⟨, first: 1, second: 2⟩);" },
+    { line = "log(⟨level:⟩2⟨, flush: true⟩);" },
+]
+
+["exact fit"."main.cpp"]
+inlay_hints = [
+    { line = "configure(⟨first:⟩1⟨, name: …⟩);" },
+    { line = "place(⟨at:⟩0⟨, first: 1, second: 2⟩);" },
+    { line = "log(⟨level:⟩2⟨, flush: true⟩);" },
+]
+
+[cut."main.cpp"]
+inlay_hints = [
+    { line = "configure(⟨first:⟩1⟨, name: …⟩);" },
+    { line = "place(⟨at:⟩0⟨, first: 1, …⟩);" },
+    { line = "log(⟨level:⟩2⟨, flush: true⟩);" },
+]
+
+["nothing fits"."main.cpp"]
+inlay_hints = [
+    { line = "configure(⟨first:⟩1⟨, name: …⟩);" },
+    { line = "place(⟨at:⟩0⟨, …⟩);" },
+    { line = "log(⟨level:⟩2⟨, …⟩);" },
+]
+
+["no parameter names"."main.cpp"]
+inlay_hints = [
+    { line = "configure(1⟨, …⟩);" },
+    { line = "place(0⟨, 1, 2⟩);" },
+    { line = "log(2⟨, true⟩);" },
+]

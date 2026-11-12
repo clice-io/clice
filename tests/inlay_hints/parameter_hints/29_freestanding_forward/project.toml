@@ -1,0 +1,3 @@
+# Freestanding, clang recognizes no library builtin: std::forward is known
+# by its name alone.
+flags = ["-ffreestanding"]

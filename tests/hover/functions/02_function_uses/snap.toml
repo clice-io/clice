@@ -58,3 +58,26 @@ Buffer::size_type size() const
 `Buffer::size_type` is `unsigned long`
 '''
 range = "Buffer::size_type Buffer::⟦size⟧() const {"
+
+[answers.consteval_use.hover]
+markdown = '''
+**function** `seed` · namespace `specifiers::(anonymous)::(anonymous)`
+
+Deprecated: use a seed of your own
+```cpp
+[[deprecated("use a seed of your own")]]
+consteval int seed()
+```
+**Value:** `1`
+'''
+range = "int first = ⟦seed⟧();"
+
+[answers.static_member_use.hover]
+markdown = '''
+**method** `make` · struct `specifiers::Factory`
+
+```cpp
+static constexpr Factory make(int left, double right)
+```
+'''
+range = "Factory made = Factory::⟦make⟧(1, 2.0);"

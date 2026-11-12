@@ -1,0 +1,22 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "}⟨// if cond⟩" },
+    { line = "}⟨// if cond⟩" },
+    { line = "}⟨// if⟩" },
+    { line = "}⟨// if !cond⟩" },
+    { line = "}⟨// if cond⟩" },
+    { line = "}⟨// if X⟩" },
+    { line = "}⟨// if i > 10⟩" },
+    { line = "}⟨// branches⟩" },
+    { line = "}⟨// if⟩" },
+    { line = "}⟨// compile_time⟩" },
+    { line = "}⟨// while true⟩" },
+    { line = "}⟨// for true⟩" },
+    { line = "}⟨// for I⟩" },
+    { line = "}⟨// for V⟩" },
+    { line = "}⟨// loops⟩" },
+    { line = "}⟨// switch I⟩" },
+    { line = "}⟨// choose⟩" },
+    { line = "}⟨// if⟩" },
+    { line = "}⟨// member_call⟩" },
+]

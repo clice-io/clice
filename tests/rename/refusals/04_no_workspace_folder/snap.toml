@@ -11,3 +11,6 @@ error = "a rename edits the sources of a workspace folder; open one"
 +int evaluate();
 +int use() { return evaluate(); }
 '''
+
+["a declaration outside the project".rename.rename]
+error = "cannot rename `compute`: the rename would change ${WS}/vendor/lib.h, which is not a source of the project (a system header, a dependency or a generated file)"
