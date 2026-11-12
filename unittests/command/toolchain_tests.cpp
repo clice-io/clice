@@ -162,13 +162,29 @@ ZEST_CASE(FailedQueryCooldown) {
 }
 
 ZEST_CASE(HungQueryStopped) {
-    // A compiler that never exits is stopped at the bound, and its command
-    // read by clang's own driver.
-    ScopedEnv bound("CLICE_TEST_QUERY_BOUND_MS", "200");
-    auto driver = fake_driver("clang", "exec sleep 600\n");
+    // A compiler that never exits is stopped at the bound with the program
+    // it waits on, and its command read by clang's own driver. The bound
+    // leaves the driver the time to start that program and name it.
+    ScopedEnv bound("CLICE_TEST_QUERY_BOUND_MS", "2000");
+#ifdef _WIN32
+    // Git for Windows' sh numbers its processes itself.
+    constexpr auto pid = "cat /proc/$!/winpid";
+#else
+    constexpr auto pid = "echo $!";
+#endif
+    auto driver =
+        fake_driver("clang", std::format("sleep 600 &\n{} > '{}'\nwait\n", pid, tmp.path("child")));
     auto ref = add("a.cpp", {driver.c_str(), "--target=x86_64-unknown-linux-gnu"});
-    ZEXPECT(
-        llvm::StringRef(f.failure(ref)).ends_with(" did not finish within 200 ms and was stopped"));
+    ZEXPECT(llvm::StringRef(f.failure(ref))
+                .ends_with(" did not finish within 2000 ms and was stopped"));
+    auto child = vfs::read_text(tmp.path("child"));
+    ZASSERT(child);
+    int id = 0;
+    ZASSERT(!llvm::StringRef(*child).trim().getAsInteger(10, id));
+    // Hang detection: the program left running holds the wait for 600 s.
+    auto [waited] = async::run(async::with_timeout(async::wait_exit(id), chrono::seconds(30)));
+    ZASSERT(!waited.is_cancelled());
+    ZEXPECT(!waited.has_error() || waited.error() == async::error::no_such_process);
     auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
     ZEXPECT(adjacent(rendered.argv, "-triple", "x86_64-unknown-linux-gnu"));
 }

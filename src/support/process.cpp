@@ -26,7 +26,7 @@ async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::
         .args = std::move(arguments),
         .env_changes = std::move(env_changes),
         .cwd = std::move(cwd),
-        .creation = {.exit_with_parent = can_exit_with_parent},
+        .creation = {.process_group = true, .exit_with_parent = can_exit_with_parent},
     });
     if(!captured) {
         co_return std::unexpected(
