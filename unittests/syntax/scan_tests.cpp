@@ -294,7 +294,7 @@ struct ModuleScanFixture {
 
     ModuleScanFixture(llvm::StringRef content, std::initializer_list<const char*> extra_args = {}) {
         auto begin = content.find("#[");
-        assert(begin != llvm::StringRef::npos && "fixture content needs a #[file] marker");
+        ZASSERT(begin != llvm::StringRef::npos);
         auto end = content.find(']', begin);
         scanned_path = TestVFS::path(content.slice(begin + 2, end));
 
@@ -391,7 +391,7 @@ ZEST_CASE(DottedModuleWithPartition) {
 }
 
 // Global module fragment with includes before module declaration.
-ZEST_CASE(GlobalModuleFragmentWithIncludes) {
+ZEST_CASE(GMFWithIncludes) {
     auto result = scan_quick(R"(
 module;
 #include <stdlib.h>
@@ -809,7 +809,7 @@ import forced;
 }
 
 // Mixed named module imports and partition imports.
-ZEST_CASE(MixedNamedAndPartitionImports) {
+ZEST_CASE(MixedNamedPartitionImports) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
@@ -955,7 +955,7 @@ import OTHER_MOD;
 }
 
 // Import target from a macro defined on the command line.
-ZEST_CASE(ImportMacroFromCommandLine) {
+ZEST_CASE(ImportMacroFromCommand) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
@@ -969,7 +969,7 @@ import DEP_MOD;
 }
 
 // Import target from a macro defined in GMF header.
-ZEST_CASE(ImportMacroFromGMFHeader) {
+ZEST_CASE(ImportMacroFromGMF) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 module;
@@ -989,7 +989,7 @@ import MY_DEP;
 // declaration (not in GMF). C++20 allows #include after module declarations —
 // the preprocessor still processes them and any macros they define are visible
 // to subsequent import declarations.
-ZEST_CASE(ImportMacroFromPostDeclInclude) {
+ZEST_CASE(ImportMacroFromPurview) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;

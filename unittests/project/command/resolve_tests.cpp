@@ -6,6 +6,7 @@ import :project.project;
 import :syntax.lexer;
 import :unittests.utils;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.project_fixture;
 import :unittests.utils.temp_dir;
 
 namespace clice::testing {
@@ -20,7 +21,7 @@ Resolution resolve_taking_trees(Project& project, Fid file, CommandRequest reque
 
 ZEST_SUITE(ResolveCommand) {
 
-ZEST_CASE(DefaultSourceKeepsOwnCommand) {
+ZEST_CASE(DefaultSourceKeepsCommand) {
     /// A unity build under a default command: main.cpp includes part.cpp
     /// and part.h. The included source is a unit of its own and keeps the
     /// default command the index compiles it with; the header borrows
@@ -35,8 +36,7 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
     project.settings.rules.push_back(
         Rule{.patterns = {"src/**"}, .default_command = std::string("clang++ -DDEFAULTED")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
 
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
     auto part = project.file_table.intern(Spelling::absolute(tmp.path("src/part.cpp")));
@@ -64,8 +64,7 @@ ZEST_CASE(ExtrasReachBorrowedHeader) {
     project.settings.rules.push_back(
         Rule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
 
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/part.h")));
@@ -106,8 +105,7 @@ ZEST_CASE(TreeSkipsFirstHost) {
     Project project{files};
     project.settings.rules.push_back(Rule{.compile_commands = {"build"}});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
     for(auto source: project.rules.declared_databases()) {
         project.cdb.load(source);
     }
@@ -166,8 +164,7 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     project.file_table.intern(Spelling::absolute(tmp.path("later.h")));
     project.settings.rules.push_back(Rule{.compile_commands = {"build"}});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
     for(auto source: project.rules.declared_databases()) {
         project.cdb.load(source);
     }
@@ -225,8 +222,7 @@ ZEST_CASE(DialectFollowsCommand) {
     FileTable files;
     Project project{files};
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
     auto add = [&](llvm::StringRef command, llvm::StringRef file) {
         auto line = std::format("{} -c {}", command, tmp.path(file));
         return project.cdb.add_command(tmp.root, tmp.path(file), llvm::StringRef(line))->file;
@@ -268,8 +264,7 @@ ZEST_CASE(DialectOfLanguage) {
     FileTable files;
     Project project{files};
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
     auto add = [&](llvm::StringRef command, llvm::StringRef file) {
         auto line = std::format("{} -c {}", command, tmp.path(file));
         return project.cdb.add_command(tmp.root, tmp.path(file), llvm::StringRef(line))->file;
@@ -308,8 +303,7 @@ ZEST_CASE(IdentityIsEffectiveCommand) {
             rule_directory.empty() ? tmp.root : tmp.path(rule_directory);
         project.root = CanonicalPath(Spelling::absolute(tmp.root));
         project.commands.set_project_root(project.root);
-        project.settings.finalize(project.root);
-        project.rules = Rules(project.settings, project.root, "");
+        finish_settings(project);
         auto main = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
         return project.command_identity(main);
     };

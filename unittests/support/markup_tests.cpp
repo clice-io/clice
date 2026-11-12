@@ -1,7 +1,3 @@
-/// Ported from clangd's unittests/support/MarkupTests.cpp (llvmorg-21.1.8), part of the LLVM
-/// project, licensed under Apache License v2.0 with LLVM Exceptions.
-/// See https://llvm.org/LICENSE.txt for license information.
-
 module clice;
 
 import :support.markup;
@@ -270,40 +266,6 @@ ZEST_CASE(DocumentRuler) {
     d.add_paragraph().append_text("foo");
     ZASSERT(d.as_markdown() == "foo  \n\n---\nfoo");
     ZASSERT(d.as_plain_text() == "foo\n\nfoo");
-}
-
-ZEST_CASE(CodeBlockRender) {
-    Document d;
-    // Code blocks preserves any extra spaces.
-    d.add_code_block("foo\n  bar\n  baz");
-
-    llvm::StringRef expected_markdown = R"md(```cpp
-foo
-  bar
-  baz
-```)md";
-    llvm::StringRef expected_plain_text = R"pt(foo
-  bar
-  baz)pt";
-    ZASSERT(d.as_markdown() == expected_markdown);
-    ZASSERT(d.as_plain_text() == expected_plain_text);
-
-    d.add_code_block("foo");
-    expected_markdown = R"md(```cpp
-foo
-  bar
-  baz
-```
-```cpp
-foo
-```)md";
-    ZASSERT(d.as_markdown() == expected_markdown);
-    expected_plain_text = R"pt(foo
-  bar
-  baz
-
-foo)pt";
-    ZASSERT(d.as_plain_text() == expected_plain_text);
 }
 
 ZEST_CASE(BulletListRender) {

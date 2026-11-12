@@ -99,6 +99,9 @@ struct Tester {
 
     LocalSourceRange range(llvm::StringRef name = "", llvm::StringRef file = "");
 
+    /// The names of `decls`, template arguments included.
+    std::vector<std::string> names(llvm::ArrayRef<const clang::Decl*> decls);
+
     /// The declaration of `name` at the translation unit's scope.
     template <typename T = clang::VarDecl>
     const T* declared(llvm::StringRef name) {
@@ -113,29 +116,5 @@ struct Tester {
     /// The database persists — entries are append-only and harmless.
     void clear();
 };
-
-inline std::string yaml_str(llvm::StringRef s) {
-    std::string result;
-    result.reserve(s.size() + 2);
-    result += '"';
-    for(char c: s) {
-        switch(c) {
-            case '"': result += "\\\""; break;
-            case '\\': result += "\\\\"; break;
-            case '\n': result += "\\n"; break;
-            case '\r': result += "\\r"; break;
-            case '\t': result += "\\t"; break;
-            default:
-                if(static_cast<unsigned char>(c) < 0x20) {
-                    result += std::format("\\x{:02x}", static_cast<unsigned char>(c));
-                } else {
-                    result += c;
-                }
-                break;
-        }
-    }
-    result += '"';
-    return result;
-}
 
 }  // namespace clice::testing

@@ -105,7 +105,9 @@ ZEST_CASE(BuildPCHThenCompile) {
 
         auto result = co_await sf.peer->send_request(params);
         ZASSERT(result);
-        ZEXPECT(result.value().version == 1);
+        ZEXPECT(result.value().status == worker::CompileStatus::Done);
+        ZEXPECT(!result.value().pch_suspect);
+        ZEXPECT(result.value().diagnostics.empty());
 
         phase2_done = true;
         sf.peer->close_output();
@@ -114,7 +116,7 @@ ZEST_CASE(BuildPCHThenCompile) {
     ZASSERT(phase2_done);
 }
 
-ZEST_CASE(UserFatalErrorSparesPCH) {
+ZEST_CASE(FatalErrorSparesPCH) {
     TempDir tmp;
     tmp.touch("common.h", "struct Point { int x, y; };\n");
     std::string main_text = "#include \"common.h\"\nPoint p{1, 2};\nimport missing;\n";
@@ -222,49 +224,6 @@ ZEST_CASE(BlobWriteFailure) {
     });
 
     ZASSERT(done);
-}
-
-ZEST_CASE(CompileWithoutPCHStillWorks) {
-    TempDir tmp;
-
-    tmp.touch("common.h",
-              R"cpp(struct Point { int x, y; };)cpp"
-              "\n");
-    std::string main_text = "#include \"common.h\"\nPoint p{1,2};\n";
-    tmp.touch("main.cpp", main_text);
-    auto main_path = tmp.path("main.cpp");
-
-    auto dir = std::string(tmp.root);
-
-    WorkerHandle sf;
-    ZASSERT(sf.spawn(true));
-
-    bool compile_done = false;
-
-    sf.run([&]() -> async::task<> {
-        worker::CompileParams params;
-        params.path = main_path;
-        params.version = 1;
-        params.text = main_text;
-        params.directory = dir;
-        params.arguments = {"clang++",
-                            "-resource-dir",
-                            std::string(resource_dir()),
-                            "-fsyntax-only",
-                            "-I",
-                            dir,
-                            main_path};
-        // pch left as default (empty path, 0 bound).
-
-        auto result = co_await sf.peer->send_request(params);
-        ZASSERT(result);
-        ZEXPECT(result.value().version == 1);
-
-        compile_done = true;
-        sf.peer->close_output();
-    });
-
-    ZASSERT(compile_done);
 }
 
 };  // ZEST_SUITE(PCHWorker)

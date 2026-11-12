@@ -14,247 +14,32 @@ std::ostringstream& operator<<(std::ostringstream& os, const LocalSourceRange& r
 }  // namespace clice
 
 namespace clice::testing {
-namespace {
-
-using namespace clang;
-
-static unsigned getTokenLengthAtLoc(SourceLocation Loc,
-                                    const SourceManager& SM,
-                                    const LangOptions& LangOpts) {
-    clang::Token TheTok;
-    if(clang::Lexer::getRawToken(Loc, TheTok, SM, LangOpts))
-        return 0;
-    // FIXME: Here we check whether the token at the location is a greatergreater
-    // (>>) token and consider it as a single greater (>). This is to get it
-    // working for templates but it isn't correct for the right shift operator. We
-    // can avoid this by using half open char ranges in getFileRange() but getting
-    // token ending is not well supported in macroIDs.
-    if(TheTok.is(tok::greatergreater))
-        return 1;
-
-    return TheTok.getLength();
-}
-
-// Returns location of the starting of the token at a given EndLoc
-static SourceLocation getLocForTokenBegin(SourceLocation EndLoc,
-                                          const SourceManager& SM,
-                                          const LangOptions& LangOpts) {
-    return EndLoc.getLocWithOffset(-(signed)getTokenLengthAtLoc(EndLoc, SM, LangOpts));
-}
-
-// Returns location of the last character of the token at a given loc
-static SourceLocation getLocForTokenEnd(SourceLocation BeginLoc,
-                                        const SourceManager& SM,
-                                        const LangOptions& LangOpts) {
-    unsigned Len = getTokenLengthAtLoc(BeginLoc, SM, LangOpts);
-    return BeginLoc.getLocWithOffset(Len ? Len - 1 : 0);
-}
-
-// Converts a char source range to a token range.
-static SourceRange toTokenRange(CharSourceRange Range,
-                                const SourceManager& SM,
-                                const LangOptions& LangOpts) {
-    if(!Range.isTokenRange())
-        Range.setEnd(getLocForTokenBegin(Range.getEnd(), SM, LangOpts));
-    return Range.getAsRange();
-}
-
-// Returns the union of two token ranges.
-// To find the maximum of the Ends of the ranges, we compare the location of the
-// last character of the token.
-static SourceRange unionTokenRange(SourceRange R1,
-                                   SourceRange R2,
-                                   const SourceManager& SM,
-                                   const LangOptions& LangOpts) {
-    SourceLocation Begin =
-        SM.isBeforeInTranslationUnit(R1.getBegin(), R2.getBegin()) ? R1.getBegin() : R2.getBegin();
-    SourceLocation End = SM.isBeforeInTranslationUnit(getLocForTokenEnd(R1.getEnd(), SM, LangOpts),
-                                                      getLocForTokenEnd(R2.getEnd(), SM, LangOpts))
-                             ? R2.getEnd()
-                             : R1.getEnd();
-    return SourceRange(Begin, End);
-}
-
-bool isValidFileRange(const SourceManager& Mgr, SourceRange R) {
-    if(!R.getBegin().isValid() || !R.getEnd().isValid())
-        return false;
-
-    FileID BeginFID;
-    size_t BeginOffset = 0;
-    std::tie(BeginFID, BeginOffset) = Mgr.getDecomposedLoc(R.getBegin());
-
-    FileID EndFID;
-    size_t EndOffset = 0;
-    std::tie(EndFID, EndOffset) = Mgr.getDecomposedLoc(R.getEnd());
-
-    return BeginFID.isValid() && BeginFID == EndFID && BeginOffset <= EndOffset;
-}
-
-SourceLocation includeHashLoc(FileID IncludedFile, const SourceManager& SM) {
-    assert(SM.getLocForEndOfFile(IncludedFile).isFileID());
-    FileID IncludingFile;
-    unsigned Offset;
-    std::tie(IncludingFile, Offset) = SM.getDecomposedExpansionLoc(SM.getIncludeLoc(IncludedFile));
-    bool Invalid = false;
-    llvm::StringRef Buf = SM.getBufferData(IncludingFile, &Invalid);
-    if(Invalid)
-        return SourceLocation();
-    // Now buf is "...\n#include <foo>\n..."
-    // and Offset points here:   ^
-    // Rewind to the preceding # on the line.
-    assert(Offset < Buf.size());
-    for(;; --Offset) {
-        if(Buf[Offset] == '#')
-            return SM.getComposedLoc(IncludingFile, Offset);
-        if(Buf[Offset] == '\n' || Offset == 0)  // no hash, what's going on?
-            return SourceLocation();
-    }
-}
-
-// Given a range whose endpoints may be in different expansions or files,
-// tries to find a range within a common file by following up the expansion and
-// include location in each.
-static SourceRange rangeInCommonFile(SourceRange R,
-                                     const SourceManager& SM,
-                                     const LangOptions& LangOpts) {
-    // Fast path for most common cases.
-    if(SM.isWrittenInSameFile(R.getBegin(), R.getEnd()))
-        return R;
-    // Record the stack of expansion locations for the beginning, keyed by FileID.
-    llvm::DenseMap<FileID, SourceLocation> BeginExpansions;
-    for(SourceLocation Begin = R.getBegin(); Begin.isValid();
-        Begin = Begin.isFileID() ? includeHashLoc(SM.getFileID(Begin), SM)
-                                 : SM.getImmediateExpansionRange(Begin).getBegin()) {
-        BeginExpansions[SM.getFileID(Begin)] = Begin;
-    }
-    // Move up the stack of expansion locations for the end until we find the
-    // location in BeginExpansions with that has the same file id.
-    for(SourceLocation End = R.getEnd(); End.isValid();
-        End = End.isFileID()
-                  ? includeHashLoc(SM.getFileID(End), SM)
-                  : toTokenRange(SM.getImmediateExpansionRange(End), SM, LangOpts).getEnd()) {
-        auto It = BeginExpansions.find(SM.getFileID(End));
-        if(It != BeginExpansions.end()) {
-            if(SM.getFileOffset(It->second) > SM.getFileOffset(End))
-                return SourceLocation();
-            return {It->second, End};
-        }
-    }
-    return SourceRange();
-}
-
-// Find an expansion range (not necessarily immediate) the ends of which are in
-// the same file id.
-static SourceRange getExpansionTokenRangeInSameFile(SourceLocation Loc,
-                                                    const SourceManager& SM,
-                                                    const LangOptions& LangOpts) {
-    return rangeInCommonFile(toTokenRange(SM.getImmediateExpansionRange(Loc), SM, LangOpts),
-                             SM,
-                             LangOpts);
-}
-
-// Returns the file range for a given Location as a Token Range
-// This is quite similar to getFileLoc in SourceManager as both use
-// getImmediateExpansionRange and getImmediateSpellingLoc (for macro IDs).
-// However:
-// - We want to maintain the full range information as we move from one file to
-//   the next. getFileLoc only uses the BeginLoc of getImmediateExpansionRange.
-// - We want to split '>>' tokens as the lexer parses the '>>' in nested
-//   template instantiations as a '>>' instead of two '>'s.
-// There is also getExpansionRange but it simply calls
-// getImmediateExpansionRange on the begin and ends separately which is wrong.
-static SourceRange getTokenFileRange(SourceLocation Loc,
-                                     const SourceManager& SM,
-                                     const LangOptions& LangOpts) {
-    SourceRange FileRange = Loc;
-    while(!FileRange.getBegin().isFileID()) {
-        if(SM.isMacroArgExpansion(FileRange.getBegin())) {
-            FileRange = unionTokenRange(SM.getImmediateSpellingLoc(FileRange.getBegin()),
-                                        SM.getImmediateSpellingLoc(FileRange.getEnd()),
-                                        SM,
-                                        LangOpts);
-            assert(SM.isWrittenInSameFile(FileRange.getBegin(), FileRange.getEnd()));
-        } else {
-            SourceRange ExpansionRangeForBegin =
-                getExpansionTokenRangeInSameFile(FileRange.getBegin(), SM, LangOpts);
-            SourceRange ExpansionRangeForEnd =
-                getExpansionTokenRangeInSameFile(FileRange.getEnd(), SM, LangOpts);
-            if(ExpansionRangeForBegin.isInvalid() || ExpansionRangeForEnd.isInvalid())
-                return SourceRange();
-            assert(SM.isWrittenInSameFile(ExpansionRangeForBegin.getBegin(),
-                                          ExpansionRangeForEnd.getBegin()) &&
-                   "Both Expansion ranges should be in same file.");
-            FileRange = unionTokenRange(ExpansionRangeForBegin, ExpansionRangeForEnd, SM, LangOpts);
-        }
-    }
-    return FileRange;
-}
-
-std::optional<SourceRange> toHalfOpenFileRange(const SourceManager& SM,
-                                               const LangOptions& LangOpts,
-                                               SourceRange R) {
-    SourceRange R1 = getTokenFileRange(R.getBegin(), SM, LangOpts);
-    if(!isValidFileRange(SM, R1))
-        return std::nullopt;
-
-    SourceRange R2 = getTokenFileRange(R.getEnd(), SM, LangOpts);
-    if(!isValidFileRange(SM, R2))
-        return std::nullopt;
-
-    SourceRange Result = rangeInCommonFile(unionTokenRange(R1, R2, SM, LangOpts), SM, LangOpts);
-    unsigned TokLen = getTokenLengthAtLoc(Result.getEnd(), SM, LangOpts);
-    // Convert from closed token range to half-open (char) range
-    Result.setEnd(Result.getEnd().getLocWithOffset(TokLen));
-    if(!isValidFileRange(SM, Result))
-        return std::nullopt;
-
-    return Result;
-}
-
-}  // namespace
 
 ZEST_SUITE(SelectionTree, Tester) {
 
-template <typename Callback>
-void select_right(llvm::StringRef code, Callback&& callback) {
-    clear();
-    add_focus("main.cpp", code);
-    ZASSERT(compile());
-    /// ZASSERT(unit->diagnostics().empty());
+/// Selects from the source's first unnamed point to its second, or at its only one.
+static SelectionTree select_right(Tester& tester, llvm::StringRef code) {
+    tester.add_focus("main.cpp", code);
+    ZASSERT(tester.compile());
 
-    auto points = nameless_points();
+    auto points = tester.nameless_points();
     ZASSERT(!points.empty());
-
-    LocalSourceRange selected_range;
-    selected_range.begin = points[0];
-    selected_range.end = points.size() == 2 ? points[1] : points[0];
-    auto tree = SelectionTree::create_right(*unit, selected_range);
-    std::forward<Callback>(callback)(tree);
-
-}  // namespace clice::testing
+    LocalSourceRange selected{points[0], points.size() == 2 ? points[1] : points[0]};
+    return SelectionTree::create_right(*tester.unit, selected);
+}
 
 void EXPECT_SELECT(llvm::StringRef code, const char* kind) {
-    select_right(code, [&](SelectionTree& tree) {
-        auto node = tree.common_ancestor();
-        if(!kind) {
-            ZASSERT(!node);
-            return;
-        }
+    Tester tester;
+    auto tree = select_right(tester, code);
+    auto node = tree.common_ancestor();
+    if(!kind) {
+        ZASSERT(!node);
+        return;
+    }
 
-        ZASSERT(node);
-        auto range2 = toHalfOpenFileRange(unit->context().getSourceManager(),
-                                          unit->lang_options(),
-                                          node->source_range());
-        ZASSERT(range2);
-
-        LocalSourceRange local_range = {
-            unit->seen_at(range2->getBegin()).offset,
-            unit->seen_at(range2->getEnd()).offset,
-        };
-
-        ZASSERT(node->kind() == llvm::StringRef(kind));
-        ZASSERT(local_range == range());
-    });
+    ZASSERT(node);
+    ZASSERT(node->kind() == llvm::StringRef(kind));
+    ZASSERT(tester.unit->focus_file().written_range(node->source_range()) == tester.range());
 }
 
 ZEST_CASE(Expressions) {
@@ -562,20 +347,20 @@ ZEST_CASE(Attributes) {
 }
 
 ZEST_CASE(PartialCoverage) {
-    select_right(R"(void foo(int); void bar() { foo§()(1§()); })", [&](SelectionTree& tree) {
-        auto* node = tree.common_ancestor();
-        ZASSERT(node != nullptr);
-        ZASSERT(node->kind() == std::string("CallExpr"));
-        // The call owns `(` and `)`, and only `(` is selected.
-        ZASSERT(node->selected == SelectionTree::Partial);
-    });
+    Tester partial;
+    auto tree = select_right(partial, R"(void foo(int); void bar() { foo§()(1§()); })");
+    auto* node = tree.common_ancestor();
+    ZASSERT(node != nullptr);
+    ZASSERT(node->kind() == std::string("CallExpr"));
+    // The call owns `(` and `)`, and only `(` is selected.
+    ZASSERT(node->selected == SelectionTree::Partial);
 
-    select_right(R"(void foo(int); void bar() { foo§()(1)§(); })", [&](SelectionTree& tree) {
-        auto* node = tree.common_ancestor();
-        ZASSERT(node != nullptr);
-        ZASSERT(node->kind() == std::string("CallExpr"));
-        ZASSERT(node->selected == SelectionTree::Complete);
-    });
+    Tester complete;
+    auto whole = select_right(complete, R"(void foo(int); void bar() { foo§()(1)§(); })");
+    node = whole.common_ancestor();
+    ZASSERT(node != nullptr);
+    ZASSERT(node->kind() == std::string("CallExpr"));
+    ZASSERT(node->selected == SelectionTree::Complete);
 }
 
 ZEST_CASE(Macros) {
@@ -636,13 +421,11 @@ ZEST_CASE(NullOrInvalid) {
 }
 
 ZEST_CASE(InjectedClassName) {
-    llvm::StringRef code = "struct §X { int x; };";
-    select_right(code, [&](SelectionTree& tree) {
-        auto ancestor = tree.common_ancestor();
-        ZASSERT(ancestor->kind() == llvm::StringRef("CXXRecordDecl"));
-        auto* D = dyn_cast<clang::CXXRecordDecl>(ancestor->get<clang::Decl>());
-        ZASSERT(!D->isInjectedClassName());
-    });
+    auto tree = select_right(*this, "struct §X { int x; };");
+    auto ancestor = tree.common_ancestor();
+    ZASSERT(ancestor->kind() == llvm::StringRef("CXXRecordDecl"));
+    auto* D = dyn_cast<clang::CXXRecordDecl>(ancestor->get<clang::Decl>());
+    ZASSERT(!D->isInjectedClassName());
 }
 
 ZEST_CASE(PathologicalPreprocessor) {
@@ -701,46 +484,39 @@ ZEST_CASE(Implicit) {
     int x = f("§");
   )cpp";
 
-    select_right(code, [&](SelectionTree& tree) {
-        auto ancestor = tree.common_ancestor();
-        ZASSERT(ancestor->kind() == llvm::StringRef("StringLiteral"));
-        ZASSERT(ancestor->parent->kind() == llvm::StringRef("ImplicitCastExpr"));
-        ZASSERT(ancestor->parent->parent->kind() == llvm::StringRef("CXXConstructExpr"));
+    auto tree = select_right(*this, code);
+    auto ancestor = tree.common_ancestor();
+    ZASSERT(ancestor->kind() == llvm::StringRef("StringLiteral"));
+    ZASSERT(ancestor->parent->kind() == llvm::StringRef("ImplicitCastExpr"));
+    ZASSERT(ancestor->parent->parent->kind() == llvm::StringRef("CXXConstructExpr"));
 
-        auto implicit = ancestor->parent->parent->parent;
-        ZASSERT(implicit->kind() == llvm::StringRef("ImplicitCastExpr"));
-        ZASSERT(implicit->parent->kind() == llvm::StringRef("CallExpr"));
-        ZASSERT(ancestor == &implicit->ignore_implicit());
-        ZASSERT(&ancestor->outer_implicit() == implicit);
-    });
+    auto implicit = ancestor->parent->parent->parent;
+    ZASSERT(implicit->kind() == llvm::StringRef("ImplicitCastExpr"));
+    ZASSERT(implicit->parent->kind() == llvm::StringRef("CallExpr"));
+    ZASSERT(ancestor == &implicit->ignore_implicit());
+    ZASSERT(&ancestor->outer_implicit() == implicit);
 }
 
 ZEST_CASE(DeclContextIsLexical) {
-    llvm::StringRef code = R"cpp(
+    Tester declaration;
+    auto inside = select_right(declaration, R"cpp(
 namespace a {
     void f§oo();
 }
 
 void a::foo() { }
-  )cpp";
+  )cpp");
+    ZASSERT(!inside.common_ancestor()->decl_context().isTranslationUnit());
 
-    select_right(code, [&](SelectionTree& tree) {
-        auto ancestor = tree.common_ancestor();
-        ZASSERT(!ancestor->decl_context().isTranslationUnit());
-    });
-
-    code = R"cpp(
+    Tester definition;
+    auto outside = select_right(definition, R"cpp(
 namespace a {
     void foo();
 }
 
 void a::f§oo() { }
-  )cpp";
-
-    select_right(code, [&](SelectionTree& tree) {
-        auto ancestor = tree.common_ancestor();
-        ZASSERT(ancestor->decl_context().isTranslationUnit());
-    });
+  )cpp");
+    ZASSERT(outside.common_ancestor()->decl_context().isTranslationUnit());
 }
 
 ZEST_CASE(DeclContextLambda) {
@@ -751,10 +527,8 @@ auto lambda = [] {
 };
   )cpp";
 
-    select_right(code, [&](SelectionTree& tree) {
-        auto ancestor = tree.common_ancestor();
-        ZASSERT(ancestor->decl_context().isFunctionOrMethod());
-    });
+    auto tree = select_right(*this, code);
+    ZASSERT(tree.common_ancestor()->decl_context().isFunctionOrMethod());
 }
 
 ZEST_CASE(UsingConcepts) {

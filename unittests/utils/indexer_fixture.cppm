@@ -5,6 +5,7 @@ import :compile.compilation;
 import :index.database;
 import :index.indexing;
 import :index.project_index;
+import :index.project_index.manifest;
 import :index.indexing.tu_index;
 import :project.background;
 import :project.project;
@@ -13,6 +14,7 @@ import :support.prelude;
 import :support.signal;
 import :support.text;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.project_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.cache_store;
@@ -211,6 +213,23 @@ struct IndexerFixture {
     }
 };
 
+/// The files the background index of `project` owes a reindex for
+/// `reason`, sorted.
+inline llvm::SmallVector<Fid> queued(Project& project, ReindexReason reason) {
+    auto& queue = project.background_index.queue();
+    return ranges::to<llvm::SmallVector<Fid>>(
+        views::filter(IndexerFixture::pending_files(queue),
+                      [&](Fid file) { return queue.pending_reason(file) == reason; }));
+}
+
+/// Give the unit an index of its own.
+inline void index_unit(Project& project, Fid tu) {
+    index::TUManifest manifest;
+    manifest.built_at = 1;
+    manifest.tu_version = project.file_table.intern_version(tu, 1);
+    project.index.apply_manifest(tu, std::move(manifest));
+}
+
 /// The TUs that contributed to `file`, each with its variant.
 inline llvm::SmallDenseMap<Fid, std::uint64_t, 2> contributions_of(const index::ProjectIndex& index,
                                                                    Fid file) {
@@ -263,10 +282,9 @@ inline IndexedTU index_file(TempDir& tmp,
     return result;
 }
 
+/// open_cache, and the project's database in the store.
 inline void open_store(TempDir& tmp, Project& project) {
-    auto store = CacheStore::open(tmp.path("cache"), 1);
-    ZASSERT(store);
-    project.store.emplace(std::move(*store));
+    open_cache(tmp, project);
     project.database = index::open_lmdb_database(*project.store, {});
 }
 

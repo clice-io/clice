@@ -147,12 +147,6 @@ public:
     /// deterministic order. Requires build_reverse_map() to have run.
     llvm::SmallVector<Fid> all_files() const;
 
-    /// Number of files with include entries.
-    std::size_t file_count() const;
-
-    /// Total number of include edges across all (file, config) pairs.
-    std::size_t edge_count() const;
-
     /// Access the module name -> fid mapping.
     const llvm::StringMap<llvm::SmallVector<Fid, 2>>& modules() const {
         return module_to_path;
@@ -213,7 +207,7 @@ private:
     /// (fid, scan group) -> directly included files.
     llvm::DenseMap<std::pair<Fid, std::uint32_t>, llvm::SmallVector<IncludeEdge>> includes;
 
-    /// Track which files have any include entries (for file_count).
+    /// The scan groups each file has an include list under.
     llvm::DenseMap<Fid, llvm::SmallVector<std::uint32_t>> file_configs;
 
     /// Reverse include map: fid -> files that directly include it.

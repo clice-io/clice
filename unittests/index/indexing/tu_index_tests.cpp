@@ -230,7 +230,7 @@ ZEST_CASE(MisalignedBytesLoad) {
     ZEXPECT(adopted.bytes() == bytes);
 }
 
-ZEST_CASE(FromRejectsStaleFormatVersion) {
+ZEST_CASE(FromRejectsStaleVersion) {
     // Only the version and the path table are set: every other column is
     // empty, which is structurally valid — the result must hinge on the
     // version value.
@@ -320,7 +320,7 @@ ZEST_CASE(FromRejectsSymbolColumns) {
     }
 }
 
-ZEST_CASE(FromRejectsOutOfRangeParents) {
+ZEST_CASE(FromRejectsDanglingParents) {
     // A node's parent indexes the node table in every consumer; only
     // another node or the root sentinel is acceptable.
     auto honest = tu_index_blob();
@@ -334,7 +334,7 @@ ZEST_CASE(FromRejectsOutOfRangeParents) {
     ZASSERT(!index::TUIndex::from_bytes(tu_index_bytes(hostile)).loaded());
 }
 
-ZEST_CASE(FromRejectsOutOfRangePathIds) {
+ZEST_CASE(FromRejectsDanglingPaths) {
     // Structural verification does not constrain field values, and the
     // merge pipeline dereferences every decoded path id against the path
     // table without further checks — a TU index pointing outside its own
@@ -363,7 +363,7 @@ ZEST_CASE(FromRejectsOutOfRangePathIds) {
     }
 }
 
-ZEST_CASE(FromRejectsEmptyPathTable) {
+ZEST_CASE(FromRejectsEmptyPaths) {
     // The builder ends every path table with the focus file, and
     // consumers address focus_file() unchecked — a TU index with no
     // paths at all is corrupt.
@@ -398,7 +398,7 @@ ZEST_CASE(FromRejectsUnsortedSections) {
     }
 }
 
-ZEST_CASE(AbsentContentHashesReadZero) {
+ZEST_CASE(AbsentHashesReadZero) {
     // The hash column may be shorter than the path table on a foreign
     // TU index (structurally valid: the field reads back empty); absent
     // entries read as 0, "unavailable".

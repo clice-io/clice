@@ -27,15 +27,9 @@ ZEST_CASE(StaleFormatDropsPch) {
     auto dep_path = tmp.path("dep.h");
     std::string records;
 
-    auto setup = [&](IndexerFixture& f) {
-        open_store(tmp, f.project);
-        f.project.store->register_namespace(
-            {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx"});
-    };
-
     {
         IndexerFixture f;
-        setup(f);
+        open_store(tmp, f.project);
         auto pending = f.project.store->begin_store("pch", "k");
         ZASSERT(!fs::write_file(pending.tmp_path, "pch-bytes"));
         ZASSERT(f.project.store->commit(std::move(pending)));
@@ -60,7 +54,7 @@ ZEST_CASE(StaleFormatDropsPch) {
     {
         // The premise: under the current format the entry loads.
         IndexerFixture f;
-        setup(f);
+        open_store(tmp, f.project);
         f.load();
         ZASSERT(f.project.pchs.size() == std::size_t(1));
 
@@ -77,25 +71,20 @@ ZEST_CASE(StaleFormatDropsPch) {
     }
 
     IndexerFixture f;
-    setup(f);
+    open_store(tmp, f.project);
     f.load();
     ZASSERT(f.project.pchs.empty());
 }
 
-ZEST_CASE(WholeFileNeedsNoIndex) {
+ZEST_CASE(WholeFileLoadsUnindexed) {
     // A precompiled header the build declares pairs with no pch.idx index:
     // its entry loads from the store without one, where a preamble's
     // missing its index is an incomplete pair and goes.
     TempDir tmp;
-    auto setup = [&](IndexerFixture& f) {
-        open_store(tmp, f.project);
-        f.project.store->register_namespace(
-            {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx"});
-    };
 
     {
         IndexerFixture f;
-        setup(f);
+        open_store(tmp, f.project);
         for(auto key: {"whole", "preamble"}) {
             auto pending = f.project.store->begin_store("pch", key);
             ZASSERT(!fs::write_file(pending.tmp_path, "pch-bytes"));
@@ -110,7 +99,7 @@ ZEST_CASE(WholeFileNeedsNoIndex) {
     }
 
     IndexerFixture f;
-    setup(f);
+    open_store(tmp, f.project);
     f.load();
     ZEXPECT(f.project.pchs.size() == std::size_t(1));
     auto whole = f.project.pchs.find("whole");
@@ -126,15 +115,10 @@ ZEST_CASE(OlderRecordsLoad) {
     TempDir tmp;
     tmp.touch("dep.h", "int x;\n");
     auto dep_path = tmp.path("dep.h");
-    auto setup = [&](IndexerFixture& f) {
-        open_store(tmp, f.project);
-        f.project.store->register_namespace(
-            {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx"});
-    };
 
     {
         IndexerFixture f;
-        setup(f);
+        open_store(tmp, f.project);
         auto pending = f.project.store->begin_store("pch", "k");
         ZASSERT(!fs::write_file(pending.tmp_path, "pch-bytes"));
         ZASSERT(f.project.store->commit(std::move(pending)));
@@ -164,7 +148,7 @@ ZEST_CASE(OlderRecordsLoad) {
     }
 
     IndexerFixture f;
-    setup(f);
+    open_store(tmp, f.project);
     f.load();
     ZASSERT(f.project.pchs.size() == std::size_t(1));
 }
@@ -177,14 +161,9 @@ ZEST_CASE(DeplessPcmDropped) {
     tmp.touch("mod.cppm", "export module m;\n");
     auto src = tmp.path("mod.cppm");
 
-    auto setup = [&](IndexerFixture& f) {
-        open_store(tmp, f.project);
-        f.project.store->register_namespace({.name = "pcm", .extension = ".pcm"});
-    };
-
     {
         IndexerFixture f;
-        setup(f);
+        open_store(tmp, f.project);
         auto pending = f.project.store->begin_store("pcm", "k");
         ZASSERT(!fs::write_file(pending.tmp_path, "pcm-bytes"));
         ZASSERT(f.project.store->commit(std::move(pending)));
@@ -205,7 +184,7 @@ ZEST_CASE(DeplessPcmDropped) {
     }
 
     IndexerFixture f;
-    setup(f);
+    open_store(tmp, f.project);
     f.load();
     ZASSERT(f.project.pcms.empty());
 }

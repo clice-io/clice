@@ -51,17 +51,6 @@ clang::FileID file(llvm::StringRef name) {
     return unit->file_id(TestVFS::path(name));
 }
 
-/// The names of `decls`, template arguments included.
-std::vector<std::string> names(llvm::ArrayRef<const clang::Decl*> decls) {
-    std::vector<std::string> result;
-    auto& policy = unit->context().getPrintingPolicy();
-    for(const auto* decl: decls) {
-        llvm::raw_string_ostream out(result.emplace_back());
-        llvm::cast<clang::NamedDecl>(decl)->getNameForDiagnostic(out, policy, false);
-    }
-    return result;
-}
-
 /// Compile `text` as body.h in host.cpp's context, the way a header context
 /// serves it: the prefix the command -includes, behind a marker; the
 /// opening of the class, entered next; the suffix after the text.
@@ -179,7 +168,7 @@ ZEST_CASE(FilePathResolvesLinks) {
     ZEXPECT(unit->file_path(*directive.has_includes[0].file) == real.str());
 }
 
-ZEST_CASE(FilePathOfHardLinks) {
+ZEST_CASE(HardLinksSharePath) {
     TempDir tmp;
     tmp.touch("a.h", "extern int a;\n");
     ZASSERT(!fs::create_hard_link(tmp.path("a.h"), tmp.path("b.h")));
@@ -262,11 +251,11 @@ ZEST_CASE(FromContext) {
     ZEXPECT(unit->from_context(file("dep.h")));
     ZEXPECT(!unit->from_context(unit->focus_file().file()));
 
-    clear();
-    add_file("a.h", "int a;\n");
-    add_focus("main.cpp", "#include \"a.h\"\n");
-    ZASSERT(compile());
-    ZEXPECT(!unit->from_context(file("a.h")));
+    Tester plain;
+    plain.add_file("a.h", "int a;\n");
+    plain.add_focus("main.cpp", "#include \"a.h\"\n");
+    ZASSERT(plain.compile());
+    ZEXPECT(!plain.unit->from_context(plain.unit->file_id(TestVFS::path("a.h"))));
 }
 
 ZEST_CASE(FragmentPath) {
@@ -405,25 +394,26 @@ ZEST_CASE(SystemHeaders) {
 ZEST_CASE(SystemHeaderAsFocus) {
     // The nearest search directory above a header compiled as the focus file
     // tells whether the files including it see a system header.
-    auto compile_header = [&](llvm::StringRef focus, llvm::StringRef other) {
-        clear();
-        add_file(other, "int other;\n");
-        add_focus(focus, "int own;\n");
-        prepare();
-        auto& arguments = params.input.arguments;
+    auto compile_header = [](Tester& header, llvm::StringRef focus, llvm::StringRef other) {
+        header.add_file(other, "int other;\n");
+        header.add_focus(focus, "int own;\n");
+        header.prepare();
+        auto& arguments = header.params.input.arguments;
         *(arguments.end() - 2) = "c++-header";
         arguments.insert(arguments.end() - 1,
                          {"-isystem", TestVFS::path("sys"), "-I", TestVFS::path("sys/app")});
-        return try_compile();
+        return header.try_compile();
     };
 
-    ZASSERT(compile_header("sys/lib.h", "sys/app/app.h"));
-    auto own = declared("own")->getLocation();
-    ZEXPECT(unit->in_system_header(own));
-    ZEXPECT(!unit->in_library(own));
+    Tester library;
+    ZASSERT(compile_header(library, "sys/lib.h", "sys/app/app.h"));
+    auto own = library.declared("own")->getLocation();
+    ZEXPECT(library.unit->in_system_header(own));
+    ZEXPECT(!library.unit->in_library(own));
 
-    ZASSERT(compile_header("sys/app/app.h", "sys/lib.h"));
-    ZEXPECT(!unit->in_system_header(declared("own")->getLocation()));
+    Tester app;
+    ZASSERT(compile_header(app, "sys/app/app.h", "sys/lib.h"));
+    ZEXPECT(!app.unit->in_system_header(app.declared("own")->getLocation()));
 }
 
 ZEST_CASE(LibraryPastLineMarker) {
@@ -499,16 +489,16 @@ int use = exported();
     ZEXPECT(loaded.offset < range("import").end);
 
     // A header a PCH brings in came with no import.
-    clear();
-    add_files("main.cpp", R"cpp(
+    Tester pch;
+    pch.add_files("main.cpp", R"cpp(
 #[a.h]
 int header;
 #[main.cpp]
 #include "a.h"
 int use = header;
 )cpp");
-    ZASSERT(compile_with_pch());
-    ZEXPECT(!unit->imported(unit->file_id(declared("header")->getLocation())));
+    ZASSERT(pch.compile_with_pch());
+    ZEXPECT(!pch.unit->imported(pch.unit->file_id(pch.declared("header")->getLocation())));
 }
 
 ZEST_CASE(ModuleNames) {
@@ -517,27 +507,27 @@ ZEST_CASE(ModuleNames) {
     ZEXPECT(!unit->is_named_module());
     ZEXPECT(!unit->defines_module());
 
-    clear();
-    add_focus("part.cppm", "export module app.core:part;\n");
-    ZASSERT(compile());
-    ZEXPECT(unit->is_named_module());
-    ZEXPECT(unit->module_name() == "app.core:part");
-    ZEXPECT(unit->defines_module());
+    Tester part;
+    part.add_focus("part.cppm", "export module app.core:part;\n");
+    ZASSERT(part.compile());
+    ZEXPECT(part.unit->is_named_module());
+    ZEXPECT(part.unit->module_name() == "app.core:part");
+    ZEXPECT(part.unit->defines_module());
 
-    clear();
-    add_focus("detail.cpp", "module app.core:detail;\n");
-    ZASSERT(compile());
-    ZEXPECT(unit->is_named_module());
-    ZEXPECT(unit->module_name() == "app.core:detail");
-    ZEXPECT(unit->defines_module());
+    Tester detail;
+    detail.add_focus("detail.cpp", "module app.core:detail;\n");
+    ZASSERT(detail.compile());
+    ZEXPECT(detail.unit->is_named_module());
+    ZEXPECT(detail.unit->module_name() == "app.core:detail");
+    ZEXPECT(detail.unit->defines_module());
 
-    clear();
-    add_file("app.cppm", "export module app;\n");
-    add_focus("impl.cpp", "module app;\n");
-    ZASSERT(compile_with_modules());
-    ZEXPECT(unit->is_named_module());
-    ZEXPECT(unit->module_name() == "app");
-    ZEXPECT(!unit->defines_module());
+    Tester impl;
+    impl.add_file("app.cppm", "export module app;\n");
+    impl.add_focus("impl.cpp", "module app;\n");
+    ZASSERT(impl.compile_with_modules());
+    ZEXPECT(impl.unit->is_named_module());
+    ZEXPECT(impl.unit->module_name() == "app");
+    ZEXPECT(!impl.unit->defines_module());
 }
 
 ZEST_CASE(MacroDefinitions) {
@@ -586,7 +576,8 @@ int e = §(e)ID(HEADER);
 }
 
 ZEST_CASE(TopLevelDecls) {
-    add_files("main.cpp", R"cpp(
+    Tester plain;
+    plain.add_files("main.cpp", R"cpp(
 #[a.h]
 int header;
 #[main.cpp]
@@ -595,11 +586,25 @@ int a;
 void f();
 struct B {};
 )cpp");
-    ZASSERT(compile());
-    ZEXPECT(names(unit->top_level_decls()) == std::vector<std::string>{"a", "f", "B"});
+    ZASSERT(plain.compile());
+    ZEXPECT(plain.names(plain.unit->top_level_decls()) == std::vector<std::string>{"a", "f", "B"});
+
+    // Nor does a header the PCH holds.
+    Tester pch;
+    pch.add_files("main.cpp", R"cpp(
+#[a.h]
+int header;
+#[main.cpp]
+#include "a.h"
+int a;
+void f();
+namespace n { int b; }
+struct B {};
+)cpp");
+    ZASSERT(pch.compile_with_pch());
+    ZEXPECT(pch.names(pch.unit->top_level_decls()) == std::vector<std::string>{"a", "f", "n", "B"});
 
     // The class a header context opens around the text encloses it.
-    clear();
     ZASSERT(compile_in_context("int a;\n"));
     ZEXPECT(names(unit->top_level_decls()) == std::vector<std::string>{"S"});
 }
@@ -726,8 +731,8 @@ inline Box<long> boxed;
 }
 
 ZEST_CASE(Keywords) {
-    auto keyword = [&](llvm::StringRef word, clang::tok::TokenKind kind) {
-        auto& table = unit->keywords();
+    auto keyword = [](CompilationUnit& unit, llvm::StringRef word, clang::tok::TokenKind kind) {
+        auto& table = unit.keywords();
         auto found = table.find(word);
         return found != table.end() && found->getValue()->getTokenID() == kind;
     };
@@ -735,21 +740,21 @@ ZEST_CASE(Keywords) {
     // The suite's commands carry -fms-extensions.
     add_focus("main.cpp", "class Widget {};\n");
     ZASSERT(compile());
-    ZEXPECT(keyword("class", clang::tok::kw_class));
-    ZEXPECT(keyword("__declspec", clang::tok::kw___declspec));
+    ZEXPECT(keyword(*unit, "class", clang::tok::kw_class));
+    ZEXPECT(keyword(*unit, "__declspec", clang::tok::kw___declspec));
     auto focus = unit->focus_file();
     ZEXPECT(focus.kind(focus.lexical().tokens[0]) == clang::tok::kw_class);
     ZEXPECT(focus.kind(focus.lexical().tokens[1]) == clang::tok::identifier);
 
-    clear();
-    add_focus("main.c", "int class;\n");
-    prepare("-std=c17");
-    std::erase(params.input.arguments, "-fms-extensions");
-    ZASSERT(try_compile());
-    ZEXPECT(!keyword("class", clang::tok::kw_class));
-    ZEXPECT(!keyword("__declspec", clang::tok::kw___declspec));
-    auto c = unit->focus_file();
-    ZEXPECT(c.kind(c.lexical().tokens[1]) == clang::tok::identifier);
+    Tester c;
+    c.add_focus("main.c", "int class;\n");
+    c.prepare("-std=c17");
+    std::erase(c.params.input.arguments, "-fms-extensions");
+    ZASSERT(c.try_compile());
+    ZEXPECT(!keyword(*c.unit, "class", clang::tok::kw_class));
+    ZEXPECT(!keyword(*c.unit, "__declspec", clang::tok::kw___declspec));
+    auto c_focus = c.unit->focus_file();
+    ZEXPECT(c_focus.kind(c_focus.lexical().tokens[1]) == clang::tok::identifier);
 }
 
 ZEST_CASE(DerivedOnce) {
@@ -787,12 +792,12 @@ int value = VALUE;
     ZEXPECT(!focus.parsed_by_pch(header));
     ZEXPECT(!focus.contains(unit->file_id(header)));
 
-    clear();
-    add_files("main.cpp", files);
-    ZASSERT(compile());
-    definitions = unit->macro_definitions("VALUE");
+    Tester plain;
+    plain.add_files("main.cpp", files);
+    ZASSERT(plain.compile());
+    definitions = plain.unit->macro_definitions("VALUE");
     ZASSERT(definitions.size() == 1U);
-    ZEXPECT(!unit->focus_file().parsed_by_pch(definitions[0]->getDefinitionLoc()));
+    ZEXPECT(!plain.unit->focus_file().parsed_by_pch(definitions[0]->getDefinitionLoc()));
 }
 
 };  // ZEST_SUITE(CompilationUnit)

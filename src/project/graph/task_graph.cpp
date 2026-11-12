@@ -451,6 +451,15 @@ bool TaskGraph::is_compiling(NodeId id) const {
     return it != nodes.end() && it->second.compiling();
 }
 
+async::task<> TaskGraph::attempt_finished(NodeId id) {
+    auto it = nodes.find(id);
+    if(it == nodes.end() || !it->second.compiling()) {
+        co_return;
+    }
+    auto attempt = it->second.attempt;
+    co_await attempt->completion.wait();
+}
+
 std::uint64_t TaskGraph::generation(NodeId id) const {
     auto it = nodes.find(id);
     return it != nodes.end() ? it->second.generation : 0;

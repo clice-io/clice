@@ -142,8 +142,8 @@ files.
   template crashes a worker** (#701): a clang 19 regression in the partial
   ordering of the class's constructor templates when its pack follows
   another parameter (llvm/llvm-project#226788). xclang's `patches/0001`.
-  Check: `ConstructorTemplatesOfClassTemplate` in
-  `unittests/server/stateless_worker_tests.cpp`.
+  Check: `ConstructorTemplatesAnswered` in
+  `unittests/worker/stateless_tests.cpp`.
 - **Any CDB entry with `-fsanitize=address` (or another sanitizer with a
   default ignorelist) kills the worker**:
   `LLVM ERROR: can't open file .../lib/clang/<major>/share/asan_ignorelist.txt`,

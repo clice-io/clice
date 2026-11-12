@@ -11,14 +11,14 @@ namespace {
 
 ZEST_SUITE(SplitCommand) {
 
-ZEST_CASE(SingleQuotesLiteral, skip = Windows) {
+ZEST_CASE(SingleQuotesLiteral) {
     // sh keeps every backslash inside single quotes.
-    ZEXPECT(split_command(R"(cc '-DS="a\\b"' x.c)") ==
+    ZEXPECT(split_command(R"(cc '-DS="a\\b"' x.c)", sys::cmd::Quoting::POSIX) ==
             (std::vector<std::string>{"cc", R"(-DS="a\\b")", "x.c"}));
 }
 
-ZEST_CASE(EscapesOutsideSingleQuotes, skip = Windows) {
-    ZEXPECT(split_command(R"(cc -DS=\"a\\b\" "-I a\"b"	x.c '')") ==
+ZEST_CASE(EscapesOutsideSingleQuotes) {
+    ZEXPECT(split_command(R"(cc -DS=\"a\\b\" "-I a\"b"	x.c '')", sys::cmd::Quoting::POSIX) ==
             (std::vector<std::string>{"cc", R"(-DS="a\b")", R"(-I a"b)", "x.c", ""}));
 }
 

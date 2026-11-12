@@ -130,7 +130,7 @@ has_x<Exposed>* exposed_use;
     ZEXPECT(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(decls::normalize(exposed)));
 };
 
-ZEST_CASE(UndeclaredDetectionHiddenByUsing) {
+ZEST_CASE(UndeclaredHiddenByUsing) {
     add_focus("main.cpp", R"cpp(
 template <typename...> using void_t = void;
 template <typename T, typename = void> struct has_x { };

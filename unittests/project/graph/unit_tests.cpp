@@ -8,9 +8,11 @@ import :project.graph.unit;
 import :settings.rules;
 import :settings.settings;
 import :support.logging;
+import :unittests.utils.anomaly_capture;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
+import :unittests.utils.project_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :unittests.worker.helpers;
@@ -47,10 +49,7 @@ ZEST_CASE(ModuleLintScanParity) {
     scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
 
-    auto store = CacheStore::open(tmp.path("root"), 1);
-    ZASSERT(store);
-    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
-    f.project.store.emplace(std::move(*store));
+    open_cache(tmp, f.project);
 
     UnitRequest request;
     request.tidy = tidy::TidyParams{
@@ -62,11 +61,7 @@ ZEST_CASE(ModuleLintScanParity) {
     std::optional<UnitResult> result;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(f.pool.start(opts));
+        ZASSERT(f.pool.start(worker_options(tmp, 1, 0)));
 
         result = co_await f.project.compile_unit(n_id, std::move(request));
 
@@ -119,11 +114,7 @@ ZEST_CASE(OutdatedRerunsInFull) {
     std::vector<UnitResult::Status> results;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(f.pool.start(opts));
+        ZASSERT(f.pool.start(worker_options(tmp, 1, 0)));
 
         for(int run = 0; run < 2; run += 1) {
             UnitRequest request;
@@ -173,10 +164,7 @@ ZEST_CASE(BuildsIndexModules) {
     scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
 
-    auto store = CacheStore::open(tmp.path("root"), 1);
-    ZASSERT(store);
-    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
-    f.project.store.emplace(std::move(*store));
+    open_cache(tmp, f.project);
 
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
@@ -190,11 +178,7 @@ ZEST_CASE(BuildsIndexModules) {
     std::size_t pcms_before_impl = 0;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(f.pool.start(opts));
+        ZASSERT(f.pool.start(worker_options(tmp, 1, 0)));
 
         for(auto name: {"m.cppm", "detail.cpp", "impl.cpp"}) {
             if(llvm::StringRef(name) == "impl.cpp") {
@@ -247,10 +231,7 @@ ZEST_CASE(EntryBuildLeavesIndex) {
     scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
 
-    auto store = CacheStore::open(tmp.path("root"), 1);
-    ZASSERT(store);
-    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
-    f.project.store.emplace(std::move(*store));
+    open_cache(tmp, f.project);
 
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
@@ -258,11 +239,7 @@ ZEST_CASE(EntryBuildLeavesIndex) {
     std::optional<UnitResult::Status> result;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(f.pool.start(opts));
+        ZASSERT(f.pool.start(worker_options(tmp, 1, 0)));
 
         UnitRequest request;
         request.index = true;
@@ -296,8 +273,6 @@ ZEST_CASE(ExcludedModuleStillIndexed) {
 
     auto setup = [&](IndexerFixture& f) {
         open_store(tmp, f.project);
-        f.project.store->register_namespace(
-            {.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
         write_cdb(tmp,
                   f.project.cdb,
                   build_cdb_json({
@@ -306,8 +281,7 @@ ZEST_CASE(ExcludedModuleStillIndexed) {
         }));
         f.project.settings.rules.push_back(Rule{.patterns = {"vendor/**"}, .index = false});
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        f.project.settings.finalize(f.project.root);
-        f.project.rules = Rules(f.project.settings, f.project.root, "");
+        finish_settings(f.project);
         scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
         f.project.dep_graph.build_reverse_map();
     };
@@ -322,11 +296,7 @@ ZEST_CASE(ExcludedModuleStillIndexed) {
         std::optional<UnitResult::Status> status;
         bool done = false;
         auto body = [&]() -> async::task<> {
-            WorkerPoolOptions opts;
-            opts.program = clice_binary();
-            opts.stateless_count = 1;
-            opts.stateful_count = 0;
-            ZASSERT(f.pool.start(opts));
+            ZASSERT(f.pool.start(worker_options(tmp, 1, 0)));
 
             UnitRequest request;
             request.index = true;
@@ -367,20 +337,13 @@ ZEST_CASE(BrokenModuleCompilesItself) {
     scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
 
-    auto store = CacheStore::open(tmp.path("root"), 1);
-    ZASSERT(store);
-    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
-    f.project.store.emplace(std::move(*store));
+    open_cache(tmp, f.project);
 
     auto id = f.project.file_table.intern(Spelling::absolute(tmp.path("m.cppm")));
     std::optional<UnitResult> result;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(f.pool.start(opts));
+        ZASSERT(f.pool.start(worker_options(tmp, 1, 0)));
 
         UnitRequest request;
         request.index = true;
@@ -420,10 +383,7 @@ ZEST_CASE(FailedImportWaitsOnce) {
     scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
 
-    auto store = CacheStore::open(tmp.path("root"), 1);
-    ZASSERT(store);
-    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
-    f.project.store.emplace(std::move(*store));
+    open_cache(tmp, f.project);
 
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
@@ -433,11 +393,7 @@ ZEST_CASE(FailedImportWaitsOnce) {
     std::optional<Result> waited;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(f.pool.start(opts));
+        ZASSERT(f.pool.start(worker_options(tmp, 1, 0)));
 
         auto heard = [&](NodeId module) {
             failed.push_back(module);
@@ -481,10 +437,7 @@ ZEST_CASE(EvictedModuleBelowRebuilds) {
     scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
 
-    auto store = CacheStore::open(tmp.path("root"), 1);
-    ZASSERT(store);
-    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
-    f.project.store.emplace(std::move(*store));
+    open_cache(tmp, f.project);
 
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
@@ -493,11 +446,7 @@ ZEST_CASE(EvictedModuleBelowRebuilds) {
     std::string evicted;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(f.pool.start(opts));
+        ZASSERT(f.pool.start(worker_options(tmp, 1, 0)));
 
         UnitRequest first;
         first.index = true;
@@ -546,10 +495,7 @@ ZEST_CASE(CrashedModuleStaysRefused) {
     scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
 
-    auto store = CacheStore::open(tmp.path("root"), 1);
-    ZASSERT(store);
-    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
-    f.project.store.emplace(std::move(*store));
+    open_cache(tmp, f.project);
 
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
@@ -564,11 +510,7 @@ ZEST_CASE(CrashedModuleStaysRefused) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(f.pool.start(opts));
+        ZASSERT(f.pool.start(worker_options(tmp, 1, 0)));
 
         UnitRequest request;
         request.index = true;
@@ -595,7 +537,7 @@ ZEST_CASE(CrashCountsOnPCH) {
     // header, one that crashes again crashed on its own code, and a unit
     // reading the header fine clears the count. Only the header's build
     // finds marker.h, so only main.cpp's parse over it crashes.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
     TempDir tmp;
     tmp.touch("poison/marker.h", "");
     tmp.touch("pch.hxx",
@@ -639,11 +581,7 @@ ZEST_CASE(CrashCountsOnPCH) {
     scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
 
-    auto store = CacheStore::open(tmp.path("root"), 1);
-    ZASSERT(store);
-    store->register_namespace(
-        {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx", .max_bytes = 1ull << 30});
-    f.project.store.emplace(std::move(*store));
+    open_cache(tmp, f.project);
 
     auto consume_failures = [&] {
         unsigned count = 0;
@@ -661,11 +599,7 @@ ZEST_CASE(CrashCountsOnPCH) {
     std::vector<unsigned> counts;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(f.pool.start(opts));
+        ZASSERT(f.pool.start(worker_options(tmp, 1, 0)));
 
         for(auto name:
             {"self.cpp", "self.cpp", "main.cpp", "main.cpp", "ok.cpp", "main.cpp", "main.cpp"}) {
@@ -694,7 +628,7 @@ ZEST_CASE(CrashCountsOnPCH) {
                                                         Preempted,
                                                         Completed}));
     ZEXPECT(counts == (std::vector<unsigned>{0, 0, 0, 1, 0, 0, 1}));
-    logging::reset_anomaly_for_testing();
+    ZEXPECT(anomalies.trapped == std::vector(4, logging::AnomalyId::WorkerCrash));
 }
 
 ZEST_CASE(PCHBuildIndexesWriter) {
@@ -731,11 +665,7 @@ ZEST_CASE(PCHBuildIndexesWriter) {
     scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
     f.project.dep_graph.build_reverse_map();
 
-    auto store = CacheStore::open(tmp.path("root"), 1);
-    ZASSERT(store);
-    store->register_namespace(
-        {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx", .max_bytes = 1ull << 30});
-    f.project.store.emplace(std::move(*store));
+    open_cache(tmp, f.project);
 
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
@@ -746,11 +676,7 @@ ZEST_CASE(PCHBuildIndexesWriter) {
     bool header_indexed = false;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(f.pool.start(opts));
+        ZASSERT(f.pool.start(worker_options(tmp, 1, 0)));
 
         for(auto name: {"use.cpp", "pch.hxx.cxx"}) {
             UnitRequest request;

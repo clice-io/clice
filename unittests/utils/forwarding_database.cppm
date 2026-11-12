@@ -76,4 +76,40 @@ struct ForwardingDatabase : index::BlobDatabase {
     std::unique_ptr<index::BlobDatabase> real;
 };
 
+/// A database whose writes fail while `fail` holds: refused, as a full disk
+/// or a permission refuses them, or, when the failure `corrupts`, finding
+/// the database corrupt, as a damaged page only a write reaches does.
+struct FailingDatabase final : ForwardingDatabase {
+    FailingDatabase(std::unique_ptr<index::BlobDatabase> real, bool corrupts) :
+        ForwardingDatabase(std::move(real)), corrupts(corrupts) {}
+
+    std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                           llvm::ArrayRef<index::BlobKey> removes) override {
+        if(!fail) {
+            return real->write(puts, removes);
+        }
+        found_corrupt = corrupts;
+        return std::unexpected(corrupts ? "damaged" : "refused");
+    }
+
+    bool corrupted() const override {
+        return found_corrupt;
+    }
+
+    void condemn() override {
+        *condemned = true;
+        real->condemn();
+    }
+
+    bool fail = true;
+
+    bool corrupts;
+
+    bool found_corrupt = false;
+
+    /// Whether the project condemned the database: shared, since the
+    /// project replaces a database it condemns.
+    std::shared_ptr<bool> condemned = std::make_shared<bool>(false);
+};
+
 }  // namespace clice::testing

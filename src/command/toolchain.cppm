@@ -109,24 +109,12 @@ public:
     /// (cc1) command — memoized — else from the driver-level command.
     SearchConfig search_config(const CommandRef& ref);
 
-    bool has_cache() const {
-        return !queries.empty();
-    }
-
     std::string query_key_for(CommandID id, InputKind input) {
         return query_key(id, input).key;
     }
 
     void set_failed_retry(chrono::steady_clock::duration retry) {
         query_policy.cooldown = retry;
-    }
-
-    std::size_t query_count() const {
-        return queries.size();
-    }
-
-    std::size_t failed_count() const {
-        return failed.size();
     }
 
 private:

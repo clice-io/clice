@@ -258,10 +258,7 @@ ZEST_CASE(ResourceDir) {
     database.add_command("/fake", "main.cpp", "clang++ -std=c++23 test.cpp"sv);
 
     auto& entry = database.candidate_entries(fake("main.cpp")).front();
-    CommandRef ref{entry.file,
-                   entry.command,
-                   commands.input_kind(entry.command, "main.cpp"),
-                   CommandSource::Database};
+    auto ref = database_command(database, entry);
     auto argv = commands.render_driver(ref, database.spelling(ref.file));
 
     bool has_resource_dir = false;
@@ -280,10 +277,7 @@ ZEST_CASE(ResourceDir) {
     CompilationDatabase database2{file_table2, commands2};
     database2.add_command("/fake", "main.cpp", "clang++ -resource-dir /custom main.cpp"sv);
     auto& entry2 = database2.candidate_entries(fake("main.cpp")).front();
-    CommandRef ref2{entry2.file,
-                    entry2.command,
-                    commands2.input_kind(entry2.command, "main.cpp"),
-                    CommandSource::Database};
+    auto ref2 = database_command(database2, entry2);
     auto argv2 = commands2.render_driver(ref2, database2.spelling(ref2.file));
     int count = 0;
     for(auto* arg: argv2) {

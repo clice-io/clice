@@ -557,7 +557,7 @@ ZEST_CASE(LocalHitsNameFile) {
     }));
 }
 
-ZEST_CASE(NameableOnlyLeavesSourceLocals) {
+ZEST_CASE(NameableSkipsSourceLocals) {
     // A source file's name of internal linkage ranking first takes no place
     // in a search for names other units can name, however few it asks for;
     // a header's does.

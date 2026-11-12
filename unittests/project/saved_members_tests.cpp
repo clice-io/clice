@@ -11,6 +11,7 @@ import :unittests.utils.cdb_helper;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
+import :unittests.utils.project_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.path;
@@ -88,8 +89,7 @@ ZEST_CASE(VanishedDatabaseKeepsIndex) {
     auto open = [&](IndexerFixture& f) {
         open_store(tmp, f.project);
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        f.project.settings.finalize(f.project.root);
-        f.project.rules = Rules(f.project.settings, f.project.root, "");
+        finish_settings(f.project);
     };
 
     {
@@ -126,8 +126,7 @@ ZEST_CASE(NestedDatabaseDropsIndex) {
     auto open = [&](IndexerFixture& f) {
         open_store(tmp, f.project);
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        f.project.settings.finalize(f.project.root);
-        f.project.rules = Rules(f.project.settings, f.project.root, "");
+        finish_settings(f.project);
     };
 
     {
@@ -165,8 +164,7 @@ ZEST_CASE(UndeclaredSourceDropsIndex) {
         rule.compile_commands.assign(databases.begin(), databases.end());
         f.project.settings.rules = {std::move(rule)};
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        f.project.settings.finalize(f.project.root);
-        f.project.rules = Rules(f.project.settings, f.project.root, "");
+        finish_settings(f.project);
         for(auto source: f.project.rules.declared_databases()) {
             f.project.cdb.load(source);
         }
@@ -207,8 +205,7 @@ ZEST_CASE(SourceRelocationPersists) {
         rule.compile_commands.assign({"a", "b"});
         f.project.settings.rules = {std::move(rule)};
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        f.project.settings.finalize(f.project.root);
-        f.project.rules = Rules(f.project.settings, f.project.root, "");
+        finish_settings(f.project);
         for(auto source: f.project.rules.declared_databases()) {
             f.project.cdb.load(source);
         }
@@ -266,8 +263,7 @@ ZEST_CASE(DiscoveredRelocationDropsIndex) {
         IndexerFixture f;
         open_store(tmp, f.project);
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        f.project.settings.finalize(f.project.root);
-        f.project.rules = Rules(f.project.settings, f.project.root, "");
+        finish_settings(f.project);
         tmp.touch("compile_commands.json", listing("main.cpp"));
         f.project.cdb.load(tmp.path("compile_commands.json"));
         auto indexed = index_file(tmp, src);
@@ -284,8 +280,7 @@ ZEST_CASE(DiscoveredRelocationDropsIndex) {
     IndexerFixture f;
     open_store(tmp, f.project);
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    f.project.settings.finalize(f.project.root);
-    f.project.rules = Rules(f.project.settings, f.project.root, "");
+    finish_settings(f.project);
     f.project.cdb.load(tmp.path("build/compile_commands.json"));
     f.load();
 
@@ -300,8 +295,7 @@ ZEST_CASE(DefaultCommandKept) {
     auto add_default_rule = [&](IndexerFixture& f) {
         f.project.settings.rules.push_back(Rule{.default_command = std::string("clang++ -c")});
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        f.project.settings.finalize(f.project.root);
-        f.project.rules = Rules(f.project.settings, f.project.root, "");
+        finish_settings(f.project);
     };
 
     {
@@ -336,8 +330,7 @@ ZEST_CASE(UncoveredDefaultDropsIndex) {
         open_store(tmp, f.project);
         f.project.settings.rules.push_back(Rule{.default_command = std::string("clang++ -c")});
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        f.project.settings.finalize(f.project.root);
-        f.project.rules = Rules(f.project.settings, f.project.root, "");
+        finish_settings(f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data));
@@ -378,8 +371,7 @@ ZEST_CASE(ExcludedRuleDropsIndex) {
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
     f.project.settings.rules.push_back(Rule{.patterns = {"**/*.cpp"}, .index = false});
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    f.project.settings.finalize(f.project.root);
-    f.project.rules = Rules(f.project.settings, f.project.root, "");
+    finish_settings(f.project);
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
@@ -413,8 +405,7 @@ ZEST_CASE(RuleChangeReindexed) {
         .append = {"-DFOO=1"},
     });
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    f.project.settings.finalize(f.project.root);
-    f.project.rules = Rules(f.project.settings, f.project.root, "");
+    finish_settings(f.project);
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
@@ -463,8 +454,7 @@ ZEST_CASE(UnitRuleChangeReindexed) {
         open_store(tmp, f.project);
         f.project.settings.rules.push_back(Rule{.default_command = std::string("clang++ -c")});
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        f.project.settings.finalize(f.project.root);
-        f.project.rules = Rules(f.project.settings, f.project.root, "");
+        finish_settings(f.project);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data));
@@ -481,8 +471,7 @@ ZEST_CASE(UnitRuleChangeReindexed) {
         .append = {"-DFOO=1"},
     });
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    f.project.settings.finalize(f.project.root);
-    f.project.rules = Rules(f.project.settings, f.project.root, "");
+    finish_settings(f.project);
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
@@ -495,25 +484,10 @@ ZEST_CASE(CDBWriteFailureRetried) {
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
 
-    // A storage refusing every batch until told otherwise.
-    struct FailingStorage final : ForwardingDatabase {
-        using ForwardingDatabase::ForwardingDatabase;
-
-        bool fail = true;
-
-        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
-                                               llvm::ArrayRef<index::BlobKey> removes) override {
-            if(fail) {
-                return std::unexpected("refused");
-            }
-            return real->write(puts, removes);
-        }
-    };
-
     IndexerFixture f;
     open_store(tmp, f.project);
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-    auto failing = std::make_unique<FailingStorage>(std::move(f.project.database));
+    auto failing = std::make_unique<FailingDatabase>(std::move(f.project.database), false);
     auto* storage = failing.get();
     f.project.database = std::move(failing);
 
@@ -581,8 +555,7 @@ ZEST_CASE(SnapshotHoldsSourcesOnly) {
     IndexerFixture f;
     open_store(tmp, f.project);
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    f.project.settings.finalize(f.project.root);
-    f.project.rules = Rules(f.project.settings, f.project.root, "");
+    finish_settings(f.project);
     f.project.cdb.load(tmp.path("compile_commands.json"));
     ZASSERT(f.project.record_provisional(
         f.project.file_table.intern(Spelling::absolute(tmp.path("new.cpp")))));
@@ -624,8 +597,7 @@ ZEST_CASE(OwedReindexOutlivesSession) {
     auto add_default_rule = [&](IndexerFixture& f, std::string command) {
         f.project.settings.rules.push_back(Rule{.default_command = std::move(command)});
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        f.project.settings.finalize(f.project.root);
-        f.project.rules = Rules(f.project.settings, f.project.root, "");
+        finish_settings(f.project);
     };
 
     {
@@ -669,8 +641,7 @@ ZEST_CASE(DeletedUnitOwesNothing) {
     auto add_default_rule = [&](IndexerFixture& f, std::string command) {
         f.project.settings.rules.push_back(Rule{.default_command = std::move(command)});
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        f.project.settings.finalize(f.project.root);
-        f.project.rules = Rules(f.project.settings, f.project.root, "");
+        finish_settings(f.project);
     };
 
     {
@@ -699,22 +670,6 @@ ZEST_CASE(CorruptWriteSavesSnapshot) {
     // A save whose write finds the database corrupt reopens a fresh one and
     // owes it a save; the retry commits the members there too, or the
     // next session could not tell a removed unit.
-    struct CorruptOnWrite final : ForwardingDatabase {
-        using ForwardingDatabase::ForwardingDatabase;
-
-        bool poisoned = false;
-
-        std::expected<void, std::string> write(llvm::ArrayRef<Blob>,
-                                               llvm::ArrayRef<index::BlobKey>) override {
-            poisoned = true;
-            return std::unexpected("damaged");
-        }
-
-        bool corrupted() const override {
-            return poisoned;
-        }
-    };
-
     IndexerFixture f;
     TempDir tmp;
     tmp.touch("main.cpp", "int use() { return 0; }\n");
@@ -724,10 +679,9 @@ ZEST_CASE(CorruptWriteSavesSnapshot) {
                           json_escape(tmp.root)));
     open_store(tmp, f.project);
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    f.project.settings.finalize(f.project.root);
-    f.project.rules = Rules(f.project.settings, f.project.root, "");
+    finish_settings(f.project);
     f.project.cdb.load(tmp.path("compile_commands.json"));
-    f.project.database = std::make_unique<CorruptOnWrite>(std::move(f.project.database));
+    f.project.database = std::make_unique<FailingDatabase>(std::move(f.project.database), true);
 
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());

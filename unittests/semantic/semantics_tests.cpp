@@ -69,13 +69,13 @@ void test() {
     }
     source += "}\n";
 
-    clear();
-    add_focus("main.cpp", source);
-    if(!compile() || !unit->diagnostics().empty()) {
+    Tester tester;
+    tester.add_focus("main.cpp", source);
+    if(!tester.compile() || !tester.unit->diagnostics().empty()) {
         return std::nullopt;
     }
-    unit->get<Semantics>();
-    return unit->focus_file().tokens().searches();
+    tester.unit->get<Semantics>();
+    return tester.unit->focus_file().tokens().searches();
 }
 
 ZEST_CASE(ModuleNodes) {

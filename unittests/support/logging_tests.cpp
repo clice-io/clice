@@ -211,7 +211,7 @@ ZEST_CASE(TinyPipeStillReports) {
     ZEXPECT(out.find("z<") == std::string::npos);
 }
 
-ZEST_CASE(TornLineEndsBeforeNote) {
+ZEST_CASE(TornLinePrecedesNote) {
     // The pipe takes the head of a long line; lines after it overflow the
     // backlog. The line's tail goes out before the gap report does.
     Pipe pipe;

@@ -203,7 +203,7 @@ ZEST_CASE(CRLFLinesMarked) {
     }
 }
 
-ZEST_CASE(NonAsciiLinesMapPositions) {
+ZEST_CASE(NonASCIIMappingAgrees) {
     // Only the lines holding non-ASCII bytes keep their text, which is all
     // UTF-16 and UTF-32 mapping reads: every conversion agrees with the map
     // over the whole text — inside and past code points, in line ends, on
@@ -654,7 +654,7 @@ ZEST_CASE(MergedRelationPayloads) {
     ZEXPECT(relations_of(merged) == expected);
 }
 
-ZEST_CASE(MergedNonAsciiLines) {
+ZEST_CASE(MergedNonASCIILines) {
     // A merged blob carries the non-ASCII lines its variants were built
     // with: without them it would still load, mapping their UTF-16
     // positions as bytes.
@@ -983,7 +983,7 @@ ZEST_CASE(ReservedLocalParentRejected) {
     ZASSERT(helper->parent == 0);
 }
 
-ZEST_CASE(NonAsciiLineMismatchRejected) {
+ZEST_CASE(ListedLineMismatchRejected) {
     // Position mapping reads a listed line's text in place of the line, so
     // it must be the line's text exactly; a pure-ASCII one is a second
     // spelling of the unlisted line.

@@ -4,6 +4,7 @@ import :command.table;
 import :support.logging;
 import :syntax.preamble;
 import :syntax.scan;
+import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
 import :vfs.file_system;
@@ -246,11 +247,11 @@ std::uint32_t Tester::point(llvm::StringRef name, llvm::StringRef file) {
 
     auto& offsets = sources.all_files[file].offsets;
     if(name.empty()) {
-        assert(offsets.size() == 1);
+        ZASSERT(offsets.size() == 1);
         return offsets.begin()->second;
     }
 
-    assert(offsets.contains(name));
+    ZASSERT(offsets.contains(name));
     return offsets.lookup(name);
 }
 
@@ -269,12 +270,22 @@ LocalSourceRange Tester::range(llvm::StringRef name, llvm::StringRef file) {
 
     auto& ranges = sources.all_files[file].ranges;
     if(name.empty()) {
-        assert(ranges.size() == 1);
+        ZASSERT(ranges.size() == 1);
         return ranges.begin()->second;
     }
 
-    assert(ranges.contains(name));
+    ZASSERT(ranges.contains(name));
     return ranges.lookup(name);
+}
+
+std::vector<std::string> Tester::names(llvm::ArrayRef<const clang::Decl*> decls) {
+    std::vector<std::string> result;
+    auto& policy = unit->context().getPrintingPolicy();
+    for(const auto* decl: decls) {
+        llvm::raw_string_ostream out(result.emplace_back());
+        llvm::cast<clang::NamedDecl>(decl)->getNameForDiagnostic(out, policy, false);
+    }
+    return result;
 }
 
 void Tester::prepare_driver(llvm::StringRef standard) {
@@ -287,11 +298,8 @@ void Tester::prepare_driver(llvm::StringRef standard) {
 
     auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
     auto entry = database.add_command(TestVFS::root(), src_path, command);
-    assert(entry && "no entry after add_command");
-    CommandRef ref{entry->file,
-                   entry->command,
-                   commands.input_kind(entry->command, src_path),
-                   CommandSource::Database};
+    ZASSERT(entry);
+    auto ref = database_command(database, *entry);
     auto rendered = toolchain.render(ref, database.spelling(ref.file));
     params.input.arguments.assign(rendered.argv.begin(), rendered.argv.end());
 

@@ -19,13 +19,6 @@ namespace clice::testing {
 
 namespace {
 
-/// Rewind a file's (or directory's) mtime out of the guard window so its
-/// observations count as reliable, the way real project files predate a
-/// server start.
-void age(llvm::StringRef path) {
-    ZEXPECT(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
-}
-
 vfs::Stamp stamp_of(llvm::StringRef path) {
     auto status = fs::status(path);
     ZEXPECT(status);
@@ -42,7 +35,7 @@ ZEST_CASE(HardlinksReadApart) {
     auto a = tmp.path("a.h");
     auto b = tmp.path("b.h");
     ZASSERT(!fs::create_hard_link(a, b));
-    age(a);
+    age_file(a);
 
     FileTable pool;
     auto a_id = pool.intern(Spelling::absolute(a));
@@ -64,7 +57,7 @@ ZEST_CASE(RenameSaveReads) {
     TempDir tmp;
     tmp.touch("f.h", "int v1();\n");
     auto f = tmp.path("f.h");
-    age(f);
+    age_file(f);
 
     FileTable pool;
     auto fid = pool.intern(Spelling::absolute(f));
@@ -93,7 +86,7 @@ ZEST_CASE(FastPathChecksIdentity) {
     TempDir tmp;
     tmp.touch("f.h", "int v1();\n");
     auto f = tmp.path("f.h");
-    age(f);
+    age_file(f);
 
     FileTable pool;
     auto fid = pool.intern(Spelling::absolute(f));
@@ -116,7 +109,7 @@ ZEST_CASE(PairNeedsSameFile) {
     TempDir tmp;
     tmp.touch("f.h", "int v1();\n");
     auto f = tmp.path("f.h");
-    age(f);
+    age_file(f);
 
     FileTable pool;
     auto fid = pool.intern(Spelling::absolute(f));
@@ -316,7 +309,7 @@ ZEST_CASE(ListingSeesNewFile) {
     TempDir tmp;
     tmp.touch("inc/a.h", "");
     auto dir = tmp.path("inc");
-    age(dir);
+    age_file(dir);
     auto aged = file_mtime_ns(dir);
 
     vfs::DirCache cache;
@@ -326,7 +319,7 @@ ZEST_CASE(ListingSeesNewFile) {
     ZASSERT(!entries.contains("b.h"));
 
     tmp.touch("inc/b.h", "");
-    // A second age() rewinds relative to now and can land on the first
+    // A second age_file() rewinds relative to now and can land on the first
     // listing's exact stamp within one coarse mtime tick, revalidating the
     // cached listing; a fixed offset keeps the stamps distinct while
     // staying outside the guard window.
@@ -342,7 +335,7 @@ ZEST_CASE(WarmListingReused) {
     TempDir tmp;
     tmp.touch("inc/a.h", "");
     auto dir = tmp.path("inc");
-    age(dir);
+    age_file(dir);
 
     vfs::DirCache cache;
     {

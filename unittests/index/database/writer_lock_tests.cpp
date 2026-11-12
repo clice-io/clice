@@ -18,7 +18,7 @@ CacheStore open_store(TempDir& tmp) {
     return std::move(*store);
 }
 
-ZEST_CASE(WriterLockAtCacheRoot) {
+ZEST_CASE(LockAtCacheRoot) {
     TempDir tmp;
     auto store = open_store(tmp);
     auto lock = index::WriterLock::acquire(store.root_dir());
