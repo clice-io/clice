@@ -185,13 +185,25 @@ CLICE_CASES_SHARD={{ shard }} CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type 
 """
 depends-on = ["install-tests"]
 
-# The Zed extension in a real Zed (tests/editors/zed); ZED_EXECUTABLE names the Zed
-# app, and the extension builds with the system's cargo. Workspace-level so CI
-# can run it from the bare `node` env.
+# The Zed extension in a real Zed (tests/editors/zed), with build/<type> as
+# its installed clice; ZED_EXECUTABLE names the Zed app, and the extension
+# builds with the system's cargo. Workspace-level so CI can run it from the
+# `editor` env.
 [tasks.zed-e2e]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
 cargo build --manifest-path editors/zed/Cargo.toml --target wasm32-wasip2 --release && \
-ZED_EXTENSION_WASM=$PIXI_PROJECT_ROOT/editors/zed/target/wasm32-wasip2/release/zed_clice.wasm npm run zed --workspace tests
+ZED_EXTENSION_WASM=$PIXI_PROJECT_ROOT/editors/zed/target/wasm32-wasip2/release/zed_clice.wasm \
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm run zed --workspace tests
+"""
+depends-on = ["install-tests"]
+
+[target.win-64.tasks.zed-e2e]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+cmd = """
+cargo build --manifest-path editors/zed/Cargo.toml --target wasm32-wasip2 --release && \
+ZED_EXTENSION_WASM=$PIXI_PROJECT_ROOT/editors/zed/target/wasm32-wasip2/release/zed_clice.wasm \
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice.exe npm run zed --workspace tests
 """
 depends-on = ["install-tests"]
 
