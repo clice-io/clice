@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "${WS}/asked.cpp",
+    "arguments": ["missing-clang++", "-std=c++20", "-fsyntax-only", "${WS}/asked.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "${WS}/quiet.cpp",
+    "arguments": ["missing-clang++", "-std=c++20", "-fsyntax-only", "${WS}/quiet.cpp"]
+  }
+]

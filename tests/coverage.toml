@@ -1,0 +1,4 @@
+"command inspect config-schema" = "CI's config schema check compares its output with docs/public/clice-config.schema.json on every push"
+"flag serve --host" = "socket mode is for attaching a server by hand while debugging: no editor starts it, and the cases' client speaks LSP over pipes"
+"flag serve --mode" = "socket mode is for attaching a server by hand while debugging: no editor starts it, and the cases' client speaks LSP over pipes"
+"flag serve --port" = "socket mode is for attaching a server by hand while debugging: no editor starts it, and the cases' client speaks LSP over pipes"

@@ -23,6 +23,7 @@ import {
 } from "../../process_gate.ts";
 import { withTimeout } from "../../promise.ts";
 import {
+    RestartServerRequest,
     WatchRequest,
     type BuildKind,
     type ContextItem,
@@ -1412,6 +1413,15 @@ export class Serve extends Client {
                 } catch (error) {
                     console.log(`no answer to sync: ${String(error)}`);
                 }
+            }
+        }
+        for (const server of this.servers) {
+            // What the server asked its client was exchanged too.
+            for (const method of server.serverRequests) {
+                record("method", method);
+            }
+            if (server.restartRequests.length > 0) {
+                record("method", RestartServerRequest.method);
             }
         }
         for (const server of [...this.servers].reverse()) {

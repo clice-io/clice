@@ -50,4 +50,14 @@ describe("records", () => {
             "rules.patterns",
         ]);
     });
+
+    test("the records of several shards, merged or each in a directory", () => {
+        recordInvocation(["index", "--jobs", "2"]);
+        const [own] = fs.readdirSync(dir);
+        fs.mkdirSync(path.join(dir, "shard-2"));
+        fs.writeFileSync(path.join(dir, "shard-2", own ?? ""), "invocation lint --fix\n");
+        fs.writeFileSync(path.join(dir, "other.txt"), "method textDocument/hover\n");
+        expect(recorded("invocation")).toEqual(["index --jobs", "lint --fix"]);
+        expect(recorded("method")).toEqual(["textDocument/hover"]);
+    });
 });

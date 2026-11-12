@@ -30,6 +30,24 @@ stdout = '''
 '''
 exit = 2
 
+["a missing workspace"."$ clice refactor rename main entry --workspace missing"]
+stdout = '''
+{
+  "error": "${WS}/missing: not a directory",
+  "stale": []
+}
+'''
+exit = 2
+
+["a missing workspace"."$ clice modularize --partition partition.json --out wrap --workspace missing"]
+stdout = '''
+{
+  "error": "${WS}/missing: not a directory",
+  "stale": []
+}
+'''
+exit = 2
+
 ["a missing workspace"."$ clice format --check --workspace missing"]
 stderr = "error: ${WS}/missing: not a directory"
 exit = 2

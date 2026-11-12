@@ -13,7 +13,16 @@ test("a job count by its short name", async (t) => {
 });
 
 test("a missing workspace", { errors: ["missing: not a directory"] }, async (t) => {
-    for (const command of ["query project-files", "format --check", "lint", "index", "scan"]) {
+    t.disk.write("partition.json", '{ "modules": [] }');
+    for (const command of [
+        "query project-files",
+        "refactor rename main entry",
+        "modularize --partition partition.json --out wrap",
+        "format --check",
+        "lint",
+        "index",
+        "scan",
+    ]) {
         await t.cli(`${command} --workspace missing`);
     }
     // What the runs left where the workspace was named.
