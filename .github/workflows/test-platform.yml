@@ -44,6 +44,11 @@ on:
       cards:
         type: boolean
         default: false
+      # Records what the cases exercise, then fails on what of the product's
+      # surface none did (tests/README.md, "Coverage").
+      coverage:
+        type: boolean
+        default: false
       # CLICE_TEST_JITTER for the suites: random delays of up to this many
       # milliseconds where the server's own work races a test's actions.
       jitter:
@@ -273,7 +278,17 @@ jobs:
         env:
           CLICE_TEST_JITTER: ${{ inputs.jitter }}
           CLICE_KEEP_LOGS: ${{ runner.temp }}/case-logs
+          CLICE_COVERAGE_DIR: ${{ inputs.coverage && format('{0}/coverage', runner.temp) || '' }}
         run: pixi run -e test-run cases-test ${{ inputs.build_type }} ${{ matrix.shard }}/${{ strategy.job-total }}
+
+      - name: Upload the coverage records
+        if: inputs.coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ matrix.shard }}
+          path: ${{ runner.temp }}/coverage
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Upload the cards
         if: inputs.cards
@@ -293,6 +308,37 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
+
+  # The surface comes from the program itself: its --help, its
+  # configuration schema, a server's capabilities.
+  coverage:
+    needs: cases
+    if: ${{ inputs.coverage }}
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/download-programs
+        with:
+          target: ${{ inputs.target }}
+          build_type: ${{ inputs.build_type }}
+          environments: ${{ env.TEST_ENVIRONMENTS }}
+          activate-environment: ${{ env.TEST_ACTIVATE }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-*
+          path: ${{ runner.temp }}/coverage
+
+      - name: Coverage
+        env:
+          CLICE_COVERAGE_DIR: ${{ runner.temp }}/coverage
+          CLICE_EXECUTABLE: ${{ github.workspace }}/build/${{ inputs.build_type }}/bin/bin/clice
+        run: pixi run -e test-run npm run coverage -w tests
 
   editor:
     needs: build

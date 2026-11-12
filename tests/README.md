@@ -218,7 +218,7 @@ declared fails the test, and so does a declared one that never happened.
 | Option                     | Means                                                                                             |
 | -------------------------- | ------------------------------------------------------------------------------------------------- |
 | `except: { win32: "…" }`   | platforms the test has no meaning on, each with the reason; there it is listed as not applicable  |
-| `errors: ["…"]`            | the error-level log lines the test provokes; any other fails                                      |
+| `errors: ["…"]`            | the error-level log lines the test provokes; any other fails, and so does one no line matches      |
 | `paths: { server: "…" }`   | (answers) one client alone, where the other cannot answer; `inspect` likewise                     |
 | `paths: { separate: "…" }` | (answers) both clients pinned apart where they answer differently on purpose; agreeing then fails |
 | `config: { … }`            | (answers) options in clice.toml's shape, taken by both clients                                    |
@@ -282,7 +282,8 @@ exit = 0
 - **Commands** are a block under the command line, `$ clice …`: `stdout`
   (JSON pretty-printed), `stderr` (a log line only at warning and above, as
   `warning: …`), `exit` (or `killed` and the signal), and `files`, each file
-  the command wrote as a diff. A command run again in one test is `#2`.
+  the command wrote as a diff. A command killed by a signal the test did not
+  send (`interrupt`) fails, a reader that left (`SIGPIPE`) apart. A command run again in one test is `#2`.
   Paths read `${WS}/…`, a session's log directory `${SESSION}`, the
   toolchain query's temporary input `${QUERY_INPUT}`, a worker's cause of
   death `${CRASH}`, durations and sizes `#ms`, `# KB`, and in
@@ -417,8 +418,10 @@ written by hand that a case can show.
   loops (`clice/internal/watch`, `s.watch`); the batch commands' pause point
   (`CLICE_TEST_PAUSE`), which parks a run after a given unit so a test can
   signal it at a known place. A hook the tests need is added to the product.
-- **At teardown**, every test: every server exits cleanly, and the logs hold
-  no anomaly, worker crash or error-level line the test did not declare.
+- **At teardown**, every test: every server exits cleanly, and the logs of
+  every process the test started — its session found by pid anywhere under
+  the copy, its stderr for one that logged no session — hold no anomaly,
+  worker crash or error-level line the test did not declare.
 - **On failure** a test prints its step tree, what `sync` reports still
   running, and the warning and error lines of every server it started.
 - **Time.** `sync` gives up after 4 minutes and says what is left; a script
@@ -427,8 +430,9 @@ written by hand that a case can show.
 
 ## Coverage
 
-Tests record what they exercise: every method a client sends, every command
-line run, every configuration key set. `npm run coverage`, after the other
+Tests record what they exercise: every method a client sends and the server
+sends, every command line run, every configuration key set; CI merges the
+shards' records and runs the check after them. `npm run coverage`, after the other
 runs with the same `CLICE_COVERAGE_DIR`, lists every item of the product
 surface nothing exercised and fails. The surface comes from the product: the
 configuration schema, each command's `--help`, the server's capabilities, the

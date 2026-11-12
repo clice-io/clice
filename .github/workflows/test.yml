@@ -23,6 +23,7 @@ jobs:
       editor: true
       compat: true
       cards: true
+      coverage: true
 
   linux-x64-debug:
     uses: ./.github/workflows/test-platform.yml
