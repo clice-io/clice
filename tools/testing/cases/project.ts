@@ -177,7 +177,7 @@ export function copyName(rel: string): string {
     return rel.endsWith(".in") ? rel.slice(0, -".in".length) : rel;
 }
 
-interface Entry {
+export interface Entry {
     directory: string;
     file: string;
     arguments: string[];

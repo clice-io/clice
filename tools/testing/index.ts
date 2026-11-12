@@ -14,4 +14,5 @@ export {
 export { at, type Anchor } from "./cases/anchors.ts";
 export * as generate from "./cases/generate.ts";
 export * as lmdb from "./cases/lmdb.ts";
+export * as modularize from "./cases/modularize.ts";
 export { running } from "../client/process.ts";
