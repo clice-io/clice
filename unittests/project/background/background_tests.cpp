@@ -426,7 +426,7 @@ ZEST_CASE(RetireReportsIndexChanged) {
     ZASSERT(ranges::contains(f.changed, header_id));
 }
 
-ZEST_CASE(IndexFirstRearmsIdleTimer) {
+ZEST_CASE(IndexFirstRearmsTimer) {
     // s#9: an index_first colliding with an already-armed idle timer must re-arm
     // it to fire now. Un-fixed, this test waits out the full idle window
     // below instead of finishing promptly.
@@ -517,7 +517,7 @@ ZEST_CASE(SaveKeepsQueuedSchedule) {
     ZEXPECT(f.failures() == 0u);
 }
 
-ZEST_CASE(IndexFirstSparesRunningPass) {
+ZEST_CASE(IndexFirstSparesPass) {
     // A file put first once the running pass took it — in flight, or done
     // as here — is queued past the pass and leads the next one. Moved into
     // the running pass, it would run there a second time and push the

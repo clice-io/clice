@@ -144,7 +144,7 @@ ZEST_CASE(FindProjectRoot) {
 };
 
 #ifndef _WIN32
-ZEST_CASE(FindProjectRootThroughSymlink) {
+ZEST_CASE(ProjectRootThroughSymlink) {
     /// A directory reached through a symlink belongs to the project of the
     /// directory it links to.
     TempDir tmp;

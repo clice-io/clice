@@ -18,7 +18,7 @@ std::vector<std::uint64_t> held;
 Signal<std::uint64_t>::Connection held_conn =
     hooks.on_held.connect([this](std::uint64_t id) { held.push_back(id); });
 
-ZEST_CASE(counts_by_kind) {
+ZEST_CASE(CountsByKind) {
     run(hooks.returned(BuildKind::Compile, "/w/main.cpp"),
         hooks.returned(BuildKind::Compile, "/w/main.cpp"),
         hooks.returned(BuildKind::PCH, "/w/main.cpp"),
@@ -31,7 +31,7 @@ ZEST_CASE(counts_by_kind) {
     ZEXPECT(hooks.builds["/w/lib.cpp"][std::to_underlying(BuildKind::Index)] == 1u);
 }
 
-ZEST_CASE(counts_builds_run) {
+ZEST_CASE(CountsBuildsRun) {
     // A build counts once its worker ran it to its end; one the master
     // withdrew or no worker took does not, nor does any other request.
     using Compiled = kotatsu::outcome<worker::CompileResult, ipc::Error>;
@@ -52,14 +52,14 @@ ZEST_CASE(counts_builds_run) {
     ZEXPECT(hooks.builds["/w/main.cpp"][std::to_underlying(BuildKind::Compile)] == 1u);
 }
 
-ZEST_CASE(kind_names_round_trip) {
+ZEST_CASE(KindNamesRoundTrip) {
     for(auto kind: {BuildKind::Compile, BuildKind::PCH, BuildKind::PCM, BuildKind::Index}) {
         ZEXPECT(parse_build_kind(build_kind_name(kind)) == kind);
     }
     ZEXPECT(!parse_build_kind("query"));
 }
 
-ZEST_CASE(hold_parks_until_release) {
+ZEST_CASE(HoldParksUntilRelease) {
     // The matching reply parks and is announced; the release lets it on.
     auto id = hooks.hold(BuildKind::Compile, "/w/main.cpp");
     bool delivered = false;
@@ -79,7 +79,7 @@ ZEST_CASE(hold_parks_until_release) {
     ZEXPECT(hooks.holds().empty());
 }
 
-ZEST_CASE(hold_parks_one_reply) {
+ZEST_CASE(HoldParksOneReply) {
     // A hold parks the first matching reply only; replies of another kind
     // or file never park.
     auto id = hooks.hold(BuildKind::Index, "/w/lib.cpp");
@@ -104,7 +104,7 @@ ZEST_CASE(hold_parks_one_reply) {
     ZEXPECT(held.size() == 1u);
 }
 
-ZEST_CASE(release_before_arrival) {
+ZEST_CASE(ReleaseBeforeArrival) {
     // A hold released before any reply reached it drops: the reply passes.
     auto id = hooks.hold(BuildKind::PCM, "/w/m.cppm");
     ZEXPECT(hooks.release(id));
@@ -119,7 +119,7 @@ ZEST_CASE(release_before_arrival) {
     ZEXPECT(held.empty());
 }
 
-ZEST_CASE(release_all_frees_parked) {
+ZEST_CASE(ReleaseAllFreesParked) {
     auto a = hooks.hold(BuildKind::Compile, "/w/a.cpp");
     auto b = hooks.hold(BuildKind::PCH, "/w/b.cpp");
     int delivered = 0;
@@ -137,7 +137,7 @@ ZEST_CASE(release_all_frees_parked) {
     ZEXPECT(hooks.holds().empty());
 }
 
-ZEST_CASE(gates_share_hold_ids) {
+ZEST_CASE(GatesShareHoldIds) {
     // Gates and holds draw from one id space and release by id alike; a
     // gate no request went out under drops.
     auto hold = hooks.hold(BuildKind::Compile, "/w/a.cpp");
@@ -155,7 +155,7 @@ ZEST_CASE(gates_share_hold_ids) {
     ZEXPECT(hooks.release(hold));
 }
 
-ZEST_CASE(gate_park_announced) {
+ZEST_CASE(GateParkAnnounced) {
     // The worker's park of a standing gate is announced like a hold's; one
     // of a gate already released is not.
     auto gate = hooks.gate("clice/worker/compile /w/a.cpp");
@@ -169,7 +169,7 @@ ZEST_CASE(gate_park_announced) {
     ZEXPECT(held.size() == 1u);
 }
 
-ZEST_CASE(answer_drops_unreached_gate) {
+ZEST_CASE(AnswerDropsUnreachedGate) {
     // A request that came back before its work reached the gate drops the
     // gate; one whose work parked keeps it until the release.
     auto unreached = hooks.gate("clice/worker/format /w/a.cpp");

@@ -1040,7 +1040,7 @@ ZEST_CASE(RepeatedHeaderChangeStales) {
     ZEXPECT(once->size() == 1u);
 };
 
-ZEST_CASE(HeaderTextKeepsTakenTree) {
+ZEST_CASE(HeaderTextKeepsTree) {
     /// A preprocess run's tree holds for a header whatever the header's own
     /// text, as the index's does: it moves nothing above the header.
     TreeProject p;
@@ -1135,7 +1135,7 @@ ZEST_CASE(FailedTreeHostsNothing) {
     ZEXPECT(!p.chains(a, t).has_value());
 };
 
-ZEST_CASE(SelfContainmentFollowsItsInputs) {
+ZEST_CASE(SelfContainmentFollowsInputs) {
     /// A self-containment check's result holds while what its compile read
     /// holds, and the header's text: for an open header, whose buffer moves
     /// with every keystroke, its disk content.

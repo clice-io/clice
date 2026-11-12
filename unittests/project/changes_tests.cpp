@@ -255,7 +255,7 @@ ZEST_CASE(BatchSeesEarlierEdges) {
     ZASSERT(ranges::contains(project.dep_graph.get_includers(header), added));
 }
 
-ZEST_CASE(RemovalThenChangeKeepsClear) {
+ZEST_CASE(RemovedUnitStaysClear) {
     // A unit removed earlier in the batch is no longer an includer when a
     // header it included changes: its clear survives, nothing requeues it.
     TempDir tmp;
@@ -439,7 +439,7 @@ ZEST_CASE(AppearedHeaderCascades) {
     ZASSERT(ranges::contains(affected.stale, open));
 }
 
-ZEST_CASE(DiskRemovedScrubsSourceRole) {
+ZEST_CASE(DiskRemovedDropsIncluder) {
     auto header = intern("/proj/h.h");
     auto removed_tu = list_unit(project.cdb, "/proj/gone.cpp");
     auto other_tu = list_unit(project.cdb, "/proj/kept.cpp");
@@ -487,7 +487,7 @@ ZEST_CASE(RemoveRecreateOrder) {
     ZASSERT(project.background_index.queue().pending_reason(file) == ReindexReason::ContentChanged);
 }
 
-ZEST_CASE(CDBAddedScansAndEnqueues) {
+ZEST_CASE(CDBAddedScansEnqueues) {
     TempDir tmp;
     tmp.touch("inc/header.h", R"(int x = 1;)");
     tmp.touch("src/main.cpp", R"(#include "header.h")");
@@ -558,7 +558,7 @@ ZEST_CASE(DiskRemovedReindexesIncluders) {
     ZASSERT(queued(project, ReindexReason::ContentChanged).empty());
 }
 
-ZEST_CASE(CDBRemovedDropsSourceRole) {
+ZEST_CASE(CDBRemovedDropsIncluder) {
     TempDir tmp;
     tmp.touch("inc/h.h", R"(int x;)");
     tmp.touch("kept.cpp", R"(#include "inc/h.h")");
@@ -610,7 +610,7 @@ ZEST_CASE(CDBRemovedStillCovered) {
     ZASSERT(queued(project, ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{gone_id});
 }
 
-ZEST_CASE(CDBEmptyDeltaNoEffects) {
+ZEST_CASE(EmptyDeltaNoEffects) {
     auto epoch = project.context_epoch();
 
     project.update_members({}, open_files);

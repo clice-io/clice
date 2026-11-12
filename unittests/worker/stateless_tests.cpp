@@ -348,7 +348,7 @@ ZEST_CASE(BuildPCMRequest) {
     ZASSERT(test_done);
 }
 
-ZEST_CASE(ConstructorTemplatesOfClassTemplate) {
+ZEST_CASE(ConstructorTemplatesAnswered) {
     std::string text = R"(template <int> struct index {};
 template <class, class...> struct V {
   template <int I> V(index<I>);

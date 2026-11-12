@@ -85,7 +85,7 @@ ZEST_CASE(ModuleOfFollowsDeclarations) {
     ZEXPECT(graph.lookup_module("bar").empty());
 }
 
-ZEST_CASE(ModuleOfFollowsRedeclaredName) {
+ZEST_CASE(ModuleOfFollowsRedeclaration) {
     // A file scanned under two configurations can be listed under two
     // names (a macro picks the declaration). Re-declaring one of them
     // keeps both provider lists untouched — no reselection — but the

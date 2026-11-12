@@ -86,7 +86,7 @@ static codec::dyn::Value overlay(std::string_view text) {
 
 ZEST_SUITE(Settings) {
 
-ZEST_CASE(CacheDirServesOneProject) {
+ZEST_CASE(CacheServesOneProject) {
     /// A shared cache directory keeps the root it was first used for; the
     /// next project moves off it to its own default.
     TempDir tmp;
@@ -362,7 +362,7 @@ ZEST_CASE(OverlayWithoutFile) {
     ZEXPECT(loaded.settings.compiled_rules.size() == 1u);
 }
 
-ZEST_CASE(LoadMalformedToml) {
+ZEST_CASE(LoadMalformedTOML) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project\nbroken");
     CanonicalPath root(Spelling::absolute(tmp.root));
@@ -524,7 +524,7 @@ compile_commands = ["build", "{}"]
     ZEXPECT(debug.matching(identity("shared/deep/x.cpp")).size() == 1u);
 }
 
-ZEST_CASE(InitOptionsAnchorAtWorkspace) {
+ZEST_CASE(OverlayAnchorsAtWorkspace) {
     /// A file under .clice/ anchors its own paths there; values overlaid
     /// through initializationOptions anchor at the workspace root, whatever
     /// file was loaded before them.
@@ -718,7 +718,7 @@ ZEST_CASE(CompileCommandsList) {
     ZEXPECT(databases[3].str() == at("build.json/compile_commands.json"));
 }
 
-ZEST_CASE(TomlErrorLocated) {
+ZEST_CASE(TOMLErrorLocated) {
     // A syntax error sits where the parser stopped: the line break that
     // ends the table header before its `]`.
     TempDir tmp;
@@ -959,7 +959,7 @@ ZEST_CASE(MalformedTomlNoFallback) {
     ZEXPECT(loaded.settings.project.stateful_worker_count == 2u);
 }
 
-ZEST_CASE(RuleOrderLaterRemoveWins) {
+ZEST_CASE(LaterRemoveWins) {
     // Later rule's `remove` must cancel an earlier rule's matching `append`.
     Settings settings;
     settings.rules.push_back(Rule{
@@ -987,7 +987,7 @@ ZEST_CASE(RuleOrderLaterRemoveWins) {
             "clang++ -D BAR " + CanonicalPath(Spelling::absolute("/src/a.cpp")).str());
 }
 
-ZEST_CASE(RuleOrderLaterAppendWins) {
+ZEST_CASE(LaterAppendWins) {
     // Later append comes after earlier append — at compiler level, last wins
     // for flags like -O; verify the ordering is preserved.
     Settings settings;
@@ -1008,7 +1008,7 @@ ZEST_CASE(RuleOrderLaterAppendWins) {
     ZEXPECT(append[1] == "-O3");
 }
 
-ZEST_CASE(InitOptionsOverlayPreservesToml) {
+ZEST_CASE(OverlayPreservesTOML) {
     // Mirror the master_server flow: load the project settings from clice.toml first,
     // then overlay initializationOptions JSON. Fields absent in the JSON must
     // keep their clice.toml values; fields present in the JSON override.
@@ -1083,7 +1083,7 @@ bundle_overloads = false
     ZEXPECT(settings.code_completion.arguments == feature::CompletionArguments::Placeholders);
 }
 
-ZEST_CASE(InitOptionsOverlayRulesReplace) {
+ZEST_CASE(OverlayRulesReplace) {
     // When `rules` is present in the overlay JSON, it replaces the whole array
     // (kotatsu deserializes the vector by value). `compiled_rules` must be
     // rebuilt after finalize so stale compiled entries don't linger.

@@ -231,7 +231,7 @@ ZEST_CASE(ReadAsClangSpellings) {
     ZEXPECT(adjacent(f.read_as_clang(arm), "-target-cpu", "cortex-a72"));
 }
 
-ZEST_CASE(ReadAsClangUnknownNames) {
+ZEST_CASE(UnknownTargetNamesDropped) {
     // Only the option naming what clang's target does not know goes: an
     // architecture x86 knows that it knows as no tuning CPU stays for
     // -march; one -mabi overriding another goes, and then so does that.

@@ -20,7 +20,7 @@ Resolution resolve_taking_trees(Project& project, Fid file, CommandRequest reque
 
 ZEST_SUITE(ResolveCommand) {
 
-ZEST_CASE(DefaultSourceKeepsOwnCommand) {
+ZEST_CASE(DefaultSourceKeepsCommand) {
     /// A unity build under a default command: main.cpp includes part.cpp
     /// and part.h. The included source is a unit of its own and keeps the
     /// default command the index compiles it with; the header borrows

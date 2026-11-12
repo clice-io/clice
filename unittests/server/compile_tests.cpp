@@ -332,7 +332,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
     // parse, its waiter resolves false (its result is for a buffer that no
     // longer exists — the editor re-requests after an edit), and a request
     // joining after the edit compiles the fresh content. Liveness pin; the
-    // interruption content is pinned by StatefulWorker.IpcCancelInterruptsCompile.
+    // interruption content is pinned by StatefulWorker.IPCCancelInterruptsCompile.
     AnomalyCapture anomalies;
 
     TempDir tmp;
@@ -1117,7 +1117,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
     ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
-ZEST_CASE(StaleReplyBecomesContentModified) {
+ZEST_CASE(StaleReplyContentModified) {
     // A reply for a buffer the client edited away never leaves as a value:
     // it becomes ContentModified even when the worker
     // answered after the compile had finished — the edit arrived while the
@@ -1266,7 +1266,7 @@ ZEST_CASE(PoisonPreambleShared) {
     ZEXPECT(anomalies.trapped == std::vector{logging::AnomalyId::WorkerCrash});
 }
 
-ZEST_CASE(AbandonedPCHKeepsNoIndex) {
+ZEST_CASE(AbandonedPCHDropsIndex) {
     // A parse that leaves while its PCH builds takes nothing, and the build
     // committing after it hands its index to no one: the index stays mapped
     // only while a compile holds it.

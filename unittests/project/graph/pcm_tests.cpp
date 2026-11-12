@@ -224,7 +224,7 @@ void execute(F&& fn) {
 ///              Recompile after update (invalidation + recompile)
 /// ============================================================================
 
-ZEST_CASE(recompile_after_update) {
+ZEST_CASE(RecompileAfterUpdate) {
     env.tmp.touch("leaf.cppm",
                   "export module Leaf;\n"
                   "export int leaf() { return 1; }\n");
@@ -269,7 +269,7 @@ ZEST_CASE(recompile_after_update) {
 ///                      Diamond update cascade + recompile
 /// ============================================================================
 
-ZEST_CASE(diamond_update_cascade) {
+ZEST_CASE(DiamondUpdateCascade) {
     env.tmp.touch("mod_base.cppm",
                   "export module Base;\n"
                   "export int base_val() { return 10; }\n");
@@ -337,7 +337,7 @@ ZEST_CASE(diamond_update_cascade) {
 ///        Verify resolve_fn is re-invoked after update (resolved=false)
 /// ============================================================================
 
-ZEST_CASE(re_resolve_after_update) {
+ZEST_CASE(ResolveAgainAfterUpdate) {
     // Start with Mid importing Leaf.
     env.tmp.touch("leaf.cppm",
                   "export module Leaf;\n"
@@ -392,7 +392,7 @@ ZEST_CASE(re_resolve_after_update) {
 ///              Compilation failure propagation (real clang error)
 /// ============================================================================
 
-ZEST_CASE(compile_failure_propagation) {
+ZEST_CASE(CompileFailurePropagates) {
     // Good module.
     env.tmp.touch("good.cppm",
                   "export module Good;\n"
@@ -429,7 +429,7 @@ ZEST_CASE(compile_failure_propagation) {
 ///    Shared dependency: switching import target must not kill or restart it
 /// ============================================================================
 
-ZEST_CASE(shared_dep_import_switch) {
+ZEST_CASE(SharedDependencyImportSwitch) {
     env.tmp.touch("shared.cppm",
                   "export module Shared;\n"
                   "export int shared_val() { return 1; }\n");
@@ -529,7 +529,7 @@ ZEST_CASE(shared_dep_import_switch) {
 ///   Shared dependency failure propagates to every consumer of the same attempt
 /// ============================================================================
 
-ZEST_CASE(shared_dep_fails_both) {
+ZEST_CASE(SharedDependencyFailsBoth) {
     env.tmp.touch("shared.cppm",
                   "export module Shared;\n"
                   "export int shared_val() { return UNDEFINED_SYMBOL; }\n");

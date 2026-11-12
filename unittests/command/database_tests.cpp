@@ -148,7 +148,7 @@ ZEST_CASE(MultiCommand) {
     ZASSERT(database.candidate_entries(fake("other.cpp")).size() == 1U);
 };
 
-ZEST_CASE(CandidateOrderIsFileOrder) {
+ZEST_CASE(CandidatesKeepFileOrder) {
     /// A file's entries keep the order their source lists them in:
     /// generators emit configurations in a fixed order, so the first entry
     /// is the same configuration for every file.

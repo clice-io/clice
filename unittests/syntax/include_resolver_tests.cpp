@@ -24,7 +24,7 @@ ZEST_CASE(ResolveAbsolutePath) {
     ZEXPECT(fs::equivalent(result->path.str(), abs_path).value_or(false));
 }
 
-ZEST_CASE(ResolveQuotedIncludeFromIncluderDir) {
+ZEST_CASE(ResolveQuotedFromIncluder) {
     TempDir tmp;
     tmp.touch("src/main.cpp");
     tmp.touch("src/local.h");
@@ -42,7 +42,7 @@ ZEST_CASE(ResolveQuotedIncludeFromIncluderDir) {
     ZEXPECT(fs::equivalent(result->path.str(), tmp.path("src/local.h")).value_or(false));
 }
 
-ZEST_CASE(ResolveAngledIncludeFromSearchDirs) {
+ZEST_CASE(ResolveAngledFromDirectories) {
     TempDir tmp;
     tmp.touch("include/sys/types.h");
 
@@ -139,7 +139,7 @@ ZEST_CASE(ResolveStatCacheHits) {
     ZEXPECT(second->path == first->path);
 }
 
-ZEST_CASE(ResolveQuotedFallsBackToSearchDirs) {
+ZEST_CASE(ResolveQuotedFallsBack) {
     TempDir tmp;
     // Header not in includer dir, but in search dir.
     tmp.touch("include/fallback.h");

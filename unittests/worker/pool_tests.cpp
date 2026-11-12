@@ -1351,7 +1351,7 @@ ZEST_CASE(GiveUpWakesQueued) {
     ZEXPECT(!queued->slot.has_value());
 }
 
-ZEST_CASE(LastGiveUpTellsUser) {
+ZEST_CASE(LastSlotWarnsUser) {
     // The user hears of an outage once no slot of its kind is left, and
     // which features wait for it.
     WorkerPoolFixture f;

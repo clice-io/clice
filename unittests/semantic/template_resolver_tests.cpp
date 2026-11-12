@@ -231,7 +231,7 @@ ZEST_CASE(ScopedBindingStaysLocal) {
     }
 }
 
-ZEST_CASE(ProbeBindingsStayInProbe) {
+ZEST_CASE(ProbeBindingsStayLocal) {
     /// Choosing `has_inner`'s pattern resolves `T::inner` once with `T`
     /// bound to `box<U>`, once to `bare<U>`, whose `inner` has no `type`.
     add_focus("main.cpp", R"code(
@@ -263,7 +263,7 @@ ZEST_CASE(ProbeBindingsStayInProbe) {
     ZEXPECT(primary.getCanonicalType() == unit->context().LongTy);
 }
 
-ZEST_CASE(QualifiedBindingIsNoParameter) {
+ZEST_CASE(QualifiedBindingNotParameter) {
     /// Inside `iter<N>`, `other` binds `N` to `const N`: what its `node`
     /// reads under that binding is no answer for `iter<N>`'s own.
     add_focus("main.cpp", R"code(
@@ -596,7 +596,7 @@ ZEST_CASE(ViewsBetweenIncludes) {
     }
 }
 
-ZEST_CASE(CanonicalNamesKeepTheirBindings) {
+ZEST_CASE(CanonicalNamesKeepBindings) {
     /// `C::value_type` and `T::value_type` share their canonical form; the
     /// only instantiation binds `C` alone.
     add_focus("main.cpp", R"code(
@@ -937,7 +937,7 @@ ZEST_CASE(StandardConditionalBaseDiffers) {
     ZEXPECT(resolver.lookup(nodes.members.back()).empty());
 }
 
-ZEST_CASE(OperatorCallFoldsAsBuiltin) {
+ZEST_CASE(OperatorCallFoldsBuiltin) {
     /// With an `operator&&` in scope, clang leaves `&&` on dependent operands
     /// a call; its operands' values fold it as the builtin one.
     add_focus("main.cpp", R"code(

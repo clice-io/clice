@@ -1554,7 +1554,7 @@ ZEST_CASE(ScopeCEnumerator) {
     ZASSERT(scope("local_value") == static_cast<int>(index::SymbolScope::FunctionLocal));
 }
 
-ZEST_CASE(BareNameAndParentChain) {
+ZEST_CASE(BareNamesAndParents) {
     build_index(R"(
         namespace ns { struct Outer { struct Inner { void method(); }; }; }
         void ns::Outer::Inner::method() {}
@@ -3181,7 +3181,7 @@ ZEST_CASE(ConfirmedGuessRecorded) {
     });
 }
 
-ZEST_CASE(NothingResolvedKeepsTheKey) {
+ZEST_CASE(NothingResolvedKeepsKey) {
     build(R"(
         template <typename T>
         T same(T value) { return value; }

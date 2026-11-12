@@ -39,7 +39,7 @@ struct Harness {
 
 ZEST_SUITE(DocumentChanges, Harness) {
 
-ZEST_CASE(CDBChangedSplitsOpenClosed) {
+ZEST_CASE(OpenRecompilesClosedReindexes) {
     TempDir tmp;
     tmp.touch("a.cpp", R"(int a;)");
     tmp.touch("b.cpp", R"(int b;)");
@@ -79,7 +79,7 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     ZEXPECT(IndexInternals::outdated(project.index, closed_id));
 }
 
-ZEST_CASE(CDBAddedOpenMarksDirty) {
+ZEST_CASE(CDBAddedMarksDirty) {
     TempDir tmp;
     tmp.touch("a.cpp");
     write_cdb(tmp,
@@ -101,7 +101,7 @@ ZEST_CASE(CDBAddedOpenMarksDirty) {
     ZASSERT(queued(project, ReindexReason::DepsOnly).empty());
 }
 
-ZEST_CASE(CDBChangedDropsHostedContext) {
+ZEST_CASE(ChangedHostDropsContext) {
     // The other header borrows the command of its sibling unit, which stays.
     TempDir tmp;
     tmp.touch("host.cpp", R"(#include "open.h")");

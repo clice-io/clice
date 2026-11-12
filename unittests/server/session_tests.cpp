@@ -135,7 +135,7 @@ ZEST_CASE(InsideUTF8Sequence) {
     ZASSERT(session.text() == "Y\xc3\xa9x\n");
 }
 
-ZEST_CASE(UTF32ColumnsCountCodePoints) {
+ZEST_CASE(UTF32CountsCodePoints) {
     Session session(Fid{1},
                     "\xf0\x9f\x98\x80"
                     "ab\n",
@@ -202,7 +202,7 @@ ZEST_CASE(EmptyDocumentClamped) {
     ZASSERT(session.text() == "int x;");
 }
 
-ZEST_CASE(RangeEndPastEof) {
+ZEST_CASE(RangeEndPastEOF) {
     Session session(Fid{1}, "int a;\nint b;\n", 1);
 
     // The end position sits on the last (empty) line but one character

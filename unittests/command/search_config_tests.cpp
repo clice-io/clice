@@ -144,7 +144,7 @@ ZEST_CASE(DeduplicatesAngledSystem) {
     ZEXPECT(config.dirs[1].path == spelled(tmp, "only_sys"));
 }
 
-ZEST_CASE(QuotedAngledSamePathKeptInBoth) {
+ZEST_CASE(QuotedAngledBothKept) {
     // clang's RemoveDuplicates starts from NumQuoted, so a path in both
     // Quoted (-iquote) and Angled (-I) must be kept in both segments.
     // This matters for #include <...> lookup and #include_next correctness.

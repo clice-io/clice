@@ -528,7 +528,7 @@ ZEST_CASE(DefaultOpenFileBounded) {
     ZASSERT((status->size <= 256ull << 20));
 }
 
-ZEST_CASE(FullMapFailsWholeBatchThenGrows) {
+ZEST_CASE(OverflowFailsThenGrows) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     // Small enough that a handful of large values exhausts it.
@@ -568,7 +568,7 @@ ZEST_CASE(ReadOnlyMissingDatabase) {
     ZASSERT(!fs::exists(index::database_directory(store, {})));
 }
 
-ZEST_CASE(ReadOnlyServesExistingDatabase) {
+ZEST_CASE(ReadOnlyServesExisting) {
     TempDir tmp;
     {
         auto store = open_store(tmp, "ws");
@@ -583,7 +583,7 @@ ZEST_CASE(ReadOnlyServesExistingDatabase) {
     ZASSERT(db->read(index::BlobKind::Header, "header").buffer->getBuffer() == "gg");
 }
 
-ZEST_CASE(CondemnedDatabaseDeletesOnClose) {
+ZEST_CASE(CondemnedDeletesOnClose) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     {

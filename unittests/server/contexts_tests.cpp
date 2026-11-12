@@ -152,7 +152,7 @@ ZEST_CASE(MovedHostRecompiles) {
     ZASSERT(fx.generation(header) != 0);
 }
 
-ZEST_CASE(StaleHostChoiceKeepsUnit) {
+ZEST_CASE(StaleHostKeepsEntry) {
     // A unit whose chosen host no longer enters it compiles under its own
     // entry, whatever other host ranks first.
     tmp.touch("part.cpp", "int part;\n");

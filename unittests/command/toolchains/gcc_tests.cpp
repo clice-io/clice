@@ -184,7 +184,7 @@ ZEST_CASE(IntelSYCLHostJob) {
     ZEXPECT(!contains(argv, "-include"));
 }
 
-ZEST_CASE(OldIntelSYCLHostJob) {
+ZEST_CASE(OldSYCLHostJob) {
     // Before oneAPI 2025.1 the host job includes them with -include and
     // -include-footer; the command's own forced include stays.
     auto driver =

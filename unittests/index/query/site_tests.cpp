@@ -21,7 +21,7 @@ ZEST_CASE(AsciiColumnsAgree) {
     ZEXPECT(position->utf16_column == 1u);
 }
 
-ZEST_CASE(StoredContentCountsUtf16) {
+ZEST_CASE(StoredContentCountsUTF16) {
     // The é on line 1 is two UTF-8 bytes but one UTF-16 unit.
     llvm::StringRef content = "ab\né!\n";
     auto starts = lsp::line_starts(content);

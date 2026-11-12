@@ -116,7 +116,7 @@ ZEST_CASE(BuildPCHThenCompile) {
     ZASSERT(phase2_done);
 }
 
-ZEST_CASE(UserFatalErrorSparesPCH) {
+ZEST_CASE(FatalErrorSparesPCH) {
     TempDir tmp;
     tmp.touch("common.h", "struct Point { int x, y; };\n");
     std::string main_text = "#include \"common.h\"\nPoint p{1, 2};\nimport missing;\n";

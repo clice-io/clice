@@ -221,7 +221,7 @@ ZEST_CASE(LoneKillTooBig) {
     ZEXPECT(core.scheduler.runs_alone(kills[0].slot));
 }
 
-ZEST_CASE(LoneUnitGetsIdleMemory) {
+ZEST_CASE(ScaleDownBeforeKill) {
     Core core(2);
     core.submit(1, Priority::Low);
     core.sample(100 * MiB,
@@ -368,7 +368,7 @@ ZEST_CASE(KillFloorRaisesEstimate) {
     ZEXPECT(core.slot_of(3).has_value());
 }
 
-ZEST_CASE(LoneGrowthBoundByEstimate) {
+ZEST_CASE(EstimateBoundsLoneGrowth) {
     // Fast growth projects past the reserve's third, but the estimate
     // leaves it 256 MiB more: the unit fits.
     Core core(1);

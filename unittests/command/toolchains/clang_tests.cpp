@@ -134,7 +134,7 @@ ZEST_CASE(NoJobSaysWhy) {
     ZEXPECT(llvm::StringRef(resolved.error()).contains("language not recognized: 'bogus'"));
 }
 
-ZEST_CASE(NoJobAfterFailedQuery) {
+ZEST_CASE(BothFailuresNamed) {
     // A compiler that is not here, on a command clang's driver builds no
     // job for either, names both reasons; with no reading to stand in for
     // the compiler's, the compile reports clang's error itself.

@@ -17,7 +17,7 @@ namespace {
 
 ZEST_SUITE(ModuleWorker) {
 
-ZEST_CASE(BuildPCMThenCompileWithImport) {
+ZEST_CASE(BuildPCMThenImport) {
     TempDir tmp;
     // Module interface: produces PCM.
     tmp.touch("mod_iface.cppm",
@@ -100,7 +100,7 @@ ZEST_CASE(BuildPCMThenCompileWithImport) {
     ZASSERT(phase2_done);
 }
 
-ZEST_CASE(BuildPCMChainThenCompile) {
+ZEST_CASE(BuildChainThenCompile) {
     TempDir tmp;
     // Module A: no deps.
     tmp.touch("chain_a.cppm",
@@ -211,7 +211,7 @@ ZEST_CASE(BuildPCMChainThenCompile) {
     ZASSERT(compile_done);
 }
 
-ZEST_CASE(ModuleImplementationUnitWithWorker) {
+ZEST_CASE(ModuleImplementationUnit) {
     TempDir tmp;
     // Module interface.
     tmp.touch("impl_iface.cppm",

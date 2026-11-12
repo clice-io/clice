@@ -622,7 +622,7 @@ ZEST_CASE(InvalidateRemovesPair) {
     ZASSERT(!read_file(aux_path).has_value());
 }
 
-ZEST_CASE(ReadOnlyOpenRequiresStore) {
+ZEST_CASE(ReadOnlyRequiresStore) {
     TempDir tmp;
     // The parent directory alone (config resolution creates it eagerly)
     // must not pass for an existing store.
@@ -632,7 +632,7 @@ ZEST_CASE(ReadOnlyOpenRequiresStore) {
     ZASSERT(store.error() == std::errc::no_such_file_or_directory);
 }
 
-ZEST_CASE(ReadOnlyOpenTouchesNothing) {
+ZEST_CASE(ReadOnlyTouchesNothing) {
     TempDir tmp;
     {
         auto store = open_store(tmp);

@@ -77,7 +77,7 @@ ZEST_CASE(StaleFormatDropsPch) {
     ZASSERT(f.project.pchs.empty());
 }
 
-ZEST_CASE(WholeFileNeedsNoIndex) {
+ZEST_CASE(WholeFileLoadsUnindexed) {
     // A precompiled header the build declares pairs with no pch.idx index:
     // its entry loads from the store without one, where a preamble's
     // missing its index is an incomplete pair and goes.

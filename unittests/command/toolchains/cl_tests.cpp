@@ -158,7 +158,7 @@ ZEST_CASE(UnqueriedCLRunsNothing) {
     ZEXPECT(!fs::exists(ran));
 }
 
-ZEST_CASE(UnqueriedCLTargetFromName) {
+ZEST_CASE(UnqueriedTargetFromName) {
     // A clang-cl that is not here reads for the target its name sets, as
     // any other unqueried driver does.
     auto cl = tmp.path("aarch64-pc-windows-msvc-clang-cl");

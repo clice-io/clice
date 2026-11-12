@@ -198,7 +198,7 @@ ZEST_CASE(CDBTickDanglingSymlink) {
 }
 #endif
 
-ZEST_CASE(CDBTickAboveOpenFile) {
+ZEST_CASE(CDBTickAboveDocument) {
     /// A database generated above an open file still without a command is
     /// found where the tick watches for it.
     TempDir tmp;
@@ -243,7 +243,7 @@ ZEST_CASE(CDBTickDeleteRecreate) {
     ZASSERT(delta.changed == llvm::SmallVector<Fid>{main_id});
 }
 
-ZEST_CASE(CDBTickRetriesFailedLoad) {
+ZEST_CASE(CDBTickRetriesLoad) {
     /// A declared database unreadable at startup loads on a later tick even
     /// when its stat is unchanged by then.
     TempDir tmp;
@@ -710,7 +710,7 @@ ZEST_CASE(WorkspaceTickStateMachine) {
     ZASSERT(!disk.seen_missing(reborn.changes.front()));
 }
 
-ZEST_CASE(WorkspaceTickKeepsListedMember) {
+ZEST_CASE(WorkspaceTickKeepsListed) {
     /// A unit a database lists and a default command also covers keeps
     /// its command when deleted: the tick reports the removal, not a lost
     /// command.

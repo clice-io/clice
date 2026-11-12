@@ -648,7 +648,7 @@ ZEST_CASE(OtherFormatKeepsMetadata) {
     ZEXPECT(f.project.choices.bytes == "choices");
 }
 
-ZEST_CASE(ReadOnlyLoadKeepsDisk) {
+ZEST_CASE(ReadOnlyKeepsDisk) {
     // A reader beside a writer finds a damaged record: it reports the damage
     // and leaves the database to its owner.
     TempDir tmp;

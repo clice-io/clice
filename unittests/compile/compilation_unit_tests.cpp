@@ -168,7 +168,7 @@ ZEST_CASE(FilePathResolvesLinks) {
     ZEXPECT(unit->file_path(*directive.has_includes[0].file) == real.str());
 }
 
-ZEST_CASE(FilePathOfHardLinks) {
+ZEST_CASE(HardLinksSharePath) {
     TempDir tmp;
     tmp.touch("a.h", "extern int a;\n");
     ZASSERT(!fs::create_hard_link(tmp.path("a.h"), tmp.path("b.h")));

@@ -256,7 +256,7 @@ ZEST_CASE(QuietLooksBackOff) {
     ZASSERT(f.tick() == llvm::SmallVector<Fid>{fid});
 }
 
-ZEST_CASE(BackOffStopsAtMax) {
+ZEST_CASE(BackOffCapped) {
     Fixture f;
     auto fid = f.file("src/a.h", "int a;\n");
     f.hash_of(fid);

@@ -292,7 +292,7 @@ std::vector<index::OpenBuffer> open_buffers(int buffers) {
     return open;
 }
 
-ZEST_CASE(ScopedSearchReadsOpenBuffers) {
+ZEST_CASE(ScopedSearchReadsBuffers) {
     auto open = open_buffers(8);
     auto query = project.index_query.reading(std::move(open));
     for(auto name: {"fn0_1", "fn7_1"}) {

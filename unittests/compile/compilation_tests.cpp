@@ -881,7 +881,7 @@ int main() { return four(); }
     ZEXPECT(defines_specialization(*preamble, "twice"));
 }
 
-ZEST_CASE(PCHOfHeaderInCycle) {
+ZEST_CASE(PCHOfCyclicHeader) {
     add_file("b.h", R"(
 #ifndef B_H
 #define B_H

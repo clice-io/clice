@@ -243,7 +243,7 @@ ZEST_CASE(PreprocessorDirectivesIgnored) {
     ZEXPECT(finished_preamble_bound(content, bound) == bound);
 }
 
-ZEST_CASE(MixedIncludeAndImportAllComplete) {
+ZEST_CASE(MixedIncludeImportComplete) {
     llvm::StringRef content = "#include <vector>\nimport std;\nint x;";
     auto bound = preamble_bound(content);
     ZEXPECT(finished_preamble_bound(content, bound) == bound);

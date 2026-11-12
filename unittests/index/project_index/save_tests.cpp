@@ -399,7 +399,7 @@ ZEST_CASE(RebuildThroughUnnamedScopes) {
     ZEXPECT(hits("::kSize") == 0u);
 }
 
-ZEST_CASE(RebuildKeepsMidBuildChanges) {
+ZEST_CASE(RebuildKeepsConcurrentChanges) {
     TempDir tmp;
     tmp.touch("a.cpp", "int first_value() { return 1; }\n");
     tmp.touch("b.cpp", "int second_value() { return 2; }\n");
