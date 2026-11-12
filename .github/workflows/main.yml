@@ -112,7 +112,7 @@ jobs:
   # since the action switches node.
   docs-site:
     needs: [changes, test]
-    if: ${{ always() && github.event_name == 'pull_request' && needs.changes.outputs.docs == 'true' && contains(fromJSON('["success", "skipped"]'), needs.test.result) }}
+    if: ${{ always() && github.event_name != 'push' && needs.changes.outputs.docs == 'true' && contains(fromJSON('["success", "skipped"]'), needs.test.result) }}
     permissions:
       contents: read
       actions: read
