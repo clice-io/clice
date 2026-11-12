@@ -256,6 +256,7 @@ markdown = '''
 **class** `Final`
 
 ```cpp
+__attribute__((objc_subclassing_restricted))
 @interface Final : Object ... @end
 ```
 '''
