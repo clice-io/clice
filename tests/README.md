@@ -175,7 +175,11 @@ A script registers tests of two kinds, each `(fn)`, `(name, fn)`,
 - **`test`**: everything else, on servers, the command line, or both.
   `t.start(options?)` starts a server on the copy; `t.cli(...)` runs a command
   there (with `interrupt: { units, signals }` it signals the run once that many
-  units are indexed); `t.disk` reads and changes the copy (`write`, `edit`,
+  units are indexed); `modularize.compiles(t, run, out, options?)` fails unless
+  the program compiles cleanly as the plan a `clice modularize` run printed
+  builds it, its outputs under `out` (a merged plan's for one configuration:
+  `configuration`, that configuration's own run, and `args`, the defines its
+  condition holds under); `t.disk` reads and changes the copy (`write`, `edit`,
   `rm`, `symlink`, `touch`, `list`, `corrupt`, `database`); `t.gone(pids)` waits until processes
   the test did not start have ended; `t.elapse(ms, why)` lets time pass
   where time is the claim. A test may start several servers and run several
