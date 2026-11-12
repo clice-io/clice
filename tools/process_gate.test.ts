@@ -201,6 +201,40 @@ describe("logFaults", () => {
         ]);
     });
 
+    test("past the report limit, a death's last lines tell it, named or not", () => {
+        const told = (worker: string) =>
+            `[2026-11-12 16:32:00.200] [error] [pool.cpp:541] The last lines ${worker} logged before it died:`;
+        const faults = logFaults(
+            lines("/s/master.log", [
+                ...hoverCrash.slice(1, 9),
+                "[2026-11-12 16:32:00.100] [error] [logging.cpp:597] [anomaly:WorkerCrash] report limit (8) reached, suppressing further reports",
+                "[2026-11-12 16:32:00.150] [warning] [pool.cpp:35] [SF-0] clice worker crashed in: clice/worker/hover b.cpp",
+                told("SF-0"),
+                "    [2026-11-12 16:32:00.100] [info] [worker.cc:54] Worker SF-0 (stateful) starting, pid 54870",
+                told("SF-0"),
+                told("SL-0"),
+                "[2026-11-12 16:32:00.300] [error] [pool.cpp:424] Worker SL-1 lost: broken pipe",
+                told("SL-1"),
+                "[2026-11-12 16:32:00.400] [warning] [pool.cpp:35] [SF-0] clice worker crashed in: clice/worker/hover c.cpp",
+                told("SF-0"),
+            ]),
+        );
+        expect(kinds(faults)).toEqual([
+            ["crash", "SF-0", "hover", "main.cpp"],
+            ["crash", "SF-0", "hover", "b.cpp"],
+            ["crash", "SF-0", undefined, undefined],
+            ["crash", "SL-0", undefined, undefined],
+            ["crash", "SL-1", undefined, undefined],
+            ["crash", "SF-0", "hover", "c.cpp"],
+        ]);
+    });
+
+    test("a failed wait no death follows is an error", () => {
+        const lost =
+            "[2026-11-12 16:32:00.300] [error] [pool.cpp:424] Worker SL-1 lost: broken pipe";
+        expect(kinds(logFaults(lines("/s/master.log", [lost])))).toEqual([["error", lost]]);
+    });
+
     test("a supervisor's crash header is its own crash; anomalies and errors stay apart", () => {
         const faults = logFaults([
             ...lines("/s/master.log", [

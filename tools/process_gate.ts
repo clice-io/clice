@@ -157,8 +157,11 @@ export type LogFault =
 const CRASHED_IN = /^\[(\S+)\] clice worker crashed in: clice\/worker\/(\S+) (.*)$/;
 /// The request a worker the pool killed for running too long ran.
 const RAN = /^Worker (\S+) ran clice\/worker\/(\S+) (.*): killed after /;
-/// What the supervisor tells of a death beside how it ended.
-const TOLD = /^The last lines (\S+) logged before it died:|^Worker (\S+) lost: /;
+/// The lines the supervisor quotes from a dead worker's log, one telling a
+/// death, whose end follows unless past the anomaly's report limit.
+const LAST_LINES = /^The last lines (\S+) logged before it died:/;
+/// A failed wait for a worker's exit, which a death telling follows.
+const LOST = /^Worker (\S+) lost: /;
 /// A worker's death the pool did not ask for.
 const WORKER_CRASH = /^\[anomaly:WorkerCrash\] Worker (\S+) /;
 /// A death that is no crash: one asked from outside the session, or the
@@ -181,8 +184,11 @@ export function logFaults(lines: readonly LogLine[]): LogFault[] {
         line: LogLine;
         ran: boolean;
     }
+    /// The requests a worker named since its last death.
     const named = new Map<string, Named>();
-    const told = new Map<string, LogLine[]>();
+    /// A death its last lines told, waiting for the line telling its end.
+    const dying = new Map<string, { worker: string; at: Named | undefined; line: LogLine }>();
+    const lost = new Map<string, LogLine[]>();
     // A rotated log (`master.1.log`) goes on in the fresh one.
     const key = (line: LogLine, worker: string) =>
         `${line.file.replace(/\.1\.log$/, ".log")}\0${worker}`;
@@ -190,6 +196,21 @@ export function logFaults(lines: readonly LogLine[]): LogFault[] {
         at === undefined
             ? { kind: "crash", worker, line }
             : { kind: "crash", worker, request: at.request, file: at.file, line };
+    // Past the anomaly's report limit, a death no line ends is a crash: told
+    // by its last lines, or by the request it named alone.
+    const unended = (k: string) => {
+        const death = dying.get(k);
+        if (death !== undefined) {
+            faults.push(crash(death.worker, death.at, death.line));
+            dying.delete(k);
+            return;
+        }
+        const at = named.get(k);
+        if (at !== undefined) {
+            faults.push(crash(at.worker, at, at.line));
+            named.delete(k);
+        }
+    };
     for (const line of lines) {
         const parsed = logLevel(line.text);
         if (parsed === undefined) {
@@ -201,34 +222,45 @@ export function logFaults(lines: readonly LogLine[]): LogFault[] {
         const naming = crashedIn ?? ran;
         if (naming !== null) {
             const [, worker = "", request = "", file = ""] = naming;
-            const pending = named.get(key(line, worker));
+            const k = key(line, worker);
             // A kill for running too long names each request it stopped.
-            if (pending?.ran === true && ran !== null) {
+            if (named.get(k)?.ran === true && ran !== null) {
                 continue;
             }
-            // A death past the anomaly's report limit is told by the
-            // request it named alone.
-            if (pending !== undefined) {
-                faults.push(crash(worker, pending, pending.line));
-            }
-            named.set(key(line, worker), { worker, request, file, line, ran: ran !== null });
+            unended(k);
+            named.set(k, { worker, request, file, line, ran: ran !== null });
             continue;
         }
-        const teller = TOLD.exec(message);
-        if (teller !== null) {
-            const worker = teller[1] ?? teller[2] ?? "";
-            told.set(key(line, worker), [...(told.get(key(line, worker)) ?? []), line]);
+        const last = LAST_LINES.exec(message);
+        if (last !== null) {
+            const worker = last[1] ?? "";
+            const k = key(line, worker);
+            const before = dying.get(k);
+            if (before !== undefined) {
+                faults.push(crash(worker, before.at, before.line));
+            }
+            dying.set(k, { worker, at: named.get(k), line });
+            named.delete(k);
+            lost.delete(k);
+            continue;
+        }
+        const failedWait = LOST.exec(message);
+        if (failedWait !== null) {
+            const k = key(line, failedWait[1] ?? "");
+            lost.set(k, [...(lost.get(k) ?? []), line]);
             continue;
         }
         const crashed = WORKER_CRASH.exec(message);
         const died = crashed ?? NOT_A_CRASH.exec(message);
         if (died !== null) {
             const worker = died[1] ?? "";
+            const k = key(line, worker);
             if (crashed !== null) {
-                faults.push(crash(worker, named.get(key(line, worker)), line));
+                faults.push(crash(worker, dying.get(k)?.at ?? named.get(k), line));
             }
-            named.delete(key(line, worker));
-            told.delete(key(line, worker));
+            dying.delete(k);
+            named.delete(k);
+            lost.delete(k);
             continue;
         }
         if (level === "fatal" && message === "clice crashed") {
@@ -249,12 +281,12 @@ export function logFaults(lines: readonly LogLine[]): LogFault[] {
             faults.push({ kind: "error", line });
         }
     }
-    // The deaths the log ended before telling.
-    for (const pending of named.values()) {
-        faults.push(crash(pending.worker, pending, pending.line));
+    // The deaths the log ended before telling their ends.
+    for (const k of new Set([...dying.keys(), ...named.keys()])) {
+        unended(k);
     }
-    for (const lines of told.values()) {
-        faults.push(...lines.map((line): LogFault => ({ kind: "error", line })));
+    for (const failed of lost.values()) {
+        faults.push(...failed.map((line): LogFault => ({ kind: "error", line })));
     }
     return faults;
 }
