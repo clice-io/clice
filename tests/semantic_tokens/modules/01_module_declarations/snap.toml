@@ -1,5 +1,7 @@
 [answers."main.cpp"]
 semantic_tokens = [
+    { at = "⟦// Copyright the demo authors.⟧", type = "comment" },
+    { at = "⟦// SPDX-License-Identifier: MIT⟧", type = "comment" },
     { at = "⟦module⟧;", type = "keyword" },
     { at = "⟦export⟧ module demo.core;", type = "keyword" },
     { at = "export ⟦module⟧ demo.core;", type = "keyword" },

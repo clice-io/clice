@@ -4,6 +4,8 @@ semantic_tokens = [
     { at = "⟦// at each line's end, the carriage return left out.⟧", type = "comment" },
     { at = "⟦/* a block⟧", type = "comment" },
     { at = "⟦   comment */⟧", type = "comment" },
+    { at = "⟦/* a café⟧", type = "comment" },
+    { at = "⟦   au lait */⟧", type = "comment" },
     { at = "⟦int⟧ read() {", type = "primitive" },
     { at = "int ⟦read⟧() {", type = "function", modifiers = ["definition", "global"] },
     { at = "⟦return⟧ 1;", type = "keyword", modifiers = ["controlFlow"] },

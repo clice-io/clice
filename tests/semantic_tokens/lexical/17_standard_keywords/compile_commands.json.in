@@ -1,0 +1,17 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "cxx17.cpp",
+    "arguments": ["clang++", "-std=c++17", "-fsyntax-only", "cxx17.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "gnu.cpp",
+    "arguments": ["clang++", "-std=gnu++20", "-fsyntax-only", "gnu.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "default.cpp",
+    "arguments": ["clang++", "-fsyntax-only", "default.cpp"]
+  }
+]
