@@ -36,6 +36,7 @@ test(async (t) => {
             },
         },
         killWorkers: true,
+        env: { CLICE_TEST_REVIVE_AFTER_MS: "3000" },
     });
     await s.indexed();
     let parks = await parkAll(s);

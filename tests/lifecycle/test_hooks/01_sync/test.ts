@@ -38,7 +38,7 @@ test("names held work", async (t) => {
     const park = await s.park("index", "d.cpp", { at: "reply" });
     await s.poll("cdb");
     await park.reached();
-    const held = await s.client.sync({ deadlineMs: 1_000 });
+    const held = await s.client.sync({ deadlineMs: 0 });
     await t.show("pending", held.pending);
     await park.release();
     expect(await s.client.sync()).toEqual(SETTLED);

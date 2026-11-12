@@ -42,11 +42,7 @@ public:
     using Clock = FailureRecord::Clock;
 
     /// The policy of every request kind.
-    constexpr static FailurePolicy policy{
-        .change_limit = 3,
-        .spacing = chrono::seconds(2),
-        .editing_window = chrono::seconds(10),
-    };
+    const static FailurePolicy policy;
 
     Session(Fid path_id, std::string text, int version);
 
