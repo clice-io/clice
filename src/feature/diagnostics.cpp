@@ -696,7 +696,7 @@ protocol::Diagnostic to_protocol(
 }
 
 static bool counts_as_error(std::uint32_t id, DiagnosticLevel level) {
-    return level >= DiagnosticLevel::Error || id == diag::warn_decl_in_param_list;
+    return level >= DiagnosticLevel::Error || id == clang::diag::warn_decl_in_param_list;
 }
 
 std::size_t count_errors(CompilationUnit& unit) {

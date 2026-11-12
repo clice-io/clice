@@ -305,6 +305,9 @@ struct Project {
 
     async::task_group<> tree_tasks;
 
+    /// stop_feeding() ran.
+    bool feeding_stopped = false;
+
     /// The task graph the PCH, PCM and unit nodes build on, the server's
     /// AST nodes beside them. Its attempts use everything above.
     TaskGraph graph;
@@ -1176,7 +1179,8 @@ struct Project {
     /// Stop what feeds the workers on its own, the include-tree runs and
     /// the background index, before the pool stops: a stopped pool fails
     /// each dispatch at once, and the background index would walk its whole
-    /// queue through it, requeueing every file.
+    /// queue through it, requeueing every file. Once: the master stops
+    /// every project's feeding before its pool, then shuts each down.
     async::task<> stop_feeding();
 
     /// The shutdown once its owner's compiles are quiesced (contract 11):
