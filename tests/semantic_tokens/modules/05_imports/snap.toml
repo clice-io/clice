@@ -1,0 +1,75 @@
+[compiled."main.cpp"]
+semantic_tokens = [
+    { at = "⟦import⟧ foo;", type = "keyword" },
+    { at = "import ⟦foo⟧;", type = "module" },
+    { at = "⟦import⟧ app.core;", type = "keyword" },
+    { at = "import ⟦app⟧.core;", type = "module" },
+    { at = "import app.⟦core⟧;", type = "module" },
+    { at = "⟦int⟧ y = x + core_value;", type = "primitive" },
+    { at = "int ⟦y⟧ = x + core_value;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int y ⟦=⟧ x + core_value;", type = "operator" },
+    { at = "int y = ⟦x⟧ + core_value;", type = "variable", modifiers = ["global"] },
+    { at = "int y = x ⟦+⟧ core_value;", type = "operator" },
+    { at = "int y = x + ⟦core_value⟧;", type = "variable", modifiers = ["global"] },
+]
+
+[compiled."bar.cppm"]
+semantic_tokens = [
+    { at = "⟦export⟧ module bar;", type = "keyword" },
+    { at = "export ⟦module⟧ bar;", type = "keyword" },
+    { at = "export module ⟦bar⟧;", type = "module", modifiers = ["definition"] },
+    { at = "⟦export⟧ import foo;", type = "keyword" },
+    { at = "export ⟦import⟧ foo;", type = "keyword" },
+    { at = "export import ⟦foo⟧;", type = "module" },
+    { at = "⟦export⟧ import :part;", type = "keyword" },
+    { at = "export ⟦import⟧ :part;", type = "keyword" },
+    { at = "export import :⟦part⟧;", type = "module" },
+]
+
+[compiled."impl.cpp"]
+semantic_tokens = [
+    { at = "⟦module⟧ foo;", type = "keyword" },
+    { at = "module ⟦foo⟧;", type = "module", modifiers = ["declaration"] },
+    { at = "⟦int⟧ z = x;", type = "primitive" },
+    { at = "int ⟦z⟧ = x;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int z ⟦=⟧ x;", type = "operator" },
+    { at = "int z = ⟦x⟧;", type = "variable", modifiers = ["global"] },
+]
+
+[index."main.cpp"]
+semantic_tokens = [
+    { at = "⟦import⟧ foo;", type = "keyword" },
+    { at = "import ⟦foo⟧;", type = "module" },
+    { at = "⟦import⟧ app.core;", type = "keyword" },
+    { at = "import ⟦app⟧.core;", type = "module" },
+    { at = "import app.⟦core⟧;", type = "module" },
+    { at = "⟦int⟧ y = x + core_value;", type = "primitive" },
+    { at = "int ⟦y⟧ = x + core_value;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int y ⟦=⟧ x + core_value;", type = "operator" },
+    { at = "int y = ⟦x⟧ + core_value;", type = "variable", modifiers = ["global"] },
+    { at = "int y = x ⟦+⟧ core_value;", type = "operator" },
+    { at = "int y = x + ⟦core_value⟧;", type = "variable", modifiers = ["global"] },
+]
+
+[index."bar.cppm"]
+semantic_tokens = [
+    { at = "⟦export⟧ module bar;", type = "keyword" },
+    { at = "export ⟦module⟧ bar;", type = "keyword" },
+    { at = "export module ⟦bar⟧;", type = "module", modifiers = ["definition"] },
+    { at = "⟦export⟧ import foo;", type = "keyword" },
+    { at = "export ⟦import⟧ foo;", type = "keyword" },
+    { at = "export import ⟦foo⟧;", type = "module" },
+    { at = "⟦export⟧ import :part;", type = "keyword" },
+    { at = "export ⟦import⟧ :part;", type = "keyword" },
+    { at = "export import :⟦part⟧;", type = "module" },
+]
+
+[index."impl.cpp"]
+semantic_tokens = [
+    { at = "⟦module⟧ foo;", type = "keyword" },
+    { at = "module ⟦foo⟧;", type = "module", modifiers = ["declaration"] },
+    { at = "⟦int⟧ z = x;", type = "primitive" },
+    { at = "int ⟦z⟧ = x;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int z ⟦=⟧ x;", type = "operator" },
+    { at = "int z = ⟦x⟧;", type = "variable", modifiers = ["global"] },
+]

@@ -1,0 +1,2 @@
+# A pack's ellipsis and a hexadecimal float are still being typed.
+compiles = false

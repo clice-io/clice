@@ -1,0 +1,55 @@
+[characters."main.cpp"]
+folding_ranges = [
+    { kind = "namespace", at = "namespace app ⟦{ … }⟧ (34 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "struct Holder ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "Holder() : value{0} ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "⟦{ … }⟧ (4 lines) @12", collapsed = "{...}" },
+    { kind = "functionBody", at = "⟦{ … }⟧ (4 lines) @18", collapsed = "{...}" },
+    { kind = "struct", at = "typedef struct ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "initializer", at = "⟦{ … }⟧ (4 lines) @29", collapsed = "{...}" },
+    { kind = "functionBody", at = "void unbalanced() ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
+    { kind = "conditionDirective", at = "#if defined(UNBALANCED)⟦ … ⟧ (3 lines)" },
+    { kind = "functionBody", at = "void balanced() ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
+    { kind = "conditionDirective", at = "#if defined(BALANCED)⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#else⟦ … ⟧ (3 lines) @46" },
+]
+
+["whole lines"."main.cpp"]
+folding_ranges = [
+    { kind = "namespace", at = "⟦namespace app { … ⟧ (33 lines)" },
+    { kind = "struct", at = "⟦struct Holder { … }⟧ (6 lines)" },
+    { kind = "functionBody", at = "⟦    Holder() : value{0} { … value += 1;⟧ (2 lines)" },
+    { kind = "struct", at = "⟦struct Allman … int y;⟧ (4 lines)" },
+    { kind = "functionBody", at = "⟦int compute() … return a;⟧ (4 lines)" },
+    { kind = "struct", at = "⟦typedef struct { … int y;⟧ (3 lines)" },
+    { kind = "initializer", at = "⟦{ … 2,⟧ (3 lines)" },
+    { kind = "functionBody", at = "⟦void unbalanced() { … #else⟧ (4 lines)" },
+    { kind = "conditionDirective", at = "⟦#if defined(UNBALANCED) … }⟧ (2 lines)" },
+    { kind = "functionBody", at = "⟦void balanced() { … #endif⟧ (6 lines)" },
+    { kind = "conditionDirective", at = "⟦#if defined(BALANCED) … int a = 1;⟧ (2 lines)" },
+    { kind = "conditionDirective", at = "⟦#else … int a = 2;⟧ (2 lines)" },
+]
+
+["index characters"."main.cpp"]
+folding_ranges = [
+    { kind = "namespace", at = "namespace app ⟦{ … }⟧ (34 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "struct Holder ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "Holder() : value{0} ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "⟦{ … }⟧ (4 lines) @12", collapsed = "{...}" },
+    { kind = "functionBody", at = "⟦{ … }⟧ (4 lines) @18", collapsed = "{...}" },
+    { kind = "struct", at = "typedef struct ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { at = "⟦{ … }⟧ (4 lines) @29", collapsed = "{...}" },
+    { kind = "functionBody", at = "void balanced() ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
+]
+
+["index whole lines"."main.cpp"]
+folding_ranges = [
+    { kind = "namespace", at = "⟦namespace app { … ⟧ (33 lines)" },
+    { kind = "struct", at = "⟦struct Holder { … }⟧ (6 lines)" },
+    { kind = "functionBody", at = "⟦    Holder() : value{0} { … value += 1;⟧ (2 lines)" },
+    { kind = "struct", at = "⟦struct Allman … int y;⟧ (4 lines)" },
+    { kind = "functionBody", at = "⟦int compute() … return a;⟧ (4 lines)" },
+    { kind = "struct", at = "⟦typedef struct { … int y;⟧ (3 lines)" },
+    { at = "⟦{ … 2,⟧ (3 lines)" },
+    { kind = "functionBody", at = "⟦void balanced() { … #endif⟧ (6 lines)" },
+]

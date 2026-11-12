@@ -7,5 +7,26 @@ items = []
 [answers.template_angle.completion]
 items = []
 
+[answers.template_close.completion]
+items = []
+
 [answers.ellipsis_dot.completion]
+items = []
+
+[answers.half_ellipsis.completion]
+items = []
+
+[answers.number_dot.completion]
+items = []
+
+[answers.hex_dot.completion]
+items = []
+
+[answers.string_dot.completion]
+items = []
+
+[answers.comment_dot.completion]
+items = []
+
+[answers.decrement.completion]
 items = []

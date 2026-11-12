@@ -1,19 +1,39 @@
-[answers.type.semantic_token]
+[compiled.type.semantic_token]
 text = "Widget"
 type = "struct"
 modifiers = ["definition", "global"]
 
-[answers.function.semantic_token]
+[compiled.function.semantic_token]
 text = "Widget"
 type = "function"
 modifiers = ["declaration", "global"]
 
-[answers.type_and_function.semantic_token]
+[compiled.type_and_function.semantic_token]
 text = "Widget"
 type = "conflict"
 modifiers = ["global"]
 
-[answers.type_and_variable.semantic_token]
+[compiled.type_and_variable.semantic_token]
+text = "Thing"
+type = "conflict"
+modifiers = ["global"]
+
+[index.type.semantic_token]
+text = "Widget"
+type = "struct"
+modifiers = ["definition", "global"]
+
+[index.function.semantic_token]
+text = "Widget"
+type = "function"
+modifiers = ["declaration", "global"]
+
+[index.type_and_function.semantic_token]
+text = "Widget"
+type = "conflict"
+modifiers = ["global"]
+
+[index.type_and_variable.semantic_token]
 text = "Thing"
 type = "conflict"
 modifiers = ["global"]

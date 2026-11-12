@@ -11,7 +11,7 @@ document_symbols = [
         name = "app",
         kind = "Namespace",
         at = "namespace ⟦app⟧ {",
-        range = "⟦namespace app { … }⟧ (33 lines)",
+        range = "⟦namespace app { … }⟧ (47 lines)",
         children = [
             {
                 name = "Box",
@@ -51,6 +51,33 @@ document_symbols = [
                 kind = "Struct",
                 at = "template struct ⟦Box⟧<int>;",
                 range = "⟦template struct Box<int>⟧;",
+            },
+            {
+                name = "Point",
+                kind = "Struct",
+                at = "struct ⟦Point⟧ {",
+                range = "⟦struct Point { … }⟧ (4 lines)",
+                children = [
+                    { name = "x", kind = "Field", at = "int ⟦x⟧, y;", range = "⟦int x⟧, y;" },
+                    { name = "y", kind = "Field", at = "int x, ⟦y⟧;", range = "⟦int x, y⟧;" },
+                    { name = "sum", kind = "Method", at = "int ⟦sum⟧();", range = "⟦int sum()⟧;" },
+                ],
+            },
+            {
+                name = "Point::sum",
+                kind = "Method",
+                at = "int Point::⟦sum⟧() {",
+                range = "⟦int Point::sum() { … }⟧ (3 lines)",
+            },
+            {
+                name = "Color",
+                kind = "Enum",
+                at = "enum class ⟦Color⟧ {",
+                range = "⟦enum class Color { … }⟧ (4 lines)",
+                children = [
+                    { name = "Red", kind = "EnumMember", at = "⟦Red⟧,", range = "⟦Red⟧," },
+                    { name = "Blue", kind = "EnumMember", at = "⟦Blue⟧,", range = "⟦Blue⟧," },
+                ],
             },
             {
                 name = "Size",
@@ -93,7 +120,7 @@ document_symbols = [
         name = "app",
         kind = "Namespace",
         at = "namespace ⟦app⟧ {",
-        range = "⟦namespace app { … }⟧ (33 lines)",
+        range = "⟦namespace app { … }⟧ (47 lines)",
         children = [
             {
                 name = "Box",
@@ -135,6 +162,33 @@ document_symbols = [
                 range = "⟦template struct Box<int>⟧;",
             },
             {
+                name = "Point",
+                kind = "Struct",
+                at = "struct ⟦Point⟧ {",
+                range = "⟦struct Point { … }⟧ (4 lines)",
+                children = [
+                    { name = "x", kind = "Field", at = "int ⟦x⟧, y;", range = "⟦int x⟧, y;" },
+                    { name = "y", kind = "Field", at = "int x, ⟦y⟧;", range = "⟦int x, y⟧;" },
+                    { name = "sum", kind = "Method", at = "int ⟦sum⟧();", range = "⟦int sum()⟧;" },
+                ],
+            },
+            {
+                name = "Point::sum",
+                kind = "Method",
+                at = "int Point::⟦sum⟧() {",
+                range = "⟦int Point::sum() { … }⟧ (3 lines)",
+            },
+            {
+                name = "Color",
+                kind = "Enum",
+                at = "enum class ⟦Color⟧ {",
+                range = "⟦enum class Color { … }⟧ (4 lines)",
+                children = [
+                    { name = "Red", kind = "EnumMember", at = "⟦Red⟧,", range = "⟦Red⟧," },
+                    { name = "Blue", kind = "EnumMember", at = "⟦Blue⟧,", range = "⟦Blue⟧," },
+                ],
+            },
+            {
                 name = "Size",
                 kind = "Struct",
                 at = "} ⟦Size⟧;",
@@ -160,6 +214,18 @@ document_symbols = [
             },
         ],
     },
+]
+
+[outline."index module"]
+document_symbols = [
+    { name = "demo.core", kind = "Module", at = "export module ⟦demo.core⟧;", range = "export module ⟦demo.core⟧;" },
+    { name = "entry", kind = "Function", at = "export int ⟦entry⟧();", range = "export ⟦int entry()⟧;" },
+]
+
+[outline."ast module"]
+document_symbols = [
+    { name = "demo.core", kind = "Module", at = "export module ⟦demo.core⟧;", range = "export module ⟦demo.core⟧;" },
+    { name = "entry", kind = "Function", at = "export int ⟦entry⟧();", range = "export ⟦int entry()⟧;" },
 ]
 
 [options.index]
@@ -191,6 +257,26 @@ document_symbols = [
             },
             { name = "Box<T>::convert", kind = "Method", at = "U Box<T>::⟦convert⟧() const {" },
             { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;" },
+            {
+                name = "Point",
+                kind = "Struct",
+                at = "struct ⟦Point⟧ {",
+                children = [
+                    { name = "x", kind = "Field", at = "int ⟦x⟧, y;" },
+                    { name = "y", kind = "Field", at = "int x, ⟦y⟧;" },
+                    { name = "sum", kind = "Method", at = "int ⟦sum⟧();" },
+                ],
+            },
+            { name = "Point::sum", kind = "Method", at = "int Point::⟦sum⟧() {" },
+            {
+                name = "Color",
+                kind = "Enum",
+                at = "enum class ⟦Color⟧ {",
+                children = [
+                    { name = "Red", kind = "EnumMember", at = "⟦Red⟧," },
+                    { name = "Blue", kind = "EnumMember", at = "⟦Blue⟧," },
+                ],
+            },
             {
                 name = "Size",
                 kind = "Struct",

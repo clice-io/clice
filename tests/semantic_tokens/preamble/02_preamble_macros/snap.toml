@@ -1,3 +1,8 @@
+[answers.empty_definition.semantic_token]
+text = "TRACED"
+type = "macro"
+modifiers = ["definition", "empty"]
+
 [answers.definition.semantic_token]
 text = "SQUARE"
 type = "macro"
