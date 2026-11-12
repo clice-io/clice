@@ -80,7 +80,7 @@ function death(kind: WorkerFault["kind"]): string {
     }
     return kind === "abort" || kind === "fatal"
         ? String.raw`exited with code 3(?!\d)`
-        : "terminated by exception 0x[0-9A-F]+";
+        : String.raw`terminated by exception 0x[0-9A-F]+ \(STATUS_\w+\)`;
 }
 
 const KINDS: readonly { name: string; kind?: NonNullable<WorkerFault["kind"]> }[] = [

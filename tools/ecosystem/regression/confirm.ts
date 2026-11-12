@@ -77,16 +77,18 @@ export interface CompilerError {
 /// `file(line,column): error C1234: message`. A driver's own errors (an
 /// unknown option, a missing input) name no line.
 export function compilerErrors(output: string, directory: string): CompilerError[] {
-    return stripVTControlCharacters(output).split(/\r?\n/).flatMap((line) => {
-        const found =
-            /^(.+?):(\d+):(?:\d+:)? (?:fatal )?error: (.*)$/.exec(line) ??
-            /^(.+?)\((\d+)(?:,\d+)?\) ?: (?:fatal )?error(?: [A-Z]+\d+)?: (.*)$/.exec(line);
-        if (found === null) {
-            return [];
-        }
-        const [, file = "", at = "", message = ""] = found;
-        return [{ file: path.resolve(directory, file.trim()), line: Number(at), message }];
-    });
+    return stripVTControlCharacters(output)
+        .split(/\r?\n/)
+        .flatMap((line) => {
+            const found =
+                /^(.+?):(\d+):(?:\d+:)? (?:fatal )?error: (.*)$/.exec(line) ??
+                /^(.+?)\((\d+)(?:,\d+)?\) ?: (?:fatal )?error(?: [A-Z]+\d+)?: (.*)$/.exec(line);
+            if (found === null) {
+                return [];
+            }
+            const [, file = "", at = "", message = ""] = found;
+            return [{ file: path.resolve(directory, file.trim()), line: Number(at), message }];
+        });
 }
 
 /// A file as two tools spelling it differently both reach it.
@@ -168,7 +170,9 @@ export async function confirm<
         }
         // A database command does not say where the build put the modules a
         // unit imports (CMake passes them in a module map at build time).
-        const module = /fatal error: module '[^']+' not found/.exec(stripVTControlCharacters(result.stderr));
+        const module = /fatal error: module '[^']+' not found/.exec(
+            stripVTControlCharacters(result.stderr),
+        );
         if (module !== null) {
             return {
                 outcome: "unchecked",

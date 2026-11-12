@@ -27,12 +27,7 @@ export interface Project {
 }
 
 /// Files of a case directory that are not its inputs.
-export const RESERVED = new Set([
-    "project.toml",
-    "test.ts",
-    "README.md",
-    "snap.toml",
-]);
+export const RESERVED = new Set(["project.toml", "test.ts", "README.md", "snap.toml"]);
 
 export const SOURCE = /\.(c|cc|cpp|cxx|cppm|ixx|m|mm|cl|clcpp|hip)$/;
 export const HEADER = /\.(h|hh|hpp|hxx)$/;
