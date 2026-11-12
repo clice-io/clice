@@ -184,7 +184,7 @@ ZEST_CASE(HungQueryStopped) {
     // Hang detection: the program left running holds the wait for 600 s.
     auto [waited] = async::run(async::with_timeout(async::wait_exit(id), chrono::seconds(30)));
     ZASSERT(!waited.is_cancelled());
-    ZEXPECT(!waited.has_error() || waited.error() == async::error::no_such_process);
+    ZEXPECT((!waited.has_error() || waited.error() == async::error::no_such_process));
     auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
     ZEXPECT(adjacent(rendered.argv, "-triple", "x86_64-unknown-linux-gnu"));
 }
