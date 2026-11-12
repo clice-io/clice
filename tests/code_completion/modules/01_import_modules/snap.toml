@@ -19,6 +19,17 @@ items = [
     { label = "math", kind = "Module", insert = "math;", replace = "import ⟦ma⟧" },
 ]
 
+[answers.inside_keyword.completion]
+items = [
+    {
+        label = "import",
+        kind = "Keyword",
+        insert = "import",
+        replace = "⟦import⟧ math;",
+        insert_range = "⟦imp⟧ort math;",
+    },
+]
+
 [answers.prefix.completion]
 items = [
     { label = "math", kind = "Module", insert = "math;", replace = "import ⟦ma⟧" },

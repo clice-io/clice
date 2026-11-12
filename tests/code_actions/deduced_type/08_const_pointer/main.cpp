@@ -1,8 +1,9 @@
 // A `const` before an `auto` that deduced a pointer moves behind the `*`,
 // keeping the pointer itself constant; so does the `auto` of a decltype. When
 // anything other than `static` stands between the `const` and the `auto`, a
-// macro or a comment, the declaration is left as written. The static_asserts
-// check the meaning after the edit.
+// macro or a comment, the declaration is left as written. An `auto` copying
+// another `auto` variable spells the type that one deduced. The
+// static_asserts check the meaning after the edit.
 
 #define CONST const
 #define STORAGE static
@@ -28,3 +29,7 @@ void f(int* pointer, int** table) {
     const §(decltype_const)decltype(fixed) d = fixed;
     static_assert(__is_same(decltype(d), int* const));
 }
+
+auto copied = make_pointer();
+const §(auto_source)auto copy = copied;
+static_assert(__is_same(decltype(copy), int* const));

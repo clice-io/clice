@@ -1,2 +1,4 @@
-flags = ["-Iinc"]
+# No configuration file: the one beside the toolchain's clang adds its own
+# include directories past -nostdinc, which an empty name would list.
+flags = ["-Iinc", "--no-default-config"]
 compiles = false

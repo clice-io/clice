@@ -35,3 +35,43 @@ diagnostics = []
 
 ["host compiles"."main.cpp"]
 errors = []
+
+[["no index".defined_elsewhere.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'b' inline"
+
+["no index".defined_elsewhere.code_actions.edits]
+"widget.h" = '''
+ struct Widget {
+     void a();
+-    void b();
++    void b() {}
+     void c();
+ };
+'''
+
+[["no index".defined_elsewhere.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::b' out of line"
+
+["no index".defined_elsewhere.code_actions.edits]
+"widget.h" = '''
+     void c();
+ };
++
++inline void Widget::b() {
++}
+'''
+
+[["no index".defined_elsewhere.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::b' in main.cpp"
+
+["no index".defined_elsewhere.code_actions.edits]
+"main.cpp" = '''
+
+ void Widget::a() {}
++
++void Widget::b() {
++}
+'''

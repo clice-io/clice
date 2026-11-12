@@ -30,3 +30,11 @@ test("host compiles", async (t) => {
     );
     await t.show("main.cpp", s.errors("main.cpp"));
 });
+
+// With no index to read other.cpp, nothing tells that it defines Widget::b:
+// its definition is still offered.
+test("no index", async (t) => {
+    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    await s.diagnostics("widget.h");
+    await t.show("defined_elsewhere", s.codeActions(t.marker("defined_elsewhere")));
+});

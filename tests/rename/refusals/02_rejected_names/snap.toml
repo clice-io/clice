@@ -7,6 +7,15 @@ error = "cannot rename `compute`: `class` is a keyword"
 [answers._Bool.rename]
 error = "cannot rename `compute`: `_Bool` is a keyword"
 
+[answers.char8_t.rename]
+error = "cannot rename `compute`: `char8_t` is a keyword"
+
+[answers.co_await.rename]
+error = "cannot rename `compute`: `co_await` is a keyword"
+
+[answers.requires.rename]
+error = "cannot rename `compute`: `requires` is a keyword"
+
 [answers.Point.rename]
 error = "cannot rename `compute`: `Point` is already declared in the same scope (${WS}/main.cpp:3)"
 

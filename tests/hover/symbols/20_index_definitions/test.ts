@@ -5,7 +5,8 @@ const files = ["main.cpp", "math.cppm", "shapes.m"];
 
 // Read-only, a definition's card comes from the index: the declaration cut
 // from the stored text as the AST's card prints it, but a type's members,
-// which need the AST.
+// which need the AST. An Objective-C class shows its @interface, and its
+// @implementation where no @interface declares it.
 test(async (t) => {
     const index = await t.start({ config: { project: { readonly: "on" } } });
     for (const file of files) {

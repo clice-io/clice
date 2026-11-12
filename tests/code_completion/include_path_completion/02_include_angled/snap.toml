@@ -3,3 +3,9 @@ items = [
     { label = "snap_dir/", kind = "Folder", insert = "snap_dir", replace = "#include <⟦snap⟧>" },
     { label = "snap_header.h", kind = "File", insert = "snap_header.h>", replace = "#include <⟦snap>⟧" },
 ]
+
+[answers.empty.completion]
+items = [
+    { label = "snap_dir/", kind = "Folder", insert = "snap_dir", replace = "#include <⟦⟧>" },
+    { label = "snap_header.h", kind = "File", insert = "snap_header.h>", replace = "#include <⟦>⟧" },
+]

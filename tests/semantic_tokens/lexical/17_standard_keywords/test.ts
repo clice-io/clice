@@ -1,9 +1,10 @@
 import { expect } from "vitest";
 import { answers, test } from "@clice/tools/testing";
 
-// Each file's keywords are those of its command's standard and GNU mode, the
-// compiler's default where it names none.
-const FILES = ["cxx17.cpp", "gnu.cpp", "default.cpp"];
+// Each file's keywords are those of its command's language, standard and GNU
+// mode, the compiler's default where it names none: C++'s keywords are
+// names in C.
+const FILES = ["cxx17.cpp", "gnu.cpp", "default.cpp", "c17.c"];
 
 answers("compiled", async (a) => {
     for (const file of FILES) {

@@ -11,6 +11,13 @@ candidates = [
     { path = "shapes.h", reasons = ["same name"] },
 ]
 
+[answers."easel.cpp".counterparts]
+preferred = "easel.h"
+candidates = [
+    { path = "easel.h", reasons = ["same name"] },
+    { path = "canvas.cppm", reasons = ["interface of module canvas"] },
+]
+
 [answers."compute.cpp".counterparts]
 candidates = [
     { path = "geometry.cppm", reasons = ["declares 1 of 2 definitions", "interface of module geometry"] },

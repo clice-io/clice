@@ -229,3 +229,24 @@ markdown = '''
 ```
 '''
 range = "@implementation ⟦Shape⟧"
+
+[test.implementation_only.index]
+markdown = '''
+**class** `Widget`
+
+```cpp
+@implementation Widget : Object ... @end
+```
+'''
+range = "@implementation ⟦Widget⟧ : Object"
+
+[test.implementation_only.ast]
+markdown = '''
+**class** `Widget`
+
+```cpp
+@interface Widget : Object
+@end
+```
+'''
+range = "@implementation ⟦Widget⟧ : Object"

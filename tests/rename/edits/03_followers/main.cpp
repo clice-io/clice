@@ -14,6 +14,7 @@ struct Square : Shape {
 template <typename T> struct §(template)Box { T value; };
 template <> struct Box<bool> { bool flag; };
 §(guide)Box(const char*) -> Box<bool>;
+template <typename T> Box(T*, int) -> Box<T*>;
 
 template <typename T> T §(function_template)pick(T value) { return value; }
 template <> int pick<int>(int value) { return value + 1; }

@@ -99,3 +99,17 @@ compiles = true
      static_assert(__is_same(decltype(d), int* const));
  }
 '''
+
+[[answers.auto_source.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'const auto' with 'int* const'"
+compiles = true
+
+[answers.auto_source.code_actions.edits]
+"main.cpp" = '''
+
+ auto copied = make_pointer();
+-const auto copy = copied;
++int* const copy = copied;
+ static_assert(__is_same(decltype(copy), int* const));
+'''

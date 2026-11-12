@@ -24,6 +24,14 @@ struct Box {
 template <typename T>
 double size_of(const Box<T>& box) { return box.§(size_of_call)area(); }
 
+template <typename T>
+struct Crate {
+    static constexpr int §(crate)capacity = 1;
+};
+
+template <typename T>
+int load() { return Crate<T>::§(load_call)capacity; }
+
 struct Polygon {
     virtual int sides() const { return 0; }
 };
@@ -42,5 +50,5 @@ double grow(const T& value) { return scale(value); }
 
 int main() {
     return static_cast<int>(measure(Circle{}) + report(Square{}) + report(Triangle{})) +
-           count(Polygon{}) + count(Hexagon{});
+           count(Polygon{}) + count(Hexagon{}) + load<int>();
 }

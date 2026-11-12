@@ -40,3 +40,24 @@ markdown = '''
 **Type:** `int`
 '''
 range = "return ⟦CHECKED⟧(x, 16);"
+
+[answers.deep.hover]
+markdown = '''
+**macro** `SPLIT_FIELDS`
+
+```cpp
+#define SPLIT_FIELDS(out, reg)                                                                   \
+    do {                                                                                         \
+        (out)[0] = REG_FIELD_GET(reg);                                                           \
+        (out)[1] = FIELD_GET(0x03u, reg);                                                        \
+    } while(0)
+```
+**Expands to:**
+```cpp
+do {
+  (out)[0] = ((__typeof__(0x0cu))(((((__typeof__(0x3cu))(((((__typeof__(0xfcu))(((reg) & (0xfcu)) >> (__builtin_ctz(0xfcu))))) & (0x3cu)) >> (__builtin_ctz(0x3cu))))) & (0x0cu)) >> (__builtin_ctz(0x0cu))));
+  (out)[1] = ((__typeof__(0x03u))(((reg) & (0x03u)) >> (__builtin_ctz(0x03u))));
+} while (0)
+```
+'''
+range = "⟦SPLIT_FIELDS⟧(out, reg);"

@@ -6,6 +6,27 @@ Session log: ${WS}/.clice/logs/${SESSION}
 stderr = "warning: CLICE_LOG_LEVEL is bogus, none of trace, debug, info, warn, error, fatal and off: it is ignored"
 exit = 0
 
+["valid log levels"."$ clice index --jobs 1"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["valid log levels"."session log levels"]
+value = ["info", "warning"]
+
+["valid log levels"."$ clice index --jobs 1 #2"]
+stdout = '''
+Indexed 0 translation units in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = "warning: clice.toml:2:1: unknown field 'misspelled' at project"
+exit = 0
+
+["valid log levels"."stderr levels"]
+value = ["info", "warning"]
+
 ["a job count by its short name"."$ clice index -j 1"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.

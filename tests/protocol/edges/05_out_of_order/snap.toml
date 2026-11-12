@@ -24,6 +24,19 @@ int add(int a, int b)
 '''
 range = "int ⟦add⟧(int a, int b) {"
 
+["a trace setting"."hover after".hover]
+markdown = '''
+**function** `add`
+
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+["a trace setting".traces]
+value = []
+
 ["an open twice".diagnostics]
 diagnostics = []
 

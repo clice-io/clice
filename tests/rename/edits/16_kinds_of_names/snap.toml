@@ -61,6 +61,24 @@ compiles = true
  struct Point {
 '''
 
+[answers.scoped_enum.rename]
+compiles = true
+
+[answers.scoped_enum.rename.edits]
+"main.cpp" = '''
+ using namespace math;
+
+-enum class Color { red, green };
++enum class Hue { red, green };
+ enum Mood { calm };
+
+ int red = 0;
+
+-Color pick() { return Color::red; }
++Hue pick() { return Hue::red; }
+ Mood settle() { return calm; }
+'''
+
 [answers.field.rename]
 compiles = true
 
