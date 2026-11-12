@@ -1475,16 +1475,26 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
         return {};
     };
 
-    /// Joined until it holds `joined_limit` bytes, laid out, and shown up to
-    /// `shown_lines` lines and `shown_characters` characters. Cut while joining, the
-    /// text has its open brackets closed past a mark for the layout to reach
-    /// its end, and is shown up to the mark.
-    constexpr std::size_t joined_limit = 16 * 1024;
+    /// Joined until it holds `shown_characters` bytes, laid out when small
+    /// and shallow enough, and shown up to `shown_lines` lines and
+    /// `shown_characters` characters. clang-format's line breaking takes
+    /// seconds on a long or deeply nested expansion, and on a block inside an
+    /// expression (a statement expression, a struct in a sizeof), which it
+    /// lays out again for every way of breaking the line around it: the
+    /// kernel's REG_FIELD_GET, 18 KB of tokens 20 brackets deep, took 77 s,
+    /// 600 bytes of it 4 s, 1 KB of it with no block 16 deep 150 ms. Past
+    /// `layout_limit` bytes or `layout_depth` brackets, or with such a block,
+    /// the expansion shows as its tokens joined.
     constexpr std::size_t shown_lines = 40;
     constexpr std::size_t shown_characters = 4096;
-    constexpr llvm::StringLiteral cut_mark = "/*...*/";
+    constexpr std::size_t layout_limit = 1024;
+    constexpr std::size_t layout_depth = 8;
     std::string text;
-    std::string closers;
+    /// The brackets open where the text ends: `(` for a parenthesis or a
+    /// square bracket, `{` for a brace.
+    std::string open;
+    std::size_t deepest = 0;
+    bool block_in_expression = false;
     bool cut = false;
     llvm::DenseSet<clang::SourceLocation> seen;
     auto& tokens = unit.focus_file().tokens();
@@ -1494,48 +1504,41 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
             if(at.isInvalid() || !seen.insert(at).second) {
                 continue;
             }
-            auto spelling = unit.token_spelling(token.location());
-            if(text.size() >= joined_limit) {
+            if(text.size() >= shown_characters) {
                 cut = true;
                 break;
             }
             if(!text.empty()) {
                 text += ' ';
             }
-            text += spelling;
+            text += unit.token_spelling(token.location());
             switch(token.kind()) {
-                case clang::tok::l_paren: closers.push_back(')'); break;
-                case clang::tok::l_square: closers.push_back(']'); break;
-                case clang::tok::l_brace: closers.push_back('}'); break;
+                case clang::tok::l_paren:
+                case clang::tok::l_square: open.push_back('('); break;
+                case clang::tok::l_brace:
+                    block_in_expression = block_in_expression || open.contains('(');
+                    open.push_back('{');
+                    break;
                 case clang::tok::r_paren:
                 case clang::tok::r_square:
                 case clang::tok::r_brace:
-                    if(!closers.empty()) {
-                        closers.pop_back();
+                    if(!open.empty()) {
+                        open.pop_back();
                     }
                     break;
                 default: break;
             }
+            deepest = std::max(deepest, open.size());
         }
         if(cut) {
             break;
         }
     }
-    if(cut) {
-        text += ' ';
-        text += cut_mark;
-        for(auto closer: views::reverse(closers)) {
-            text += ' ';
-            text += closer;
-        }
-    }
-    reformat(unit, text);
-    llvm::StringRef laid = text;
-    if(cut) {
-        laid = laid.take_front(laid.rfind(cut_mark)).rtrim();
+    if(!cut && text.size() <= layout_limit && deepest <= layout_depth && !block_in_expression) {
+        reformat(unit, text);
     }
     llvm::SmallVector<llvm::StringRef> lines;
-    laid.split(lines, '\n');
+    llvm::StringRef(text).split(lines, '\n');
     bool truncated = cut || lines.size() > shown_lines;
     auto shown = llvm::join(llvm::ArrayRef(lines).take_front(shown_lines), "\n");
     if(auto kept = take_characters(shown, shown_characters); kept.size() < shown.size()) {
