@@ -7,8 +7,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { cliceExecutable } from "../../client/session.ts";
+import { sessionsIn } from "../../process_gate.ts";
 import { watchTree, type PeakMemory } from "../memory.ts";
 import { cacheBytes } from "../perf/servers.ts";
+import { loggingDir } from "../prepare.ts";
 
 /// `clice index --json`'s report, as far as the run reads it. A run handed
 /// to a running server reports only `failed`.
@@ -82,10 +84,10 @@ export function unitsInFlight(log: string): string[] {
     return [...started].sort();
 }
 
+/// The newest session's index log: the running index's.
 function sessionLog(checkout: string): string {
-    const logs = path.join(checkout, ".clice", "logs");
-    const newest = fs.existsSync(logs) ? fs.readdirSync(logs).sort().at(-1) : undefined;
-    const log = newest === undefined ? "" : path.join(logs, newest, "index.log");
+    const newest = sessionsIn(loggingDir(checkout)).at(-1);
+    const log = newest === undefined ? "" : path.join(newest, "index.log");
     return log !== "" && fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
 }
 

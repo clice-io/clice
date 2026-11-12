@@ -6,8 +6,10 @@
 import { expect, test } from "vitest";
 import { perfReport } from "../report.ts";
 import { slower, tables } from "./compare.ts";
+import { TimeoutError } from "../../promise.ts";
 import { failureOf, type PerfOptions } from "./perf.ts";
 import { runOrder } from "./scenarios.ts";
+import { RunFailure, Session, type PerfContext } from "./session.ts";
 import type { PerfResults, RunResult } from "./results.ts";
 
 function run(
@@ -207,22 +209,32 @@ test("a perf job's summary: its new failures, the known ones, then the tables", 
     expect(text).toContain("| editLoop a.cpp | edit | 7.0 | 7.0 |");
 });
 
-test("a run's errors name its failure: a crash before the hang it caused", () => {
+test("a run fails as the worst of its reasons: a crash before the hang it caused", () => {
     const options = {
         job: { kind: "perf", name: "p/editing" },
         clice: "/c",
         dir: "/d",
     } as unknown as PerfOptions;
-    const kind = (error: string) =>
-        failureOf(run("clice", "editLoop", {}, { error }), options).kind;
-    expect(kind("timed out after 600000ms: hover; clice exited with SIGSEGV")).toBe("crash");
-    expect(kind("clice logged: [error] clice worker crashed in: clice/worker/hover a.cpp")).toBe(
-        "crash",
+    const failed = (...errors: unknown[]) => {
+        const result = run("clice", "editLoop", {});
+        const session = new Session({} as PerfContext, result);
+        for (const error of errors) {
+            session.fail(error);
+        }
+        return failureOf(result, options);
+    };
+    const hang = new TimeoutError("timed out after 600000ms: hover");
+    const crash = new RunFailure("crash", "clice exited with SIGSEGV");
+    expect(failed(hang, crash).kind).toBe("crash");
+    expect(failed(hang, crash).detail).toBe(
+        "clice, run 1: timed out after 600000ms: hover; clice exited with SIGSEGV",
     );
-    expect(kind("timed out after 600000ms: hover; clice exited with SIGKILL")).toBe("hang");
-    expect(kind("clice: the background index is not idle after 30 minutes")).toBe("hang");
-    expect(kind("Request textDocument/hover failed with message: no")).toBe("server");
-    expect(failureOf(run("clice", "editLoop", {}, { error: "x" }), options).repro).toBe(
+    expect(failed(new RunFailure("hang", "clice exited with SIGKILL")).kind).toBe("hang");
+    expect(failed(new RunFailure("anomaly", "clice logged: …"), hang).kind).toBe("hang");
+    expect(failed(new Error("Request textDocument/hover failed with message: no")).kind).toBe(
+        "server",
+    );
+    expect(failed(new Error("x")).repro).toBe(
         "CLICE_EXECUTABLE=/c pixi run node tools/ecosystem/run.ts perf p/editing --dir /d --scenario editLoop",
     );
 });

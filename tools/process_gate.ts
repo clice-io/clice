@@ -26,54 +26,237 @@ export function serverEnv(): NodeJS.ProcessEnv {
     return { ...process.env, CLICE_SHADOW_FRESHNESS: "1" };
 }
 
-/// Every session log of the projects at `root` and in the folders below
-/// it: a session logs under the first project that opened its files,
-/// whichever folder's that is.
-export function logFiles(root: string): string[] {
-    const projects = [root];
-    if (fs.existsSync(root)) {
-        for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-            if (entry.isDirectory() && !entry.name.startsWith(".")) {
-                projects.push(path.join(root, entry.name));
+/// A session directory's name: when its process started and its pid,
+/// `YYYY-MM-DD_HH-MM-SS_<pid>` (start_session_log).
+const SESSION = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_(\d+)$/;
+
+/// A path as clice spells it: through a Windows junction the drive reads
+/// in lowercase.
+function realPath(file: string): string | undefined {
+    try {
+        return fs.realpathSync(file).replace(/^[A-Z]:/, (drive) => drive.toLowerCase());
+    } catch {
+        return undefined;
+    }
+}
+
+/// The session directories in a logging directory, oldest first: each a
+/// process's, or a link to the session of a server that serves this
+/// directory's project from another's (link_session_log).
+export function sessionsIn(loggingDir: string): string[] {
+    if (!fs.existsSync(loggingDir)) {
+        return [];
+    }
+    return fs
+        .readdirSync(loggingDir)
+        .filter((name) => SESSION.test(name))
+        .sort()
+        .map((name) => path.join(loggingDir, name));
+}
+
+/// The session directories anywhere under `root`, by the pid of the
+/// process that wrote each: a session and the links to it count once.
+export function sessionsUnder(root: string): Map<number, string[]> {
+    const found = new Map<number, string[]>();
+    const seen = new Set<string>();
+    const walk = (dir: string): void => {
+        let entries: fs.Dirent[];
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch {
+            return;
+        }
+        for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+            const file = path.join(dir, entry.name);
+            const pid = SESSION.exec(entry.name)?.[1];
+            if (pid !== undefined && (entry.isDirectory() || entry.isSymbolicLink())) {
+                const real = realPath(file);
+                if (real !== undefined && !seen.has(real)) {
+                    seen.add(real);
+                    found.set(Number(pid), [...(found.get(Number(pid)) ?? []), file]);
+                }
+            } else if (entry.isDirectory()) {
+                walk(file);
             }
         }
-    }
-    // A project's logging directory links the session of a server that
-    // serves it from another's: each file is read once.
+    };
+    walk(root);
+    return found;
+}
+
+/// The log files of `sessions`, each read once: a session reached through
+/// two links is one. A rotated log (`master.1.log`) comes before the one
+/// that goes on.
+export function sessionLogs(sessions: readonly string[]): string[] {
     const seen = new Set<string>();
-    return projects.flatMap((project) => {
-        const logsDir = path.join(project, ".clice", "logs");
-        if (!fs.existsSync(logsDir)) {
-            return [];
-        }
-        return fs
-            .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
+    return sessions.flatMap((session) =>
+        (fs.existsSync(session) ? fs.readdirSync(session) : [])
             .filter((name) => name.endsWith(".log"))
             .sort()
-            .map((name) => path.join(logsDir, name))
+            .map((name) => path.join(session, name))
             .filter((file) => {
-                // Through a Windows junction the drive reads as clice spelled it.
-                const real = fs
-                    .realpathSync(file)
-                    .replace(/^[A-Z]:/, (drive) => drive.toLowerCase());
+                const real = realPath(file) ?? file;
                 const fresh = !seen.has(real);
                 seen.add(real);
                 return fresh;
-            });
-    });
+            }),
+    );
 }
 
-export function anomaliesInLogFiles(root: string): string[] {
-    const found: string[] = [];
-    for (const logFile of logFiles(root)) {
-        for (const line of fs.readFileSync(logFile, "utf8").split("\n")) {
-            const match = ANOMALY_PATTERN.exec(line);
-            if (match) {
-                found.push(`${match[1]} (${path.basename(logFile)}: ${line.trim()})`);
+/// Every log file the sessions under `root` wrote.
+export function logFiles(root: string): string[] {
+    return sessionLogs([...sessionsUnder(root).values()].flat());
+}
+
+/// A line clice logged, and where: a log file's path, or the stream of a
+/// process that wrote no log file.
+export interface LogLine {
+    file: string;
+    text: string;
+}
+
+/// The lines of log files, in file order.
+export function readLogLines(files: readonly string[]): LogLine[] {
+    return files.flatMap((file) => textLines(fs.readFileSync(file, "utf8"), file));
+}
+
+/// The non-empty lines of `text`, written to `file`.
+export function textLines(text: string, file: string): LogLine[] {
+    return text
+        .split(/\r?\n/)
+        .filter((line) => line !== "")
+        .map((line) => ({ file, text: line }));
+}
+
+/// A log line's level and message, in either form clice writes: a log
+/// file's and an editor's `[time] [level] [thread n] [file:line] message`,
+/// a terminal's `level: message`. None for the lines a message of several
+/// continues on, indented, nor for what is no log line.
+export function logLevel(text: string): { level: string; message: string } | undefined {
+    const match =
+        /^\[[^\]]*\] \[(trace|debug|info|warning|error|fatal)\] (?:\[thread \d+\] )?(?:\[[^\]\s]+:\d+\] )?(.*)$/.exec(
+            text,
+        ) ??
+        /^(?:\x1b\[[\d;]*m)?(trace|debug|info|warning|error|fatal):(?:\x1b\[0m)? (.*)$/.exec(text);
+    return match === null ? undefined : { level: match[1] ?? "", message: match[2] ?? "" };
+}
+
+/// What went wrong in a run, as its logs tell it.
+/// - `crash`: a worker died unasked (`worker`, and the request it ran when
+///   it named one), or a process of clice crashed itself (no `worker`);
+/// - `anomaly`: what clice reports on its anomaly channel, `[anomaly:Id]`;
+/// - `error`: any other line at error level or above.
+export type LogFault =
+    | { kind: "crash"; worker?: string; request?: string; file?: string; line: LogLine }
+    | { kind: "anomaly"; id: string; line: LogLine }
+    | { kind: "error"; line: LogLine };
+
+/// The stderr line a dying worker names its request in, as its supervisor
+/// relays it: `[SF-0] clice worker crashed in: clice/worker/hover a.cpp`
+/// (crashed_in_marker).
+const CRASHED_IN = /^\[(\S+)\] clice worker crashed in: clice\/worker\/(\S+) (.*)$/;
+/// The request a worker the pool killed for running too long ran.
+const RAN = /^Worker (\S+) ran clice\/worker\/(\S+) (.*): killed after /;
+/// What the supervisor tells of a death beside how it ended.
+const TOLD = /^The last lines (\S+) logged before it died:|^Worker (\S+) lost: /;
+/// A worker's death the pool did not ask for.
+const WORKER_CRASH = /^\[anomaly:WorkerCrash\] Worker (\S+) /;
+/// A death that is no crash: one asked from outside the session, or the
+/// machine running out of memory.
+const NOT_A_CRASH = /^Worker (\S+) (?:terminated by signal |ran out of memory at )/;
+const ANOMALY = /^\[anomaly:(\w+)\] /;
+/// A worker's own log, whose crash its supervisor tells.
+const WORKER_LOG = /^S[FL]-\d+(?:\.1)?\.log$/;
+
+/// The faults `lines` tell, in order. A worker's death is one crash,
+/// whatever its supervisor and its own log say of it: the request it named
+/// before it died, its last lines, how it ended. A crash header in a
+/// supervisor's log or a process's stderr is that process's own crash.
+export function logFaults(lines: readonly LogLine[]): LogFault[] {
+    const faults: LogFault[] = [];
+    interface Named {
+        worker: string;
+        request: string;
+        file: string;
+        line: LogLine;
+        ran: boolean;
+    }
+    const named = new Map<string, Named>();
+    const told = new Map<string, LogLine[]>();
+    // A rotated log (`master.1.log`) goes on in the fresh one.
+    const key = (line: LogLine, worker: string) =>
+        `${line.file.replace(/\.1\.log$/, ".log")}\0${worker}`;
+    const crash = (worker: string, at: Named | undefined, line: LogLine): LogFault =>
+        at === undefined
+            ? { kind: "crash", worker, line }
+            : { kind: "crash", worker, request: at.request, file: at.file, line };
+    for (const line of lines) {
+        const parsed = logLevel(line.text);
+        if (parsed === undefined) {
+            continue;
+        }
+        const { level, message } = parsed;
+        const crashedIn = CRASHED_IN.exec(message);
+        const ran = RAN.exec(message);
+        const naming = crashedIn ?? ran;
+        if (naming !== null) {
+            const [, worker = "", request = "", file = ""] = naming;
+            const pending = named.get(key(line, worker));
+            // A kill for running too long names each request it stopped.
+            if (pending?.ran === true && ran !== null) {
+                continue;
             }
+            // A death past the anomaly's report limit is told by the
+            // request it named alone.
+            if (pending !== undefined) {
+                faults.push(crash(worker, pending, pending.line));
+            }
+            named.set(key(line, worker), { worker, request, file, line, ran: ran !== null });
+            continue;
+        }
+        const teller = TOLD.exec(message);
+        if (teller !== null) {
+            const worker = teller[1] ?? teller[2] ?? "";
+            told.set(key(line, worker), [...(told.get(key(line, worker)) ?? []), line]);
+            continue;
+        }
+        const crashed = WORKER_CRASH.exec(message);
+        const died = crashed ?? NOT_A_CRASH.exec(message);
+        if (died !== null) {
+            const worker = died[1] ?? "";
+            if (crashed !== null) {
+                faults.push(crash(worker, named.get(key(line, worker)), line));
+            }
+            named.delete(key(line, worker));
+            told.delete(key(line, worker));
+            continue;
+        }
+        if (level === "fatal" && message === "clice crashed") {
+            if (!WORKER_LOG.test(path.basename(line.file))) {
+                faults.push({ kind: "crash", line });
+            }
+            continue;
+        }
+        const anomaly = ANOMALY.exec(message);
+        if (anomaly !== null) {
+            // The logger's note that it reports this anomaly no more.
+            if (!message.includes(" report limit (")) {
+                faults.push({ kind: "anomaly", id: anomaly[1] ?? "", line });
+            }
+            continue;
+        }
+        if (level === "error" || level === "fatal") {
+            faults.push({ kind: "error", line });
         }
     }
-    return found;
+    // The deaths the log ended before telling.
+    for (const pending of named.values()) {
+        faults.push(crash(pending.worker, pending, pending.line));
+    }
+    for (const lines of told.values()) {
+        faults.push(...lines.map((line): LogFault => ({ kind: "error", line })));
+    }
+    return faults;
 }
 
 export function anomaliesInMessages(messages: string[]): string[] {

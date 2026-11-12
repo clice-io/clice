@@ -59,21 +59,13 @@ function rerun(options: PerfOptions, extra: string): string {
     );
 }
 
-/// What a clice run's errors say went wrong: a crash first, which takes
-/// the requests it was asked down with it, then a hang (whose server the
-/// run killed), then an error answer.
+/// A clice run's failure, of the kind the worst of its reasons is.
 export function failureOf(run: RunResult, options: PerfOptions): Failure {
-    const error = run.error ?? "";
-    const kind = /crashed|exited while|exited with (?!SIGKILL)/.test(error)
-        ? "crash"
-        : /timed out after|not idle after|announced no|exited with SIGKILL/.test(error)
-          ? "hang"
-          : "server";
     return {
-        kind,
+        kind: run.failure ?? "server",
         file: run.file ?? run.label,
         request: run.scenario,
-        detail: `${run.server}${run.variant === undefined ? "" : ` (${run.variant})`}, run ${String(run.run)}: ${error}`,
+        detail: `${run.server}${run.variant === undefined ? "" : ` (${run.variant})`}, run ${String(run.run)}: ${run.error ?? ""}`,
         repro: rerun(options, `--scenario ${run.scenario}`),
     };
 }

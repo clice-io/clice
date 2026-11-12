@@ -24,6 +24,7 @@ import { writeToml } from "../../testing/render/value.ts";
 import { Serve } from "../../testing/server/serve.ts";
 import { StepRecord } from "../../testing/server/steps.ts";
 import { KEYWORDS, lex } from "../lex.ts";
+import { loggingDir } from "../prepare.ts";
 import { spread } from "../database.ts";
 import {
     residentNow,
@@ -614,7 +615,14 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
     const steps = new StepRecord();
     const server = new Serve(
         new Workspace(options.root),
-        { capabilities: EDITOR_CAPABILITIES, config: { project: { enable_indexing: false } } },
+        {
+            capabilities: EDITOR_CAPABILITIES,
+            config: {
+                // Logs where the job reads them, whichever project of the
+                // checkout opens first.
+                project: { enable_indexing: false, logging_dir: loggingDir(options.root) },
+            },
+        },
         { marks, steps, disk: new Disk(options.root, {}, steps) },
     );
     let watching: { pid: number; start: Resident; watch: TreeWatch } | undefined;

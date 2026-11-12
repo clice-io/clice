@@ -8,9 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { quote } from "shell-quote";
 import { entrySource, type DatabaseEntry } from "../../compat/database.ts";
-import { ANOMALY_PATTERN, logFiles } from "../../process_gate.ts";
-import { readLogs, undeclaredErrors } from "../../testing/logs/logs.ts";
-import { CRASHED_IN } from "../../testing/server/serve.ts";
+import { logFaults, readLogLines, sessionLogs, sessionsIn } from "../../process_gate.ts";
 import {
     includedHeaders,
     inPart,
@@ -22,7 +20,7 @@ import {
 } from "../database.ts";
 import type { PeakMemory } from "../memory.ts";
 import { wipeCache } from "../perf/servers.ts";
-import { compilerEnvironment, prepare } from "../prepare.ts";
+import { compilerEnvironment, loggingDir, prepare } from "../prepare.ts";
 import type { Platform } from "../project.ts";
 import {
     cliceCommit,
@@ -133,40 +131,36 @@ function rerun(options: RegressionOptions, extra: string): string {
 }
 
 /// Crashes and anomalies in the logs of every clice process the job ran
-/// fail it; the other error-level lines are recorded. The logs of earlier
-/// runs (`earlier`) are not this job's.
+/// fail it; the other error-level lines are recorded. The sessions of
+/// earlier runs (`earlier`) are not this job's.
 function scanLogs({ options, checkout, results }: Context, earlier: ReadonlySet<string>): void {
-    const lines = readLogs(
-        checkout,
-        logFiles(checkout).filter((file) => !earlier.has(file)),
-    );
-    for (const line of lines) {
-        const crashed = CRASHED_IN.exec(line.text);
-        if (crashed !== null) {
-            const file = inside(checkout, crashed[2] ?? "") ?? crashed[2] ?? "";
+    const sessions = sessionsIn(loggingDir(checkout)).filter((session) => !earlier.has(session));
+    for (const fault of logFaults(readLogLines(sessionLogs(sessions)))) {
+        const log = path.basename(fault.line.file);
+        const detail = `${log}: ${fault.line.text}`;
+        if (fault.kind === "crash") {
+            const file =
+                fault.file === undefined ? undefined : (inside(checkout, fault.file) ?? fault.file);
             results.failures.push({
                 kind: "crash",
-                request: crashed[1] ?? "",
-                file,
-                detail: `${line.file}: ${line.text}`,
+                ...(fault.request === undefined ? {} : { request: fault.request }),
+                ...(file === undefined ? {} : { file }),
+                detail,
                 repro: rerun(
                     options,
-                    line.file === "index.log" ? "--steps index" : `--file ${quote([file])}`,
+                    log === "index.log"
+                        ? "--steps index"
+                        : file === undefined
+                          ? ""
+                          : `--file ${quote([file])}`,
                 ),
             });
-        } else if (ANOMALY_PATTERN.test(line.text)) {
-            results.failures.push({
-                kind: "anomaly",
-                detail: `${line.file}: ${line.text}`,
-                repro: rerun(options, ""),
-            });
+        } else if (fault.kind === "anomaly") {
+            results.failures.push({ kind: "anomaly", detail, repro: rerun(options, "") });
+        } else {
+            results.logErrors.push(detail);
         }
     }
-    results.logErrors.push(
-        ...undeclaredErrors(lines, [CRASHED_IN, ANOMALY_PATTERN]).map(
-            (line) => `${line.file}: ${line.text}`,
-        ),
-    );
 }
 
 /// A failure for each unit clice failed or reported errors on that the
@@ -453,7 +447,7 @@ export async function runRegression(options: RegressionOptions): Promise<Results
         return results;
     }
     results.prepareSeconds = (Date.now() - started) / 1000;
-    const earlier = new Set(logFiles(context.checkout));
+    const earlier = new Set(sessionsIn(loggingDir(context.checkout)));
 
     const steps = [
         ["index", indexStep],
