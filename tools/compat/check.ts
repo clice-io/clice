@@ -5,6 +5,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { ending, runProcess } from "../client/process.ts";
 import { Workspace } from "../client/workspace.ts";
 import { REPO_ROOT } from "../repo.ts";
 import { fileCommands, lint } from "./clice.ts";
@@ -21,7 +22,7 @@ import {
     buildEnv,
     cliceEnv,
     missingTools,
-    run,
+    STEP_MS,
     type FileExpectation,
     type Scenario,
 } from "./scenario.ts";
@@ -30,11 +31,11 @@ const PROJECT_DIR = path.join(REPO_ROOT, "tests", "compat", "project");
 
 async function build(scenario: Scenario, root: string, env: NodeJS.ProcessEnv): Promise<void> {
     for (const [tool, ...args] of scenario.build) {
-        const step = await run(tool, args, { cwd: root, env });
+        const step = await runProcess(tool, args, { cwd: root, env, timeout: STEP_MS });
         if (step.status !== 0) {
             throw new Error(
                 `\`${[tool, ...args].join(" ")}\` failed ` +
-                    `(${step.error ?? `exit ${step.status}`})\n${step.stdout}\n${step.stderr}`,
+                    `(${ending(step)})\n${step.stdout}\n${step.stderr}`,
             );
         }
     }

@@ -3,7 +3,7 @@
 /// builds a throwaway copy of the project, so the compilation database it
 /// is checked against is what the tools write today, never a stored copy.
 
-import { execFile, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -67,39 +67,9 @@ export interface Scenario {
     files: Record<string, FileExpectation>;
 }
 
-export interface ProcessRun {
-    /// The exit status, null when the process could not run or was killed.
-    status: number | null;
-    stdout: string;
-    stderr: string;
-    /// Why the process did not run to an exit status.
-    error?: string;
-}
-
-/// Run a process to completion without blocking the event loop: vitest's
-/// worker must keep answering its runner while a build takes a minute.
-export function run(
-    tool: string,
-    args: string[],
-    options: { cwd?: string; env: NodeJS.ProcessEnv },
-): Promise<ProcessRun> {
-    return new Promise((resolve) => {
-        execFile(
-            tool,
-            args,
-            { ...options, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 300_000 },
-            (error, stdout, stderr) => {
-                if (error === null) {
-                    resolve({ status: 0, stdout, stderr });
-                } else if (typeof error.code === "number") {
-                    resolve({ status: error.code, stdout, stderr });
-                } else {
-                    resolve({ status: null, stdout, stderr, error: error.message });
-                }
-            },
-        );
-    });
-}
+/// Hang detection: a build step, a compile or a clice run over the small
+/// project takes seconds.
+export const STEP_MS = 300_000;
 
 /// A copy of Windows' case-insensitive environment is an ordinary object,
 /// where the variable keeps its own spelling (`Path`).

@@ -4,7 +4,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parse } from "shell-quote";
-import { run } from "./scenario.ts";
+import { ending, runProcess } from "../client/process.ts";
+import { STEP_MS } from "./scenario.ts";
 
 export interface DatabaseEntry {
     directory: string;
@@ -104,12 +105,13 @@ function shellWords(command: string): string[] {
 
 /// The Windows paths the Cygwin or MSYS2 runtime in `bin` maps `paths` to.
 export async function cygpath(bin: string, paths: string[]): Promise<string[]> {
-    const mapped = await run(path.join(bin, "cygpath.exe"), ["-w", ...paths], { env: process.env });
+    const mapped = await runProcess(path.join(bin, "cygpath.exe"), ["-w", ...paths], {
+        env: process.env,
+        timeout: STEP_MS,
+    });
     const lines = mapped.stdout.split(/\r?\n/).slice(0, paths.length);
     if (mapped.status !== 0 || lines.length < paths.length) {
-        throw new Error(
-            `cygpath failed (${mapped.error ?? `exit ${mapped.status}`}): ${mapped.stderr}`,
-        );
+        throw new Error(`cygpath failed (${ending(mapped)}): ${mapped.stderr}`);
     }
     return lines;
 }
