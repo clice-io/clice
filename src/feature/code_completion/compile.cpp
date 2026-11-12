@@ -7,7 +7,7 @@ import :feature.code_completion.cursor;
 import :feature.code_completion.typed_names;
 import :feature.code_completion;
 import :feature.documentation;
-import :index.search;
+import :index.query.locate;
 import :semantic.comment;
 import :semantic.display;
 import :semantic.identity;

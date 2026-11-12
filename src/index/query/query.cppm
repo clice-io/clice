@@ -1,0 +1,608 @@
+module clice:index.query;
+
+import :index.shard.instantiations;
+import :index.project_index;
+import :index.query.site;
+import :index.symbol;
+import :index.search.locator;
+import :index.indexing.tu_index;
+import :index.project_index.manifest;
+import :semantic.symbol;
+import :support.prelude;
+import :syntax.position;
+import :vfs.file_table;
+
+namespace clice::index {
+
+/// One readable index with its own coordinate system, as the federation
+/// hands it to a visitor.
+struct IndexSource {
+    enum class Kind : std::uint8_t {
+        /// A persisted shard, in the coordinates of the text it indexed —
+        /// or of an open buffer byte-identical to that text.
+        Shard,
+        /// An open buffer's own file index, in buffer coordinates.
+        SessionShard,
+        /// An open buffer's preamble region as its PCH overlay indexed it,
+        /// in buffer coordinates.
+        PreambleShard,
+        /// A header entry of a PCH overlay, or an imported module's
+        /// declarations an open buffer's index holds, in the coordinates of
+        /// the text the index read.
+        Overlay,
+    };
+
+    Kind kind;
+    Fid file;
+    std::string path;
+    const Shard* shard;
+    PositionMap positions;
+
+    /// What the instantiations and macro expansions of the text resolve,
+    /// beside the shard: an open buffer's own compile's, and the stored
+    /// ones while the buffer is the stored text; empty when none serves.
+    llvm::SmallVector<const InstantiationShard*, 2> instantiations;
+
+    /// What the entries handed out with the source come from: the shard's
+    /// are written, `instantiations`' records are not.
+    SiteOrigin origin = SiteOrigin::Written;
+
+    /// The site of an entry's range; nullopt for a range outside the text.
+    std::optional<Site> site(LocalSourceRange range) const {
+        return site_of(file, path, positions, range, origin);
+    }
+};
+
+/// An open document, as the reads of the index take it: what its owner
+/// hands them as one request finds it (IndexQuery::reading). Its views
+/// borrow the document's buffer, read synchronously like every answer.
+struct OpenBuffer {
+    Fid file;
+
+    /// The buffer's text, its content hash and its positions.
+    llvm::StringRef text;
+
+    std::uint64_t hash = 0;
+
+    PositionMap positions;
+
+    /// The TU index of the document's last compile; null before one
+    /// committed it.
+    std::shared_ptr<TUIndex> index;
+
+    /// Whether that compile is current: no edit and no change of what it
+    /// read since.
+    bool current = false;
+
+    /// The index of the PCH the last compile loaded for its preamble,
+    /// shared by the buffers sharing the preamble; null for none.
+    std::shared_ptr<TUIndex> preamble;
+
+    /// Whether the buffer still starts with the exact preamble that index
+    /// was built from: only then do its entries of the buffer's own
+    /// preamble region, offsets into that text, serve.
+    bool preamble_current = false;
+
+    /// The last compile's file index merged with the file's shard's
+    /// entries in the code the compile skipped, which the file's other
+    /// contexts compile, while the buffer is the text both indexed; it
+    /// serves in place of the file index. Null otherwise.
+    std::shared_ptr<const Shard> merged;
+};
+
+struct FreshnessOptions {
+    /// Check each file on disk once per gate instead of trusting the last
+    /// observation: a reader nobody keeps the observations current for
+    /// (the command line), whose gate lives one query.
+    bool check_disk = false;
+
+    /// Indexes no indexer will ever refresh keep serving instead of leaving
+    /// a permanent hole: off when background indexing is.
+    bool withhold = true;
+};
+
+/// Freshness clause 2: whether an index built from `content_hash` no longer
+/// describes the file's content on disk — it would point at text that no
+/// longer exists. The one question every disk-side index source is judged by
+/// (persisted shards, PCH overlay entries), against what the file table
+/// last saw on disk. A file seen missing serves nothing: its index describes
+/// text that is gone with it.
+class FreshnessGate {
+public:
+    explicit FreshnessGate(FileTable& files, FreshnessOptions options = {}) :
+        options(options), files(files) {}
+
+    bool stale(Fid file, std::uint64_t content_hash) const;
+
+    /// Whether the file's content moved on from `content_hash`, an index
+    /// that keeps serving (FreshnessOptions::withhold off) included,
+    /// withholding nothing: for a reader that serves nothing from it.
+    bool moved_on(Fid file, std::uint64_t content_hash) const;
+
+    /// The files whose indexes were withheld, in no particular order.
+    llvm::SmallVector<Fid> withheld() const {
+        return ranges::to<llvm::SmallVector<Fid>>(withheld_files);
+    }
+
+    FreshnessOptions options;
+
+private:
+    FileTable& files;
+
+    mutable llvm::DenseSet<Fid> checked;
+
+    mutable llvm::DenseSet<Fid> withheld_files;
+};
+
+/// Cross-source dedup: an entry present in both a disk shard and a PCH
+/// overlay (or in two overlays sharing a preamble, or in two projects'
+/// indexes) comes out identical; one an instantiation resolves where the
+/// written code says the same comes out as written.
+void dedup_sites(std::vector<Site>& sites);
+
+/// The relations of `kind` for `symbol` the live records of an
+/// instantiation shard make (InstantiationKind says which), each with
+/// whether a macro expansion resolves it; false once the visitor stopped.
+bool resolved_relations(const InstantiationShard& shard,
+                        SymbolHash symbol,
+                        RelationKind kind,
+                        llvm::function_ref<bool(const Relation&, bool expansion)> visit);
+
+/// Whether a relation's site spells the name a cursor stands on: a relation spans
+/// the whole written name, an occurrence only the tokens the name owns
+/// (`operator` of `operator Foo*`, whose `Foo` is the class's).
+bool covers(const Site& site, const Site& cursor);
+
+struct Named {
+    LocalSourceRange range;
+    llvm::SmallVector<SymbolHash, 1> symbols;
+};
+
+/// The symbols one shard names at `offset`, and the range naming them:
+/// the occurrences sharing the first range the lookup meets. A module
+/// imported through a macro sits under the macro's own occurrence — the
+/// name spells what the macro expanded to, and the macro itself is
+/// reached at its definition — so a macro gives way to the symbols it
+/// shares its range with.
+std::optional<Named> named_at(const Shard& shard,
+                              std::uint32_t offset,
+                              llvm::function_ref<bool(SymbolHash)> is_macro);
+
+/// Adds to `named` what an instantiation, or with `expansions` a macro
+/// expansion, resolves at `offset`: a name its template leaves open (a
+/// member of a dependent object), or more of what the name means.
+void add_resolved(const InstantiationShard& shard,
+                  std::uint32_t offset,
+                  bool expansions,
+                  std::optional<Named>& named);
+
+/// The disk bytes of a shard's file, served only while their
+/// hash still matches what the shard was built from — a moved-on file
+/// degrades to no text rather than slicing mismatched text.
+std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
+                                         const Shard& shard,
+                                         std::string& kept);
+
+/// The whole declaration a declaring relation names, when the relation carries its
+/// extent in this source's text.
+std::optional<Site> extent_of(const IndexSource& source, const Relation& relation);
+
+/// `parent`, the parent of `hash`, and the containers above it, outermost
+/// first, transparent ones skipped (see IndexQuery::container_chain), each
+/// resolved through `lookup`.
+llvm::SmallVector<SymbolInfo, 4>
+    scope_chain(SymbolHash hash,
+                SymbolHash parent,
+                llvm::function_ref<std::optional<SymbolInfo>(SymbolHash)> lookup);
+
+inline auto site_key(const Site& site) {
+    return std::tie(site.path, site.range.begin, site.range.end);
+}
+
+inline bool is_function(SymbolKind kind) {
+    return ranges::contains(
+        std::array<SymbolKind, 3>{SymbolKind::Function, SymbolKind::Method, SymbolKind::Operator},
+        kind);
+}
+
+/// Read-only queries over every index source: disk shards, open sessions'
+/// file indexes, PCH overlays and the buffers' own preamble indexes, and
+/// the other projects' when it asks them (asking). Holds no index data of
+/// its own — ProjectIndex owns the disk-derived index, the open documents
+/// the per-buffer indexes.
+///
+/// Every answer is a domain value (Site, SymbolInfo); the transports render
+/// them. Every method is synchronous and its results borrow the state they
+/// were read from — consume them before the next suspension point.
+///
+/// Freshness contract — results may be incomplete, by design:
+///
+///   1. Cursor resolution (turning an offset in the request's file into a
+///      symbol) is accurate: callers that hold an open session await its
+///      compile first, so the session's file index describes the buffer
+///      being pointed at. For closed files the merged shard resolves
+///      against its own stored content snapshot — unless the file's own
+///      content moved on from it, in which case the cursor is
+///      unresolvable (clause 2).
+///   2. Every index source carries the hash of the text it indexed, and
+///      serves only while that is the file's current content: disk indexes
+///      (shards, PCH overlay entries) while the disk still holds it (the
+///      freshness gate), an open buffer's index while the buffer does.
+///      Indexes whose dependencies changed but whose own text did not keep
+///      serving — positionally intact, at worst semantically behind — and
+///      indexes of text that no longer exists never do.
+///   3. An open session's own file index serves under clause 2 against
+///      the buffer: while its compile is current, or when it compiled the
+///      very bytes the buffer holds (a dependency invalidated it, the
+///      buffer did not move). Mid-edit it is skipped: unlike closed files
+///      its reindex is the next compile, which the current file's request
+///      already awaits.
+///   4. An open session without a current file index is served by the
+///      file's shard under closed-file rules — but only while the buffer
+///      is byte-identical to the content the shard was built from. This
+///      is what serves documents opened for reading before any compile of
+///      theirs; the moment the buffer diverges the shard
+///      withdraws and clauses 1-3 govern again. While both describe the
+///      buffer, the file index serves merged with the shard's entries in
+///      the code its compile skipped (OpenBuffer::merged): the compile
+///      indexed the one context it ran in, the shard every context the
+///      file compiles in.
+///
+///   Symbol identity lookups (symbol_info: hash → name/kind) are not
+///   gated: a hash identifies one symbol, so even a stale shard answers
+///   them correctly.
+///
+/// The symbol records list the files holding the entries of an external
+/// symbol, and of one below external scope only once several files hold
+/// them: every question about a symbol's entries also takes an `anchor`, a
+/// file holding one of them — the cursor's file, the file a relation was
+/// read from, a located symbol's site — where the entries of a symbol
+/// without a record are. External symbols ignore the anchor.
+class IndexQuery {
+public:
+    /// A null gate never withholds. It reads no open document: every file
+    /// answers as if closed, the disk-only view of headless tools.
+    IndexQuery(const ProjectIndex& index, FileTable& files, const FreshnessGate* gate);
+
+    /// The same queries over the open documents `open` too: an open file
+    /// answers as serving() says, never by its shard as a closed file.
+    IndexQuery reading(std::vector<OpenBuffer> open) const {
+        auto query = *this;
+        query.open = std::move(open);
+        return query;
+    }
+
+    /// The same queries over the written code alone, without what
+    /// instantiations and macro expansions resolve: a rename edits names
+    /// as the text spells them.
+    IndexQuery written_only() const {
+        auto query = *this;
+        query.with_instantiations = false;
+        return query;
+    }
+
+    /// The freshness contract's single arbitration: the index serving
+    /// `file` right now, with the coordinates it is expressed in. An open
+    /// buffer is served by its own file index while that describes it
+    /// (clauses 1 and 3), else by its shard while the buffer is
+    /// byte-identical to the text the shard indexed (clause 4), both in
+    /// buffer coordinates; by nothing while the buffer moved on from both.
+    std::optional<IndexSource> serving(Fid file) const;
+
+    /// Visit the preamble index paired with an open buffer's source: the
+    /// PCH's overlay of the buffer's preamble region, in the buffer's
+    /// coordinates, which the per-edit index leaves out. It lives only as
+    /// long as the visit. False when the source has none.
+    bool with_preamble(const IndexSource& source,
+                       llvm::function_ref<void(const Shard&)> visit) const;
+
+    /// The files whose text the index no longer describes: an open buffer
+    /// edited since both its compile and its shard, a file changed on disk
+    /// since it was indexed — which its file record tells, no shard read.
+    std::vector<Fid> outdated_files() const;
+
+    /// An open buffer's PCH index while the buffer still starts with the
+    /// exact preamble the index was built from; null otherwise.
+    std::shared_ptr<TUIndex> preamble_index(Fid file) const;
+
+    /// The TU indexes of the open buffers their own file index serves
+    /// (clause 3), which name (find_symbol) every symbol of the unsaved text
+    /// and hold the declarations of what it names from imported modules.
+    void for_each_session_index(llvm::function_ref<bool(const TUIndex&)> visit) const;
+
+    /// The symbols whose occurrences cover `offset` in the file's serving
+    /// source (clauses 1 and 4), and the site of that occurrence. A session
+    /// served by its own index also resolves through the preamble region
+    /// of its PCH overlay — compiled into the PCH, invisible to the
+    /// per-edit index, spelled in the same buffer coordinates.
+    ///
+    /// One name can spell several symbols: an overload set a template's
+    /// call leaves open, `using Base::Base` naming each inherited
+    /// constructor, the variants of a shared header naming different
+    /// entities. The questions about a cursor answer for all of them.
+    struct Cursor {
+        llvm::SmallVector<SymbolHash, 1> symbols;
+        Site site;
+    };
+
+    std::optional<Cursor> symbol_at(Fid file, std::uint32_t offset) const;
+
+    /// What the instantiations of the template the name at `offset` lies
+    /// in resolve it to, in the file's serving source: no guess of the
+    /// written code.
+    std::optional<Cursor> instantiated_at(Fid file, std::uint32_t offset) const;
+
+    /// Whether the file's serving source relates `symbol` by `kind` at
+    /// `range`, in its preamble region too.
+    bool relates_at(Fid file, LocalSourceRange range, SymbolHash symbol, RelationKind kind) const;
+
+    /// The same for a position as the editor spells it, counted in
+    /// `encoding` in the serving source's text.
+    std::optional<Cursor> symbol_at(Fid file,
+                                    protocol::Position position,
+                                    PositionEncoding encoding) const;
+
+    /// A symbol's name and kind, from whichever table knows the hash: open
+    /// sessions, the project index, PCH overlays, then the per-file shards
+    /// (names below external scope live only there), the anchor's first.
+    std::optional<SymbolInfo> symbol_info(SymbolHash hash, Fid anchor = {}) const;
+
+    /// The containers of a symbol, outermost first: the parent chain up
+    /// to the translation unit or to a parent no table knows, transparent
+    /// scopes skipped (anonymous namespaces never are parents). Empty at
+    /// the translation unit and for an unknown hash. `anchor` as for
+    /// symbol_info: a symbol of internal linkage and its containers are
+    /// known to the files holding its entries.
+    llvm::SmallVector<SymbolInfo, 4> container_chain(SymbolHash hash, Fid anchor = {}) const;
+
+    /// The chain spelled as a qualified name ("ns::Outer" for
+    /// `ns::Outer::name`).
+    std::string container_name(SymbolHash hash, Fid anchor = {}) const;
+
+    /// The symbol's name qualified by its container, a specialization's
+    /// arguments included ("ns::Outer::name<int>"). Empty for an unknown
+    /// hash.
+    std::string qualified_name(SymbolHash hash, Fid anchor = {}) const;
+
+    /// Every site carrying a relation of `kind` for the symbol, across all
+    /// serving sources, deduplicated — a relation present in both a disk shard
+    /// and an overlay comes out identical.
+    std::vector<Site> sites(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
+    /// The first site carrying the relation, live sources first: an open
+    /// buffer's index, its preamble region, PCH overlays (the definition as
+    /// seen under the live context — present even when no disk TU was
+    /// indexed), then disk shards.
+    std::optional<Site> first_site(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
+    /// The shard saying which symbols a file declares and defines, for a
+    /// question positions play no part in: the index serving the file, else
+    /// for a buffer edited since its last compile the shard of its disk
+    /// text — the edit moved positions, not most of what the file declares.
+    /// Null for a closed file whose shard the freshness gate withholds.
+    const Shard* declaring_shard(Fid file) const;
+
+    /// The open buffers whose own index carries a relation of `kind` for the
+    /// symbol, each once: what a buffer its own compile serves knows before
+    /// the project index does — which hears of the buffer only once it
+    /// closes.
+    void for_each_live_file(SymbolHash hash,
+                            RelationKind kind,
+                            llvm::function_ref<void(Fid)> visit) const;
+
+    /// The file defining an external symbol: an open buffer defining it
+    /// (for_each_live_file) first, else the definition the symbol record
+    /// names, while that file's shard still holds it. Invalid when neither
+    /// knows one; of several files defining the symbol, one. Never walks
+    /// the files referencing the symbol, so it costs the same for a symbol
+    /// every file uses.
+    Fid definition_file(SymbolHash hash) const;
+
+    /// The text the index serving `file` was built from — the offsets of
+    /// every site in it index this text; nullopt when no source serves the
+    /// file or its text is unavailable (see declared_text on the disk
+    /// re-read).
+    std::optional<std::string> serving_text(Fid file) const;
+
+    /// A symbol together with a site of it — its canonical site, or one of
+    /// its definitions — and the whole declaration there.
+    struct Located {
+        SymbolInfo symbol;
+        Site site;
+        Site extent;
+    };
+
+    std::optional<Located> resolve(SymbolHash hash, Fid anchor) const;
+
+    /// The symbols under a cursor, each with its canonical site; one no
+    /// source places is left out.
+    std::vector<Located> resolve_at(const Cursor& cursor) const;
+
+    /// The distinct targets of the symbol's relations of `kind` (bases,
+    /// overrides, constructors, specializations), each at its canonical
+    /// site; a target no source places is left out.
+    std::vector<Located> located_targets(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
+    /// Which sources a relation walk visits and in what order. LiveFirst
+    /// is the first-hit order (session indexes, preamble indexes, overlays,
+    /// disk); DiskFirst the collect-all order.
+    enum class Order : std::uint8_t { LiveFirst, DiskFirst };
+
+    struct SourceMask {
+        bool shard = true;
+        bool session = true;
+        bool preamble = true;
+        bool overlay = true;
+    };
+
+    using RelationVisitor = llvm::function_ref<bool(const IndexSource&, const Relation&)>;
+
+    /// A relation target, anchored at the file the relation was read from: a
+    /// file naming a symbol below external scope holds one of its entries.
+    struct Target {
+        SymbolHash symbol;
+        Fid anchor;
+    };
+
+    /// The distinct target symbols of the symbol's relations of `kind`
+    /// (bases, derived types, overrides), in first-seen order.
+    llvm::SmallVector<Target> targets(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
+    /// The same followed from each target on: every derived type, every
+    /// override, every overridden method at any depth, each once.
+    llvm::SmallVector<Target> transitive_targets(SymbolHash hash,
+                                                 Fid anchor,
+                                                 RelationKind kind) const;
+
+    /// A declaring relation's site and the whole declaration it names (the
+    /// definition's body included); the site itself when the relation carries
+    /// no extent.
+    struct Placed {
+        Site site;
+        Site extent;
+    };
+
+    /// The symbol's canonical site: its definition, or a declaration when
+    /// nothing defines it (pure virtuals, externs, decl-only APIs).
+    std::optional<Placed> canonical_placed(SymbolHash hash, Fid anchor) const;
+
+    /// Every definition of the symbol, by path and offset: one for most, one
+    /// per file for a C function a weak and a strong definition give or a
+    /// name each program of a project defines (`main`).
+    std::vector<Placed> definitions(SymbolHash hash, Fid anchor) const;
+
+    /// The one federation walk every relation query is a fold over. The
+    /// visitor returns false to stop.
+    void for_each_relation(SymbolHash hash,
+                           Fid anchor,
+                           RelationKind kind,
+                           Order order,
+                           SourceMask mask,
+                           RelationVisitor visitor) const;
+
+    /// The text a source's offsets index: the buffer, or the file read from
+    /// disk (alive as long as `kept`) and verified against the index's
+    /// content hash.
+    std::optional<llvm::StringRef> source_text(const IndexSource& source, std::string& kept) const;
+
+    const ProjectIndex& project() const {
+        return index;
+    }
+
+    FileTable& file_table() const {
+        return files;
+    }
+
+    // other_projects.cpp
+
+    /// The same queries, also asking `others`, the other projects' views,
+    /// about a symbol they know as the same entity (asked): an application
+    /// and the library beside it see each other's uses. One level deep:
+    /// theirs ask no others.
+    IndexQuery asking(std::vector<IndexQuery> others) const {
+        auto query = *this;
+        query.other_projects = std::move(others);
+        return query;
+    }
+
+    llvm::ArrayRef<IndexQuery> others() const {
+        return other_projects;
+    }
+
+    /// The view, this one or one of the others, reading the open document
+    /// of `file`; null for a file none of them has open.
+    const IndexQuery* owner_of(Fid file) const;
+
+    /// A view asked about a symbol, and the symbol as that view's project
+    /// names it: an id hashing its file (a macro, a file-local name) takes
+    /// the file relative to the compiling project's root, so a project
+    /// compiling the file from outside its root names it by another id.
+    struct Asked {
+        const IndexQuery* query;
+        SymbolHash symbol;
+    };
+
+    /// This view, then the others knowing the entity `symbol` names here:
+    /// declaring it in a file this project declares it in, or in `anchor`,
+    /// the file it was found in — under the same id or, at the same place
+    /// in a file this project declares it in, under another.
+    llvm::SmallVector<Asked> asked(SymbolHash symbol, Fid anchor) const;
+
+    /// Whether `from`'s shard for `file` stands among the answers of `asked`:
+    /// any view's for a closed file; for an open one only the view reading
+    /// its buffer — the others hold its disk shard, which the buffer
+    /// replaced — unless that view is not asked.
+    bool answers_for(const IndexQuery& from, Fid file, llvm::ArrayRef<Asked> asked) const;
+
+    /// `ask`'s sites from every view asked about each of `symbols`
+    /// (asked), each under its own id, in the files each may answer for
+    /// (answers_for), deduplicated.
+    std::vector<Site>
+        gather(llvm::ArrayRef<SymbolHash> symbols,
+               Fid anchor,
+               llvm::function_ref<std::vector<Site>(const IndexQuery&, SymbolHash)> ask) const;
+
+private:
+    /// The open buffer of `file`; null for a closed file.
+    const OpenBuffer* buffer_of(Fid file) const;
+
+    /// The buffer's own file index while it describes the buffer: the
+    /// compile is current, or it compiled these very bytes. Merged with
+    /// the other contexts' entries when the buffer holds them.
+    const Shard* buffer_shard(const OpenBuffer& buffer) const;
+
+    /// An open buffer's index as a source: `shard` in the buffer's
+    /// coordinates, with the instantiations that serve beside it.
+    IndexSource buffer_source(IndexSource::Kind kind,
+                              const OpenBuffer& buffer,
+                              const Shard& shard) const;
+
+    /// Every open buffer's preamble index whose overlay was built from that
+    /// very file and still describes the buffer's start.
+    void for_each_preamble(llvm::function_ref<bool(const IndexSource&)> visit) const;
+
+    /// Each distinct PCH overlay index once (buffers sharing a preamble
+    /// share one).
+    void for_each_overlay(llvm::function_ref<bool(const TUIndex&)> visit) const;
+
+    /// first_site with the declaration's extent.
+    std::optional<Placed> first_placed(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
+    /// The disk files that may hold the symbol's `kind` relations: the
+    /// files its record says define, declare or name it, and for a symbol
+    /// below external scope the anchor (see the class comment).
+    void for_each_disk_file(SymbolHash hash,
+                            Fid anchor,
+                            RelationKind kind,
+                            llvm::function_ref<void(Fid)> visit) const;
+
+    /// The `kind` relations of `hash` in the entries of a live TU index's
+    /// other files than its focus file (an overlay's headers, a buffer's
+    /// imported declarations) that may contribute results: files that are
+    /// themselves open serve a buffer-true index through their sessions,
+    /// and entries of text the disk no longer holds point nowhere (clause
+    /// 2). False once the visitor stopped.
+    bool visit_overlay_relations(const TUIndex& state,
+                                 SymbolHash hash,
+                                 RelationKind kind,
+                                 RelationVisitor visitor) const;
+
+    /// The file's instantiation shard when it resolves in the shard's text.
+    const InstantiationShard* instantiations_of(Fid file, const Shard& shard) const;
+
+private:
+    const ProjectIndex& index;
+
+    FileTable& files;
+
+    const FreshnessGate* gate;
+
+    std::vector<OpenBuffer> open;
+
+    std::vector<IndexQuery> other_projects;
+
+    /// Whether answers take in what instantiations resolve (written_only).
+    bool with_instantiations = true;
+};
+
+}  // namespace clice::index

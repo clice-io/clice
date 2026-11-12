@@ -11,8 +11,8 @@ import :feature.hover;
 import :feature.inlay_hints;
 import :feature.selection_ranges;
 import :feature.semantic_tokens;
-import :index.indexer;
-import :index.tu_index;
+import :index.indexing;
+import :index.indexing.tu_index;
 import :support.json;
 import :support.logging;
 import :support.process;
@@ -368,7 +368,7 @@ void StatefulWorker::register_handlers() {
                         -> RequestResult<worker::DocumentLinkParams> {
         return with_ast_or(feature::RequestKind::DocumentLink,
                            params,
-                           std::vector<index::DocumentLink>{},
+                           std::vector<feature::DocumentLink>{},
                            [&](DocumentEntry& doc) { return feature::document_links(*doc.unit); });
     });
 

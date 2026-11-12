@@ -491,7 +491,11 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
         co_return report;
     }
 
-    bool committed = false;
+    std::uint64_t batch_bytes = 0;
+    for(auto& blob: blobs) {
+        batch_bytes += blob.bytes.size();
+    }
+    std::expected<void, std::string> committed;
     // Cancellation while the write is still queued dequeues it (see
     // async::queue): the batch dies with this frame, so what it carried must
     // be changed again or the final shutdown save sees nothing to commit and
@@ -525,6 +529,21 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
 
     if(!co_await index.migrate_views(db, *loop, report)) {
         recover_corrupt_database(report);
+    }
+
+    if(committed) {
+        unsaved_bytes = 0;
+    } else if(!report.owes_retry) {
+        // A map that grew takes the batch again at once; any other refusal
+        // leaves it in memory for the next save.
+        LOG_WARN("The index database is not written: {}", committed.error());
+        if(std::exchange(unsaved_bytes, batch_bytes) == 0) {
+            LOG_GUIDANCE(
+                "The index cannot be saved under {}: {}. It is kept in memory, and every "
+                "checkpoint tries again.",
+                store->root_dir(),
+                committed.error());
+        }
     }
 
     LOG_PERF("index",

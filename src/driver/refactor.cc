@@ -4,7 +4,7 @@ import :driver.driver;
 import :driver.run;
 import :feature.query;
 import :feature.rename;
-import :index.symbol_query;
+import :index.search.locator;
 import :project.project;
 import :vfs.file_system;
 
@@ -75,7 +75,7 @@ std::expected<std::vector<feature::query::RenameRequest>, std::string>
             return std::unexpected(
                 std::format("line {}: expected `<locator> => <new name>`", number));
         }
-        auto parsed = index::SymbolQuery::parse(locator);
+        auto parsed = index::Locator::parse(locator);
         if(!parsed) {
             return std::unexpected(std::format("line {}: {}", number, parsed.error()));
         }
@@ -113,7 +113,7 @@ std::expected<std::vector<feature::query::RenameRequest>, std::string>
 /// The rename `<LOCATOR> <NEW-NAME>` asks for.
 std::expected<std::vector<feature::query::RenameRequest>, std::string>
     one_rename(const OneRename& rename) {
-    auto locator = index::SymbolQuery::parse(rename.locator);
+    auto locator = index::Locator::parse(rename.locator);
     if(!locator) {
         return std::unexpected(locator.error());
     }

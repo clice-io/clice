@@ -5,13 +5,16 @@ import :driver.run;
 import :feature.query;
 import :index.database;
 import :index.format;
-import :index.instantiation_shard;
 import :index.project_index;
-import :index.project_records;
-import :index.search_index;
+import :index.project_index.layout;
+import :index.project_index.manifest;
+import :index.project_index.records;
+import :index.search;
+import :index.search.layout;
+import :index.search.locator;
 import :index.shard;
-import :index.symbol_query;
-import :index.tu_manifest;
+import :index.shard.instantiations;
+import :index.shard.layout;
 import :project.background;
 import :project.project;
 import :server.control;
@@ -463,7 +466,6 @@ struct StatsResult {
     std::uint64_t manifest_bytes = 0;
     index::FieldBytes manifest_fields;
     std::uint64_t units = 0;
-    std::uint64_t shared_locals = 0;
     Histogram references_per_symbol;
     Histogram name_lengths;
     Histogram variants_per_shard;
@@ -553,7 +555,6 @@ StatsResult collect_stats(Project& project) {
     project_index.for_each_unit([&](Fid tu) {
         if(auto manifest = project_index.manifest(tu)) {
             stats.units += 1;
-            stats.shared_locals += manifest->shared_locals.size();
             stats.unit_uses += manifest->instantiations.size();
         }
     });
@@ -608,7 +609,7 @@ void print_stats(const Project& project, const StatsResult& stats, std::uint32_t
     driver::println("Translation units: {} (manifests {}), {} internal symbols spanning files",
                     stats.units,
                     format_bytes(stats.manifest_bytes),
-                    stats.shared_locals);
+                    project.database->count(index::BlobKind::SharedLocal));
     driver::println("File shards: {} ({}), {} occurrences, {} relations",
                     stats.shards.size(),
                     format_bytes(stats.shard_bytes),
@@ -783,7 +784,7 @@ llvm::StringRef kind_name(SymbolKind kind) {
 /// an id its symbol, whether a file places it or not; anything else what
 /// `clice query` finds for it, a name every symbol spelling it whole.
 int run_show_symbol(Project& project, llvm::StringRef text) {
-    auto locator = index::SymbolQuery::parse(text);
+    auto locator = index::Locator::parse(text);
     if(!locator) {
         LOG_ERROR("{}", locator.error());
         return 1;

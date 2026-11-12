@@ -13,8 +13,9 @@ test("a pass leaves no shard in memory", async (t) => {
 });
 
 test("a save writes the changed shard", async (t) => {
-    // Open before the project starts: its first pass leaves the open file
-    // to the file's own compile, which parses every function body.
+    // Open before the project starts: its first pass indexes the open file
+    // like the closed ones, though the file's own compile parses every
+    // function body too.
     const s = await t.spawn({ config: { project: { skip_header_bodies: false } } });
     s.open("file0.cpp", { pull: false });
     await s.initialize();
@@ -30,9 +31,9 @@ test("a save writes the changed shard", async (t) => {
         indexInmemoryShards: changed.indexInmemoryShards,
         lastSaveShards: changed.lastSaveShards,
     });
-    // The open file compiles itself, so the passes leave its disk shard
-    // alone and saving the same bytes queues nothing; closing it hands the
-    // file back to the background index.
+    // The open file's compile serves its buffer alone: the passes indexed
+    // the file already, so saving the same bytes queues nothing, and
+    // closing it changes nothing.
     s.save("file0.cpp");
     await s.sync();
     const saved = await s.stats();
@@ -42,5 +43,5 @@ test("a save writes the changed shard", async (t) => {
     await s.sync();
     const closed = await s.stats();
     expect(closed.indexInmemoryShards).toBe(0);
-    expect(closed.indexShardContentBytes).toBeGreaterThan(saved.indexShardContentBytes);
+    expect(closed.indexShardContentBytes).toBe(saved.indexShardContentBytes);
 });

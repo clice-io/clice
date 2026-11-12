@@ -153,6 +153,7 @@ void LSPClient::register_navigation() {
     on_document<protocol::ReferenceParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
             auto& project = *document.project;
+            co_await project.compile_outdated();
             co_return co_await navigate(
                 project,
                 document.ticket,
@@ -224,6 +225,7 @@ void LSPClient::register_navigation() {
     on_document<protocol::ImplementationParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
             auto& project = *document.project;
+            co_await project.compile_outdated();
             co_return co_await navigate(
                 project,
                 document.ticket,
@@ -262,6 +264,7 @@ void LSPClient::register_navigation() {
     on_document<protocol::CallHierarchyIncomingCallsParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
             auto& project = *document.project;
+            co_await project.compile_outdated();
             auto symbol = item_symbol(project, document.path_id, params.item, "call hierarchy");
             if(!symbol) {
                 co_await async::fail(std::move(symbol.error()));
@@ -276,6 +279,7 @@ void LSPClient::register_navigation() {
     on_document<protocol::CallHierarchyOutgoingCallsParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
             auto& project = *document.project;
+            co_await project.compile_outdated();
             auto symbol = item_symbol(project, document.path_id, params.item, "call hierarchy");
             if(!symbol) {
                 co_await async::fail(std::move(symbol.error()));
@@ -314,6 +318,7 @@ void LSPClient::register_navigation() {
     on_document<protocol::TypeHierarchySupertypesParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
             auto& project = *document.project;
+            co_await project.compile_outdated();
             auto symbol = item_symbol(project, document.path_id, params.item, "type hierarchy");
             if(!symbol) {
                 co_await async::fail(std::move(symbol.error()));
@@ -328,6 +333,7 @@ void LSPClient::register_navigation() {
     on_document<protocol::TypeHierarchySubtypesParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
             auto& project = *document.project;
+            co_await project.compile_outdated();
             auto symbol = item_symbol(project, document.path_id, params.item, "type hierarchy");
             if(!symbol) {
                 co_await async::fail(std::move(symbol.error()));

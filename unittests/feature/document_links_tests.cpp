@@ -1,7 +1,7 @@
 module clice;
 
 import :feature.document_links;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 import :syntax.source_text;
@@ -14,7 +14,7 @@ namespace {
 
 ZEST_SUITE(document_links, Tester) {
 
-std::vector<index::DocumentLink> links;
+std::vector<feature::DocumentLink> links;
 
 void run(llvm::StringRef source, llvm::StringRef standard = "-std=c++17") {
     add_files("main.cpp", source);

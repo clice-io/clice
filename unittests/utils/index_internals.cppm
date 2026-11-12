@@ -1,7 +1,11 @@
 module clice:unittests.utils.index_internals;
 
+import :index.database;
+import :index.indexing.tu_index;
 import :index.project_index;
+import :index.project_index.records;
 import :index.shard;
+import :index.symbol;
 import :support.prelude;
 import :vfs.ids;
 
@@ -9,29 +13,40 @@ namespace clice::testing {
 
 /// Index state a test sets up or looks at by hand, past the public API.
 struct IndexInternals {
-    /// Install `shard` as `file`'s, as a merge would; `written` has the next
-    /// save write it.
+    /// Install `shard` as `file`'s: as a merge would, which the symbol
+    /// records follow and the next save writes, when `written`; else as one
+    /// read from the database.
     static void plant_shard(index::ProjectIndex& index,
                             Fid file,
                             index::Shard shard,
                             bool written = false) {
+        if(written) {
+            index.replace_shard(file, std::move(shard));
+            index.drop_fileless_symbols();
+            return;
+        }
         auto& record = index.change_file(file);
         record.generation = shard.content_hash();
         record.stored = shard.variants();
-        index.shards[file] = std::move(shard);
-        if(written) {
-            index.changed_shards.insert(file);
-        }
+        index.shard_records.cached[index.file_key(file)] = std::move(shard);
     }
 
     /// Retire `file`'s shard, as a compaction finding no live variant does.
     static void retire_shard(index::ProjectIndex& index, Fid file) {
-        index.shards[file] = index::Shard();
-        index.changed_shards.erase(file);
-        index.retired_shards.insert(file);
-        auto& record = index.change_file(file);
-        record.generation = 0;
-        record.stored.clear();
+        index.replace_shard(file, {});
+        index.drop_fileless_symbols();
+    }
+
+    /// The record of the external symbol `hash`, to set up by hand.
+    static index::Symbol& symbol(index::ProjectIndex& index, index::SymbolHash hash) {
+        return index.change(index.symbol_records, index::number_key(hash), index::decode_symbol);
+    }
+
+    /// Merge what `tu_index` says its external symbols are, as a merge does
+    /// before the shards say which files hold their entries.
+    static void merge_facts(index::ProjectIndex& index, const index::TUIndex& tu_index) {
+        llvm::SmallVector<index::SymbolHash> described;
+        index.merge_facts(tu_index, described);
     }
 
     /// Whether `tu` is outdated (ProjectIndex::mark_outdated).
@@ -55,11 +70,6 @@ struct IndexInternals {
     /// The id the database names `file` by, handed out on first use.
     static std::uint32_t path_id(index::ProjectIndex& index, Fid file) {
         return index.path_id(file);
-    }
-
-    /// The units the header counts a manifest of.
-    static std::uint32_t unit_count(const index::ProjectIndex& index) {
-        return index.header.unit_count;
     }
 
     /// The key of `file`'s records, its shards' and its manifest's.

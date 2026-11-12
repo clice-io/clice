@@ -6,7 +6,7 @@ import :feature.code_actions;
 import :feature.code_completion;
 import :feature.protocol;
 import :index.query;
-import :index.site;
+import :index.query.site;
 import :semantic.symbol;
 import :syntax.dependency_graph;
 import :syntax.include_pragmas;

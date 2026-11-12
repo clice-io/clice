@@ -8,7 +8,7 @@ import :analysis.text;
 import :index.project_index;
 import :index.shard;
 import :index.symbol;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :project.project;
 import :support.prelude;
 import :syntax.token;

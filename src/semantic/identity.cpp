@@ -69,6 +69,7 @@ enum class Tag : std::uint8_t {
     Name,
     Value,
     UnresolvedMacro,
+    CommandLine,
 };
 
 bool has_c_linkage(const clang::Decl* decl) {
@@ -312,7 +313,19 @@ std::uint64_t EntityTable::entity(const clang::MacroInfo* macro) {
         auto position = unit.written_at(definition);
         if(!unit.is_builtin_file(position.file)) {
             add_place(hasher, position);
+        } else if(unit.context().getSourceManager().isWrittenInCommandLineFile(definition)) {
+            hasher.add(Tag::CommandLine);
         }
+    }
+    return hasher.finish();
+}
+
+std::uint64_t EntityTable::predefined_macro(llvm::StringRef name, bool command_line) {
+    Hasher hasher;
+    hasher.add(Tag::Macro);
+    hasher.add(name);
+    if(command_line) {
+        hasher.add(Tag::CommandLine);
     }
     return hasher.finish();
 }
@@ -787,6 +800,11 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
             hasher.add(Tag::Namespace);
             hasher.add(ns->getName());
             hasher.add(static_cast<std::uint64_t>(ns->isInline()));
+            /// One an anonymous namespace encloses is its unit's own, like
+            /// the names in it: two units' namespaces of one name are two.
+            if(needs_path(ns, unit)) {
+                add_path(hasher, ns->getLocation());
+            }
         }
         return;
     }

@@ -3,11 +3,11 @@ module clice;
 import :feature.document_symbols;
 import :feature.protocol;
 import :feature.workspace_symbols;
-import :index.site;
+import :index.query.site;
 import :index.query;
-import :index.search;
+import :index.query.locate;
 import :index.symbol;
-import :index.symbol_query;
+import :index.search.locator;
 import :vfs.path;
 
 namespace clice::feature {
@@ -31,7 +31,7 @@ std::vector<WorkspaceSymbol> workspace_symbols(const index::IndexQuery& query,
                                                const Spelling& root,
                                                PositionEncoding encoding) {
     std::vector<WorkspaceSymbol> results;
-    auto parsed = index::SymbolQuery::parse(text);
+    auto parsed = index::Locator::parse(text);
     if(!parsed) {
         return results;
     }
@@ -40,7 +40,12 @@ std::vector<WorkspaceSymbol> workspace_symbols(const index::IndexQuery& query,
     // again, where a bare name would fail a qualified query: those
     // replies carry the qualified name.
     bool qualified = parsed->absolute || !parsed->scope.empty();
-    for(auto& located: index::search(query, *parsed, workspace_symbol_limit)) {
+    auto found = index::search(query, *parsed, workspace_symbol_limit);
+    for(auto& located: index::every_definition(query, std::move(found))) {
+        // A macro no file defines has no place to show.
+        if(!located.site.file.valid()) {
+            continue;
+        }
         // Every project answers workspace/symbol (MasterServer): an open
         // file only from the project serving its buffer.
         if(auto* serving = query.owner_of(located.site.file); serving && serving != &query) {

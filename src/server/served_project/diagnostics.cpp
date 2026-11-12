@@ -1,6 +1,7 @@
 module clice;
 
 import :command.table;
+import :compile.diagnostic;
 import :feature.diagnostics;
 import :project.background;
 import :server.client;
@@ -8,6 +9,7 @@ import :server.master;
 import :server.served_project;
 import :server.session;
 import :support.logging;
+import :vfs.file_table;
 
 namespace clice {
 
@@ -68,6 +70,26 @@ void ServedProject::republish(const std::shared_ptr<Session>& session) {
 std::vector<feature::FileDiagnostic>
     ServedProject::shown_diagnostics(const Session& session, const CompileOutput& output) const {
     auto diagnostics = feature::shown_diagnostics(output.diagnostics, project.settings.diagnostics);
+    if(ranges::any_of(diagnostics, [](const feature::FileDiagnostic& diagnostic) {
+           return diagnostic.level >= DiagnosticLevel::Error;
+       })) {
+        std::vector<std::string> unsaved;
+        each_input(session.path_id, [&](const Inputs& inputs) {
+            for(auto& input: inputs) {
+                auto other = server.find_session(input.file);
+                if(other && input.file != session.path_id && input.version.valid() &&
+                   other->source->hash() !=
+                       project.file_table.version(input.version).content_hash) {
+                    unsaved.push_back(project.file_table.display(input.file));
+                }
+            }
+        });
+        ranges::sort(unsaved);
+        unsaved.erase(ranges::unique(unsaved).begin(), unsaved.end());
+        if(!unsaved.empty()) {
+            diagnostics.push_back(feature::unsaved_inputs_note(unsaved));
+        }
+    }
     for(auto& note: session.crash_notes()) {
         diagnostics.push_back(feature::crash_note(note));
     }
@@ -110,6 +132,9 @@ void ServedProject::book_skipped_diagnostics(Fid path_id, bool first) {
        project.entries(path_id).empty()) {
         return;
     }
+    // LIMITATION: these diagnostics live in memory alone, so after a
+    // restart every open unit of a database compiles once more in full in
+    // the background to show them, its index fresh or not.
     auto& background = project.background_index;
     if(auto* skipped = background.skipped_diagnostics(path_id);
        skipped && skipped->text_hash == session.source->hash()) {

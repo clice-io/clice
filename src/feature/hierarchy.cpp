@@ -4,7 +4,7 @@ import :feature.document_symbols;
 import :feature.hierarchy;
 import :feature.protocol;
 import :index.query;
-import :index.search;
+import :index.query.locate;
 import :semantic.symbol;
 
 namespace clice::feature {

@@ -1,2 +1,2 @@
-# console.h stands in for a system header.
-flags = ["-isystem", "sys"]
+# console.h stands in for a system header; the command defines BUILD_LEVEL.
+flags = ["-isystem", "sys", "-DBUILD_LEVEL=2"]

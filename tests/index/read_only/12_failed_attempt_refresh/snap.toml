@@ -1,0 +1,17 @@
+[test."held tokens"]
+semantic_tokens = []
+
+[test."held folds"]
+folding_ranges = []
+
+[test.refreshes]
+semantic_tokens = 1
+folding_range = 1
+
+[test."pulled again"]
+semantic_tokens = [
+    { at = "⟦int⟧ scratch() {", type = "primitive" },
+    { at = "int ⟦scratch⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦return⟧ 2;", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦2⟧;", type = "number" },
+]

@@ -3,7 +3,7 @@ module clice;
 import :feature.diagnostics;
 import :index.shard;
 import :index.symbol;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :project.background;
 import :project.command;
 import :project.project;
@@ -39,10 +39,6 @@ struct Harness {
     ServedProjectFixture fixture;
     ServedProject& served = *fixture.served;
     Project& project = served.project;
-
-    Harness() {
-        project.settings.project.skip_header_bodies = false;
-    }
 
     /// Whether a change invalidated the open document's compile: every
     /// invalidation moves its node's generation on.

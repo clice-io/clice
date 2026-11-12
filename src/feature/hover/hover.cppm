@@ -1,6 +1,7 @@
 module clice:feature.hover;
 
 import :compile.compilation;
+import :feature.document_links;
 import :feature.documentation;
 import :index.query;
 import :index.symbol;
@@ -208,7 +209,7 @@ bool on_directive_line(llvm::StringRef text,
 auto directive_hover(llvm::StringRef text,
                      const PositionMap& map,
                      FileTable& files,
-                     const index::DocumentLink& link,
+                     const feature::DocumentLink& link,
                      protocol::MarkupKind kind,
                      PositionEncoding encoding) -> std::optional<protocol::Hover>;
 

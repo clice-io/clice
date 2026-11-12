@@ -3,9 +3,9 @@ module clice;
 import :feature.hierarchy;
 import :feature.protocol;
 import :feature.rename;
-import :index.search;
-import :index.site;
-import :index.symbol_query;
+import :index.query.locate;
+import :index.query.site;
+import :index.search.locator;
 import :semantic.identity;
 import :syntax.lexer;
 import :syntax.source_text;
@@ -94,7 +94,7 @@ std::string where(const index::Site& site) {
 /// Every symbol named `name` exactly, however many.
 std::vector<index::IndexQuery::Located> all_named(const index::IndexQuery& query,
                                                   llvm::StringRef name) {
-    index::SymbolQuery exact{.mode = index::SymbolQuery::Mode::Exact, .pattern = name.str()};
+    index::Locator exact{.mode = index::Locator::Mode::Exact, .pattern = name.str()};
     for(std::uint32_t limit = 256;; limit *= 4) {
         auto hits = index::search(query, exact, limit);
         if(hits.size() < limit) {
@@ -130,6 +130,9 @@ std::string unplaced_macro(const index::SymbolInfo& macro) {
 std::expected<RenameTarget, std::string> macro_target(const index::IndexQuery& query,
                                                       const index::IndexQuery::Located& named) {
     llvm::StringRef name = named.symbol.name;
+    if(!named.site.file.valid()) {
+        return std::unexpected(unplaced_macro(named.symbol));
+    }
     auto in_system_header = [&](const index::IndexQuery::Located& macro) {
         return index::has_flag(macro.symbol.flags, index::SymbolFlags::SystemHeader);
     };
@@ -289,12 +292,11 @@ std::expected<RenameTarget, std::string> rename_target(const index::IndexQuery& 
     }
     // `@synthesize width;` binds the instance variable by its property's
     // name: one token names both.
-    if(root.symbol.kind == SymbolKind::Field &&
-       !index::locate(query,
-                      {.mode = index::SymbolQuery::Mode::Exact,
-                       .pattern = root.symbol.name,
-                       .kinds = {SymbolKind::Property}})
-            .empty()) {
+    if(root.symbol.kind == SymbolKind::Field && !index::locate(query,
+                                                               {.mode = index::Locator::Mode::Exact,
+                                                                .pattern = root.symbol.name,
+                                                                .kinds = {SymbolKind::Property}})
+                                                     .empty()) {
         for(auto& site: query.sites(root.symbol.hash, root.site.file, RelationKind::Reference)) {
             auto cursor = query.symbol_at(site.file, site.range.begin);
             if(cursor && ranges::any_of(cursor->symbols, [&](index::SymbolHash hash) {

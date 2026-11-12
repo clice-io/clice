@@ -2,7 +2,7 @@ module clice:feature.code_actions;
 
 import :compile.compilation;
 import :index.query;
-import :index.site;
+import :index.query.site;
 import :support.prelude;
 import :syntax.source_text;
 import :syntax.token;

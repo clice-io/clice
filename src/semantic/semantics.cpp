@@ -306,6 +306,15 @@ public:
         if(head) {
             instantiation_depth += 1;
         }
+        auto outer_body = skipped_body;
+        if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(X);
+           function && !options.library_bodies && !visiting_root &&
+           function->doesThisDeclarationHaveABody()) {
+            auto location = function->getLocation();
+            if(unit.in_library(location) && !unit.focus_file().contains(unit.file_id(location))) {
+                skipped_body = function->getBody();
+            }
+        }
         bool ret = traverse_node(SemanticNode(static_cast<const clang::Decl*>(X)), [&] {
             // RAV leaves out the condition of `explicit(cond)`, written on the
             // first declaration only — every redeclaration reports it.
@@ -319,6 +328,7 @@ public:
             }
             return Base::TraverseDecl(X);
         });
+        skipped_body = outer_body;
         if(head) {
             instantiation_depth -= 1;
         }
@@ -372,7 +382,7 @@ public:
     }
 
     bool TraverseConstructorInitializer(clang::CXXCtorInitializer* X) {
-        if(!X) {
+        if(!X || skipped_body) {
             return true;
         }
 
@@ -406,7 +416,7 @@ public:
 
     // Stmt is the same, but this form allows the data recursion optimization.
     bool dataTraverseStmtPre(clang::Stmt* X) {
-        if(!X || is_implicit(X)) {
+        if(!X || is_implicit(X) || X == skipped_body) {
             return false;
         }
 
@@ -1005,6 +1015,10 @@ private:
     /// root it traverses.
     const clang::Decl* visiting_root = nullptr;
     llvm::DenseSet<const clang::Decl*> root_set;
+
+    /// The body of the function being traversed whose body and constructor
+    /// initializers are left out (SemanticsOptions::library_bodies).
+    const clang::Stmt* skipped_body = nullptr;
 
     /// The source ranges of the binary operators popped so far.
     llvm::DenseMap<const clang::Expr*, clang::SourceRange> operator_ranges;

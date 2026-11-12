@@ -1,0 +1,56 @@
+["left out"."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["left out"."$ clice query references helper"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#e0a9e5cbcaeac7ae",
+    "references": [],
+    "total": 0
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["asked for"."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["asked for"."$ clice query references helper"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#e0a9e5cbcaeac7ae",
+    "references": [
+      {
+        "file": "${WS}/system/lib.h",
+        "line": 4,
+        "context": "    return helper() + helper();",
+        "function": "twice"
+      },
+      {
+        "file": "${WS}/system/lib.h",
+        "line": 4,
+        "context": "    return helper() + helper();",
+        "function": "twice"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0

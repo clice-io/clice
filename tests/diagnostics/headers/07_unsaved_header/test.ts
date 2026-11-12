@@ -1,9 +1,10 @@
 import { test } from "@clice/tools/testing";
 
 // The header's unsaved buffer declares the function main.cpp calls: main.cpp
-// compiles against the header on disk, as clangd does, until it is saved.
-// Serving every open buffer to every compile would rebuild the includers'
-// precompiled preambles on each keystroke in the header.
+// compiles against the header on disk, as clangd does, until it is saved,
+// and its errors come with a note naming the header whose unsaved text it
+// did not read. Serving every open buffer to every compile would rebuild
+// the includers' precompiled preambles on each keystroke in the header.
 test(async (t) => {
     const s = await t.start();
     s.open("header.h");

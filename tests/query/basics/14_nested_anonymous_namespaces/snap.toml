@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "N",
     "kind": "Namespace",
-    "symbol": "#5c616dc210f5d2d5 path:${WS}/a.h",
+    "symbol": "#d96a137e6d8ee2c7 path:${WS}/a.h",
     "references": [
       {
         "file": "${WS}/a.cpp",
@@ -39,7 +39,7 @@ stdout = '''
   "result": {
     "name": "N",
     "kind": "Namespace",
-    "symbol": "#5c616dc210f5d2d5 path:${WS}/c.cpp",
+    "symbol": "#5dd2380be16612ef path:${WS}/c.cpp",
     "references": [
       {
         "file": "${WS}/c.cpp",

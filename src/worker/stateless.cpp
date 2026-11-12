@@ -8,9 +8,9 @@ import :feature.diagnostics;
 import :feature.document_links;
 import :feature.formatting;
 import :feature.signature_help;
-import :index.include_tree;
-import :index.indexer;
-import :index.tu_index;
+import :index.indexing.include_tree;
+import :index.indexing;
+import :index.indexing.tu_index;
 import :support.json;
 import :support.logging;
 import :support.process;
@@ -19,6 +19,7 @@ import :syntax.position;
 import :vfs.file_system;
 import :worker.common;
 import :worker.crash_report;
+import :worker.preamble_index;
 import :worker.protocol;
 import :worker.stateless;
 import :worker.test_hooks;
@@ -57,11 +58,15 @@ static std::vector<std::byte> serialize_preamble_index(CompilationUnit& unit,
     auto diagnostics = to_client_json(feature::diagnostics(unit), "[]");
 
     Timer blob_timer;
-    auto blob = index::build_preamble_index(unit,
-                                            links,
-                                            inactive.regions,
-                                            inactive.open_stack,
-                                            diagnostics);
+    // The preamble compile remaps the buffer truncated at the bound, so the
+    // focus file's content is exactly the preamble text the PCH is built
+    // from.
+    auto blob = worker::encode_preamble_index(unit.focus_file().content(),
+                                              index::build_tu_index(unit),
+                                              links,
+                                              inactive.regions,
+                                              inactive.open_stack,
+                                              diagnostics);
     LOG_PERF("index_detail",
              "op=preamble links_ms={:.2f} blob_ms={:.2f} bytes={}",
              links_ms,
@@ -88,7 +93,8 @@ static std::optional<std::string> write_preamble_index(llvm::StringRef blob,
 static index::TUIndexOptions index_options(const worker::IndexRequest& request) {
     return {.known_variants = request.known_variants,
             .known_instantiations = request.known_instantiations,
-            .standard_library_instantiations = request.standard_library_instantiations};
+            .standard_library_instantiations = request.standard_library_instantiations,
+            .library_bodies = request.library_bodies};
 }
 
 /// Where a PCH or PCM build writes: the master's tmp path when it provided

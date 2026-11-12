@@ -501,8 +501,12 @@ ZEST_CASE(CDBWriteFailureRetried) {
 
         bool fail = true;
 
-        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
-            return !fail && real->write(puts, removes);
+        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
+            if(fail) {
+                return std::unexpected("refused");
+            }
+            return real->write(puts, removes);
         }
     };
 
@@ -700,9 +704,10 @@ ZEST_CASE(CorruptWriteSavesSnapshot) {
 
         bool poisoned = false;
 
-        bool write(llvm::ArrayRef<Blob>, llvm::ArrayRef<index::BlobKey>) override {
+        std::expected<void, std::string> write(llvm::ArrayRef<Blob>,
+                                               llvm::ArrayRef<index::BlobKey>) override {
             poisoned = true;
-            return false;
+            return std::unexpected("damaged");
         }
 
         bool corrupted() const override {

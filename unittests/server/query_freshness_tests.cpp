@@ -1,9 +1,9 @@
 module clice;
 
 import :index.query;
-import :index.search;
+import :index.query.locate;
 import :index.shard;
-import :index.tu_index;
+import :index.indexing.tu_index;
 import :project.background;
 import :project.project;
 import :server.served_project;
@@ -105,7 +105,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
     ZASSERT(ranges::contains(reference_files(hash), "main.cpp"));
 
     // Line-based resolution in the file works while its index is current.
-    index::SymbolQuery by_line;
+    index::Locator by_line;
     by_line.position = {.path = project.file_table.resolve(focus_id).str(), .line = 3};
     ZASSERT(!index::locate(disk_query, by_line).empty());
 

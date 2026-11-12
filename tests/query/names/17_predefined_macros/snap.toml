@@ -1,0 +1,98 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query references main.cpp:2:13"]
+stdout = '''
+{
+  "result": {
+    "name": "FOO",
+    "kind": "Macro",
+    "symbol": "#f96e0a8891754788",
+    "references": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 2,
+        "context": "int value = FOO + LOCAL;",
+        "function": null
+      }
+    ],
+    "total": 1
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query definition FOO"]
+stdout = '''
+{
+  "result": {
+    "name": "FOO",
+    "kind": "Macro",
+    "symbol": "#f96e0a8891754788",
+    "documentation": null,
+    "definition": {
+      "file": "<command line>",
+      "startLine": 1,
+      "endLine": 1,
+      "text": ""
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query symbol-search FOO"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "FOO",
+        "signature": null,
+        "kind": "Macro",
+        "file": "<command line>",
+        "line": 1,
+        "container": null,
+        "symbol": "#f96e0a8891754788"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query definition __cplusplus"]
+stdout = '''
+{
+  "result": {
+    "name": "__cplusplus",
+    "kind": "Macro",
+    "symbol": "#b462100cb8486466",
+    "documentation": null,
+    "definition": {
+      "file": "<built-in>",
+      "startLine": 1,
+      "endLine": 1,
+      "text": ""
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query definition \"main.cpp:2:13 kind:function\""]
+stdout = '''
+{
+  "error": "symbol not found",
+  "stale": []
+}
+'''
+exit = 1

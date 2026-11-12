@@ -1,7 +1,7 @@
 module clice:feature.workspace_symbols;
 
 import :index.query;
-import :index.site;
+import :index.query.site;
 import :index.symbol;
 import :support.prelude;
 import :syntax.position;
@@ -30,7 +30,7 @@ struct WorkspaceSymbol {
     std::uint64_t content = 0;
 };
 
-/// The project's symbols matching `text` (index::SymbolQuery, its paths
+/// The project's symbols matching `text` (index::Locator, its paths
 /// relative to `root`), best first, at most workspace_symbol_limit; an
 /// open file's only from the project serving its buffer.
 std::vector<WorkspaceSymbol> workspace_symbols(const index::IndexQuery& query,

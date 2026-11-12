@@ -1,0 +1,2 @@
+# FOO is the command's: no file defines it.
+flags = ["-std=c++23", "-DFOO=1"]

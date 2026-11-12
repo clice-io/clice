@@ -3,8 +3,8 @@ module clice;
 import :feature.documentation.reading;
 import :feature.documentation;
 import :index.query;
-import :index.search;
-import :index.site;
+import :index.query.locate;
+import :index.query.site;
 import :index.symbol;
 import :semantic.comment;
 import :syntax.lexer;
@@ -106,9 +106,9 @@ auto copied_doc_targets(const index::IndexQuery& query,
 
     auto chain = query.container_chain(hash, anchor);
     for(auto depth = copied->absolute ? 1 : chain.size() + 1; depth > 0; depth -= 1) {
-        index::SymbolQuery lookup{.mode = index::SymbolQuery::Mode::Exact,
-                                  .absolute = true,
-                                  .pattern = copied->parts.back().str()};
+        index::Locator lookup{.mode = index::Locator::Mode::Exact,
+                              .absolute = true,
+                              .pattern = copied->parts.back().str()};
         for(auto& container: llvm::ArrayRef(chain).take_front(depth - 1)) {
             lookup.scope.push_back({.name = container.name});
         }

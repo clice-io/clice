@@ -2,7 +2,7 @@ module clice;
 
 import :index.project_index;
 import :index.shard;
-import :index.writer_lock;
+import :index.database.writer_lock;
 import :server.control;
 import :server.master;
 import :server.served_project;

@@ -5,12 +5,12 @@ import :feature.code_actions;
 import :feature.formatting;
 import :feature.protocol;
 import :index.query;
-import :index.search;
+import :index.query.locate;
 import :index.shard;
-import :index.site;
+import :index.query.site;
 import :index.symbol;
-import :index.symbol_query;
-import :index.text;
+import :index.search.locator;
+import :index.query.text;
 import :semantic.symbol;
 import :syntax.source_text;
 import :vfs.file_table;
@@ -77,8 +77,8 @@ std::vector<CanonicalRef> declaring_headers(const index::IndexQuery& query,
                                             const IncludeRequest& request,
                                             Fid file) {
     auto& files = query.file_table();
-    index::SymbolQuery symbol_query;
-    symbol_query.mode = index::SymbolQuery::Mode::Exact;
+    index::Locator symbol_query;
+    symbol_query.mode = index::Locator::Mode::Exact;
     symbol_query.pattern = request.name;
     for(auto segment: llvm::split(llvm::StringRef(request.scope), "::")) {
         if(!segment.empty()) {

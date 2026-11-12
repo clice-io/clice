@@ -4,6 +4,7 @@ import :project.project;
 import :syntax.preamble;
 import :unittests.worker.helpers;
 import :unittests.utils;
+import :worker.preamble_index;
 import :worker.protocol;
 
 namespace clice::testing {
@@ -73,9 +74,9 @@ ZEST_CASE(BuildPCHThenCompile) {
 
     // The worker wrote the paired preamble index: it must load and
     // carry the preamble's document links (the #include of common.h).
-    auto state = load_pch_index(tmp.path("preamble.pch.idx"));
+    auto state = worker::open_preamble_index(tmp.path("preamble.pch.idx"));
     ZASSERT(state != nullptr);
-    bool has_common_link = ranges::any_of(state->links(), [&](auto& link) {
+    bool has_common_link = ranges::any_of(state->links, [&](auto& link) {
         return llvm::StringRef(link.target).ends_with("common.h");
     });
     ZEXPECT(has_common_link);

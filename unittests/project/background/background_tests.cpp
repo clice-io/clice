@@ -1,7 +1,7 @@
 module clice;
 
 import :index.project_index;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :project.background;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.forwarding_database;
@@ -482,9 +482,10 @@ ZEST_CASE(SaveStartsOwedPass) {
 
         bool poisoned = false;
 
-        bool write(llvm::ArrayRef<Blob>, llvm::ArrayRef<index::BlobKey>) override {
+        std::expected<void, std::string> write(llvm::ArrayRef<Blob>,
+                                               llvm::ArrayRef<index::BlobKey>) override {
             poisoned = true;
-            return false;
+            return std::unexpected("damaged");
         }
 
         bool corrupted() const override {

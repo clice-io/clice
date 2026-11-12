@@ -20,6 +20,12 @@ host = "main.cpp"
 ["a changed includer is read again".diagnostics]
 diagnostics = [
     {
+        at = "⟦⟧X(alpha)",
+        severity = "warning",
+        message = "This file was compiled against ${WS}/main.cpp on disk, not its unsaved text: saving it may clear the errors here.",
+        source = "clice",
+    },
+    {
         at = "⟦X⟧(alpha)",
         severity = "error",
         message = "use of undeclared identifier 'missing_value'",

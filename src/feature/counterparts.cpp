@@ -183,7 +183,7 @@ struct Pairing {
                     declaring.insert(other);
                 }
             });
-            ctx.query.project().for_each_reference_file(hash, [&](Fid other) {
+            ctx.query.project().for_each_file(hash, index::SymbolFiles::Declaring, [&](Fid other) {
                 auto* other_shard = consider(other) ? shard_of(other) : nullptr;
                 if(!other_shard) {
                     return;
@@ -340,7 +340,7 @@ query::Result<CounterpartsResult> counterparts(query::Context& ctx,
     if(pairing.side == Side::Fragment) {
         return result;
     }
-    if(!ctx.query.indexes(file)) {
+    if(!ctx.query.project().shard(file)) {
         ctx.unindexed.push_back(result.file);
     }
     pairing.pair_by_declarations();

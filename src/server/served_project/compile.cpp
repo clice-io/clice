@@ -4,7 +4,7 @@ import :compile.compilation;
 import :compile.diagnostic;
 import :compile.tidy;
 import :feature.diagnostics;
-import :index.tu_index;
+import :index.indexing.tu_index;
 import :project.background;
 import :project.command;
 import :project.graph.pch;
@@ -24,15 +24,17 @@ import :support.text;
 import :syntax.dependency_graph;
 import :vfs.file_table;
 import :vfs.path;
+import :worker.preamble_index;
 import :worker.protocol;
 
 namespace clice {
 
 /// The diagnostics the PCH's build raised in the preamble.
-static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TUIndex& preamble) {
+static std::vector<feature::FileDiagnostic>
+    preamble_diagnostics(const worker::PreambleIndex& preamble) {
     std::vector<feature::FileDiagnostic> diagnostics;
     [[maybe_unused]] auto status =
-        json::from_string<ipc::lsp_format>(preamble.preamble_diagnostics(), diagnostics);
+        json::from_string<ipc::lsp_format>(preamble.diagnostics, diagnostics);
     return diagnostics;
 }
 
@@ -254,11 +256,6 @@ void ServedProject::start_compiling(Fid path_id) {
         return;
     }
     document.compiles = true;
-    // Its compile serves the file's index, unless it skips the bodies of
-    // the headers: then only a background run shows what they hold.
-    if(!project.settings.project.skip_header_bodies) {
-        project.background_index.leave_to_document(path_id);
-    }
 }
 
 void ServedProject::request_compile(std::shared_ptr<Session> session) {
@@ -479,7 +476,7 @@ struct ServedProject::CompileAttempt {
     BuiltPCH built;
 
     /// The pch.idx index of the preamble's PCH the parse loads.
-    std::shared_ptr<index::TUIndex> preamble_index;
+    std::shared_ptr<worker::PreambleIndex> preamble_index;
 
     /// Where a worker writes an index too large for its reply.
     std::optional<CacheStore::PendingEntry> transfer;
@@ -685,10 +682,8 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::pch() {
                          ? project.preamble_index(*built.loaded)
                          : nullptr;
     if(preamble_index) {
-        auto regions = preamble_index->inactive_regions();
-        params.preamble_inactive_regions.assign(regions.begin(), regions.end());
-        auto conditionals = preamble_index->open_conditionals();
-        params.open_conditionals.assign(conditionals.begin(), conditionals.end());
+        params.preamble_inactive_regions = preamble_index->inactive_regions;
+        params.open_conditionals = preamble_index->open_conditionals;
     }
     co_return std::nullopt;
 }
@@ -854,7 +849,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
 }
 
 void ServedProject::CompileAttempt::assemble(std::vector<feature::FileDiagnostic>& diagnostics) {
-    if(preamble_index && preamble_index->matches_preamble(params.text)) {
+    if(preamble_index && preamble_index->matches(params.text)) {
         diagnostics =
             feature::with_preamble(std::move(diagnostics), preamble_diagnostics(*preamble_index));
     }

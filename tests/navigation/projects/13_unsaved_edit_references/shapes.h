@@ -1,0 +1,1 @@
+int area(int x);

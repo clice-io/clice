@@ -1,0 +1,6 @@
+[test.radius]
+references = [
+    "extra.h │ double ⟦radius⟧;",
+    "extra.h │ return 2 * shape.⟦radius⟧;",
+    "return Hidden{1.0}.⟦radius⟧ + hidden_twice();",
+]

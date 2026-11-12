@@ -2,7 +2,7 @@ module clice;
 
 import :index.shard;
 import :index.symbol;
-import :index.tu_manifest;
+import :index.project_index.manifest;
 import :project.background;
 import :project.graph.pcm;
 import :project.graph.task_graph;
@@ -34,15 +34,8 @@ index::Shard shard_of(llvm::StringRef content) {
     return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
 }
 
-/// The project the changes are handed to. Its owner's open documents'
-/// compiles parse the bodies of their headers and serve their index, so
-/// that a dependency change splits open files from closed ones
-/// (SkippedBodiesReindexOpen covers the default).
+/// The project the changes are handed to.
 struct Harness : ProjectFixture {
-    Harness() {
-        project.settings.project.skip_header_bodies = false;
-    }
-
     /// The files the background index owes a reindex for `reason`, sorted.
     llvm::SmallVector<Fid> queued(ReindexReason reason) {
         auto& queue = project.background_index.queue();
@@ -210,8 +203,7 @@ ZEST_CASE(SaveMarksDependents) {
     ZASSERT(queued(ReindexReason::ContentChanged).empty());
 }
 
-ZEST_CASE(SkippedBodiesReindexOpen) {
-    project.settings.project.skip_header_bodies = true;
+ZEST_CASE(OpenDependentsReindex) {
     auto header = intern("/proj/h.h");
     auto open_tu = list_unit(project.cdb, "/proj/a.cpp");
     open_document("/proj/a.cpp");
@@ -222,13 +214,12 @@ ZEST_CASE(SkippedBodiesReindexOpen) {
 
     auto affected = project.files_changed({header}, open_files);
 
-    // An open file's compile skipping the bodies of its headers serves no
-    // index of what they hold: the open dependent reindexes too.
+    // An open file's compile serves its own buffer, never the project's
+    // index: the open dependent reindexes like the closed one.
     ZASSERT(ranges::contains(affected.stale, open_tu));
     llvm::SmallVector<Fid> reindexed{open_tu, closed_tu};
     ranges::sort(reindexed);
     ZASSERT(queued(ReindexReason::DepsOnly) == reindexed);
-    ZASSERT(!project.background_index.left_to_document(open_tu));
 }
 
 ZEST_CASE(TransitiveDependentsEnqueue) {

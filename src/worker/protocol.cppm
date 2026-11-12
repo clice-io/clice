@@ -1,6 +1,7 @@
 module clice:worker.protocol;
 
 import :compile.compilation;
+import :feature.document_links;
 import :settings.settings;
 import :feature.code_actions;
 import :feature.code_completion;
@@ -141,6 +142,10 @@ struct IndexRequest {
     /// Index the standard library's own instantiations and expansions (see
     /// index::TUIndexOptions).
     bool standard_library_instantiations = false;
+
+    /// Index the bodies of the functions library headers define (see
+    /// index::TUIndexOptions).
+    bool library_bodies = false;
 
     /// Where the worker writes an index too large for an IPC message: a
     /// transfer path of the master's store, empty when it has none.
@@ -658,7 +663,7 @@ struct RequestTraits<clice::worker::HoverParams> {
 
 template <>
 struct RequestTraits<clice::worker::DocumentLinkParams> {
-    using Result = std::vector<clice::index::DocumentLink>;
+    using Result = std::vector<clice::feature::DocumentLink>;
     constexpr inline static std::string_view method = "clice/worker/documentLink";
 };
 

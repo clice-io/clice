@@ -67,13 +67,13 @@ enum class SymbolScope : std::uint8_t {
     External = 0,
     /// Can be referenced across files within one TU but not across TUs
     /// (internal linkage: static, anonymous namespace). Stored in the
-    /// shards holding its entries; the TUs that reference it from several
-    /// files list those files (TUManifest::shared_locals).
+    /// shards holding its entries; once several files hold them, the
+    /// project index keeps a record of those files.
     Internal = 1,
     /// Declared inside a function (local variables, parameters, labels,
     /// local classes). Stored in the defining file's Shard blob; one another
     /// file names — through an instantiation, a macro expansion, or a local
-    /// class a function returns — is listed as for Internal.
+    /// class a function returns — has a record as an Internal one.
     FunctionLocal = 2,
 };
 
@@ -82,8 +82,6 @@ struct Relation {
     /// constructors hide it from reflection, and reflection is what lets a
     /// relation vector persist as one contiguous struct vector.
     RelationKind::Kind kind = RelationKind::Invalid;
-
-    std::uint32_t padding = 0;
 
     LocalSourceRange range;
 
@@ -124,11 +122,14 @@ struct FileIndex {
 
 /// What the symbol table records about a symbol beyond its name and kind.
 /// Each translation unit reports the bits it saw and the symbol record
-/// keeps the union, so a set bit means "some unit saw this".
+/// keeps the union, so a set bit means "some unit saw this" — but
+/// HasDefinition and SpelledInMacro.
 enum class SymbolFlags : std::uint16_t {
     None = 0,
-    /// Some unit holds a definition; without it the symbol is
-    /// declaration-only.
+    /// The source answering knows a definition; without it the symbol is
+    /// declaration-only there. Never stored: a symbol table sets it for a
+    /// symbol some file defines (Symbol::view), a shard for a local symbol
+    /// its own entries define.
     HasDefinition = 1 << 0,
     /// A template pattern, partial specializations included.
     Template = 1 << 1,
@@ -142,7 +143,8 @@ enum class SymbolFlags : std::uint16_t {
     /// "(anonymous struct)".
     Unnamed = 1 << 5,
     /// Every declaration's name token comes out of a macro expansion, so no
-    /// written source spells the name.
+    /// written source spells the name: set while every unit reporting the
+    /// symbol says so.
     SpelledInMacro = 1 << 6,
     /// The canonical declaration sits in a system header.
     SystemHeader = 1 << 7,
@@ -247,10 +249,16 @@ struct SymbolView {
     SymbolKind kind;
     SymbolScope scope = SymbolScope::External;
     SymbolFlags flags = SymbolFlags::None;
+
+    /// A file declaring the symbol: the lowest of those defining it, else of
+    /// those declaring it; `no_file` when the source answering knows none.
     std::uint32_t file = no_file;
     TokenClass token_class;
 };
 
+/// A symbol in a symbol table: what it is, and the files holding its
+/// entries — a unit's files as the path ids of its TU index, every unit's
+/// as the path ids of the project index.
 struct Symbol {
     /// The symbol's own name: an identifier, or the rendering of a special
     /// name ("~Foo", "operator<<", "operator int"). A presentation for
@@ -281,32 +289,34 @@ struct Symbol {
     /// they occur (token_class).
     TokenClass token_class;
 
-    /// The file holding the canonical declaration — a definition when one
-    /// is known, else the first declaration — as a TU-local path id in a
-    /// TU index and a FileTable id in the project index; `no_file` when the
-    /// symbol is only referenced.
-    std::uint32_t file = no_file;
-
-    /// The other files defining the symbol, ids like `file`'s: in a TU index
-    /// the unit's (a C variable two files tentatively define), in the
-    /// project index every unit's (a C function with a weak and a strong
-    /// definition, a `main` per program). Empty for most symbols, and for a
-    /// namespace, whose blocks are among the files naming it.
-    Bitmap other_definition_files;
-
-    /// All files that referenced this symbol; for an internal-linkage one
-    /// also the files whose relations target it (a structured binding's
-    /// TypeDefinition relation naming a type the file never spells), and
-    /// the ones whose instantiations name it.
+    /// The files whose entries name the symbol; for one below external
+    /// scope also the files whose relations target it (a structured
+    /// binding's TypeDefinition relation naming a type the file never
+    /// spells), and the ones whose instantiations name it.
     Bitmap reference_files;
+
+    /// The files declaring the symbol, the ones defining it among them.
+    Bitmap declaration_files;
+
+    /// The files defining the symbol: one for most, one per file for a C
+    /// function a weak and a strong definition give, a name each program
+    /// of a project defines (`main`), a namespace's blocks.
+    Bitmap definition_files;
 
     /// For an external symbol, the files whose instantiation shards name
     /// it, which the questions about its references, calls, definitions
     /// and type hierarchy read, not rename or the name search.
     Bitmap instantiation_files;
 
+    /// Whether no file holds an entry of the symbol any more.
+    bool in_no_file() const {
+        return reference_files.isEmpty() && declaration_files.isEmpty() &&
+               instantiation_files.isEmpty();
+    }
+
     /// The view a reader hands out for this entry; the strings borrow it.
     SymbolView view() const {
+        auto& declaring = definition_files.isEmpty() ? declaration_files : definition_files;
         return {
             .name = name,
             .args = args,
@@ -314,8 +324,8 @@ struct Symbol {
             .parent = parent,
             .kind = kind,
             .scope = scope,
-            .flags = flags,
-            .file = file,
+            .flags = definition_files.isEmpty() ? flags : flags | SymbolFlags::HasDefinition,
+            .file = declaring.isEmpty() ? no_file : declaring.minimum(),
             .token_class = token_class,
         };
     }
@@ -356,16 +366,6 @@ struct SymbolInfo {
     std::string display_name() const {
         return name + args;
     }
-};
-
-/// A resolved document link: the argument range of an include-like
-/// directive (byte offsets in the containing file) and the absolute path
-/// of the target file. Plain data — it serializes over the worker RPC and
-/// the PCH's pch.idx index as-is and becomes an LSP DocumentLink only
-/// at the reply edge, where the session's line map does the conversion.
-struct DocumentLink {
-    LocalSourceRange range;
-    std::string target;
 };
 
 }  // namespace clice::index

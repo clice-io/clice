@@ -4,7 +4,7 @@
 
 module clice:server.control;
 
-import :index.writer_lock;
+import :index.database.writer_lock;
 import :support.prelude;
 
 namespace clice {

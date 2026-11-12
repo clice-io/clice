@@ -2,7 +2,7 @@ module clice;
 
 import :index.database;
 import :index.project_index;
-import :index.symbol_query;
+import :index.search.locator;
 import :project.background;
 import :project.project;
 import :unittests.utils;
@@ -66,9 +66,11 @@ ZEST_CASE(CorruptSaveKeepsPending) {
 
         bool written = false;
 
-        bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
-            written = real->write(puts, removes);
-            return written;
+        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
+            auto committed = real->write(puts, removes);
+            written = committed.has_value();
+            return committed;
         }
 
         bool corrupted() const override {
@@ -92,6 +94,43 @@ ZEST_CASE(CorruptSaveKeepsPending) {
     auto kept = f.project.database->read(index::BlobKind::ContextChoices, "contexts");
     ZASSERT(bool(kept));
     ZASSERT(kept.buffer->getBuffer() == "choices");
+}
+
+ZEST_CASE(RefusedSaveCounted) {
+    // A write the database refuses leaves the batch pending and counted as
+    // unsaved; the save that commits takes it and clears the count.
+    struct Refusing final : ForwardingDatabase {
+        using ForwardingDatabase::ForwardingDatabase;
+
+        bool refuse = true;
+
+        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                               llvm::ArrayRef<index::BlobKey> removes) override {
+            if(refuse) {
+                return std::unexpected("no space left on device");
+            }
+            return real->write(puts, removes);
+        }
+    };
+
+    TempDir tmp;
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    auto refusing = std::make_unique<Refusing>(std::move(f.project.database));
+    auto* database = refusing.get();
+    f.project.database = std::move(refusing);
+    f.project.choices.bytes = "choices";
+    f.project.choices.dirty = true;
+
+    f.save();
+    ZASSERT(f.project.choices.dirty);
+    ZEXPECT(f.project.unsaved_bytes >= 7u);
+
+    database->refuse = false;
+    f.save();
+    ZASSERT(!f.project.choices.dirty);
+    ZEXPECT(f.project.unsaved_bytes == 0u);
 }
 
 ZEST_CASE(UnownedContextsPassThrough) {
@@ -237,7 +276,7 @@ struct ShrinkProject {
 
     std::size_t hits(llvm::StringRef name) {
         return f.project.index.search_index()
-            .search(*index::SymbolQuery::parse(name), 10, {})
+            .search(*index::Locator::parse(name), 10, {})
             .hits.size();
     }
 
@@ -354,7 +393,7 @@ ZEST_CASE(SaveWaitsForShrink) {
     open_store(p.tmp, again.project);
     again.load();
     ZEXPECT(again.project.index.search_index()
-                .search(*index::SymbolQuery::parse("second_value"), 10, {})
+                .search(*index::Locator::parse("second_value"), 10, {})
                 .hits.size() == 1u);
 }
 

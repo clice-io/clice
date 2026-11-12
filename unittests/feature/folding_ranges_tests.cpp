@@ -1,7 +1,7 @@
 module clice;
 
 import :feature.folding_ranges;
-import :index.entries;
+import :index.query.entries;
 import :index.symbol;
 import :semantic.symbol;
 import :syntax.lexer;

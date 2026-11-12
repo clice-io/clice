@@ -6,7 +6,7 @@ import :driver.run;
 import :feature.counterparts;
 import :feature.query;
 import :index.project_index;
-import :index.symbol_query;
+import :index.search.locator;
 import :project.project;
 import :syntax.dependency_graph;
 import :vfs.path;
@@ -389,7 +389,7 @@ int ask_symbol(const Question& question, Ask ask) {
         question.query,
         /*with_build=*/false,
         [&](Project&, feature::query::Context& ctx) {
-            return index::SymbolQuery::parse(question.target.locator).and_then([&](auto locator) {
+            return index::Locator::parse(question.target.locator).and_then([&](auto locator) {
                 return ask(ctx, std::move(locator));
             });
         });
@@ -440,7 +440,7 @@ int run(SymbolSearch& question) {
 }
 
 int run(ReadSymbol& question) {
-    return ask_symbol(question, [](feature::query::Context& ctx, index::SymbolQuery locator) {
+    return ask_symbol(question, [](feature::query::Context& ctx, index::Locator locator) {
         return feature::query::read_symbol(ctx, std::move(locator));
     });
 }
@@ -459,19 +459,19 @@ int run(DocumentSymbols& question) {
 }
 
 int run(Definition& question) {
-    return ask_symbol(question, [](feature::query::Context& ctx, index::SymbolQuery locator) {
+    return ask_symbol(question, [](feature::query::Context& ctx, index::Locator locator) {
         return feature::query::definition(ctx, std::move(locator));
     });
 }
 
 int run(References& question) {
-    return ask_symbol(question, [&](feature::query::Context& ctx, index::SymbolQuery locator) {
+    return ask_symbol(question, [&](feature::query::Context& ctx, index::Locator locator) {
         return feature::query::references(ctx, std::move(locator), question.include_declaration);
     });
 }
 
 int run(CallGraph& question) {
-    return ask_symbol(question, [&](feature::query::Context& ctx, index::SymbolQuery locator) {
+    return ask_symbol(question, [&](feature::query::Context& ctx, index::Locator locator) {
         auto direction = question.direction;
         return feature::query::call_graph(ctx,
                                           std::move(locator),
@@ -481,13 +481,13 @@ int run(CallGraph& question) {
 }
 
 int run(Implementation& question) {
-    return ask_symbol(question, [](feature::query::Context& ctx, index::SymbolQuery locator) {
+    return ask_symbol(question, [](feature::query::Context& ctx, index::Locator locator) {
         return feature::query::implementation(ctx, std::move(locator));
     });
 }
 
 int run(TypeHierarchy& question) {
-    return ask_symbol(question, [&](feature::query::Context& ctx, index::SymbolQuery locator) {
+    return ask_symbol(question, [&](feature::query::Context& ctx, index::Locator locator) {
         auto direction = question.direction;
         return feature::query::type_hierarchy(ctx,
                                               std::move(locator),

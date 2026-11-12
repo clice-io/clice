@@ -6,6 +6,7 @@ import :server.master;
 import :server.served_project;
 import :server.test_hooks;
 import :support.logging;
+import :worker.preamble_index;
 import :worker.test_hooks;
 
 namespace clice {
@@ -208,7 +209,7 @@ void LSPClient::register_test_hooks() {
                 for(auto& [key, pch]: project.pchs) {
                     if(auto index = pch.index.lock()) {
                         stats.pch_loaded_indexes += 1;
-                        stats.pch_index_bytes += index->bytes().size();
+                        stats.pch_index_bytes += index->mapped->getBufferSize();
                     }
                     stats.pch_cache_entries += pch.path.empty() ? 0 : 1;
                 }

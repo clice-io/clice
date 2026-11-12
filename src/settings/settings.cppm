@@ -274,6 +274,18 @@ struct ProjectSettings {
                   "and space. Applies to the units indexed after a change.")
     bool standard_library_instantiations = false;
 
+    KANNOTATE(&index_library_bodies,
+              description =
+                  "Index the bodies of the functions system headers "
+                  "define — the names `std::vector::push_back` uses inside "
+                  "— so references and the call hierarchy reach a library's "
+                  "internals. Off by default: only a reader of the library's "
+                  "own code asks about them, a header opened in the editor "
+                  "is indexed whole all the same, and walking them in every "
+                  "unit costs indexing time and space. Applies to the units "
+                  "indexed after a change.")
+    bool index_library_bodies = false;
+
     KANNOTATE(&skip_header_bodies,
               description =
                   "Skip the bodies of the functions in the headers an open "

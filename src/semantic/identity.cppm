@@ -30,8 +30,13 @@ public:
 
     /// The entity of a macro definition: its name and where the `#define`
     /// sits, as the file's portable name (path::portable) and the offset in
-    /// it. A builtin or command-line macro has no file and is its name alone.
+    /// it. A builtin or command-line macro has no file and is its name, with
+    /// which of the two defines it (predefined_macro).
     std::uint64_t entity(const clang::MacroInfo* macro);
+
+    /// The entity of the macro `name` no file defines: the command line's
+    /// (`-D`) or the compiler's own, as entity() names it.
+    static std::uint64_t predefined_macro(llvm::StringRef name, bool command_line);
 
     /// What stands for the macro `name` where a directive spells it and no
     /// definition resolves it (Directive::unresolved_macros): one entity per

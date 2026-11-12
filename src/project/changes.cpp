@@ -48,13 +48,11 @@ struct Cascade {
     }
 
     /// A dependency of the file changed: it recompiles when it is open, and
-    /// reindexes unless its document's compile serves it.
+    /// reindexes.
     void mark_dependent(Fid file) {
         project.index.mark_outdated(file);
         mark_stale(file);
-        if(!project.background_index.left_to_document(file)) {
-            reindex(file, false);
-        }
+        reindex(file, false);
     }
 
     /// Every unit whose compile or build depends on the file — the single
@@ -120,9 +118,7 @@ struct Cascade {
             } else if(id.kind == NodeKind::AST) {
                 if(opened(file)) {
                     mark_stale(file);
-                    if(!project.background_index.left_to_document(file)) {
-                        reindex(file, true);
-                    }
+                    reindex(file, true);
                 }
             } else {
                 // A dirtied module unit: its importers are in this same list.

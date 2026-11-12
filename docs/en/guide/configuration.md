@@ -142,6 +142,16 @@ Index what the standard library's own template instantiations and macros resolve
 
 <div class="config-option">
 
+| Option                 | Type   | Default |
+| ---------------------- | ------ | ------- |
+| `index_library_bodies` | `bool` | `false` |
+
+Index the bodies of the functions system headers define — the names `std::vector::push_back` uses inside — so references and the call hierarchy reach a library's internals. Off by default: only a reader of the library's own code asks about them, a header opened in the editor is indexed whole all the same, and walking them in every unit costs indexing time and space. Applies to the units indexed after a change.
+
+</div>
+
+<div class="config-option">
+
 | Option               | Type   | Default |
 | -------------------- | ------ | ------- |
 | `skip_header_bodies` | `bool` | `true`  |

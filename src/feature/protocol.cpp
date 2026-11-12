@@ -1,7 +1,7 @@
 module clice;
 
 import :feature.protocol;
-import :index.site;
+import :index.query.site;
 import :index.symbol;
 import :syntax.position;
 import :syntax.token;

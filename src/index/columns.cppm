@@ -9,11 +9,86 @@
 
 module clice:index.columns;
 
-import :index.format;
 import :support.prelude;
 import :syntax.token;
 
 namespace clice::index {
+
+/// Sentinel in a length column: the sparse escape table holds an entry
+/// range's real end, a line's real length.
+constexpr inline std::uint8_t length_escape = 0xff;
+
+/// Files whose content fits 24-bit offsets use the packed range column;
+/// larger files fall back to the wide begin/length columns.
+constexpr inline std::uint32_t packed_range_limit = 0xffffff;
+
+/// One entry range in the packed column: begin in the high 24 bits, length
+/// in the low 8. Raw u32 order equals (begin, length) lexicographic order.
+constexpr inline std::uint32_t pack_range(std::uint32_t begin, std::uint8_t length) {
+    return (begin << 8) | length;
+}
+
+/// A column of ids into a table, back to back in the width the table's
+/// size picks: u8 up to 256 entries, u16 up to 65536, u32 beyond. Readers
+/// know the table, so the width is stored nowhere. End offsets into a text
+/// of `n` bytes are ids into a table of `n + 1`.
+template <template <typename> typename Seq>
+using IdColumnOf = Seq<std::uint8_t>;
+
+using IdColumn = IdColumnOf<codec::blob::Owned>;
+
+/// Entries per block of a delta-encoded begin column.
+constexpr inline std::uint32_t delta_block = 16;
+
+/// The delta of a delta-encoded begin that does not fit: the sparse table
+/// holds the begin.
+constexpr inline std::uint8_t delta_escape = 0xff;
+
+/// The ranges of one side of a blob's entries (occurrences, the relations
+/// no occurrence spans, records).
+///
+/// Ranges use exactly one of three self-describing encodings:
+///   - delta, for a side sorted by begin (occurrences, records): the begin
+///     of every `delta_block`-th entry, then per entry the distance from the
+///     previous entry's begin (0 at a block's start) as a u8 — 255
+///     escaping to the sparse (entry, begin) table — and its length u8;
+///   - packed, for an unsorted side of content < 16MB: `(begin << 8) |
+///     length` per entry;
+///   - wide: begin u32 + length u8 columns.
+/// Lengths >= 255 escape to the sparse (entry, end) table in every
+/// encoding.
+template <template <typename> typename Seq>
+struct RangeColumnsOf {
+    Seq<std::uint32_t> block_begins;
+    Seq<std::uint8_t> deltas;
+    Seq<std::uint32_t> far_entries;
+    Seq<std::uint32_t> far_begins;
+
+    Seq<std::uint32_t> packed;
+
+    Seq<std::uint32_t> begins;
+    Seq<std::uint8_t> lengths;
+
+    Seq<std::uint32_t> long_entries;
+    Seq<std::uint32_t> long_ends;
+};
+
+using RangeColumns = RangeColumnsOf<codec::blob::Owned>;
+
+/// The variant masks of one side of a shard's entries: absent for a single
+/// variant, then u8 / u16 / u32 / u64 / concatenated roaring bitmaps by
+/// variant count.
+template <template <typename> typename Seq>
+struct MaskColumnsOf {
+    Seq<std::uint8_t> masks8;
+    Seq<std::uint16_t> masks16;
+    Seq<std::uint32_t> masks32;
+    Seq<std::uint64_t> masks64;
+    Seq<std::uint32_t> roaring_offsets;
+    Seq<std::uint8_t> roaring;
+};
+
+using MaskColumns = MaskColumnsOf<codec::blob::Owned>;
 
 /// A bitmap over a portable image in place: the container payloads stay
 /// in `data`, which must outlive the bitmap, and the bitmap is read-only

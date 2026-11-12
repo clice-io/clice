@@ -19,7 +19,8 @@ struct ForwardingDatabase : index::BlobDatabase {
         return real->contains(kind, key);
     }
 
-    bool write(llvm::ArrayRef<Blob> puts, llvm::ArrayRef<index::BlobKey> removes) override {
+    std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                           llvm::ArrayRef<index::BlobKey> removes) override {
         return real->write(puts, removes);
     }
 

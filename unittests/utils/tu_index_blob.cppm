@@ -1,8 +1,9 @@
 module clice:unittests.utils.tu_index_blob;
 
 import :index.format;
+import :index.indexing.layout;
+import :index.indexing.tu_index;
 import :index.symbol;
-import :index.tu_index;
 import :support.prelude;
 import :support.text;
 import :unittests.utils;
@@ -65,11 +66,6 @@ inline index::TUIndexBlob tu_index_blob(const index::TUIndex& view) {
                              llvm::ArrayRef<std::uint32_t> references) {
         add_symbol(blob, hash, symbol, references, instantiation_files.lookup(hash));
         return true;
-    });
-    view.for_each_other_definition([&](index::SymbolHash hash, std::uint32_t path_id) {
-        blob.other_definition_entries.push_back(static_cast<std::uint32_t>(
-            ranges::lower_bound(blob.symbol_hashes, hash) - blob.symbol_hashes.begin()));
-        blob.other_definition_files.push_back(path_id);
     });
     for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
         blob.sections.push_back(

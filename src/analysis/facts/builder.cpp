@@ -3,11 +3,11 @@ module clice;
 import :analysis.facts.builder;
 import :analysis.text;
 import :command.file_kind;
-import :index.instantiation_shard;
+import :index.shard.instantiations;
 import :index.project_index;
 import :index.shard;
-import :index.symbol_query;
-import :index.tu_manifest;
+import :index.search.locator;
+import :index.project_index.manifest;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 import :syntax.token;
@@ -813,7 +813,7 @@ void FactsBuilder::classify(index::SymbolHash hash) {
         // pasted where the macro is defined.
         if(!facts.files[owner].source) {
             ConfiguringMacro configuring{.entity = id};
-            index.for_each_reference_file(hash, [&](Fid file) {
+            index.for_each_file(hash, index::SymbolFiles::Naming, [&](Fid file) {
                 if(id_of(file) != none || index.indexed(file)) {
                     return;
                 }

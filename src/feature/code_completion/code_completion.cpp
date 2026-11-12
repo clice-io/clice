@@ -3,7 +3,7 @@ module clice;
 import :feature.code_completion.cursor;
 import :feature.code_completion;
 import :index.query;
-import :index.search;
+import :index.query.locate;
 import :index.symbol;
 import :semantic.symbol;
 import :semantic.token_class;

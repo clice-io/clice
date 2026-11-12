@@ -683,7 +683,7 @@ void describe(Point) {}
     ZEXPECT(names(unit->instantiations()) == std::vector<std::string>{"show<app::Point>"});
 }
 
-ZEST_CASE(UnindexedInstantiateNothing) {
+ZEST_CASE(InstantiationsPerKind) {
     llvm::StringRef text = R"cpp(#include "box.h"
 Box<int> box;
 int x = bo;
@@ -721,7 +721,8 @@ inline Box<long> boxed;
     params.input.add_remapped_file(TestVFS::path("main.cpp"), text, preamble_bound(text));
     auto preamble = clice::compile(std::move(params));
     ZASSERT(preamble->has_output());
-    ZEXPECT(preamble->instantiations().empty());
+    // A preamble's index holds what its PCH instantiates.
+    ZEXPECT(!preamble->instantiations().empty());
 }
 
 ZEST_CASE(Keywords) {
