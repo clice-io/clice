@@ -81,15 +81,6 @@ perf(
     {
         configuration: "clang",
         platforms: ["linux"],
-        known: [
-            {
-                issue: "10-23#25",
-                why: "under 1000 MB the background index stalls, waiting for headroom no running work frees",
-                kind: "hang",
-                request: "limitedIndex",
-                file: "absl/container/internal/raw_hash_set_test.cc, 1000 MB",
-            },
-        ],
     },
     async (p) => {
         await p.limitedIndex(rawHashSet, { mb: 1500 });

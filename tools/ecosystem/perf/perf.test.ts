@@ -199,13 +199,13 @@ test("a perf job's summary: its new failures, the known ones, then the tables", 
                 request: "limitedIndex",
                 detail: "clice, run 1: not idle",
                 repro: "r",
-                issue: "10-23#25",
+                issue: "11-01#1",
             },
         ],
     });
     expect(text).toContain("# perf p/editing on linux: 1 new failures, 1 known");
     expect(text).toContain("## Runs clice crashed in (1)\n\n### a.cpp, editLoop");
-    expect(text).toContain("## Known failures (1)\n\n### 10-23#25: a.cpp, 1000 MB, limitedIndex");
+    expect(text).toContain("## Known failures (1)\n\n### 11-01#1: a.cpp, 1000 MB, limitedIndex");
     expect(text).toContain("| editLoop a.cpp | edit | 7.0 | 7.0 |");
 });
 
