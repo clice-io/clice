@@ -250,3 +250,25 @@ markdown = '''
 ```
 '''
 range = "@implementation ⟦Widget⟧ : Object"
+
+[test.attributed.index]
+markdown = '''
+**class** `Final`
+
+```cpp
+@interface Final : Object ... @end
+```
+'''
+range = "@interface ⟦Final⟧ : Object"
+
+[test.attributed.ast]
+markdown = '''
+**class** `Final`
+
+```cpp
+__attribute__((objc_subclassing_restricted))
+@interface Final : Object
+@end
+```
+'''
+range = "@interface ⟦Final⟧ : Object"

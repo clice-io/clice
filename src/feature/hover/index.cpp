@@ -38,13 +38,17 @@ static llvm::StringRef objc_container(llvm::StringRef text) {
     return text.substr(text.find('@'));
 }
 
-/// The head of an Objective-C container, which closes with `@end`:
+/// The head of an Objective-C container, which closes with `@end`: the
+/// attributes before its keyword, and the keyword's line up to its ivars,
 /// `@interface Shape : Object <Drawable>`.
-static std::optional<llvm::StringRef> objc_head(llvm::StringRef text) {
+static std::optional<std::string> objc_head(llvm::StringRef text) {
     if(!text.rtrim().ends_with("@end")) {
         return std::nullopt;
     }
-    return objc_container(text).take_until([](char c) { return c == '{' || c == '\n'; }).rtrim();
+    auto container = objc_container(text);
+    auto attributes = text.drop_back(container.size()).rtrim();
+    auto head = container.take_until([](char c) { return c == '{' || c == '\n'; }).rtrim();
+    return attributes.empty() ? head.str() : std::format("{}\n{}", attributes, head);
 }
 
 auto hover_info(const index::SymbolInfo& info,
@@ -113,7 +117,7 @@ auto hover_info(const index::SymbolInfo& info,
         case SymbolKind::Union:
         case SymbolKind::Enum: {
             if(auto head = objc_head(hover.definition)) {
-                hover.definition = head->str() + " ... @end";
+                hover.definition = *head + " ... @end";
             } else if(auto head = before_body(hover.definition)) {
                 hover.definition = head->str() + " { ... }";
             }
@@ -151,14 +155,14 @@ auto hover_info(const index::IndexQuery& query,
     // The card of an Objective-C class or category shows its @interface,
     // as the AST's does, not the @implementation defining it.
     if(text && objc_container(text->text).starts_with("@implementation")) {
-        if(auto interface = index::declared_text(query,
-                                                 symbol,
-                                                 cursor.site.file,
-                                                 RelationKind::Declaration,
-                                                 [](llvm::StringRef declared) {
-                                                     return objc_container(declared).starts_with(
-                                                         "@interface");
-                                                 })) {
+        if(auto interface =
+               index::declared_text(query,
+                                    symbol,
+                                    cursor.site.file,
+                                    RelationKind::Declaration,
+                                    [](llvm::StringRef declared) {
+                                        return objc_container(declared).starts_with("@interface");
+                                    })) {
             text = std::move(interface);
         }
     }

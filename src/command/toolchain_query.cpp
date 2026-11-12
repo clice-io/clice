@@ -182,10 +182,13 @@ async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     // Hang detection: a compiler or wrapper that never exits (one reading
     // its input, a hung network mount) would block the query's caller for
     // good; the cancel kills it with what it started.
-    auto asked = co_await async::with_timeout(
-        ask_compiler(
-            std::move(args), command, std::string(input->path()), spec.kind, driver_tokens, spec.cwd),
-        bound);
+    auto asked = co_await async::with_timeout(ask_compiler(std::move(args),
+                                                           command,
+                                                           std::string(input->path()),
+                                                           spec.kind,
+                                                           driver_tokens,
+                                                           spec.cwd),
+                                              bound);
     if(asked.is_cancelled()) {
         co_return std::unexpected(
             std::format("{} did not finish within {} ms and was stopped", compiler, bound.count()));
