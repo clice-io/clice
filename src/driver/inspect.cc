@@ -901,6 +901,10 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
             auto inputs = intern_inputs(files, alone->deps(), alone->started_at().count());
             project.commit_self_containment(*key, errors == 0, text, inputs);
             resolution = resolve();
+            // LIMITATION: the host's compile here parses the includer's code
+            // before the header too, whose errors the server's, reading it
+            // from a PCH, leaves out of its count: an includer with errors
+            // there can tip this comparison the other way.
             if(errors > 0 && resolution.synthesized) {
                 auto in_host = check();
                 if(in_host->completed()) {

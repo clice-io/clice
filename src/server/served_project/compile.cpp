@@ -567,6 +567,9 @@ async::task<Result> ServedProject::CompileAttempt::run() {
         if(self_containment) {
             auto inputs = read();
             auto text = project.file_table.intern_version(path_id, session->source->hash());
+            // LIMITATION: a process killed between the two compiles can have
+            // saved this steering `false`; the header then compiles in its
+            // host's context until what the check read changes.
             project.commit_self_containment(*self_containment, errors == 0, text, inputs);
             if(errors > 0) {
                 LOG_INFO("{} has errors compiled on its own; compiling it in its host's context",
