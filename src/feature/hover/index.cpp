@@ -38,7 +38,7 @@ static llvm::StringRef objc_container(const std::string& text) {
     Lexer lexer(text, dialect_of());
     for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
         if(token.text(text) == "@") {
-            return text.substr(token.range.begin);
+            return llvm::StringRef(text).substr(token.range.begin);
         }
     }
     return {};
