@@ -775,6 +775,10 @@ struct Project {
                                  VersionID text,
                                  Inputs inputs);
 
+    /// Forget what the self-containment check of `key` found, for the next
+    /// compile to check again.
+    void forget_self_containment(const SelfContainmentKey& key);
+
     /// The header's buffer was saved as `text`: the check of `key`, when one
     /// found it self-contained and the compile of that text `errs`, is
     /// forgotten, to run again; any other result holds for the saved text.
@@ -1179,13 +1183,16 @@ struct Project {
     /// Stop what feeds the workers on its own, the include-tree runs and
     /// the background index, before the pool stops: a stopped pool fails
     /// each dispatch at once, and the background index would walk its whole
-    /// queue through it, requeueing every file. Once: the master stops
+    /// queue through it, requeueing every file. A cancelled tree run still
+    /// waits for its worker's answer, which a hung worker gives only once the
+    /// pool kills it: shutdown() waits for the runs. Once: the master stops
     /// every project's feeding before its pool, then shuts each down.
     async::task<> stop_feeding();
 
     /// The shutdown once its owner's compiles are quiesced (contract 11):
-    /// stop feeding the workers, wind down the graph's attempts, save a
-    /// last time and close the cache store.
+    /// stop feeding the workers and wait for the include-tree runs, wind
+    /// down the graph's attempts, save a last time and close the cache
+    /// store.
     async::task<> shutdown();
 
     /// Open what the project's database holds: the index (ProjectIndex::open),

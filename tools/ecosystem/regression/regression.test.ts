@@ -54,6 +54,14 @@ describe("compiler errors", () => {
         ]);
     });
 
+    test("errors in color, as -fdiagnostics-color writes them", () => {
+        const clang =
+            "\x1b[1m../src/a.cpp:1:14: \x1b[0m\x1b[0;1;31merror: \x1b[0m\x1b[1munknown type name 'foo'\x1b[0m";
+        expect(compilerErrors(clang, dir)).toEqual([
+            { file: at("../src/a.cpp"), line: 1, message: "unknown type name 'foo'" },
+        ]);
+    });
+
     test("a driver's own errors locate none", () => {
         const driver = [
             "g++: error: unrecognized command-line option '-fno-such-thing'",

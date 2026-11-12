@@ -23,7 +23,7 @@ jobs:
         env:
           IS_PR: ${{ github.event_name == 'pull_request' }}
           PR_TITLE: ${{ github.event.pull_request.title }}
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          COMMIT_MSG: ${{ github.event.head_commit.message || github.event.merge_group.head_commit.message }}
         run: |
           pattern='^(feat|fix|refactor|chore|build|ci|docs|test|perf|style|revert)(\(.+\))?: .+'
           if [[ "$IS_PR" == "true" ]]; then
@@ -131,7 +131,7 @@ jobs:
           fi
 
   sync-labels:
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

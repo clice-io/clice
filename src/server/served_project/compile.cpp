@@ -134,11 +134,7 @@ void ServedProject::retry_after_save(Session& session) {
     auto selection = project.select_command(path_id, command_request(path_id));
     if(selection.self_containment) {
         auto compiled = latest_at(path_id, session.version);
-        bool errs =
-            !compiled || ranges::any_of(compiled->output->diagnostics.own,
-                                        [](const feature::FileDiagnostic& diagnostic) {
-                                            return diagnostic.level >= DiagnosticLevel::Error;
-                                        });
+        bool errs = !compiled || feature::count_errors(compiled->output->diagnostics.own) > 0;
         if(project.header_saved(*selection.self_containment,
                                 project.file_table.intern_version(path_id, session.source->hash()),
                                 errs)) {
@@ -518,6 +514,14 @@ async::task<Result> ServedProject::CompileAttempt::run() {
         Inputs inputs;
     };
     std::optional<Comparison> comparison;
+    // The alone compile's verdict only steers the host's: an attempt ending
+    // before the host's compile answers leaves the result unknown, for the
+    // next attempt to check again.
+    auto unfinished = llvm::make_scope_exit([&] {
+        if(comparison) {
+            project.forget_self_containment(comparison->key);
+        }
+    });
     bool first = true;
     while(true) {
         if(auto stop = co_await command(first)) {

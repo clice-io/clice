@@ -825,6 +825,7 @@ describe("round", () => {
                         row("open", "120", "100", 1.2),
                         row("open_edit", "40", "20", 2, 30, "clice first"),
                         row("switch_edit", "30", "20", 1.5, 30, "clice first"),
+                        row("index", "50", "25", 2),
                     ],
                     [memoryRun("clice", 520), memoryRun("baseline", 4)],
                 ),
@@ -834,6 +835,7 @@ describe("round", () => {
                     row("open_edit", "36", "20", 1.8, 30, "clice first"),
                     row("switch_edit", "28", "20", 1.4, 30, "both"),
                     row("settle s", "-7.0", "20", 1.6, 1, "clice first"),
+                    row("index", "52", "25", 2.1, 1),
                 ]),
             ],
             earlier: new Map(),
@@ -866,12 +868,13 @@ describe("round", () => {
             ["linux", "open", ["every platform"]],
         ]);
         // open_edit ran with clice first on both platforms and both nights,
-        // the settle once; initialize rests on one pair on each.
-        expect(data.unconfirmed).toBe(5);
+        // the settle once; initialize rests on one pair on each, and so does
+        // index on macos, which confirms linux's none.
+        expect(data.unconfirmed).toBe(7);
         expect(data.flagged).toEqual(["perf-q-sessions-linux", "perf-q-sessions-macos"]);
         expect(text).toContain("## Perf slower than the baseline, confirmed (5), by ratio");
         expect(text).toContain(
-            "5 more, on fewer pairs or that nothing confirms, are in the jobs' reports.",
+            "7 more, on fewer pairs or that nothing confirms, are in the jobs' reports.",
         );
         expect(text).toContain(
             "| q/sessions | linux | sample 2 files | peak memory MB | 553 | 32.0 | 15.00× |",

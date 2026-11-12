@@ -6,6 +6,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { crashed, ending, runProcess } from "../../client/process.ts";
 import { entrySource, isMsvc, type DatabaseEntry } from "../../compat/database.ts";
 import { syntaxOnly } from "../database.ts";
@@ -76,7 +77,7 @@ export interface CompilerError {
 /// `file(line,column): error C1234: message`. A driver's own errors (an
 /// unknown option, a missing input) name no line.
 export function compilerErrors(output: string, directory: string): CompilerError[] {
-    return output.split(/\r?\n/).flatMap((line) => {
+    return stripVTControlCharacters(output).split(/\r?\n/).flatMap((line) => {
         const found =
             /^(.+?):(\d+):(?:\d+:)? (?:fatal )?error: (.*)$/.exec(line) ??
             /^(.+?)\((\d+)(?:,\d+)?\) ?: (?:fatal )?error(?: [A-Z]+\d+)?: (.*)$/.exec(line);
@@ -167,15 +168,18 @@ export async function confirm<
         }
         // A database command does not say where the build put the modules a
         // unit imports (CMake passes them in a module map at build time).
-        const module = /fatal error: module '[^']+' not found/.exec(result.stderr);
+        const module = /fatal error: module '[^']+' not found/.exec(stripVTControlCharacters(result.stderr));
         if (module !== null) {
             return {
                 outcome: "unchecked",
                 output: `the modules it imports are the build's: ${module[0]}`,
             };
         }
-        // cl writes its diagnostics to stdout.
-        const text = isMsvc(compiler ?? "") ? result.stdout : result.stderr;
+        // cl writes its diagnostics to stdout, clang-cl to stderr.
+        // The colors a command's -fdiagnostics-color asks for go.
+        const text = stripVTControlCharacters(
+            isMsvc(compiler ?? "") ? result.stdout + result.stderr : result.stderr,
+        );
         const output = text.split("\n").slice(0, 12).join("\n");
         if (result.status === 0) {
             return { outcome: "accepted", output };

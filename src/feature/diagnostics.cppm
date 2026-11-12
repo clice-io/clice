@@ -103,9 +103,10 @@ auto diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 /// declarations, which it also raises for those only a skipped body uses.
 auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 
-/// How many errors the compile raised in any of its files, those of an
+/// How many errors the compiler raised in any of its files, those of an
 /// includer's context it compiles a header in among them, which its focus
-/// file's diagnostics leave out. The warning that a struct a prototype
+/// file's diagnostics leave out; clang-tidy's findings, whatever their
+/// level, are no part of whether code compiles. The warning that a struct a prototype
 /// names first is visible in that prototype alone counts as one: the
 /// includer declares the struct, and C compiles the header without it, its
 /// functions then taking a type no caller has.

@@ -164,7 +164,7 @@ ZEST_CASE(FailedQueryCooldown) {
 ZEST_CASE(HungQueryStopped) {
     // A compiler that never exits is stopped at the bound, and its command
     // read by clang's own driver.
-    ScopedEnv bound("CLICE_TEST_PROGRAM_BOUND_MS", "200");
+    ScopedEnv bound("CLICE_TEST_QUERY_BOUND_MS", "200");
     auto driver = fake_driver("clang", "exec sleep 600\n");
     auto ref = add("a.cpp", {driver.c_str(), "--target=x86_64-unknown-linux-gnu"});
     ZEXPECT(

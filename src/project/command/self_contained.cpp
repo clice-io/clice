@@ -52,6 +52,11 @@ void Project::commit_self_containment(const SelfContainmentKey& key,
     mark_precompiled_dirty();
 }
 
+void Project::forget_self_containment(const SelfContainmentKey& key) {
+    hosting.self_containment.forget(key);
+    mark_precompiled_dirty();
+}
+
 bool Project::header_saved(const SelfContainmentKey& key, VersionID text, bool errs) {
     auto* entry = hosting.self_containment.find(key);
     if(!entry) {
@@ -59,7 +64,7 @@ bool Project::header_saved(const SelfContainmentKey& key, VersionID text, bool e
     }
     mark_precompiled_dirty();
     if(entry->result.self_contained && errs) {
-        hosting.self_containment.forget(key);
+        forget_self_containment(key);
         return true;
     }
     entry->result.text = text;

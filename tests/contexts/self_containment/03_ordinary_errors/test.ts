@@ -11,3 +11,20 @@ test(async (t) => {
     }
     expect((await s.stats()).synthesizedContexts).toBe(0);
 });
+
+// An edit while the header compiles in its host's context ends the
+// comparison before it decides: the next compile compares again, and the
+// tie keeps the header alone.
+test("an edit cuts the comparison short", async (t) => {
+    const s = await t.start();
+    const alone = await s.park("compile", "typo.h", { at: "worker" });
+    const inHost = await s.park("compile", "typo.h", { at: "worker" });
+    s.open("typo.h", { pull: false });
+    await alone.reached();
+    await alone.release();
+    await inHost.reached();
+    s.edit("typo.h", { replace: "return }", with: "return  }" });
+    await inHost.release();
+    await t.show("edited", s.diagnostics("typo.h"));
+    expect((await s.stats()).synthesizedContexts).toBe(0);
+});

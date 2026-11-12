@@ -432,7 +432,7 @@ written by hand that a case can show.
 
 Tests record what they exercise: every method a client sends and the server
 sends, every command line run, every configuration key set; CI merges the
-shards' records and runs the check after them. `npm run coverage`, after the other
+shards' records and runs the check after them. `pixi run coverage-test`, after the other
 runs with the same `CLICE_COVERAGE_DIR`, lists every item of the product
 surface nothing exercised and fails. The surface comes from the product: the
 configuration schema, each command's `--help`, the server's capabilities, the
@@ -501,7 +501,8 @@ CLICE_TEST_JITTER=50 …             random delays up to 50 ms where the server'
                                    an order unpinned
 CLICE_KEEP_LOGS=/abs/dir …         keep the server logs of the cases that fail under
                                    /abs/dir/<case>/<copy>, as CI uploads them
-npm run coverage -w tests     after a full run
+CLICE_COVERAGE_DIR=/abs/dir …      record what the run exercises; then
+  pixi run coverage-test           list the surface nothing exercised
 npm test -w tools                  the tools' own tests, the framework's among them
 ```
 

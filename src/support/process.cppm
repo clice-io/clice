@@ -67,9 +67,8 @@ constexpr inline bool can_exit_with_parent = true;
 #endif
 
 /// Run `arguments[0]` to completion and hand back what it wrote, however it
-/// ended. Fails when the program cannot start, and when it has not ended
-/// within 30 s: it is then killed with what it started. A `path` given is
-/// the program's PATH.
+/// ended. Fails when the program cannot start. Cancelled, it kills the
+/// program with what it started. A `path` given is the program's PATH.
 async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::string> arguments,
                                                                std::string cwd,
                                                                std::string path = {});

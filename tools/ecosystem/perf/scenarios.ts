@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import * as proto from "vscode-languageserver-protocol";
-import { ending, runProcess } from "../../client/process.ts";
+import { crashed, ending, runProcess } from "../../client/process.ts";
 import { entrySource, type DatabaseEntry } from "../../compat/database.ts";
 import {
     includedHeaders,
@@ -905,7 +905,14 @@ export class Perf {
                 { timeout: 60 * 60_000 },
             );
             if (ran.status !== 0) {
-                throw new Error(`clice scan ${ending(ran)}:\n${ran.stderr}`);
+                // The bound kills the run, a signal of its own a crash.
+                const kind =
+                    ran.error !== undefined && ran.signal !== null
+                        ? "hang"
+                        : crashed(ran)
+                          ? "crash"
+                          : "server";
+                throw new RunFailure(kind, `clice scan ${ending(ran)}:\n${ran.stderr}`);
             }
             for (const match of ran.stdout.matchAll(/^Run \d+: cold (\d+)ms, warm (\d+)ms$/gm)) {
                 s.record("scan_cold", Number(match[1]));

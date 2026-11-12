@@ -8,6 +8,7 @@ import :command.toolchains.clang;
 import :command.toolchains.gcc;
 import :command.toolchains.nvcc;
 import :support.logging;
+import :support.process;
 import :vfs.path;
 
 namespace clice {
@@ -119,6 +120,22 @@ bool names_unknown(const cli::ParsedArg& arg,
 
 }  // namespace
 
+/// Ask the compiler of `command` for the job it runs.
+static async::task<std::expected<Job, std::string>> ask_compiler(std::vector<std::string> args,
+                                                                 const Command& command,
+                                                                 std::string input,
+                                                                 std::string kind,
+                                                                 std::size_t driver_tokens,
+                                                                 std::string cwd) {
+    if(cl_mode(command.family)) {
+        co_return co_await ask_cl(args, command, input, cwd);
+    }
+    if(command.family == CompilerFamily::NVCC) {
+        co_return co_await ask_nvcc(args, command, input, kind, cwd);
+    }
+    co_return co_await ask_gcc_style(std::move(args), command, driver_tokens, cwd);
+}
+
 async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     auto& command = *spec.command;
     auto driver = find_driver(spec.argv[0], spec.cwd);
@@ -148,22 +165,32 @@ async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     }
     args.insert(args.begin() + spec.slot, std::string(input->path()));
 
-    std::size_t driver_tokens = command.family == CompilerFamily::Zig ? 2 : 1;
-    std::expected<Job, std::string> job;
     if(!command.query_toolchain) {
         // The options only nvcc resolves are none of clang's.
         if(command.family == CompilerFamily::NVCC) {
             std::erase_if(args, [](llvm::StringRef arg) { return is_nvcc_query_flag(arg); });
         }
-        job = std::move(read_as_clang(std::move(args), option_family(command), spec.cwd).job);
-    } else if(cl_mode(command.family)) {
-        job = co_await ask_cl(args, command, input->path(), spec.cwd);
-    } else if(command.family == CompilerFamily::NVCC) {
-        job = co_await ask_nvcc(args, command, input->path(), spec.kind, spec.cwd);
-    } else {
-        job = co_await ask_gcc_style(std::move(args), command, driver_tokens, spec.cwd);
+        co_return std::move(read_as_clang(std::move(args), option_family(command), spec.cwd).job);
     }
-    co_return job;
+    // Lets tests stand in a hung compiler without waiting out the bound.
+    chrono::milliseconds bound = chrono::seconds(30);
+    if(auto ms = env_integer("CLICE_TEST_QUERY_BOUND_MS")) {
+        bound = chrono::milliseconds(*ms);
+    }
+    auto compiler = args[0];
+    std::size_t driver_tokens = command.family == CompilerFamily::Zig ? 2 : 1;
+    // Hang detection: a compiler or wrapper that never exits (one reading
+    // its input, a hung network mount) would block the query's caller for
+    // good; the cancel kills it with what it started.
+    auto asked = co_await async::with_timeout(
+        ask_compiler(
+            std::move(args), command, std::string(input->path()), spec.kind, driver_tokens, spec.cwd),
+        bound);
+    if(asked.is_cancelled()) {
+        co_return std::unexpected(
+            std::format("{} did not finish within {} ms and was stopped", compiler, bound.count()));
+    }
+    co_return std::move(*asked);
 }
 
 ClangReading read_as_clang(std::vector<std::string> args,

@@ -6,6 +6,9 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+  # The merge queue: main with the PRs queued before this one and this one,
+  # which main moves to once its run is green. Everything runs there.
+  merge_group:
 
 # Every main commit runs in a group of its own: a group holds one pending
 # run, which a newer one cancels even without cancel-in-progress, leaving
@@ -23,17 +26,19 @@ jobs:
     permissions:
       pull-requests: read
     outputs:
-      format: ${{ steps.filter.outputs.format }}
-      docs: ${{ steps.filter.outputs.docs }}
-      vscode: ${{ steps.filter.outputs.vscode }}
-      zed: ${{ steps.filter.outputs.zed }}
-      build: ${{ steps.filter.outputs.build }}
+      format: ${{ github.event_name == 'merge_group' || steps.filter.outputs.format == 'true' }}
+      docs: ${{ github.event_name == 'merge_group' || steps.filter.outputs.docs == 'true' }}
+      vscode: ${{ github.event_name == 'merge_group' || steps.filter.outputs.vscode == 'true' }}
+      zed: ${{ github.event_name == 'merge_group' || steps.filter.outputs.zed == 'true' }}
+      build: ${{ github.event_name == 'merge_group' || steps.filter.outputs.build == 'true' }}
 
     steps:
       - uses: actions/checkout@v7
+        if: ${{ github.event_name != 'merge_group' }}
         with:
           persist-credentials: false
       - uses: dorny/paths-filter@v4
+        if: ${{ github.event_name != 'merge_group' }}
         id: filter
         with:
           filters: |
@@ -202,6 +207,9 @@ jobs:
     if: ${{ always() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Two at once would delete the same entries, the second failing on them.
+    concurrency:
+      group: prune-caches
     permissions:
       actions: write
     steps:

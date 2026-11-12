@@ -1483,14 +1483,12 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
     /// to `shown_lines` lines and `shown_characters` characters. Cut while
     /// joining, the text has its open brackets closed past a mark for the
     /// layout to reach its end, and is shown up to the mark. clang-format's
-    /// search for the best line breaks takes seconds on a deeply nested
-    /// expansion, and on a block inside an expression (a statement
+    /// search for the best line breaks takes seconds to minutes on a deeply
+    /// nested expansion, and on a block inside an expression (a statement
     /// expression, a struct in a sizeof), which it lays out again for every
-    /// way of breaking the line around it: the kernel's REG_FIELD_GET, 18 KB
-    /// 20 brackets deep, took 77 s, 300 bytes of it 1.3 s. Past
-    /// `search_depth` brackets, or with such a block, each statement goes on
-    /// a line of its own and the layout keeps the lines as they are: 18 KB in
-    /// 50 ms.
+    /// way of breaking the line around it. Past `search_depth` brackets, or
+    /// with such a block, each statement goes on a line of its own and the
+    /// layout keeps the lines as they are.
     constexpr std::size_t shown_lines = 40;
     constexpr std::size_t shown_characters = 4096;
     constexpr std::size_t joined_limit = 2 * shown_characters;

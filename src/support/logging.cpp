@@ -64,6 +64,9 @@ struct LogFile {
 LogFile file;
 LogFile trace;
 
+/// Whether this process traces its LSP messages (begin_lsp_trace).
+bool tracing = false;
+
 /// The local time's offset from UTC in seconds, as of the latest line: a
 /// crash's line reads it, the handler unable to ask the time zone.
 std::atomic<std::int64_t> utc_offset = 0;
@@ -581,8 +584,7 @@ bool file_logger(std::string_view dir) {
         return false;
     }
     crash_fd = file.output->fd;
-    // Only the server traces, from its first message on.
-    if(!trace.early.empty()) {
+    if(tracing) {
         std::string trace_path(dir);
         fs::path::push(trace_path, "trace.log");
         if(auto error = open(trace, trace_path)) {
@@ -601,6 +603,11 @@ bool perf_lines() {
 bool lsp_trace_enabled() {
     const static bool wanted = !env_string("CLICE_LSP_TRACE").value_or("").empty();
     return wanted;
+}
+
+void begin_lsp_trace() {
+    std::lock_guard lock(mutex);
+    tracing = true;
 }
 
 void trace_lsp(bool incoming, std::string_view message) {

@@ -21,27 +21,13 @@ async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::
     if(!path.empty()) {
         env_changes.push_back({.name = "PATH", .value = std::move(path)});
     }
-    // Lets tests stand in a hung program without waiting out the bound.
-    chrono::milliseconds bound = chrono::seconds(30);
-    if(auto ms = env_integer("CLICE_TEST_PROGRAM_BOUND_MS")) {
-        bound = chrono::milliseconds(*ms);
-    }
-    // Hang detection: a compiler or wrapper that never exits (one reading
-    // its input, a hung network mount) would block its caller for good;
-    // the cancel kills it with what it started.
-    auto captured =
-        co_await async::with_timeout(async::process::capture({
-                                         .program = file,
-                                         .args = std::move(arguments),
-                                         .env_changes = std::move(env_changes),
-                                         .cwd = std::move(cwd),
-                                         .creation = {.exit_with_parent = can_exit_with_parent},
-                                     }),
-                                     bound);
-    if(captured.is_cancelled()) {
-        co_return std::unexpected(
-            std::format("{} did not finish within {} ms and was stopped", file, bound.count()));
-    }
+    auto captured = co_await async::process::capture({
+        .program = file,
+        .args = std::move(arguments),
+        .env_changes = std::move(env_changes),
+        .cwd = std::move(cwd),
+        .creation = {.exit_with_parent = can_exit_with_parent},
+    });
     if(!captured) {
         co_return std::unexpected(
             std::format("Failed to run {}: {}", file, captured.error().message()));

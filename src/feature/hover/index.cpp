@@ -32,13 +32,19 @@ static std::optional<llvm::StringRef> before_body(const std::string& text) {
     return written.take_front(body->begin).rtrim();
 }
 
+/// An Objective-C container's text from its keyword on, past the
+/// attributes written before it: `@interface Shape : Object ... @end`.
+static llvm::StringRef objc_container(llvm::StringRef text) {
+    return text.substr(text.find('@'));
+}
+
 /// The head of an Objective-C container, which closes with `@end`:
 /// `@interface Shape : Object <Drawable>`.
 static std::optional<llvm::StringRef> objc_head(llvm::StringRef text) {
     if(!text.rtrim().ends_with("@end")) {
         return std::nullopt;
     }
-    return text.take_until([](char c) { return c == '{' || c == '\n'; }).rtrim();
+    return objc_container(text).take_until([](char c) { return c == '{' || c == '\n'; }).rtrim();
 }
 
 auto hover_info(const index::SymbolInfo& info,
@@ -144,13 +150,15 @@ auto hover_info(const index::IndexQuery& query,
     auto text = index::declared_text(query, symbol, cursor.site.file, RelationKind::Definition);
     // The card of an Objective-C class or category shows its @interface,
     // as the AST's does, not the @implementation defining it.
-    if(text && text->text.starts_with("@implementation")) {
-        if(auto interface = index::declared_text(
-               query,
-               symbol,
-               cursor.site.file,
-               RelationKind::Declaration,
-               [](llvm::StringRef declared) { return declared.starts_with("@interface"); })) {
+    if(text && objc_container(text->text).starts_with("@implementation")) {
+        if(auto interface = index::declared_text(query,
+                                                 symbol,
+                                                 cursor.site.file,
+                                                 RelationKind::Declaration,
+                                                 [](llvm::StringRef declared) {
+                                                     return objc_container(declared).starts_with(
+                                                         "@interface");
+                                                 })) {
             text = std::move(interface);
         }
     }

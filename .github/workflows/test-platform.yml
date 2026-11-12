@@ -337,8 +337,7 @@ jobs:
       - name: Coverage
         env:
           CLICE_COVERAGE_DIR: ${{ runner.temp }}/coverage
-          CLICE_EXECUTABLE: ${{ github.workspace }}/build/${{ inputs.build_type }}/bin/bin/clice
-        run: pixi run -e test-run npm run coverage -w tests
+        run: pixi run -e test-run coverage-test ${{ inputs.build_type }}
 
   editor:
     needs: build

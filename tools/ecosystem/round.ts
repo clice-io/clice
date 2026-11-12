@@ -303,7 +303,10 @@ function perfRows(
             }
             const same = (results: PerfResults | undefined) =>
                 (results?.slower ?? []).find(
-                    (each) => each.name === row.name && each.measure === row.measure,
+                    (each) =>
+                        each.name === row.name &&
+                        each.measure === row.measure &&
+                        each.samples >= SAMPLES,
                 );
             const on = platforms.filter((other) => same(other.perf) !== undefined);
             const night = same(before.get(job.artifact));

@@ -352,8 +352,13 @@ void reset_anomaly_for_testing();
 /// Whether perf lines (LOG_PERF) are written: CLICE_PERF set.
 bool perf_lines();
 
-/// Whether the server traces its LSP messages: CLICE_LSP_TRACE set.
+/// Whether the server traces its editor's LSP messages: CLICE_LSP_TRACE
+/// set.
 bool lsp_trace_enabled();
+
+/// This process traces LSP messages (trace_lsp): the session's `trace.log`
+/// opens with its log.
+void begin_lsp_trace();
 
 /// An LSP message the server received (`incoming`) or sent, with the time,
 /// into the session's `trace.log`, which grows and moves aside as the log

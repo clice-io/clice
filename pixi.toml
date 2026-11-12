@@ -187,6 +187,15 @@ CLICE_CASES_SHARD={{ shard }} CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type 
 """
 depends-on = ["install-tests"]
 
+# What of the product's surface no case exercised, read from the records
+# the cases left under CLICE_COVERAGE_DIR (tests/README.md, "Coverage").
+[feature.test.tasks.coverage-test]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+cmd = """
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm run coverage --workspace tests
+"""
+depends-on = ["install-tests"]
+
 # The Zed extension in a real Zed (tests/editors/zed), with build/<type> as
 # its installed clice; ZED_EXECUTABLE names the Zed app, and the extension
 # builds with the system's cargo. Workspace-level so CI can run it from the

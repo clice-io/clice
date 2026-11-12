@@ -312,7 +312,7 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
 }
 
 ZEST_CASE(EditInterruptsStaleCompile) {
-    // The didChange path: an edit makes the in-flight round outdated —
+    // The didChange path: an edit makes the in-flight attempt outdated —
     // cancelling its compile request makes the worker abandon the stale
     // parse, its waiter resolves false (its result is for a buffer that no
     // longer exists — the editor re-requests after an edit), and a request

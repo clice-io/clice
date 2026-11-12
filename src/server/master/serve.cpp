@@ -12,7 +12,9 @@ namespace {
 
 /// The editor's transport, every message both ways traced (logging::trace_lsp).
 struct TracedTransport : ipc::Transport {
-    explicit TracedTransport(std::unique_ptr<ipc::Transport> inner) : inner(std::move(inner)) {}
+    explicit TracedTransport(std::unique_ptr<ipc::Transport> inner) : inner(std::move(inner)) {
+        logging::begin_lsp_trace();
+    }
 
     async::task<std::string, ipc::ReadError> read_message() override {
         auto message = co_await inner->read_message().or_fail();

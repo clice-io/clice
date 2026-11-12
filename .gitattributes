@@ -11,8 +11,6 @@ tests/format/document/06_crlf_line_endings/*.cpp -text
 # A UTF-16 response file keeps its bytes.
 tests/project/discovery/13_utf16_response_file/flags.rsp -text
 
-# Treat trace files as binary to suppress text diffs
-tests/**/trace.jsonl linguist-generated=true binary
 # Generated feature docs are parsed by tools/testing/docs/site.ts marker regexes.
 docs/**/*.md text eol=lf
 # The translation records, rewritten only by `record`.

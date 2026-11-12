@@ -379,12 +379,12 @@ async::task<> Project::stop_feeding() {
         co_return;
     }
     tree_tasks.cancel();
-    co_await tree_tasks.join();
     co_await background_index.stop();
 }
 
 async::task<> Project::shutdown() {
     co_await stop_feeding();
+    co_await tree_tasks.join();
     co_await graph.shutdown();
     // Editors kill a server that is slow to exit, and building the search
     // index dominates a cold pass's save: the index commits with no more

@@ -32,7 +32,6 @@ export const RESERVED = new Set([
     "test.ts",
     "README.md",
     "snap.toml",
-    "trace.jsonl",
 ]);
 
 export const SOURCE = /\.(c|cc|cpp|cxx|cppm|ixx|m|mm|cl|clcpp|hip)$/;
