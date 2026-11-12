@@ -158,9 +158,11 @@ cmd = "node tools/docs/translations.ts record"
 [tasks.docs-review]
 cmd = "node tools/docs/translations.ts review --glossary=.claude/skills/translate-docs/SKILL.md"
 
+# One test at a time: many start workers and compilers of their own, and
+# running them side by side is not vetted for resource contention.
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = './build/{{ type }}/bin/bin/unittests --verbose'
+cmd = './build/{{ type }}/bin/bin/unittests --verbose --jobs 1'
 
 # npm workspaces: install runs at the repo root and covers tools/, tests/,
 # ecosystem/ and editors/vscode/.
