@@ -1,6 +1,5 @@
 module clice;
 
-import :driver.driver;
 import :support.logging;
 import :unittests.utils.platform;
 
@@ -15,8 +14,6 @@ struct TestOptions {
         options.jobs = 1u;
         return options;
     }();
-
-    clice::driver::LogLevelOption log;
 };
 
 }  // namespace
@@ -34,7 +31,6 @@ extern "C++" int main(int argc, const char** argv) {
 
     auto& opts = *parsed;
 
-    opts.log.apply();
     clice::logging::stderr_logger("test");
 
     // The workers tests spawn crash on `#pragma clang __debug crash`.
