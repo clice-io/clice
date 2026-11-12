@@ -24,6 +24,7 @@ jobs:
       contents: read
       actions: read
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       # Under workflow_run, the newest commit of main.
       - uses: actions/checkout@v7

@@ -1,10 +1,5 @@
 # tests
 
-The test system clice ships its first release with. The old suites under
-`tests/` (`integration/`, `snap/`, `smoke/`) migrated into it and are gone;
-this directory takes the name `tests/` next. Until then the coverage check
-(below) runs only by hand.
-
 This file is the contract: how tests are organized, what a case is made of, how
 it asserts, how the docs come out of it, and what tests never do.
 
@@ -31,8 +26,10 @@ tests/<topic>/<subtopic>/NN_name/
   between cases; a structure two cases need is in both.
 - **The entry is `main.*`** (`main.cpp`, `main.c`, `main.cppm`) when a case has
   one file the check is about; other files keep the names their content needs.
-- Source files carry only code and `§` markers (below). Documentation goes to
-  `README.md`, maintainer notes to `//` comments in `test.ts` or the sources.
+- Source files carry only code and `§` markers (below), and the notes of a
+  case no page shows. Documentation goes to `README.md`; a documented case's
+  sources are what its card shows, so its maintainer notes go to `//`
+  comments in `test.ts`.
 
 ### Topics
 
@@ -49,7 +46,7 @@ tests/<topic>/<subtopic>/NN_name/
   (background, staleness, transfer, freshness, read only, interruption,
   delegation, batch), `modules`, `config`, `protocol` (basics, initialize,
   edges, positions, cancellation, stale results), `lifecycle` (crashes,
-  workers, termination, memory, stderr, test hooks, editor sessions).
+  workers, termination, memory, stderr, test hooks, logs).
 - **Commands**, what a command prints, writes and exits with: `query`,
   `refactor`, `format`, `lint`, `index`, `analyze`, `modularize`, `inspect`,
   `command`, `scan`, and `cli` for process behavior every command shares.
@@ -179,8 +176,7 @@ A script registers tests of two kinds, each `(fn)`, `(name, fn)`,
   `t.start(options?)` starts a server on the copy; `t.cli(...)` runs a command
   there (with `interrupt: { units, signals }` it signals the run once that many
   units are indexed); `t.disk` reads and changes the copy (`write`, `edit`,
-  `rm`, `symlink`, `touch`, `list`, `corrupt`, `database`); `t.replay()` plays
-  the case's `trace.jsonl` to a server; `t.gone(pids)` waits until processes
+  `rm`, `symlink`, `touch`, `list`, `corrupt`, `database`); `t.gone(pids)` waits until processes
   the test did not start have ended; `t.elapse(ms, why)` lets time pass
   where time is the claim. A test may start several servers and run several
   commands; each is shut down and gated at the end.
@@ -229,22 +225,13 @@ declared fails the test, and so does a declared one that never happened.
 | `indexing: true`           | (answers) both clients index first: the server in the background, inspect by `clice index`        |
 | `positionEncoding: "…"`    | (answers) the server's client offers that encoding, as above                                      |
 
-**Recorded sessions.** A `trace.jsonl` is what a real editor sent a server,
-recorded by `tools/testing/server/record.ts` standing in for the server it
-launches. `t.replay()` plays it at the recorded pace on the copy, the recorded
-root moved there, against the server's real defaults: every request must be
-answered, an error only to one the editor cancelled or whose document changed
-under it; teardown gates the exit. Traces are re-recorded, never edited; they
-live in `lifecycle/editor_sessions/`.
-
 Tests in one script share nothing but the case's inputs. Names are short and
 unique in the script; one unnamed test is allowed when it is the only one.
 
 **Inherited scripts.** A case without `test.ts` takes its subtopic's, then its
 topic's. A script sits at the lowest directory every case running it shares: a scenario unique to a case is its own `test.ts`; one a
 subtopic's cases all run on their different projects is written once, as
-`compile/cache/test.ts` restarts a server over each case's project and
-`lifecycle/editor_sessions/test.ts` replays each case's trace. A case with no
+`compile/cache/test.ts` restarts a server over each case's project. A case with no
 script anywhere fails, and so does a script above the cases that none of them
 runs.
 
@@ -404,8 +391,8 @@ written by hand that a case can show.
   reading `snap.toml`. Every run writes the cards of the documented cases it
   ran as `docs/cards/<id>.json`, which git ignores: CI hands those of its
   linux-x64 run to the docs site, and a pull request's docs check builds the
-  site with them. A case's sources are what the card shows: maintainer notes
-  go in its `test.ts`.
+  site with them. A case's sources are what the card shows: its maintainer
+  notes go in its `test.ts`.
 - **Checks.** `pixi run docs-check` fails where pages and cases disagree: a
   stale region, a documented subtopic on no page; `pixi run docs-update`
   rewrites the regions.
@@ -484,8 +471,9 @@ boundary observes cheaply, built with the sources. Names of at most four words.
 
 ## Budgets
 
-- Pull-request CI under 20 minutes wall clock; no job over 10 minutes on the
-  slowest platform.
+- Every test job of a pull request's CI (a unit suite, a shard of the
+  cases, an editor's or the compat run) under 10 minutes on the slowest
+  platform; the builds are left out, as their time is the cache's.
 - A test under 30 seconds in Debug on four cores.
 
 ## Never
@@ -495,7 +483,6 @@ boundary observes cheaply, built with the sources. Names of at most four words.
 - Wait on, or assert about, wall-clock time.
 - Retry, skip or weaken a failing test.
 - Share inputs between cases.
-- Hand-write or edit LSP traces.
 - Put agent-driven editor sessions in CI.
 - Gate on a coverage percentage.
 

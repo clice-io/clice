@@ -19,6 +19,7 @@ jobs:
   changes:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       pull-requests: read
     outputs:
@@ -111,6 +112,7 @@ jobs:
       contents: read
       actions: read
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -142,6 +144,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-2025]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -149,6 +152,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+          activate-environment: node
       - uses: Swatinem/rust-cache@v2.9.1
         with:
           workspaces: editors/zed
@@ -158,10 +165,6 @@ jobs:
       # wasm32-wasip2 is the target Zed and its extension registry build with.
       - name: Add the wasm target
         run: rustup target add wasm32-wasip2
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: node
-          activate-environment: node
 
       # Always the latest stable Zed on purpose, like the other editor tests.
       - name: Install Zed (Linux)
@@ -223,6 +226,34 @@ jobs:
       source: package
     secrets: inherit
 
+  # Every cache keeps only its newest entry of main: each merge saves one per
+  # Bazel target and build type and a VS Code download per OS, and the older
+  # ones would fill the repository's quota long before they expire.
+  prune-caches:
+    needs: test
+    if: ${{ always() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      - name: Delete the older entries of each cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          declare -A kept
+          gh cache list --ref refs/heads/main --sort created_at --order desc --limit 1000 \
+            --json id,key --jq '.[] | "\(.id) \(.key)"' > "$RUNNER_TEMP/caches"
+          while read -r id key; do
+            prefix=${key%-*}
+            if [[ -n ${kept[$prefix]:-} ]]; then
+              gh cache delete "$id"
+            else
+              kept[$prefix]=1
+            fi
+          done < "$RUNNER_TEMP/caches"
+
   checks-passed:
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     needs:
@@ -235,6 +266,7 @@ jobs:
       - instant-vscode
 
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Check results
         uses: re-actors/alls-green@v1.2.2

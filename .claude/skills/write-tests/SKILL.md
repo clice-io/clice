@@ -51,8 +51,10 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
   (`tools/testing/render/paths.ts`). Do not "normalize away" a malformed
   URI; a raw path or unencoded space is a server bug.
 - Comments: `///` for doc comments, `//` inline; explain constraints the
-  code can't show, nothing else. Maintainer notes about a case go in its
-  `test.ts`, never in its sources, which the docs show.
+  code can't show, nothing else. A documented case's sources are what its
+  card shows: its maintainer notes go in its `test.ts`. An undocumented
+  case keeps them in its sources, never in a `test.ts` that only copies the
+  inherited script to hold them.
 - Every test runs on a fresh copy of its case. Probes and experiments work
   on a copy too (`CLICE_KEEP_WORKSPACE=1` keeps a test's copy and prints
   where); never point a server at a case directory itself.

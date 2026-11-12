@@ -1,10 +1,11 @@
 name: test
 
 # Every target and build type CI builds, each a platform of its own (test-platform.yml).
-# The Windows targets build on Linux, whose runners build and link them several
-# times faster. The suites split further where the runners are slow: ASan
-# processes start slowly on macOS, and the Intel macOS and arm64 Windows
-# runners are slow machines.
+# Every target builds on x64 Linux, whose runners build and link several times
+# faster than the macOS and Windows ones; each runs its suites on its own OS.
+# The suites split further where the runners are slow: ASan processes start
+# slowly on macOS, and the Intel macOS and arm64 Windows runners are slow
+# machines.
 
 on:
   workflow_call:
@@ -41,6 +42,7 @@ jobs:
   macos-arm64:
     uses: ./.github/workflows/test-platform.yml
     with:
+      build_os: ubuntu-24.04
       os: macos-15
       target: aarch64-apple-darwin
       asset_name: clice.aarch64-apple-darwin.tar.gz
@@ -50,6 +52,7 @@ jobs:
   macos-arm64-debug:
     uses: ./.github/workflows/test-platform.yml
     with:
+      build_os: ubuntu-24.04
       os: macos-15
       target: aarch64-apple-darwin
       build_type: Debug
@@ -58,7 +61,7 @@ jobs:
   macos-x64:
     uses: ./.github/workflows/test-platform.yml
     with:
-      build_os: macos-15
+      build_os: ubuntu-24.04
       os: macos-15-intel
       target: x86_64-apple-darwin
       asset_name: clice.x86_64-apple-darwin.tar.gz
@@ -89,6 +92,7 @@ jobs:
   docs-cards:
     needs: linux-x64
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/upload-artifact/merge@v7
         with:

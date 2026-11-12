@@ -24,6 +24,7 @@ defaults:
 jobs:
   compat:
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 90
     steps:
       - name: Pick the newest release
         id: release
@@ -68,8 +69,10 @@ jobs:
       # The Windows and macOS scenarios use what the runner images ship
       # (Visual Studio, LLVM, MinGW; Xcode, Homebrew GCC and LLVM), and
       # the Linux image already has gcc, clang, cmake, make and bazelisk.
+      # An unreachable mirror stalls apt for the job's whole bound.
       - name: Install build systems and cross compilers
         if: runner.os == 'Linux'
+        timeout-minutes: 15
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -89,6 +92,7 @@ jobs:
       # afterwards; the second call upgrades the rest and installs.
       - name: Install MSYS2's compilers
         if: runner.os == 'Windows'
+        timeout-minutes: 20
         run: |
           pacman() {
             for attempt in 1 2 3; do
@@ -104,6 +108,7 @@ jobs:
       # experimental gate on it.
       - name: Install CMake 4.5
         if: runner.os != 'macOS'
+        timeout-minutes: 5
         run: |
           release=https://github.com/Kitware/CMake/releases/download/v4.5.0-rc3
           if [ "$RUNNER_OS" = Windows ]; then
@@ -120,6 +125,7 @@ jobs:
 
       - name: Install Cygwin's compilers
         if: runner.os == 'Windows'
+        timeout-minutes: 35
         run: |
           curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/setup-x86_64.exe" \
             https://cygwin.com/setup-x86_64.exe
@@ -135,6 +141,7 @@ jobs:
 
       - name: Install zig
         if: runner.os == 'Linux'
+        timeout-minutes: 5
         run: |
           curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/zig.tar.xz" \
             https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz
