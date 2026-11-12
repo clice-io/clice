@@ -58,14 +58,46 @@ const mocha = { timeout: 300 * 1000, failZero: true };
 // workspace of their own.
 const extensionWorkspace = path.join(scratch, "workspace");
 fs.mkdirSync(extensionWorkspace);
+
+// The conflict check's tests report clangd and cpptools installed without
+// installing them, but VS Code writes only settings an installed extension
+// declares: this one declares those the check turns off, as the two do.
+const conflictingSettings = path.join(scratch, "conflicting-settings");
+fs.mkdirSync(conflictingSettings);
+fs.writeFileSync(
+    path.join(conflictingSettings, "package.json"),
+    JSON.stringify({
+        name: "conflicting-settings",
+        publisher: "clice-test",
+        version: "0.0.0",
+        engines: { vscode: "*" },
+        contributes: {
+            configuration: {
+                properties: {
+                    "clangd.enable": { type: "boolean", default: true },
+                    "C_Cpp.intelliSenseEngine": {
+                        type: "string",
+                        enum: ["default", "disabled"],
+                        default: "default",
+                        scope: "resource",
+                    },
+                },
+            },
+        },
+    }),
+);
+
 const configs = [
     {
         label: "extension",
         files: "out/test/extension.test.js",
+        extensionDevelopmentPath: [extensionRoot, conflictingSettings],
         workspaceFolder: extensionWorkspace,
         mocha,
         env: { CLICE_E2E_SCRATCH: scratch },
-        launchArgs: [keepEnv],
+        // A profile of its own, new every run: the conflict check's "Never
+        // ask again" is kept in the profile, and the next run must be warned.
+        launchArgs: [keepEnv, "--user-data-dir", path.join(scratch, "user-data")],
     },
     ...fixtures.map((fixture) => ({
         label: fixture,
