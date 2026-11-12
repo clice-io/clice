@@ -1,2 +1,4 @@
-# The unit sits in a directory its own command searches as a system one.
+# The unit sits in a directory its own command searches as a system one:
+# that keeps out the headers the build includes from it, never the
+# build's own units.
 flags = ["-isystem", "src"]
