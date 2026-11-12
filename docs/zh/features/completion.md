@@ -507,7 +507,7 @@ tests/code_completion/include_path_completion/02_include_angled
 
 接受头文件补全项后，会闭合指令，并替换光标后已输入的内容，避免重复插入
 
-补全会替换已有的定界符；如果在路径中较靠前的部分选择头文件，还会替换路径的剩余部分。
+补全会替换已有的定界符；如果在路径中较靠前的部分选择头文件，还会替换路径的剩余部分。含空格的名称会一直替换到它的闭合定界符；没有闭合定界符时，名称到第一个空格为止。
 
 ```case
 tests/code_completion/include_path_completion/03_closing_delimiter
