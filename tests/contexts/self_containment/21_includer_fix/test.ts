@@ -3,8 +3,8 @@ import { test } from "@clice/tools/testing";
 
 // The comparison's verdict rests on what both its compiles read: main.cpp
 // declares Host only after h.h, which fixes nothing, so h.h compiles alone;
-// once main.cpp declares it first, h.h's next compile compares again and
-// takes main.cpp's context.
+// once main.cpp declares it first, open h.h compiles again, compares again
+// and takes main.cpp's context.
 test(async (t) => {
     const s = await t.start();
     await t.show("tied", s.diagnostics("h.h"));
@@ -15,7 +15,7 @@ test(async (t) => {
         with: 'struct Host {};\n#include "h.h"',
     });
     t.disk.touch("main.cpp", new Date(written.getTime() + 10_000));
-    s.close("h.h");
+    await s.sync({ poll: true });
     await t.show("fixed", s.diagnostics("h.h"));
     expect((await s.stats()).synthesizedContexts).toBe(1);
 });
