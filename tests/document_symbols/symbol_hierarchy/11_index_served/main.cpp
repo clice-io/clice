@@ -22,6 +22,20 @@ U Box<T>::convert() const {
 
 template struct Box<int>;
 
+struct Point {
+    int x, y;
+    int sum();
+};
+
+int Point::sum() {
+    return x + y;
+}
+
+enum class Color {
+    Red,
+    Blue,
+};
+
 typedef struct {
     int width;
 } Size;
