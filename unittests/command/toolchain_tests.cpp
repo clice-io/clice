@@ -303,20 +303,25 @@ echo '{}' >&2
 
 ZEST_CASE(WarmBoundsDrivers) {
     // Each driver records how many drivers run beside it: twice as many
-    // queries as the process has CPUs never run more drivers than CPUs.
+    // queries as the process has CPUs run as many drivers as CPUs at once,
+    // never more. The first drivers wait until that many run, then let
+    // every later one through.
     tmp.mkdir("running");
+    auto cores = sys::parallelism();
     auto driver = fake_driver("clang",
                               std::format(R"(touch '{0}/'$$
-ls '{0}' | wc -l >> '{1}'
-sleep 0.2
+until [ -e '{1}' ] || [ "$(ls '{0}' | wc -l)" -ge {2} ]; do :; done
+touch '{1}'
+ls '{0}' | wc -l >> '{3}'
 rm '{0}/'$$
-echo '{2}' >&2
+echo '{4}' >&2
 )",
                                           tmp.path("running"),
+                                          tmp.path("open"),
+                                          cores,
                                           tmp.path("counts"),
                                           clang_job));
 
-    auto cores = sys::parallelism();
     llvm::SmallVector<CommandRef> refs;
     for(unsigned i = 0; i < 2 * cores; i += 1) {
         auto depth = std::format("-ftemplate-depth={}", 100 + i);
@@ -329,11 +334,14 @@ echo '{2}' >&2
     llvm::SmallVector<llvm::StringRef> lines;
     llvm::StringRef(*counts).split(lines, '\n', -1, false);
     ZEXPECT(lines.size() == std::size_t(2 * cores));
+    unsigned most = 0;
     for(auto line: lines) {
         unsigned running = 0;
         ZASSERT(!line.trim().getAsInteger(10, running));
         ZEXPECT(running <= cores);
+        most = std::max(most, running);
     }
+    ZEXPECT(most == cores);
 }
 
 ZEST_CASE(ClangJobCleaned) {
