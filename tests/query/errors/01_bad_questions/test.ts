@@ -26,6 +26,10 @@ test(async (t) => {
         await t.cli(`query ${question}`);
     }
     // A place is held to the kinds asked for; a kind must be one clice knows.
-    await t.cli(["query", "definition", "main.cpp:4:5 kind:variable"]);
+    await t.cli([
+        "query",
+        "definition",
+        `${t.place(t.at("main.cpp", "int |compute"))} kind:variable`,
+    ]);
     await t.cli(["query", "symbol-search", "add kind:Fnction"]);
 });

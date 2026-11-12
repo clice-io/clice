@@ -13,8 +13,8 @@ test("action from the second name", async (t) => {
     t.disk.symlink("link", "real");
     await s.diagnostics("real/main.cpp");
     await s.diagnostics("link/main.cpp");
-    const at = { line: 1, character: 4 };
-    const actions = await s.client.codeActions(s.uri("link/main.cpp"), { start: at, end: at });
+    const { uri, position } = s.position(t.at("link/main.cpp", "|auto tonnes"));
+    const actions = await s.client.codeActions(uri, { start: position, end: position });
     const edited = (actions ?? []).flatMap((action) => {
         if (!("edit" in action)) {
             return [];
@@ -27,9 +27,6 @@ test("action from the second name", async (t) => {
             ),
         ];
     });
-    expect(edited.length).toBeGreaterThan(0);
-    for (const uri of edited) {
-        expect(decodeURIComponent(new URL(uri).pathname)).toMatch(/\/link\/main\.cpp$/);
-    }
+    expect(edited.map((target) => s.spelling(target))).toEqual(["link/main.cpp"]);
     await t.show("actions", s.codeActions(t.at("link/main.cpp", "|auto tonnes")));
 });

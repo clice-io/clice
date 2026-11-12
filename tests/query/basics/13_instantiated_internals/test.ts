@@ -5,9 +5,15 @@ import { test } from "@clice/tools/testing";
 // from either member, and names both.
 test("closed sources", async (t) => {
     await t.cli("index");
-    await t.cli("query references main.cpp:5:12 --include-declaration");
-    await t.cli("query references main.cpp:15:16 --include-declaration");
-    await t.cli("query references box.h:5:22 --include-declaration");
+    await t.cli(
+        `query references ${t.place(t.at("main.cpp", "double |radius;"))} --include-declaration`,
+    );
+    await t.cli(
+        `query references ${t.place(t.at("main.cpp", "double |radius = 0"))} --include-declaration`,
+    );
+    await t.cli(
+        `query references ${t.place(t.at("box.h", "shape.|radius"))} --include-declaration`,
+    );
 });
 
 // With main.cpp closed, the stored records answer the open header.

@@ -14,3 +14,14 @@ diagnostics = []
 
 ["saved before the compile".saved]
 diagnostics = []
+
+["the save switches without the includer's index".edited]
+errors = [
+    {
+        at = "inline int get() { return ⟦Host⟧{2}.v; }",
+        severity = "error",
+        message = "use of undeclared identifier 'Host'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]

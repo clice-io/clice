@@ -11,3 +11,15 @@ Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
+
+["a full log file moves aside"."first line"]
+value = "[logging] the lines before are in index.1.log"
+
+["the server's lines".commands]
+value = [
+    "Command of main.cpp: from its database entry, run in ${WS}",
+    "Command of main.cpp changed: from its database entry, run in ${WS}",
+]
+
+["a server on no folder"."files named"]
+value = ["Opened main.cpp (version 0)", "Command of main.cpp: from its database entry, run in ${WS}"]

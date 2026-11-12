@@ -8,6 +8,6 @@ template <typename T>
 §(guide_decl)Box(T) -> Box<T>;
 
 int read_box() {
-    §(ctad_use)Box box§(ctad_invoke)(7);
+    §(ctad_use)Box box(7);
     return box.value;
 }

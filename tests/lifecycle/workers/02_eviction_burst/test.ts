@@ -15,10 +15,19 @@ test(async (t) => {
         config: { project: { enable_indexing: false, max_resident_documents: 2 } },
     });
     const files = Object.keys(UNITS);
+    /// How many times each file compiled, once the server is idle.
+    const compiles = async (): Promise<number[]> => {
+        await s.sync();
+        const { files: built } = await s.counts();
+        return files.map((file) => built[file]?.compile ?? 0);
+    };
     for (const file of files) {
         s.open(file, { pull: false });
     }
     await t.show("burst", Object.fromEntries(files.map((file) => [file, s.semanticTokens(file)])));
+    // A request holds its document from its compile to its answer: the
+    // burst compiles each once, though the pool keeps only two.
+    expect(await compiles()).toEqual(files.map(() => 1));
     // Asked again one by one, each evicted document compiles again.
     const hovers: Record<string, Promise<unknown>> = {};
     for (const file of files) {
@@ -27,8 +36,8 @@ test(async (t) => {
         await hovers[file];
     }
     await t.show("asked again", hovers);
-    // A request holds its document from its compile to its answer: each
-    // compiles once for the burst, and once more when asked again after it
-    // was evicted.
-    expect((await s.counts()).compile).toBeLessThanOrEqual(2 * files.length);
+    // An evicted document compiles once more, one still kept not at all:
+    // which two the burst left kept depends on the order its compiles
+    // finished in, so a file compiled once or twice, never more.
+    expect((await compiles()).filter((count) => count !== 1 && count !== 2)).toEqual([]);
 });

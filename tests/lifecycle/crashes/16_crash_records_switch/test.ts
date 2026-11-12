@@ -7,6 +7,7 @@ test("switch to another project", async (t) => {
     const s = await t.start({
         folders: ["app", "lib"],
         crash: { request: "hover", file: "lib/include/lib.h" },
+        env: { CLICE_TEST_CRASH_SPACING_MS: "0" },
     });
     const at = t.at("lib/include/lib.h", "int |lib_fn");
     s.open("lib/include/lib.h");
@@ -18,8 +19,7 @@ test("switch to another project", async (t) => {
     await s.sync();
     // The application's project says at once what crashed in the library's.
     await t.show("pushes", s.pushes("lib/include/lib.h"));
-    // The new context is a change, retried after the pause.
-    await t.elapse(2_100, "the spacing between a crash and the retry a change earns");
+    // The new context is a change, which retries.
     await t.show("hover after the switch", s.hover(at));
     await t.show("crashes after the switch", await s.crashes());
 });

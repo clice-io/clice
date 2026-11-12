@@ -5,6 +5,8 @@ import { test } from "@clice/tools/testing";
 // every crash here is the compile's own.
 const QUIET = { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } };
 const CRASH = { request: "compile", file: "main.cpp", pragma: true } as const;
+/// The least time between a crash and the retry a change earns.
+const spacing = (ms: number) => ({ CLICE_TEST_CRASH_SPACING_MS: String(ms) });
 
 test("a save is the retry", async (t) => {
     const s = await t.start({ config: QUIET, crash: CRASH });
@@ -33,19 +35,31 @@ test("a pull shows the note", async (t) => {
 });
 
 test("a fix retries after a pause", async (t) => {
-    const s = await t.start({ config: QUIET, crash: CRASH });
+    const s = await t.start({ config: QUIET, crash: CRASH, env: spacing(300) });
     s.open("main.cpp");
     await t.show("hover", s.hover(t.marker("add")));
     await t.show("crashes", await s.crashes());
     s.edit("main.cpp", { remove: "#pragma clang __debug crash\n" });
-    await t.elapse(2_100, "the spacing between a crash and the retry an edit earns");
+    await t.elapse(400, "the spacing between a crash and the retry an edit earns");
     await t.show("hover after the fix", s.hover(t.at("main.cpp", "int |add")));
     await t.show("pushes", s.pushes("main.cpp"));
     await t.show("crashes after the fix", await s.crashes());
 });
 
+// Keystrokes through a half-typed construct do not spend the retries: an
+// edit the spacing has not passed for retries nothing.
+test("no retry inside the spacing", async (t) => {
+    const s = await t.start({ config: QUIET, crash: CRASH, env: spacing(600_000) });
+    s.open("main.cpp");
+    await t.show("hover", s.hover(t.marker("add")));
+    await t.show("crashes", await s.crashes());
+    s.edit("main.cpp", { remove: "#pragma clang __debug crash\n" });
+    await t.show("hover after the fix", s.hover(t.at("main.cpp", "int |add")));
+    await t.show("pushes", s.pushes("main.cpp"));
+});
+
 test("an open resent with other text retries", async (t) => {
-    const s = await t.start({ config: QUIET, crash: CRASH });
+    const s = await t.start({ config: QUIET, crash: CRASH, env: spacing(0) });
     s.open("main.cpp");
     await t.show("hover", s.hover(t.marker("add")));
     await t.show("crashes", await s.crashes());
@@ -54,7 +68,6 @@ test("an open resent with other text retries", async (t) => {
     s.open("main.cpp", {
         text: t.disk.read("main.cpp").replace("#pragma clang __debug crash\n", ""),
     });
-    await t.elapse(2_100, "the spacing between a crash and the retry a change earns");
     await t.show("hover after the resent open", s.hover(t.at("main.cpp", "int |add")));
     await t.show("crashes after the resent open", await s.crashes());
 });
@@ -77,13 +90,12 @@ test("a reopen retries", async (t) => {
 });
 
 test("an edit that changes nothing is no retry", async (t) => {
-    const s = await t.start({ config: QUIET, crash: CRASH });
+    const s = await t.start({ config: QUIET, crash: CRASH, env: spacing(0) });
     const add = t.marker("add");
     s.open("main.cpp");
     await t.show("hover", s.hover(add));
     await t.show("crashes", await s.crashes());
     s.edit("main.cpp", { text: t.disk.read("main.cpp") });
-    await t.elapse(2_100, "the spacing between a crash and the retry a change earns");
     await t.show("hover after the edit", s.hover(add));
     await t.show("crashes after the edit", await s.crashes());
 });

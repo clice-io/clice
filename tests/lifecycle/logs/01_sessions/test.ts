@@ -45,12 +45,27 @@ test("a full log file moves aside", async (t) => {
         `${LOGS}/${started ?? ""}/index.1.log`,
         log,
     ]);
-    expect(t.disk.read(log).split("\n")[0]).toContain("index.1.log");
+    await t.show("first line", t.disk.read(log).split("\n")[0] ?? "");
 });
 
-/// A log line: date and time, level, thread off the main one, source line.
-const LINE =
-    /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\] \[(?:trace|debug|info|warning|error|fatal)\] (?:\[thread \d+\] )?\[[\w.-]+:\d+\] \S/;
+/// What precedes a log line's message: date and time, level, thread off the
+/// main one, source line.
+const PREFIX =
+    /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\] \[(?:trace|debug|info|warning|error|fatal)\] (?:\[thread \d+\] )?\[[\w.-]+:\d+\] (?=\S)/;
+
+/// The lines of the master's log in the copy.
+function masterLines(t: TestContext): string[] {
+    const [log] = t.disk.list(`${LOGS}/*/master.log`);
+    return t.disk
+        .read(log ?? "")
+        .split(/\r?\n/)
+        .filter((line) => line !== "");
+}
+
+/// The messages of the master's log, each line's prefix cut off.
+function messages(t: TestContext): string[] {
+    return masterLines(t).map((line) => line.replace(PREFIX, ""));
+}
 
 // Every line of the server's log has the same shape; paths under the
 // project are relative to it, which a line naming the project still names
@@ -71,12 +86,8 @@ test("the server's lines", async (t) => {
     expect(await s.poll("cdb")).toBe(1);
     await s.sync();
     await s.stop();
-    const [log] = t.disk.list(`${LOGS}/*/master.log`);
-    const lines = t.disk
-        .read(log ?? "")
-        .split(/\r?\n/)
-        .filter((line) => line !== "");
-    expect(lines.filter((line) => !LINE.test(line))).toEqual([]);
+    const lines = masterLines(t);
+    expect(lines.filter((line) => !PREFIX.test(line))).toEqual([]);
     // Every spelling of the root: as given and resolved, with either
     // separator, a drive in either case.
     const under = [t.root, fs.realpathSync.native(t.root)].flatMap((root) =>
@@ -87,10 +98,10 @@ test("the server's lines", async (t) => {
         ),
     );
     expect(lines.filter((line) => under.some((prefix) => line.includes(prefix)))).toEqual([]);
-    expect(lines.filter((line) => /\] Command of main\.cpp( changed)?: /.test(line))).toEqual([
-        expect.stringContaining("Command of main.cpp: "),
-        expect.stringContaining("Command of main.cpp changed: "),
-    ]);
+    await t.show(
+        "commands",
+        messages(t).filter((message) => message.startsWith("Command of ")),
+    );
 });
 
 // A server on no workspace folder logs into the cache directory the
@@ -101,10 +112,13 @@ test("a server on no folder", async (t) => {
     s.open("main.cpp");
     await s.sync();
     await s.stop();
-    const logs = t.disk.list(`${LOGS}/*/*.log`);
-    expect(logs.filter((log) => log.endsWith("/master.log"))).toHaveLength(1);
-    const lines = logs.flatMap((log) => t.disk.read(log).split(/\r?\n/));
-    expect(lines.some((line) => line.includes("] Opened main.cpp "))).toBe(true);
+    expect(t.disk.list(`${LOGS}/*/master.log`)).toHaveLength(1);
+    await t.show(
+        "files named",
+        messages(t).filter(
+            (message) => message.startsWith("Opened ") || message.startsWith("Command of "),
+        ),
+    );
 });
 
 // A server whose log moves aside over and over keeps no file it moved aside

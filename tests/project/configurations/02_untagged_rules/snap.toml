@@ -4,6 +4,9 @@ active = ""
 selected = ""
 default = ""
 
+["untagged rules have no menu".refused]
+value = "no rule declares the configuration debug"
+
 ["untagged rules have no menu"."left behind".configurations]
 menu = []
 active = ""

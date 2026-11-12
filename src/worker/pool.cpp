@@ -192,6 +192,11 @@ async::task<> WorkerPool::run_peer(std::shared_ptr<ipc::BincodePeer> peer,
 
 bool WorkerPool::start(const WorkerPoolOptions& opts) {
     options = opts;
+    // Let integration tests revive a given-up slot without waiting out the
+    // real cooldown.
+    if(auto ms = env_integer("CLICE_TEST_REVIVE_AFTER_MS")) {
+        options.revive_after = chrono::milliseconds(*ms);
+    }
     auto max_resident = options.max_resident.value_or(default_max_resident(memory_state({}).limit));
     residency = Residency(max_resident);
 

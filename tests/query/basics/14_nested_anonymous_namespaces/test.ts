@@ -5,6 +5,6 @@ import { test } from "@clice/tools/testing";
 // among the files of its own unit.
 test("closed sources", async (t) => {
     await t.cli("index");
-    await t.cli("query references a.cpp:2:22 --include-declaration");
-    await t.cli("query references c.cpp:6:22 --include-declaration");
+    await t.cli(`query references ${t.place(t.at("a.cpp", "return |N::x"))} --include-declaration`);
+    await t.cli(`query references ${t.place(t.at("c.cpp", "return |N::z"))} --include-declaration`);
 });

@@ -127,7 +127,7 @@ document_links = [
 ]
 
 [locations."main.cpp"]
-wrong = "the editor skips the function bodies of the headers, and with background indexing off nothing reports the errors inside them"
+wrong = "the errors inside the headers' function bodies are missing: with background indexing off, the editor reads the headers without their function bodies"
 diagnostics = [
     {
         at = "int a = ⟦stale⟧();",

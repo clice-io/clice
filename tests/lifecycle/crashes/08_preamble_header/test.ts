@@ -5,7 +5,11 @@ const QUIET = { diagnostics: { clang_tidy: false }, project: { enable_indexing: 
 // A change to a header the preamble includes is a retry, with no save of
 // the file itself.
 test("a header change retries", async (t) => {
-    const s = await t.start({ config: QUIET, crash: { request: "buildPch", file: "main.cpp" } });
+    const s = await t.start({
+        config: QUIET,
+        crash: { request: "buildPch", file: "main.cpp" },
+        env: { CLICE_TEST_CRASH_SPACING_MS: "0" },
+    });
     const add = t.marker("add");
     s.open("main.cpp");
     await t.show("hover", s.hover(add));
@@ -13,7 +17,6 @@ test("a header change retries", async (t) => {
     await t.show("pushes", s.pushes("main.cpp"));
     await t.show("hover asked again", s.hover(add));
     await t.show("crashes while it sits still", await s.crashes());
-    await t.elapse(2_100, "the spacing between a crash and the retry a change earns");
     t.disk.edit("header.h", { after: "int known();\n", insert: "int more();\n" });
     await s.sync({ poll: true });
     await t.show("hover after the header changed", s.hover(add));

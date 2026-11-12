@@ -9,7 +9,7 @@ subtypes = [
 ]
 
 [answers.derived]
-wrong = "the supertype should name Base<int>, the specialization Derived derives from (clangd#31)"
+wrong = "the supertype should name Base<int>, the specialization Derived derives from, as clangd names it (clangd#31)"
 type_hierarchy = [
     { name = "Derived", kind = "Struct", at = "struct ⟦Derived⟧ : Base<int> {};" },
 ]

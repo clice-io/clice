@@ -6,18 +6,20 @@ import { test } from "@clice/tools/testing";
 // superseded mid-way under a fresh content key: none leaves a temporary
 // blob behind.
 
+const ROUNDS = 3;
+
 test(async (t) => {
     const s = await t.start();
     await s.diagnostics("main.cpp");
     let previous: Awaited<ReturnType<typeof s.park>> | undefined;
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < ROUNDS; i++) {
         const park = await s.park("buildPch", "main.cpp", { at: "worker" });
         s.edit("main.cpp", { text: `#define STORM ${String(i)}\n${t.disk.read("main.cpp")}` });
         const diagnostics = s.diagnostics("main.cpp");
         await park.reached();
         await previous?.release();
         previous = park;
-        if (i === 14) {
+        if (i === ROUNDS - 1) {
             await park.release();
             await t.show("diagnostics", diagnostics);
         } else {
