@@ -466,7 +466,7 @@ tests/navigation/references/03_implicit_construction
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#716 clangd#1872 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#716 -->
 
 **References through forwarding functions**
 
@@ -1421,7 +1421,7 @@ tests/navigation/call_hierarchy/08_lambda_bodies
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2242 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#716 -->
 
 **Constructor calls through forwarding functions**
 
