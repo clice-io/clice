@@ -576,6 +576,11 @@ private:
     bool stop_started = false;
     async::event stopped{false};
 
+    /// Ends the process when stop() has not finished in time, naming the
+    /// step it is stuck at (stop_step).
+    async::task_group<> stop_watchdog;
+    std::string stop_step;
+
     /// Removed projects, shutting down or kept alive after by the requests
     /// still running in them.
     std::vector<std::weak_ptr<ServedProject>> removed_projects;

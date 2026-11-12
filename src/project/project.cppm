@@ -764,19 +764,18 @@ struct Project {
     std::optional<bool> self_contained(const SelfContainmentKey& key, bool open);
 
     /// Remember what the self-containment check of `key` found: whether the
-    /// header's compile without its includer's context over `text`, having
-    /// read `inputs`, missed nothing an includer provides
-    /// (feature::missing_context_diagnostics).
+    /// header compiles alone, its compile without its includer's context
+    /// over `text` having read `inputs`.
     void commit_self_containment(const SelfContainmentKey& key,
                                  bool self_contained,
                                  VersionID text,
                                  Inputs inputs);
 
     /// The header's buffer was saved as `text`: the check of `key`, when one
-    /// found it self-contained and `leans` says the compile of that text shows
-    /// what an includer provides, is forgotten, to run again; any other result
-    /// holds for the saved text. Whether it was forgotten.
-    bool header_saved(const SelfContainmentKey& key, VersionID text, bool leans);
+    /// found it self-contained and the compile of that text `errs`, is
+    /// forgotten, to run again; any other result holds for the saved text.
+    /// Whether it was forgotten.
+    bool header_saved(const SelfContainmentKey& key, VersionID text, bool errs);
 
     // command/synthesis.cpp
 
@@ -1173,9 +1172,15 @@ struct Project {
     /// checkpoint; then forget the PCHs the store evicted.
     async::task<> checkpoint();
 
+    /// Stop what feeds the workers on its own, the include-tree runs and
+    /// the background index, before the pool stops: a stopped pool fails
+    /// each dispatch at once, and the background index would walk its whole
+    /// queue through it, requeueing every file.
+    async::task<> stop_feeding();
+
     /// The shutdown once its owner's compiles are quiesced (contract 11):
-    /// stop the include-tree runs and the background index, wind down the
-    /// graph's attempts, save a last time and close the cache store.
+    /// stop feeding the workers, wind down the graph's attempts, save a
+    /// last time and close the cache store.
     async::task<> shutdown();
 
     /// Open what the project's database holds: the index (ProjectIndex::open),
