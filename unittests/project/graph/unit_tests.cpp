@@ -281,8 +281,7 @@ ZEST_CASE(ExcludedModuleStillIndexed) {
         }));
         f.project.settings.rules.push_back(Rule{.patterns = {"vendor/**"}, .index = false});
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        f.project.settings.finalize(f.project.root);
-        f.project.rules = Rules(f.project.settings, f.project.root, "");
+        finish_settings(f.project);
         scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);
         f.project.dep_graph.build_reverse_map();
     };

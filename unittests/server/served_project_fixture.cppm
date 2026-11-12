@@ -8,6 +8,7 @@ import :server.served_project;
 import :server.session;
 import :settings.rules;
 import :support.prelude;
+import :unittests.utils.project_fixture;
 import :vfs.file_table;
 import :vfs.path;
 
@@ -20,14 +21,16 @@ namespace clice::testing {
 /// didOpen puts them, and the project adopts them. The private state the
 /// tests set up or check goes through the accessors below, ServedProject's
 /// only friend.
-struct ServedProjectFixture {
-    async::event_loop loop;
+struct ServedProjectFixture : zest::LoopFixture {
     MasterServer server{loop, ""};
     std::shared_ptr<ServedProject> served;
 
     explicit ServedProjectFixture(llvm::StringRef root = "/proj") {
+        // Hang detection: real workers build here, slowly on a loaded
+        // machine.
+        watchdog = chrono::seconds(45);
         served = std::make_shared<ServedProject>(server, CanonicalPath(Spelling::absolute(root)));
-        served->project.rules = Rules(served->project.settings, served->project.root, "");
+        skip_toolchain_query(served->project);
         server.projects.push_back(served);
         // The server applies the file table's changes, and the project
         // flushes its metadata, on a later turn of its running event loop;

@@ -595,8 +595,7 @@ ZEST_CASE(CDBRemovedStillCovered) {
     tmp.touch("kept.cpp", R"(int y;)");
     project.settings.rules.push_back(Rule{.default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
     auto gone_id = intern(tmp.path("gone.cpp"));
     auto json = build_cdb_json({
         {tmp.root, tmp.path("kept.cpp"), {}}

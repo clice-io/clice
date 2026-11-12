@@ -886,10 +886,8 @@ ZEST_CASE(SpawnFailReportsAnomaly) {
     /// Production trigger for the WorkerSpawnFail anomaly.
     WorkerPoolFixture f;
 
-    WorkerPoolOptions opts;
+    auto opts = worker_options(f.tmp, 1, 0);
     opts.program = "/nonexistent/clice-binary";
-    opts.stateless_count = 1;
-    opts.stateful_count = 0;
     ZEXPECT(!f.pool.start(opts));
 
     ZEXPECT(f.anomalies.trapped == std::vector{logging::AnomalyId::WorkerSpawnFail});

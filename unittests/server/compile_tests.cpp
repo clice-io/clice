@@ -159,16 +159,11 @@ ZEST_CASE(ClosedSessionSkipsCompile) {
     close_document(fixture, session->path_id);
 
     bool compiled = true;
-    bool done = false;
     auto body = [&]() -> async::task<> {
         compiled = co_await served.ensure_compiled(session);
         co_await served.shutdown();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
     ZEXPECT(!compiled);
 }
 
@@ -261,15 +256,10 @@ ZEST_CASE(CrashPublishesNote) {
     ZEXPECT(message.contains("while compiling this file (killed by signal 11 (SIGSEGV))"));
     ZEXPECT(message.contains("save it"));
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(!co_await served.ensure_compiled(session));
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
     ZEXPECT(served.latest(session->path_id) == compiled);
 }
 
@@ -290,7 +280,6 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
 
     bool waiter_done = false;
     bool waiter_ok = true;
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
@@ -317,12 +306,8 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
         // group is joined once.
         co_await served.project.graph.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
     ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
@@ -345,7 +330,6 @@ ZEST_CASE(EditInterruptsStaleCompile) {
 
     std::optional<bool> first_ok;
     std::optional<bool> second_ok;
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
@@ -376,12 +360,8 @@ ZEST_CASE(EditInterruptsStaleCompile) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
     ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
@@ -412,7 +392,6 @@ ZEST_CASE(BufferImportBuildsPCM) {
     auto session = fixture.open(src, "import m;\nint main() { return mv(); }\n");
 
     bool ok = false;
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 1)));
 
@@ -420,12 +399,8 @@ ZEST_CASE(BufferImportBuildsPCM) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 
     ZEXPECT(ok);
     ZEXPECT(served.current(session->path_id));
@@ -482,7 +457,6 @@ ZEST_CASE(RefusedModuleForgotten) {
         held.set();
     });
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 1)));
 
@@ -500,12 +474,8 @@ ZEST_CASE(RefusedModuleForgotten) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 
     auto* record = session->crash_record(feature::RequestKind::PCM);
     ZASSERT(record);
@@ -552,9 +522,7 @@ ZEST_CASE(DiamondDepsDeduplicated) {
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
+    fixture.run(body());
     ZASSERT(ok);
 
     auto top = project.dep_graph.lookup_module("top");
@@ -602,7 +570,6 @@ ZEST_CASE(ImportScanPerUnit) {
     std::uint64_t first_scans = 0;
     std::uint64_t body_scans = 0;
     std::uint64_t import_scans = 0;
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 1)));
 
@@ -621,12 +588,8 @@ ZEST_CASE(ImportScanPerUnit) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 
     ZEXPECT(plain_scans == 0u);
     // The document's scan, and the interface's own PCM round.
@@ -650,7 +613,6 @@ ZEST_CASE(BufferImportRecorded) {
     auto& served = *fixture.served;
     auto session = fixture.open(src, "import m;\nint main() { return 0; }\n");
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
@@ -658,12 +620,8 @@ ZEST_CASE(BufferImportRecorded) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 
     // The unresolved-import edge survives the commit: a first provider's update
     // must reach this document's node.
@@ -695,7 +653,6 @@ ZEST_CASE(IncludeImportRecorded) {
     project.dep_graph.build_reverse_map();
     auto session = fixture.open(src, "int main() { return 0; }\n");
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
@@ -703,12 +660,8 @@ ZEST_CASE(IncludeImportRecorded) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 
     auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
@@ -737,7 +690,6 @@ ZEST_CASE(HostImportRecorded) {
     project.dep_graph.build_reverse_map();
     auto session = fixture.open(tmp.path("part.inc"), "int part();\n");
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 1)));
 
@@ -745,12 +697,8 @@ ZEST_CASE(HostImportRecorded) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 
     auto* context = project.hosting.contexts.find(session->path_id);
     ZASSERT((context != nullptr && context->result.synthesized != nullptr));
@@ -781,7 +729,6 @@ ZEST_CASE(SuffixImportRecorded) {
     project.dep_graph.build_reverse_map();
     auto session = fixture.open(tmp.path("part.inc"), "int part();\n");
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 1)));
 
@@ -789,12 +736,8 @@ ZEST_CASE(SuffixImportRecorded) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 
     auto* context = project.hosting.contexts.find(session->path_id);
     ZASSERT((context != nullptr && context->result.synthesized != nullptr));
@@ -827,7 +770,6 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
 
     bool unit_ok = false;
     bool header_ok = false;
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 1)));
 
@@ -836,12 +778,8 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 
     ZEXPECT(unit_ok);
     ZEXPECT(header_ok);
@@ -862,18 +800,13 @@ ZEST_CASE(CrashedCompileStopsBuilds) {
     auto session = fixture.open("/proj/poison.cpp", "int x;\n");
     session->crashed(feature::RequestKind::Compile, "d1", "cause", Session::Clock::now());
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         // With no worker at all, only the stop can answer without an error.
         auto result = co_await ask_completion(served, Ticket::take(session), {});
         ZASSERT(result);
         ZEXPECT(result.value().list.data == "null");
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 }
 
 ZEST_CASE(CrashedFormatStopsFormat) {
@@ -882,17 +815,12 @@ ZEST_CASE(CrashedFormatStopsFormat) {
     auto session = fixture.open("/proj/poison.cpp", "int x;\n");
     session->crashed(feature::RequestKind::Format, "d1", "cause", Session::Clock::now());
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         auto result = co_await served.format(Ticket::take(session), std::nullopt, {});
         ZASSERT(result);
         ZEXPECT(!result.value().has_value());
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 }
 
 ZEST_CASE(GenerationGuardsPCHWrite) {
@@ -917,9 +845,7 @@ ZEST_CASE(GenerationGuardsPCHWrite) {
     auto body = [&]() -> async::task<> {
         wrote = co_await fixture.build_pch(session, gen, generation, directory, arguments);
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
+    fixture.run(body());
 
     ZEXPECT(!wrote);
     // The stale continuation left the adopted PCH reference untouched.
@@ -946,7 +872,6 @@ ZEST_CASE(PCHCrashStopsDocument) {
     std::string directory = tmp.path(".");
     auto arguments = make_args(src);
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 0)));
 
@@ -963,12 +888,8 @@ ZEST_CASE(PCHCrashStopsDocument) {
         ZEXPECT(notes[0].count == 1u);
 
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
     ZEXPECT(anomalies.trapped == std::vector{logging::AnomalyId::WorkerCrash});
 }
 
@@ -987,7 +908,6 @@ ZEST_CASE(PCHCrashStopsBuild) {
     open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "#pragma clang __debug crash\nint value;\n");
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 0)));
 
@@ -1001,12 +921,8 @@ ZEST_CASE(PCHCrashStopsBuild) {
         ZEXPECT(notes[0].count == 1u);
 
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
     ZEXPECT(anomalies.trapped == std::vector{logging::AnomalyId::WorkerCrash});
 }
 
@@ -1026,7 +942,6 @@ ZEST_CASE(QueuedRequestStops) {
     open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "int value;\n#pragma clang __debug crash\nint other;\n");
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         auto options = worker_options(tmp, 1, 0);
         options.max_stateless = 1;
@@ -1045,12 +960,8 @@ ZEST_CASE(QueuedRequestStops) {
         ZEXPECT(notes[0].count == 1u);
 
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
     ZEXPECT(anomalies.trapped == std::vector{logging::AnomalyId::WorkerCrash});
 }
 
@@ -1071,7 +982,6 @@ ZEST_CASE(ClientCancelSparesCompile) {
 
     bool cancelled_returned = false;
     bool other_answered = false;
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
@@ -1108,12 +1018,8 @@ ZEST_CASE(ClientCancelSparesCompile) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
     ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
@@ -1133,7 +1039,6 @@ ZEST_CASE(StaleReplyContentModified) {
     auto session = fixture.open(src, "int v0;\n");
 
     bool stale = false;
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
@@ -1164,12 +1069,8 @@ ZEST_CASE(StaleReplyContentModified) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
     ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
@@ -1189,7 +1090,6 @@ ZEST_CASE(HarmlessKindKeepsStop) {
     auto tokens = feature::RequestKind::SemanticTokens;
     session->crashed(tokens, "w-1", "cause", Session::Clock::now());
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
@@ -1199,12 +1099,8 @@ ZEST_CASE(HarmlessKindKeepsStop) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
     ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
@@ -1231,7 +1127,6 @@ ZEST_CASE(PoisonPreambleShared) {
     std::string directory = tmp.path(".");
     auto arguments = make_args(tmp.path("a.cpp"));
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 0)));
 
@@ -1257,12 +1152,8 @@ ZEST_CASE(PoisonPreambleShared) {
         ZEXPECT(crashed(third));
 
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
     ZEXPECT(anomalies.trapped == std::vector{logging::AnomalyId::WorkerCrash});
 }
 
@@ -1296,7 +1187,6 @@ ZEST_CASE(AbandonedPCHDropsIndex) {
                               [](const auto& entry) { return !entry.getValue().path.empty(); });
     };
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 0)));
 
@@ -1328,12 +1218,8 @@ ZEST_CASE(AbandonedPCHDropsIndex) {
 
         co_await fixture.served->shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
     ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
@@ -1359,7 +1245,6 @@ ZEST_CASE(GenerationGuardsPCHClear) {
     std::string directory = tmp.path(".");
     auto arguments = make_args(src);
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 0)));
 
@@ -1399,12 +1284,8 @@ ZEST_CASE(GenerationGuardsPCHClear) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 }
 
 ZEST_CASE(StaleDepsNoAdopt) {
@@ -1435,7 +1316,6 @@ ZEST_CASE(StaleDepsNoAdopt) {
                                  arguments);
     };
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 0)));
 
@@ -1469,12 +1349,8 @@ ZEST_CASE(StaleDepsNoAdopt) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 }
 
 ZEST_CASE(EvictedDocumentRecompiles) {
@@ -1490,7 +1366,6 @@ ZEST_CASE(EvictedDocumentRecompiles) {
     auto a = fixture.open(tmp.path("a.cpp"), "int alpha = 1;\n");
     auto b = fixture.open(tmp.path("b.cpp"), "int beta = 2;\n");
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         auto options = worker_options(tmp, 0, 1);
         options.max_resident = 1;
@@ -1511,12 +1386,8 @@ ZEST_CASE(EvictedDocumentRecompiles) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 }
 
 ZEST_CASE(EvictedDocumentKeptAnswers) {
@@ -1561,7 +1432,6 @@ ZEST_CASE(EvictedDocumentKeptAnswers) {
     LocalSourceRange first{30, 48};
     LocalSourceRange second{49, 67};
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         auto options = worker_options(tmp, 0, 1);
         options.max_resident = 1;
@@ -1594,12 +1464,8 @@ ZEST_CASE(EvictedDocumentKeptAnswers) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 }
 
 ZEST_CASE(QueryHoldsItsDocument) {
@@ -1624,7 +1490,6 @@ ZEST_CASE(QueryHoldsItsDocument) {
         held.set();
     });
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         auto options = worker_options(tmp, 0, 1);
         options.max_resident = 1;
@@ -1651,12 +1516,8 @@ ZEST_CASE(QueryHoldsItsDocument) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 }
 
 ZEST_CASE(RecompileKeepsItsAST) {
@@ -1673,7 +1534,6 @@ ZEST_CASE(RecompileKeepsItsAST) {
     auto b = fixture.open(tmp.path("b.cpp"), "int beta = 2;\n");
 
     bool recompiled = false;
-    bool done = false;
     auto body = [&]() -> async::task<> {
         auto options = worker_options(tmp, 0, 1);
         options.max_resident = 1;
@@ -1700,12 +1560,8 @@ ZEST_CASE(RecompileKeepsItsAST) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 }
 
 ZEST_CASE(EvictedDocumentSeesHeader) {
@@ -1723,7 +1579,6 @@ ZEST_CASE(EvictedDocumentSeesHeader) {
     auto a = fixture.open(tmp.path("a.cpp"), "int alpha = 1;\n#include \"late.h\"\n");
     auto b = fixture.open(tmp.path("b.cpp"), "int beta = 2;\n");
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         auto options = worker_options(tmp, 0, 1);
         options.max_resident = 1;
@@ -1741,12 +1596,8 @@ ZEST_CASE(EvictedDocumentSeesHeader) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 }
 
 ZEST_CASE(AnswerClearsQueryRecord) {
@@ -1761,7 +1612,6 @@ ZEST_CASE(AnswerClearsQueryRecord) {
     a->crashed(hover, "d1", "cause", Session::Clock::now());
     a->saved();
 
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
@@ -1773,12 +1623,8 @@ ZEST_CASE(AnswerClearsQueryRecord) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 }
 
 ZEST_CASE(CloseDuringQueryEnds) {
@@ -1793,7 +1639,6 @@ ZEST_CASE(CloseDuringQueryEnds) {
     auto path_id = a->path_id;
 
     bool modified = false;
-    bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
@@ -1815,12 +1660,8 @@ ZEST_CASE(CloseDuringQueryEnds) {
 
         co_await served.shutdown();
         co_await fixture.server.pool.stop();
-        done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
+    fixture.run(body());
 }
 
 };  // ZEST_SUITE(AnswerGuards)

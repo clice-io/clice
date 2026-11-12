@@ -56,13 +56,7 @@ std::shared_ptr<Session> open(bool compiled) {
 
 /// The route of a request on the ticket asking `options`.
 Route route(const Ticket& ticket, RouteOptions options = {}) {
-    std::optional<Route> picked;
-    auto body = [&]() -> async::task<> {
-        picked = co_await fx.served->pick_route(ticket, options);
-    };
-    auto task = body();
-    fx.loop.schedule(task);
-    fx.loop.run();
+    auto [picked] = fx.run(fx.served->pick_route(ticket, options));
     ZASSERT(picked.has_value());
     return *picked;
 }
@@ -162,21 +156,15 @@ ZEST_CASE(WaitsForIndex) {
     auto ask = [&]() -> async::task<> {
         picked = co_await fx.served->pick_route(Ticket::take(session), {.waits_for_index = true});
     };
-    auto asked = ask();
-    fx.loop.schedule(asked);
-    fx.loop.run();
-    ZEXPECT(!picked.has_value());
-
     // The attempt indexed the file: the route is decided again from its
     // shard.
-    Fid indexed;
-    merge_unit(project, *unit, indexed);
-    auto finish = [&]() -> async::task<> {
+    auto index = [&]() -> async::task<> {
+        ZEXPECT(!picked.has_value());
+        Fid indexed;
+        merge_unit(project, *unit, indexed);
         co_await project.background_index.stop();
     };
-    auto finished = finish();
-    fx.loop.schedule(finished);
-    fx.loop.run();
+    fx.run(ask(), index());
     ZEXPECT(picked == Route::Index);
 }
 

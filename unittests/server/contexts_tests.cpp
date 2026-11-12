@@ -10,6 +10,7 @@ import :settings.rules;
 import :settings.settings;
 import :unittests.server.served_project_fixture;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.project_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.path;
@@ -234,8 +235,7 @@ ZEST_CASE(ChoiceBaseSurvivesRules) {
     // a rule edits every command since it was made...
     choose(file, ContextChoice{Fid{}, std::nullopt, project.commands.command_hash_hex(chosen)});
     project.settings.rules.push_back(Rule{.append = {"-DRULED"}});
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
     auto resolution = project.resolve_command(file, served.command_request(file));
     ZASSERT(ranges::contains(resolution.arguments, "RULED"));
     ZASSERT(ranges::contains(resolution.arguments, define_of(chosen)));
@@ -253,8 +253,7 @@ ZEST_CASE(ChoiceNamesWrittenCommand) {
     tmp.touch("main.cpp");
     auto path = tmp.path("main.cpp");
     project.settings.rules.push_back(Rule{.remove = {"-W*"}});
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
     auto entries = [&](llvm::StringRef warning) {
         write_cdb(tmp,
                   project.cdb,
