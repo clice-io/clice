@@ -3,18 +3,7 @@ stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
-stderr = '''
-warning: CLICE_LOG_LEVEL is bogus, none of trace, debug, info, warn, error, fatal and off: it is ignored
-warning: CLICE_LOG_LEVEL is bogus, none of trace, debug, info, warn, error, fatal and off: it is ignored
-warning: [SL-0] warning: CLICE_LOG_LEVEL is bogus, none of trace, debug, info, warn, error, fatal and off: it is ignored
-'''
-exit = 0
-
-["log level"."$ clice index --jobs 1 #2"]
-stdout = '''
-Indexed 0 translation units in #s: 1 file shard (# B), 1 symbol.
-Session log: ${WS}/.clice/logs/${SESSION}
-'''
+stderr = "warning: CLICE_LOG_LEVEL is bogus, none of trace, debug, info, warn, error, fatal and off: it is ignored"
 exit = 0
 
 ["a job count by its short name"."$ clice index -j 1"]

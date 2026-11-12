@@ -1,11 +1,11 @@
 [test."decls.h"]
-wrong = "the brace a macro opens is not counted, so the preamble ends inside the namespace: its build reports the scope unclosed, and decls.h's declarations land outside it"
+wrong = "the brace a macro opens is not counted: in main.cpp's context the namespace stays open and the build reports it unclosed, as many errors as alone, so decls.h compiles alone, without main.cpp's Handle"
 diagnostics = [
     {
-        at = "⟦⟧int open(Handle handle);",
+        at = "int open(⟦Handle⟧ handle);",
         severity = "error",
-        message = "expected '}'",
+        message = "unknown type name 'Handle'",
         source = "clang",
-        code = "err_expected",
+        code = "err_unknown_typename",
     },
 ]
