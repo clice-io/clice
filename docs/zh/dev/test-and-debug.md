@@ -47,17 +47,19 @@ pixi run test Debug          # all tests with debug build
 
 ## 编辑器 E2E 测试
 
-这些冒烟测试使用真实编辑器（无头 Neovim 和 VS Code）测试本地构建的 clice 可执行文件，覆盖启动、首次诊断、悬停、转到定义和代码补全，并在头文件上覆盖显示和切换其编译上下文的命令。测试运行在三个用例的副本上——一个单文件项目、一个 C++20 模块项目，以及一个有两个宿主的头文件——这些副本由 `editor-prepare` 写入 `.cache/editors`。CI 在 Linux x64、macOS arm64 和 Windows x64（Windows 上只有 VS Code）上使用编辑器的最新稳定版本运行这些测试，并且有意不锁定版本：该作业用于发现编辑器新版本导致的故障。
+这些端到端测试使用真实编辑器（无头 Neovim、VS Code 和 Zed）测试本地构建的 clice 可执行文件。Neovim 和 VS Code 运行在 `tests/editors/` 下的 fixture 上，每个 fixture 是一个小项目和一个说明要检查什么的 `scenario.json`：启动、干净的编译、索引、悬停、转到定义和代码补全、文件的编译命令从哪里来、头文件的编译上下文（切换、重置、翻过不止一页的上下文）、在源文件和头文件之间切换、一次重构、构建配置，以及重启。测试运行在 `editor-prepare` 写入 `.cache/editors/<editor>` 的副本上；测试结束后，它们启动的服务器的日志中不得有崩溃、异常或 error 级别的行。Zed 测试在真实的 Zed 中安装扩展，由扩展下载最新发布版，再用本次构建替换它，并在断网的情况下启动。CI 在 Linux x64、macOS arm64 和 Windows x64（Windows 上只有 VS Code 和 Zed；macOS 上没有 Zed）上使用编辑器的最新稳定版本运行这些测试，并且有意不锁定版本：该作业用于发现编辑器新版本导致的故障。
 
 ```bash
-$ pixi run build                  # build/RelWithDebInfo/bin/bin/clice
-$ pixi run -e editor editor-test  # nvim + vscode, all three projects
+$ pixi run build                          # build/RelWithDebInfo/bin/bin/clice
+$ pixi run -e editor editor-test          # nvim + vscode, every fixture
+$ xvfb-run -a pixi run -e editor zed-e2e  # Zed
 ```
 
 pixi 环境之外的前置条件：
 
 - `nvim`（stable）可在 `PATH` 中找到，供 `nvim-e2e` 使用。
 - 显示环境（或 `xvfb-run`），以及 Electron 通常依赖的系统库，供 `vscode-e2e` 使用。
+- `zed-e2e` 需要指向 Zed 应用的 `ZED_EXECUTABLE`、显示环境，以及带 `wasm32-wasip2` 目标的 cargo。
 
 ## 兼容性测试
 
