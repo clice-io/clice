@@ -1,2 +1,2 @@
-# No database: nothing ties main.cpp to a project.
+# No database: nothing ties the sources to a project.
 databases = {}

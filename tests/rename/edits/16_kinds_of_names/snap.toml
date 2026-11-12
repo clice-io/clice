@@ -1,0 +1,150 @@
+[answers.namespace.rename]
+compiles = true
+
+[answers.namespace.rename.edits]
+"main.cpp" = '''
+-namespace math {
++namespace numeric {
+ int one();
+ }
+
+-namespace math {
++namespace numeric {
+ int two();
+ }
+
+-int math::one() { return 1; }
++int numeric::one() { return 1; }
+
+-namespace algebra = math;
+-using namespace math;
++namespace algebra = numeric;
++using namespace numeric;
+
+ enum class Color { red, green };
+'''
+
+[answers.enumerator.rename]
+compiles = true
+
+[answers.enumerator.rename.edits]
+"main.cpp" = '''
+ using namespace math;
+
+-enum class Color { red, green };
++enum class Color { crimson, green };
+ enum Mood { calm };
+
+ int red = 0;
+
+-Color pick() { return Color::red; }
++Color pick() { return Color::crimson; }
+ Mood settle() { return calm; }
+'''
+
+[answers.enum.rename]
+compiles = true
+
+[answers.enum.rename.edits]
+"main.cpp" = '''
+
+ enum class Color { red, green };
+-enum Mood { calm };
++enum Feeling { calm };
+
+ int red = 0;
+
+ Color pick() { return Color::red; }
+-Mood settle() { return calm; }
++Feeling settle() { return calm; }
+
+ struct Point {
+'''
+
+[answers.field.rename]
+compiles = true
+
+[answers.field.rename.edits]
+"main.cpp" = '''
+
+ struct Point {
+-    int x;
+-    Point() : x(0) {}
++    int column;
++    Point() : column(0) {}
+ };
+
+-int get(Point p) { return p.x; }
+-int Point::*member = &Point::x;
++int get(Point p) { return p.column; }
++int Point::*member = &Point::column;
+
+ using Size = unsigned;
+'''
+
+[answers.alias.rename]
+compiles = true
+
+[answers.alias.rename.edits]
+"main.cpp" = '''
+ int Point::*member = &Point::x;
+
+-using Size = unsigned;
+-Size count;
+-typedef Size Count;
++using Length = unsigned;
++Length count;
++typedef Length Count;
+
+ template <typename T>
+'''
+
+[answers.concept.rename]
+compiles = true
+
+[answers.concept.rename.edits]
+"main.cpp" = '''
+
+ template <typename T>
+-concept Small = sizeof(T) < 4;
++concept Tiny = sizeof(T) < 4;
+
+-template <Small T>
++template <Tiny T>
+ void take(T);
+
+-void give(Small auto value);
+-static_assert(Small<char>);
++void give(Tiny auto value);
++static_assert(Tiny<char>);
+
+ void spin() {
+'''
+
+[answers.label.rename]
+compiles = true
+
+[answers.label.rename.edits]
+"main.cpp" = '''
+
+ void spin() {
+-again:
+-    goto again;
++retry:
++    goto retry;
+ }
+'''
+
+[answers.dollar.rename]
+compiles = true
+
+[answers.dollar.rename.edits]
+"main.cpp" = '''
+ }
+
+-int my$count = 0;
++int total = 0;
+
+-int use() { return my$count + red + two() + algebra::one(); }
++int use() { return total + red + two() + algebra::one(); }
+'''

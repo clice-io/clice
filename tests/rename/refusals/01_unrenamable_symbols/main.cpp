@@ -9,6 +9,12 @@ struct Size {
     int x;
 };
 
+struct Gauge {
+    explicit Gauge(int level);
+};
+
+Gauge gauge§(constructor_paren)(1);
+
 template <typename T>
 int width(const T& shape) {
     return shape.§(dependent)x;

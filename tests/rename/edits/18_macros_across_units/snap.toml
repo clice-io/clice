@@ -1,0 +1,78 @@
+[answers.shared_header.rename]
+notice = '''
+Spellings of `LIMIT` left alone:
+  ${WS}/c.cpp:1: #ifdef LIMIT (a directive names it where no #define of it reaches, or in a block the preprocessor skips)
+'''
+
+[answers.shared_header.rename.edits]
+"a.cpp" = '''
+
+ #define DEBUG_TYPE "a"
+-int a = LIMIT + LOG() + CHECK;
+-#ifdef LIMIT
+-int b = LIMIT + 1;
++int a = BOUND + LOG() + CHECK;
++#ifdef BOUND
++int b = BOUND + 1;
+ #endif
+ #undef DEBUG_TYPE
+'''
+"b.cpp" = '''
+
+ #define DEBUG_TYPE "b"
+-#if defined(LIMIT) && LIMIT > 5
+-int c = LIMIT + LOG() + CHECK;
++#if defined(BOUND) && BOUND > 5
++int c = BOUND + LOG() + CHECK;
+ #endif
+-#undef LIMIT
++#undef BOUND
+'''
+"limits.h" = '''
+-#ifndef LIMIT
+-#define LIMIT 10
++#ifndef BOUND
++#define BOUND 10
+ #endif
+'''
+
+[answers.unrelated.rename.edits]
+"b.cpp" = '''
+ #define DEBUG_TYPE "b"
+ #if defined(LIMIT) && LIMIT > 5
+-int c = LIMIT + LOG() + CHECK;
++int c = LIMIT + LOG() + VERIFY;
+ #endif
+ #undef LIMIT
+'''
+"check_b.h" = '''
+-#define CHECK 2
++#define VERIFY 2
+'''
+
+[answers.linked_by_body.rename.edits]
+"a.cpp" = '''
+ #include "check_a.h"
+
+-#define DEBUG_TYPE "a"
++#define LOG_TYPE "a"
+ int a = LIMIT + LOG() + CHECK;
+ #ifdef LIMIT
+ int b = LIMIT + 1;
+ #endif
+-#undef DEBUG_TYPE
++#undef LOG_TYPE
+'''
+"b.cpp" = '''
+ #include "check_b.h"
+
+-#define DEBUG_TYPE "b"
++#define LOG_TYPE "b"
+ #if defined(LIMIT) && LIMIT > 5
+ int c = LIMIT + LOG() + CHECK;
+'''
+"log.h" = '''
+ int use(const char* name);
+-#define LOG() use(DEBUG_TYPE)
++#define LOG() use(LOG_TYPE)
+'''

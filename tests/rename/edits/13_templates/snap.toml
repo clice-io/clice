@@ -31,3 +31,56 @@ Spellings of `area` left alone:
 +    double volume() const { return 1.0; }
  };
 '''
+
+[answers.from_instantiated_call.rename.edits]
+"main.cpp" = '''
+ struct Circle {
+-    double area() const { return 3.0; }
++    double perimeter() const { return 3.0; }
+ };
+
+…
+
+ template <typename T>
+-double measure(const T& shape) { return shape.area(); }
++double measure(const T& shape) { return shape.perimeter(); }
+
+ template <typename T>
+'''
+
+[answers.from_uninstantiated_call.prepare_rename]
+error = "no instantiation the index saw resolves the name here; rename from a declaration"
+
+[answers.overrides.rename.edits]
+"main.cpp" = '''
+
+ struct Polygon {
+-    virtual int sides() const { return 0; }
++    virtual int edges() const { return 0; }
+ };
+
+ struct Hexagon : Polygon {
+-    int sides() const override { return 6; }
++    int edges() const override { return 6; }
+ };
+
+ template <typename T>
+-int count(const T& shape) { return shape.sides(); }
++int count(const T& shape) { return shape.edges(); }
+
+ double scale(double value) { return value * 2; }
+'''
+
+[answers.lone_candidate.rename.edits]
+"main.cpp" = '''
+ int count(const T& shape) { return shape.sides(); }
+
+-double scale(double value) { return value * 2; }
++double stretch(double value) { return value * 2; }
+
+ template <typename T>
+-double grow(const T& value) { return scale(value); }
++double grow(const T& value) { return stretch(value); }
+
+ int main() {
+'''

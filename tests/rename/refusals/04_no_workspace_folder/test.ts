@@ -19,3 +19,12 @@ test("a project found for the file", async (t) => {
     s.open("main.cpp");
     await t.show("rename", s.rename(t.at("main.cpp", "int |compute();"), "evaluate"));
 });
+
+// A rename edits its project's sources alone: a declaration in a header
+// outside the folder stops it.
+test("a declaration outside the project", async (t) => {
+    t.disk.database({ "app/main.cpp": [] }, "app");
+    const s = await t.start({ folders: ["app"] });
+    s.open("app/main.cpp");
+    await t.show("rename", s.rename(t.at("app/main.cpp", "int |compute(int x)"), "evaluate"));
+});
