@@ -23,3 +23,12 @@ Options tuned = {2, true}
 **Alignment:** 1 byte
 '''
 range = "Options ⟦tuned⟧ = {2, true};"
+
+[answers.nested_list.hover]
+markdown = '''
+**expression**
+
+**Type:** `int[10]`
+**Value:** `{1}`
+'''
+range = "⟦{⟧1},"

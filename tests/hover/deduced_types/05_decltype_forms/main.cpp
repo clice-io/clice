@@ -1,6 +1,7 @@
 // decltype in the places the documented case leaves out: const references,
 // deduced results, references and rvalue calls, decltype of decltype, a
-// variable declared through decltype, a signature spelled with it.
+// variable declared through decltype, a signature spelled with it, a result
+// deduced from no return, and the cursor right after the keyword.
 
 namespace const_reference_placeholder {
 long source = 33;
@@ -67,4 +68,13 @@ auto §(fn_decltype_signature)convert(decltype(source) value) -> decltype(source
 
 namespace inner_placeholder {
 decltype(au§(decltype_auto_inner)to) value = 34L;
+}
+
+namespace empty_result {
+decl§(decltype_auto_void)type(auto) finish() {}
+}
+
+namespace keyword_end {
+long source = 37;
+decltype§(decltype_keyword_end)(source) copy = source;
 }

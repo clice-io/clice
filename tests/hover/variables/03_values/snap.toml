@@ -174,3 +174,81 @@ constexpr double total = 1500.0
 **Value:** `1500`
 '''
 range = "constexpr double ⟦total⟧ = 1500.0;"
+
+[answers.wrapped_unsigned.hover]
+markdown = '''
+**variable** `wrapped` · namespace `wide_integers`
+
+```cpp
+constexpr unsigned long wrapped = -1
+```
+**Value:** `18446744073709551615 (0xffffffffffffffff)`
+'''
+range = "constexpr unsigned long ⟦wrapped⟧ = -1;"
+
+[answers.negative_int128.hover]
+markdown = '''
+**variable** `negative` · namespace `wide_integers`
+
+```cpp
+constexpr __int128_t negative = -4
+```
+`__int128_t` is `__int128`
+**Value:** `-4 (0xfffffffc)`
+'''
+range = "constexpr __int128_t ⟦negative⟧ = -4;"
+
+[answers.enum_address.hover]
+markdown = '''
+**variable** `handle` · function `address_casts::cast`
+
+```cpp
+Handle handle = static_cast<Handle>(reinterpret_cast<uintptr_t>(&global_var))
+```
+**Value:** `&global_var`
+'''
+range = "Handle ⟦handle⟧ = static_cast<Handle>(reinterpret_cast<uintptr_t>(&global_var));"
+
+[answers.integer_address.hover]
+markdown = '''
+**variable** `address` · function `address_casts::cast`
+
+```cpp
+uintptr_t address = reinterpret_cast<uintptr_t>(&global_var)
+```
+`uintptr_t` is `unsigned long long`
+**Value:** `&global_var`
+'''
+range = "uintptr_t ⟦address⟧ = reinterpret_cast<uintptr_t>(&global_var);"
+
+[answers.local_static_constexpr.hover]
+markdown = '''
+**variable** `step` · function `local_constant::tune`
+
+```cpp
+static constexpr auto step = 1
+```
+**Type:** `const int`
+**Value:** `1`
+'''
+range = "constexpr static auto ⟦step⟧ = 1;"
+
+[answers.defaulted_fields.hover]
+markdown = '''
+**variable** `settings` · namespace `default_members`
+
+```cpp
+Settings settings
+```
+'''
+range = "Settings ⟦settings⟧;"
+
+[answers.rvalue_braced.hover]
+markdown = '''
+**variable** `token` · function `braced_temporary::make`
+
+```cpp
+Token&& token = {}
+```
+'''
+range = "Token&& ⟦token⟧ = {};"

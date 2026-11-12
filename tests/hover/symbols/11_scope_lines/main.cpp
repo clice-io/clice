@@ -1,5 +1,6 @@
 // The scope line of a card names the namespaces, classes and functions
-// around the symbol, for declarations and uses alike.
+// around the symbol, for declarations and uses alike, and for the types
+// declared in a function or in an unnamed struct.
 
 namespace local_object {
 int update() {
@@ -69,4 +70,22 @@ void run() {
     int §(inline_namespace_local)attempts = 1;
 }
 }
+}
+
+namespace local_types {
+void assemble() {
+    struct §(local_struct)Part {};
+    class §(local_class)Tool {};
+    struct {
+        struct §(in_local_unnamed)Piece {};
+    } spare;
+}
+}
+
+namespace unnamed_holders {
+struct Frame {
+    struct {
+        struct §(in_unnamed_member)Slot {};
+    } slots;
+};
 }

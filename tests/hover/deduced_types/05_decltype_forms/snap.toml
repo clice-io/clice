@@ -110,3 +110,23 @@ long
 ```
 '''
 range = "decltype(⟦auto⟧) value = 34L;"
+
+[answers.decltype_auto_void.hover]
+markdown = '''
+**decltype**
+
+```cpp
+void
+```
+'''
+range = "⟦decltype⟧(auto) finish() {}"
+
+[answers.decltype_keyword_end.hover]
+markdown = '''
+**decltype**
+
+```cpp
+long
+```
+'''
+range = "⟦decltype⟧(source) copy = source;"

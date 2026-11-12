@@ -68,3 +68,30 @@ bool operator==(const Revision&) const noexcept = default
 **Value:** `true`
 '''
 range = "bool changed = Revision{2} ⟦!=⟧ Revision{3};"
+
+[answers.friend_spaceship_eq.hover]
+markdown = '''
+**function** `operator==`
+
+```cpp
+bool operator==(Version, Version) = default
+```
+**Template arguments:**
+```cpp
+T = void
+```
+**Value:** `true`
+'''
+range = "static_assert(Version<void>() ⟦==⟧ Version<void>());"
+
+[answers.builtin_arrow]
+hover = {}
+
+[answers.cast_keyword.hover]
+markdown = '''
+**expression**
+
+**Type:** `long`
+**Value:** `3`
+'''
+range = "long widened = ⟦static_cast⟧<long>(3);"

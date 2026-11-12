@@ -110,3 +110,51 @@ int attempts = 1
 **Value:** `1`
 '''
 range = "int ⟦attempts⟧ = 1;"
+
+[answers.local_struct.hover]
+markdown = '''
+**struct** `Part` · function `local_types::assemble`
+
+```cpp
+struct Part {}
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
+'''
+range = "struct ⟦Part⟧ {};"
+
+[answers.local_class.hover]
+markdown = '''
+**class** `Tool` · function `local_types::assemble`
+
+```cpp
+class Tool {}
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
+'''
+range = "class ⟦Tool⟧ {};"
+
+[answers.in_local_unnamed.hover]
+markdown = '''
+**struct** `Piece` · unnamed struct in function `local_types::assemble`
+
+```cpp
+struct Piece {}
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
+'''
+range = "struct ⟦Piece⟧ {};"
+
+[answers.in_unnamed_member.hover]
+markdown = '''
+**struct** `Slot` · unnamed struct in struct `unnamed_holders::Frame`
+
+```cpp
+struct Slot {}
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
+'''
+range = "struct ⟦Slot⟧ {};"

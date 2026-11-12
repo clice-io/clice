@@ -1,11 +1,11 @@
-// No card where nothing names a symbol: a builtin type, an empty body, a
-// static_assert, a dependent sizeof, a lambda parameter never deduced,
-// bool, pointer and compound literals.
+// No card where nothing names a symbol: a builtin type, an empty body, an
+// empty line, a static_assert, a dependent sizeof, a lambda parameter never
+// deduced, bool, pointer and compound literals.
 
 §(builtin_type)int empty_result() {}
 
 void empty_body() {§(empty_braces)}
-
+§(empty_line)
 
 auto generic = [](a§(lambda_auto_param)uto value) {};
 

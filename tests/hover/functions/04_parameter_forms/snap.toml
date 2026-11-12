@@ -85,3 +85,13 @@ markdown = '''
 ```
 '''
 range = "void report([[maybe_unused]] int ⟦code⟧);"
+
+[answers.pointer_default.hover]
+markdown = '''
+**parameter** `socket` · function `default_argument::connect`
+
+```cpp
+Socket* socket = nullptr
+```
+'''
+range = "void connect(Socket* ⟦socket⟧ = nullptr);"
