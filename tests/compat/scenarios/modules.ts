@@ -14,11 +14,17 @@ const CMAKE_45 = path.join(
     process.platform === "win32" ? "cmake.exe" : "cmake",
 );
 
-/// A CMake 4.5 build of the project with its `import std` unit: clice
-/// builds the standard library's module from its database entry.
-/// use_std.cpp is left to the lint: it includes no library header, so it
-/// has no version macros to compare.
-function importStd(name: string, platforms: NodeJS.Platform[], cc: string, cxx: string): Scenario {
+/// A CMake 4.5 build of the project with its `import std` unit, and the
+/// units `options` add: clice builds the standard library's module from
+/// its database entries. The units are left to the lint: they include no
+/// library header, so they have no version macros to compare.
+function importStd(
+    name: string,
+    platforms: NodeJS.Platform[],
+    cc: string,
+    cxx: string,
+    options: string[] = [],
+): Scenario {
     return {
         name,
         platforms,
@@ -35,6 +41,7 @@ function importStd(name: string, platforms: NodeJS.Platform[], cc: string, cxx: 
                 `-DCMAKE_C_COMPILER=${cc}`,
                 `-DCMAKE_CXX_COMPILER=${cxx}`,
                 "-DCOMPAT_IMPORT_STD=ON",
+                ...options,
             ],
             [CMAKE_45, "--build", "build"],
         ],
@@ -118,6 +125,16 @@ export const SCENARIOS: Scenario[] = [
         ["linux"],
         `${CONDA}/x86_64-conda-linux-gnu-gcc`,
         `${CONDA}/x86_64-conda-linux-gnu-g++`,
+    ),
+    // A second importer built with -pthread, for which CMake builds `std`
+    // again: an importer reads the build of its own language options
+    // (#588).
+    importStd(
+        "cmake ninja conda gcc import std, two option sets",
+        ["linux"],
+        `${CONDA}/x86_64-conda-linux-gnu-gcc`,
+        `${CONDA}/x86_64-conda-linux-gnu-g++`,
+        ["-DCOMPAT_STD_PTHREAD=ON"],
     ),
     // `import std` from the libc++ of a clang targeting windows-gnu, as
     // LLVM-MinGW's builds write it.

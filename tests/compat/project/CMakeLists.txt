@@ -24,6 +24,16 @@ if(COMPAT_IMPORT_STD)
   set_target_properties(compat_std PROPERTIES CXX_SCAN_FOR_MODULES ON)
 endif()
 
+# An importer of `std` with other language options: CMake builds the
+# standard library's module again for it (`@cmake_cxx_std@synth_0`), a
+# second database entry of the module's source.
+if(COMPAT_STD_PTHREAD)
+  add_library(compat_std_threads STATIC std/use_std_threads.cpp)
+  target_compile_features(compat_std_threads PUBLIC cxx_std_23)
+  target_compile_options(compat_std_threads PUBLIC -pthread)
+  set_target_properties(compat_std_threads PROPERTIES CXX_SCAN_FOR_MODULES ON)
+endif()
+
 if(COMPAT_SYCL)
   add_library(compat_sycl STATIC sycl/kernel.cpp)
   target_include_directories(compat_sycl PRIVATE include)
