@@ -4,11 +4,17 @@ hover = {}
 [trap.crashes]
 value = 1
 
+[trap.anomaly]
+value = ["[anomaly:WorkerCrash] Worker SF-0 ${CRASH}"]
+
 ["null write".hover]
 hover = {}
 
 ["null write".crashes]
 value = 1
+
+["null write".anomaly]
+value = ["[anomaly:WorkerCrash] Worker SF-0 ${CRASH}"]
 
 [abort.hover]
 hover = {}
@@ -16,11 +22,17 @@ hover = {}
 [abort.crashes]
 value = 1
 
+[abort.anomaly]
+value = ["[anomaly:WorkerCrash] Worker SF-0 ${CRASH}"]
+
 ["fatal error".hover]
 hover = {}
 
 ["fatal error".crashes]
 value = 1
+
+["fatal error".anomaly]
+value = ["[anomaly:WorkerCrash] Worker SF-0 ${CRASH}"]
 
 ["stack overflow".hover]
 hover = {}
@@ -28,11 +40,17 @@ hover = {}
 ["stack overflow".crashes]
 value = 1
 
+["stack overflow".anomaly]
+value = ["[anomaly:WorkerCrash] Worker SF-0 ${CRASH}"]
+
 ["other thread".hover]
 hover = {}
 
 ["other thread".crashes]
 value = 1
+
+["other thread".anomaly]
+value = ["[anomaly:WorkerCrash] Worker SF-0 ${CRASH}"]
 
 ["stack overflow while indexing".sync]
 failed = ["main.cpp"]

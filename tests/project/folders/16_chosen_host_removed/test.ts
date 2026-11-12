@@ -9,7 +9,7 @@ import { test } from "@clice/tools/testing";
 // host.
 test(async (t) => {
     const s = await t.start({ folders: ["app", "lib"] });
-    expect(await s.errors("lib/include/lib.h")).toHaveLength(1);
+    await t.show("own folder", s.errors("lib/include/lib.h"));
     expect((await s.switchContext("lib/include/lib.h", "app/main.cpp")).success).toBe(true);
     expect(await s.errors("lib/include/lib.h")).toEqual([]);
     t.disk.rm("app/main.cpp");

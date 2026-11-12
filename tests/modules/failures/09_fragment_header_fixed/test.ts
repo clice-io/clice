@@ -6,14 +6,14 @@ import { test } from "@clice/tools/testing";
 
 test("asked", async (t) => {
     const s = await t.start({ config: { project: { enable_indexing: false } } });
-    expect(await s.errors("main.cpp")).toHaveLength(1);
+    await t.show("broken", s.errors("main.cpp"));
     t.disk.edit("frag.h", { replace: "return missing_name;", with: "return 1;" });
     expect(await s.errors("main.cpp")).toEqual([]);
 });
 
 test("seen by the tick", async (t) => {
     const s = await t.start();
-    expect(await s.errors("main.cpp")).toHaveLength(1);
+    await t.show("broken", s.errors("main.cpp"));
     await s.indexed();
     t.disk.edit("frag.h", { replace: "return missing_name;", with: "return 1;" });
     expect(await s.poll("workspace")).toBe(1);

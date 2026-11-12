@@ -23,8 +23,12 @@ test("changed on disk", async (t) => {
 test("entry added", async (t) => {
     t.disk.database({ "m.cppm": [], "older.cpp": [], "newer.cpp": ["-std=c++23"] });
     const s = await t.start({ config: { project: { enable_indexing: false } } });
-    const refused = await s.errors("newer.cpp");
-    expect(refused.some((error) => error.message.includes("C++23 was disabled"))).toBe(true);
+    // The messages name the module's file in the cache, whose name hashes
+    // the copy's root: the codes say what refused it.
+    await t.show(
+        "refused",
+        (await s.errors("newer.cpp")).map((error) => error.code ?? ""),
+    );
     t.disk.database();
     expect(await s.poll("cdb")).toBe(1);
     expect(await s.errors("newer.cpp")).toEqual([]);

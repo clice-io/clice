@@ -20,6 +20,9 @@ export constexpr long standard = __cplusplus + 1
 '''
 range = "return ⟦standard⟧;"
 
+["entry added".refused]
+value = ["err_ast_file_langopt_mismatch", "-Wmodule-file-config-mismatch", "err_undeclared_var_use"]
+
 ["entry added".newer.hover]
 markdown = '''
 **variable** `standard`

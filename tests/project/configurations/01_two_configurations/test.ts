@@ -8,6 +8,13 @@ async function switchTo(s: Serve, name: string): Promise<void> {
     await s.restarted();
 }
 
+/// Why switching to `name` is refused, as the user reads it.
+async function refused(s: Serve, name: string): Promise<string> {
+    const result = await s.switchConfiguration(name);
+    expect(result.success).toBe(false);
+    return result.reason ?? "";
+}
+
 /// The configurations whose index library the cache holds.
 function libraries(t: TestContext): string[] {
     return t.disk
@@ -25,11 +32,7 @@ test("menu and selection", async (t) => {
         "defaultConfiguration",
         "selected",
     ]);
-    // A name no rule declares.
-    expect(await s.switchConfiguration("nope")).toEqual({
-        success: false,
-        reason: "no rule declares the configuration nope",
-    });
+    await t.show("a name no rule declares", await refused(s, "nope"));
     expect(await s.switchConfiguration("release")).toEqual({ success: true, reason: null });
     await t.show("state", t.disk.read(".clice/state.json"));
     // The running server keeps its configuration; only the selection moved.
@@ -104,10 +107,7 @@ test("command line overrides the selection", async (t) => {
     const pinned = await t.start({ args: ["serve", "--configuration", "debug"] });
     await t.show("pinned", { menu: pinned.configurations(), gated: pinned.errors("gated.cpp") });
     // The command line owns a pinned session's choice.
-    expect(await pinned.switchConfiguration("release")).toEqual({
-        success: false,
-        reason: "the server runs with --configuration debug, which pins it",
-    });
+    await t.show("pinned switch", await refused(pinned, "release"));
     await pinned.stop();
 
     // An unknown name on the command line is skipped: the selection wins.
