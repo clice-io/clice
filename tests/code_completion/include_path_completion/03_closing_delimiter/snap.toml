@@ -12,3 +12,17 @@ items = [
 items = [
     { label = "snap_header.h", kind = "File", insert = 'snap_header.h"', replace = '#include "⟦snap_hea/rest.h"⟧' },
 ]
+
+[answers.spaced_closed.completion]
+items = [
+    { label = "snap spaced.h", kind = "File", insert = 'snap spaced.h"', replace = '#include "⟦snap spaced.h"⟧' },
+    { label = "snap_dir/", kind = "Folder", insert = "snap_dir", replace = '#include "⟦snap spaced.h⟧"' },
+    { label = "snap_header.h", kind = "File", insert = 'snap_header.h"', replace = '#include "⟦snap spaced.h"⟧' },
+]
+
+[answers.spaced_open.completion]
+items = [
+    { label = "snap spaced.h", kind = "File", insert = 'snap spaced.h"', replace = '#include "⟦snap⟧ spaced.h' },
+    { label = "snap_dir/", kind = "Folder", insert = "snap_dir", replace = '#include "⟦snap⟧ spaced.h' },
+    { label = "snap_header.h", kind = "File", insert = 'snap_header.h"', replace = '#include "⟦snap⟧ spaced.h' },
+]

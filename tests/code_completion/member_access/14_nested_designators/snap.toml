@@ -8,3 +8,19 @@ items = [
 items = [
     { label = "color", kind = "Field", detail = "int" },
 ]
+
+[answers.inner.completion]
+items = [
+    { label = "y", kind = "Field", detail = "int" },
+]
+
+[answers.after_inner.completion]
+items = [
+    { label = "color", kind = "Field", detail = "int" },
+]
+
+[answers.continued.completion]
+items = [
+    { label = "x", kind = "Field", detail = "int" },
+    { label = "y", kind = "Field", detail = "int" },
+]

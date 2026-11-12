@@ -3,6 +3,22 @@ items = [
     { label = "math", kind = "Module", insert = "math;", replace = "import ⟦⟧" },
 ]
 
+[answers.longer_word.completion]
+items = [
+    {
+        label = "importance",
+        kind = "Variable",
+        detail = "int",
+        insert = "importance",
+        replace = "importance = ⟦impo⟧;",
+    },
+]
+
+[answers.indented.completion]
+items = [
+    { label = "math", kind = "Module", insert = "math;", replace = "import ⟦ma⟧" },
+]
+
 [answers.prefix.completion]
 items = [
     { label = "math", kind = "Module", insert = "math;", replace = "import ⟦ma⟧" },

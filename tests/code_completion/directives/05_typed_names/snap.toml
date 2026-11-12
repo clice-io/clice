@@ -1,0 +1,18 @@
+[answers.inside_name.completion]
+items = [
+    { label = "include", kind = "Keyword", insert = "include", replace = "#⟦include⟧", insert_range = "#⟦incl⟧ude" },
+    {
+        label = "include_next",
+        kind = "Keyword",
+        insert = "include_next",
+        replace = "#⟦include⟧",
+        insert_range = "#⟦incl⟧ude",
+    },
+]
+
+[answers.spaced.completion]
+items = [
+    { label = "if", kind = "Keyword", insert = "if", replace = "#  ⟦if⟧" },
+    { label = "ifdef", kind = "Keyword", insert = "ifdef", replace = "#  ⟦if⟧" },
+    { label = "ifndef", kind = "Keyword", insert = "ifndef", replace = "#  ⟦if⟧" },
+]
