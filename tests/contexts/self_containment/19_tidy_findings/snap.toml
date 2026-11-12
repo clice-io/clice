@@ -1,0 +1,17 @@
+[test."ptrs.h"]
+diagnostics = [
+    {
+        at = "Host *first = ⟦0⟧;",
+        severity = "error",
+        message = "use nullptr",
+        source = "clang-tidy",
+        code = "modernize-use-nullptr",
+    },
+    {
+        at = "Host *second = ⟦0⟧;",
+        severity = "error",
+        message = "use nullptr",
+        source = "clang-tidy",
+        code = "modernize-use-nullptr",
+    },
+]

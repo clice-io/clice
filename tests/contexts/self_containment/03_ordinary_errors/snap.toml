@@ -42,3 +42,14 @@ diagnostics = [
         code = "err_expected_fn_body",
     },
 ]
+
+["an edit cuts the comparison short".edited]
+diagnostics = [
+    {
+        at = "inline int broken() { return  ⟦}⟧",
+        severity = "error",
+        message = "expected expression",
+        source = "clang",
+        code = "err_expected_expression",
+    },
+]

@@ -19,12 +19,13 @@ test("an edit cuts the comparison short", async (t) => {
     const s = await t.start();
     const alone = await s.park("compile", "typo.h", { at: "worker" });
     const inHost = await s.park("compile", "typo.h", { at: "worker" });
-    s.open("typo.h", { pull: false });
+    const pulled = s.diagnostics("typo.h");
     await alone.reached();
     await alone.release();
     await inHost.reached();
     s.edit("typo.h", { replace: "return }", with: "return  }" });
     await inHost.release();
+    await pulled;
     await t.show("edited", s.diagnostics("typo.h"));
     expect((await s.stats()).synthesizedContexts).toBe(0);
 });

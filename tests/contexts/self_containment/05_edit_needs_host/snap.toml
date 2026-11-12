@@ -25,3 +25,17 @@ errors = [
         code = "err_undeclared_var_use",
     },
 ]
+
+["a prototype names the includer's struct".edited]
+diagnostics = [
+    {
+        at = "int area(const struct ⟦shape⟧ *s);",
+        severity = "warning",
+        message = "declaration of 'struct shape' will not be visible outside of this function",
+        source = "clang",
+        code = "-Wvisibility",
+    },
+]
+
+["a prototype names the includer's struct".saved]
+diagnostics = []
