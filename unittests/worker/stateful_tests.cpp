@@ -124,23 +124,18 @@ ZEST_CASE(IpcCancelInterruptsCompile) {
     bool test_done = false;
 
     w.run([&]() -> async::task<> {
-        std::string text;
-        text.reserve(1 << 22);
-        for(int i = 0; i < 200'000; ++i) {
-            text += std::format("int v{};\n", i);
-        }
-
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = std::move(text);
+        cp.text = "int v0;\nint v1;\n";
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         cp.pch = {"", 0};
         cp.pcms = {};
 
-        // The cancel chases the request down the pipe and flips the stop
-        // flag mid-parse; the request still waits for the worker's answer.
+        // The cancel reaches the request while its work is parked and flips
+        // the stop flag the parse polls; the request still waits for the
+        // worker's answer.
         // An interrupted parse leaves the document without an AST, which
         // the next query reports — the content, not the clock, is the
         // assertion.

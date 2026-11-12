@@ -20,18 +20,9 @@ namespace {
 
 constexpr std::uint32_t version = 1;
 
-/// Helper precondition check that survives NDEBUG builds; failures abort
-/// with a message instead of becoming UB on a bad expected access.
-void require(bool condition, const char* what) {
-    if(!condition) {
-        std::println(stderr, "database_tests: requirement failed: {}", what);
-        std::abort();
-    }
-}
-
 CacheStore open_store(TempDir& tmp, llvm::StringRef sub, bool read_only = false) {
     auto store = CacheStore::open(tmp.path(sub), version, read_only);
-    require(store.has_value(), "CacheStore::open failed");
+    ZASSERT(store.has_value());
     return std::move(*store);
 }
 
@@ -52,9 +43,9 @@ struct ForeignReader {
     explicit ForeignReader(const std::string& database) {
         auto opened =
             fs::File::open(database + "-open", {.read = true, .write = true, .create = true});
-        require(opened.has_value(), "open the -open file");
+        ZASSERT(opened.has_value());
         file = std::move(*opened);
-        require(file.try_lock_shared().value_or(false), "lock the -open file");
+        ZASSERT(file.try_lock_shared().value_or(false));
     }
 
     // Windows frees a lock its handle's close leaves at some later time.
@@ -75,19 +66,18 @@ struct ForeignReader {
 struct OlderOpener {
     explicit OlderOpener(const std::string& database) {
 #ifdef _WIN32
-        require(mdb_env_create(&env) == 0, "create the environment");
-        require(mdb_env_open(env, database.c_str(), MDB_NOSUBDIR | MDB_NOTLS | MDB_RDONLY, 0644) ==
-                    0,
-                "open the database");
-        require(mdb_txn_begin(env, nullptr, MDB_RDONLY, &txn) == 0, "begin a read");
+        ZASSERT(mdb_env_create(&env) == 0);
+        ZASSERT(mdb_env_open(env, database.c_str(), MDB_NOSUBDIR | MDB_NOTLS | MDB_RDONLY, 0644) ==
+                0);
+        ZASSERT(mdb_txn_begin(env, nullptr, MDB_RDONLY, &txn) == 0);
 #else
         auto lock_file = database + "-lock";
         int ready[2];
         int done[2];
-        require(::pipe(ready) == 0, "make a pipe");
-        require(::pipe(done) == 0, "make a pipe");
+        ZASSERT(::pipe(ready) == 0);
+        ZASSERT(::pipe(done) == 0);
         child = ::fork();
-        require(child >= 0, "fork");
+        ZASSERT(child >= 0);
         if(child == 0) {
             // The parent's close of `done` reaches no reader while this
             // process holds its write end too.
@@ -106,7 +96,8 @@ struct OlderOpener {
         ::close(ready[1]);
         ::close(done[0]);
         char locked = 0;
-        require(::read(ready[0], &locked, 1) == 1 && locked, "lock the -lock file");
+        ZASSERT(::read(ready[0], &locked, 1) == 1);
+        ZASSERT(locked);
         ::close(ready[0]);
         release = done[1];
 #endif
@@ -138,7 +129,7 @@ struct OlderOpener {
 /// most of its pages are free.
 std::unique_ptr<index::BlobDatabase> sparse_database(CacheStore& store) {
     auto db = index::open_database(store, {});
-    require(db != nullptr, "open the database");
+    ZASSERT(db != nullptr);
     std::vector<index::BlobDatabase::Blob> blobs;
     llvm::SmallVector<index::BlobKey> removals;
     for(std::uint32_t i = 0; i < 64; i += 1) {
@@ -148,9 +139,9 @@ std::unique_ptr<index::BlobDatabase> sparse_database(CacheStore& store) {
             removals.push_back({index::BlobKind::Shard, std::to_string(i)});
         }
     }
-    require(db->write(blobs, {}).has_value(), "write the values");
-    require(db->write({}, removals).has_value(), "remove most of them");
-    require(db->advance_read_snapshot().has_value(), "advance the snapshot");
+    ZASSERT(db->write(blobs, {}).has_value());
+    ZASSERT(db->write({}, removals).has_value());
+    ZASSERT(db->advance_read_snapshot().has_value());
     db->retire_old_snapshot();
     return db;
 }
@@ -292,11 +283,10 @@ ZEST_CASE(CorruptDatabaseRebuilds) {
     auto store = open_store(tmp, "lmdb");
     {
         auto directory = index::database_directory(store, {});
-        require(fs::create_directories(directory).has_value(),
-                "creating the database directory failed");
-        require(!fs::write_file(path::join(directory, "index.mdb"),
-                                "this is not an lmdb file, not even close, but long enough to map"),
-                "writing garbage failed");
+        ZASSERT(fs::create_directories(directory).has_value());
+        ZASSERT(
+            !fs::write_file(path::join(directory, "index.mdb"),
+                            "this is not an lmdb file, not even close, but long enough to map"));
     }
     auto db = index::open_database(store, {});
     ZASSERT(db != nullptr);
@@ -308,11 +298,10 @@ ZEST_CASE(CorruptDatabaseRebuilds) {
 /// its pages run well past the two meta pages; returns the file's path.
 std::string populated_database(CacheStore& store, int count) {
     auto db = index::open_database(store, {});
-    require(db != nullptr, "opening the database failed");
+    ZASSERT(db != nullptr);
     for(int i = 0; i < count; i += 1) {
-        require(db->write({blob(index::BlobKind::Shard, std::to_string(i), large_value('t'))}, {})
-                    .has_value(),
-                "writing a blob failed");
+        ZASSERT(db->write({blob(index::BlobKind::Shard, std::to_string(i), large_value('t'))}, {})
+                    .has_value());
     }
     return path::join(index::database_directory(store, {}), "index.mdb");
 }
@@ -320,26 +309,25 @@ std::string populated_database(CacheStore& store, int count) {
 /// Cuts the file down to its two meta pages: the tree they point at is gone.
 void truncate_to_meta(llvm::StringRef file) {
     auto opened = fs::File::open(file, {.read = true, .write = true});
-    require(opened.has_value(), "opening index.mdb failed");
-    require(!opened->resize(2 * sys::page_size()), "truncating index.mdb failed");
+    ZASSERT(opened.has_value());
+    ZASSERT(!opened->resize(2 * sys::page_size()));
 }
 
 /// Rewrite the record describing the database, keyed "\xffmeta", with
 /// the schema another version of clice writes.
 void write_foreign_meta(llvm::StringRef file) {
     MDB_env* env = nullptr;
-    require(mdb_env_create(&env) == 0, "creating the environment failed");
-    require(mdb_env_open(env, file.str().c_str(), MDB_NOSUBDIR, 0644) == 0,
-            "opening index.mdb failed");
+    ZASSERT(mdb_env_create(&env) == 0);
+    ZASSERT(mdb_env_open(env, file.str().c_str(), MDB_NOSUBDIR, 0644) == 0);
     MDB_txn* txn = nullptr;
-    require(mdb_txn_begin(env, nullptr, 0, &txn) == 0, "beginning a write failed");
+    ZASSERT(mdb_txn_begin(env, nullptr, 0, &txn) == 0);
     MDB_dbi dbi;
-    require(mdb_dbi_open(txn, nullptr, 0, &dbi) == 0, "opening the database failed");
+    ZASSERT(mdb_dbi_open(txn, nullptr, 0, &dbi) == 0);
     std::uint32_t meta[] = {1, sizeof(std::size_t) * 8, 0x01020304};
     MDB_val key{5, const_cast<char*>("\xffmeta")};
     MDB_val value{sizeof(meta), meta};
-    require(mdb_put(txn, dbi, &key, &value, 0) == 0, "writing the meta record failed");
-    require(mdb_txn_commit(txn) == 0, "committing failed");
+    ZASSERT(mdb_put(txn, dbi, &key, &value, 0) == 0);
+    ZASSERT(mdb_txn_commit(txn) == 0);
     mdb_env_close(env);
 }
 
@@ -381,7 +369,7 @@ ZEST_CASE(TruncatedDatabaseRebuilds) {
 /// the symbols'.
 std::string small_records_database(CacheStore& store, int count) {
     auto db = index::open_database(store, {});
-    require(db != nullptr, "opening the database failed");
+    ZASSERT(db != nullptr);
     std::vector<index::BlobDatabase::Blob> blobs;
     for(int i = 0; i < count; i += 1) {
         auto key = std::format("{:05}", i);
@@ -389,7 +377,7 @@ std::string small_records_database(CacheStore& store, int count) {
         blobs.push_back(blob(index::BlobKind::Path, key, std::string(40, 'p')));
         blobs.push_back(blob(index::BlobKind::Symbol, key, std::string(40, 'y')));
     }
-    require(db->write(blobs, {}).has_value(), "writing the records failed");
+    ZASSERT(db->write(blobs, {}).has_value());
     return path::join(index::database_directory(store, {}), "index.mdb");
 }
 
@@ -401,7 +389,7 @@ std::string small_records_database(CacheStore& store, int count) {
 /// size, then the key.
 void swap_page_keys(llvm::StringRef file, char prefix) {
     std::string bytes;
-    require(!fs::read_file(bytes, file), "reading index.mdb failed");
+    ZASSERT(!fs::read_file(bytes, file));
     auto page_size = static_cast<std::uint32_t>(sys::page_size());
     auto u16 = [&](std::size_t at) {
         std::uint16_t value = 0;
@@ -425,11 +413,11 @@ void swap_page_keys(llvm::StringRef file, char prefix) {
         }
     }
     ranges::sort(pages);
-    require(pages.size() > 1, "too few leaf pages of the kind");
+    ZASSERT(pages.size() > 1);
     auto pointers = pages[1].second + 16;
     auto first = bytes.begin() + static_cast<std::ptrdiff_t>(pointers);
     ranges::swap_ranges(first, first + 2, first + 2, first + 4);
-    require(!fs::write_file(file, bytes), "rewriting index.mdb failed");
+    ZASSERT(!fs::write_file(file, bytes));
 }
 
 ZEST_CASE(ScanMeetsDamage) {
@@ -466,7 +454,7 @@ ZEST_CASE(ReadOnlyRefusesEmpty) {
         auto store = open_store(tmp, "ws");
         file = populated_database(store, 1);
     }
-    require(!fs::write_file(file, ""), "emptying index.mdb failed");
+    ZASSERT(!fs::write_file(file, ""));
     auto store = open_store(tmp, "ws", /*read_only=*/true);
     ZASSERT(index::database_exists(store, {}));
     ZASSERT(index::open_database(store, {}) == nullptr);
@@ -825,7 +813,7 @@ ZEST_CASE(ReaderHoldsOpenLock) {
     }
     auto exclusive_free = [&] {
         auto opened = fs::File::open(file + "-open", {.read = true, .write = true, .create = true});
-        require(opened.has_value(), "open the -open file");
+        ZASSERT(opened.has_value());
         bool free = opened->try_lock().value_or(false);
         if(free) {
             opened->unlock();
@@ -851,7 +839,7 @@ ZEST_CASE(OpenRemovesStaleCopy) {
         ZASSERT(db != nullptr);
         ZASSERT(db->write({blob(index::BlobKind::Header, "header", "gg")}, {}));
     }
-    require(!fs::write_file(file + "-compact", "partial"), "write a stale copy");
+    ZASSERT(!fs::write_file(file + "-compact", "partial"));
     {
         auto store = open_store(tmp, "lmdb", /*read_only=*/true);
         ZASSERT(index::open_database(store, {}) != nullptr);

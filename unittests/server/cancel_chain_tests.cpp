@@ -14,7 +14,7 @@ ZEST_SUITE(CancelChain) {
 // token, passing the same token into the worker send. When the token
 // fires, the send emits $/cancelRequest over IPC and the handler ends
 // cancelled once the worker has answered — proven here by the worker
-// interrupting a 200k-decl parse instead of finishing it.
+// interrupting the parse instead of finishing it.
 ZEST_CASE(HandlerCancelChainsThrough) {
     TempDir tmp;
     tmp.touch("probe.cpp", "");
@@ -28,16 +28,10 @@ ZEST_CASE(HandlerCancelChainsThrough) {
     bool test_done = false;
 
     w.run([&]() -> async::task<> {
-        std::string text;
-        text.reserve(1 << 22);
-        for(int i = 0; i < 200'000; i += 1) {
-            text += std::format("int v{};\n", i);
-        }
-
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = std::move(text);
+        cp.text = "int v0;\nint v1;\n";
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         cp.pch = {"", 0};
@@ -86,18 +80,12 @@ ZEST_CASE(HandlerCancelChainsThrough) {
 
 // The scheduler's cooperative cancel of a stateless build is an IPC cancel
 // whose answer the sender keeps awaiting (the slot must stay busy while the
-// worker is): the stop flag it trips cuts the parse at the next declaration.
+// worker is): the stop flag it trips cuts the parse at its first declaration.
 // The source ends in a pragma that crashes the worker (CLICE_TEST_PRAGMA_CRASH):
 // only a parse run to its end reaches it.
 ZEST_CASE(IpcCancelStopsBuild) {
     TempDir tmp;
-    std::string text;
-    text.reserve(1 << 22);
-    for(int i = 0; i < 200'000; i += 1) {
-        text += std::format("int v{};\n", i);
-    }
-    text += "#pragma clang __debug crash\n";
-    tmp.touch("probe.cpp", text);
+    tmp.touch("probe.cpp", "int v0;\nint v1;\nint v2;\n#pragma clang __debug crash\n");
     auto src = tmp.path("probe.cpp");
     tmp.touch("small.cpp", "int small;\n");
 

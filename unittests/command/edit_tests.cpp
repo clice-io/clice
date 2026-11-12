@@ -122,10 +122,8 @@ ZEST_CASE(RuleLeavesClSpellings) {
     std::vector<CommandEdit> removed = {
         {.kind = CommandEdit::Kind::Remove, .flags = {"--driver-mode=cl"}}
     };
-    CommandRef ref{entry.file,
-                   apply_edits(commands, file_table, entry.command, {.edits = removed}),
-                   commands.input_kind(entry.command, "a.cpp"),
-                   CommandSource::Database};
+    auto ref = database_command(database, entry);
+    ref.command = apply_edits(commands, file_table, entry.command, {.edits = removed});
     auto argv = commands.render_driver(ref, database.spelling(ref.file));
     ZEXPECT(ranges::contains(argv, "-D"sv));
     ZEXPECT(!ranges::contains(argv, "/D"sv));

@@ -477,22 +477,6 @@ ZEST_CASE(SaveStartsOwedPass) {
     // A save outside any pass that finds the database corrupt owes every
     // unit a reindex: their pass starts, rather than waiting for the next
     // edit or checkpoint.
-    struct CorruptOnWrite final : ForwardingDatabase {
-        using ForwardingDatabase::ForwardingDatabase;
-
-        bool poisoned = false;
-
-        std::expected<void, std::string> write(llvm::ArrayRef<Blob>,
-                                               llvm::ArrayRef<index::BlobKey>) override {
-            poisoned = true;
-            return std::unexpected("damaged");
-        }
-
-        bool corrupted() const override {
-            return poisoned;
-        }
-    };
-
     TempDir tmp;
     tmp.touch("main.cpp", "int use() { return 0; }\n");
     IndexerFixture f;
@@ -501,7 +485,7 @@ ZEST_CASE(SaveStartsOwedPass) {
     // The index started long before: its first pass is over.
     f.background.start();
     f.loop.run();
-    f.project.database = std::make_unique<CorruptOnWrite>(std::move(f.project.database));
+    f.project.database = std::make_unique<FailingDatabase>(std::move(f.project.database), true);
     f.list_units(tmp, {{"main.cpp"}});
     ZASSERT(f.merge(index_file(tmp, tmp.path("main.cpp")).data));
 

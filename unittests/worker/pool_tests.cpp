@@ -8,6 +8,7 @@ module clice;
 
 import :support.logging;
 import :support.signal;
+import :unittests.utils.anomaly_capture;
 import :unittests.utils;
 import :unittests.worker.helpers;
 import :worker.pool;
@@ -45,15 +46,16 @@ struct NullTransport : ipc::Transport {
 struct WorkerPoolFixture {
     using SlotState = WorkerPool::SlotState;
 
+    AnomalyCapture anomalies;
+
+    /// The workers' logs, and the unit every request a test sends indexes.
+    TempDir tmp;
+
+    std::string unit = tmp.path("unit.cpp");
+
     async::event_loop loop;
     TestHooks hooks;
     WorkerPool pool;
-
-    /// The crashes the pool reported, as WorkerCrash anomalies.
-    std::size_t crashes = 0;
-
-    /// What the pool told the user (LOG_GUIDANCE).
-    std::vector<std::string> told;
 
     /// Documents the fixture assigns on its own count from here, clear of
     /// the tests' own.
@@ -65,17 +67,12 @@ struct WorkerPoolFixture {
         // memory admit everything.
         pool.scheduler = WorkerScheduler({.background_jobs = 64, .max_workers = 64});
         sample();
-        count_crashes(crashes);
-        logging::set_notify_hook([this](logging::NotifyKind kind, std::string_view message) {
-            if(kind == logging::NotifyKind::Guidance) {
-                told.emplace_back(message);
-            }
-        });
+        tmp.touch("unit.cpp", "int x = 1;\n");
     }
 
-    ~WorkerPoolFixture() {
-        logging::set_notify_hook(nullptr);
-        logging::reset_anomaly_for_testing();
+    /// The crashes the pool reported, as WorkerCrash anomalies.
+    std::size_t crashes() const {
+        return anomalies.count(logging::AnomalyId::WorkerCrash);
     }
 
     /// A slot's process as a spawn leaves it, with no process behind it.
@@ -322,15 +319,12 @@ struct WorkerPoolFixture {
     bool start(std::uint32_t stateless = 2,
                std::uint32_t stateful = 0,
                std::uint32_t min_stateless = 0) {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = stateless;
-        opts.stateful_count = stateful;
-        opts.min_stateless = min_stateless;
-        opts.max_stateless = 8;
-        opts.build_deadline = pool.options.build_deadline;
-        opts.query_deadline = pool.options.query_deadline;
-        return pool.start(opts);
+        auto options = worker_options(tmp, stateless, stateful);
+        options.min_stateless = min_stateless;
+        options.max_stateless = 8;
+        options.build_deadline = pool.options.build_deadline;
+        options.query_deadline = pool.options.query_deadline;
+        return pool.start(options);
     }
 
     std::size_t min_stateless() const {
@@ -358,27 +352,40 @@ struct WorkerPoolFixture {
         return pool.pending.begin()->first;
     }
 
-    static worker::CompileUnitParams index_params(const std::string& file) {
+    worker::CompileUnitParams index_params() const {
         worker::CompileUnitParams params;
         params.index = true;
-        params.file = file;
+        params.file = unit;
         params.directory = "/tmp";
-        params.arguments = make_args(file);
+        params.arguments = make_args(unit);
         return params;
     }
 
-    /// Kill stateless worker 0 while it runs a request on `file`: a death
-    /// that spends the slot's budget on every platform, Windows included,
-    /// which can send a worker no signal of its own failures.
-    async::task<> kill_running_worker(const std::string& file) {
-        auto params = index_params(file);
+    /// Send stateless worker 0 a request that runs there when this returns:
+    /// the spawn runs the sender up to its wait for the reply, so what the
+    /// test does next in this turn of the loop finds it in flight. It ends
+    /// by the time `group` is joined, the error it failed with in `error`.
+    void send_running(async::task_group<>& group,
+                      std::optional<ipc::Error>& error,
+                      StatelessOptions options = {}) {
+        group.spawn(send_unit(error, options));
+        ZASSERT(running_on(0) == 1u);
+    }
+
+    async::task<> send_unit(std::optional<ipc::Error>& error, StatelessOptions options) {
+        auto result = co_await pool.send_stateless(index_params(), options);
+        if(!result.has_value()) {
+            error = result.error();
+        }
+    }
+
+    /// Kill stateless worker 0 while it runs a request: a death that spends
+    /// the slot's budget on every platform, Windows included, which can
+    /// send a worker no signal of its own failures.
+    async::task<> kill_running_worker() {
         async::task_group<> group;
-        auto sender = [&]() -> async::task<> {
-            [[maybe_unused]] auto result = co_await pool.send_stateless(params);
-        };
-        // The spawn runs the sender up to its wait for the reply.
-        group.spawn(sender());
-        ZASSERT(pool.scheduler.running_on(0, false) == 1u);
+        std::optional<ipc::Error> error;
+        send_running(group, error);
         kill_worker(0);
         co_await group.join();
     }
@@ -491,10 +498,13 @@ struct WorkerPoolFixture {
     /// Index `file` on stateless worker 0, sampling it all along. Returns
     /// the most sampled.
     async::task<std::uint64_t> index_sampled(const std::string& file) {
+        auto params = index_params();
+        params.file = file;
+        params.arguments = make_args(file);
         std::uint64_t peak = 0;
         bool answered = false;
         auto sender = [&]() -> async::task<> {
-            auto result = co_await pool.send_stateless(index_params(file));
+            auto result = co_await pool.send_stateless(params);
             ZEXPECT(result);
             answered = true;
         };
@@ -745,7 +755,7 @@ ZEST_CASE(MemoryKillRecordsDeath) {
     // The scheduler forgot the request with its worker.
     ZEXPECT(f.running_on(0) == 0u);
     // A kill on purpose is not a crash: no report, no crash accounting.
-    ZEXPECT(f.crashes == 0u);
+    ZEXPECT(f.crashes() == 0u);
     ZEXPECT(f.crash_streak(0) == 0u);
 }
 
@@ -853,8 +863,6 @@ ZEST_CASE(AllocationFailureChargesNothing) {
     f.set_crash_streak(0, false, 1);
     // The abort an allocation failure ends in names its request.
     f.set_stderr(0, "clice/worker/compileUnit /a.cpp", true);
-    std::vector<logging::AnomalyId> trapped;
-    logging::set_anomaly_trap_for_testing([&](logging::AnomalyId id) { trapped.push_back(id); });
 
     ZEXPECT(f.simulate_crash(0, false, 0, 6));
 
@@ -864,7 +872,7 @@ ZEST_CASE(AllocationFailureChargesNothing) {
     ZEXPECT(death->named.empty());
     ZEXPECT(death->cause == "ran out of memory");
     ZEXPECT(f.crash_streak(0) == 1u);
-    ZEXPECT(trapped.empty());
+    ZEXPECT(f.anomalies.trapped.empty());
 }
 
 ZEST_CASE(StoppedPoolSchedulesNothing) {
@@ -913,7 +921,7 @@ ZEST_CASE(StatefulLostDocuments) {
 
     f.simulate_crash(0, true);
 
-    ZEXPECT(f.crashes == 1u);
+    ZEXPECT(f.crashes() == 1u);
     ZEXPECT(f.state(0, true) == WorkerPoolFixture::SlotState::Dying);
 
     for(auto path_id: expected) {
@@ -933,21 +941,14 @@ ZEST_CASE(CrashReportsAnomaly) {
     WorkerPoolFixture f;
     f.add_stateless();
 
-    std::vector<logging::AnomalyId> trapped;
-    logging::set_anomaly_trap_for_testing([&](logging::AnomalyId id) { trapped.push_back(id); });
-
     f.simulate_crash(0, false, 0, 11);
 
-    ZASSERT(trapped.size() == 1u);
-    ZEXPECT(trapped[0] == logging::AnomalyId::WorkerCrash);
+    ZEXPECT(f.anomalies.trapped == std::vector{logging::AnomalyId::WorkerCrash});
 }
 
 ZEST_CASE(SpawnFailReportsAnomaly) {
     /// Production trigger for the WorkerSpawnFail anomaly.
     WorkerPoolFixture f;
-
-    std::vector<logging::AnomalyId> trapped;
-    logging::set_anomaly_trap_for_testing([&](logging::AnomalyId id) { trapped.push_back(id); });
 
     WorkerPoolOptions opts;
     opts.program = "/nonexistent/clice-binary";
@@ -955,8 +956,7 @@ ZEST_CASE(SpawnFailReportsAnomaly) {
     opts.stateful_count = 0;
     ZEXPECT(!f.pool.start(opts));
 
-    ZASSERT(trapped.size() == 1u);
-    ZEXPECT(trapped[0] == logging::AnomalyId::WorkerSpawnFail);
+    ZEXPECT(f.anomalies.trapped == std::vector{logging::AnomalyId::WorkerSpawnFail});
 }
 
 ZEST_CASE(OperationalErrorCodes) {
@@ -988,7 +988,7 @@ ZEST_CASE(DeathTellsSignal) {
 
     f.simulate_crash(0, false, 0, 11);
 
-    ZEXPECT(f.crashes == 1u);
+    ZEXPECT(f.crashes() == 1u);
     ZEXPECT(llvm::StringRef(f.death(0, false)->cause).starts_with("killed by signal 11"));
 }
 
@@ -1025,7 +1025,7 @@ ZEST_CASE(DeathTellsExitCode) {
 
     f.simulate_crash(0, false, 42, 0);
 
-    ZEXPECT(f.crashes == 1u);
+    ZEXPECT(f.crashes() == 1u);
     ZEXPECT(f.death(0, false)->cause == "exited with code 42");
 }
 
@@ -1380,7 +1380,7 @@ ZEST_CASE(RapidCrashSequence) {
     f.simulate_crash(2, false);
 
     ZEXPECT(f.pool.schedulable_stateless() == 0u);
-    ZEXPECT(f.crashes == 3u);
+    ZEXPECT(f.crashes() == 3u);
 }
 
 ZEST_CASE(GivenUpPoolFails) {
@@ -1393,7 +1393,7 @@ ZEST_CASE(GivenUpPoolFails) {
 
     std::optional<protocol::integer> code;
     f.run([&]() -> async::task<> {
-        auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params("/a.cpp"));
+        auto result = co_await f.pool.send_stateless(f.index_params());
         ZASSERT(!result.has_value());
         code = result.error().code;
     });
@@ -1425,14 +1425,19 @@ ZEST_CASE(LastGiveUpTellsUser) {
     f.set_max_crash_streak(0);
 
     f.simulate_crash(0, false);
-    ZEXPECT(f.told.empty());
+    ZEXPECT(f.anomalies.guidance().empty());
     f.simulate_crash(1, false);
-    ZASSERT(f.told.size() == 1u);
-    ZEXPECT(llvm::StringRef(f.told[0]).contains("background workers"));
+    std::string background =
+        "clice's background workers keep crashing and are stopped for 30 seconds: completion, "
+        "signature help, formatting and indexing wait until then. The server log has the crash "
+        "reports";
+    ZEXPECT(f.anomalies.guidance() == std::vector{background});
 
     f.simulate_crash(0, true);
-    ZASSERT(f.told.size() == 2u);
-    ZEXPECT(llvm::StringRef(f.told[1]).contains("open files"));
+    std::string open_files =
+        "clice's workers for open files keep crashing and are stopped for 30 seconds: compiles "
+        "of the open files wait until then. The server log has the crash reports";
+    ZEXPECT(f.anomalies.guidance() == std::vector{background, open_files});
 }
 
 ZEST_CASE(CrashBudgetBoundary) {
@@ -1545,16 +1550,12 @@ ZEST_CASE(StoppedPoolChargesNothing) {
 }
 
 ZEST_CASE(StatelessRequest) {
-    TempDir tmp;
-    tmp.touch("test.cpp", "int x = 1;\n");
-    auto src = tmp.path("test.cpp");
-
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
 
-        auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src));
+        auto result = co_await f.pool.send_stateless(f.index_params());
         ZEXPECT(result);
         co_await f.stop();
         done = true;
@@ -1563,17 +1564,12 @@ ZEST_CASE(StatelessRequest) {
 }
 
 ZEST_CASE(PeakReachesSender) {
-    TempDir tmp;
-    tmp.touch("test.cpp", "int x = 1;\n");
-
     WorkerPoolFixture f;
     std::uint64_t reached = 0;
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
-        auto result =
-            co_await f.pool.send_stateless(WorkerPoolFixture::index_params(tmp.path("test.cpp")),
-                                           {.reached = &reached});
+        auto result = co_await f.pool.send_stateless(f.index_params(), {.reached = &reached});
         ZEXPECT(result);
         co_await f.stop();
         done = true;
@@ -1585,10 +1581,6 @@ ZEST_CASE(PeakReachesSender) {
 ZEST_CASE(StatefulTimedFromStart) {
     // A stateful build's deadline runs from the start its worker reports:
     // once its work is under way and overdue, the worker is killed.
-    TempDir tmp;
-    tmp.touch("main.cpp", "int x = 1;\n");
-    auto src = tmp.path("main.cpp");
-
     WorkerPoolFixture f;
     f.set_deadlines(chrono::milliseconds(50), chrono::minutes(2));
     bool done = false;
@@ -1596,11 +1588,11 @@ ZEST_CASE(StatefulTimedFromStart) {
         ZASSERT(f.start(1, 1));
 
         worker::CompileParams params;
-        params.path = src;
+        params.path = f.unit;
         params.version = 1;
         params.text = "int x = 1;\n";
         params.directory = "/tmp";
-        params.arguments = make_args(src);
+        params.arguments = make_args(f.unit);
         auto gate = f.gate(params);
 
         std::optional<protocol::integer> code;
@@ -1631,18 +1623,12 @@ ZEST_CASE(AdvisoryCancelCooperates) {
     // IPC. The sender keeps awaiting the real reply — the slot
     // frees only once the worker is actually idle — and the result is
     // classified as a cancellation, with the worker healthy afterwards.
-    TempDir tmp;
-    tmp.touch("first.cpp", "int x = 1;\n");
-    auto first_src = tmp.path("first.cpp");
-    tmp.touch("small.cpp", "int y = 2;\n");
-    auto small_src = tmp.path("small.cpp");
-
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
 
-        auto params = WorkerPoolFixture::index_params(first_src);
+        auto params = f.index_params();
 
         async::cancellation_source advisory;
         bool cancelled = false;
@@ -1663,7 +1649,7 @@ ZEST_CASE(AdvisoryCancelCooperates) {
 
         // The worker replied and survived: the same slot serves the next
         // request.
-        auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(small_src));
+        auto result = co_await f.pool.send_stateless(params);
         ZEXPECT(result);
 
         co_await f.stop();
@@ -1693,9 +1679,6 @@ ZEST_CASE(CrashAndRestart) {
 }
 
 ZEST_CASE(GivenUpSlotRevives) {
-    TempDir tmp;
-    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
-
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
@@ -1704,7 +1687,7 @@ ZEST_CASE(GivenUpSlotRevives) {
         f.set_max_crash_streak(0);
 
         // The very first crash exceeds the zero budget: the slot dies...
-        co_await f.kill_running_worker(tmp.path("slow.cpp"));
+        co_await f.kill_running_worker();
         ZEXPECT(f.slot_given_up(0));
 
         // ...and is revived with a fresh budget after the cooldown: the
@@ -1722,9 +1705,6 @@ ZEST_CASE(RevivalGivesNothingBack) {
     // A revived slot starts a fresh budget: a death counted before the
     // revival, found later to be its request's doing, has nothing to give
     // back.
-    TempDir tmp;
-    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
-
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
@@ -1732,7 +1712,7 @@ ZEST_CASE(RevivalGivesNothingBack) {
         f.set_revive_after(chrono::milliseconds(300));
         f.set_max_crash_streak(0);
 
-        co_await f.kill_running_worker(tmp.path("slow.cpp"));
+        co_await f.kill_running_worker();
         ZEXPECT(f.slot_given_up(0));
         co_await f.serves(0);
 
@@ -1857,16 +1837,13 @@ ZEST_CASE(ScaleDownBlocksGrowth) {
 ZEST_CASE(GivenUpWaitsCooldown) {
     // A given-up slot waits out its cooldown: a scale-up neither brings it
     // back early nor appends past the ceiling it still counts toward.
-    TempDir tmp;
-    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
-
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
         f.set_revive_after(chrono::minutes(10));
         f.set_max_crash_streak(0);
-        co_await f.kill_running_worker(tmp.path("slow.cpp"));
+        co_await f.kill_running_worker();
         ZASSERT(f.slot_given_up(0));
 
         f.set_max_stateless(2);
@@ -1915,7 +1892,7 @@ ZEST_CASE(KilledIdleWorkerReturns) {
         f.kill_worker(0);
         co_await f.exited(0);
 
-        ZEXPECT(f.crashes == 1u);
+        ZEXPECT(f.crashes() == 1u);
         // An idle worker's kill spends no crash budget.
         ZEXPECT(f.crash_streak(0) == 0u);
         co_await f.serves(0);
@@ -1927,10 +1904,6 @@ ZEST_CASE(KilledIdleWorkerReturns) {
 }
 
 ZEST_CASE(CrashDuringRequest) {
-    TempDir tmp;
-    tmp.touch("test.cpp", "int x = 1;\n");
-    auto src = tmp.path("test.cpp");
-
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
@@ -1943,7 +1916,7 @@ ZEST_CASE(CrashDuringRequest) {
         f.kill_worker(0);
         f.kill_worker(1);
 
-        auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src));
+        auto result = co_await f.pool.send_stateless(f.index_params());
         ZASSERT(!result.has_value());
         ZEXPECT(result.error().code == worker::dispatch_errc::worker_died);
 
@@ -1954,10 +1927,6 @@ ZEST_CASE(CrashDuringRequest) {
 }
 
 ZEST_CASE(MemoryKillReportsMemory) {
-    TempDir tmp;
-    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
-    auto src = tmp.path("slow.cpp");
-
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
@@ -1965,15 +1934,7 @@ ZEST_CASE(MemoryKillReportsMemory) {
 
         std::optional<ipc::Error> error;
         async::task_group<> group;
-        auto sender = [&]() -> async::task<> {
-            auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src));
-            if(!result.has_value())
-                error = result.error();
-        };
-        // The spawn runs the sender up to its wait for the reply; killed
-        // within the same loop turn, the request is caught in flight.
-        group.spawn(sender());
-        ZASSERT(f.running_on(0) == 1u);
+        f.send_running(group, error);
         f.kill(0, false, scheduler::KillReason::Memory, {f.only_request()});
         co_await group.join();
         ZASSERT(error.has_value());
@@ -1983,7 +1944,7 @@ ZEST_CASE(MemoryKillReportsMemory) {
 
         // A kill on purpose is not a crash: no report, and the worker comes
         // back with an untouched budget.
-        ZEXPECT(f.crashes == 0u);
+        ZEXPECT(f.crashes() == 0u);
         co_await f.serves(0);
         ZEXPECT(f.crash_streak(0) == 0u);
 
@@ -1994,32 +1955,22 @@ ZEST_CASE(MemoryKillReportsMemory) {
 }
 
 ZEST_CASE(MemoryKillBeatsCancel) {
-    TempDir tmp;
-    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
-    auto src = tmp.path("slow.cpp");
-
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(2, 0));
 
         async::cancellation_source source;
-        protocol::integer code = 0;
+        std::optional<ipc::Error> error;
         async::task_group<> group;
-        auto sender = [&]() -> async::task<> {
-            auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src),
-                                                         {.cancel = source.token()});
-            if(!result.has_value())
-                code = result.error().code;
-        };
-        group.spawn(sender());
-        ZASSERT(f.running_on(0) == 1u);
+        f.send_running(group, error, {.cancel = source.token()});
         // A memory kill arriving before the cancelled request stopped is
         // reported as such: its sender learns what the request reached.
         source.cancel();
         f.kill(0, false, scheduler::KillReason::Memory, {f.only_request()});
         co_await group.join();
-        ZEXPECT(code == worker::dispatch_errc::out_of_memory);
+        ZASSERT(error.has_value());
+        ZEXPECT(error->code == worker::dispatch_errc::out_of_memory);
 
         co_await f.stop();
         done = true;
@@ -2028,24 +1979,14 @@ ZEST_CASE(MemoryKillBeatsCancel) {
 }
 
 ZEST_CASE(CancelledCrashEndsSlot) {
-    TempDir tmp;
-    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
-    auto src = tmp.path("slow.cpp");
-
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
 
-        protocol::integer code = 0;
+        std::optional<ipc::Error> error;
         async::task_group<> group;
-        auto sender = [&]() -> async::task<> {
-            auto result = co_await f.pool.send_stateless(WorkerPoolFixture::index_params(src));
-            if(!result.has_value())
-                code = result.error().code;
-        };
-        group.spawn(sender());
-        ZASSERT(f.running_on(0) == 1u);
+        f.send_running(group, error);
 
         // A cooperative cancel whose victim then dies on its own inside the
         // grace window: the request still classifies as cancelled, but the
@@ -2057,7 +1998,8 @@ ZEST_CASE(CancelledCrashEndsSlot) {
         f.cancel(f.only_request());
         f.kill_worker(0);
         co_await group.join();
-        ZEXPECT(code == worker::dispatch_errc::cancelled);
+        ZASSERT(error.has_value());
+        ZEXPECT(error->code == worker::dispatch_errc::cancelled);
         ZEXPECT(f.generation(0) != gen);
 
         co_await f.stop();
@@ -2090,24 +2032,13 @@ ZEST_CASE(LinkEndMarksDead) {
 #endif
 
 ZEST_CASE(MemoryKillReachesSender) {
-    TempDir tmp;
-    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
-
     WorkerPoolFixture f;
     std::optional<ipc::Error> error;
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
-        auto params = WorkerPoolFixture::index_params(tmp.path("slow.cpp"));
         async::task_group<> group;
-        auto sender = [&]() -> async::task<> {
-            auto result = co_await f.pool.send_stateless(params);
-            if(!result.has_value()) {
-                error = result.error();
-            }
-        };
-        group.spawn(sender());
-        ZASSERT(f.running_on(0) == 1u);
+        f.send_running(group, error);
         f.kill(0, false, scheduler::KillReason::Memory);
         co_await group.join();
         // Back in service at once, its budget untouched.

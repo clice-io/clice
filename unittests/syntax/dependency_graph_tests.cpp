@@ -403,11 +403,9 @@ export module m;
         std::vector<CommandEdit> edits = {
             {CommandEdit::Kind::Append, {append.begin(), append.end()}},
         };
-        auto applied = apply_edits(commands, file_table, entry.command, {.edits = edits});
-        units.push_back({entry.file,
-                         applied,
-                         commands.input_kind(applied, file_table.resolve(entry.file)),
-                         CommandSource::Database});
+        auto unit = database_command(cdb, entry);
+        unit.command = apply_edits(commands, file_table, entry.command, {.edits = edits});
+        units.push_back(unit);
     }
     scan_dependency_graph(cdb, toolchain, graph, units);
 
@@ -446,12 +444,7 @@ export module m1;
     auto file = file_table.intern(Spelling::absolute(tmp.path("src/m.cppm")));
     auto candidates = cdb.candidate_entries(file);
     ZASSERT(candidates.size() == 2u);
-    llvm::SmallVector<CommandRef> v2_units = {
-        {file,
-         candidates[1].command,
-         commands.input_kind(candidates[1].command, tmp.path("src/m.cppm")),
-         CommandSource::Database}
-    };
+    llvm::SmallVector<CommandRef> v2_units = {database_command(cdb, candidates[1])};
     DependencyGraph graph_v2;
     scan_dependency_graph(cdb, toolchain, graph_v2, v2_units);
     ZEXPECT(graph_v2.lookup_module("m1").empty());
@@ -1134,10 +1127,8 @@ int main() {}
 )");
     // Out of the mtime guard window, or the cold scan's pairs stay
     // unreliable and cannot confirm the warm run.
-    ZASSERT(set_file_mtime(tmp.path("inc/util.h"),
-                           file_mtime_ns(tmp.path("inc/util.h")) - 10'000'000'000));
-    ZASSERT(set_file_mtime(tmp.path("src/main.cpp"),
-                           file_mtime_ns(tmp.path("src/main.cpp")) - 10'000'000'000));
+    age_file(tmp.path("inc/util.h"));
+    age_file(tmp.path("src/main.cpp"));
 
     FileTable file_table;
     CommandTable commands;

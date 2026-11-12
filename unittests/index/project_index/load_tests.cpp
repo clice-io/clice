@@ -578,12 +578,6 @@ ZEST_CASE(OtherFormatKeepsMetadata) {
     TempDir tmp;
     tmp.touch("dep.h", "int x;\n");
     tmp.touch("mod.cppm", "export module m;\n");
-    auto setup = [&](IndexerFixture& f) {
-        open_store(tmp, f.project);
-        f.project.store->register_namespace(
-            {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx"});
-        f.project.store->register_namespace({.name = "pcm", .extension = ".pcm"});
-    };
     auto stored = [](IndexerFixture& f, llvm::StringRef space, llvm::StringRef key) {
         auto pending = f.project.store->begin_store(space, key);
         ZASSERT(!fs::write_file(pending.tmp_path, "bytes"));
@@ -592,7 +586,7 @@ ZEST_CASE(OtherFormatKeepsMetadata) {
 
     {
         IndexerFixture f;
-        setup(f);
+        open_store(tmp, f.project);
         stored(f, "pch", "k");
         auto aux = f.project.store->begin_store_aux("pch", "k");
         ZASSERT(!fs::write_file(aux.tmp_path, "idx-bytes"));
@@ -639,7 +633,7 @@ ZEST_CASE(OtherFormatKeepsMetadata) {
 
     {
         IndexerFixture f;
-        setup(f);
+        open_store(tmp, f.project);
         ZEXPECT(!f.load());
         ZEXPECT(f.project.pchs.empty());
         ZEXPECT(f.project.pcms.size() == 1u);
@@ -648,7 +642,7 @@ ZEST_CASE(OtherFormatKeepsMetadata) {
     }
 
     IndexerFixture f;
-    setup(f);
+    open_store(tmp, f.project);
     ZEXPECT(f.load());
     ZEXPECT(f.project.pcms.size() == 1u);
     ZEXPECT(f.project.choices.bytes == "choices");

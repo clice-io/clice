@@ -73,7 +73,7 @@ ZEST_CASE(KeptTextFollowsEdits) {
     TempDir tmp;
     tmp.touch("a.h", "int x;\n");
     auto path = tmp.path("a.h");
-    ZASSERT(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
+    age_file(path);
 
     auto read = [&] {
         vfs::View view;

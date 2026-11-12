@@ -1,6 +1,7 @@
 module clice;
 
 import :support.logging;
+import :unittests.utils.anomaly_capture;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -8,27 +9,6 @@ namespace {
 
 using logging::AnomalyId;
 using logging::NotifyKind;
-
-/// RAII fixture: install test hooks and clear them on destruction.
-struct AnomalyCapture {
-    std::vector<std::pair<NotifyKind, std::string>> notified;
-    std::vector<AnomalyId> trapped;
-    logging::Level saved_level;
-
-    AnomalyCapture() : saved_level(logging::options.level) {
-        logging::reset_anomaly_for_testing();
-        logging::set_notify_hook([this](NotifyKind kind, std::string_view message) {
-            notified.emplace_back(kind, std::string(message));
-        });
-        logging::set_anomaly_trap_for_testing([this](AnomalyId id) { trapped.push_back(id); });
-    }
-
-    ~AnomalyCapture() {
-        logging::set_notify_hook(nullptr);
-        logging::reset_anomaly_for_testing();
-        logging::options.level = saved_level;
-    }
-};
 
 ZEST_SUITE(Anomaly) {
 

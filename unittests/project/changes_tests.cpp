@@ -24,36 +24,7 @@ import :vfs.path;
 namespace clice::testing {
 namespace {
 
-/// A loaded shard whose entries were built from `content`, for the
-/// disk-vs-shard freshness comparisons below.
-index::Shard shard_of(llvm::StringRef content) {
-    auto bytes = index::write_shard(
-        {},
-        [](index::SymbolHash) -> std::optional<index::SymbolView> { return std::nullopt; },
-        content);
-    return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
-}
-
-/// The project the changes are handed to.
-struct Harness : ProjectFixture {
-    /// The files the background index owes a reindex for `reason`, sorted.
-    llvm::SmallVector<Fid> queued(ReindexReason reason) {
-        auto& queue = project.background_index.queue();
-        return ranges::to<llvm::SmallVector<Fid>>(
-            views::filter(IndexerFixture::pending_files(queue),
-                          [&](Fid file) { return queue.pending_reason(file) == reason; }));
-    }
-
-    /// Give the unit an index of its own.
-    void index_unit(Fid tu) {
-        index::TUManifest manifest;
-        manifest.built_at = 1;
-        manifest.tu_version = project.file_table.intern_version(tu, 1);
-        project.index.apply_manifest(tu, std::move(manifest));
-    }
-};
-
-ZEST_SUITE(Changes, Harness) {
+ZEST_SUITE(Changes, ProjectFixture) {
 
 ZEST_CASE(EmptyBatchNoEffects) {
     project.files_changed({}, open_files);
@@ -81,7 +52,7 @@ ZEST_CASE(NewProviderDirtiesImporters) {
     auto iface = intern(tmp.path("m.cppm"));
     auto closed = list_unit(project.cdb, "/proj/closed.cpp");
     auto open = open_document("/proj/open.cpp");
-    index_unit(closed);
+    index_unit(project, closed);
     project.graph.set_edges({NodeKind::Unit, closed.raw}, {unresolved_import("m")});
     project.graph.set_edges({NodeKind::AST, open.raw}, {unresolved_import("m")});
 
@@ -113,7 +84,7 @@ ZEST_CASE(ReloadProviderCascades) {
     }));
     auto iface = intern(tmp.path("m.cppm"));
     auto removed = intern(tmp.path("old.cpp"));
-    index_unit(removed);
+    index_unit(project, removed);
     project.graph.set_edges({NodeKind::Unit, removed.raw}, {unresolved_import("m")});
 
     project.update_members({.added = {iface}, .removed = {removed}}, open_files);
@@ -147,7 +118,7 @@ ZEST_CASE(DiskChangeSparesSession) {
     // The open file's own compile reads its buffer, never its disk: it is
     // not stale, while its disk index is.
     ZASSERT(!ranges::contains(affected.stale, saved));
-    ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{saved});
+    ZASSERT(queued(project, ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{saved});
 }
 
 ZEST_CASE(CascadeSplitsOpenClosed) {
@@ -164,8 +135,8 @@ ZEST_CASE(CascadeSplitsOpenClosed) {
     // recompile, closed files go back to the background indexer. The
     // changed unit, dirtied too, is owed the reindex of its own content.
     ZEXPECT(ranges::contains(affected.stale, open_user));
-    ZEXPECT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_user});
-    ZEXPECT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{mod});
+    ZEXPECT(queued(project, ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_user});
+    ZEXPECT(queued(project, ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{mod});
 }
 
 ZEST_CASE(ChainHitAndMiss) {
@@ -199,8 +170,8 @@ ZEST_CASE(SaveMarksDependents) {
     // dependent's own content did not change: deps-only. The header is no
     // unit: it owes no reindex of its own.
     ZASSERT(ranges::contains(affected.stale, open_tu));
-    ZASSERT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_tu});
-    ZASSERT(queued(ReindexReason::ContentChanged).empty());
+    ZASSERT(queued(project, ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_tu});
+    ZASSERT(queued(project, ReindexReason::ContentChanged).empty());
 }
 
 ZEST_CASE(OpenDependentsReindex) {
@@ -219,7 +190,7 @@ ZEST_CASE(OpenDependentsReindex) {
     ZASSERT(ranges::contains(affected.stale, open_tu));
     llvm::SmallVector<Fid> reindexed{open_tu, closed_tu};
     ranges::sort(reindexed);
-    ZASSERT(queued(ReindexReason::DepsOnly) == reindexed);
+    ZASSERT(queued(project, ReindexReason::DepsOnly) == reindexed);
 }
 
 ZEST_CASE(TransitiveDependentsEnqueue) {
@@ -233,8 +204,8 @@ ZEST_CASE(TransitiveDependentsEnqueue) {
     project.files_changed({header}, open_files);
 
     // Only root TUs own index shards; neither header is one.
-    ZASSERT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{root});
-    ZASSERT(queued(ReindexReason::ContentChanged).empty());
+    ZASSERT(queued(project, ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{root});
+    ZASSERT(queued(project, ReindexReason::ContentChanged).empty());
 }
 
 ZEST_CASE(ForcedHeaderReachesUnits) {
@@ -252,7 +223,7 @@ ZEST_CASE(ForcedHeaderReachesUnits) {
     auto affected = project.files_changed({header}, open_files);
 
     ZASSERT(ranges::contains(affected.stale, open));
-    ZASSERT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed});
+    ZASSERT(queued(project, ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed});
 }
 
 ZEST_CASE(BatchSeesEarlierEdges) {
@@ -279,7 +250,7 @@ ZEST_CASE(BatchSeesEarlierEdges) {
 
     auto affected = project.files_changed({added, header}, open_files);
 
-    ZASSERT(ranges::contains(queued(ReindexReason::DepsOnly), known));
+    ZASSERT(ranges::contains(queued(project, ReindexReason::DepsOnly), known));
     ZASSERT(ranges::contains(affected.stale, added));
     ZASSERT(ranges::contains(project.dep_graph.get_includers(header), added));
 }
@@ -341,7 +312,7 @@ ZEST_CASE(BatchChangesDeduplicate) {
 
     project.files_changed({saved, saved}, open_files);
 
-    ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{saved});
+    ZASSERT(queued(project, ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{saved});
 }
 
 ZEST_CASE(DiskChangeClosedCascades) {
@@ -358,8 +329,8 @@ ZEST_CASE(DiskChangeClosedCascades) {
     // dependent only rebuilds semantics, and the header, no unit, owes no
     // reindex of its own.
     ZASSERT(ranges::contains(affected.stale, open_tu));
-    ZASSERT(queued(ReindexReason::ContentChanged).empty());
-    ZASSERT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_tu});
+    ZASSERT(queued(project, ReindexReason::ContentChanged).empty());
+    ZASSERT(queued(project, ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_tu});
 }
 
 ZEST_CASE(DiskChangeOpenCascades) {
@@ -381,8 +352,8 @@ ZEST_CASE(DiskChangeOpenCascades) {
 
     ZASSERT(ranges::contains(affected.stale, open_tu));
     ZASSERT(!ranges::contains(affected.stale, header));
-    ZASSERT(queued(ReindexReason::ContentChanged).empty());
-    ZASSERT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_tu});
+    ZASSERT(queued(project, ReindexReason::ContentChanged).empty());
+    ZASSERT(queued(project, ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_tu});
 }
 
 ZEST_CASE(CompiledIncluderCascades) {
@@ -406,7 +377,7 @@ ZEST_CASE(CompiledIncluderCascades) {
 
     llvm::SmallVector<Fid> reindexed{scanned, compiled};
     ranges::sort(reindexed);
-    ZASSERT(queued(ReindexReason::DepsOnly) == reindexed);
+    ZASSERT(queued(project, ReindexReason::DepsOnly) == reindexed);
     // Until they are indexed again, what their runs walked is outdated —
     // and the file's own, should it be a unit of its own.
     ZEXPECT(IndexInternals::outdated(project.index, compiled));
@@ -464,7 +435,7 @@ ZEST_CASE(AppearedHeaderCascades) {
 
     auto affected = project.files_changed({header}, open_files);
 
-    ZASSERT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed});
+    ZASSERT(queued(project, ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed});
     ZASSERT(ranges::contains(affected.stale, open));
 }
 
@@ -526,7 +497,7 @@ ZEST_CASE(CDBAddedScansAndEnqueues) {
     write_cdb(tmp, project.cdb, json);
     auto main_id = intern(tmp.path("src/main.cpp"));
     auto header_id = intern(tmp.path("inc/header.h"));
-    index_unit(main_id);
+    index_unit(project, main_id);
 
     project.update_members({.added = {main_id}}, open_files);
 
@@ -534,9 +505,9 @@ ZEST_CASE(CDBAddedScansAndEnqueues) {
     // A command change rewrites the index as thoroughly as an edit, and the
     // old index serves until the reindex merges.
     ZASSERT(project.dep_graph.get_includers(header_id) == llvm::ArrayRef<Fid>{main_id});
-    ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(queued(project, ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{main_id});
     ZASSERT(project.index.indexed(main_id));
-    ZASSERT(queued(ReindexReason::DepsOnly).empty());
+    ZASSERT(queued(project, ReindexReason::DepsOnly).empty());
 }
 
 ZEST_CASE(CDBChangedCascadesModule) {
@@ -554,7 +525,7 @@ ZEST_CASE(CDBChangedCascadesModule) {
     // The edges their attempts declare in production — no attempt runs.
     project.graph.set_edges(module_node(open_user), {module_node(mod)});
     project.graph.set_edges(module_node(closed_user), {module_node(mod)});
-    index_unit(mod);
+    index_unit(project, mod);
 
     auto affected = project.update_members({.changed = {mod}}, open_files);
 
@@ -564,9 +535,9 @@ ZEST_CASE(CDBChangedCascadesModule) {
     // dirtied its PCM); the queue's absorbing upgrade leaves it
     // ContentChanged.
     ZEXPECT(ranges::contains(affected.stale, open_user));
-    ZEXPECT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{mod});
+    ZEXPECT(queued(project, ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{mod});
     ZEXPECT(project.index.indexed(mod));
-    ZEXPECT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_user});
+    ZEXPECT(queued(project, ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_user});
 }
 
 ZEST_CASE(DiskRemovedReindexesIncluders) {
@@ -583,8 +554,8 @@ ZEST_CASE(DiskRemovedReindexesIncluders) {
     // Dependents now compile against a missing include: open ones
     // recompile, closed ones reindex.
     ZASSERT(ranges::contains(affected.stale, open_tu));
-    ZASSERT(queued(ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_tu});
-    ZASSERT(queued(ReindexReason::ContentChanged).empty());
+    ZASSERT(queued(project, ReindexReason::DepsOnly) == llvm::SmallVector<Fid>{closed_tu});
+    ZASSERT(queued(project, ReindexReason::ContentChanged).empty());
 }
 
 ZEST_CASE(CDBRemovedDropsSourceRole) {
@@ -602,7 +573,7 @@ ZEST_CASE(CDBRemovedDropsSourceRole) {
     });
     write_cdb(tmp, project.cdb, json);
     auto kept_id = intern(tmp.path("kept.cpp"));
-    index_unit(gone_id);
+    index_unit(project, gone_id);
 
     project.update_members({.removed = {gone_id}}, open_files);
 
@@ -612,7 +583,7 @@ ZEST_CASE(CDBRemovedDropsSourceRole) {
     ZASSERT(project.dep_graph.get_all_includes(gone_id).empty());
     ZASSERT(project.dep_graph.get_includers(header_id) == llvm::ArrayRef<Fid>{kept_id});
     ZASSERT(!project.index.indexed(gone_id));
-    ZASSERT(queued(ReindexReason::ContentChanged).empty());
+    ZASSERT(queued(project, ReindexReason::ContentChanged).empty());
 }
 
 ZEST_CASE(CDBRemovedStillCovered) {
@@ -631,12 +602,12 @@ ZEST_CASE(CDBRemovedStillCovered) {
         {tmp.root, tmp.path("kept.cpp"), {}}
     });
     write_cdb(tmp, project.cdb, json);
-    index_unit(gone_id);
+    index_unit(project, gone_id);
 
     project.update_members({.removed = {gone_id}}, open_files);
 
     ZASSERT(project.index.indexed(gone_id));
-    ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{gone_id});
+    ZASSERT(queued(project, ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{gone_id});
 }
 
 ZEST_CASE(CDBEmptyDeltaNoEffects) {
@@ -656,8 +627,8 @@ ZEST_CASE(BatchDiskEventsDeduplicate) {
 
     llvm::SmallVector<Fid> expected{first, second};
     ranges::sort(expected);
-    ZASSERT(queued(ReindexReason::ContentChanged) == expected);
-    ZASSERT(queued(ReindexReason::DepsOnly).empty());
+    ZASSERT(queued(project, ReindexReason::ContentChanged) == expected);
+    ZASSERT(queued(project, ReindexReason::DepsOnly).empty());
 }
 
 };  // ZEST_SUITE(Changes)

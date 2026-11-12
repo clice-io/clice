@@ -21,16 +21,6 @@ import :vfs.ids;
 namespace clice::testing {
 namespace {
 
-/// A loaded shard whose entries were built from `content`, for the
-/// disk-vs-shard freshness comparisons below.
-index::Shard shard_of(llvm::StringRef content) {
-    auto bytes = index::write_shard(
-        {},
-        [](index::SymbolHash) -> std::optional<index::SymbolView> { return std::nullopt; },
-        content);
-    return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
-}
-
 /// The served project the changes are handed to. Its open documents'
 /// compiles parse the bodies of their headers and serve their index, so
 /// that a dependency change splits open files from closed ones
@@ -44,22 +34,6 @@ struct Harness {
     /// invalidation moves its node's generation on.
     bool invalidated(Fid path_id) {
         return fixture.generation(path_id) != 0;
-    }
-
-    /// The files the background index owes a reindex for `reason`, sorted.
-    llvm::SmallVector<Fid> queued(ReindexReason reason) {
-        auto& queue = served.project.background_index.queue();
-        return ranges::to<llvm::SmallVector<Fid>>(
-            views::filter(IndexerFixture::pending_files(queue),
-                          [&](Fid file) { return queue.pending_reason(file) == reason; }));
-    }
-
-    /// Give the unit an index of its own.
-    void index_unit(Fid tu) {
-        index::TUManifest manifest;
-        manifest.built_at = 1;
-        manifest.tu_version = project.file_table.intern_version(tu, 1);
-        project.index.apply_manifest(tu, std::move(manifest));
     }
 };
 
@@ -76,8 +50,8 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     write_cdb(tmp, project.cdb, json);
     auto open_id = fixture.open(tmp.path("a.cpp"), "")->path_id;
     auto closed_id = fixture.intern(tmp.path("b.cpp"));
-    index_unit(open_id);
-    index_unit(closed_id);
+    index_unit(project, open_id);
+    index_unit(project, closed_id);
     IndexInternals::plant_shard(project.index, open_id, shard_of(""));
     IndexInternals::plant_shard(project.index, closed_id, shard_of(""));
 
@@ -90,8 +64,8 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     ZASSERT(invalidated(open_id));
     llvm::SmallVector<Fid> reindexed{open_id, closed_id};
     ranges::sort(reindexed);
-    ZASSERT(queued(ReindexReason::ContentChanged) == reindexed);
-    ZASSERT(queued(ReindexReason::DepsOnly).empty());
+    ZASSERT(queued(project, ReindexReason::ContentChanged) == reindexed);
+    ZASSERT(queued(project, ReindexReason::DepsOnly).empty());
 
     // Both indexes were built under the old command: they serve until the
     // reindexes merge, which no freshness check filters out — their
@@ -114,7 +88,7 @@ ZEST_CASE(CDBAddedOpenMarksDirty) {
                   {tmp.root, tmp.path("a.cpp"), {}}
     }));
     auto file = fixture.open(tmp.path("a.cpp"), "")->path_id;
-    index_unit(file);
+    index_unit(project, file);
 
     fixture.commands_changed({.added = {file}});
 
@@ -122,9 +96,9 @@ ZEST_CASE(CDBAddedOpenMarksDirty) {
     // it was compiled with, and queue the reindex that builds its shard
     // under the real command once open-file indexing is on.
     ZASSERT(invalidated(file));
-    ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{file});
+    ZASSERT(queued(project, ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{file});
     ZASSERT(project.index.indexed(file));
-    ZASSERT(queued(ReindexReason::DepsOnly).empty());
+    ZASSERT(queued(project, ReindexReason::DepsOnly).empty());
 }
 
 ZEST_CASE(CDBChangedDropsHostedContext) {
@@ -151,7 +125,7 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
             DocumentCompile{.host = selection.host, .command = selection.ref.command});
     }
     ZASSERT(fixture.entry(open_header).latest->host == host);
-    index_unit(host);
+    index_unit(project, host);
 
     write_cdb(tmp,
               project.cdb,
@@ -166,7 +140,7 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
     // header has an index of its own. Unrelated headers are untouched.
     ZASSERT(invalidated(open_header));
     ZASSERT(!invalidated(other_header));
-    ZASSERT(queued(ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{host});
+    ZASSERT(queued(project, ReindexReason::ContentChanged) == llvm::SmallVector<Fid>{host});
 }
 
 };  // ZEST_SUITE(DocumentChanges)

@@ -494,12 +494,8 @@ struct Indexed {
         tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
         src = tmp.path("main.cpp");
         header = tmp.path("dep.h");
-        // Age the files out of the mtime guard window so their stats can
-        // confirm them, the way real project files predate an index run.
-        if(!set_file_mtime(src, file_mtime_ns(src) - 10'000'000'000) ||
-           !set_file_mtime(header, file_mtime_ns(header) - 10'000'000'000)) {
-            return false;
-        }
+        age_file(src);
+        age_file(header);
         auto indexed = index_file(tmp, src);
         if(indexed.data.empty()) {
             return false;

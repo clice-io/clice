@@ -106,10 +106,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
             co_return Result::Failed;
         }
         auto& entry = candidates.front();
-        CommandRef ref{entry.file,
-                       entry.command,
-                       cdb.commands().input_kind(entry.command, file_path),
-                       CommandSource::Database};
+        auto ref = database_command(cdb, entry);
 
         CompilationParams cp;
         cp.kind = CompilationKind::ModuleInterface;
@@ -150,10 +147,7 @@ ResolveFn make_resolver(CompilationDatabase& cdb, Toolchain& toolchain, Dependen
             return {};
         }
         auto& entry = candidates.front();
-        CommandRef ref{entry.file,
-                       entry.command,
-                       cdb.commands().input_kind(entry.command, file_path),
-                       CommandSource::Database};
+        auto ref = database_command(cdb, entry);
 
         auto scan_result = scan_precise(toolchain.render(ref, cdb.spelling(ref.file)).argv,
                                         cdb.commands().get(entry.command).directory);
@@ -1134,10 +1128,7 @@ ZEST_CASE(module_implementation_unit) {
         auto candidates = env.cdb.candidate_entries(impl_path);
         ZASSERT(!candidates.empty());
         auto& impl_entry = candidates.front();
-        CommandRef impl_ref{impl_entry.file,
-                            impl_entry.command,
-                            env.cdb.commands().input_kind(impl_entry.command, impl_path),
-                            CommandSource::Database};
+        auto impl_ref = database_command(env.cdb, impl_entry);
 
         CompilationParams cp;
         cp.kind = CompilationKind::Content;

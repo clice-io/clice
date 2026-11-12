@@ -17,8 +17,10 @@ import :syntax.dependency_graph;
 import :syntax.position;
 import :syntax.token;
 import :unittests.server.served_project_fixture;
+import :unittests.utils.anomaly_capture;
 import :unittests.utils.async;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.project_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :unittests.worker.helpers;
@@ -42,14 +44,6 @@ std::uint64_t gate_request(ServedProjectFixture& fixture, Fid path_id) {
     Params params;
     params.path = std::string(server.files.resolve(path_id));
     return server.hooks.gate(worker::crash_tag(params));
-}
-
-void register_pch_store(ServedProjectFixture& fixture, TempDir& tmp) {
-    auto store = CacheStore::open(tmp.path("root"), 1);
-    ZASSERT(store);
-    store->register_namespace(
-        {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx", .max_bytes = 1ull << 30});
-    fixture.served->project.store.emplace(std::move(*store));
 }
 
 /// Close the document as didClose does: it leaves the master's table, its
@@ -285,30 +279,21 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
     // ServedProject::stop_compiles interrupts the parse (the send itself
     // carries no token by design), so the round finishes promptly and the
     // graph's shutdown finds nothing to wait out.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     TempDir tmp;
-    tmp.touch("slow.cpp", "");
-    auto src = tmp.path("slow.cpp");
+    tmp.touch("parked.cpp", "");
+    auto src = tmp.path("parked.cpp");
 
     ServedProjectFixture fixture(tmp.root);
     auto& served = *fixture.served;
-    std::string text;
-    text.reserve(1 << 22);
-    for(int i = 0; i < 200'000; i += 1) {
-        text += std::format("int v{};\n", i);
-    }
-    auto session = fixture.open(src, std::move(text));
+    auto session = fixture.open(src, "int v0;\nint v1;\n");
 
     bool waiter_done = false;
     bool waiter_ok = true;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
         async::task_group<> group;
         auto waiter = [&]() -> async::task<> {
@@ -339,8 +324,6 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(EditInterruptsStaleCompile) {
@@ -351,7 +334,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
     // an edit), and the next request compiles the fresh content. Liveness
     // pin; the interruption content is pinned by
     // StatefulWorker.IpcCancelInterruptsCompile.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     tmp.touch("edited_only.cpp", "");
@@ -365,11 +348,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
     bool waiter_ok = false;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
         async::task_group<> group;
         auto waiter = [&]() -> async::task<> {
@@ -405,8 +384,6 @@ ZEST_CASE(EditInterruptsStaleCompile) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(OutdatedCompileCancelled) {
@@ -415,7 +392,7 @@ ZEST_CASE(OutdatedCompileCancelled) {
     // parse, and the second waiter's respawned round compiles the new
     // content. This pins the edit path's liveness; the interruption itself
     // is pinned content-wise by StatefulWorker.IpcCancelInterruptsCompile.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     tmp.touch("edited.cpp", "");
@@ -429,11 +406,7 @@ ZEST_CASE(OutdatedCompileCancelled) {
     bool second_ok = false;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
         async::task_group<> group;
         auto first = [&]() -> async::task<> {
@@ -469,8 +442,6 @@ ZEST_CASE(OutdatedCompileCancelled) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(BufferImportBuildsPCM) {
@@ -495,20 +466,14 @@ ZEST_CASE(BufferImportBuildsPCM) {
     }));
     scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
-    register_pch_store(fixture, tmp);
-    project.store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    open_cache(tmp, project);
 
     auto session = fixture.open(src, "import m;\nint main() { return mv(); }\n");
 
     bool ok = false;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 1)));
 
         ok = co_await served.ensure_compiled(session);
 
@@ -556,9 +521,7 @@ ZEST_CASE(RefusedModuleForgotten) {
     }));
     scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
-    register_pch_store(fixture, tmp);
-    project.store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    open_cache(tmp, project);
 
     auto crashed = fixture.intern(tmp.path("crashed.cppm"));
     auto read = current_input(project.file_table, crashed);
@@ -580,11 +543,7 @@ ZEST_CASE(RefusedModuleForgotten) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 1)));
 
         hooks.hold(BuildKind::PCM,
                    std::string(project.file_table.resolve(fixture.intern(tmp.path("slow.cppm")))));
@@ -639,19 +598,13 @@ ZEST_CASE(DiamondDepsDeduplicated) {
     }));
     scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
-    register_pch_store(fixture, tmp);
-    project.store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    open_cache(tmp, project);
 
     auto session = fixture.open(src, "import top;\nint main() { return t(); }\n");
 
     bool ok = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 1)));
 
         ok = co_await served.ensure_compiled(session);
 
@@ -694,9 +647,7 @@ ZEST_CASE(ImportScanPerUnit) {
     }));
     scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
-    register_pch_store(fixture, tmp);
-    project.store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
+    open_cache(tmp, project);
 
     auto plain = fixture.open(tmp.path("plain.cpp"), "int plain() { return 0; }\n");
     auto main = fixture.open(tmp.path("main.cpp"), "import m;\nint main() { return mv(); }\n");
@@ -712,11 +663,7 @@ ZEST_CASE(ImportScanPerUnit) {
     std::uint64_t import_scans = 0;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 1)));
 
         ZASSERT(co_await served.ensure_compiled(plain));
         plain_scans = served.project.import_scan_runs;
@@ -752,7 +699,7 @@ ZEST_CASE(BufferImportRecorded) {
     // but the buffer scan must still record the name — the first
     // provider's arrival has nothing else to find this document by (the
     // disk candidate set cannot see unsaved edits).
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     tmp.touch("main.cpp", "int main() { return 0; }\n");
@@ -764,11 +711,7 @@ ZEST_CASE(BufferImportRecorded) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
         [[maybe_unused]] bool ok = co_await served.ensure_compiled(session);
 
@@ -785,15 +728,13 @@ ZEST_CASE(BufferImportRecorded) {
     // must reach this document's node.
     auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(IncludeImportRecorded) {
     // Zero-provider window, import introduced by the command: the buffer
     // is lexically importless, so the forced header's import syntax, a
     // graph fact, must trigger the precise scan that records the name.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     tmp.touch("deps.h", "import m;\n");
@@ -814,11 +755,7 @@ ZEST_CASE(IncludeImportRecorded) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
         [[maybe_unused]] bool ok = co_await served.ensure_compiled(session);
 
@@ -833,15 +770,13 @@ ZEST_CASE(IncludeImportRecorded) {
 
     auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(HostImportRecorded) {
     // A header compiled through its host's synthesized prefix: the host's
     // import syntax, a graph fact, must trigger the precise scan that
     // records the name.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     tmp.touch("part.inc", "int part();\n");
@@ -861,11 +796,7 @@ ZEST_CASE(HostImportRecorded) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 1)));
 
         [[maybe_unused]] bool ok = co_await served.ensure_compiled(session);
 
@@ -882,14 +813,12 @@ ZEST_CASE(HostImportRecorded) {
     ZASSERT((context != nullptr && context->result.synthesized != nullptr));
     auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(SuffixImportRecorded) {
     // An import past the header's include, inside the braces around it,
     // is in the suffix the compile appends: the precise scan reads it too.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     tmp.touch("part.inc", "int part();\n");
@@ -910,11 +839,7 @@ ZEST_CASE(SuffixImportRecorded) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 1)));
 
         [[maybe_unused]] bool ok = co_await served.ensure_compiled(session);
 
@@ -931,8 +856,6 @@ ZEST_CASE(SuffixImportRecorded) {
     ZASSERT((context != nullptr && context->result.synthesized != nullptr));
     auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(ForcedIncludeSkipsScan) {
@@ -961,11 +884,7 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
     bool header_ok = false;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 1)));
 
         unit_ok = co_await served.ensure_compiled(unit);
         header_ok = co_await served.ensure_compiled(header);
@@ -1068,7 +987,7 @@ ZEST_CASE(PCHCrashStopsDocument) {
     // A PCH build that kills its stateless worker stops the document: the
     // preamble is its content too. The worker names the build, so the
     // death is attributed to it at once and the build is not resent.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     tmp.touch("a.cpp", "");
@@ -1076,7 +995,7 @@ ZEST_CASE(PCHCrashStopsDocument) {
 
     ServedProjectFixture fixture(tmp.root);
     auto& served = *fixture.served;
-    register_pch_store(fixture, tmp);
+    open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "#pragma clang __debug crash\n");
 
     std::string directory = tmp.path(".");
@@ -1084,11 +1003,7 @@ ZEST_CASE(PCHCrashStopsDocument) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 0)));
 
         bool built = co_await fixture.build_pch(session,
                                                 session->generation,
@@ -1109,15 +1024,13 @@ ZEST_CASE(PCHCrashStopsDocument) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(PCHCrashStopsBuild) {
     // A PCH crash inside a completion build's dependency prep stops the
     // document after the entry gate: the build stops instead of
     // dispatching the same content to one more worker.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     tmp.touch("a.cpp", "");
@@ -1125,16 +1038,12 @@ ZEST_CASE(PCHCrashStopsBuild) {
 
     ServedProjectFixture fixture(tmp.root);
     auto& served = *fixture.served;
-    register_pch_store(fixture, tmp);
+    open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "#pragma clang __debug crash\nint value;\n");
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 0)));
 
         // Past the preamble: a completion before it parses none of it.
         auto result =
@@ -1152,8 +1061,6 @@ ZEST_CASE(PCHCrashStopsBuild) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(QueuedRequestStops) {
@@ -1161,8 +1068,7 @@ ZEST_CASE(QueuedRequestStops) {
     // while the second waits in the queue for that only worker. The second
     // is checked where it would reach the worker, after its wait, and the
     // crash of its kind on its content stops it there: no second death.
-    std::size_t deaths = 0;
-    count_crashes(deaths);
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     tmp.touch("a.cpp", "");
@@ -1170,17 +1076,14 @@ ZEST_CASE(QueuedRequestStops) {
 
     ServedProjectFixture fixture(tmp.root);
     auto& served = *fixture.served;
-    register_pch_store(fixture, tmp);
+    open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "int value;\n#pragma clang __debug crash\nint other;\n");
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        opts.max_stateless = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        auto options = worker_options(tmp, 1, 0);
+        options.max_stateless = 1;
+        ZASSERT(fixture.server.pool.start(options));
 
         auto complete = [&]() -> async::task<> {
             auto result =
@@ -1189,7 +1092,7 @@ ZEST_CASE(QueuedRequestStops) {
             ZEXPECT(result.value().list.data == "null");
         };
         co_await async::when_all(complete(), complete());
-        ZEXPECT(deaths == 1u);
+        ZEXPECT(anomalies.count(logging::AnomalyId::WorkerCrash) == 1u);
         auto notes = session->crash_notes();
         ZASSERT(notes.size() == 1u);
         ZEXPECT(notes[0].kind == feature::RequestKind::Completion);
@@ -1202,8 +1105,6 @@ ZEST_CASE(QueuedRequestStops) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(ClientCancelSparesCompile) {
@@ -1211,7 +1112,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
     // shared compile it waits on: the detached round serves every waiter.
     // A regression that threads the request token into the shared round
     // would kill waiter B's result along with waiter A's frame.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     tmp.touch("shared.cpp", "");
@@ -1225,11 +1126,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
     bool other_answered = false;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
         async::cancellation_source source;
         async::task_group<> group;
@@ -1270,8 +1167,6 @@ ZEST_CASE(ClientCancelSparesCompile) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(StaleReplyBecomesContentModified) {
@@ -1279,7 +1174,7 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
     // it becomes ContentModified even when the worker
     // answered after the compile had finished — the edit arrived while the
     // query itself was in flight.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     tmp.touch("stale.cpp", "");
@@ -1292,11 +1187,7 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
     bool stale = false;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
         // Warm the AST: the next query's only suspension is its worker send.
         auto warm = co_await ask_hover(served, Ticket::take(session), protocol::Position{0, 4});
@@ -1331,15 +1222,13 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(HarmlessKindKeepsStop) {
     // A crash of one query kind stops only that kind: a hover on a document
     // whose semantic tokens crashed is ordinary work — it is answered, and
     // the tokens record stays as it was.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     tmp.touch("a.cpp", "");
@@ -1353,11 +1242,7 @@ ZEST_CASE(HarmlessKindKeepsStop) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
         auto result = co_await ask_hover(served, Ticket::take(session), protocol::Position{0, 4});
         ZEXPECT(result);
@@ -1371,8 +1256,6 @@ ZEST_CASE(HarmlessKindKeepsStop) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(PoisonPreambleShared) {
@@ -1381,12 +1264,11 @@ ZEST_CASE(PoisonPreambleShared) {
     // re-trigger the build and burn a worker of its own. After one crashed
     // build the key is refused before any dispatch, and every other
     // document books the same death instead of a fresh one.
-    std::size_t deaths = 0;
-    count_crashes(deaths);
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     ServedProjectFixture fixture(tmp.root);
-    register_pch_store(fixture, tmp);
+    open_cache(tmp, fixture.served->project);
 
     auto open_poisoned = [&](llvm::StringRef name) {
         tmp.touch(name, "");
@@ -1401,11 +1283,7 @@ ZEST_CASE(PoisonPreambleShared) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 0)));
 
         auto build = [&](const std::shared_ptr<Session>& session) {
             return fixture.build_pch(session,
@@ -1419,7 +1297,7 @@ ZEST_CASE(PoisonPreambleShared) {
         };
         ZASSERT(!co_await build(first));
         ZASSERT(crashed(first));
-        ZEXPECT(deaths == 1u);
+        ZEXPECT(anomalies.count(logging::AnomalyId::WorkerCrash) == 1u);
 
         // Refused without touching a worker, each document stopped by the
         // same death.
@@ -1427,7 +1305,7 @@ ZEST_CASE(PoisonPreambleShared) {
         ZEXPECT(crashed(second));
         ZASSERT(!co_await build(third));
         ZEXPECT(crashed(third));
-        ZEXPECT(deaths == 1u);
+        ZEXPECT(anomalies.count(logging::AnomalyId::WorkerCrash) == 1u);
 
         co_await fixture.server.pool.stop();
         done = true;
@@ -1436,15 +1314,13 @@ ZEST_CASE(PoisonPreambleShared) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(AbandonedPCHKeepsNoIndex) {
     // A parse that leaves while its PCH builds takes nothing, and the build
     // committing after it hands its index to no one: the index stays mapped
     // only while a compile holds it.
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     TempDir tmp;
     tmp.touch("a.cpp", "");
@@ -1452,7 +1328,7 @@ ZEST_CASE(AbandonedPCHKeepsNoIndex) {
 
     ServedProjectFixture fixture(tmp.root);
     auto& project = fixture.served->project;
-    register_pch_store(fixture, tmp);
+    open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "#define X 1\nint x;\n");
     auto& hooks = fixture.server.hooks;
     fixture.server.pool.hooks = &hooks;
@@ -1472,11 +1348,7 @@ ZEST_CASE(AbandonedPCHKeepsNoIndex) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 0)));
 
         hooks.hold(BuildKind::PCH, std::string(project.file_table.resolve(session->path_id)));
         async::cancellation_source source;
@@ -1509,8 +1381,6 @@ ZEST_CASE(AbandonedPCHKeepsNoIndex) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
-
-    logging::reset_anomaly_for_testing();
 }
 
 ZEST_CASE(GenerationGuardsPCHClear) {
@@ -1524,7 +1394,7 @@ ZEST_CASE(GenerationGuardsPCHClear) {
 
     ServedProjectFixture fixture(tmp.root);
     auto& served = *fixture.served;
-    register_pch_store(fixture, tmp);
+    open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "#define X 1\nint x;\n");
     // One prior crash on the PCH record.
     auto crashed = [&] {
@@ -1537,11 +1407,7 @@ ZEST_CASE(GenerationGuardsPCHClear) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 0)));
 
         auto gen = session->generation;
         auto generation = fixture.generation(session->path_id);
@@ -1600,7 +1466,7 @@ ZEST_CASE(StaleDepsNoAdopt) {
 
     ServedProjectFixture fixture(tmp.root);
     auto& served = *fixture.served;
-    register_pch_store(fixture, tmp);
+    open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "#include \"dep.h\"\nint x;\n");
 
     std::string directory = tmp.path(".");
@@ -1617,11 +1483,7 @@ ZEST_CASE(StaleDepsNoAdopt) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 1, 0)));
 
         ZASSERT(co_await build());
         auto adopted = served.latest(session->path_id);
@@ -1676,12 +1538,9 @@ ZEST_CASE(EvictedDocumentRecompiles) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        opts.max_resident = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        auto options = worker_options(tmp, 0, 1);
+        options.max_resident = 1;
+        ZASSERT(fixture.server.pool.start(options));
 
         ZASSERT(co_await served.ensure_compiled(a));
         auto generation = fixture.generation(a->path_id);
@@ -1750,12 +1609,9 @@ ZEST_CASE(EvictedDocumentKeptAnswers) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        opts.max_resident = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        auto options = worker_options(tmp, 0, 1);
+        options.max_resident = 1;
+        ZASSERT(fixture.server.pool.start(options));
 
         auto compiled_tokens = co_await tokens();
         auto compiled_hints = co_await hints(first);
@@ -1816,12 +1672,9 @@ ZEST_CASE(QueryHoldsItsDocument) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        opts.max_resident = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        auto options = worker_options(tmp, 0, 1);
+        options.max_resident = 1;
+        ZASSERT(fixture.server.pool.start(options));
 
         hooks.hold(BuildKind::Compile, path);
         std::optional<feature::HoverInfo> hover;
@@ -1868,12 +1721,9 @@ ZEST_CASE(RecompileKeepsItsAST) {
     bool recompiled = false;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        opts.max_resident = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        auto options = worker_options(tmp, 0, 1);
+        options.max_resident = 1;
+        ZASSERT(fixture.server.pool.start(options));
 
         ZASSERT(co_await served.ensure_compiled(a));
         a->set_text("int alpha = 3;\n");
@@ -1921,12 +1771,9 @@ ZEST_CASE(EvictedDocumentSeesHeader) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        opts.max_resident = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        auto options = worker_options(tmp, 0, 1);
+        options.max_resident = 1;
+        ZASSERT(fixture.server.pool.start(options));
 
         ZASSERT(co_await served.ensure_compiled(a));
         auto generation = fixture.generation(a->path_id);
@@ -1962,11 +1809,7 @@ ZEST_CASE(AnswerClearsQueryRecord) {
 
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
         ZASSERT(co_await served.ensure_compiled(a));
         auto result = co_await ask_hover(served, Ticket::take(a), protocol::Position{0, 5});
@@ -1998,11 +1841,7 @@ ZEST_CASE(CloseDuringQueryEnds) {
     bool modified = false;
     bool done = false;
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 0;
-        opts.stateful_count = 1;
-        ZASSERT(fixture.server.pool.start(opts));
+        ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
         ZASSERT(co_await served.ensure_compiled(a));
 

@@ -1,6 +1,7 @@
 module clice;
 
 import :support.logging;
+import :unittests.utils.anomaly_capture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.file_table;
@@ -38,7 +39,7 @@ struct Fixture {
     Fid file(llvm::StringRef relative, llvm::StringRef content) {
         tmp.touch(relative, content);
         auto path = tmp.path(relative);
-        ZEXPECT(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
+        age_file(path);
         return table.intern(Spelling::absolute(path));
     }
 
@@ -391,23 +392,17 @@ ZEST_CASE(EnvironmentInstallMakesDue) {
 }
 
 ZEST_CASE(ShadowReportsStaleTrust) {
-    logging::reset_anomaly_for_testing();
-    std::vector<logging::AnomalyId> trapped;
-    logging::set_anomaly_trap_for_testing([&](logging::AnomalyId id) { trapped.push_back(id); });
-
+    AnomalyCapture anomalies;
     Fixture f;
     f.disk.shadow = true;
     auto fid = f.file("pkg/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
-    ZASSERT(trapped.empty());
+    ZASSERT(anomalies.trapped.empty());
 
     f.rewrite("pkg/a.h", "int b;\n");
     ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
-    ZASSERT(trapped.size() == 1u);
-    ZASSERT(trapped[0] == logging::AnomalyId::StaleTrust);
-
-    logging::reset_anomaly_for_testing();
+    ZEXPECT(anomalies.trapped == std::vector{logging::AnomalyId::StaleTrust});
 }
 
 };  // ZEST_SUITE(DiskState)

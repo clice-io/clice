@@ -495,25 +495,10 @@ ZEST_CASE(CDBWriteFailureRetried) {
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
 
-    // A storage refusing every batch until told otherwise.
-    struct FailingStorage final : ForwardingDatabase {
-        using ForwardingDatabase::ForwardingDatabase;
-
-        bool fail = true;
-
-        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
-                                               llvm::ArrayRef<index::BlobKey> removes) override {
-            if(fail) {
-                return std::unexpected("refused");
-            }
-            return real->write(puts, removes);
-        }
-    };
-
     IndexerFixture f;
     open_store(tmp, f.project);
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-    auto failing = std::make_unique<FailingStorage>(std::move(f.project.database));
+    auto failing = std::make_unique<FailingDatabase>(std::move(f.project.database), false);
     auto* storage = failing.get();
     f.project.database = std::move(failing);
 
@@ -699,22 +684,6 @@ ZEST_CASE(CorruptWriteSavesSnapshot) {
     // A save whose write finds the database corrupt reopens a fresh one and
     // owes it a save; the retry commits the members there too, or the
     // next session could not tell a removed unit.
-    struct CorruptOnWrite final : ForwardingDatabase {
-        using ForwardingDatabase::ForwardingDatabase;
-
-        bool poisoned = false;
-
-        std::expected<void, std::string> write(llvm::ArrayRef<Blob>,
-                                               llvm::ArrayRef<index::BlobKey>) override {
-            poisoned = true;
-            return std::unexpected("damaged");
-        }
-
-        bool corrupted() const override {
-            return poisoned;
-        }
-    };
-
     IndexerFixture f;
     TempDir tmp;
     tmp.touch("main.cpp", "int use() { return 0; }\n");
@@ -727,7 +696,7 @@ ZEST_CASE(CorruptWriteSavesSnapshot) {
     f.project.settings.finalize(f.project.root);
     f.project.rules = Rules(f.project.settings, f.project.root, "");
     f.project.cdb.load(tmp.path("compile_commands.json"));
-    f.project.database = std::make_unique<CorruptOnWrite>(std::move(f.project.database));
+    f.project.database = std::make_unique<FailingDatabase>(std::move(f.project.database), true);
 
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());

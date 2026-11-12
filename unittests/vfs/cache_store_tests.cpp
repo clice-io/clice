@@ -20,19 +20,9 @@ constexpr std::uint32_t version = 1;
 /// pids are multiples of 4), so its directories always look dead.
 constexpr const char* dead_pid = "999999999";
 
-/// Helper precondition check that survives NDEBUG builds (the unit tests
-/// run under RelWithDebInfo); failures abort with a location instead of
-/// becoming UB on a bad expected/optional access.
-void require(bool condition, const char* what) {
-    if(!condition) {
-        std::println(stderr, "cache_store_tests: requirement failed: {}", what);
-        std::abort();
-    }
-}
-
 CacheStore open_store(const TempDir& tmp, std::uint32_t ver = version) {
     auto store = CacheStore::open(tmp.path("root"), ver);
-    require(store.has_value(), "CacheStore::open failed");
+    ZASSERT(store.has_value());
     return std::move(*store);
 }
 
@@ -49,9 +39,9 @@ void register_paired(CacheStore& store, std::uint64_t max_bytes = 0) {
 std::string
     put_aux(CacheStore& store, llvm::StringRef ns, llvm::StringRef key, llvm::StringRef content) {
     auto pending = store.begin_store_aux(ns, key);
-    require(!fs::write_file(pending.tmp_path, content), "tmp write failed");
+    ZASSERT(!fs::write_file(pending.tmp_path, content));
     auto committed = store.commit(std::move(pending));
-    require(committed.has_value(), "aux commit failed");
+    ZASSERT(committed.has_value());
     return *committed;
 }
 
@@ -59,9 +49,9 @@ std::string
 std::string
     put(CacheStore& store, llvm::StringRef ns, llvm::StringRef key, llvm::StringRef content) {
     auto pending = store.begin_store(ns, key);
-    require(!fs::write_file(pending.tmp_path, content), "tmp write failed");
+    ZASSERT(!fs::write_file(pending.tmp_path, content));
     auto committed = store.commit(std::move(pending));
-    require(committed.has_value(), "commit failed");
+    ZASSERT(committed.has_value());
     return *committed;
 }
 
@@ -115,7 +105,7 @@ ZEST_CASE(MarkersCreateRoot) {
 ZEST_CASE(IgnoreMarkersPreserved) {
     TempDir tmp;
     { auto store = open_store(tmp); }
-    require(!fs::write_file(tmp.path("root/.gitignore"), "custom\n"), "rewrite failed");
+    ZASSERT(!fs::write_file(tmp.path("root/.gitignore"), "custom\n"));
 
     CacheStore::write_ignore_markers(tmp.path("root"));
     ZASSERT(read_file(tmp.path("root/.gitignore")).value_or("") == "custom\n");
@@ -525,7 +515,7 @@ ZEST_CASE(AuxWithoutPrimaryFails) {
     register_paired(store);
 
     auto pending = store.begin_store_aux("pch", "ghost");
-    require(!fs::write_file(pending.tmp_path, "orphan"), "tmp write failed");
+    ZASSERT(!fs::write_file(pending.tmp_path, "orphan"));
     ZASSERT(!store.commit(std::move(pending)).has_value());
     ZASSERT(!store.lookup_aux("pch", "ghost").has_value());
 }

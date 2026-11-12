@@ -163,7 +163,7 @@ ZEST_CASE(CDBTickNewSubdirectory) {
     /// directory moves.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
-    ZASSERT(set_file_mtime(tmp.root, file_mtime_ns(tmp.root) - 10'000'000'000));
+    age_file(tmp.root);
     Fixture fixture(tmp.root);
     fixture.project.watch_databases();
     ZASSERT(tick(fixture).empty());
@@ -184,7 +184,7 @@ ZEST_CASE(CDBTickDanglingSymlink) {
     TempDir elsewhere;
     tmp.touch("main.cpp", R"(int main() {})");
     ZASSERT(::symlink(elsewhere.path("target").c_str(), tmp.path("build").c_str()) == 0);
-    ZASSERT(set_file_mtime(tmp.root, file_mtime_ns(tmp.root) - 10'000'000'000));
+    age_file(tmp.root);
     Fixture fixture(tmp.root);
     fixture.project.watch_databases();
     ZASSERT(tick(fixture).empty());

@@ -2,6 +2,7 @@ module clice;
 
 import :support.logging;
 import :syntax.position;
+import :unittests.utils.anomaly_capture;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -114,20 +115,15 @@ ZEST_CASE(SizedCountsBytes) {
 }
 
 ZEST_CASE(PastTextAnomaly) {
-    logging::reset_anomaly_for_testing();
-    std::vector<logging::AnomalyId> trapped;
-    logging::set_anomaly_trap_for_testing([&](logging::AnomalyId id) { trapped.push_back(id); });
+    AnomalyCapture anomalies;
 
     PositionMap map(content, lines, non_ascii);
     ZEXPECT(at(map, 9, UTF16) == "1:0");
-    ZEXPECT(trapped.empty());
+    ZEXPECT(anomalies.trapped.empty());
     ZEXPECT(at(map, 10, UTF16) == "none");
     ZEXPECT(!map.range({0, 10}, UTF16));
-    ZASSERT(trapped.size() == 2u);
-    ZEXPECT(trapped[0] == logging::AnomalyId::PositionMapFail);
-    ZEXPECT(trapped[1] == logging::AnomalyId::PositionMapFail);
-
-    logging::reset_anomaly_for_testing();
+    ZEXPECT(anomalies.trapped ==
+            std::vector{logging::AnomalyId::PositionMapFail, logging::AnomalyId::PositionMapFail});
 }
 
 ZEST_CASE(HalfOpenRange) {
