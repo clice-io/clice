@@ -21,7 +21,7 @@ function decode(data: readonly number[]): number[][] {
 test(async (t) => {
     const s = await t.start();
     await s.diagnostics("main.cpp");
-    const range = { start: { line: 1, character: 6 }, end: { line: 4, character: 0 } };
+    const range = s.range(t.at("main.cpp", "cond = first + 1;\nint third = second + 1;\n/* one\n"));
     const part = await s.request<proto.SemanticTokens>(
         "textDocument/semanticTokens/range",
         "main.cpp",

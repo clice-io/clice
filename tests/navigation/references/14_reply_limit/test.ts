@@ -21,5 +21,5 @@ answers(
 
 test("query", async (t) => {
     await t.cli("index");
-    await t.cli("query references main.cpp:4:12");
+    await t.cli(`query references ${t.place(t.marker("use"))}`);
 });

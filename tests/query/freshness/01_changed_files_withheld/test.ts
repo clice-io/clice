@@ -9,7 +9,7 @@ test(async (t) => {
     await t.cli("query definition compute");
     // A place in a file the index never held is unknown, the file named.
     t.disk.write("new.cpp", "int fresh() { return 1; }\n");
-    await t.cli("query definition new.cpp:1:5");
+    await t.cli(`query definition ${t.place(t.at("new.cpp", "int |fresh"))}`);
     await t.cli("query document-symbols main.cpp");
     await t.cli("query document-symbols a.h");
     // The edited file's definitions no longer vouch for a pairing.

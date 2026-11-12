@@ -8,9 +8,9 @@ test("records", async (t) => {
     const id = /^symbol (#[0-9a-f]+)/.exec(shown.stdout)?.[1] ?? "none";
     await t.cli(["index", "symbol", id]);
     await t.cli("index symbol area");
-    await t.cli("index symbol geo.h:4:5");
+    await t.cli(`index symbol ${t.place(t.at("geo.h", "int |area"))}`);
     // A parameter has no symbol record: the file it was found in names it.
-    await t.cli("index symbol geo.cpp:4:14");
+    await t.cli(`index symbol ${t.place(t.at("geo.cpp", "int area(int |width"))}`);
     await t.cli("index file geo.h");
     await t.cli("index unit main.cpp");
 });

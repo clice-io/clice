@@ -32,7 +32,7 @@ test("its answers come back", async (t) => {
     const ranged = () =>
         s.client.sendRequest("textDocument/semanticTokens/range", {
             textDocument: { uri: s.uri("a.cpp") },
-            range: { start: { line: 2, character: 0 }, end: { line: 3, character: 0 } },
+            range: s.range(t.at("a.cpp", "int NAME = add(1, 2);\n")),
         });
     await s.diagnostics("a.cpp");
     const compiled = await asked();
