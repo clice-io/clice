@@ -19,10 +19,10 @@ test("an invalid job count", async (t) => {
     await t.cli("format --jobs many");
 });
 
-test("a workspace that does not exist", async (t) => {
+test("a workspace that does not exist", { errors: ["not a directory"] }, async (t) => {
     await t.cli("format --check --workspace missing");
 });
 
-test("an unknown configuration", async (t) => {
+test("an unknown configuration", { errors: ["names no configuration"] }, async (t) => {
     await t.cli("format --configuration nope");
 });

@@ -1,5 +1,5 @@
 import { test } from "@clice/tools/testing";
 
-test(async (t) => {
+test({ errors: ["names no configuration"] }, async (t) => {
     await t.cli("scan --configuration missing");
 });

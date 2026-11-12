@@ -19,7 +19,7 @@ test(
     },
 );
 
-test("missing workspace", async (t) => {
+test("missing workspace", { errors: ["nowhere: not a directory"] }, async (t) => {
     await t.cli("lint --workspace nowhere --jobs 2");
     await t.show("created", t.disk.list("nowhere/.clice/CACHEDIR.TAG"));
 });

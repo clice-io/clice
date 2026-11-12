@@ -38,6 +38,7 @@ test(
             win32: "Windows has no FIFOs or sh",
             darwin: "Node hands a macOS child every descriptor blocking",
         },
+        errors: ["Cannot write the output"],
     },
     async (t) => {
         big(t);
@@ -45,7 +46,7 @@ test(
     },
 );
 
-test("an unwritable output", async (t) => {
+test("an unwritable output", { errors: ["Cannot write the output"] }, async (t) => {
     await t.cli(inspect("main.cpp"), { stdout: "read only" });
 });
 

@@ -117,7 +117,8 @@ test("a link made after the start", async (t) => {
     expect(libraries(t)).toEqual(["active-out_current", "active-out_release"]);
 });
 
-test("clice index while the server waits for a restart", async (t) => {
+const REFUSED = { errors: ["now resolve to another build"] };
+test("clice index while the server waits for a restart", REFUSED, async (t) => {
     t.disk.linkDirectory("out/current", "out/release");
     const s = await t.start();
     await s.indexed();

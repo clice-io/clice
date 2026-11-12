@@ -12,7 +12,7 @@ test("a job count by its short name", async (t) => {
     await t.cli("index -j 1");
 });
 
-test("a missing workspace", async (t) => {
+test("a missing workspace", { errors: ["missing: not a directory"] }, async (t) => {
     for (const command of ["query project-files", "format --check", "lint", "index", "scan"]) {
         await t.cli(`${command} --workspace missing`);
     }
