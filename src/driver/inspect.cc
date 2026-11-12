@@ -896,15 +896,14 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
         auto alone = check();
         if(alone->completed()) {
             auto& files = project.file_table;
-            auto errors = feature::count_errors(feature::diagnostics(*alone));
+            auto errors = feature::count_errors(*alone);
             auto text = files.intern_version(path_id, llvm::xxh3_64bits(file.content));
             auto inputs = intern_inputs(files, alone->deps(), alone->started_at().count());
             project.commit_self_containment(*key, errors == 0, text, inputs);
             resolution = resolve();
-            if(errors > 0) {
+            if(errors > 0 && resolution.synthesized) {
                 auto in_host = check();
-                if(in_host->completed() &&
-                   feature::count_errors(feature::diagnostics(*in_host)) >= errors) {
+                if(in_host->completed() && feature::count_errors(*in_host) >= errors) {
                     project.commit_self_containment(*key, true, text, std::move(inputs));
                     resolution = resolve();
                 }

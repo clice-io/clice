@@ -217,6 +217,9 @@ struct CompileResult {
 
     int version;
     std::vector<feature::FileDiagnostic> diagnostics;
+    /// The errors of the parse (feature::count_errors), which the
+    /// self-containment check compares.
+    std::uint32_t errors = 0;
     /// Milliseconds since epoch, sampled before the compile started. Files
     /// whose mtime is past this moment may differ from what the build read.
     std::int64_t started_at = 0;

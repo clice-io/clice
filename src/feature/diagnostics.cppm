@@ -103,8 +103,10 @@ auto diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 /// declarations, which it also raises for those only a skipped body uses.
 auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 
-/// How many of the diagnostics are errors.
-std::size_t count_errors(llvm::ArrayRef<FileDiagnostic> diagnostics);
+/// How many errors the compile raised in any of its files, those of an
+/// includer's context it compiles a header in among them, which its focus
+/// file's diagnostics leave out.
+std::size_t count_errors(CompilationUnit& unit);
 
 /// A warning from clice itself about the file as a whole, on its first
 /// character.

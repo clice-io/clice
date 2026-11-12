@@ -695,9 +695,9 @@ protocol::Diagnostic to_protocol(
     return result;
 }
 
-std::size_t count_errors(llvm::ArrayRef<FileDiagnostic> diagnostics) {
-    return ranges::count_if(diagnostics, [](const FileDiagnostic& diagnostic) {
-        return diagnostic.level >= DiagnosticLevel::Error;
+std::size_t count_errors(CompilationUnit& unit) {
+    return ranges::count_if(unit.diagnostics(), [](const Diagnostic& diagnostic) {
+        return diagnostic.id.level >= DiagnosticLevel::Error;
     });
 }
 

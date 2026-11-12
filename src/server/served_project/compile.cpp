@@ -134,7 +134,11 @@ void ServedProject::retry_after_save(Session& session) {
     auto selection = project.select_command(path_id, command_request(path_id));
     if(selection.self_containment) {
         auto compiled = latest_at(path_id, session.version);
-        bool errs = !compiled || feature::count_errors(compiled->output->diagnostics.own) > 0;
+        bool errs = !compiled || ranges::any_of(compiled->output->diagnostics.own,
+                                                [](const feature::FileDiagnostic& diagnostic) {
+                                                    return diagnostic.level >=
+                                                           DiagnosticLevel::Error;
+                                                });
         if(project.header_saved(*selection.self_containment,
                                 project.file_table.intern_version(path_id, session.source->hash()),
                                 errs)) {
@@ -503,10 +507,13 @@ async::task<Result> ServedProject::CompileAttempt::run() {
 
     /// A header whose check compile alone has errors compiles in its host's
     /// context too: the one with fewer errors stands, the header alone on a
-    /// tie, which a third send compiles again for the worker to hold.
+    /// tie, which a third send compiles again for the worker to hold. A
+    /// context that could not be synthesized (the include chain not followed)
+    /// compares nothing: the header stays in need of it, which its
+    /// diagnostics say.
     struct Comparison {
         SelfContainmentKey key;
-        std::size_t errors;
+        std::uint32_t errors;
         VersionID text;
         Inputs inputs;
     };
@@ -537,7 +544,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
 
         // The check's result stands for every process while what it read
         // holds; typing never runs it again (self_contained), a save may.
-        auto errors = feature::count_errors(diagnostics);
+        auto errors = reply.errors;
         if(self_containment) {
             auto inputs = intern_inputs(project.file_table, reply.deps, reply.started_at);
             // The compile reports nothing it read through the PCH.
@@ -554,7 +561,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
             }
         } else if(comparison) {
             auto alone = std::exchange(comparison, std::nullopt);
-            if(errors >= alone->errors) {
+            if(resolution.synthesized && errors >= alone->errors) {
                 project.commit_self_containment(alone->key,
                                                 true,
                                                 alone->text,
