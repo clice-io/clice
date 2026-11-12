@@ -695,52 +695,9 @@ protocol::Diagnostic to_protocol(
     return result;
 }
 
-std::size_t missing_context_diagnostics(llvm::ArrayRef<FileDiagnostic> diagnostics,
-                                        llvm::StringRef text) {
-    namespace diag = clang::diag;
-    constexpr static unsigned ids[] = {
-        diag::err_unknown_typename,
-        diag::err_unknown_typename_suggest,
-        diag::err_undeclared_var_use,
-        diag::err_undeclared_var_use_suggest,
-        diag::err_undeclared_use,
-        diag::err_undeclared_use_suggest,
-        diag::err_no_member,
-        diag::err_no_member_suggest,
-        diag::err_no_member_template,
-        diag::err_no_member_template_suggest,
-        diag::err_no_template,
-        diag::err_no_template_suggest,
-        diag::err_typename_nested_not_found,
-        diag::err_unknown_nested_typename_suggest,
-        diag::ext_implicit_function_decl_c99,
-        diag::ext_missing_type_specifier,
-        diag::err_missing_type_specifier,
-        diag::err_field_incomplete_or_sizeless,
-        diag::err_array_incomplete_or_sizeless_type,
-        diag::err_pp_hash_error,
-        diag::err_pp_unterminated_conditional,
-    };
-    const auto& cxx = keywords(raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx23));
-    return ranges::count_if(diagnostics, [&](const FileDiagnostic& diagnostic) {
-        // A struct named first in a prototype is one the includer declares,
-        // even where it stays a warning.
-        if(diagnostic.id == diag::warn_decl_in_param_list) {
-            return true;
-        }
-        if(diagnostic.level < DiagnosticLevel::Error) {
-            return false;
-        }
-        // A name after a function's declarator is the includer's macro; a
-        // `;` missing before a `}`, the end or a keyword (`template`) raises
-        // the same error.
-        if(diagnostic.id == diag::err_expected_fn_body) {
-            auto word = text.substr(diagnostic.range.begin).take_while(is_identifier_char);
-            return diagnostic.origin == DiagnosticOrigin::File && !word.empty() &&
-                   clang::isAsciiIdentifierStart(word.front()) &&
-                   keyword_kind(word, cxx) == clang::tok::identifier;
-        }
-        return ranges::contains(ids, diagnostic.id);
+std::size_t count_errors(llvm::ArrayRef<FileDiagnostic> diagnostics) {
+    return ranges::count_if(diagnostics, [](const FileDiagnostic& diagnostic) {
+        return diagnostic.level >= DiagnosticLevel::Error;
     });
 }
 

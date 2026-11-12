@@ -108,9 +108,13 @@ struct TreeRequest {
     CommandRef command;
 };
 
+/// Bumped whenever the self-containment check judges otherwise: the results
+/// persisted before are dropped at load.
+constexpr inline std::uint32_t self_containment_rule = 2;
+
 /// What a self-containment check found of a header under the command it
-/// borrows: whether it compiles alone, or misses names its includer
-/// provides (missing_context_diagnostics) and needs the includer's context.
+/// borrows: whether it compiles alone, or with fewer errors in its
+/// includer's context, which it then compiles in.
 struct SelfContainment {
     bool self_contained = false;
 

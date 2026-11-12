@@ -128,18 +128,16 @@ void ServedProject::retry_after_save(Session& session) {
         project.graph.invalidate(ast_node(path_id));
     }
     // Typing never re-runs the self-containment check, yet an edit can
-    // make a header lean on its includer: a save showing what an includer
-    // would provide, or saving a buffer whose compile has not finished yet,
-    // runs it again. A result that stands holds for the text saved.
+    // make a header lean on its includer: a save of text with errors, or of
+    // a buffer whose compile has not finished yet, runs it again. A result
+    // that stands holds for the text saved.
     auto selection = project.select_command(path_id, command_request(path_id));
     if(selection.self_containment) {
         auto compiled = latest_at(path_id, session.version);
-        bool leans =
-            !compiled || feature::missing_context_diagnostics(compiled->output->diagnostics.own,
-                                                              session.text()) > 0;
+        bool errs = !compiled || feature::count_errors(compiled->output->diagnostics.own) > 0;
         if(project.header_saved(*selection.self_containment,
                                 project.file_table.intern_version(path_id, session.source->hash()),
-                                leans)) {
+                                errs)) {
             project.graph.invalidate(ast_node(path_id));
         }
     }
@@ -503,8 +501,19 @@ async::task<Result> ServedProject::CompileAttempt::run() {
     known_instantiations =
         project.index.known_instantiations(path_id, project.dep_graph.include_closure(path_id));
 
-    for(int send = 0; send < 2; send += 1) {
-        if(auto stop = co_await command(send == 0)) {
+    /// A header whose check compile alone has errors compiles in its host's
+    /// context too: the one with fewer errors stands, the header alone on a
+    /// tie, which a third send compiles again for the worker to hold.
+    struct Comparison {
+        SelfContainmentKey key;
+        std::size_t errors;
+        VersionID text;
+        Inputs inputs;
+    };
+    std::optional<Comparison> comparison;
+    bool first = true;
+    while(true) {
+        if(auto stop = co_await command(first)) {
             co_return *stop;
         }
         if(auto stop = co_await modules()) {
@@ -519,29 +528,38 @@ async::task<Result> ServedProject::CompileAttempt::run() {
             co_return *stop;
         }
         if(resend) {
-            send -= 1;
             continue;
         }
+        first = false;
 
         auto& diagnostics = reply.diagnostics;
         assemble(diagnostics);
 
         // The check's result stands for every process while what it read
         // holds; typing never runs it again (self_contained), a save may.
+        auto errors = feature::count_errors(diagnostics);
         if(self_containment) {
             auto inputs = intern_inputs(project.file_table, reply.deps, reply.started_at);
             // The compile reports nothing it read through the PCH.
             if(auto* pch = built.loaded ? project.built_pch(*built.loaded) : nullptr) {
                 inputs.append(pch->inputs.begin(), pch->inputs.end());
             }
-            bool leans = feature::missing_context_diagnostics(diagnostics, params.text) > 0;
-            project.commit_self_containment(
-                *self_containment,
-                !leans,
-                project.file_table.intern_version(path_id, session->source->hash()),
-                std::move(inputs));
-            if(leans) {
-                LOG_INFO("{} does not compile on its own; compiling it again in its host's context",
+            auto text = project.file_table.intern_version(path_id, session->source->hash());
+            project.commit_self_containment(*self_containment, errors == 0, text, inputs);
+            if(errors > 0) {
+                LOG_INFO("{} has errors compiled on its own; compiling it in its host's context",
+                         file_path);
+                comparison = {*self_containment, errors, text, std::move(inputs)};
+                continue;
+            }
+        } else if(comparison) {
+            auto alone = std::exchange(comparison, std::nullopt);
+            if(errors >= alone->errors) {
+                project.commit_self_containment(alone->key,
+                                                true,
+                                                alone->text,
+                                                std::move(alone->inputs));
+                LOG_INFO("{} has no fewer errors in its host's context; compiling it on its own",
                          file_path);
                 continue;
             }
@@ -553,9 +571,6 @@ async::task<Result> ServedProject::CompileAttempt::run() {
                  counted(diagnostics.size(), "diagnostic", "diagnostics"));
         co_return commit(reply);
     }
-    // Every arm of the two-send loop commits or returns; the check's
-    // continue only fires on the first send, the PCH resend only once.
-    std::unreachable();
 }
 
 async::task<std::optional<Result>> ServedProject::CompileAttempt::command(bool first) {

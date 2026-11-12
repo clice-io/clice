@@ -48,13 +48,13 @@ void Project::commit_self_containment(const SelfContainmentKey& key,
     mark_precompiled_dirty();
 }
 
-bool Project::header_saved(const SelfContainmentKey& key, VersionID text, bool leans) {
+bool Project::header_saved(const SelfContainmentKey& key, VersionID text, bool errs) {
     auto* entry = hosting.self_containment.find(key);
     if(!entry) {
         return false;
     }
     mark_precompiled_dirty();
-    if(entry->result.self_contained && leans) {
+    if(entry->result.self_contained && errs) {
         hosting.self_containment.forget(key);
         return true;
     }

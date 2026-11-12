@@ -875,24 +875,40 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
         return resolution;
     };
     auto resolution = resolve();
-    if(resolution.self_containment && !resolution.self_contained) {
-        auto alone = input;
-        alone.vfs = llvm::makeIntrusiveRefCnt<vfs::View>(resolution.hidden);
-        alone.add_focus(file.path, file.content);
-        auto unit = clice::compile({
+    /// The check's compile under the resolution standing: alone, or in the
+    /// host's context.
+    auto check = [&] {
+        auto checked = input;
+        checked.vfs = llvm::makeIntrusiveRefCnt<vfs::View>(resolution.hidden);
+        checked.add_focus(file.path, file.content);
+        if(resolution.synthesized) {
+            checked.add_synthesized(resolution.synthesized->files);
+        }
+        return clice::compile({
             .kind = CompilationKind::Content,
-            .input = std::move(alone),
+            .input = std::move(checked),
             .skip_bodies = project.settings.project.skip_header_bodies,
         });
-        if(unit->completed()) {
+    };
+    if(auto key = resolution.self_containment; key && !resolution.self_contained) {
+        // As the server checks: alone, then in the host's context when that
+        // errs, the one with fewer errors standing, the header alone on a tie.
+        auto alone = check();
+        if(alone->completed()) {
             auto& files = project.file_table;
-            project.commit_self_containment(
-                *resolution.self_containment,
-                feature::missing_context_diagnostics(feature::diagnostics(*unit), file.content) ==
-                    0,
-                files.intern_version(path_id, llvm::xxh3_64bits(file.content)),
-                intern_inputs(files, unit->deps(), unit->started_at().count()));
+            auto errors = feature::count_errors(feature::diagnostics(*alone));
+            auto text = files.intern_version(path_id, llvm::xxh3_64bits(file.content));
+            auto inputs = intern_inputs(files, alone->deps(), alone->started_at().count());
+            project.commit_self_containment(*key, errors == 0, text, inputs);
             resolution = resolve();
+            if(errors > 0) {
+                auto in_host = check();
+                if(in_host->completed() &&
+                   feature::count_errors(feature::diagnostics(*in_host)) >= errors) {
+                    project.commit_self_containment(*key, true, text, std::move(inputs));
+                    resolution = resolve();
+                }
+            }
         }
     }
     if(choice && (resolution.host != choice->host ||
