@@ -254,8 +254,9 @@ each process by role: master, each worker, clangd), its CPU seconds, and for
 clice the server's own breakdown from its `[perf:*]` log lines, which it writes when `CLICE_PERF` is set, as the job sets it. Answers' sizes
 are recorded beside their times (items, locations, tokens), so a time is read
 beside the work it bought. A perf job **fails** only when a clice run fails
-(a crash, its workers' too, which its logs tell; a hang; an error answer; an
-unclean exit), or when its time runs out before a scenario begins: no
+(a crash, its workers' too, which its logs tell; a hang; an anomaly its logs
+tell; an error answer; an unclean exit), the worst of its reasons naming the
+failure, or when its time runs out before a scenario begins: no
 scenario begins, and no wait goes on, past 320 minutes into the job. A
 clangd run that fails, or the baseline's, is listed. Numbers never fail:
 where clice spends more than the baseline (a time, memory, disk or CPU; a
