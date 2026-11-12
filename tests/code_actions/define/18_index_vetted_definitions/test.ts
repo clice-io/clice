@@ -2,7 +2,8 @@ import { answers, test } from "@clice/tools/testing";
 
 // main.cpp hosts widget.h. Widget::b is defined in other.cpp, which main.cpp
 // never sees: only the index drops it from what the host receives, and the
-// rest goes after main.cpp's definition of Widget::a.
+// rest goes after main.cpp's definition of Widget::a. On Widget::b itself,
+// no definition is offered.
 answers(
     "index",
     {
@@ -10,7 +11,9 @@ answers(
         paths: { server: "only the server builds the index and resolves the host source" },
     },
     async (a) => {
-        await a.show("cls", a.codeActions(a.marker("cls"), { compile: true }));
+        for (const m of a.markers()) {
+            await a.show(m.name, a.codeActions(m, { compile: true }));
+        }
     },
 );
 

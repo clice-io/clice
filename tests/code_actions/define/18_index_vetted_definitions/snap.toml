@@ -27,6 +27,9 @@ compiles = true
 +
 '''
 
+[index.defined_elsewhere]
+code_actions = []
+
 ["host compiles"."widget.h"]
 diagnostics = []
 

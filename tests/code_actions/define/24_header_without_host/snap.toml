@@ -1,0 +1,343 @@
+[[answers.inspect.constructor.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'Widget' inline"
+compiles = true
+
+[answers.inspect.constructor.code_actions.edits]
+"widget.h" = '''
+
+ struct Widget {
+-    Widget();
++    Widget() {}
+     void resize();
+     [[nodiscard]] static int count();
+'''
+
+[[answers.inspect.constructor.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::Widget' out of line"
+compiles = true
+
+[answers.inspect.constructor.code_actions.edits]
+"widget.h" = '''
+ };
+
++inline Widget::Widget() {
++}
++
+ void refresh();
+'''
+
+[[answers.inspect.constructor.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::Widget'"
+host = [
+    '''
+Widget::Widget() {
+}
+''',
+]
+
+[[answers.inspect.member.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'resize' inline"
+compiles = true
+
+[answers.inspect.member.code_actions.edits]
+"widget.h" = '''
+ struct Widget {
+     Widget();
+-    void resize();
++    void resize() {}
+     [[nodiscard]] static int count();
+ };
+'''
+
+[[answers.inspect.member.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::resize' out of line"
+compiles = true
+
+[answers.inspect.member.code_actions.edits]
+"widget.h" = '''
+ };
+
++inline void Widget::resize() {
++}
++
+ void refresh();
+'''
+
+[[answers.inspect.member.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::resize'"
+host = [
+    '''
+void Widget::resize() {
+}
+''',
+]
+
+[[answers.inspect.attributed.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'count' inline"
+compiles = true
+
+[answers.inspect.attributed.code_actions.edits]
+"widget.h" = '''
+     Widget();
+     void resize();
+-    [[nodiscard]] static int count();
++    [[nodiscard]] static int count() {}
+ };
+'''
+
+[[answers.inspect.attributed.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::count' out of line"
+compiles = true
+
+[answers.inspect.attributed.code_actions.edits]
+"widget.h" = '''
+ };
+
++[[nodiscard]] inline int Widget::count() {
++}
++
+ void refresh();
+'''
+
+[[answers.inspect.attributed.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::count'"
+host = [
+    '''
+[[nodiscard]] int Widget::count() {
+}
+''',
+]
+
+[[answers.inspect.free_function.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'refresh' out of line"
+compiles = true
+
+[answers.inspect.free_function.code_actions.edits]
+"widget.h" = '''
+ void refresh();
+
++inline void refresh() {
++}
++
+ static int checksum();
+'''
+
+[[answers.inspect.free_function.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'refresh'"
+host = [
+    '''
+void refresh() {
+}
+''',
+]
+
+[[answers.inspect.internal.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'checksum' out of line"
+compiles = true
+
+[answers.inspect.internal.code_actions.edits]
+"widget.h" = '''
+ static int checksum();
+
++int checksum() {
++}
++
+ namespace {
+ int hidden();
+'''
+
+[[answers.inspect.anonymous.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'hidden' out of line"
+compiles = true
+
+[answers.inspect.anonymous.code_actions.edits]
+"widget.h" = '''
+ int hidden();
+
++int hidden() {
++}
++
+ struct Hidden {
+     void g();
+'''
+
+[[answers.inspect.anonymous_class.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Hidden'"
+compiles = true
+
+[answers.inspect.anonymous_class.code_actions.edits]
+"widget.h" = '''
+     void g();
+ };
++
++void Hidden::g() {
+ }
++
++}
+'''
+
+[[answers.server.constructor.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'Widget' inline"
+compiles = true
+
+[answers.server.constructor.code_actions.edits]
+"widget.h" = '''
+
+ struct Widget {
+-    Widget();
++    Widget() {}
+     void resize();
+     [[nodiscard]] static int count();
+'''
+
+[[answers.server.constructor.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::Widget' out of line"
+compiles = true
+
+[answers.server.constructor.code_actions.edits]
+"widget.h" = '''
+ };
+
++inline Widget::Widget() {
++}
++
+ void refresh();
+'''
+
+[[answers.server.member.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'resize' inline"
+compiles = true
+
+[answers.server.member.code_actions.edits]
+"widget.h" = '''
+ struct Widget {
+     Widget();
+-    void resize();
++    void resize() {}
+     [[nodiscard]] static int count();
+ };
+'''
+
+[[answers.server.member.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::resize' out of line"
+compiles = true
+
+[answers.server.member.code_actions.edits]
+"widget.h" = '''
+ };
+
++inline void Widget::resize() {
++}
++
+ void refresh();
+'''
+
+[[answers.server.attributed.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'count' inline"
+compiles = true
+
+[answers.server.attributed.code_actions.edits]
+"widget.h" = '''
+     Widget();
+     void resize();
+-    [[nodiscard]] static int count();
++    [[nodiscard]] static int count() {}
+ };
+'''
+
+[[answers.server.attributed.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::count' out of line"
+compiles = true
+
+[answers.server.attributed.code_actions.edits]
+"widget.h" = '''
+ };
+
++[[nodiscard]] inline int Widget::count() {
++}
++
+ void refresh();
+'''
+
+[[answers.server.free_function.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'refresh' out of line"
+compiles = true
+
+[answers.server.free_function.code_actions.edits]
+"widget.h" = '''
+ void refresh();
+
++inline void refresh() {
++}
++
+ static int checksum();
+'''
+
+[[answers.server.internal.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'checksum' out of line"
+compiles = true
+
+[answers.server.internal.code_actions.edits]
+"widget.h" = '''
+ static int checksum();
+
++int checksum() {
++}
++
+ namespace {
+ int hidden();
+'''
+
+[[answers.server.anonymous.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'hidden' out of line"
+compiles = true
+
+[answers.server.anonymous.code_actions.edits]
+"widget.h" = '''
+ int hidden();
+
++int hidden() {
++}
++
+ struct Hidden {
+     void g();
+'''
+
+[[answers.server.anonymous_class.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Hidden'"
+compiles = true
+
+[answers.server.anonymous_class.code_actions.edits]
+"widget.h" = '''
+     void g();
+ };
++
++void Hidden::g() {
+ }
++
++}
+'''

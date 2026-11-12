@@ -9,3 +9,11 @@ struct Source {
 
 struct §(sink)Sink : Source {
 };
+
+struct Handlers {
+    using Result = int;
+    virtual Result (*handler(int x) const)(int) = 0;
+};
+
+struct §(pointer_return)Dispatcher : Handlers {
+};

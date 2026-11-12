@@ -20,10 +20,23 @@ public:
     static Handle open();
 };
 
+template <int* P>
+struct Slot {};
+
+class Registry {
+    static int count;
+
+public:
+    static auto slot() {
+        return Slot<&count>{};
+    }
+};
+
 void f() {
     §(lambda)auto callback = [] {};
     §(local)auto local = make_local();
     §(private)auto handle = Widget::open();
     §(size)auto size = sizeof(int);
     §(binding)auto [first, second] = Pair{};
+    §(private_argument)auto slot = Registry::slot();
 }

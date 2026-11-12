@@ -13,3 +13,19 @@ struct Shape {
     const geometry::Point& §(origin)origin(Iterator it) const;
 };
 }
+
+template <class T>
+struct Vec {};
+
+struct Table {
+    using Row = int;
+    struct Cell {
+        int x;
+    };
+    Row (*§(function_pointer)lookup())(int);
+    const Row (Table::*§(member_function_pointer)select(int x) const noexcept)();
+    Row (Cell::*§(nested_member_pointer)reader())();
+    Vec<Vec<int>> §(nested_arguments)rows();
+    const Vec<Vec<int>>& §(nested_reference)view();
+    int Cell::*§(data_member_pointer)field();
+};

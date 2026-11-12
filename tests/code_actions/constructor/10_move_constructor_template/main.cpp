@@ -18,3 +18,26 @@ struct §(templated)Templated {
     Unique<int> unique;
     int count;
 };
+
+struct Pinned {
+    Pinned(const Pinned&) = delete;
+    template <class U = int>
+        requires(sizeof(U) > 64)
+    Pinned(Pinned&&);
+};
+
+struct Stuck {
+    Stuck(const Stuck&) = delete;
+    template <class U>
+    Stuck(Stuck&&);
+};
+
+struct §(constrained_move)OnPinned {
+    Pinned pinned;
+    int count;
+};
+
+struct §(undeducible_move)OnStuck {
+    Stuck stuck;
+    int count;
+};

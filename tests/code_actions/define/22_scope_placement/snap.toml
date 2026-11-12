@@ -1,0 +1,204 @@
+[[answers.same_line_namespace.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'helper' out of line"
+compiles = true
+
+[answers.same_line_namespace.code_actions.edits]
+"main.cpp" = '''
+-namespace detail { void helper(); }
++namespace detail { void helper();
++void helper() {
++}
++ }
+
+ namespace ns { struct S { void f(); }; }
+'''
+
+[[answers.same_line_class.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.same_line_class.code_actions.edits]
+"main.cpp" = '''
+ namespace detail { void helper(); }
+
+-namespace ns { struct S { void f(); }; }
++namespace ns { struct S { void f() {} }; }
+
+ struct H { void f(); int* p() { return new int; } } const hs[] = {
+'''
+
+[[answers.same_line_class.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::f' out of line"
+compiles = true
+
+[answers.same_line_class.code_actions.edits]
+"main.cpp" = '''
+ namespace detail { void helper(); }
+
+-namespace ns { struct S { void f(); }; }
++namespace ns { struct S { void f(); };
++void S::f() {
++}
++ }
+
+ struct H { void f(); int* p() { return new int; } } const hs[] = {
+'''
+
+[[answers.declarator.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.declarator.code_actions.edits]
+"main.cpp" = '''
+ namespace ns { struct S { void f(); }; }
+
+-struct H { void f(); int* p() { return new int; } } const hs[] = {
++struct H { void f() {} int* p() { return new int; } } const hs[] = {
+     {},
+ };
+'''
+
+[[answers.declarator.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'H::f' out of line"
+compiles = true
+
+[answers.declarator.code_actions.edits]
+"main.cpp" = '''
+ };
+
++void H::f() {
++}
++
+ typedef struct T { void g(); } Alias;
+'''
+
+[[answers.typedef_declarator.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'g' inline"
+compiles = true
+
+[answers.typedef_declarator.code_actions.edits]
+"main.cpp" = '''
+ };
+
+-typedef struct T { void g(); } Alias;
++typedef struct T { void g() {} } Alias;
+
+ #define PACKED __attribute__((packed))
+'''
+
+[[answers.typedef_declarator.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'T::g' out of line"
+compiles = true
+
+[answers.typedef_declarator.code_actions.edits]
+"main.cpp" = '''
+ typedef struct T { void g(); } Alias;
+
++void T::g() {
++}
++
+ #define PACKED __attribute__((packed))
+'''
+
+[[answers.attribute.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.attribute.code_actions.edits]
+"main.cpp" = '''
+ #define PACKED __attribute__((packed))
+
+-struct Packed { void f(); char c; } __attribute__((packed));
++struct Packed { void f() {} char c; } __attribute__((packed));
+
+ struct Macro { void g(); char c; } PACKED;
+'''
+
+[[answers.attribute.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Packed::f' out of line"
+compiles = true
+
+[answers.attribute.code_actions.edits]
+"main.cpp" = '''
+ struct Packed { void f(); char c; } __attribute__((packed));
+
++void Packed::f() {
++}
++
+ struct Macro { void g(); char c; } PACKED;
+'''
+
+[[answers.macro_attribute.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'g' inline"
+compiles = true
+
+[answers.macro_attribute.code_actions.edits]
+"main.cpp" = '''
+ struct Packed { void f(); char c; } __attribute__((packed));
+
+-struct Macro { void g(); char c; } PACKED;
++struct Macro { void g() {} char c; } PACKED;
+
+ void outer() {
+'''
+
+[[answers.macro_attribute.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Macro::g' out of line"
+compiles = true
+
+[answers.macro_attribute.code_actions.edits]
+"main.cpp" = '''
+ struct Macro { void g(); char c; } PACKED;
+
++void Macro::g() {
++}
++
+ void outer() {
+     void inner();
+'''
+
+[[answers.block_scope.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'inner' out of line"
+compiles = true
+
+[answers.block_scope.code_actions.edits]
+"main.cpp" = '''
+ }
+
++void inner() {
++}
++
+ struct A {
+     void m() {
+'''
+
+[[answers.member_block_scope.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'nested' out of line"
+compiles = true
+
+[answers.member_block_scope.code_actions.edits]
+"main.cpp" = '''
+ };
+
++void nested() {
++}
++
+ auto l = [] {
+     void local();
+'''
+
+[answers.lambda_block_scope]
+code_actions = []

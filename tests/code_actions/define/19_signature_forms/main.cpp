@@ -26,3 +26,10 @@ struct Tree {
     };
     void §(requires_clause)compact() requires(sizeof(T) > 1);
 };
+
+using Handler = void(int);
+
+struct §(events)Events {
+    Handler §(handler_member)on_event;
+    void fire();
+};

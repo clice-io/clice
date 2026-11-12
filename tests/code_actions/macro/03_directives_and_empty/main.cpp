@@ -12,3 +12,8 @@ int guarded = §(empty)EMPTY 1;
     §(continued)GUARD
 int continued;
 #endif
+
+#if 1 /*
+*/ && §(commented)GUARD
+int commented;
+#endif
