@@ -1,0 +1,3 @@
+# Before C++20 `import` is an identifier like any other, free to name a macro.
+[units]
+"main.cpp" = ["-std=c++17"]
