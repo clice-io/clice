@@ -1,6 +1,3 @@
-[answers.after_semicolon]
-wrong = "the names an import brings are not offered on its own line, past its semicolon"
-
 [answers.after_semicolon.completion]
 items = []
 
