@@ -8,6 +8,7 @@
 #define STORAGE static
 
 int* make_pointer();
+int* _Nonnull make_nonnull();
 using Pointer = §(alias)decltype(make_pointer());
 
 void f(int* pointer, int** table) {
@@ -21,4 +22,9 @@ void f(int* pointer, int** table) {
     CONST §(macro)auto m = pointer;
     const /* owned */ §(comment)auto c = pointer;
     const STORAGE §(hidden)auto h = pointer;
+    const §(nullability)auto n = make_nonnull();
+    static_assert(__is_same(decltype(n), int* const));
+    int* const fixed = pointer;
+    const §(decltype_const)decltype(fixed) d = fixed;
+    static_assert(__is_same(decltype(d), int* const));
 }

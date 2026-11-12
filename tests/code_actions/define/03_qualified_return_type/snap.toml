@@ -25,8 +25,11 @@ compiles = true
 +
 +Shape::Iterator Shape::begin() {
  }
-+
+
 +}
++
+ template <class T>
+ struct Vec {};
 '''
 
 [[answers.origin.code_actions]]
@@ -56,6 +59,182 @@ compiles = true
 +
 +const geometry::Point& Shape::origin(Iterator it) const {
  }
+
++}
 +
+ template <class T>
+ struct Vec {};
+'''
+
+[[answers.function_pointer.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'lookup' inline"
+compiles = true
+
+[answers.function_pointer.code_actions.edits]
+"main.cpp" = '''
+         int x;
+     };
+-    Row (*lookup())(int);
++    Row (*lookup())(int) {}
+     const Row (Table::*select(int x) const noexcept)();
+     Row (Cell::*reader())();
+'''
+
+[[answers.function_pointer.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Table::lookup' out of line"
+compiles = true
+
+[answers.function_pointer.code_actions.edits]
+"main.cpp" = '''
+     int Cell::*field();
+ };
++
++Table::Row (*Table::lookup())(int) {
++}
+'''
+
+[[answers.member_function_pointer.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'select' inline"
+compiles = true
+
+[answers.member_function_pointer.code_actions.edits]
+"main.cpp" = '''
+     };
+     Row (*lookup())(int);
+-    const Row (Table::*select(int x) const noexcept)();
++    const Row (Table::*select(int x) const noexcept)() {}
+     Row (Cell::*reader())();
+     Vec<Vec<int>> rows();
+'''
+
+[[answers.member_function_pointer.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Table::select' out of line"
+compiles = true
+
+[answers.member_function_pointer.code_actions.edits]
+"main.cpp" = '''
+     int Cell::*field();
+ };
++
++const Table::Row (Table::*Table::select(int x) const noexcept)() {
++}
+'''
+
+[[answers.nested_member_pointer.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'reader' inline"
+compiles = true
+
+[answers.nested_member_pointer.code_actions.edits]
+"main.cpp" = '''
+     Row (*lookup())(int);
+     const Row (Table::*select(int x) const noexcept)();
+-    Row (Cell::*reader())();
++    Row (Cell::*reader())() {}
+     Vec<Vec<int>> rows();
+     const Vec<Vec<int>>& view();
+'''
+
+[[answers.nested_member_pointer.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Table::reader' out of line"
+compiles = true
+
+[answers.nested_member_pointer.code_actions.edits]
+"main.cpp" = '''
+     int Cell::*field();
+ };
++
++Table::Row (Table::Cell::*Table::reader())() {
++}
+'''
+
+[[answers.nested_arguments.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'rows' inline"
+compiles = true
+
+[answers.nested_arguments.code_actions.edits]
+"main.cpp" = '''
+     const Row (Table::*select(int x) const noexcept)();
+     Row (Cell::*reader())();
+-    Vec<Vec<int>> rows();
++    Vec<Vec<int>> rows() {}
+     const Vec<Vec<int>>& view();
+     int Cell::*field();
+'''
+
+[[answers.nested_arguments.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Table::rows' out of line"
+compiles = true
+
+[answers.nested_arguments.code_actions.edits]
+"main.cpp" = '''
+     int Cell::*field();
+ };
++
++Vec<Vec<int>> Table::rows() {
++}
+'''
+
+[[answers.nested_reference.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'view' inline"
+compiles = true
+
+[answers.nested_reference.code_actions.edits]
+"main.cpp" = '''
+     Row (Cell::*reader())();
+     Vec<Vec<int>> rows();
+-    const Vec<Vec<int>>& view();
++    const Vec<Vec<int>>& view() {}
+     int Cell::*field();
+ };
+'''
+
+[[answers.nested_reference.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Table::view' out of line"
+compiles = true
+
+[answers.nested_reference.code_actions.edits]
+"main.cpp" = '''
+     int Cell::*field();
+ };
++
++const Vec<Vec<int>>& Table::view() {
++}
+'''
+
+[[answers.data_member_pointer.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'field' inline"
+compiles = true
+
+[answers.data_member_pointer.code_actions.edits]
+"main.cpp" = '''
+     Vec<Vec<int>> rows();
+     const Vec<Vec<int>>& view();
+-    int Cell::*field();
++    int Cell::*field() {}
+ };
+'''
+
+[[answers.data_member_pointer.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Table::field' out of line"
+compiles = true
+
+[answers.data_member_pointer.code_actions.edits]
+"main.cpp" = '''
+     int Cell::*field();
+ };
++
++int Table::Cell::*Table::field() {
 +}
 '''

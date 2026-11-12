@@ -20,11 +20,13 @@ compiles = true
 
 [answers.draw.code_actions.edits]
 "main.cpp" = '''
-     constexpr int size() const;
  };
-+
+
 +void Derived::draw() {
 +}
++
+ struct Counter {
+     unsigned static long total();
 '''
 
 [[answers.make.code_actions]]
@@ -49,11 +51,13 @@ compiles = true
 
 [answers.make.code_actions.edits]
 "main.cpp" = '''
-     constexpr int size() const;
  };
-+
+
 +Derived Derived::make() noexcept {
 +}
++
+ struct Counter {
+     unsigned static long total();
 '''
 
 [[answers.size.code_actions]]
@@ -77,9 +81,101 @@ compiles = true
 
 [answers.size.code_actions.edits]
 "main.cpp" = '''
-     constexpr int size() const;
+ };
+
++constexpr int Derived::size() const {
++}
++
+ struct Counter {
+     unsigned static long total();
+'''
+
+[[answers.interleaved.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'total' inline"
+compiles = true
+
+[answers.interleaved.code_actions.edits]
+"main.cpp" = '''
+
+ struct Counter {
+-    unsigned static long total();
++    unsigned static long total() {}
+     const static int limit();
+ };
+'''
+
+[[answers.interleaved.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Counter::total' out of line"
+compiles = true
+
+[answers.interleaved.code_actions.edits]
+"main.cpp" = '''
+ };
+
++unsigned long Counter::total() {
++}
++
+ template <class T>
+ struct Cell {
+'''
+
+[[answers.const_static.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'limit' inline"
+compiles = true
+
+[answers.const_static.code_actions.edits]
+"main.cpp" = '''
+ struct Counter {
+     unsigned static long total();
+-    const static int limit();
++    const static int limit() {}
+ };
+'''
+
+[[answers.const_static.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Counter::limit' out of line"
+compiles = true
+
+[answers.const_static.code_actions.edits]
+"main.cpp" = '''
+ };
+
++const int Counter::limit() {
++}
++
+ template <class T>
+ struct Cell {
+'''
+
+[[answers.conditional_explicit.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'Cell' inline"
+compiles = true
+
+[answers.conditional_explicit.code_actions.edits]
+"main.cpp" = '''
+ template <class T>
+ struct Cell {
+-    explicit(sizeof(T) > 1) Cell(int value);
++    explicit(sizeof(T) > 1) Cell(int value) {}
+ };
+'''
+
+[[answers.conditional_explicit.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Cell<T>::Cell' out of line"
+compiles = true
+
+[answers.conditional_explicit.code_actions.edits]
+"main.cpp" = '''
+     explicit(sizeof(T) > 1) Cell(int value);
  };
 +
-+constexpr int Derived::size() const {
++template <class T>
++Cell<T>::Cell(int value) {
 +}
 '''

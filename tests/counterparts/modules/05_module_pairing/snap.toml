@@ -1,0 +1,18 @@
+[answers."colors.cppm".counterparts]
+candidates = [
+    { path = "blend.cpp", reasons = ["implements module colors"] },
+    { path = "palette.cpp", reasons = ["implements module colors"] },
+]
+
+[answers."shapes.cpp".counterparts]
+preferred = "shapes.cppm"
+candidates = [
+    { path = "shapes.cppm", reasons = ["same name", "interface of module shapes"] },
+    { path = "shapes.h", reasons = ["same name"] },
+]
+
+[answers."compute.cpp".counterparts]
+candidates = [
+    { path = "geometry.cppm", reasons = ["declares 1 of 2 definitions", "interface of module geometry"] },
+    { path = "detail.cpp", reasons = ["declares 1 of 2 definitions"] },
+]

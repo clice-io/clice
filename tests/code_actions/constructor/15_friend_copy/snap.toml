@@ -1,0 +1,25 @@
+[[answers.friend_class.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Door'"
+compiles = true
+
+[answers.friend_class.code_actions.edits]
+"main.cpp" = '''
+     Key key;
+     int turns;
++    Door(const Key& key, int turns) : key(key), turns(turns) {}
+ };
+'''
+
+[[answers.friend_template.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Keeper'"
+compiles = true
+
+[answers.friend_template.code_actions.edits]
+"main.cpp" = '''
+     Token token;
+     T value;
++    Keeper(const Token& token, T value) : token(token), value(std::move(value)) {}
+ };
+'''

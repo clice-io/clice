@@ -1,0 +1,3 @@
+int count() {
+    return missing;
+}

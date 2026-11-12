@@ -1,2 +1,13 @@
 [test."main.cpp"]
 diagnostics = []
+
+[test."typo.cpp"]
+diagnostics = [
+    {
+        at = "return ⟦missing⟧;",
+        severity = "error",
+        message = "use of undeclared identifier 'missing'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]

@@ -1,5 +1,5 @@
 #pragma once
 
-static int helper(int value) {
+static int §(definition)helper(int value) {
     return value + 1;
 }

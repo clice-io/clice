@@ -1,0 +1,12 @@
+[answers."include/codec.h".counterparts]
+candidates = [
+    { path = "src/codec.cpp", reasons = ["defines 2 of 5 declarations", "same name"] },
+    { path = "src/tables.cpp", reasons = ["defines 3 of 5 declarations"] },
+    { path = "tests/codec.cpp", reasons = ["same name"] },
+]
+
+[answers."include/parser.h".counterparts]
+candidates = [
+    { path = "src/lexer.cpp", reasons = ["defines 1 of 1 declaration"] },
+    { path = "src/parser.cpp", reasons = ["same name"] },
+]

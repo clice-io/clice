@@ -1,0 +1,59 @@
+[[answers.inherited.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.inherited.code_actions.edits]
+"inherited/main.cpp" = '''
+ namespace app {
+-struct  S {   int   f( ) ;   };
++struct  S {
++  int f() {}
++};
+ }
+'''
+
+[[answers.inherited.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::f' out of line"
+compiles = true
+
+[answers.inherited.code_actions.edits]
+"inherited/main.cpp" = '''
+ namespace app {
+ struct  S {   int   f( ) ;   };
+-}
++
++int S::f() {}
++
++} // namespace app
+'''
+
+[[answers.kept.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.kept.code_actions.edits]
+"kept/main.cpp" = '''
+ namespace app {
+-struct  S {   int   f( ) ;   };
++struct  S {   int   f( )  {}   };
+ }
+'''
+
+[[answers.kept.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::f' out of line"
+compiles = true
+
+[answers.kept.code_actions.edits]
+"kept/main.cpp" = '''
+ namespace app {
+ struct  S {   int   f( ) ;   };
++
++int   S::f( ) {
+ }
++
++}
+'''

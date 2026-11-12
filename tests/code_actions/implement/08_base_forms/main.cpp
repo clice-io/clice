@@ -28,3 +28,18 @@ struct Interface {
 };
 
 struct §(destructor_only)Concrete : Interface {};
+
+class Stage {
+public:
+    virtual void run() = 0;
+
+protected:
+    virtual void prepare() = 0;
+
+private:
+    virtual void advance() = 0;
+};
+
+struct §(access_sections)Pipeline : Stage {
+    int state;
+};

@@ -1,0 +1,18 @@
+[answers."palette.h".counterparts]
+candidates = [
+    { path = "primaries.cpp", reasons = ["defines 3 of 5 declarations"] },
+    { path = "secondaries.cpp", reasons = ["defines 2 of 5 declarations"] },
+]
+
+[answers."compass.h".counterparts]
+preferred = "poles.cpp"
+candidates = [
+    { path = "poles.cpp", reasons = ["defines 2 of 3 declarations"] },
+    { path = "bearing.cpp", reasons = ["defines 1 of 3 declarations"] },
+]
+
+[answers."units.h".counterparts]
+candidates = [
+    { path = "lib/metric.cpp", reasons = ["defines 1 of 2 declarations"] },
+    { path = "core/impl/imperial.cpp", reasons = ["defines 1 of 2 declarations"] },
+]

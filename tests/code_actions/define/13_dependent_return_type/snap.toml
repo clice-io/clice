@@ -5,11 +5,12 @@ compiles = true
 
 [answers.front.code_actions.edits]
 "main.cpp" = '''
- struct Container {
-     using value_type = T;
+     template <typename U>
+     using Alias = U;
 -    value_type front() const;
 +    value_type front() const {}
- };
+     size_type size() const;
+     const Node* head();
 '''
 
 [[answers.front.code_actions]]
@@ -19,10 +20,129 @@ compiles = true
 
 [answers.front.code_actions.edits]
 "main.cpp" = '''
-     value_type front() const;
+     Alias<T> alias();
  };
 +
 +template <typename T>
 +typename Container<T>::value_type Container<T>::front() const {
++}
+'''
+
+[[answers.size.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'size' inline"
+compiles = true
+
+[answers.size.code_actions.edits]
+"main.cpp" = '''
+     using Alias = U;
+     value_type front() const;
+-    size_type size() const;
++    size_type size() const {}
+     const Node* head();
+     Container clone();
+'''
+
+[[answers.size.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Container<T>::size' out of line"
+compiles = true
+
+[answers.size.code_actions.edits]
+"main.cpp" = '''
+     Alias<T> alias();
+ };
++
++template <typename T>
++typename Container<T>::size_type Container<T>::size() const {
++}
+'''
+
+[[answers.head.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'head' inline"
+compiles = true
+
+[answers.head.code_actions.edits]
+"main.cpp" = '''
+     value_type front() const;
+     size_type size() const;
+-    const Node* head();
++    const Node* head() {}
+     Container clone();
+     Alias<T> alias();
+'''
+
+[[answers.head.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Container<T>::head' out of line"
+compiles = true
+
+[answers.head.code_actions.edits]
+"main.cpp" = '''
+     Alias<T> alias();
+ };
++
++template <typename T>
++const typename Container<T>::Node* Container<T>::head() {
++}
+'''
+
+[[answers.clone.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'clone' inline"
+compiles = true
+
+[answers.clone.code_actions.edits]
+"main.cpp" = '''
+     size_type size() const;
+     const Node* head();
+-    Container clone();
++    Container clone() {}
+     Alias<T> alias();
+ };
+'''
+
+[[answers.clone.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Container<T>::clone' out of line"
+compiles = true
+
+[answers.clone.code_actions.edits]
+"main.cpp" = '''
+     Alias<T> alias();
+ };
++
++template <typename T>
++Container<T> Container<T>::clone() {
++}
+'''
+
+[[answers.alias.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'alias' inline"
+compiles = true
+
+[answers.alias.code_actions.edits]
+"main.cpp" = '''
+     const Node* head();
+     Container clone();
+-    Alias<T> alias();
++    Alias<T> alias() {}
+ };
+'''
+
+[[answers.alias.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Container<T>::alias' out of line"
+compiles = true
+
+[answers.alias.code_actions.edits]
+"main.cpp" = '''
+     Alias<T> alias();
+ };
++
++template <typename T>
++typename Container<T>::template Alias<T> Container<T>::alias() {
 +}
 '''

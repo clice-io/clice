@@ -22,3 +22,5 @@ static_assert(§(picked)PICK(false) == 2);
 static_assert(12/§(removed)NOTHING*pointer == 3);
 static_assert(12 §(commented)DIV/**/3 == 4);
 static_assert(six == 6);
+static_assert(5 -\
+§(spliced)NEG 1 == 6);

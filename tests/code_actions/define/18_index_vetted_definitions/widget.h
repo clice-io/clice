@@ -2,6 +2,6 @@
 
 struct §(cls)Widget {
     void a();
-    void b();
+    void §(defined_elsewhere)b();
     void c();
 };

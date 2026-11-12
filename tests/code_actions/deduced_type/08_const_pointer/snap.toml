@@ -5,8 +5,8 @@ compiles = true
 
 [answers.alias.code_actions.edits]
 "main.cpp" = '''
-
  int* make_pointer();
+ int* _Nonnull make_nonnull();
 -using Pointer = decltype(make_pointer());
 +using Pointer = int*;
 
@@ -69,3 +69,33 @@ code_actions = []
 
 [answers.hidden]
 code_actions = []
+
+[[answers.nullability.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'const auto' with 'int* _Nonnull const'"
+compiles = true
+
+[answers.nullability.code_actions.edits]
+"main.cpp" = '''
+     const /* owned */ auto c = pointer;
+     const STORAGE auto h = pointer;
+-    const auto n = make_nonnull();
++    int* _Nonnull const n = make_nonnull();
+     static_assert(__is_same(decltype(n), int* const));
+     int* const fixed = pointer;
+'''
+
+[[answers.decltype_const.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'const decltype(fixed)' with 'int* const'"
+compiles = true
+
+[answers.decltype_const.code_actions.edits]
+"main.cpp" = '''
+     static_assert(__is_same(decltype(n), int* const));
+     int* const fixed = pointer;
+-    const decltype(fixed) d = fixed;
++    int* const d = fixed;
+     static_assert(__is_same(decltype(d), int* const));
+ }
+'''
