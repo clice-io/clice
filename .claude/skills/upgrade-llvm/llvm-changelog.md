@@ -2,6 +2,10 @@
 
 Breaking changes encountered during each LLVM upgrade, with upstream commit references.
 
+## LLVM 23.1.3 → 23.1.5
+
+A point release: no clang header changed (`llvm/include` only `Allocator.h`, `Caching.h`, `GOFFObjectFile.h` and `StreamedHTTPResponseHandler.h`), nothing needed adapting, and `StmtProfile.cpp` did not change. libc++'s headers include fewer C headers: the regenerated `modules/` no longer carries `<string.h>` and `<strings.h>` in the fragments (`strcasecmp`, `strncasecmp` left the libc partition), `<arm_neon.h>`'s vector types (arm64 macOS and Linux) or MinGW's `_wfopen`, none of which clice uses; the old `modules/` fails to build against the new libc++ (its ABI tag changed with `_LIBCPP_VERSION`), so it is regenerated before anything builds.
+
 ## LLVM 23.1.2 → 23.1.3
 
 A point release: no API clice uses changed, and nothing needed adapting. `StmtProfile.cpp` did not change, so `expr_hash.cpp` stands.
