@@ -2501,10 +2501,11 @@ ZEST_CASE(LibraryTemplatesUnresolved) {
     ZEXPECT(fills_in("own.h") == 2);
     ZEXPECT(fills_in("lib") == 1);
 
-    clear();
-    add_focus("main.ii", std::format("# 1 \"/usr/include/lib.h\" 1 3\n{}", templates));
-    ZASSERT(compile());
-    decode_index(index::build_tu_index(*unit));
+    Tester preprocessed;
+    preprocessed.kind = CompilationKind::Whole;
+    preprocessed.add_focus("main.ii", std::format("# 1 \"/usr/include/lib.h\" 1 3\n{}", templates));
+    ZASSERT(preprocessed.compile());
+    decode_index(index::build_tu_index(*preprocessed.unit));
     ZEXPECT(fills(tu_index.focus_file_index) == 2);
 }
 

@@ -17,35 +17,29 @@ namespace clice::testing {
 
 ZEST_SUITE(SelectionTree, Tester) {
 
-template <typename Callback>
-void select_right(llvm::StringRef code, Callback&& callback) {
-    clear();
-    add_focus("main.cpp", code);
-    ZASSERT(compile());
-    /// ZASSERT(unit->diagnostics().empty());
+/// Selects from the source's first unnamed point to its second, or at its only one.
+static SelectionTree select_right(Tester& tester, llvm::StringRef code) {
+    tester.add_focus("main.cpp", code);
+    ZASSERT(tester.compile());
 
-    auto points = nameless_points();
+    auto points = tester.nameless_points();
     ZASSERT(!points.empty());
-
-    LocalSourceRange selected_range;
-    selected_range.begin = points[0];
-    selected_range.end = points.size() == 2 ? points[1] : points[0];
-    auto tree = SelectionTree::create_right(*unit, selected_range);
-    std::forward<Callback>(callback)(tree);
+    LocalSourceRange selected{points[0], points.size() == 2 ? points[1] : points[0]};
+    return SelectionTree::create_right(*tester.unit, selected);
 }
 
 void EXPECT_SELECT(llvm::StringRef code, const char* kind) {
-    select_right(code, [&](SelectionTree& tree) {
-        auto node = tree.common_ancestor();
-        if(!kind) {
-            ZASSERT(!node);
-            return;
-        }
+    Tester tester;
+    auto tree = select_right(tester, code);
+    auto node = tree.common_ancestor();
+    if(!kind) {
+        ZASSERT(!node);
+        return;
+    }
 
-        ZASSERT(node);
-        ZASSERT(node->kind() == llvm::StringRef(kind));
-        ZASSERT(unit->focus_file().written_range(node->source_range()) == range());
-    });
+    ZASSERT(node);
+    ZASSERT(node->kind() == llvm::StringRef(kind));
+    ZASSERT(tester.unit->focus_file().written_range(node->source_range()) == tester.range());
 }
 
 ZEST_CASE(Expressions) {
@@ -353,20 +347,20 @@ ZEST_CASE(Attributes) {
 }
 
 ZEST_CASE(PartialCoverage) {
-    select_right(R"(void foo(int); void bar() { foo§()(1§()); })", [&](SelectionTree& tree) {
-        auto* node = tree.common_ancestor();
-        ZASSERT(node != nullptr);
-        ZASSERT(node->kind() == std::string("CallExpr"));
-        // The call owns `(` and `)`, and only `(` is selected.
-        ZASSERT(node->selected == SelectionTree::Partial);
-    });
+    Tester partial;
+    auto tree = select_right(partial, R"(void foo(int); void bar() { foo§()(1§()); })");
+    auto* node = tree.common_ancestor();
+    ZASSERT(node != nullptr);
+    ZASSERT(node->kind() == std::string("CallExpr"));
+    // The call owns `(` and `)`, and only `(` is selected.
+    ZASSERT(node->selected == SelectionTree::Partial);
 
-    select_right(R"(void foo(int); void bar() { foo§()(1)§(); })", [&](SelectionTree& tree) {
-        auto* node = tree.common_ancestor();
-        ZASSERT(node != nullptr);
-        ZASSERT(node->kind() == std::string("CallExpr"));
-        ZASSERT(node->selected == SelectionTree::Complete);
-    });
+    Tester complete;
+    auto whole = select_right(complete, R"(void foo(int); void bar() { foo§()(1)§(); })");
+    node = whole.common_ancestor();
+    ZASSERT(node != nullptr);
+    ZASSERT(node->kind() == std::string("CallExpr"));
+    ZASSERT(node->selected == SelectionTree::Complete);
 }
 
 ZEST_CASE(Macros) {
@@ -427,13 +421,11 @@ ZEST_CASE(NullOrInvalid) {
 }
 
 ZEST_CASE(InjectedClassName) {
-    llvm::StringRef code = "struct §X { int x; };";
-    select_right(code, [&](SelectionTree& tree) {
-        auto ancestor = tree.common_ancestor();
-        ZASSERT(ancestor->kind() == llvm::StringRef("CXXRecordDecl"));
-        auto* D = dyn_cast<clang::CXXRecordDecl>(ancestor->get<clang::Decl>());
-        ZASSERT(!D->isInjectedClassName());
-    });
+    auto tree = select_right(*this, "struct §X { int x; };");
+    auto ancestor = tree.common_ancestor();
+    ZASSERT(ancestor->kind() == llvm::StringRef("CXXRecordDecl"));
+    auto* D = dyn_cast<clang::CXXRecordDecl>(ancestor->get<clang::Decl>());
+    ZASSERT(!D->isInjectedClassName());
 }
 
 ZEST_CASE(PathologicalPreprocessor) {
@@ -492,46 +484,39 @@ ZEST_CASE(Implicit) {
     int x = f("§");
   )cpp";
 
-    select_right(code, [&](SelectionTree& tree) {
-        auto ancestor = tree.common_ancestor();
-        ZASSERT(ancestor->kind() == llvm::StringRef("StringLiteral"));
-        ZASSERT(ancestor->parent->kind() == llvm::StringRef("ImplicitCastExpr"));
-        ZASSERT(ancestor->parent->parent->kind() == llvm::StringRef("CXXConstructExpr"));
+    auto tree = select_right(*this, code);
+    auto ancestor = tree.common_ancestor();
+    ZASSERT(ancestor->kind() == llvm::StringRef("StringLiteral"));
+    ZASSERT(ancestor->parent->kind() == llvm::StringRef("ImplicitCastExpr"));
+    ZASSERT(ancestor->parent->parent->kind() == llvm::StringRef("CXXConstructExpr"));
 
-        auto implicit = ancestor->parent->parent->parent;
-        ZASSERT(implicit->kind() == llvm::StringRef("ImplicitCastExpr"));
-        ZASSERT(implicit->parent->kind() == llvm::StringRef("CallExpr"));
-        ZASSERT(ancestor == &implicit->ignore_implicit());
-        ZASSERT(&ancestor->outer_implicit() == implicit);
-    });
+    auto implicit = ancestor->parent->parent->parent;
+    ZASSERT(implicit->kind() == llvm::StringRef("ImplicitCastExpr"));
+    ZASSERT(implicit->parent->kind() == llvm::StringRef("CallExpr"));
+    ZASSERT(ancestor == &implicit->ignore_implicit());
+    ZASSERT(&ancestor->outer_implicit() == implicit);
 }
 
 ZEST_CASE(DeclContextIsLexical) {
-    llvm::StringRef code = R"cpp(
+    Tester declaration;
+    auto inside = select_right(declaration, R"cpp(
 namespace a {
     void f§oo();
 }
 
 void a::foo() { }
-  )cpp";
+  )cpp");
+    ZASSERT(!inside.common_ancestor()->decl_context().isTranslationUnit());
 
-    select_right(code, [&](SelectionTree& tree) {
-        auto ancestor = tree.common_ancestor();
-        ZASSERT(!ancestor->decl_context().isTranslationUnit());
-    });
-
-    code = R"cpp(
+    Tester definition;
+    auto outside = select_right(definition, R"cpp(
 namespace a {
     void foo();
 }
 
 void a::f§oo() { }
-  )cpp";
-
-    select_right(code, [&](SelectionTree& tree) {
-        auto ancestor = tree.common_ancestor();
-        ZASSERT(ancestor->decl_context().isTranslationUnit());
-    });
+  )cpp");
+    ZASSERT(outside.common_ancestor()->decl_context().isTranslationUnit());
 }
 
 ZEST_CASE(DeclContextLambda) {
@@ -542,10 +527,8 @@ auto lambda = [] {
 };
   )cpp";
 
-    select_right(code, [&](SelectionTree& tree) {
-        auto ancestor = tree.common_ancestor();
-        ZASSERT(ancestor->decl_context().isFunctionOrMethod());
-    });
+    auto tree = select_right(*this, code);
+    ZASSERT(tree.common_ancestor()->decl_context().isFunctionOrMethod());
 }
 
 ZEST_CASE(UsingConcepts) {

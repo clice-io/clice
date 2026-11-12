@@ -184,8 +184,8 @@ ZEST_CASE(ScopedBindingStaysLocal) {
     /// `Inner<U>::type` is `int` under `Holder<int>`'s binding and stays
     /// dependent without it, whichever the resolver meets first.
     for(bool deduce_first: {true, false}) {
-        clear();
-        add_focus("main.cpp", R"code(
+        Tester tester;
+        tester.add_focus("main.cpp", R"code(
             template <typename T>
             struct Holder {
                 template <typename U>
@@ -202,19 +202,19 @@ ZEST_CASE(ScopedBindingStaysLocal) {
 
             template struct Holder<int>;
         )code");
-        ZASSERT(compile());
+        ZASSERT(tester.compile());
 
-        Nodes nodes(unit->context());
+        Nodes nodes(tester.unit->context());
         auto* first = nodes.named<clang::VarDecl>("first");
         ZASSERT(first);
         auto* input = nodes.named<clang::TypedefNameDecl>("input");
         ZASSERT(input);
 
-        auto& resolver = unit->get<types::TemplateResolver>();
+        auto& resolver = tester.unit->get<types::TemplateResolver>();
         auto check_deduced = [&] {
             auto deduced = resolver.deduce(first);
             ZASSERT(!deduced.isNull());
-            ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);
+            ZEXPECT(deduced.getCanonicalType() == tester.unit->context().IntTy);
         };
         auto check_resolved = [&] {
             auto resolved = resolver.resolve(input->getUnderlyingType());

@@ -385,10 +385,10 @@ int x = 1;
     ZASSERT(compile());
     ZEXPECT(unit->fatal_error());
 
-    clear();
-    add_focus("main.cpp", "int x = 1;\n");
-    ZASSERT(compile());
-    ZEXPECT(!unit->fatal_error());
+    Tester clean;
+    clean.add_focus("main.cpp", "int x = 1;\n");
+    ZASSERT(clean.compile());
+    ZEXPECT(!clean.unit->fatal_error());
 }
 
 ZEST_CASE(PCHBuild) {
