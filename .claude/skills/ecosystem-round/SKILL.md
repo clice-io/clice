@@ -19,9 +19,10 @@ It writes `temp/ecosystem/<run>/`:
 - `round.md` — the red jobs, each failure with whether the rounds before swept
   its file and the command reproducing it; the jobs cut short or without
   results; the
-  regression numbers 1.5× the round before's; every slower perf measure
-  another platform or the night before confirms, by ratio, each with its
-  flags, and how many nothing confirms (in the jobs' `report.md`).
+  regression numbers 1.5× the round before's; every slower perf measure of
+  three pairs of samples or more that another platform or the night before
+  confirms, by ratio, each with its flags, and how many fewer pairs or
+  nothing confirm (in the jobs' `report.md`).
   `round.json` holds the same.
 - `results/ecosystem-<artifact>/` — the `results.json` and `report.md` of
   every job that uploaded them (one listed without results has none).
@@ -88,15 +89,15 @@ The flags in `round.md`:
   different work.
 - `negative` — the framework measured wrong.
 - `the night before too` — the confirmation came from the night before.
-- `one sample a side`, `two samples a side` — too few pairs to say more than
-  that it is 1.5× the baseline.
 - a process with two figures (`SL-0 523 vs 4 MB`) — whose memory differs.
 
 Pitfalls of the A/B:
 
 - **One sample.** A scenario of one run measures its start and its memory
   once per server, and one cold `initialize` varies severalfold between two
-  runs of the same binary on one machine (68 and 470 ms on a macOS runner).
+  runs of the same binary on one machine (68 and 470 ms on a macOS runner):
+  the round confirms no measure of fewer than three pairs, which a job's
+  `report.md` lists all the same.
   Swap the binaries on the same box (`CLICE_EXECUTABLE=<old> … --baseline
 <new>`) and run one binary on both sides as the negative control: a real
   change follows the binary; noise, or a bias of the order, does not.

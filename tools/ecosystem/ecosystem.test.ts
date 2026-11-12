@@ -846,7 +846,9 @@ describe("round", () => {
     });
 
     test("perf rows another platform or the night before confirms, by ratio", () => {
-        const memory = row("peak memory MB", "553", "32.0", 15, 1, "clice first");
+        const memory = row("peak memory MB", "553", "32.0", 15, 30, "clice first");
+        // One cold sample a side, slower on both platforms all the same.
+        const initialize = row("initialize", "90", "30", 3, 1);
         const { text, data } = roundReport({
             run: 7,
             jobs: [
@@ -854,6 +856,7 @@ describe("round", () => {
                     "linux",
                     [
                         memory,
+                        initialize,
                         row("open", "120", "100", 1.2),
                         row("open_edit", "40", "20", 2, 30, "clice first"),
                         row("switch_edit", "30", "20", 1.5, 30, "clice first"),
@@ -861,6 +864,7 @@ describe("round", () => {
                     [memoryRun("clice", 520), memoryRun("baseline", 4)],
                 ),
                 perf("macos", [
+                    initialize,
                     row("open", "130", "100", 1.3),
                     row("open_edit", "36", "20", 1.8, 30, "clice first"),
                     row("switch_edit", "28", "20", 1.4, 30, "both"),
@@ -888,7 +892,6 @@ describe("round", () => {
                     "linux only",
                     "≥3×: likely different work on the two sides",
                     "the night before too",
-                    "one sample a side",
                     "SL-0 520 vs 4 MB",
                 ],
             ],
@@ -898,11 +901,13 @@ describe("round", () => {
             ["linux", "open", ["every platform"]],
         ]);
         // open_edit ran with clice first on both platforms and both nights,
-        // the settle once.
-        expect(data.unconfirmed).toBe(3);
+        // the settle once; initialize rests on one pair on each.
+        expect(data.unconfirmed).toBe(5);
         expect(data.flagged).toEqual(["perf-q-sessions-linux", "perf-q-sessions-macos"]);
         expect(text).toContain("## Perf slower than the baseline, confirmed (5), by ratio");
-        expect(text).toContain("3 more that nothing confirms are in the jobs' reports.");
+        expect(text).toContain(
+            "5 more, on fewer pairs or that nothing confirms, are in the jobs' reports.",
+        );
         expect(text).toContain(
             "| q/sessions | linux | sample 2 files | peak memory MB | 553 | 32.0 | 15.00× |",
         );
