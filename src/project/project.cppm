@@ -765,7 +765,8 @@ struct Project {
 
     /// Remember what the self-containment check of `key` found: whether the
     /// header compiles alone, its compile without its includer's context
-    /// over `text` having read `inputs`.
+    /// over `text` having read `inputs`. A header found self-contained keeps
+    /// no context synthesized for it.
     void commit_self_containment(const SelfContainmentKey& key,
                                  bool self_contained,
                                  VersionID text,

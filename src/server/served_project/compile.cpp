@@ -544,7 +544,15 @@ async::task<Result> ServedProject::CompileAttempt::run() {
 
         // The check's result stands for every process while what it read
         // holds; typing never runs it again (self_contained), a save may.
+        // The parse counts nothing the preamble's build raised.
         auto errors = reply.errors;
+        if(preamble_index && preamble_index->matches(params.text)) {
+            errors += static_cast<std::uint32_t>(
+                ranges::count_if(preamble_diagnostics(*preamble_index),
+                                 [](const feature::FileDiagnostic& diagnostic) {
+                                     return diagnostic.level >= DiagnosticLevel::Error;
+                                 }));
+        }
         if(self_containment) {
             auto inputs = intern_inputs(project.file_table, reply.deps, reply.started_at);
             // The compile reports nothing it read through the PCH.

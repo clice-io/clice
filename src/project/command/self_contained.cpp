@@ -45,6 +45,10 @@ void Project::commit_self_containment(const SelfContainmentKey& key,
             .disk = disk && disk->version.valid() ? disk->version : text,
         },
         std::move(inputs));
+    // The context a comparison synthesized serves nothing any more.
+    if(self_contained) {
+        hosting.contexts.forget(key.first);
+    }
     mark_precompiled_dirty();
 }
 
