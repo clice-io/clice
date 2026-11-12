@@ -181,10 +181,14 @@ ZEST_CASE(HungQueryStopped) {
     ZASSERT(child);
     int id = 0;
     ZASSERT(!llvm::StringRef(*child).trim().getAsInteger(10, id));
-    // Hang detection: the program left running holds the wait for 600 s.
-    auto [waited] = async::run(async::with_timeout(async::wait_exit(id), chrono::seconds(30)));
-    ZASSERT(!waited.is_cancelled());
-    ZEXPECT((!waited.has_error() || waited.error() == async::error::no_such_process));
+    auto ended = [](int id) -> async::task<bool> {
+        // Hang detection: the program left running holds the wait for 600 s.
+        auto waited = co_await async::with_timeout(async::wait_exit(id), chrono::seconds(30));
+        co_return !waited.is_cancelled() &&
+            (!waited.has_error() || waited.error() == async::error::no_such_process);
+    };
+    auto [stopped] = async::run(ended(id));
+    ZEXPECT(*stopped);
     auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
     ZEXPECT(adjacent(rendered.argv, "-triple", "x86_64-unknown-linux-gnu"));
 }
