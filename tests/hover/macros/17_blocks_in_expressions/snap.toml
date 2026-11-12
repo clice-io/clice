@@ -1,0 +1,42 @@
+[answers.max.hover]
+markdown = '''
+**macro** `MAX`
+
+```cpp
+#define MAX(a, b)                                                                                \
+    ({                                                                                           \
+        __typeof__(a) _a = (a);                                                                  \
+        __typeof__(b) _b = (b);                                                                  \
+        _a > _b ? _a : _b;                                                                       \
+    })
+```
+**Expands to:**
+```cpp
+({
+  __typeof__(x) _a = (x);
+  __typeof__(y) _b = (y);
+  _a > _b ? _a : _b;
+})
+```
+**Type:** `int`
+'''
+range = "return ⟦MAX⟧(x, y);"
+
+[answers.checked.hover]
+markdown = '''
+**macro** `CHECKED`
+
+```cpp
+#define CHECKED(value, limit)                                                                    \
+    ((int)sizeof(struct { _Static_assert((limit) > 0, "limit must be positive"); }) * 0 + (value))
+```
+**Expands to:**
+```cpp
+((int)sizeof(struct {
+   _Static_assert((16) > 0, "limit must be positive");
+ }) * 0 +
+ (x))
+```
+**Type:** `int`
+'''
+range = "return ⟦CHECKED⟧(x, 16);"
