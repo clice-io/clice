@@ -481,6 +481,16 @@ async function sweepFile(
         const started = Date.now();
         const child = server.client.child;
         const alive = () => child.exitCode === null && child.signalCode === null;
+        // inspect compiles the file in one context: the server answers from
+        // that context alone, not from the code its other contexts compile.
+        try {
+            await server.showOtherContexts(file, false);
+        } catch (error) {
+            // The server's exit reports its death.
+            if (alive()) {
+                throw error;
+            }
+        }
         for (const ask of [opened, ...compared, ...navigation]) {
             // A hung request holds the document in its worker, and a dead
             // server answers nothing: the file's other requests would only
