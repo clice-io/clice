@@ -1,0 +1,7 @@
+{
+  "file": "main.cpp",
+  "symbol": "magic_number()",
+  "indexed": "magic_number()",
+  "definition": "defs.cppm",
+  "command": { "source": "database" }
+}

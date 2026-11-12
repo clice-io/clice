@@ -1,0 +1,8 @@
+{
+  "file": "shared.h",
+  "symbol": "VALUE_TYPE",
+  "indexed": "get_value()",
+  "command": { "source": "host", "from": "int_host.cpp" },
+  "contexts": { "automatic": "int_host.cpp", "other": "real_host.cpp", "total": 2 },
+  "counterpart": null
+}

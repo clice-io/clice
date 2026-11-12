@@ -54,7 +54,6 @@ jobs:
               - 'tools/**'
             zed:
               - 'editors/zed/**'
-              - 'tests/editors/zed/**'
               - '.github/workflows/main.yml'
             build:
               - 'BUILD.bazel'
@@ -79,6 +78,7 @@ jobs:
               - 'scripts/**'
               - 'editors/nvim/**'
               - 'editors/vscode/**'
+              - 'editors/zed/**'
               - 'pixi.toml'
               - 'pixi.lock'
               - 'package.json'
@@ -136,6 +136,8 @@ jobs:
     if: ${{ needs.changes.outputs.vscode == 'true' }}
     uses: ./.github/workflows/publish-vscode.yml
 
+  # The extension's unit tests; editor-test.yml runs it in a real Zed on
+  # this run's clice.
   zed:
     needs: changes
     if: ${{ needs.changes.outputs.zed == 'true' }}
@@ -144,7 +146,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-2025]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 15
     defaults:
       run:
         shell: bash
@@ -152,46 +154,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: node
-          activate-environment: node
       - uses: Swatinem/rust-cache@v2.9.1
         with:
           workspaces: editors/zed
       - name: Unit tests
         working-directory: editors/zed
         run: cargo test
-      # wasm32-wasip2 is the target Zed and its extension registry build with.
-      - name: Add the wasm target
-        run: rustup target add wasm32-wasip2
-
-      # Always the latest stable Zed on purpose, like the other editor tests.
-      - name: Install Zed (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mesa-vulkan-drivers libvulkan1 libxkbcommon-x11-0
-          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/zed.tar.gz" \
-            "https://cloud.zed.dev/releases/stable/latest/download?asset=zed&arch=x86_64&os=linux"
-          tar -xzf "$RUNNER_TEMP/zed.tar.gz" -C "$RUNNER_TEMP"
-          echo "ZED_EXECUTABLE=$RUNNER_TEMP/zed.app/libexec/zed-editor" >> "$GITHUB_ENV"
-      - name: Install Zed (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/zed-setup.exe" \
-            https://zed.dev/api/releases/stable/latest/Zed-x86_64.exe
-          "$RUNNER_TEMP/zed-setup.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART //SP- //CURRENTUSER
-          echo "ZED_EXECUTABLE=$LOCALAPPDATA/Programs/Zed/Zed.exe" >> "$GITHUB_ENV"
-
-      - name: E2E test (Linux)
-        if: runner.os == 'Linux'
-        timeout-minutes: 20
-        run: xvfb-run -a pixi run -e node zed-e2e
-      - name: E2E test (Windows)
-        if: runner.os == 'Windows'
-        timeout-minutes: 20
-        run: pixi run -e node zed-e2e
 
   test:
     needs: changes

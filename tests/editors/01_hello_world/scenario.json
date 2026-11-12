@@ -1,0 +1,13 @@
+{
+  "file": "main.cpp",
+  "symbol": "add(1, 2)",
+  "indexed": "add(int a, int b)",
+  "definition": "main.cpp",
+  "command": { "source": "database" },
+  "refactor": {
+    "file": "paint.cpp",
+    "at": "switch",
+    "kind": "refactor.rewrite.populateSwitch",
+    "adds": "case Color::Green:"
+  }
+}

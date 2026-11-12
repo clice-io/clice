@@ -7,11 +7,25 @@ import { fileURLToPath } from "url";
 const extensionRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(extensionRoot, "../..");
 
-// Each fixture, a copy of a case under .cache/editors, becomes one test run
-// with that workspace. `pixi run -e editor editor-prepare` makes the copies.
-// Keep in sync with the editor tasks in pixi.toml.
-const fixturesDir = path.join(repoRoot, ".cache", "editors");
-const fixtures = ["hello_world", "imported_symbol", "two_hosts"];
+// With CLICE_EXECUTABLE, each fixture, a copy of tests/editors/NN_name under
+// .cache/editors/vscode (`pixi run -e editor editor-prepare vscode`), becomes
+// one run of the end-to-end tests with that workspace, which its
+// scenario.json drives.
+const fixturesDir = path.join(repoRoot, ".cache", "editors", "vscode");
+const fixtures = [];
+if (process.env.CLICE_EXECUTABLE) {
+    const names = fs.existsSync(fixturesDir) ? fs.readdirSync(fixturesDir) : [];
+    fixtures.push(
+        ...names
+            .filter((name) => fs.existsSync(path.join(fixturesDir, name, "scenario.json")))
+            .sort(),
+    );
+    if (fixtures.length === 0) {
+        throw new Error(
+            `no fixtures under ${fixturesDir}: pixi run -e editor editor-prepare vscode`,
+        );
+    }
+}
 
 // The fixtures' databases name a bare clang++, which the server resolves on
 // the PATH the task set: xclang's. VS Code would replace that PATH with the
@@ -38,14 +52,30 @@ process.on("exit", () => {
     }
 });
 
-const configs = fixtures.map((fixture) => ({
-    label: fixture,
-    files: "out/test/**/*.test.js",
-    workspaceFolder: path.join(fixturesDir, fixture),
-    mocha: { timeout: 300 * 1000, failZero: true },
-    env: { CLICE_E2E_SCRATCH: scratch },
-    launchArgs: [keepEnv],
-}));
+const mocha = { timeout: 300 * 1000, failZero: true };
+
+// The extension's own tests, which no fixture changes, run once, in a
+// workspace of their own.
+const extensionWorkspace = path.join(scratch, "workspace");
+fs.mkdirSync(extensionWorkspace);
+const configs = [
+    {
+        label: "extension",
+        files: "out/test/extension.test.js",
+        workspaceFolder: extensionWorkspace,
+        mocha,
+        env: { CLICE_E2E_SCRATCH: scratch },
+        launchArgs: [keepEnv],
+    },
+    ...fixtures.map((fixture) => ({
+        label: fixture,
+        files: "out/test/e2e.test.js",
+        workspaceFolder: path.join(fixturesDir, fixture),
+        mocha,
+        env: { CLICE_E2E_SCRATCH: scratch },
+        launchArgs: [keepEnv],
+    })),
+];
 
 // Stage the real server under clice/ so it looks like a platform-specific vsix
 // (bin/clice + lib/clang resolved relative to the binary). Done here, before VS
@@ -71,17 +101,17 @@ function stageBundledServer(from) {
     );
 }
 
-// Bundled-server variant: CLICE_EXECUTABLE is cleared so the extension takes the
-// clice/ fallback; a dedicated user-data-dir isolates it from the clice.executable
-// setting the other variants write. CLICE_E2E_BUNDLED_FROM flags the variant for
-// the test.
+// Bundled-server variant, on the first fixture: CLICE_EXECUTABLE is cleared
+// so the extension takes the clice/ fallback; a dedicated user-data-dir
+// isolates it from the clice.executable setting the other variants write.
+// CLICE_E2E_BUNDLED_FROM flags the variant for the test.
 if (process.env.CLICE_EXECUTABLE) {
     stageBundledServer(process.env.CLICE_EXECUTABLE);
     configs.push({
-        label: "bundled-hello_world",
-        files: "out/test/**/*.test.js",
-        workspaceFolder: path.join(fixturesDir, "hello_world"),
-        mocha: { timeout: 300 * 1000, failZero: true },
+        label: `bundled-${fixtures[0]}`,
+        files: "out/test/e2e.test.js",
+        workspaceFolder: path.join(fixturesDir, fixtures[0]),
+        mocha,
         env: {
             CLICE_EXECUTABLE: "",
             CLICE_E2E_BUNDLED_FROM: process.env.CLICE_EXECUTABLE,

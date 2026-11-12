@@ -187,13 +187,25 @@ CLICE_CASES_SHARD={{ shard }} CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type 
 """
 depends-on = ["install-tests"]
 
-# The Zed extension in a real Zed (tests/editors/zed); ZED_EXECUTABLE names the Zed
-# app, and the extension builds with the system's cargo. Workspace-level so CI
-# can run it from the bare `node` env.
+# The Zed extension in a real Zed (tests/editors/zed), with build/<type> as
+# its installed clice; ZED_EXECUTABLE names the Zed app, and the extension
+# builds with the system's cargo. Workspace-level so CI can run it from the
+# `editor` env.
 [tasks.zed-e2e]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
 cargo build --manifest-path editors/zed/Cargo.toml --target wasm32-wasip2 --release && \
-ZED_EXTENSION_WASM=$PIXI_PROJECT_ROOT/editors/zed/target/wasm32-wasip2/release/zed_clice.wasm npm run zed --workspace tests
+ZED_EXTENSION_WASM=$PIXI_PROJECT_ROOT/editors/zed/target/wasm32-wasip2/release/zed_clice.wasm \
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm run zed --workspace tests
+"""
+depends-on = ["install-tests"]
+
+[target.win-64.tasks.zed-e2e]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+cmd = """
+cargo build --manifest-path editors/zed/Cargo.toml --target wasm32-wasip2 --release && \
+ZED_EXTENSION_WASM=$PIXI_PROJECT_ROOT/editors/zed/target/wasm32-wasip2/release/zed_clice.wasm \
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice.exe npm run zed --workspace tests
 """
 depends-on = ["install-tests"]
 
@@ -230,39 +242,40 @@ xclang = "==23.1.5.1"
 [feature.editor.target.osx-64.dependencies]
 xclang = "==23.1.5.1"
 
-# The editors' fixtures: copies of cases under .cache/editors, each named
-# after its case. Fixture list kept in sync with
-# editors/vscode/.vscode-test.mjs.
+# The editors' fixtures (tests/editors/NN_name) copied for one editor's
+# end-to-end tests under .cache/editors/<editor>, each named after its
+# fixture, and the gate of the logs their servers leave there.
 [feature.editor.tasks.editor-prepare]
-cmd = """
-node tools/testing/cases/copy.ts .cache/editors \
-    lifecycle/editor_sessions/01_hello_world \
-    modules/imports/01_imported_symbol \
-    contexts/switching/01_two_hosts
-"""
+args = [{ arg = "editor" }]
+cmd = "node tools/testing/editors/prepare.ts .cache/editors/{{ editor }}"
 depends-on = ["install-tests"]
 
 # Requires nvim (stable) on PATH.
 [feature.editor.tasks.nvim-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice .cache/editors/hello_world && \
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice .cache/editors/imported_symbol && \
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice .cache/editors/two_hosts
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice .cache/editors/nvim && \
+node tools/testing/editors/gate.ts .cache/editors/nvim
 """
-depends-on = ["editor-prepare"]
+depends-on = [{ task = "editor-prepare", args = ["nvim"] }]
 
 [feature.editor.tasks.vscode-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cwd = "editors/vscode"
-cmd = "CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test"
-depends-on = ["install-vscode", "editor-prepare"]
+cmd = """
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test && \
+node $PIXI_PROJECT_ROOT/tools/testing/editors/gate.ts $PIXI_PROJECT_ROOT/.cache/editors/vscode
+"""
+depends-on = ["install-vscode", { task = "editor-prepare", args = ["vscode"] }]
 
 [feature.editor.target.win-64.tasks.vscode-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cwd = "editors/vscode"
-cmd = "CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice.exe npm test"
-depends-on = ["install-vscode", "editor-prepare"]
+cmd = """
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice.exe npm test && \
+node $PIXI_PROJECT_ROOT/tools/testing/editors/gate.ts $PIXI_PROJECT_ROOT/.cache/editors/vscode
+"""
+depends-on = ["install-vscode", { task = "editor-prepare", args = ["vscode"] }]
 
 [feature.editor.tasks.editor-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
