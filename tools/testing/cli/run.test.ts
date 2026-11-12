@@ -25,8 +25,17 @@ describe("splitCommand", () => {
         expect(splitCommand(`format ""`)).toEqual(["format", ""]);
     });
 
-    test("an open quote is refused", () => {
-        expect(() => splitCommand(`query symbol-search "a`)).toThrow(/unterminated/);
+    test("globs and variables stay as written, shell syntax is refused", () => {
+        expect(splitCommand("analyze modules --scope core/** --out $OUT")).toEqual([
+            "analyze",
+            "modules",
+            "--scope",
+            "core/**",
+            "--out",
+            "$OUT",
+        ]);
+        expect(() => splitCommand("index | head")).toThrow(/shell syntax/);
+        expect(() => splitCommand("index # comment")).toThrow(/shell syntax/);
     });
 });
 

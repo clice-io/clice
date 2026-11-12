@@ -7,6 +7,7 @@ import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { parse } from "shell-quote";
 import { crashed, ending as ended, runProcess, type ProcessResult } from "../../client/process.ts";
 import { cliceExecutable } from "../../client/session.ts";
 import { serverEnv } from "../../process_gate.ts";
@@ -206,41 +207,18 @@ export function stdoutText(stdout: string, root: string): string {
     );
 }
 
-/// Split a command line as a POSIX shell does for plain words and double
-/// or single quotes; nothing else is shell syntax here.
+/// Split a command line as a POSIX shell does, its globs and variables
+/// kept as written: a case's command is words and quotes, no shell syntax.
 export function splitCommand(line: string): string[] {
-    const words: string[] = [];
-    let word = "";
-    let quote: string | null = null;
-    let started = false;
-    for (const char of line) {
-        if (quote !== null) {
-            if (char === quote) {
-                quote = null;
-            } else {
-                word += char;
-            }
-        } else if (char === '"' || char === "'") {
-            quote = char;
-            started = true;
-        } else if (char === " ") {
-            if (started) {
-                words.push(word);
-            }
-            word = "";
-            started = false;
-        } else {
-            word += char;
-            started = true;
+    return parse(line, (name) => `$${name}`).map((entry) => {
+        if (typeof entry === "string") {
+            return entry;
         }
-    }
-    if (quote !== null) {
-        throw new Error(`unterminated quote in: ${line}`);
-    }
-    if (started) {
-        words.push(word);
-    }
-    return words;
+        if ("op" in entry && entry.op === "glob") {
+            return entry.pattern;
+        }
+        throw new Error(`shell syntax in a command line: ${line}`);
+    });
 }
 
 export interface CommandRun {
