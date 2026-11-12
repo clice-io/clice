@@ -21,10 +21,22 @@ test("a project found for the file", async (t) => {
 });
 
 // A rename edits its project's sources alone: a declaration in a header
-// outside the folder stops it.
+// outside the folder stops it, whether the index has reached the header
+// or only the open file's compile has.
 test("a declaration outside the project", async (t) => {
     t.disk.database({ "app/main.cpp": [] }, "app");
     const s = await t.start({ folders: ["app"] });
+    await s.indexed();
+    s.open("app/main.cpp");
+    await t.show("rename", s.rename(t.at("app/main.cpp", "int |compute(int x)"), "evaluate"));
+});
+
+test("a declaration outside the project, not indexed", async (t) => {
+    t.disk.database({ "app/main.cpp": [] }, "app");
+    const s = await t.start({
+        folders: ["app"],
+        config: { project: { enable_indexing: false } },
+    });
     s.open("app/main.cpp");
     await t.show("rename", s.rename(t.at("app/main.cpp", "int |compute(int x)"), "evaluate"));
 });
