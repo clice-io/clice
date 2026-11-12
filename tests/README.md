@@ -439,18 +439,16 @@ public `clice/*` requests. An item is `method <name>`, `command <words>`,
 
 ## Outside the topics
 
-- **`editors/zed/`**: the Zed extension in a real Zed (`pixi run zed-e2e`): it
-  downloads clice, which starts with its builtin headers, for C, C++ and CUDA
-  files alike.
-- **`editors/NN_name/`**: a project and the scenario every editor client runs on
-  it (`scenario.json`: the file, the symbol, where it is defined, the header
-  context); each client's harness reads it. Until then the editors'
-  end-to-end tests (`pixi run -e editor editor-test`) run on copies of three
-  cases, `lifecycle/editor_sessions/01_hello_world`,
-  `modules/imports/01_imported_symbol` and `contexts/switching/01_two_hosts`
-  (`tools/testing/cases/copy.ts`), each harness naming the file and symbol
-  in a scenario table of its own: changing one of these cases changes those
-  tests.
+- **`editors/zed/`**: the Zed extension in a real Zed (`pixi run zed-e2e`): this
+  build installed as the extension's newest version, beside an older empty one,
+  for C, C++ and CUDA files alike.
+- **`editors/NN_name/`**: a project and the scenario every editor client runs
+  on it (`scenario.json`, its fields in `tools/testing/editors/scenario.ts`).
+  `pixi run -e editor editor-prepare <editor>` copies each under
+  `.cache/editors/<editor>/` with its database and the test hooks on;
+  `nvim-e2e` and `vscode-e2e` run the client on every copy, then fail on a
+  crash, an anomaly or an error-level line in the servers' logs
+  (`tools/testing/editors/gate.ts`).
 - **`compat/`**: real build systems and compilers build a small project; clice
   must read their databases and agree with the compiler.
 
