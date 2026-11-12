@@ -1,0 +1,25 @@
+[test.hover.hover]
+markdown = '''
+**function** `add`
+
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+[test.outline]
+document_symbols = [
+    { name = "add", kind = "Function", at = "int ⟦add⟧(int a, int b) {" },
+    {
+        name = "main",
+        kind = "Function",
+        at = "int ⟦main⟧() {",
+        children = [
+            { name = "result", kind = "Variable", at = "int ⟦result⟧ = add(1, 2);" },
+        ],
+    },
+]
+
+[test.diagnostics]
+diagnostics = []

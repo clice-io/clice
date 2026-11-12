@@ -499,7 +499,10 @@ void stderr_logger(std::string_view name, StderrReader stderr_reader) {
     if(refused) {
         LOG_WARN("stderr is a pipe that cannot stop blocking clice: lines go to the log file alone");
     }
-    if(!given.empty() && named == ranges::end(names)) {
+    // Once a process, and not by a worker, whose master said so already.
+    static bool reported = false;
+    if(!given.empty() && named == ranges::end(names) && stderr_reader != StderrReader::Pool &&
+       !std::exchange(reported, true)) {
         LOG_WARN("CLICE_LOG_LEVEL is {}, none of trace, debug, info, warn, error, fatal and off: "
                  "it is ignored",
                  given);
