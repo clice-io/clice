@@ -7,7 +7,8 @@ regression({
             why: "the server marks a comment on an `#if 0` line inactive",
             kind: "disagree",
             request: "semanticTokens",
-            detail: /\+\s+type = "comment",\n\+\s+modifiers = \["inactive"\]/,
+            // The comment's token, and the same with the modifier.
+            detail: /^-\s+\{ at = "#if 0 [^\n]*", type = "comment" \},\n\+\s+(?:\{ at = "#if 0 [^\n]*", type = "comment", modifiers = \["inactive"\] \},|\{\n\+\s+at = "#if 0 [^\n]*",\n\+\s+type = "comment",\n\+\s+modifiers = \["inactive"\],\n\+\s+\},)$/m,
         },
     ],
 });

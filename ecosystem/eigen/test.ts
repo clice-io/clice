@@ -7,7 +7,8 @@ regression({
             why: "in templates and macro bodies the open file's highlights hold more than the unit's own",
             kind: "disagree",
             request: "highlights",
-            detail: /^(?![\s\S]*\n-\s+\{)/,
+            // Every line the server adds.
+            detail: /^\+\s.*$/m,
         },
     ],
 });

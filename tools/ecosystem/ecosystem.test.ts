@@ -28,7 +28,7 @@ import {
 import type { Results } from "./regression/regression.ts";
 import { regressionReport } from "./report.ts";
 import { historyOf, roundReport, type Earlier } from "./round.ts";
-import { allJobs, findJob, knownIssue, positionOf, sortKnown, type Job } from "./script.ts";
+import { allJobs, findJob, knownIssues, positionOf, sortKnown, type Job } from "./script.ts";
 
 function scratch(): string {
     return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "clice-ecosystem-")));
@@ -181,23 +181,27 @@ describe("known issues", () => {
     test("a failure is the known issue whose every field it matches", () => {
         const disagree = { kind: "disagree", detail: "", repro: "" };
         expect(
-            knownIssue(job, "linux", { ...disagree, file: "a.cpp", request: "signatureHelp" })
+            knownIssues(job, "linux", { ...disagree, file: "a.cpp", request: "signatureHelp" })[0]
                 ?.issue,
         ).toBe("10-22#6");
-        expect(knownIssue(job, "linux", { ...disagree, request: "hover" })).toBeUndefined();
+        expect(knownIssues(job, "linux", { ...disagree, request: "hover" })).toEqual([]);
         const memory = { kind: "memory", detail: "", repro: "" };
-        expect(knownIssue(job, "macos", { ...memory, file: "big/x.cpp" })?.issue).toBe("10-22#7");
-        expect(knownIssue(job, "linux", { ...memory, file: "big/x.cpp" })).toBeUndefined();
-        expect(knownIssue(job, "macos", { ...memory, file: "small/x.cpp" })).toBeUndefined();
+        expect(knownIssues(job, "macos", { ...memory, file: "big/x.cpp" })[0]?.issue).toBe(
+            "10-22#7",
+        );
+        expect(knownIssues(job, "linux", { ...memory, file: "big/x.cpp" })).toEqual([]);
+        expect(knownIssues(job, "macos", { ...memory, file: "small/x.cpp" })).toEqual([]);
     });
 
     test("a known issue of one configuration or part matches no other", () => {
         const disagree = { kind: "disagree", request: "signatureHelp", detail: "", repro: "" };
-        expect(knownIssue({ ...job, configuration: "clang" }, "linux", disagree)).toBeUndefined();
+        expect(knownIssues({ ...job, configuration: "clang" }, "linux", disagree)).toEqual([]);
         const hang = { kind: "hang", detail: "", repro: "" };
-        expect(knownIssue({ ...job, part: "flang" } as Job, "linux", hang)?.issue).toBe("10-22#8");
-        expect(knownIssue({ ...job, part: "mlir" } as Job, "linux", hang)).toBeUndefined();
-        expect(knownIssue(job, "linux", hang)).toBeUndefined();
+        expect(knownIssues({ ...job, part: "flang" } as Job, "linux", hang)[0]?.issue).toBe(
+            "10-22#8",
+        );
+        expect(knownIssues({ ...job, part: "mlir" } as Job, "linux", hang)).toEqual([]);
+        expect(knownIssues(job, "linux", hang)).toEqual([]);
     });
 
     test("a known issue naming what the failure says matches no other text", async () => {
@@ -209,9 +213,35 @@ describe("known issues", () => {
             repro: "",
         });
         const more = diff([" highlights = [", '+    { at = "⟦a⟧", kind = "text" },', " ]"]);
-        expect(knownIssue(abseil, "linux", more)?.issue).toBe("10-24#7");
+        expect(knownIssues(abseil, "linux", more)[0]?.issue).toBe("10-24#7");
         const fewer = diff([" highlights = [", '-    { at = "⟦a⟧", kind = "text" },', " ]"]);
-        expect(knownIssue(abseil, "linux", fewer)).toBeUndefined();
+        expect(knownIssues(abseil, "linux", fewer)).toEqual([]);
+    });
+
+    test("a known issue removes the lines of a diff it names, and the rest still fails", () => {
+        const tokens = {
+            ...job,
+            known: [
+                { issue: "11-01#1", why: "a", kind: "disagree", detail: /^-.*"comment".*$/m },
+                { issue: "11-01#2", why: "b", kind: "disagree", detail: /^\+.*"macro".*$/m },
+            ],
+        } as Job;
+        const diff = (lines: string[]) => ({
+            kind: "disagree",
+            request: "semanticTokens",
+            detail: ["--- inspect", "+++ server", "@@ -1,3 +1,3 @@", ...lines].join("\n"),
+            repro: "",
+        });
+        const comment = '-    { at = "⟦/* a */⟧", type = "comment" },';
+        const macro = '+    { at = "⟦A⟧", type = "macro" },';
+        const other = '+    { at = "⟦b⟧", type = "variable" },';
+        expect(knownIssues(tokens, "linux", diff([comment])).map((k) => k.issue)).toEqual([
+            "11-01#1",
+        ]);
+        expect(
+            knownIssues(tokens, "linux", diff([comment, " kept", macro])).map((k) => k.issue),
+        ).toEqual(["11-01#1", "11-01#2"]);
+        expect(knownIssues(tokens, "linux", diff([comment, other]))).toEqual([]);
     });
 
     test("known failures move apart, the issues not seen listed", () => {

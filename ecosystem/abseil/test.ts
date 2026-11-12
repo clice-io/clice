@@ -7,7 +7,8 @@ regression({
             why: "in templates and macro arguments the open file's highlights hold more than the unit's own",
             kind: "disagree",
             request: "highlights",
-            detail: /^(?![\s\S]*\n-\s+\{)/,
+            // Every line the server adds.
+            detail: /^\+\s.*$/m,
         },
         {
             issue: "10-21#17",
@@ -15,8 +16,7 @@ regression({
             kind: "disagree",
             request: "semanticTokens",
             file: "absl/debugging/stacktrace.cc",
-            // That token missing, and no other difference.
-            detail: /(?<![\s\S])(?=[\s\S]*^-\s+\{ at = "#include ⟦ABSL_STACKTRACE_INL_HEADER⟧", type = "macro" \},$)(?![\s\S]*^(?!--- inspect$|\+\+\+ server$)[-+](?!\s+\{ at = "#include ⟦ABSL_STACKTRACE_INL_HEADER⟧", type = "macro" \},$).*$)/m,
+            detail: /^-\s+\{ at = "#include ⟦ABSL_STACKTRACE_INL_HEADER⟧", type = "macro" \},$/m,
         },
     ],
 });
