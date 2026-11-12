@@ -1,0 +1,18 @@
+[default."main.cpp"]
+inlay_hints = [
+    { line = "int combined = combine(⟨A:⟩2);" },
+    { line = "void use() { declared(⟨first:⟩1); }" },
+]
+
+[configured."main.cpp"]
+inlay_hints = [
+    { line = "int combine(int A, int B = 1, bool C = fallback(⟨4⟩)) { return A; }" },
+    { line = "int combined = combine(⟨A:⟩2⟨, B: 1, C: fallback()⟩);" },
+    { line = "void recurse(int = 5) { if (false) recurse(⟨5⟩); }" },
+    { line = "Shape{⟨area: 3 + 2⟩}" },
+    { line = "Holder first(1⟨, shape: Shape{}⟩);" },
+    { line = "Holder second{2⟨, shape: Shape{}⟩};" },
+    { line = "Holder third = {3⟨, shape: Shape{}⟩};" },
+    { line = "auto fourth = Holder{4⟨, shape: Shape{}⟩};" },
+    { line = "void use() { declared(⟨first:⟩1⟨, second: 4 + 1⟩); }" },
+]
