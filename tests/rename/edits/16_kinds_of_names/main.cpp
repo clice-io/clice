@@ -11,7 +11,7 @@ int math::one() { return 1; }
 namespace algebra = math;
 using namespace math;
 
-enum class Color { §(enumerator)red, green };
+enum class §(scoped_enum)Color { §(enumerator)red, green };
 enum §(enum)Mood { calm };
 
 int red = 0;

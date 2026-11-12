@@ -6,6 +6,7 @@ answers({ paths: { server: "clice inspect does not rename" }, indexing: true }, 
     await a.show("namespace", rename("namespace", "numeric"));
     await a.show("enumerator", rename("enumerator", "crimson"));
     await a.show("enum", rename("enum", "Feeling"));
+    await a.show("scoped_enum", rename("scoped_enum", "Hue"));
     await a.show("field", rename("field", "column"));
     await a.show("alias", rename("alias", "Length"));
     await a.show("concept", rename("concept", "Tiny"));

@@ -51,6 +51,36 @@ Spellings of `area` left alone:
 [answers.from_uninstantiated_call.prepare_rename]
 error = "no instantiation the index saw resolves the name here; rename from a declaration"
 
+[answers.instantiated_scope.rename.edits]
+"main.cpp" = '''
+ template <typename T>
+ struct Crate {
+-    static constexpr int capacity = 1;
++    static constexpr int volume = 1;
+ };
+
+ template <typename T>
+-int load() { return Crate<T>::capacity; }
++int load() { return Crate<T>::volume; }
+
+ struct Polygon {
+'''
+
+[answers.from_instantiated_scope.rename.edits]
+"main.cpp" = '''
+ template <typename T>
+ struct Crate {
+-    static constexpr int capacity = 1;
++    static constexpr int volume = 1;
+ };
+
+ template <typename T>
+-int load() { return Crate<T>::capacity; }
++int load() { return Crate<T>::volume; }
+
+ struct Polygon {
+'''
+
 [answers.overrides.rename.edits]
 "main.cpp" = '''
 

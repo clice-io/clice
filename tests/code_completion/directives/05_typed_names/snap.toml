@@ -16,3 +16,18 @@ items = [
     { label = "ifdef", kind = "Keyword", insert = "ifdef", replace = "#  ⟦if⟧" },
     { label = "ifndef", kind = "Keyword", insert = "ifndef", replace = "#  ⟦if⟧" },
 ]
+
+[answers.hash_only.completion]
+items = [
+    { label = "define", kind = "Keyword", insert = "define", replace = "#⟦⟧" },
+    { label = "error", kind = "Keyword", insert = "error", replace = "#⟦⟧" },
+    { label = "if", kind = "Keyword", insert = "if", replace = "#⟦⟧" },
+    { label = "ifdef", kind = "Keyword", insert = "ifdef", replace = "#⟦⟧" },
+    { label = "ifndef", kind = "Keyword", insert = "ifndef", replace = "#⟦⟧" },
+    { label = "include", kind = "Keyword", insert = "include", replace = "#⟦⟧" },
+    { label = "include_next", kind = "Keyword", insert = "include_next", replace = "#⟦⟧" },
+    { label = "line", kind = "Keyword", insert = "line", replace = "#⟦⟧" },
+    { label = "pragma", kind = "Keyword", insert = "pragma", replace = "#⟦⟧" },
+    { label = "undef", kind = "Keyword", insert = "undef", replace = "#⟦⟧" },
+]
+more = 1

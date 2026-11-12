@@ -36,6 +36,20 @@ semantic_tokens = [
     { at = "typeof(concept) copy = ⟦concept⟧;", type = "variable", modifiers = ["global"] },
 ]
 
+[compiled."c17.c"]
+semantic_tokens = [
+    { at = "⟦int⟧ class = 0;", type = "primitive" },
+    { at = "int ⟦class⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int class ⟦=⟧ 0;", type = "operator" },
+    { at = "int class = ⟦0⟧;", type = "number" },
+    { at = "⟦int⟧* new = &class;", type = "primitive" },
+    { at = "int⟦*⟧ new = &class;", type = "operator", modifiers = ["declarator"] },
+    { at = "int* ⟦new⟧ = &class;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int* new ⟦=⟧ &class;", type = "operator" },
+    { at = "int* new = ⟦&⟧class;", type = "operator" },
+    { at = "int* new = &⟦class⟧;", type = "variable", modifiers = ["global"] },
+]
+
 [index."cxx17.cpp"]
 semantic_tokens = [
     { at = "⟦int⟧ concept = 0;", type = "primitive" },
@@ -72,4 +86,18 @@ semantic_tokens = [
     { at = "typeof(concept) ⟦copy⟧ = concept;", type = "variable", modifiers = ["definition", "global"] },
     { at = "typeof(concept) copy ⟦=⟧ concept;", type = "operator" },
     { at = "typeof(concept) copy = ⟦concept⟧;", type = "variable", modifiers = ["global"] },
+]
+
+[index."c17.c"]
+semantic_tokens = [
+    { at = "⟦int⟧ class = 0;", type = "primitive" },
+    { at = "int ⟦class⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int class ⟦=⟧ 0;", type = "operator" },
+    { at = "int class = ⟦0⟧;", type = "number" },
+    { at = "⟦int⟧* new = &class;", type = "primitive" },
+    { at = "int⟦*⟧ new = &class;", type = "operator" },
+    { at = "int* ⟦new⟧ = &class;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int* new ⟦=⟧ &class;", type = "operator" },
+    { at = "int* new = ⟦&⟧class;", type = "operator" },
+    { at = "int* new = &⟦class⟧;", type = "variable", modifiers = ["global"] },
 ]

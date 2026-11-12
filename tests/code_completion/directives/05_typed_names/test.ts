@@ -1,7 +1,7 @@
 import { answers } from "@clice/tools/testing";
 
 // The name the cursor is in is replaced whole, however far it is spaced from
-// its `#`.
+// its `#`; after a lone `#`, the empty name at the cursor is.
 answers(
     { paths: { server: "directive names are answered before anything compiles" } },
     async (a) => {

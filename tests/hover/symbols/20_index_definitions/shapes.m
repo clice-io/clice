@@ -16,3 +16,8 @@ __attribute__((objc_root_class))
 - (void)draw {
 }
 @end
+
+@implementation §(implementation_only)Widget : Object
+- (void)run {
+}
+@end

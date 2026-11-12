@@ -2,8 +2,8 @@ import * as proto from "vscode-languageserver-protocol";
 import { test, type TestContext } from "@clice/tools/testing";
 
 // Messages out of the order LSP gives them: requests before the handshake
-// and after shutdown, methods the server does not know, documents opened
-// twice or closed and saved without an open.
+// and after shutdown, methods the server does not know or ignores,
+// documents opened twice or closed and saved without an open.
 
 /// Show what `reply` answers, or how it was refused.
 async function answer(t: TestContext, label: string, reply: Promise<unknown>): Promise<void> {
@@ -36,6 +36,21 @@ test("an unknown method", async (t) => {
     // Compiled, the file is answered from its AST, not the index.
     await s.sync();
     await t.show("hover after", s.hover(t.marker("add")));
+});
+
+// clice writes no `$/logTrace`: a trace setting changes nothing it sends.
+test("a trace setting", async (t) => {
+    const s = await t.start();
+    s.open("main.cpp");
+    const traces: string[] = [];
+    s.client.onNotification(proto.LogTraceNotification.type, (params) => {
+        traces.push(params.message);
+    });
+    // A notification no action sends.
+    await s.client.sendNotification(proto.SetTraceNotification.type, { value: "verbose" });
+    await s.sync();
+    await t.show("hover after", s.hover(t.marker("add")));
+    await t.show("traces", traces);
 });
 
 // A second open of an open document replaces the text the server holds.
