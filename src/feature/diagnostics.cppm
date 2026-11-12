@@ -105,8 +105,14 @@ auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 
 /// How many errors the compile raised in any of its files, those of an
 /// includer's context it compiles a header in among them, which its focus
-/// file's diagnostics leave out.
+/// file's diagnostics leave out. The warning that a struct a prototype
+/// names first is visible in that prototype alone counts as one: the
+/// includer declares the struct, and C compiles the header without it, its
+/// functions then taking a type no caller has.
 std::size_t count_errors(CompilationUnit& unit);
+
+/// count_errors of diagnostics already gathered: those of a PCH's build.
+std::size_t count_errors(llvm::ArrayRef<FileDiagnostic> diagnostics);
 
 /// A warning from clice itself about the file as a whole, on its first
 /// character.

@@ -695,9 +695,19 @@ protocol::Diagnostic to_protocol(
     return result;
 }
 
+static bool counts_as_error(std::uint32_t id, DiagnosticLevel level) {
+    return level >= DiagnosticLevel::Error || id == diag::warn_decl_in_param_list;
+}
+
 std::size_t count_errors(CompilationUnit& unit) {
     return ranges::count_if(unit.diagnostics(), [](const Diagnostic& diagnostic) {
-        return diagnostic.id.level >= DiagnosticLevel::Error;
+        return counts_as_error(diagnostic.id.value, diagnostic.id.level);
+    });
+}
+
+std::size_t count_errors(llvm::ArrayRef<FileDiagnostic> diagnostics) {
+    return ranges::count_if(diagnostics, [](const FileDiagnostic& diagnostic) {
+        return counts_as_error(diagnostic.id, diagnostic.level);
     });
 }
 

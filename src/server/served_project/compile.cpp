@@ -548,10 +548,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
         auto errors = reply.errors;
         if(preamble_index && preamble_index->matches(params.text)) {
             errors += static_cast<std::uint32_t>(
-                ranges::count_if(preamble_diagnostics(*preamble_index),
-                                 [](const feature::FileDiagnostic& diagnostic) {
-                                     return diagnostic.level >= DiagnosticLevel::Error;
-                                 }));
+                feature::count_errors(preamble_diagnostics(*preamble_index)));
         }
         if(self_containment) {
             auto inputs = intern_inputs(project.file_table, reply.deps, reply.started_at);

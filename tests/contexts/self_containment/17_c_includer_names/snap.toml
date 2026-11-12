@@ -1,13 +1,5 @@
 [test."proto.h"]
-diagnostics = [
-    {
-        at = "int submit(const struct ⟦req⟧ *r);",
-        severity = "warning",
-        message = "declaration of 'struct req' will not be visible outside of this function",
-        source = "clang",
-        code = "-Wvisibility",
-    },
-]
+diagnostics = []
 
 [test."fields.h"]
 diagnostics = []
