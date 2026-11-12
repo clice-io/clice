@@ -1,0 +1,8 @@
+{
+  "file": "lamp.h",
+  "symbol": "lamp_brightness() >",
+  "indexed": "lamp_toggle()",
+  "definition": "lamp.cpp",
+  "command": { "source": "host", "from": "lamp.cpp" },
+  "counterpart": "lamp.cpp"
+}

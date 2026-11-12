@@ -228,39 +228,37 @@ xclang = "==23.1.3.6"
 [feature.editor.target.osx-64.dependencies]
 xclang = "==23.1.3.6"
 
-# The editors' fixtures: copies of cases under .cache/editors, each named
-# after its case. Fixture list kept in sync with
-# editors/vscode/.vscode-test.mjs.
+# The editors' fixtures (tests/editors/NN_name) copied for one editor's
+# end-to-end tests under .cache/editors/<editor>, each named after its
+# fixture.
 [feature.editor.tasks.editor-prepare]
-cmd = """
-node tools/testing/cases/copy.ts .cache/editors \
-    lifecycle/editor_sessions/01_hello_world \
-    modules/imports/01_imported_symbol \
-    contexts/switching/01_two_hosts
-"""
+args = [{ arg = "editor" }]
+cmd = "node tools/testing/editors/prepare.ts .cache/editors/{{ editor }}"
 depends-on = ["install-tests"]
 
 # Requires nvim (stable) on PATH.
 [feature.editor.tasks.nvim-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice .cache/editors/hello_world && \
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice .cache/editors/imported_symbol && \
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice .cache/editors/two_hosts
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice .cache/editors/nvim
 """
-depends-on = ["editor-prepare"]
+depends-on = [{ task = "editor-prepare", args = ["nvim"] }]
 
 [feature.editor.tasks.vscode-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cwd = "editors/vscode"
-cmd = "CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test"
-depends-on = ["install-vscode", "editor-prepare"]
+cmd = """
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test
+"""
+depends-on = ["install-vscode", { task = "editor-prepare", args = ["vscode"] }]
 
 [feature.editor.target.win-64.tasks.vscode-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cwd = "editors/vscode"
-cmd = "CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice.exe npm test"
-depends-on = ["install-vscode", "editor-prepare"]
+cmd = """
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice.exe npm test
+"""
+depends-on = ["install-vscode", { task = "editor-prepare", args = ["vscode"] }]
 
 [feature.editor.tasks.editor-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]

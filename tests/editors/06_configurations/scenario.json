@@ -1,0 +1,8 @@
+{
+  "file": "main.cpp",
+  "symbol": "level;",
+  "indexed": "log_level()",
+  "definition": "main.cpp",
+  "command": { "source": "database" },
+  "configurations": { "active": "debug", "switch": "release" }
+}

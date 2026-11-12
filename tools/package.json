@@ -19,6 +19,7 @@
     "./testing": "./testing/index.ts",
     "./testing/cases/*": "./testing/cases/*.ts",
     "./testing/docs/*": "./testing/docs/*.ts",
+    "./testing/editors/*": "./testing/editors/*.ts",
     "./repo": "./repo.ts"
   },
   "scripts": {
