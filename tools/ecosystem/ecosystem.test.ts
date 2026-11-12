@@ -221,6 +221,20 @@ describe("known issues", () => {
         expect(knownIssues(abseil, "linux", more)[0]?.issue).toBe("10-24#7");
         const fewer = diff([" highlights = [", '-    { at = "⟦a⟧", kind = "text" },', " ]"]);
         expect(knownIssues(abseil, "linux", fewer)).toEqual([]);
+        const some = diff([
+            "-highlights = []",
+            "+highlights = [",
+            '+    { at = "⟦a⟧", kind = "text" },',
+            "+]",
+        ]);
+        expect(knownIssues(abseil, "linux", some)[0]?.issue).toBe("10-24#7");
+        const none = diff([
+            "-highlights = [",
+            '-    { at = "⟦a⟧", kind = "text" },',
+            "-]",
+            "+highlights = []",
+        ]);
+        expect(knownIssues(abseil, "linux", none)).toEqual([]);
     });
 
     test("a known issue removes the lines of a diff it names, and the rest still fails", () => {
