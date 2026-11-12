@@ -35,7 +35,13 @@ static std::optional<llvm::StringRef> before_body(const std::string& text) {
 /// An Objective-C container's text from its keyword on, past the
 /// attributes written before it: `@interface Shape : Object ... @end`.
 static llvm::StringRef objc_container(llvm::StringRef text) {
-    return text.substr(text.find('@'));
+    Lexer lexer(text, dialect_of());
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        if(token.text(text) == "@") {
+            return text.substr(token.range.begin);
+        }
+    }
+    return {};
 }
 
 /// The head of an Objective-C container, which closes with `@end`: the

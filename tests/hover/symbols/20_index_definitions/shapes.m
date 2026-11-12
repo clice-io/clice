@@ -22,7 +22,7 @@ __attribute__((objc_root_class))
 }
 @end
 
-__attribute__((objc_subclassing_restricted))
+__attribute__((objc_subclassing_restricted, annotate("@final")))
 @interface §(attributed)Final : Object
 @end
 
