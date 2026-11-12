@@ -3,9 +3,7 @@ module clice;
 import :project.background;
 import :server.master;
 import :server.served_project;
-import :settings.rules;
 import :unittests.server.served_project_fixture;
-import :unittests.utils.async;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -28,8 +26,6 @@ ZEST_CASE(PassEndsBeforeWorkers) {
     ServedProjectFixture fixture(tmp.root);
     auto& project = fixture.served->project;
     project.settings.project.idle_timeout_ms = 0;
-    project.settings.rules.push_back(Rule{.patterns = {"**"}, .query_toolchain = false});
-    project.rules = Rules(project.settings, project.root, "");
     std::vector<Fid> units;
     for(int i = 0; i < 8; i += 1) {
         auto name = std::format("u{}.cpp", i);
@@ -57,9 +53,7 @@ ZEST_CASE(PassEndsBeforeWorkers) {
         }
         done = true;
     };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
+    fixture.run(body());
     ZEXPECT(done);
 }
 
