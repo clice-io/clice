@@ -1,7 +1,6 @@
 module clice;
 
 import :compile.diagnostic;
-import :feature.diagnostics;
 import :index.database;
 import :index.format;
 import :project.graph.pcm;
@@ -279,7 +278,7 @@ ZEST_CASE(SelfContainmentRescored) {
                                           {});
         records = f.project.serialize_precompiled_records();
     }
-    auto scoring = std::format(R"("trials_scoring":{})", feature::missing_context_scoring);
+    auto scoring = std::format(R"("trials_scoring":{})", self_containment_rule);
     auto at = records.find(scoring);
     ZASSERT(at != std::string::npos);
 
