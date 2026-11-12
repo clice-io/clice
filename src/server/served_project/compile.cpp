@@ -554,12 +554,18 @@ async::task<Result> ServedProject::CompileAttempt::run() {
             errors += static_cast<std::uint32_t>(
                 feature::count_errors(preamble_diagnostics(*preamble_index)));
         }
-        if(self_containment) {
+        auto read = [&] {
             auto inputs = intern_inputs(project.file_table, reply.deps, reply.started_at);
-            // The compile reports nothing it read through the PCH.
+            // The compile reports nothing it read through the PCH, nor the
+            // includer chain a synthesized context embeds.
             if(auto* pch = built.loaded ? project.built_pch(*built.loaded) : nullptr) {
                 inputs.append(pch->inputs.begin(), pch->inputs.end());
             }
+            inputs.append(resolution.inputs.begin(), resolution.inputs.end());
+            return inputs;
+        };
+        if(self_containment) {
+            auto inputs = read();
             auto text = project.file_table.intern_version(path_id, session->source->hash());
             project.commit_self_containment(*self_containment, errors == 0, text, inputs);
             if(errors > 0) {
@@ -569,12 +575,18 @@ async::task<Result> ServedProject::CompileAttempt::run() {
                 continue;
             }
         } else if(comparison) {
+            // The verdict rests on both compiles: a change to what either
+            // read compares again.
             auto alone = std::exchange(comparison, std::nullopt);
-            if(resolution.synthesized && errors >= alone->errors) {
-                project.commit_self_containment(alone->key,
-                                                true,
-                                                alone->text,
-                                                std::move(alone->inputs));
+            auto inputs = std::move(alone->inputs);
+            auto in_host = read();
+            inputs.append(in_host.begin(), in_host.end());
+            bool self_contained = resolution.synthesized && errors >= alone->errors;
+            project.commit_self_containment(alone->key,
+                                            self_contained,
+                                            alone->text,
+                                            std::move(inputs));
+            if(self_contained) {
                 LOG_INFO("{} has no fewer errors in its host's context; compiling it on its own",
                          file_path);
                 continue;

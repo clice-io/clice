@@ -903,9 +903,18 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
             resolution = resolve();
             if(errors > 0 && resolution.synthesized) {
                 auto in_host = check();
-                if(in_host->completed() && feature::count_errors(*in_host) >= errors) {
-                    project.commit_self_containment(*key, true, text, std::move(inputs));
-                    resolution = resolve();
+                if(in_host->completed()) {
+                    // The verdict rests on both compiles, the includer chain
+                    // the context embeds among what the host's read.
+                    auto read =
+                        intern_inputs(files, in_host->deps(), in_host->started_at().count());
+                    inputs.append(read.begin(), read.end());
+                    inputs.append(resolution.inputs.begin(), resolution.inputs.end());
+                    bool self_contained = feature::count_errors(*in_host) >= errors;
+                    project.commit_self_containment(*key, self_contained, text, std::move(inputs));
+                    if(self_contained) {
+                        resolution = resolve();
+                    }
                 }
             }
         }
