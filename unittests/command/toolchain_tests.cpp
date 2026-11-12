@@ -309,13 +309,13 @@ ZEST_CASE(WarmBoundsDrivers) {
     tmp.mkdir("running");
     auto cores = sys::parallelism();
     auto driver = fake_driver("clang",
-                              std::format(R"(touch '{0}/'$$
+                              std::format(R"sh(touch '{0}/'$$
 until [ -e '{1}' ] || [ "$(ls '{0}' | wc -l)" -ge {2} ]; do :; done
 touch '{1}'
 ls '{0}' | wc -l >> '{3}'
 rm '{0}/'$$
 echo '{4}' >&2
-)",
+)sh",
                                           tmp.path("running"),
                                           tmp.path("open"),
                                           cores,
