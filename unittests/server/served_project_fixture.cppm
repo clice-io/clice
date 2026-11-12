@@ -58,7 +58,7 @@ struct ServedProjectFixture {
     /// The project's entry of an open document.
     ServedDocument& entry(Fid path_id) {
         auto* document = served->find_document(path_id);
-        assert(document && "the document is open");
+        ZASSERT(document);
         return *document;
     }
 

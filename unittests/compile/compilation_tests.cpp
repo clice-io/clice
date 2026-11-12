@@ -85,35 +85,6 @@ private:
 
 ZEST_SUITE(Compiler, Tester) {
 
-ZEST_CASE(TopLevelDecls) {
-    add_file("header.h", R"(
-#pragma once
-int helper();
-)");
-
-    llvm::StringRef content = R"(
-#include "header.h"
-
-int x = 1;
-
-void foo() {}
-
-namespace foo2 {
-    int y = 2;
-    int z = 3;
-}
-
-struct Bar {
-    int x;
-    int y;
-};
-)";
-
-    add_focus("main.cpp", content);
-    ZASSERT(compile_with_pch());
-    ZASSERT(unit->top_level_decls().size() == 4U);
-}
-
 ZEST_CASE(DirectoryAnchorsIncludes) {
     /// The entry's `directory` governs relative search paths in the
     /// compile: -Igen must resolve against it, not the process cwd.
@@ -455,14 +426,14 @@ int main() { return 0; }
     // started_at is sampled before the compile runs (non-zero, recent).
     ZASSERT(preamble_unit->started_at().count() > 0);
 
-    // The deps should list files involved in building the PCH, each with
-    // the hash of the consumed bytes.
-    auto deps = preamble_unit->deps();
-    ZASSERT(!deps.empty());
-    for(auto& dep: deps) {
-        ZASSERT(!dep.path.empty());
-        ZASSERT(dep.hash != 0);
+    // The deps list the files the PCH read but its focus file, each with
+    // the hash of the bytes it consumed.
+    std::vector<std::string> paths;
+    for(auto& dep: preamble_unit->deps()) {
+        paths.push_back(dep.path);
+        ZEXPECT(dep.hash != 0u);
     }
+    ZEXPECT(paths == std::vector{TestVFS::path("preamble.h")});
 }
 
 ZEST_CASE(CorruptPCHAttributable) {
@@ -606,14 +577,9 @@ int main() {
 
     add_focus("main.cpp", content);
 
-    // compile_with_pch does the full PCH build + content compile cycle.
     ZASSERT(compile_with_pch());
-
-    // The resulting unit should have completed successfully.
-    ZASSERT(unit);
-
-    // Verify we can access the AST (top level decls should exist).
-    ZASSERT(unit->top_level_decls().size() >= 1U);
+    ZEXPECT(unit->diagnostics().empty());
+    ZEXPECT(names(unit->top_level_decls()) == std::vector<std::string>{"main"});
 }
 
 ZEST_CASE(PCHKeepsPreambleErrors) {
@@ -823,39 +789,6 @@ ZEST_CASE(PCHWithoutModule) {
     auto unit = clice::compile(std::move(preamble));
     ZASSERT(unit->completed());
     ZEXPECT(!unit->has_output());
-}
-
-ZEST_CASE(PCHContentDifference) {
-    // PCH should only contain the preamble portion; modifying code after
-    // the preamble should not require PCH rebuild.
-    add_file("common.h", R"(
-#pragma once
-struct Common { int val; };
-)");
-
-    llvm::StringRef content_v1 = R"(
-#include "common.h"
-
-int foo() { return 1; }
-)";
-
-    llvm::StringRef content_v2 = R"(
-#include "common.h"
-
-int foo() { return 2; }
-int bar() { return 3; }
-)";
-
-    // Both versions should have the same preamble bound.
-    auto bound_v1 = preamble_bound(content_v1);
-    auto bound_v2 = preamble_bound(content_v2);
-    ZASSERT(bound_v1 == bound_v2);
-
-    // Build PCH with v1.
-    add_focus("main.cpp", content_v1);
-    ZASSERT(compile_with_pch());
-    ZASSERT(unit);
-    ZASSERT(unit->top_level_decls().size() >= 1U);
 }
 
 /// The preamble build of `content` as `file`.

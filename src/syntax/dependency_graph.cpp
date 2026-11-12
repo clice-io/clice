@@ -180,18 +180,6 @@ llvm::SmallVector<Fid> DependencyGraph::all_files() const {
     return files;
 }
 
-std::size_t DependencyGraph::file_count() const {
-    return file_configs.size();
-}
-
-std::size_t DependencyGraph::edge_count() const {
-    std::size_t count = 0;
-    for(auto& [key, ids]: includes) {
-        count += ids.size();
-    }
-    return count;
-}
-
 void DependencyGraph::clear_includes(Fid path_id) {
     edges_changed += 1;
     auto it = file_configs.find(path_id);

@@ -296,18 +296,6 @@ ZEST_CASE(FreshCommitNotEvicted) {
     ZASSERT(store.lookup("pch", "big"));
 }
 
-ZEST_CASE(RewriteWins) {
-    TempDir tmp;
-    auto store = open_store(tmp);
-    register_lru(store);
-
-    // Keys are mutable (not fully content-addressed): a rewrite of the
-    // same key must serve the new content, never the old blob.
-    put(store, "pch", "k1", "first snapshot");
-    auto path = put(store, "pch", "k1", "second");
-    ZASSERT(read_file(path).value_or("") == "second");
-}
-
 ZEST_CASE(LruStaleBlobReplaced) {
     TempDir tmp;
     auto store = open_store(tmp);
@@ -443,6 +431,8 @@ ZEST_CASE(CommitOverwriteSameKey) {
     auto store = open_store(tmp);
     register_lru(store, 20);
 
+    // Keys are mutable (not fully content-addressed): a rewrite of the
+    // same key serves the new content, never the old blob.
     put(store, "pch", "k1", "first");
     auto path = put(store, "pch", "k1", "second");
     ZASSERT(read_file(path).value_or("") == "second");

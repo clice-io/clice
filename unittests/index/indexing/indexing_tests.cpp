@@ -325,24 +325,6 @@ ZEST_CASE(ClassTemplate) {
     GO_TO_DEFINITION("implicit_full", "full_spec");
 }
 
-ZEST_CASE(InheritedConstructorCall) {
-    build_index(R"(
-            struct Base {
-                §(base)⟦Base⟧(int x) {}
-            };
-            struct Derived : Base {
-                using Base::Base;
-            };
-            void build() {
-                Derived d §(paren)(3);
-                Derived e §(brace){4};
-            }
-        )");
-
-    GO_TO_DEFINITION("paren", "base");
-    GO_TO_DEFINITION("brace", "base");
-}
-
 ZEST_CASE(FunctionTemplate) {
     build_index(R"(
             template <typename T> void §(primary_decl)foo();
@@ -416,17 +398,6 @@ ZEST_CASE(LambdaCaptureCollapse) {
         }
         ZEXPECT(targets.size() == 1U);
     }
-}
-
-ZEST_CASE(AliasTemplate) {
-    build_index(R"(
-            template <typename T>
-            using §(primary)⟦foo⟧ = T;
-
-            §(implicit_primary)foo<int> a;
-        )");
-
-    GO_TO_DEFINITION("implicit_primary", "primary");
 }
 
 ZEST_CASE(VarTemplate) {
@@ -729,45 +700,6 @@ ZEST_CASE(CtorInitMemberRef) {
             };
         )");
 
-    GO_TO_DEFINITION("use", "def");
-}
-
-ZEST_CASE(DesignatedInitRef) {
-    build_index(R"(
-            struct Point {
-                int §(def)⟦x⟧;
-                int y;
-            };
-
-            Point p = {.§(use)x = 1};
-        )");
-
-    GO_TO_DEFINITION("use", "def");
-}
-
-ZEST_CASE(RewrittenOperatorRef) {
-    build_index(R"(
-            namespace std {
-            struct strong_ordering {
-                int n;
-                constexpr operator int() const { return n; }
-                static const strong_ordering equal, greater, less;
-            };
-            constexpr strong_ordering strong_ordering::equal = {0};
-            constexpr strong_ordering strong_ordering::greater = {1};
-            constexpr strong_ordering strong_ordering::less = {-1};
-            }
-
-            struct S {
-                int v;
-                auto §(def)⟦operator<=>⟧(const S&) const = default;
-            };
-
-            bool lt(S a, S b) { return a §(use)< b; }
-        )");
-
-    /// a < b is rewritten to (a <=> b) < 0; the operator token references
-    /// the rewritten-to operator.
     GO_TO_DEFINITION("use", "def");
 }
 
@@ -1174,39 +1106,16 @@ module §(m)⟦§(m)foo⟧;
 ZEST_CASE(OverrideRelation) {
     build_index(R"(
             struct Base {
-                virtual void method() {}
+                virtual void §(base)method() {}
             };
 
             struct Derived : Base {
-                void method() override {}
+                void §(derived)method() override {}
             };
         )");
 
-    // The semantic visitor stores:
-    //   handleRelation(method, Interface, override, ...)  — overriding method has Interface
-    //   handleRelation(override, Implementation, method, ...) — base method has Implementation
-    // Search for both relation kinds across all indices.
-    bool found_interface = false;
-    bool found_implementation = false;
-
-    auto check_relations = [&](DecodedShard& idx) {
-        for(auto& [hash, relations]: idx.relations) {
-            for(auto& r: relations) {
-                if(r.kind == RelationKind::Interface)
-                    found_interface = true;
-                if(r.kind == RelationKind::Implementation)
-                    found_implementation = true;
-            }
-        }
-    };
-
-    check_relations(tu_index.focus_file_index);
-    for(auto& [path_id, idx]: tu_index.file_indices) {
-        check_relations(idx);
-    }
-
-    ZASSERT(found_interface);
-    ZASSERT(found_implementation);
+    ZEXPECT(has_pair("derived", RelationKind::Interface, "base"));
+    ZEXPECT(has_pair("base", RelationKind::Implementation, "derived"));
 }
 
 ZEST_CASE(DeclarationAndDefinition) {

@@ -18,7 +18,6 @@ import :syntax.position;
 import :syntax.token;
 import :unittests.server.served_project_fixture;
 import :unittests.utils.anomaly_capture;
-import :unittests.utils.async;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.project_fixture;
 import :unittests.utils.temp_dir;
@@ -324,74 +323,16 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(EditInterruptsStaleCompile) {
-    // The didChange path: an edit with NO follow-up request makes the
-    // in-flight round outdated — cancelling its compile request makes the worker
-    // abandon the stale parse, the waiter resolves false (its result is
-    // for a buffer that no longer exists — the editor re-requests after
-    // an edit), and the next request compiles the fresh content. Liveness
-    // pin; the interruption content is pinned by
-    // StatefulWorker.IpcCancelInterruptsCompile.
-    AnomalyCapture anomalies;
-
-    TempDir tmp;
-    tmp.touch("edited_only.cpp", "");
-    auto src = tmp.path("edited_only.cpp");
-
-    ServedProjectFixture fixture(tmp.root);
-    auto& served = *fixture.served;
-    auto session = fixture.open(src, "int v0;\n");
-
-    bool waiter_done = false;
-    bool waiter_ok = false;
-    bool done = false;
-    auto body = [&]() -> async::task<> {
-        ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
-
-        async::task_group<> group;
-        auto waiter = [&]() -> async::task<> {
-            waiter_ok = co_await served.ensure_compiled(session);
-            waiter_done = true;
-        };
-        auto gate = gate_request<worker::CompileParams>(fixture, session->path_id);
-        group.spawn(waiter());
-        co_await parked(fixture.server.hooks, gate);
-        ZASSERT(fixture.compiling(session->path_id));
-
-        // What didChange does: fold the edit in, then tell the project.
-        session->set_text("int fixed;\n");
-        session->generation += 1;
-        served.edited(*session);
-        fixture.server.hooks.release(gate);
-        co_await group.join();
-
-        ZASSERT(waiter_done);
-        ZEXPECT(!waiter_ok);
-
-        // The next request (the editor re-queries after an edit) compiles
-        // the fresh content.
-        bool second_ok = co_await served.ensure_compiled(session);
-        ZEXPECT(second_ok);
-        ZEXPECT(served.current(session->path_id));
-
-        co_await served.shutdown();
-        co_await fixture.server.pool.stop();
-        done = true;
-    };
-    auto task = body();
-    fixture.loop.schedule(task);
-    fixture.loop.run();
-    ZEXPECT(done);
-}
-
-ZEST_CASE(OutdatedCompileCancelled) {
-    // An edit mid-compile makes the in-flight round outdated: the first waiter
-    // abandons (its buffer is gone), the edit interrupts the worker's
-    // parse, and the second waiter's respawned round compiles the new
-    // content. This pins the edit path's liveness; the interruption itself
-    // is pinned content-wise by StatefulWorker.IpcCancelInterruptsCompile.
+    // The didChange path: an edit makes the in-flight round outdated —
+    // cancelling its compile request makes the worker abandon the stale
+    // parse, its waiter resolves false (its result is for a buffer that no
+    // longer exists — the editor re-requests after an edit), and a request
+    // joining after the edit compiles the fresh content. Liveness pin; the
+    // interruption content is pinned by StatefulWorker.IpcCancelInterruptsCompile.
     AnomalyCapture anomalies;
 
     TempDir tmp;
@@ -402,23 +343,22 @@ ZEST_CASE(OutdatedCompileCancelled) {
     auto& served = *fixture.served;
     auto session = fixture.open(src, "int v0;\n");
 
-    bool first_done = false;
-    bool second_ok = false;
+    std::optional<bool> first_ok;
+    std::optional<bool> second_ok;
     bool done = false;
     auto body = [&]() -> async::task<> {
         ZASSERT(fixture.server.pool.start(worker_options(tmp, 0, 1)));
 
         async::task_group<> group;
         auto first = [&]() -> async::task<> {
-            [[maybe_unused]] bool ok = co_await served.ensure_compiled(session);
-            first_done = true;
+            first_ok = co_await served.ensure_compiled(session);
         };
         auto gate = gate_request<worker::CompileParams>(fixture, session->path_id);
         group.spawn(first());
         co_await parked(fixture.server.hooks, gate);
         ZASSERT(fixture.compiling(session->path_id));
 
-        // The edit arrives while the slow compile is in flight.
+        // What didChange does: fold the edit in, then tell the project.
         session->set_text("int fixed;\n");
         session->generation += 1;
         served.edited(*session);
@@ -430,8 +370,8 @@ ZEST_CASE(OutdatedCompileCancelled) {
         fixture.server.hooks.release(gate);
         co_await group.join();
 
-        ZEXPECT(first_done);
-        ZEXPECT(second_ok);
+        ZEXPECT(first_ok == false);
+        ZEXPECT(second_ok == true);
         ZEXPECT(served.current(session->path_id));
 
         co_await served.shutdown();
@@ -442,6 +382,7 @@ ZEST_CASE(OutdatedCompileCancelled) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(BufferImportBuildsPCM) {
@@ -728,6 +669,7 @@ ZEST_CASE(BufferImportRecorded) {
     // must reach this document's node.
     auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(IncludeImportRecorded) {
@@ -770,6 +712,7 @@ ZEST_CASE(IncludeImportRecorded) {
 
     auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(HostImportRecorded) {
@@ -813,6 +756,7 @@ ZEST_CASE(HostImportRecorded) {
     ZASSERT((context != nullptr && context->result.synthesized != nullptr));
     auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(SuffixImportRecorded) {
@@ -856,6 +800,7 @@ ZEST_CASE(SuffixImportRecorded) {
     ZASSERT((context != nullptr && context->result.synthesized != nullptr));
     auto dirtied = served.project.graph.invalidate(unresolved_import("m"));
     ZEXPECT(ranges::find(dirtied, NodeId{NodeKind::AST, session->path_id.raw}) != dirtied.end());
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(ForcedIncludeSkipsScan) {
@@ -1024,6 +969,7 @@ ZEST_CASE(PCHCrashStopsDocument) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(PCHCrashStopsBuild) {
@@ -1061,6 +1007,7 @@ ZEST_CASE(PCHCrashStopsBuild) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(QueuedRequestStops) {
@@ -1105,6 +1052,7 @@ ZEST_CASE(QueuedRequestStops) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(ClientCancelSparesCompile) {
@@ -1167,6 +1115,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(StaleReplyBecomesContentModified) {
@@ -1222,6 +1171,7 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(HarmlessKindKeepsStop) {
@@ -1256,6 +1206,7 @@ ZEST_CASE(HarmlessKindKeepsStop) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(PoisonPreambleShared) {
@@ -1314,6 +1265,7 @@ ZEST_CASE(PoisonPreambleShared) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(AbandonedPCHKeepsNoIndex) {
@@ -1365,8 +1317,11 @@ ZEST_CASE(AbandonedPCHKeepsNoIndex) {
         co_await held.wait();
         source.cancel();
         co_await group.join();
+        auto building = project.graph.compiling();
+        ZASSERT(building.size() == 1u);
         hooks.release(hold);
-        co_await wait_until(published);
+        co_await project.graph.attempt_finished(building.front());
+        ZASSERT(published());
 
         for(auto& entry: project.pchs) {
             ZEXPECT(!entry.getValue().built_index);
@@ -1381,6 +1336,7 @@ ZEST_CASE(AbandonedPCHKeepsNoIndex) {
     fixture.loop.schedule(task);
     fixture.loop.run();
     ZEXPECT(done);
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(GenerationGuardsPCHClear) {

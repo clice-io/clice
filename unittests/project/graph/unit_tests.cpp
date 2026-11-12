@@ -629,6 +629,7 @@ ZEST_CASE(CrashCountsOnPCH) {
                                                         Preempted,
                                                         Completed}));
     ZEXPECT(counts == (std::vector<unsigned>{0, 0, 0, 1, 0, 0, 1}));
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(PCHBuildIndexesWriter) {

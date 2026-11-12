@@ -57,7 +57,8 @@ inline WorkerPoolOptions worker_options(const TempDir& tmp,
     };
 }
 
-/// Returns once a worker parked the work behind `hooks`' gate `id`.
+/// Returns once `hooks`' hold `id` parked a reply, or a worker parked the
+/// work behind its gate `id`.
 inline async::task<> parked(TestHooks& hooks, std::uint64_t id) {
     async::event held;
     auto connection = hooks.on_held.connect([&](std::uint64_t each) {
@@ -65,8 +66,10 @@ inline async::task<> parked(TestHooks& hooks, std::uint64_t id) {
             held.set();
         }
     });
-    if(ranges::none_of(hooks.gates(),
-                       [&](const TestHooks::Gate& gate) { return gate.id == id && gate.parked; })) {
+    auto parks = [&](const auto& each) {
+        return each.id == id && each.parked;
+    };
+    if(ranges::none_of(hooks.gates(), parks) && ranges::none_of(hooks.holds(), parks)) {
         co_await held.wait();
     }
 }
@@ -80,6 +83,9 @@ struct WorkerHandle : zest::LoopFixture {
 
     /// Changes to the environment the worker inherits.
     std::vector<async::process::env_change> env;
+
+    /// Where the worker's stderr goes.
+    TempDir logs;
 
     /// The gates placed, and of them the ones the worker parked at.
     std::uint64_t gates = 0;
@@ -103,7 +109,7 @@ struct WorkerHandle : zest::LoopFixture {
         auto label = stateful ? "stateful" : "stateless";
 
 #ifndef _WIN32
-        std::string stderr_path = std::string("/tmp/clice_worker_stderr_") + label + ".log";
+        auto stderr_path = logs.path(std::format("{}.stderr", label));
         stderr_fd = ::open(stderr_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
 #endif
 

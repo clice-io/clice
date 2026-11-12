@@ -51,17 +51,6 @@ clang::FileID file(llvm::StringRef name) {
     return unit->file_id(TestVFS::path(name));
 }
 
-/// The names of `decls`, template arguments included.
-std::vector<std::string> names(llvm::ArrayRef<const clang::Decl*> decls) {
-    std::vector<std::string> result;
-    auto& policy = unit->context().getPrintingPolicy();
-    for(const auto* decl: decls) {
-        llvm::raw_string_ostream out(result.emplace_back());
-        llvm::cast<clang::NamedDecl>(decl)->getNameForDiagnostic(out, policy, false);
-    }
-    return result;
-}
-
 /// Compile `text` as body.h in host.cpp's context, the way a header context
 /// serves it: the prefix the command -includes, behind a marker; the
 /// opening of the class, entered next; the suffix after the text.
@@ -597,6 +586,21 @@ struct B {};
 )cpp");
     ZASSERT(compile());
     ZEXPECT(names(unit->top_level_decls()) == std::vector<std::string>{"a", "f", "B"});
+
+    // Nor does a header the PCH holds.
+    Tester pch;
+    pch.add_files("main.cpp", R"cpp(
+#[a.h]
+int header;
+#[main.cpp]
+#include "a.h"
+int a;
+void f();
+namespace n { int b; }
+struct B {};
+)cpp");
+    ZASSERT(pch.compile_with_pch());
+    ZEXPECT(pch.names(pch.unit->top_level_decls()) == std::vector<std::string>{"a", "f", "n", "B"});
 
     // The class a header context opens around the text encloses it.
     clear();

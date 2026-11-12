@@ -90,7 +90,8 @@ ZEST_CASE(BuildPCMThenCompileWithImport) {
 
         auto result = co_await sf.peer->send_request(params);
         ZASSERT(result);
-        ZEXPECT(result.value().version == 1);
+        ZEXPECT(result.value().status == worker::CompileStatus::Done);
+        ZEXPECT(result.value().diagnostics.empty());
 
         phase2_done = true;
         sf.peer->close_output();
@@ -200,7 +201,8 @@ ZEST_CASE(BuildPCMChainThenCompile) {
 
         auto result = co_await sf.peer->send_request(params);
         ZASSERT(result);
-        ZEXPECT(result.value().version == 1);
+        ZEXPECT(result.value().status == worker::CompileStatus::Done);
+        ZEXPECT(result.value().diagnostics.empty());
 
         compile_done = true;
         sf.peer->close_output();
@@ -278,7 +280,8 @@ ZEST_CASE(ModuleImplementationUnitWithWorker) {
 
         auto result = co_await sf.peer->send_request(params);
         ZASSERT(result);
-        ZEXPECT(result.value().version == 1);
+        ZEXPECT(result.value().status == worker::CompileStatus::Done);
+        ZEXPECT(result.value().diagnostics.empty());
 
         compile_done = true;
         sf.peer->close_output();

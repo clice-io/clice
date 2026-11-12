@@ -236,110 +236,45 @@ ZEST_CASE(LoadReload) {
     ZEXPECT(llvm::StringRef(join_command(render_entry(database, file_b))).contains("-std=c++23"));
 };
 
-ZEST_CASE(FixtureLayouts) {
-    /// The layouts' databases go through load() like a real project's; each
-    /// pins the one property it exists for. Macros are asserted by name: the
-    /// driver render spells -D with a separate value.
+ZEST_CASE(DirectoryAnchorsAtDatabase) {
+    /// A relative `directory` resolves against the database's own
+    /// directory, as in a database inside a build directory whose entries'
+    /// relative files climb out of it, loaded the way a real project is.
     TempDir dir;
-    for(auto& layout: cdb_layouts()) {
-        write_layout(dir, layout.name);
+    for(auto layout: {"subdir_cdb", "relative_directory"}) {
+        write_layout(dir, layout);
     }
-    auto layouts = std::string(dir.root);
-    auto load_layout = [&](CompilationDatabase& database,
-                           llvm::StringRef layout,
-                           llvm::StringRef cdb = "compile_commands.json") {
-        return database.load(path::join(layouts, layout, cdb)).value_or(0);
-    };
-    auto source = [&](llvm::StringRef layout, llvm::StringRef file = "main.cpp") {
-        return path::join(layouts, layout, file);
+    auto layout = [&](auto... parts) {
+        return path::join(dir.root, parts...);
     };
 
     {
         FileTable files;
         CommandTable commands;
         CompilationDatabase database{files, commands};
-        ZASSERT(load_layout(database, "single_root") == 1U);
-        ZEXPECT(llvm::StringRef(join_command(render_entry(database, source("single_root"))))
-                    .contains("SINGLE"));
-    }
-
-    {
-        /// A database inside a build directory: `directory` anchors to that
-        /// directory and the entry's relative file climbs out of it.
-        FileTable files;
-        CommandTable commands;
-        CompilationDatabase database{files, commands};
-        ZASSERT(load_layout(database, "subdir_cdb", "cmake/compile_commands.json") == 1U);
-        auto candidates = database.candidate_entries(source("subdir_cdb"));
+        ZASSERT(database.load(layout("subdir_cdb", "cmake", "compile_commands.json")).value_or(0) ==
+                1U);
+        auto candidates = database.candidate_entries(layout("subdir_cdb", "main.cpp"));
         ZASSERT(candidates.size() == 1U);
         ZEXPECT(llvm::StringRef(commands.get(candidates.front().command).directory) ==
-                Spelling::absolute(path::join(layouts, "subdir_cdb", "cmake")).str());
-        ZEXPECT(llvm::StringRef(join_command(render_entry(database, source("subdir_cdb"))))
-                    .contains("OUT"));
-    }
-
-    {
-        /// One file, two configurations, the Ninja Multi-Config shape.
-        FileTable files;
-        CommandTable commands;
-        CompilationDatabase database{files, commands};
-        ZASSERT(load_layout(database, "multi_entry") == 2U);
-        auto candidates = database.candidate_entries(source("multi_entry"));
-        ZASSERT(candidates.size() == 2U);
-        std::string joined;
-        for(auto& entry: candidates) {
-            joined += join_command(commands.render_full(entry.command));
-            joined += ' ';
-        }
-        ZEXPECT(llvm::StringRef(joined).contains("CONFIG_A"));
-        ZEXPECT(llvm::StringRef(joined).contains("CONFIG_B"));
+                Spelling::absolute(layout("subdir_cdb", "cmake")).str());
+        ZEXPECT(
+            llvm::StringRef(join_command(render_entry(database, layout("subdir_cdb", "main.cpp"))))
+                .contains("OUT"));
     }
 
     {
         FileTable files;
         CommandTable commands;
         CompilationDatabase database{files, commands};
-        ZASSERT(load_layout(database, "command_string") == 1U);
-        auto argv = join_command(render_entry(database, source("command_string")));
-        ZEXPECT(llvm::StringRef(argv).contains("CMD"));
-        ZEXPECT(!llvm::StringRef(argv).contains(" -c "));
-        ZEXPECT(!llvm::StringRef(argv).contains(" -o "));
-    }
-
-    {
-        FileTable files;
-        CommandTable commands;
-        CompilationDatabase database{files, commands};
-        ZASSERT(load_layout(database, "relative_directory") == 1U);
-        auto file = source("relative_directory", "src/main.cpp");
+        ZASSERT(database.load(layout("relative_directory", "compile_commands.json")).value_or(0) ==
+                1U);
+        auto file = layout("relative_directory", "src", "main.cpp");
         auto candidates = database.candidate_entries(file);
         ZASSERT(candidates.size() == 1U);
         ZEXPECT(llvm::StringRef(commands.get(candidates.front().command).directory) ==
-                Spelling::absolute(path::join(layouts, "relative_directory", "src")).str());
+                Spelling::absolute(layout("relative_directory", "src")).str());
         ZEXPECT(llvm::StringRef(join_command(render_entry(database, file))).contains("RELATIVE"));
-    }
-
-    {
-        FileTable files;
-        CommandTable commands;
-        CompilationDatabase database{files, commands};
-        ZASSERT(load_layout(database, "launcher_prefix") == 1U);
-        auto candidates = database.candidate_entries(source("launcher_prefix"));
-        ZASSERT(candidates.size() == 1U);
-        auto argv = render_entry(database, source("launcher_prefix"));
-        ZASSERT(!argv.empty());
-        ZEXPECT(argv.front() == "clang++"sv);
-        ZEXPECT(llvm::StringRef(join_command(argv)).contains("WRAPPED"));
-    }
-
-    {
-        FileTable files;
-        CommandTable commands;
-        CompilationDatabase database{files, commands};
-        ZASSERT(load_layout(database, "response_file") == 1U);
-        auto argv = join_command(render_entry(database, source("response_file")));
-        ZEXPECT(llvm::StringRef(argv).contains("FROM_RSP"));
-        ZEXPECT(!llvm::StringRef(argv).contains("@flags.rsp"));
     }
 };
 

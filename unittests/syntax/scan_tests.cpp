@@ -294,7 +294,7 @@ struct ModuleScanFixture {
 
     ModuleScanFixture(llvm::StringRef content, std::initializer_list<const char*> extra_args = {}) {
         auto begin = content.find("#[");
-        assert(begin != llvm::StringRef::npos && "fixture content needs a #[file] marker");
+        ZASSERT(begin != llvm::StringRef::npos);
         auto end = content.find(']', begin);
         scanned_path = TestVFS::path(content.slice(begin + 2, end));
 

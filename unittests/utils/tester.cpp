@@ -247,11 +247,11 @@ std::uint32_t Tester::point(llvm::StringRef name, llvm::StringRef file) {
 
     auto& offsets = sources.all_files[file].offsets;
     if(name.empty()) {
-        assert(offsets.size() == 1);
+        ZASSERT(offsets.size() == 1);
         return offsets.begin()->second;
     }
 
-    assert(offsets.contains(name));
+    ZASSERT(offsets.contains(name));
     return offsets.lookup(name);
 }
 
@@ -270,12 +270,22 @@ LocalSourceRange Tester::range(llvm::StringRef name, llvm::StringRef file) {
 
     auto& ranges = sources.all_files[file].ranges;
     if(name.empty()) {
-        assert(ranges.size() == 1);
+        ZASSERT(ranges.size() == 1);
         return ranges.begin()->second;
     }
 
-    assert(ranges.contains(name));
+    ZASSERT(ranges.contains(name));
     return ranges.lookup(name);
+}
+
+std::vector<std::string> Tester::names(llvm::ArrayRef<const clang::Decl*> decls) {
+    std::vector<std::string> result;
+    auto& policy = unit->context().getPrintingPolicy();
+    for(const auto* decl: decls) {
+        llvm::raw_string_ostream out(result.emplace_back());
+        llvm::cast<clang::NamedDecl>(decl)->getNameForDiagnostic(out, policy, false);
+    }
+    return result;
 }
 
 void Tester::prepare_driver(llvm::StringRef standard) {

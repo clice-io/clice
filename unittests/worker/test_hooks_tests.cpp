@@ -2,6 +2,7 @@ module clice;
 
 import :support.signal;
 import :unittests.utils;
+import :unittests.worker.helpers;
 import :worker.protocol;
 import :worker.test_hooks;
 
@@ -67,9 +68,7 @@ ZEST_CASE(hold_parks_until_release) {
         delivered = true;
     };
     auto test = [&]() -> async::task<> {
-        while(held.empty()) {
-            co_await async::yield();
-        }
+        co_await parked(hooks, id);
         ZEXPECT(held == std::vector{id});
         ZEXPECT(hooks.holds().front().parked);
         ZEXPECT(!delivered);
@@ -90,9 +89,7 @@ ZEST_CASE(hold_parks_one_reply) {
         delivered += 1;
     };
     auto test = [&]() -> async::task<> {
-        while(held.empty()) {
-            co_await async::yield();
-        }
+        co_await parked(hooks, id);
         // The other kind and the other file went through; the second index
         // reply finds the hold taken and goes through too.
         ZEXPECT(delivered == 3);
@@ -123,17 +120,16 @@ ZEST_CASE(release_before_arrival) {
 }
 
 ZEST_CASE(release_all_frees_parked) {
-    hooks.hold(BuildKind::Compile, "/w/a.cpp");
-    hooks.hold(BuildKind::PCH, "/w/b.cpp");
+    auto a = hooks.hold(BuildKind::Compile, "/w/a.cpp");
+    auto b = hooks.hold(BuildKind::PCH, "/w/b.cpp");
     int delivered = 0;
     auto reply = [&](BuildKind kind, llvm::StringRef file) -> async::task<> {
         co_await hooks.returned(kind, file);
         delivered += 1;
     };
     auto test = [&]() -> async::task<> {
-        while(held.size() < 2) {
-            co_await async::yield();
-        }
+        co_await parked(hooks, a);
+        co_await parked(hooks, b);
         hooks.release_all();
     };
     run(reply(BuildKind::Compile, "/w/a.cpp"), reply(BuildKind::PCH, "/w/b.cpp"), test());

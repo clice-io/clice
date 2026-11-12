@@ -3,7 +3,6 @@ module clice;
 import :project.graph.task_graph;
 import :support.signal;
 import :unittests.utils;
-import :unittests.utils.async;
 
 namespace clice::testing {
 namespace {
@@ -1068,7 +1067,7 @@ ZEST_CASE(waiter_cancel_releases) {
         auto driver = [&]() -> async::task<> {
             co_await manual.gate(a(1)).started.wait();
             probe.source.cancel();
-            co_await wait_until([&] { return !graph.is_compiling(a(1)); });
+            co_await graph.attempt_finished(a(1));
 
             ZEXPECT(probe.done);
             ZEXPECT(probe.result == std::nullopt);
@@ -1098,7 +1097,7 @@ ZEST_CASE(shared_dep_survives_cancel) {
             ZEXPECT(graph.refcount(b(5)) == 2u);
 
             p1.source.cancel();
-            co_await wait_until([&] { return !graph.is_compiling(a(1)); });
+            co_await graph.attempt_finished(a(1));
 
             ZEXPECT(graph.is_compiling(b(5)));
             ZEXPECT(manual.gate(b(5)).calls == 1);
@@ -1406,8 +1405,8 @@ ZEST_CASE(shutdown_with_inflight) {
 ZEST_CASE(randomized_stress) {
     // A fixed-seed, single-threaded interleaving of joins, cancellations,
     // invalidations and dispatch completions. Every dispatch races a
-    // semaphore against its advisory token — the run-to-reply discipline —
-    // and the graph's own assertions hold at every step.
+    // semaphore against its advisory token — the run-to-reply discipline.
+    // The graph's own assertions, built into Debug, hold at every step.
     async::semaphore permits{0};
     Adjacency adj;
     adj[a(1)] = {a(2), a(3)};
@@ -1461,6 +1460,13 @@ ZEST_CASE(randomized_stress) {
             probe->source.cancel();
         }
         co_await inflight.join();
+
+        // With no interest left, every attempt winds down on its own, before
+        // the shutdown would make it.
+        for(auto id: graph.compiling()) {
+            co_await graph.attempt_finished(id);
+        }
+        ZEXPECT(graph.idle());
     });
 }
 

@@ -15,10 +15,6 @@ using namespace std::literals;
 
 ZEST_SUITE(ToolchainTests, ToolchainFixture) {
 
-ZEST_CASE(InitiallyEmpty) {
-    ZEXPECT(!f.toolchain.has_cache());
-}
-
 ZEST_CASE(KeyIgnoresUserContent) {
     auto base = f.add("/fake", "/tmp/a.cpp", {"clang++", "-std=c++23", "/tmp/a.cpp"});
     auto user = f.add("/fake",
@@ -160,8 +156,6 @@ ZEST_CASE(FailedQueryCooldown) {
     auto ref = add("a.cpp", {driver.c_str()});
 
     auto first = f.failure(ref);
-    ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
-
     ZASSERT(fs::remove(driver));
     ZEXPECT(f.failure(ref) == first);
 }
@@ -174,14 +168,19 @@ ZEST_CASE(FailedQueryRetries) {
     auto b = add("b.cpp", {tmp.c_path("clang"), "-std=c++20"});
     llvm::SmallVector<CommandRef> refs = {a, b};
     f.toolchain.warm(refs);
-    ZEXPECT(f.toolchain.failed_count() == std::size_t(2));
+    ZEXPECT(llvm::StringRef(f.failure(b)).contains("not found"));
 
-    fake_clang(clang_job);
-    ZEXPECT(f.toolchain.resolve(a.command, a.language).has_value());
-    ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
+    auto driver = fake_clang(clang_job);
+    auto retried = f.toolchain.resolve(a.command, a.language);
+    ZASSERT(retried);
+    ZEXPECT(retried->query_failure == "");
     f.toolchain.warm(refs);
-    ZEXPECT(f.toolchain.failed_count() == std::size_t(0));
-    ZEXPECT(f.toolchain.query_count() == std::size_t(2));
+
+    // With the driver gone, only the query warm() ran again resolves b.
+    ZASSERT(fs::remove(driver));
+    auto resolution = f.toolchain.resolve(b.command, b.language);
+    ZASSERT(resolution);
+    ZEXPECT(resolution->query_failure == "");
 }
 
 ZEST_CASE(FailedQueryUnqueried) {
@@ -257,25 +256,32 @@ ZEST_CASE(WarmPartialFailure) {
     llvm::SmallVector<CommandRef> refs = {good, bad};
     f.toolchain.warm(refs);
 
-    // The successful query is cached; the failed one is negatively cached
-    // so later resolve() calls read the command unqueried without
-    // re-querying the driver.
-    ZEXPECT(f.toolchain.query_count() == std::size_t(1));
-    ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
-    ZEXPECT(f.toolchain.resolve(good.command, good.language).has_value());
+    // The successful query is cached: with the driver gone it still
+    // resolves. The failed one leaves its command read unqueried.
+    ZASSERT(fs::remove(driver));
+    auto resolution = f.toolchain.resolve(good.command, good.language);
+    ZASSERT(resolution);
+    ZEXPECT(resolution->query_failure == "");
     ZEXPECT(llvm::StringRef(f.failure(bad)).contains("clice-nonexistent-driver"));
-    ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
 }
 
 ZEST_CASE(WarmDedupesQueries) {
-    auto driver = fake_clang(clang_job);
+    // The driver records each run.
+    auto driver = fake_driver("clang",
+                              std::format(R"(echo run >> '{}'
+echo '{}' >&2
+)",
+                                          tmp.path("runs"),
+                                          clang_job));
     auto a = add("a.cpp", {driver.c_str(), "-std=c++23"});
     auto b = add("b.cpp", {driver.c_str(), "-std=c++23"});
     auto c = add("c.cpp", {driver.c_str(), "-std=c++17"});
 
     llvm::SmallVector<CommandRef> refs = {a, b, c};
     f.toolchain.warm(refs);
-    ZEXPECT(f.toolchain.query_count() == std::size_t(2));
+    auto runs = vfs::read_text(tmp.path("runs"));
+    ZASSERT(runs);
+    ZEXPECT(*runs == "run\nrun\n");
 
     // With the driver gone, only the query cache can still resolve.
     ZASSERT(fs::remove(driver));
@@ -304,7 +310,6 @@ echo '{2}' >&2
         refs.push_back(add(std::format("{}.cpp", i), {driver.c_str(), depth.c_str()}));
     }
     f.toolchain.warm(refs);
-    ZEXPECT(f.toolchain.query_count() == std::size_t(2 * cores));
 
     auto counts = vfs::read_text(tmp.path("counts"));
     ZASSERT(counts);

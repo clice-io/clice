@@ -309,9 +309,13 @@ ZEST_CASE(BornValidDefaults) {
 
 ZEST_CASE(FinalizeDerivesPaths) {
     Settings settings;
-    settings.finalize(CanonicalPath(Spelling::absolute("/workspace")));
-    ZEXPECT(!settings.project.cache_dir.empty());
-    ZEXPECT(!settings.project.logging_dir.empty());
+    CanonicalPath root(Spelling::absolute("/workspace"));
+    settings.finalize(root);
+    auto spelled = [&](llvm::StringRef relative) {
+        return CanonicalPath(Spelling::absolute(path::join(root, relative))).str();
+    };
+    ZEXPECT(settings.project.cache_dir == spelled(".clice"));
+    ZEXPECT(settings.project.logging_dir == spelled(".clice/logs"));
     ZEXPECT(settings.project.cache_dir_defaulted == true);
 }
 

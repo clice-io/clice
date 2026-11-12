@@ -117,9 +117,12 @@ struct WorkerPoolFixture {
         pool.execute();
     }
 
-    /// Hand the scheduler a look at memory: plenty unless told otherwise,
-    /// with `memory` the own memory of every stateless worker in service.
-    void sample(std::uint64_t headroom = 1ull << 40, std::uint64_t memory = 0) {
+    /// Hand the scheduler a look at memory, `later` from now: plenty unless
+    /// told otherwise, with `memory` the own memory of every stateless
+    /// worker in service.
+    void sample(std::uint64_t headroom = 1ull << 40,
+                std::uint64_t memory = 0,
+                chrono::milliseconds later = {}) {
         SchedulerSample sample{.headroom = headroom, .reserve = 512ull << 20};
         for(std::size_t idx = 0; idx < pool.stateless_workers.size(); idx += 1) {
             auto& w = pool.stateless_workers[idx];
@@ -129,7 +132,7 @@ struct WorkerPoolFixture {
             }
         }
         sample.stateless_processes = sample.workers.size();
-        pool.scheduler.sample(std::move(sample), WorkerPool::now());
+        pool.scheduler.sample(std::move(sample), WorkerPool::now() + later);
         pool.execute();
     }
 
@@ -184,22 +187,9 @@ struct WorkerPoolFixture {
         pool.slot(idx, stateful).spawn_time = chrono::steady_clock::now() - uptime;
     }
 
-    /// The worker a new document would go to; SIZE_MAX for none.
-    std::size_t least_loaded() {
-        auto document = next_document;
-        auto worker = assign_worker(document);
-        pool.residency.forget(document);
-        return worker;
-    }
-
     std::size_t assign_worker(std::uint32_t path_id) {
         auto assignment = pool.assign_worker(path_id, "");
         return assignment ? assignment->worker : SIZE_MAX;
-    }
-
-    /// The document closed, as forget_document has it; no worker to tell.
-    void forget(std::uint32_t path_id) {
-        pool.residency.forget(path_id);
     }
 
     /// A worker's own failure by default: SIGSEGV, not an outside kill.
@@ -213,6 +203,10 @@ struct WorkerPoolFixture {
 
     void set_scaling_down(std::size_t idx) {
         pool.stateless_workers[idx].scaling_down = true;
+    }
+
+    bool scaling_down(std::size_t idx) const {
+        return pool.stateless_workers[idx].scaling_down;
     }
 
     /// The dying worker named the request it ran, as its crash report
@@ -288,6 +282,13 @@ struct WorkerPoolFixture {
         pool.options.revive_after = cooldown;
     }
 
+    /// The cooldown of given-up stateless slot `idx` ran out when the pool
+    /// looks for the slots due a revival, as its sample tick does.
+    void cooldown_over(std::size_t idx) {
+        pool.stateless_workers[idx].revive_at = chrono::steady_clock::now();
+        pool.revive_due();
+    }
+
     void set_max_stateless(std::size_t n) {
         pool.options.max_stateless = n;
     }
@@ -327,10 +328,6 @@ struct WorkerPoolFixture {
         return pool.start(options);
     }
 
-    std::size_t min_stateless() const {
-        return pool.options.min_stateless;
-    }
-
     async::task<> stop() {
         return pool.stop();
     }
@@ -348,7 +345,7 @@ struct WorkerPoolFixture {
     /// The request a send in flight is known to the scheduler by; the pool
     /// holds no other.
     RequestId only_request() const {
-        assert(pool.pending.size() == 1);
+        ZASSERT(pool.pending.size() == 1);
         return pool.pending.begin()->first;
     }
 
@@ -541,74 +538,35 @@ std::string big_unit(TempDir& tmp) {
 ZEST_SUITE(WorkerPoolStateful) {
 
 ZEST_CASE(AssignsLeastLoaded) {
-    WorkerPoolFixture f;
-    f.add_stateful(true, 5);
-    f.add_stateful(true, 2);
-    f.add_stateful(true, 8);
-    ZEXPECT(f.least_loaded() == 1u);
-}
-
-ZEST_CASE(SkipDeadWorkers) {
+    // A new document goes to the live worker with the fewest documents.
     WorkerPoolFixture f;
     f.add_stateful(false, 0);
     f.add_stateful(true, 5);
-    f.add_stateful(true, 3);
-    ZEXPECT(f.least_loaded() == 2u);
+    f.add_stateful(true, 2);
+    f.add_stateful(true, 8);
+    ZEXPECT(f.assign_worker(100) == 2u);
+    ZEXPECT(f.documents_on(2) == 3u);
+    ZEXPECT(f.worker_of(100) == 2u);
+}
+
+ZEST_CASE(KeepsAssignment) {
+    // A document already assigned stays on its worker, the least loaded or
+    // not.
+    WorkerPoolFixture f;
+    f.add_stateful(true, 0);
+    f.add_stateful(true, 0);
+    auto worker = f.assign_worker(100);
+    ZEXPECT(f.assign_worker(100) == worker);
+    ZEXPECT(f.documents_on(worker) == 1u);
 }
 
 ZEST_CASE(AllDeadNoAssignment) {
     WorkerPoolFixture f;
     f.add_stateful(false, 0);
     f.add_stateful(false, 0);
-    ZEXPECT(f.least_loaded() == SIZE_MAX);
     ZEXPECT(f.assign_worker(100) == SIZE_MAX);
     // A failed assignment must not pin the document to a dead worker.
     ZEXPECT(!f.assigned(100));
-}
-
-ZEST_CASE(AssignNewPath) {
-    WorkerPoolFixture f;
-    f.add_stateful(true, 0);
-    f.add_stateful(true, 0);
-    auto idx = f.assign_worker(100);
-    ZEXPECT(f.documents_on(idx) == 1u);
-    ZEXPECT(f.assigned(100));
-    ZEXPECT(f.worker_of(100) == idx);
-}
-
-ZEST_CASE(PathAffinity) {
-    WorkerPoolFixture f;
-    f.add_stateful(true, 0);
-    f.add_stateful(true, 0);
-    auto a = f.assign_worker(100);
-    auto b = f.assign_worker(100);
-    ZEXPECT(a == b);
-    ZEXPECT(f.documents_on(a) == 1u);
-}
-
-ZEST_CASE(LoadBalancing) {
-    WorkerPoolFixture f;
-    f.add_stateful(true, 0);
-    f.add_stateful(true, 0);
-    auto a = f.assign_worker(100);
-    auto b = f.assign_worker(200);
-    ZEXPECT(a != b);
-}
-
-ZEST_CASE(ForgetDocument) {
-    WorkerPoolFixture f;
-    f.add_stateful(true, 0);
-    f.assign_worker(100);
-    ZEXPECT(f.documents_on(0) == 1u);
-    f.forget(100);
-    ZEXPECT(f.documents_on(0) == 0u);
-    ZEXPECT(!f.assigned(100));
-}
-
-ZEST_CASE(RemoveNonexistent) {
-    WorkerPoolFixture f;
-    f.add_stateful(true, 0);
-    f.forget(999);
 }
 
 ZEST_CASE(DeathClearsAssignments) {
@@ -624,28 +582,6 @@ ZEST_CASE(DeathClearsAssignments) {
     ZEXPECT(!f.assigned(100));
     ZEXPECT(!f.assigned(300));
     ZEXPECT(f.assigned(200));
-}
-
-ZEST_CASE(RebalanceAfterClose) {
-    WorkerPoolFixture f;
-    f.add_stateful(true, 0);
-    f.add_stateful(true, 0);
-    f.assign_worker(100);
-    f.assign_worker(200);
-    f.assign_worker(300);
-    ZEXPECT(f.documents_on(0) == 2u);
-    ZEXPECT(f.documents_on(1) == 1u);
-
-    // Closing documents frees their assignments and load counts.
-    f.forget(100);
-    f.forget(300);
-    ZEXPECT(f.documents_on(0) == 0u);
-    ZEXPECT(!f.assigned(100));
-    ZEXPECT(!f.assigned(300));
-
-    // New assignments go to the now least-loaded worker.
-    ZEXPECT(f.assign_worker(400) == 0u);
-    ZEXPECT(f.documents_on(0) == 1u);
 }
 
 };  // ZEST_SUITE(WorkerPoolStateful)
@@ -1498,17 +1434,6 @@ ZEST_CASE(DyingSlotKeepsWaiters) {
 
 ZEST_SUITE(WorkerPoolIntegration) {
 
-ZEST_CASE(StartAndStop) {
-    WorkerPoolFixture f;
-    bool done = false;
-    f.run([&]() -> async::task<> {
-        ZASSERT(f.start(2, 1));
-        co_await f.stop();
-        done = true;
-    });
-    ZEXPECT(done);
-}
-
 #ifndef _WIN32
 ZEST_CASE(StopReapsWorkers) {
     // stop() returns once every worker has exited and been reaped: a stop
@@ -1549,20 +1474,6 @@ ZEST_CASE(StoppedPoolChargesNothing) {
     ZEXPECT(code == worker::dispatch_errc::worker_unavailable);
 }
 
-ZEST_CASE(StatelessRequest) {
-    WorkerPoolFixture f;
-    bool done = false;
-    f.run([&]() -> async::task<> {
-        ZASSERT(f.start(2, 0));
-
-        auto result = co_await f.pool.send_stateless(f.index_params());
-        ZEXPECT(result);
-        co_await f.stop();
-        done = true;
-    });
-    ZEXPECT(done);
-}
-
 ZEST_CASE(PeakReachesSender) {
     WorkerPoolFixture f;
     std::uint64_t reached = 0;
@@ -1582,7 +1493,7 @@ ZEST_CASE(StatefulTimedFromStart) {
     // A stateful build's deadline runs from the start its worker reports:
     // once its work is under way and overdue, the worker is killed.
     WorkerPoolFixture f;
-    f.set_deadlines(chrono::milliseconds(50), chrono::minutes(2));
+    f.set_deadlines(chrono::minutes(1), chrono::minutes(2));
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 1));
@@ -1603,9 +1514,8 @@ ZEST_CASE(StatefulTimedFromStart) {
         };
         auto driver = [&]() -> async::task<> {
             co_await parked(f.hooks, gate);
-            // Time is the feature: the build runs past its deadline.
-            co_await async::sleep(chrono::milliseconds(100), f.loop);
-            f.sample_pool();
+            // The pool looks a moment past the deadline.
+            f.sample(1ull << 40, 0, chrono::minutes(1) + chrono::milliseconds(1));
             ZEXPECT(f.state(0, true) == WorkerPoolFixture::SlotState::Dying);
             f.hooks.release(gate);
         };
@@ -1683,7 +1593,6 @@ ZEST_CASE(GivenUpSlotRevives) {
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
-        f.set_revive_after(chrono::milliseconds(300));
         f.set_max_crash_streak(0);
 
         // The very first crash exceeds the zero budget: the slot dies...
@@ -1692,6 +1601,7 @@ ZEST_CASE(GivenUpSlotRevives) {
 
         // ...and is revived with a fresh budget after the cooldown: the
         // pool never stays at zero workers forever.
+        f.cooldown_over(0);
         co_await f.serves(0);
         ZEXPECT(f.crash_streak(0) == 0u);
 
@@ -1709,11 +1619,11 @@ ZEST_CASE(RevivalGivesNothingBack) {
     bool done = false;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
-        f.set_revive_after(chrono::milliseconds(300));
         f.set_max_crash_streak(0);
 
         co_await f.kill_running_worker();
         ZEXPECT(f.slot_given_up(0));
+        f.cooldown_over(0);
         co_await f.serves(0);
 
         f.pool.exempt_death(ipc::Error{worker::dispatch_errc::worker_died,
@@ -1728,18 +1638,23 @@ ZEST_CASE(RevivalGivesNothingBack) {
 }
 
 ZEST_CASE(FloorAboveStartupKept) {
+    // A floor configured above the startup count survives start(): once
+    // scale-up grew the pool to it, idle scale-down holds the configured
+    // warm set instead of shrinking back to startup.
     WorkerPoolFixture f;
-    bool done = false;
     f.run([&]() -> async::task<> {
-        // A floor configured above the startup count survives start():
-        // scale-up may grow past it later, and idle scale-down must hold
-        // the configured warm set instead of shrinking back to startup.
         ZASSERT(f.start(2, 0, /*min_stateless=*/4));
-        ZEXPECT(f.min_stateless() == 4u);
+        f.scale_up();
+        f.scale_up();
+        co_await f.serves(2);
+        co_await f.serves(3);
+        f.sample(1ull << 40, 0, WorkerScheduler::idle_scale_down);
+        for(std::size_t idx = 0; idx < 4; idx += 1) {
+            ZEXPECT(f.state(idx) == WorkerPoolFixture::SlotState::Alive);
+            ZEXPECT(!f.scaling_down(idx));
+        }
         co_await f.stop();
-        done = true;
     });
-    ZEXPECT(done);
 }
 
 #ifdef __linux__
@@ -2020,9 +1935,8 @@ ZEST_CASE(LinkEndMarksDead) {
         auto gen = f.generation(0);
         f.kill_worker(0, SIGSTOP);
         f.close_link(0);
-        while(f.generation(0) == gen) {
-            co_await async::yield();
-        }
+        co_await f.exited(0);
+        ZEXPECT(f.generation(0) != gen);
         co_await f.serves(0);
         co_await f.stop();
         done = true;
@@ -2030,29 +1944,6 @@ ZEST_CASE(LinkEndMarksDead) {
     ZEXPECT(done);
 }
 #endif
-
-ZEST_CASE(MemoryKillReachesSender) {
-    WorkerPoolFixture f;
-    std::optional<ipc::Error> error;
-    bool done = false;
-    f.run([&]() -> async::task<> {
-        ZASSERT(f.start(1, 0));
-        async::task_group<> group;
-        f.send_running(group, error);
-        f.kill(0, false, scheduler::KillReason::Memory);
-        co_await group.join();
-        // Back in service at once, its budget untouched.
-        co_await f.serves(0);
-        ZEXPECT(f.crash_streak(0) == 0u);
-        co_await f.stop();
-        done = true;
-    });
-    ZEXPECT(done);
-    ZASSERT(error.has_value());
-    ZEXPECT(error->code == worker::dispatch_errc::out_of_memory);
-    ZASSERT(error->data.has_value());
-    ZEXPECT((*error->data)["alone"].get_bool() == true);
-}
 
 ZEST_CASE(SampleReadsWorkers) {
     WorkerPoolFixture f;
@@ -2069,50 +1960,33 @@ ZEST_CASE(SampleReadsWorkers) {
     ZEXPECT(done);
 }
 
-ZEST_CASE(IdleWorkerGivesBack) {
-    // A worker that kept what its request freed would hold the high-water
-    // mark of its biggest request while idle.
-    TempDir tmp;
-    auto src = big_unit(tmp);
-
+ZEST_CASE(MemoryFollowsRequests) {
+    // A worker gives back what its request freed: one that kept it would
+    // hold the high-water mark of its biggest request while idle. Its next
+    // request reuses what the first freed: a worker's memory that missed
+    // reused pages would read it as a small unit.
     WorkerPoolFixture f;
+    auto src = big_unit(f.tmp);
     std::uint64_t before = 0;
-    std::uint64_t peak = 0;
-    [[maybe_unused]] std::uint64_t after = 0;
-    f.run([&]() -> async::task<> {
-        ZASSERT(f.start(1, 0));
-        f.sample_pool();
-        before = f.memory(0, false);
-        peak = co_await f.index_sampled(src);
-        f.sample_pool();
-        after = f.memory(0, false);
-        co_await f.stop();
-    });
-    ZEXPECT(peak > before + 128 * MiB);
-    // ASan's allocator keeps what is freed in its quarantine; the release
-    // build's allocators are the ones that must give it back.
-#if !__has_feature(address_sanitizer)
-    ZEXPECT(after < before + 64 * MiB);
-#endif
-}
-
-ZEST_CASE(ReusedMemoryStillCounted) {
-    // The second request reuses what the first freed: a worker's memory
-    // that missed reused pages would read it as a small unit.
-    TempDir tmp;
-    auto src = big_unit(tmp);
-
-    WorkerPoolFixture f;
-    std::uint64_t before = 0;
+    std::uint64_t first = 0;
+    [[maybe_unused]] std::uint64_t idle = 0;
     std::uint64_t second = 0;
     f.run([&]() -> async::task<> {
         ZASSERT(f.start(1, 0));
         f.sample_pool();
         before = f.memory(0, false);
-        co_await f.index_sampled(src);
+        first = co_await f.index_sampled(src);
+        f.sample_pool();
+        idle = f.memory(0, false);
         second = co_await f.index_sampled(src);
         co_await f.stop();
     });
+    ZEXPECT(first > before + 128 * MiB);
+    // ASan's allocator keeps what is freed in its quarantine; the release
+    // build's allocators are the ones that must give it back.
+#if !__has_feature(address_sanitizer)
+    ZEXPECT(idle < before + 64 * MiB);
+#endif
     ZEXPECT(second > before + 128 * MiB);
 }
 

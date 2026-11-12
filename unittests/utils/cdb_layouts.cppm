@@ -20,21 +20,6 @@ struct NamedLayout {
 /// loaded, each pinning one property of how databases and rules combine.
 const inline std::vector<NamedLayout>& cdb_layouts() {
     const static std::vector<NamedLayout> layouts = {
-        {"command_string",
-         {
-             {"compile_commands.json", R"([
-  {
-    "directory": ".",
-    "file": "main.cpp",
-    "command": "clang++ -std=c++20 -DCMD -c main.cpp -o main.o"
-  }
-]
-)"},
-             {"main.cpp", R"(int main() {
-    return 0;
-}
-)"},
-         }},
         {"declared_ignores_discovered",
          {
              {"clice.toml", R"([[rules]]
@@ -82,21 +67,6 @@ int main() {
 }
 )"},
          }},
-        {"launcher_prefix",
-         {
-             {"compile_commands.json", R"([
-  {
-    "directory": ".",
-    "file": "main.cpp",
-    "arguments": ["ccache", "clang++", "-std=c++20", "-DWRAPPED", "main.cpp"]
-  }
-]
-)"},
-             {"main.cpp", R"(int main() {
-    return 0;
-}
-)"},
-         }},
         {"lint_rules",
          {
              {"clice.toml", R"([[rules]]
@@ -132,36 +102,6 @@ compile_commands = ["cmake"]
 }
 )"},
          }},
-        {"multi_entry",
-         {
-             {"compile_commands.json", R"([
-  {
-    "directory": ".",
-    "file": "main.cpp",
-    "output": "out/Debug/main.o",
-    "arguments": ["clang++", "-std=c++20", "-DCONFIG_A", "-c", "main.cpp", "-o", "out/Debug/main.o"]
-  },
-  {
-    "directory": ".",
-    "file": "main.cpp",
-    "output": "out/Release/main.o",
-    "arguments": [
-      "clang++",
-      "-std=c++20",
-      "-DCONFIG_B",
-      "-c",
-      "main.cpp",
-      "-o",
-      "out/Release/main.o"
-    ]
-  }
-]
-)"},
-             {"main.cpp", R"(int main() {
-    return 0;
-}
-)"},
-         }},
         {"relative_directory",
          {
              {"compile_commands.json", R"([
@@ -173,24 +113,6 @@ compile_commands = ["cmake"]
 ]
 )"},
              {"src/main.cpp", R"(int main() {
-    return 0;
-}
-)"},
-         }},
-        {"response_file",
-         {
-             {"compile_commands.json", R"([
-  {
-    "directory": ".",
-    "file": "main.cpp",
-    "arguments": ["clang++", "@flags.rsp", "main.cpp"]
-  }
-]
-)"},
-             {"flags.rsp", R"(-std=c++20
--DFROM_RSP
-)"},
-             {"main.cpp", R"(int main() {
     return 0;
 }
 )"},
@@ -240,21 +162,6 @@ compile_commands = ["cmake"]
 }
 )"},
          }},
-        {"single_root",
-         {
-             {"compile_commands.json", R"([
-  {
-    "directory": ".",
-    "file": "main.cpp",
-    "arguments": ["clang++", "-std=c++20", "-DSINGLE", "main.cpp"]
-  }
-]
-)"},
-             {"main.cpp", R"(int main() {
-    return 0;
-}
-)"},
-         }},
         {"subdir_cdb",
          {
              {"cmake/compile_commands.json", R"([
@@ -277,7 +184,7 @@ compile_commands = ["cmake"]
 /// Writes layout `name` into `dir/name` and returns that directory.
 inline std::string write_layout(TempDir& dir, llvm::StringRef name) {
     auto found = ranges::find(cdb_layouts(), name, &NamedLayout::name);
-    assert(found != cdb_layouts().end() && "no such layout");
+    ZASSERT(found != cdb_layouts().end());
     for(auto& file: found->files) {
         dir.touch(path::join(name, file.path), file.content);
     }

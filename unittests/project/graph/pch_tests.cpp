@@ -97,6 +97,7 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
     auto* crash = project.pch_build_crash("shared-key");
     ZASSERT(crash != nullptr);
     ZEXPECT(!crash->cause.empty());
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(OwnerGoneStillRecords) {
@@ -127,6 +128,7 @@ ZEST_CASE(OwnerGoneStillRecords) {
 
     ZEXPECT(joined == Result::Failed);
     ZEXPECT(project.pch_build_crash("shared-key") != nullptr);
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(ForgetLiftsRefusal) {
@@ -147,6 +149,7 @@ ZEST_CASE(ForgetLiftsRefusal) {
     ZEXPECT(refused == Result::Failed);
     ZEXPECT(retried == Result::Failed);
     ZEXPECT(anomalies.count(logging::AnomalyId::WorkerCrash) == 2u);
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(DeclaredCrashLifts) {
@@ -182,6 +185,7 @@ ZEST_CASE(DeclaredCrashLifts) {
     ZEXPECT(refused == Result::Failed);
     ZEXPECT(fixed == Result::Success);
     ZEXPECT(anomalies.count(logging::AnomalyId::WorkerCrash) == 1u);
+    ZEXPECT(anomalies.trapped == std::vector<logging::AnomalyId>{});
 }
 
 ZEST_CASE(SharedBuildBothReady) {
