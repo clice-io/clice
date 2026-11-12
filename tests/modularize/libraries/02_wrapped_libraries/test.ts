@@ -64,7 +64,8 @@ test("writes the wrapping", async (t) => {
 
 // A second configuration, as its own run would have written it: alpha
 // exports blue for Color, its alias names another namespace, and one more
-// header is emptied.
+// header is emptied. alpha.h declares both under TWO and THREE, the
+// conditions of the configurations copied from it.
 function secondConfiguration(t: TestContext): void {
     copy(t, "wrap", "two");
     t.disk.edit(
@@ -80,18 +81,28 @@ function secondConfiguration(t: TestContext): void {
     t.disk.write("two/.modularize", t.disk.read("two/.modularize") + "mirror/alpha/alpha/wide.h\n");
 }
 
+// Each configuration's program as a merged plan builds it compiles cleanly,
+// under its condition, with the standard library's module sources and the
+// include roots of the first run, which the others are copies of.
 test("merges configurations", async (t) => {
     await indexed(t);
-    await t.cli(`modularize ${ARGS} --partition partition.json --out wrap`);
+    const one = await t.cli(`modularize ${ARGS} --partition partition.json --out wrap`);
     secondConfiguration(t);
-    await t.cli("modularize merge merges/two.json --out merged");
-    await t.cli("modularize merge merges/two.json --no-mirrors --out bare");
+    const merged = await t.cli("modularize merge merges/two.json --out merged");
+    await modularize.compiles(t, merged, "merged", { configuration: one, args: ["-DONE"] });
+    await modularize.compiles(t, merged, "merged", { configuration: one, args: ["-DTWO"] });
+    const bare = await t.cli("modularize merge merges/two.json --no-mirrors --out bare");
+    await modularize.compiles(t, bare, "bare", { configuration: one, args: ["-DONE"] });
+    await modularize.compiles(t, bare, "bare", { configuration: one, args: ["-DTWO"] });
     expect(t.disk.read("bare/alpha.cppm")).toBe(t.disk.read("merged/alpha.cppm"));
 
     // A third configuration like the second: what both export is under
     // either condition.
     copy(t, "two", "three");
-    await t.cli("modularize merge merges/three.json --out merged");
+    const three = await t.cli("modularize merge merges/three.json --out merged");
+    await modularize.compiles(t, three, "merged", { configuration: one, args: ["-DONE"] });
+    await modularize.compiles(t, three, "merged", { configuration: one, args: ["-DTWO"] });
+    await modularize.compiles(t, three, "merged", { configuration: one, args: ["-DTHREE"] });
 
     await t.cli("modularize merge merges/unconditioned.json --out merged");
     t.disk.write(
