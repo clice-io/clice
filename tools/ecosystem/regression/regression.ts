@@ -8,9 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { quote } from "shell-quote";
 import { entrySource, type DatabaseEntry } from "../../compat/database.ts";
-import { ANOMALY_PATTERN, logFiles } from "../../process_gate.ts";
-import { readLogs, undeclaredErrors } from "../../testing/logs/logs.ts";
-import { CRASHED_IN } from "../../testing/server/serve.ts";
+import { logFaults, readLogLines, sessionLogs, sessionsIn } from "../../process_gate.ts";
 import {
     includedHeaders,
     inPart,
@@ -22,7 +20,7 @@ import {
 } from "../database.ts";
 import type { PeakMemory } from "../memory.ts";
 import { wipeCache } from "../perf/servers.ts";
-import { compilerEnvironment, prepare } from "../prepare.ts";
+import { compilerEnvironment, loggingDir, prepare } from "../prepare.ts";
 import type { Platform } from "../project.ts";
 import {
     cliceCommit,
@@ -33,7 +31,7 @@ import {
     type Known,
     type RegressionJob,
 } from "../script.ts";
-import { confirm, entryOf } from "./confirm.ts";
+import { confirm, entryOf, type ReportedError } from "./confirm.ts";
 import { runIndex } from "./index.ts";
 import { CONCURRENCY, sweep, type Request, type SweepRun } from "./sweep.ts";
 
@@ -133,40 +131,36 @@ function rerun(options: RegressionOptions, extra: string): string {
 }
 
 /// Crashes and anomalies in the logs of every clice process the job ran
-/// fail it; the other error-level lines are recorded. The logs of earlier
-/// runs (`earlier`) are not this job's.
+/// fail it; the other error-level lines are recorded. The sessions of
+/// earlier runs (`earlier`) are not this job's.
 function scanLogs({ options, checkout, results }: Context, earlier: ReadonlySet<string>): void {
-    const lines = readLogs(
-        checkout,
-        logFiles(checkout).filter((file) => !earlier.has(file)),
-    );
-    for (const line of lines) {
-        const crashed = CRASHED_IN.exec(line.text);
-        if (crashed !== null) {
-            const file = inside(checkout, crashed[2] ?? "") ?? crashed[2] ?? "";
+    const sessions = sessionsIn(loggingDir(checkout)).filter((session) => !earlier.has(session));
+    for (const fault of logFaults(readLogLines(sessionLogs(sessions)))) {
+        const log = path.basename(fault.line.file);
+        const detail = `${log}: ${fault.line.text}`;
+        if (fault.kind === "crash") {
+            const file =
+                fault.file === undefined ? undefined : (inside(checkout, fault.file) ?? fault.file);
             results.failures.push({
                 kind: "crash",
-                request: crashed[1] ?? "",
-                file,
-                detail: `${line.file}: ${line.text}`,
+                ...(fault.request === undefined ? {} : { request: fault.request }),
+                ...(file === undefined ? {} : { file }),
+                detail,
                 repro: rerun(
                     options,
-                    line.file === "index.log" ? "--steps index" : `--file ${quote([file])}`,
+                    log === "index.log"
+                        ? "--steps index"
+                        : file === undefined
+                          ? ""
+                          : `--file ${quote([file])}`,
                 ),
             });
-        } else if (ANOMALY_PATTERN.test(line.text)) {
-            results.failures.push({
-                kind: "anomaly",
-                detail: `${line.file}: ${line.text}`,
-                repro: rerun(options, ""),
-            });
+        } else if (fault.kind === "anomaly") {
+            results.failures.push({ kind: "anomaly", detail, repro: rerun(options, "") });
+        } else {
+            results.logErrors.push(detail);
         }
     }
-    results.logErrors.push(
-        ...undeclaredErrors(lines, [CRASHED_IN, ANOMALY_PATTERN]).map(
-            (line) => `${line.file}: ${line.text}`,
-        ),
-    );
 }
 
 /// A failure for each unit clice failed or reported errors on that the
@@ -175,7 +169,7 @@ async function judgeUnits(
     units: {
         unit: string;
         host?: string | undefined;
-        errors?: string[];
+        errors?: ReportedError[];
         request?: string;
         repro: string;
     }[],
@@ -186,23 +180,44 @@ async function judgeUnits(
             results.compilerRejects.push({ unit: unit.unit, output: unit.output });
             continue;
         }
-        const unchecked =
-            unit.outcome === "unchecked" ? [`the compiler could not check it: ${unit.output}`] : [];
+        const compiler =
+            unit.outcome === "unchecked"
+                ? [`the compiler could not check it: ${unit.output}`]
+                : unit.outcome === "differs"
+                  ? [`the compiler rejects it for other errors:\n${unit.output}`]
+                  : [];
         results.failures.push({
             kind: unit.errors === undefined ? "index" : "compile",
             file: inside(checkout, unit.unit) ?? unit.unit,
             ...(unit.request === undefined ? {} : { request: unit.request }),
             detail: [
-                ...(unit.errors ?? ["the unit failed to index; the session log says why"]),
-                ...unchecked,
+                ...(unit.errors?.map((error) => located(checkout, error)) ?? [
+                    "the unit failed to index; the session log says why",
+                ]),
+                ...compiler,
             ].join("\n"),
             repro: unit.repro,
         });
     }
 }
 
-function located(error: { file: string; line: number; column: number; message: string }): string {
-    return `${error.file === "" ? "" : `${error.file}:${String(error.line)}:${String(error.column)}: `}${error.message}`;
+/// An error clice reported, as a compiler prints one.
+function located(checkout: string, error: ReportedError): string {
+    const place =
+        error.file === undefined || error.line === undefined
+            ? ""
+            : `${inside(checkout, error.file) ?? error.file}:${String(error.line)}:${String(error.column ?? 1)}: `;
+    return `${place}${error.message}`;
+}
+
+/// An error of clice's report, its file found in the checkout.
+function reported(
+    checkout: string,
+    error: { file: string; line: number; column: number; message: string },
+): ReportedError {
+    return error.file === ""
+        ? { message: error.message }
+        : { ...error, file: path.resolve(checkout, error.file) };
 }
 
 async function indexStep(context: Context): Promise<void> {
@@ -275,7 +290,7 @@ async function indexStep(context: Context): Promise<void> {
             ...report.failed.map((unit) => ({ unit, repro: again })),
             ...report.compiledWithErrors.map(({ unit, errors }) => ({
                 unit,
-                errors: errors.slice(0, 5).map(located),
+                errors: errors.slice(0, 5).map((error) => reported(checkout, error)),
                 repro: `cd ${quote([checkout])} && ${quote([options.clice, "inspect", "folding-range", unit])}`,
             })),
         ],
@@ -388,7 +403,7 @@ async function sweepStep(context: Context, jobEnd: number): Promise<void> {
                       {
                           unit,
                           host,
-                          errors: own.slice(0, 5).map(({ text }) => text),
+                          errors: own.slice(0, 5).map((error) => reported(checkout, error)),
                           request: "errors",
                           repro: rerun(options, `--file ${quote([file])} --only errors`),
                       },
@@ -397,26 +412,35 @@ async function sweepStep(context: Context, jobEnd: number): Promise<void> {
         context,
     );
     // A source inspect compiles with errors that the server opens clean is
-    // inspect's failure when the compiler compiles it too; one the compiler
-    // cannot check (the modules a header imports) stays the server's alone.
+    // inspect's failure unless the compiler rejects it for inspect's first
+    // error; one the compiler cannot check (the modules a header imports)
+    // stays the server's alone.
     const opened = new Set(run.serverErrors.map(({ file }) => file));
     const inspectOnly = run.serverOnly.filter(
         ({ file, compiled }) => compiled && !opened.has(file) && !judged.has(file),
     );
     const checked = await confirm(
         context.entries,
-        inspectOnly.map(({ file, why }) => ({ unit: path.join(checkout, file), file, why })),
+        inspectOnly.map(({ file, why }) => ({
+            unit: path.join(checkout, file),
+            file,
+            why,
+            errors: [{ message: why }],
+        })),
         context.env,
     );
     for (const { unit, file, why, outcome, output } of checked) {
         if (outcome === "rejected") {
             results.compilerRejects.push({ unit, output });
-        } else if (outcome === "accepted") {
+        } else if (outcome !== "unchecked") {
             results.failures.push({
                 kind: "inspect",
                 file,
                 request: "errors",
-                detail: `clice inspect compiles it with errors, the server and the compiler without:\n${why}`,
+                detail:
+                    outcome === "accepted"
+                        ? `clice inspect compiles it with errors, the server and the compiler without:\n${why}`
+                        : `clice inspect compiles it with errors, the server without, the compiler with others:\n${why}\n${output}`,
                 repro: `cd ${quote([checkout])} && ${quote([options.clice, "inspect", "folding-range", unit])}`,
             });
         }
@@ -453,7 +477,7 @@ export async function runRegression(options: RegressionOptions): Promise<Results
         return results;
     }
     results.prepareSeconds = (Date.now() - started) / 1000;
-    const earlier = new Set(logFiles(context.checkout));
+    const earlier = new Set(sessionsIn(loggingDir(context.checkout)));
 
     const steps = [
         ["index", indexStep],

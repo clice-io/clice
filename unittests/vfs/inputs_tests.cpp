@@ -24,14 +24,6 @@ std::uint64_t consumed_hash(llvm::StringRef path) {
     return text ? llvm::xxh3_64bits(*text) : 0;
 }
 
-/// Rewind a file's mtime out of the mtime-granularity guard window, the
-/// way real project files predate a server start. A freshly touched file
-/// is deliberately untrusted (see vfs::read_observed), so tests exercising
-/// the stat fast path must age their files first.
-void age_file(llvm::StringRef path) {
-    ZEXPECT(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
-}
-
 /// Whether the file table answers the file's current stat without a read.
 bool confirmed(FileTable& pool, llvm::StringRef path) {
     auto status = fs::status(path);

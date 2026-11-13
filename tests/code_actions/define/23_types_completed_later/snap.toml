@@ -1,0 +1,121 @@
+[[answers.load.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'load' out of line"
+compiles = true
+
+[answers.load.code_actions.edits]
+"main.cpp" = '''
+     int x;
+ };
++
++Config load() {
++}
+'''
+
+[[answers.panel.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Panel'"
+compiles = true
+
+[answers.panel.code_actions.edits]
+"main.cpp" = '''
+     int x;
+ };
++
++void Panel::take(Config config) {
++}
++
++void Panel::plain() {
++}
+'''
+
+[[answers.take.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Panel::take' out of line"
+compiles = true
+
+[answers.take.code_actions.edits]
+"main.cpp" = '''
+     int x;
+ };
++
++void Panel::take(Config config) {
++}
+'''
+
+[answers.make]
+code_actions = []
+
+[answers.other_namespace]
+code_actions = []
+
+[answers.anonymous_namespace]
+code_actions = []
+
+[answers.linkage_block]
+code_actions = []
+
+[[answers.qualified.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'a::g' out of line"
+compiles = true
+
+[answers.qualified.code_actions.edits]
+"namespaces.cpp" = '''
+ struct G {};
+
++G a::g() {
++}
++
+ struct F;
+'''
+
+[answers.inline_namespace]
+code_actions = []
+
+[answers.never_defined]
+code_actions = []
+
+[[answers.defined_after.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Waiting::take' out of line"
+compiles = true
+
+[answers.defined_after.code_actions.edits]
+"templates.cpp" = '''
+ struct Soon {};
+
++void Waiting::take(Soon<int> soon) {
++}
++
+ template <class F>
+ struct Function;
+'''
+
+[[answers.partial_specialization.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'set' inline"
+compiles = true
+
+[answers.partial_specialization.code_actions.edits]
+"templates.cpp" = '''
+
+ struct Widget {
+-    void set(Function<void()> callback);
++    void set(Function<void()> callback) {}
+ };
+'''
+
+[[answers.partial_specialization.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::set' out of line"
+compiles = true
+
+[answers.partial_specialization.code_actions.edits]
+"templates.cpp" = '''
+     void set(Function<void()> callback);
+ };
++
++void Widget::set(Function<void()> callback) {
++}
+'''

@@ -230,6 +230,7 @@ const PERF_KINDS: Record<string, string> = {
     setup: "The project could not be prepared",
     crash: "Runs clice crashed in",
     hang: "Runs clice stopped answering in",
+    anomaly: "Runs in which clice logged an anomaly",
     server: "Runs in which clice answered with an error",
     unfinished: "Scenarios the job's time ran out before",
     runner: "Errors of the runner itself",

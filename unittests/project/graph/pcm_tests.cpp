@@ -8,7 +8,6 @@ import :project.graph.task_graph;
 import :syntax.dependency_graph;
 import :syntax.scan;
 import :unittests.utils;
-import :unittests.utils.async;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :vfs.file_table;
@@ -106,10 +105,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
             co_return Result::Failed;
         }
         auto& entry = candidates.front();
-        CommandRef ref{entry.file,
-                       entry.command,
-                       cdb.commands().input_kind(entry.command, file_path),
-                       CommandSource::Database};
+        auto ref = database_command(cdb, entry);
 
         CompilationParams cp;
         cp.kind = CompilationKind::ModuleInterface;
@@ -150,10 +146,7 @@ ResolveFn make_resolver(CompilationDatabase& cdb, Toolchain& toolchain, Dependen
             return {};
         }
         auto& entry = candidates.front();
-        CommandRef ref{entry.file,
-                       entry.command,
-                       cdb.commands().input_kind(entry.command, file_path),
-                       CommandSource::Database};
+        auto ref = database_command(cdb, entry);
 
         auto scan_result = scan_precise(toolchain.render(ref, cdb.spelling(ref.file)).argv,
                                         cdb.commands().get(entry.command).directory);
@@ -180,8 +173,9 @@ struct ModuleTestEnv {
     std::uint32_t pcm_builds = 0;
     llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
 
-    void setup(llvm::ArrayRef<CDBEntry> entries, llvm::StringRef json) {
-        write_cdb(tmp, cdb, json);
+    /// List `entries` in the database and scan each under its own command.
+    void setup(llvm::ArrayRef<CDBEntry> entries) {
+        write_cdb(tmp, cdb, build_cdb_json(entries));
         scan_all(cdb, toolchain, graph);
     }
 
@@ -227,600 +221,10 @@ void execute(F&& fn) {
 }
 
 /// ============================================================================
-///                         Basic module interface units
-/// ============================================================================
-
-ZEST_CASE(single_module) {
-    env.tmp.touch("mod_a.cppm",
-                  "export module A;\n"
-                  "export int foo() { return 42; }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("mod_a.cppm"), {}}
-    });
-    env.setup({}, json);
-
-    ZASSERT(!env.graph.lookup_module("A").empty());
-    auto pid_a = env.lookup("A");
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid_a).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.contains(pid_a));
-    });
-}
-
-ZEST_CASE(chained_modules) {
-    env.tmp.touch("mod_a.cppm",
-                  "export module A;\n"
-                  "export int foo() { return 42; }\n");
-    env.tmp.touch("mod_b.cppm",
-                  "export module B;\n"
-                  "import A;\n"
-                  "export int bar() { return foo() + 1; }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("mod_a.cppm"), {}},
-        {env.tmp.root, env.tmp.path("mod_b.cppm"), {}},
-    });
-    env.setup({}, json);
-
-    auto pid_a = env.lookup("A");
-    auto pid_b = env.lookup("B");
-    ZASSERT(pid_a != UINT32_MAX);
-    ZASSERT(pid_b != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid_b).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.contains(pid_a));
-        ZEXPECT(env.pcm_paths.contains(pid_b));
-    });
-}
-
-ZEST_CASE(diamond_modules) {
-    env.tmp.touch("mod_base.cppm",
-                  "export module Base;\n"
-                  "export int base_val() { return 10; }\n");
-    env.tmp.touch("mod_left.cppm",
-                  "export module Left;\n"
-                  "import Base;\n"
-                  "export int left_val() { return base_val() + 1; }\n");
-    env.tmp.touch("mod_right.cppm",
-                  "export module Right;\n"
-                  "import Base;\n"
-                  "export int right_val() { return base_val() + 2; }\n");
-    env.tmp.touch("mod_top.cppm",
-                  "export module Top;\n"
-                  "import Left;\n"
-                  "import Right;\n"
-                  "export int top_val() { return left_val() + right_val(); }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("mod_base.cppm"),  {}},
-        {env.tmp.root, env.tmp.path("mod_left.cppm"),  {}},
-        {env.tmp.root, env.tmp.path("mod_right.cppm"), {}},
-        {env.tmp.root, env.tmp.path("mod_top.cppm"),   {}},
-    });
-    env.setup({}, json);
-
-    auto pid_top = env.lookup("Top");
-    ZASSERT(pid_top != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid_top).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.size() == 4u);
-    });
-}
-
-/// ============================================================================
-///                             Dotted module names
-/// ============================================================================
-
-ZEST_CASE(dotted_module_name) {
-    env.tmp.touch("io.cppm",
-                  "export module my.io;\n"
-                  "export void print() {}\n");
-    env.tmp.touch("app.cppm",
-                  "export module my.app;\n"
-                  "import my.io;\n"
-                  "export void run() { print(); }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("io.cppm"),  {}},
-        {env.tmp.root, env.tmp.path("app.cppm"), {}},
-    });
-    env.setup({}, json);
-
-    auto pid_app = env.lookup("my.app");
-    ZASSERT(pid_app != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid_app).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.size() == 2u);
-    });
-}
-
-/// ============================================================================
-///                          Re-export (export import)
-/// ============================================================================
-
-ZEST_CASE(re_export) {
-    env.tmp.touch("core.cppm",
-                  "export module Core;\n"
-                  "export int core_fn() { return 1; }\n");
-    env.tmp.touch("wrapper.cppm",
-                  "export module Wrapper;\n"
-                  "export import Core;\n"
-                  "export int wrap_fn() { return core_fn() + 10; }\n");
-    env.tmp.touch("user.cppm",
-                  "export module User;\n"
-                  "import Wrapper;\n"
-                  "// core_fn() is accessible via re-export.\n"
-                  "export int use_fn() { return core_fn() + wrap_fn(); }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("core.cppm"),    {}},
-        {env.tmp.root, env.tmp.path("wrapper.cppm"), {}},
-        {env.tmp.root, env.tmp.path("user.cppm"),    {}},
-    });
-    env.setup({}, json);
-
-    auto pid_user = env.lookup("User");
-    ZASSERT(pid_user != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid_user).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.size() == 3u);
-    });
-}
-
-/// ============================================================================
-///                             Export block syntax
-/// ============================================================================
-
-ZEST_CASE(export_block) {
-    env.tmp.touch("block.cppm",
-                  "export module Block;\n"
-                  "export {\n"
-                  "    int alpha() { return 1; }\n"
-                  "    int beta() { return 2; }\n"
-                  "    namespace ns {\n"
-                  "        int gamma() { return 3; }\n"
-                  "    }\n"
-                  "}\n");
-    env.tmp.touch("consumer.cppm",
-                  "export module Consumer;\n"
-                  "import Block;\n"
-                  "export int total() { return alpha() + beta() + ns::gamma(); }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("block.cppm"),    {}},
-        {env.tmp.root, env.tmp.path("consumer.cppm"), {}},
-    });
-    env.setup({}, json);
-
-    auto pid = env.lookup("Consumer");
-    ZASSERT(pid != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.size() == 2u);
-    });
-}
-
-/// ============================================================================
-///                            Global module fragment
-/// ============================================================================
-
-ZEST_CASE(global_module_fragment) {
-    env.tmp.touch("legacy.h", "inline int legacy_fn() { return 99; }\n");
-    env.tmp.touch("gmf.cppm",
-                  "module;\n"
-                  R"(#include "legacy.h")"
-                  "\n"
-                  "export module GMF;\n"
-                  "export int wrapped() { return legacy_fn(); }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("gmf.cppm"), {"-I", env.tmp.path(".")}},
-    });
-    env.setup({}, json);
-
-    auto pid = env.lookup("GMF");
-    ZASSERT(pid != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.contains(pid));
-    });
-}
-
-/// ============================================================================
-///                           Private module fragment
-/// ============================================================================
-
-ZEST_CASE(private_module_fragment) {
-    env.tmp.touch("priv.cppm",
-                  "export module Priv;\n"
-                  "export int public_fn();\n"
-                  "module : private;\n"
-                  "int public_fn() { return 42; }\n"
-                  "int private_helper() { return 7; }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("priv.cppm"), {}},
-    });
-    env.setup({}, json);
-
-    auto pid = env.lookup("Priv");
-    ZASSERT(pid != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.contains(pid));
-    });
-}
-
-/// ============================================================================
-///                   Module partitions — interface partition
-/// ============================================================================
-
-ZEST_CASE(partition_interface) {
-    // Partition interface unit.
-    env.tmp.touch("part.cppm",
-                  "export module M:Part;\n"
-                  "export int part_fn() { return 5; }\n");
-    // Primary module interface re-exports the partition.
-    env.tmp.touch("primary.cppm",
-                  "export module M;\n"
-                  "export import :Part;\n"
-                  "export int primary_fn() { return part_fn() + 1; }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("part.cppm"),    {}},
-        {env.tmp.root, env.tmp.path("primary.cppm"), {}},
-    });
-    env.setup({}, json);
-
-    // The partition is registered as "M:Part", primary as "M".
-    auto pid_m = env.lookup("M");
-    ZASSERT(pid_m != UINT32_MAX);
-    ZASSERT(env.lookup("M:Part") != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid_m).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        // Both partition and primary should be compiled.
-        ZEXPECT(env.pcm_paths.size() == 2u);
-    });
-}
-
-/// ============================================================================
-///                             Multiple partitions
-/// ============================================================================
-
-ZEST_CASE(multiple_partitions) {
-    env.tmp.touch("part_a.cppm",
-                  "export module Lib:A;\n"
-                  "export int a_fn() { return 1; }\n");
-    env.tmp.touch("part_b.cppm",
-                  "export module Lib:B;\n"
-                  "export int b_fn() { return 2; }\n");
-    env.tmp.touch("lib.cppm",
-                  "export module Lib;\n"
-                  "export import :A;\n"
-                  "export import :B;\n"
-                  "export int lib_fn() { return a_fn() + b_fn(); }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("part_a.cppm"), {}},
-        {env.tmp.root, env.tmp.path("part_b.cppm"), {}},
-        {env.tmp.root, env.tmp.path("lib.cppm"),    {}},
-    });
-    env.setup({}, json);
-
-    auto pid_lib = env.lookup("Lib");
-    ZASSERT(pid_lib != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid_lib).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        // Lib:A, Lib:B, and Lib.
-        ZEXPECT(env.pcm_paths.size() == 3u);
-    });
-}
-
-/// ============================================================================
-///          Partition importing another partition (within same module)
-/// ============================================================================
-
-ZEST_CASE(partition_chain) {
-    env.tmp.touch("types.cppm",
-                  "export module Sys:Types;\n"
-                  "export struct Config { int value = 0; };\n");
-    env.tmp.touch("core.cppm",
-                  "export module Sys:Core;\n"
-                  "import :Types;\n"
-                  "export Config make_config() { return {42}; }\n");
-    env.tmp.touch("sys.cppm",
-                  "export module Sys;\n"
-                  "export import :Types;\n"
-                  "export import :Core;\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("types.cppm"), {}},
-        {env.tmp.root, env.tmp.path("core.cppm"),  {}},
-        {env.tmp.root, env.tmp.path("sys.cppm"),   {}},
-    });
-    env.setup({}, json);
-
-    auto pid_sys = env.lookup("Sys");
-    ZASSERT(pid_sys != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid_sys).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        // Sys:Types, Sys:Core, Sys.
-        ZEXPECT(env.pcm_paths.size() == 3u);
-    });
-}
-
-/// ============================================================================
-///                        Module with exported namespace
-/// ============================================================================
-
-ZEST_CASE(export_namespace) {
-    env.tmp.touch("ns.cppm",
-                  "export module NS;\n"
-                  "export namespace math {\n"
-                  "    int add(int a, int b) { return a + b; }\n"
-                  "    int mul(int a, int b) { return a * b; }\n"
-                  "}\n");
-    env.tmp.touch("calc.cppm",
-                  "export module Calc;\n"
-                  "import NS;\n"
-                  "export int compute() { return math::add(3, math::mul(4, 5)); }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("ns.cppm"),   {}},
-        {env.tmp.root, env.tmp.path("calc.cppm"), {}},
-    });
-    env.setup({}, json);
-
-    auto pid = env.lookup("Calc");
-    ZASSERT(pid != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.size() == 2u);
-    });
-}
-
-/// ============================================================================
-///                       GMF with include + module import
-/// ============================================================================
-
-ZEST_CASE(gmf_with_import) {
-    env.tmp.touch("util.h", "inline int util_helper() { return 7; }\n");
-    env.tmp.touch("base.cppm",
-                  "export module Base;\n"
-                  "export int base() { return 100; }\n");
-    env.tmp.touch("combined.cppm",
-                  "module;\n"
-                  R"(#include "util.h")"
-                  "\n"
-                  "export module Combined;\n"
-                  "import Base;\n"
-                  "export int combined() { return base() + util_helper(); }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("base.cppm"),     {}                       },
-        {env.tmp.root, env.tmp.path("combined.cppm"), {"-I", env.tmp.path(".")}},
-    });
-    env.setup({}, json);
-
-    auto pid = env.lookup("Combined");
-    ZASSERT(pid != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.size() == 2u);
-    });
-}
-
-/// ============================================================================
-///                            Deep chain (5 modules)
-/// ============================================================================
-
-ZEST_CASE(deep_chain) {
-    env.tmp.touch("m1.cppm",
-                  "export module M1;\n"
-                  "export int f1() { return 1; }\n");
-    env.tmp.touch("m2.cppm",
-                  "export module M2;\n"
-                  "import M1;\n"
-                  "export int f2() { return f1() + 1; }\n");
-    env.tmp.touch("m3.cppm",
-                  "export module M3;\n"
-                  "import M2;\n"
-                  "export int f3() { return f2() + 1; }\n");
-    env.tmp.touch("m4.cppm",
-                  "export module M4;\n"
-                  "import M3;\n"
-                  "export int f4() { return f3() + 1; }\n");
-    env.tmp.touch("m5.cppm",
-                  "export module M5;\n"
-                  "import M4;\n"
-                  "export int f5() { return f4() + 1; }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("m1.cppm"), {}},
-        {env.tmp.root, env.tmp.path("m2.cppm"), {}},
-        {env.tmp.root, env.tmp.path("m3.cppm"), {}},
-        {env.tmp.root, env.tmp.path("m4.cppm"), {}},
-        {env.tmp.root, env.tmp.path("m5.cppm"), {}},
-    });
-    env.setup({}, json);
-
-    auto pid = env.lookup("M5");
-    ZASSERT(pid != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.size() == 5u);
-    });
-}
-
-/// ============================================================================
-///                Multiple independent modules (no shared deps)
-/// ============================================================================
-
-ZEST_CASE(independent_modules) {
-    env.tmp.touch("x.cppm",
-                  "export module X;\n"
-                  "export int x() { return 1; }\n");
-    env.tmp.touch("y.cppm",
-                  "export module Y;\n"
-                  "export int y() { return 2; }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("x.cppm"), {}},
-        {env.tmp.root, env.tmp.path("y.cppm"), {}},
-    });
-    env.setup({}, json);
-
-    auto pid_x = env.lookup("X");
-    auto pid_y = env.lookup("Y");
-    ZASSERT(pid_x != UINT32_MAX);
-    ZASSERT(pid_y != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto r1 = co_await cg->compile(pid_x).catch_cancel();
-        ZEXPECT((r1.has_value() && *r1));
-        auto r2 = co_await cg->compile(pid_y).catch_cancel();
-        ZEXPECT((r2.has_value() && *r2));
-        ZEXPECT(env.pcm_paths.size() == 2u);
-    });
-}
-
-/// ============================================================================
-///                         Module with template exports
-/// ============================================================================
-
-ZEST_CASE(template_export) {
-    env.tmp.touch("tmpl.cppm",
-                  "export module Tmpl;\n"
-                  "export template<typename T>\n"
-                  "T identity(T x) { return x; }\n"
-                  "export template<typename T, typename U>\n"
-                  "auto pair_sum(T a, U b) { return a + b; }\n");
-    env.tmp.touch("use_tmpl.cppm",
-                  "export module UseTmpl;\n"
-                  "import Tmpl;\n"
-                  "export int test() { return identity(42) + pair_sum(1, 2); }\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("tmpl.cppm"),     {}},
-        {env.tmp.root, env.tmp.path("use_tmpl.cppm"), {}},
-    });
-    env.setup({}, json);
-
-    auto pid = env.lookup("UseTmpl");
-    ZASSERT(pid != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.size() == 2u);
-    });
-}
-
-/// ============================================================================
-///           Module with class export and inheritance across modules
-/// ============================================================================
-
-ZEST_CASE(class_export_inheritance) {
-    env.tmp.touch("shape.cppm",
-                  "export module Shape;\n"
-                  "export class Shape {\n"
-                  "public:\n"
-                  "    virtual ~Shape() = default;\n"
-                  "    virtual int area() const = 0;\n"
-                  "};\n");
-    env.tmp.touch("circle.cppm",
-                  "export module Circle;\n"
-                  "import Shape;\n"
-                  "export class Circle : public Shape {\n"
-                  "    int r;\n"
-                  "public:\n"
-                  "    Circle(int r) : r(r) {}\n"
-                  "    int area() const override { return 3 * r * r; }\n"
-                  "};\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("shape.cppm"),  {}},
-        {env.tmp.root, env.tmp.path("circle.cppm"), {}},
-    });
-    env.setup({}, json);
-
-    auto pid = env.lookup("Circle");
-    ZASSERT(pid != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.size() == 2u);
-    });
-}
-
-/// ============================================================================
 ///              Recompile after update (invalidation + recompile)
 /// ============================================================================
 
-ZEST_CASE(recompile_after_update) {
+ZEST_CASE(RecompileAfterUpdate) {
     env.tmp.touch("leaf.cppm",
                   "export module Leaf;\n"
                   "export int leaf() { return 1; }\n");
@@ -829,11 +233,10 @@ ZEST_CASE(recompile_after_update) {
                   "import Leaf;\n"
                   "export int mid() { return leaf() + 1; }\n");
 
-    auto json = build_cdb_json({
+    env.setup({
         {env.tmp.root, env.tmp.path("leaf.cppm"), {}},
         {env.tmp.root, env.tmp.path("mid.cppm"),  {}},
     });
-    env.setup({}, json);
 
     auto pid_leaf = env.lookup("Leaf");
     auto pid_mid = env.lookup("Mid");
@@ -863,83 +266,10 @@ ZEST_CASE(recompile_after_update) {
 }
 
 /// ============================================================================
-///   Partition with GMF (#include inside global module fragment of partition)
-/// ============================================================================
-
-ZEST_CASE(partition_with_gmf) {
-    env.tmp.touch("config.h", "#define MAX_SIZE 100\n");
-    env.tmp.touch("part_cfg.cppm",
-                  "module;\n"
-                  R"(#include "config.h")"
-                  "\n"
-                  "export module Cfg:Limits;\n"
-                  "export constexpr int max_size = MAX_SIZE;\n");
-    env.tmp.touch("cfg.cppm",
-                  "export module Cfg;\n"
-                  "export import :Limits;\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("part_cfg.cppm"), {"-I", env.tmp.path(".")}},
-        {env.tmp.root, env.tmp.path("cfg.cppm"),      {}                       },
-    });
-    env.setup({}, json);
-
-    auto pid = env.lookup("Cfg");
-    ZASSERT(pid != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        ZEXPECT(env.pcm_paths.size() == 2u);
-    });
-}
-
-/// ============================================================================
-///                   Cross-module partition + external import
-/// ============================================================================
-
-ZEST_CASE(partition_external_import) {
-    // External module.
-    env.tmp.touch("ext.cppm",
-                  "export module Ext;\n"
-                  "export int ext_val() { return 99; }\n");
-    // Partition that imports the external module.
-    env.tmp.touch("part.cppm",
-                  "export module App:Core;\n"
-                  "import Ext;\n"
-                  "export int core_fn() { return ext_val() + 1; }\n");
-    // Primary module interface.
-    env.tmp.touch("app.cppm",
-                  "export module App;\n"
-                  "export import :Core;\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("ext.cppm"),  {}},
-        {env.tmp.root, env.tmp.path("part.cppm"), {}},
-        {env.tmp.root, env.tmp.path("app.cppm"),  {}},
-    });
-    env.setup({}, json);
-
-    auto pid_app = env.lookup("App");
-    ZASSERT(pid_app != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid_app).catch_cancel();
-        ZEXPECT(result);
-        ZEXPECT(*result);
-        // Ext, App:Core, App.
-        ZEXPECT(env.pcm_paths.size() == 3u);
-    });
-}
-
-/// ============================================================================
 ///                      Diamond update cascade + recompile
 /// ============================================================================
 
-ZEST_CASE(diamond_update_cascade) {
+ZEST_CASE(DiamondUpdateCascade) {
     env.tmp.touch("mod_base.cppm",
                   "export module Base;\n"
                   "export int base_val() { return 10; }\n");
@@ -957,13 +287,12 @@ ZEST_CASE(diamond_update_cascade) {
                   "import Right;\n"
                   "export int top_val() { return left_val() + right_val(); }\n");
 
-    auto json = build_cdb_json({
+    env.setup({
         {env.tmp.root, env.tmp.path("mod_base.cppm"),  {}},
         {env.tmp.root, env.tmp.path("mod_left.cppm"),  {}},
         {env.tmp.root, env.tmp.path("mod_right.cppm"), {}},
         {env.tmp.root, env.tmp.path("mod_top.cppm"),   {}},
     });
-    env.setup({}, json);
 
     auto pid_base = env.lookup("Base");
     auto pid_left = env.lookup("Left");
@@ -1008,7 +337,7 @@ ZEST_CASE(diamond_update_cascade) {
 ///        Verify resolve_fn is re-invoked after update (resolved=false)
 /// ============================================================================
 
-ZEST_CASE(re_resolve_after_update) {
+ZEST_CASE(ResolveAgainAfterUpdate) {
     // Start with Mid importing Leaf.
     env.tmp.touch("leaf.cppm",
                   "export module Leaf;\n"
@@ -1021,12 +350,11 @@ ZEST_CASE(re_resolve_after_update) {
                   "import Leaf;\n"
                   "export int mid() { return leaf() + 1; }\n");
 
-    auto json = build_cdb_json({
+    env.setup({
         {env.tmp.root, env.tmp.path("leaf.cppm"),  {}},
         {env.tmp.root, env.tmp.path("extra.cppm"), {}},
         {env.tmp.root, env.tmp.path("mid.cppm"),   {}},
     });
-    env.setup({}, json);
 
     auto pid_leaf = env.lookup("Leaf");
     auto pid_extra = env.lookup("Extra");
@@ -1064,7 +392,7 @@ ZEST_CASE(re_resolve_after_update) {
 ///              Compilation failure propagation (real clang error)
 /// ============================================================================
 
-ZEST_CASE(compile_failure_propagation) {
+ZEST_CASE(CompileFailurePropagates) {
     // Good module.
     env.tmp.touch("good.cppm",
                   "export module Good;\n"
@@ -1075,11 +403,10 @@ ZEST_CASE(compile_failure_propagation) {
                   "import Good;\n"
                   "export int bad() { return UNDEFINED_SYMBOL; }\n");
 
-    auto json = build_cdb_json({
+    env.setup({
         {env.tmp.root, env.tmp.path("good.cppm"), {}},
         {env.tmp.root, env.tmp.path("bad.cppm"),  {}},
     });
-    env.setup({}, json);
 
     auto pid_bad = env.lookup("Bad");
     ZASSERT(pid_bad != UINT32_MAX);
@@ -1099,71 +426,10 @@ ZEST_CASE(compile_failure_propagation) {
 }
 
 /// ============================================================================
-///        Module implementation unit (consumes PCM, doesn't produce one)
-/// ============================================================================
-
-ZEST_CASE(module_implementation_unit) {
-    // Module interface unit — produces PCM.
-    env.tmp.touch("iface.cppm",
-                  "export module Greeter;\n"
-                  "export const char* greet();\n");
-    // Module implementation unit — consumes PCM, no export.
-    env.tmp.touch("impl.cpp",
-                  "module Greeter;\n"
-                  R"(const char* greet() { return "hello"; })"
-                  "\n");
-
-    auto json = build_cdb_json({
-        {env.tmp.root, env.tmp.path("iface.cppm"), {}},
-        {env.tmp.root, env.tmp.path("impl.cpp"),   {}},
-    });
-    env.setup({}, json);
-
-    auto pid_iface = env.lookup("Greeter");
-    ZASSERT(pid_iface != UINT32_MAX);
-
-    make_graph();
-    execute([&]() -> async::task<> {
-        // Build the interface PCM via CompileGraph.
-        auto r1 = co_await cg->compile(pid_iface).catch_cancel();
-        ZEXPECT((r1.has_value() && *r1));
-        ZEXPECT(env.pcm_paths.contains(pid_iface));
-
-        // Now compile the implementation unit as Content (like a stateful worker would).
-        auto impl_path = env.tmp.path("impl.cpp");
-        auto candidates = env.cdb.candidate_entries(impl_path);
-        ZASSERT(!candidates.empty());
-        auto& impl_entry = candidates.front();
-        CommandRef impl_ref{impl_entry.file,
-                            impl_entry.command,
-                            env.cdb.commands().input_kind(impl_entry.command, impl_path),
-                            CommandSource::Database};
-
-        CompilationParams cp;
-        cp.kind = CompilationKind::Content;
-        cp.input.directory = env.cdb.commands().get(impl_entry.command).directory;
-        auto arguments = env.toolchain.render(impl_ref, env.cdb.spelling(impl_ref.file)).argv;
-        cp.input.arguments.assign(arguments.begin(), arguments.end());
-        // Pass the built PCM so clang can resolve `module Greeter;`.
-        for(auto& [pid, pcm_path]: env.pcm_paths) {
-            for(auto& [mod_name, mod_ids]: env.graph.modules()) {
-                if(ranges::find(mod_ids, Fid{pid}) != mod_ids.end()) {
-                    cp.input.pcms.try_emplace(mod_name, pcm_path);
-                    break;
-                }
-            }
-        }
-
-        auto unit = compile(std::move(cp));
-        ZEXPECT(unit->completed());
-    });
-}
-
-/// ============================================================================
 ///    Shared dependency: switching import target must not kill or restart it
 /// ============================================================================
 
-ZEST_CASE(shared_dep_import_switch) {
+ZEST_CASE(SharedDependencyImportSwitch) {
     env.tmp.touch("shared.cppm",
                   "export module Shared;\n"
                   "export int shared_val() { return 1; }\n");
@@ -1176,12 +442,11 @@ ZEST_CASE(shared_dep_import_switch) {
                   "import Shared;\n"
                   "export int c_val() { return shared_val(); }\n");
 
-    auto json = build_cdb_json({
+    env.setup({
         {env.tmp.root, env.tmp.path("shared.cppm"), {}},
         {env.tmp.root, env.tmp.path("a.cppm"),      {}},
         {env.tmp.root, env.tmp.path("c.cppm"),      {}},
     });
-    env.setup({}, json);
 
     auto pid_shared = env.lookup("Shared");
     auto pid_a = env.lookup("A");
@@ -1238,7 +503,7 @@ ZEST_CASE(shared_dep_import_switch) {
             // shared module's interest never drops to zero.
             start_c.set();
             req_a.cancel();
-            co_await wait_until([&] { return !cg->is_compiling(pid_a); });
+            co_await cg->graph.attempt_finished(nid(pid_a));
 
             ZEXPECT(cg->is_compiling(pid_shared));
             ZEXPECT(cg->refcount(pid_shared) == 1u);
@@ -1264,7 +529,7 @@ ZEST_CASE(shared_dep_import_switch) {
 ///   Shared dependency failure propagates to every consumer of the same attempt
 /// ============================================================================
 
-ZEST_CASE(shared_dep_fails_both) {
+ZEST_CASE(SharedDependencyFailsBoth) {
     env.tmp.touch("shared.cppm",
                   "export module Shared;\n"
                   "export int shared_val() { return UNDEFINED_SYMBOL; }\n");
@@ -1277,12 +542,11 @@ ZEST_CASE(shared_dep_fails_both) {
                   "import Shared;\n"
                   "export int c_val() { return shared_val(); }\n");
 
-    auto json = build_cdb_json({
+    env.setup({
         {env.tmp.root, env.tmp.path("shared.cppm"), {}},
         {env.tmp.root, env.tmp.path("a.cppm"),      {}},
         {env.tmp.root, env.tmp.path("c.cppm"),      {}},
     });
-    env.setup({}, json);
 
     auto pid_shared = env.lookup("Shared");
     auto pid_a = env.lookup("A");
@@ -1303,7 +567,17 @@ ZEST_CASE(shared_dep_fails_both) {
         co_return co_await inner(pid, false);
     };
 
-    make_graph(std::move(dispatch), default_resolver());
+    // C's attempt waits on the shared module right after resolving its
+    // imports, before anything else runs.
+    async::event c_resolved;
+    auto resolver = [&, inner = default_resolver()](std::uint32_t pid) {
+        auto imports = inner(pid);
+        if(pid == pid_c) {
+            c_resolved.set();
+        }
+        return imports;
+    };
+    make_graph(std::move(dispatch), std::move(resolver));
 
     std::optional<bool> result_a, result_c;
     auto request_a = [&]() -> async::task<> {
@@ -1322,8 +596,9 @@ ZEST_CASE(shared_dep_fails_both) {
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
             co_await shared_started.wait();
+            co_await c_resolved.wait();
             // Both chains hold interest in the same attempt.
-            co_await wait_until([&] { return cg->refcount(pid_shared) == 2u; });
+            ZEXPECT(cg->refcount(pid_shared) == 2u);
             shared_proceed.set();
             co_return;
         };

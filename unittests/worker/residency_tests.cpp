@@ -79,6 +79,16 @@ ZEST_CASE(UndoneCompileCounts) {
     ZEXPECT(residency.resident(2));
 }
 
+ZEST_CASE(ForgetFreesLoad) {
+    // A closed document leaves its worker's load with its assignment.
+    Residency residency(4);
+    residency.assign(1, 0, "/1.cpp");
+    ZEXPECT(residency.documents_on(0) == 1u);
+    residency.forget(1);
+    ZEXPECT(residency.documents_on(0) == 0u);
+    ZEXPECT(!residency.assignment(1));
+}
+
 ZEST_CASE(StaleReplyIgnored) {
     // A compile reply for an assignment the document left — it closed and
     // opened again meanwhile — adds no AST.

@@ -3,4 +3,8 @@
 #include "present.h"
 #include "absent.h"
 
+#if __has_include("optional.h")
+#include "optional.h"
+#endif
+
 int use = present_value;

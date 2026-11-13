@@ -13,6 +13,7 @@ import :support.prelude;
 import :support.process;
 import :unittests.utils.temp_dir;
 import :vfs.path;
+import :worker.pool;
 import :worker.protocol;
 import :worker.test_hooks;
 
@@ -42,15 +43,22 @@ inline std::vector<std::string> make_args(const std::string& file_path,
     return args;
 }
 
-/// Count into `crashes` the worker crashes the pool reports (WorkerCrash
-/// anomalies) until the anomaly trap is reset.
-inline void count_crashes(std::size_t& crashes) {
-    logging::set_anomaly_trap_for_testing([&crashes](logging::AnomalyId id) {
-        crashes += id == logging::AnomalyId::WorkerCrash ? 1 : 0;
-    });
+/// A test's worker pool: `stateless` and `stateful` workers of the clice
+/// under test, logging into `tmp`, where a death quotes its worker's last
+/// lines from.
+inline WorkerPoolOptions worker_options(const TempDir& tmp,
+                                        std::uint32_t stateless,
+                                        std::uint32_t stateful) {
+    return {
+        .program = clice_binary(),
+        .stateless_count = stateless,
+        .stateful_count = stateful,
+        .session_dir = tmp.path("workers"),
+    };
 }
 
-/// Returns once a worker parked the work behind `hooks`' gate `id`.
+/// Returns once `hooks`' hold `id` parked a reply, or a worker parked the
+/// work behind its gate `id`.
 inline async::task<> parked(TestHooks& hooks, std::uint64_t id) {
     async::event held;
     auto connection = hooks.on_held.connect([&](std::uint64_t each) {
@@ -58,8 +66,10 @@ inline async::task<> parked(TestHooks& hooks, std::uint64_t id) {
             held.set();
         }
     });
-    if(ranges::none_of(hooks.gates(),
-                       [&](const TestHooks::Gate& gate) { return gate.id == id && gate.parked; })) {
+    auto parks = [&](const auto& each) {
+        return each.id == id && each.parked;
+    };
+    if(ranges::none_of(hooks.gates(), parks) && ranges::none_of(hooks.holds(), parks)) {
         co_await held.wait();
     }
 }
@@ -73,6 +83,9 @@ struct WorkerHandle : zest::LoopFixture {
 
     /// Changes to the environment the worker inherits.
     std::vector<async::process::env_change> env;
+
+    /// Where the worker's stderr goes.
+    TempDir logs;
 
     /// The gates placed, and of them the ones the worker parked at.
     std::uint64_t gates = 0;
@@ -96,7 +109,7 @@ struct WorkerHandle : zest::LoopFixture {
         auto label = stateful ? "stateful" : "stateless";
 
 #ifndef _WIN32
-        std::string stderr_path = std::string("/tmp/clice_worker_stderr_") + label + ".log";
+        auto stderr_path = logs.path(std::format("{}.stderr", label));
         stderr_fd = ::open(stderr_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
 #endif
 

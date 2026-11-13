@@ -7,9 +7,20 @@ import :index.project_index.records;
 import :index.shard;
 import :index.symbol;
 import :support.prelude;
+import :support.text;
 import :vfs.ids;
 
 namespace clice::testing {
+
+/// A loaded shard whose entries were built from `content`, for the
+/// disk-vs-shard freshness comparisons.
+inline index::Shard shard_of(llvm::StringRef content) {
+    auto bytes = index::write_shard(
+        {},
+        [](index::SymbolHash) -> std::optional<index::SymbolView> { return std::nullopt; },
+        content);
+    return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
+}
 
 /// Index state a test sets up or looks at by hand, past the public API.
 struct IndexInternals {

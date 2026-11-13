@@ -1,18 +1,31 @@
-["log level"."$ clice index --log-level bogus"]
-stderr = '''
-at argv[2]:
-  index --log-level bogus
-                    ^~~~~
-  invalid enum value: bogus (supported: trace, debug, info, warn, error, fatal, off)
+["log level"."$ clice index --jobs 1"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
 '''
-exit = 2
+stderr = "warning: CLICE_LOG_LEVEL is bogus, none of trace, debug, info, warn, error, fatal and off: it is ignored"
+exit = 0
 
-["log level"."$ clice index --log-level error --jobs 1"]
+["valid log levels"."$ clice index --jobs 1"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
+
+["valid log levels"."session log levels"]
+value = ["info", "warning"]
+
+["valid log levels"."$ clice index --jobs 1 #2"]
+stdout = '''
+Indexed 0 translation units in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = "warning: clice.toml:2:1: unknown field 'misspelled' at project"
+exit = 0
+
+["valid log levels"."stderr levels"]
+value = ["info", "warning"]
 
 ["a job count by its short name"."$ clice index -j 1"]
 stdout = '''
@@ -22,6 +35,24 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 ["a missing workspace"."$ clice query project-files --workspace missing"]
+stdout = '''
+{
+  "error": "${WS}/missing: not a directory",
+  "stale": []
+}
+'''
+exit = 2
+
+["a missing workspace"."$ clice refactor rename main entry --workspace missing"]
+stdout = '''
+{
+  "error": "${WS}/missing: not a directory",
+  "stale": []
+}
+'''
+exit = 2
+
+["a missing workspace"."$ clice modularize --partition partition.json --out wrap --workspace missing"]
 stdout = '''
 {
   "error": "${WS}/missing: not a directory",
@@ -65,7 +96,7 @@ stdout = '''
 file ${WS}/main.cpp
   blob=# B  content size=40  content hash=#1a667a99fd0a2c5a
   variants=1
-    #f2c0a786934265e4  contributed by 1 unit
+    #e25b1de78b55aa28  contributed by 1 unit
       ${WS}/main.cpp
   symbols=3  local symbols=2  occurrences=5  relations=5
     Definition=3

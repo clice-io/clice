@@ -216,7 +216,7 @@ ZEST_CASE(ResolutionsFoldAcrossRuns) {
     ZEXPECT(!compacted.find_key(2).has_value());
 }
 
-ZEST_CASE(KeysOfGoneRunsDrop) {
+ZEST_CASE(GoneRunKeysDrop) {
     FileInstantiations walked;
     walked.keys = {
         {.key = 1, .pattern = 50},

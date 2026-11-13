@@ -15,3 +15,28 @@ items = [
 items = [
     { label = "fullscreen", kind = "Field", detail = "bool" },
 ]
+
+[answers.after_braced.completion]
+items = [
+    { label = "height", kind = "Field", detail = "int" },
+    { label = "fullscreen", kind = "Field", detail = "bool" },
+]
+
+[answers.after_call.completion]
+items = [
+    { label = "height", kind = "Field", detail = "int" },
+    { label = "fullscreen", kind = "Field", detail = "bool" },
+]
+
+[answers.member_value.completion]
+items = [
+    { label = "height", kind = "Field", detail = "int" },
+    { label = "width", kind = "Field", detail = "int" },
+    { label = "fullscreen", kind = "Field", detail = "bool" },
+]
+
+[answers.before_height.completion]
+items = [
+    { label = "height", kind = "Field", detail = "int" },
+    { label = "fullscreen", kind = "Field", detail = "bool" },
+]

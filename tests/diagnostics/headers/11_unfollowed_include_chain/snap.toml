@@ -1,0 +1,17 @@
+[test."widget_user.h"]
+diagnostics = [
+    {
+        at = "⟦⟧inline int width(const Widget& widget) {",
+        severity = "warning",
+        message = "This header needs the context of its includer, but the include chain from ${WS}/main.cpp could not be followed under that file's compile command, so it compiled without it.",
+        source = "clice",
+        code = "unmatched-includer-context",
+    },
+    {
+        at = "inline int width(const ⟦Widget⟧& widget) {",
+        severity = "error",
+        message = "unknown type name 'Widget'",
+        source = "clang",
+        code = "err_unknown_typename",
+    },
+]

@@ -7,3 +7,51 @@ items = [
 items = [
     { label = "snap_header.h", kind = "File", insert = 'snap_header.h"', replace = '#if __has_include("⟦snap"⟧)' },
 ]
+
+[answers.elif_next.completion]
+items = [
+    {
+        label = "snap_header.h",
+        kind = "File",
+        insert = 'snap_header.h"',
+        replace = '#elif defined(SNAP_FLAG) && __has_include_next("⟦snap"⟧)',
+    },
+]
+
+[answers.continued.completion]
+items = [
+    { label = "snap_header.h", kind = "File", insert = "snap_header.h>", replace = "__has_include(<⟦snap>⟧)" },
+]
+
+[answers.unclosed.completion]
+items = [
+    {
+        label = "snap_header.h",
+        kind = "File",
+        insert = "snap_header.h>",
+        replace = "#if __has_include(<⟦snap⟧) && __has_include(<snap_header.h>)",
+    },
+]
+
+[answers.second.completion]
+items = [
+    {
+        label = "snap_header.h",
+        kind = "File",
+        insert = "snap_header.h>",
+        replace = "#if __has_include(<snap_header.h>) && __has_include(<⟦snap>⟧)",
+    },
+]
+
+[answers.after_name.completion]
+items = [
+    {
+        label = "SNAP_FLAG",
+        kind = "Constant",
+        insert = "SNAP_FLAG",
+        replace = "#if __has_include(<snap_header.h>) && ⟦SNAP_⟧",
+    },
+]
+
+[answers.in_define.completion]
+items = []

@@ -5,8 +5,8 @@ name: test-platform
 # cross-built platform (build_os) builds on a faster runner, with xclang's toolchain for the
 # target, and runs its suites with only the test-run environment active, as a
 # machine with clice and a compiler of its own: the clang++ its tests find is
-# another (on Windows the runner's, targeting MSVC). Builds run on Linux and
-# macOS runners only.
+# another (on Windows the runner's, targeting MSVC). Builds run on Linux
+# runners only.
 
 on:
   workflow_call:
@@ -44,6 +44,11 @@ on:
       cards:
         type: boolean
         default: false
+      # Records what the cases exercise, then fails on what of the product's
+      # surface none did (tests/README.md, "Coverage").
+      coverage:
+        type: boolean
+        default: false
       # CLICE_TEST_JITTER for the suites: random delays of up to this many
       # milliseconds where the server's own work races a test's actions.
       jitter:
@@ -63,6 +68,7 @@ env:
 jobs:
   build:
     runs-on: ${{ inputs.build_os || inputs.os }}
+    timeout-minutes: 90
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -207,6 +213,7 @@ jobs:
   unit:
     needs: build
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -252,6 +259,7 @@ jobs:
       matrix:
         shard: ${{ fromJSON(inputs.cases_shards) }}
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -270,7 +278,17 @@ jobs:
         env:
           CLICE_TEST_JITTER: ${{ inputs.jitter }}
           CLICE_KEEP_LOGS: ${{ runner.temp }}/case-logs
+          CLICE_COVERAGE_DIR: ${{ inputs.coverage && format('{0}/coverage', runner.temp) || '' }}
         run: pixi run -e test-run cases-test ${{ inputs.build_type }} ${{ matrix.shard }}/${{ strategy.job-total }}
+
+      - name: Upload the coverage records
+        if: inputs.coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ matrix.shard }}
+          path: ${{ runner.temp }}/coverage
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Upload the cards
         if: inputs.cards
@@ -290,6 +308,36 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
+
+  # The surface comes from the program itself: its --help, its
+  # configuration schema, a server's capabilities.
+  coverage:
+    needs: cases
+    if: ${{ inputs.coverage }}
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/download-programs
+        with:
+          target: ${{ inputs.target }}
+          build_type: ${{ inputs.build_type }}
+          environments: ${{ env.TEST_ENVIRONMENTS }}
+          activate-environment: ${{ env.TEST_ACTIVATE }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-*
+          path: ${{ runner.temp }}/coverage
+
+      - name: Coverage
+        env:
+          CLICE_COVERAGE_DIR: ${{ runner.temp }}/coverage
+        run: pixi run -e test-run coverage-test ${{ inputs.build_type }}
 
   editor:
     needs: build

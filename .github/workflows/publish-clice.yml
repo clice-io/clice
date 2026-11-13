@@ -21,6 +21,7 @@ on:
 jobs:
   locate:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: write
@@ -112,6 +113,7 @@ jobs:
             ext: zip
             symbol_ext: zip
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       actions: read
@@ -166,6 +168,7 @@ jobs:
   publish:
     needs: promote
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:

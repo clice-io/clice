@@ -1,0 +1,31 @@
+[answers.macro_include.hover]
+markdown = '''
+**header** `SETTINGS_HEADER`
+
+`${WS}/settings.h`
+'''
+range = "#include ⟦SETTINGS_HEADER⟧"
+
+[answers.has_include.hover]
+markdown = '''
+**header** `settings.h`
+
+`${WS}/settings.h`
+'''
+range = '#if __has_include(⟦"settings.h"⟧)'
+
+[answers.embed.hover]
+markdown = '''
+**header** `data.bin`
+
+`${WS}/data.bin`
+'''
+range = '#embed ⟦"data.bin"⟧'
+
+[answers.has_embed.hover]
+markdown = '''
+**header** `data.bin`
+
+`${WS}/data.bin`
+'''
+range = '#if __has_embed(⟦"data.bin"⟧)'

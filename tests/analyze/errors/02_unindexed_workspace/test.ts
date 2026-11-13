@@ -1,5 +1,5 @@
 import { test } from "@clice/tools/testing";
 
-test(async (t) => {
+test({ errors: ["No index cache at"] }, async (t) => {
     await t.cli("analyze modules");
 });

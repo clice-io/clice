@@ -99,7 +99,8 @@ export interface RoundData {
     broad: string[];
     /// The slower measures another platform or the night before confirms.
     perf: PerfRow[];
-    /// The slower measures nothing confirms, left to the jobs' reports.
+    /// The slower measures nothing confirms, or too few pairs of samples
+    /// tell, left to the jobs' reports.
     unconfirmed: number;
     /// The artifacts whose logs a reader wants first.
     flagged: string[];
@@ -279,7 +280,8 @@ function covers(a: Slower, b: Slower): boolean {
 
 /// The slower measures confirmed by another platform's job or the job the
 /// night before, each with what makes it suspect, and how many nothing
-/// confirms.
+/// confirms. A measure of fewer than SAMPLES pairs confirms nothing: one
+/// cold sample a side varies severalfold between two runs of one binary.
 function perfRows(
     jobs: readonly RoundJob[],
     before: ReadonlyMap<string, PerfResults>,
@@ -295,9 +297,16 @@ function perfRows(
         }
         const platforms = perfs.filter((other) => other.name === job.name);
         for (const row of perf.slower) {
+            if (row.samples < SAMPLES) {
+                unconfirmed += 1;
+                continue;
+            }
             const same = (results: PerfResults | undefined) =>
                 (results?.slower ?? []).find(
-                    (each) => each.name === row.name && each.measure === row.measure,
+                    (each) =>
+                        each.name === row.name &&
+                        each.measure === row.measure &&
+                        each.samples >= SAMPLES,
                 );
             const on = platforms.filter((other) => same(other.perf) !== undefined);
             const night = same(before.get(job.artifact));
@@ -329,9 +338,6 @@ function perfRows(
             }
             if (byNight) {
                 flags.push("the night before too");
-            }
-            if (row.samples < SAMPLES) {
-                flags.push(row.samples === 1 ? "one sample a side" : "two samples a side");
             }
             const gap = roleGap(perf, row);
             if (gap !== undefined) {
@@ -525,7 +531,7 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
             "",
             `## Perf slower than the baseline, confirmed (${String(rows.length)}), by ratio`,
             "",
-            `A measure is slower in a job when it costs clice 1.2× the baseline and more in so many of the pairs of samples that chance is unlikely, or with fewer than ${String(SAMPLES)} pairs 1.5×. It is listed here when another platform or the night before finds it slower too, with the servers in the other order. ${String(unconfirmed)} more that nothing confirms are in the jobs' reports.`,
+            `A measure is slower in a job when it costs clice 1.2× the baseline and more in so many of the pairs of samples that chance is unlikely, or with fewer than ${String(SAMPLES)} pairs 1.5×. It is listed here when it rests on ${String(SAMPLES)} pairs or more and another platform or the night before finds it slower too, with the servers in the other order. ${String(unconfirmed)} more, on fewer pairs or that nothing confirms, are in the jobs' reports.`,
             "",
         );
         if (broad.size > 0) {

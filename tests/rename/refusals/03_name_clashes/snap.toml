@@ -7,8 +7,8 @@ errors = ["redefinition of 'result'"]
 
 [answers.parameter_to_local.rename.edits]
 "main.cpp" = '''
- // Names that clash where only the compiler sees it: a parameter and a local
- // of one function, two parameters, two functions of one signature.
+ // of one function, two parameters, two functions of one signature, two labels
+ // of one function.
 -int scale(int factor, int offset) {
 -    int result = factor * 2 + offset;
 +int scale(int result, int offset) {
@@ -26,7 +26,7 @@ errors = ["redefinition of 'factor'"]
 
 [answers.local_to_parameter.rename.edits]
 "main.cpp" = '''
- // of one function, two parameters, two functions of one signature.
+ // of one function.
  int scale(int factor, int offset) {
 -    int result = factor * 2 + offset;
 -    return result;
@@ -36,7 +36,7 @@ errors = ["redefinition of 'factor'"]
 '''
 
 [answers.parameter_to_parameter.rename]
-error = "cannot rename `offset`: `factor` already names a parameter of the same function (${WS}/main.cpp:3)"
+error = "cannot rename `offset`: `factor` already names a parameter of the same function (${WS}/main.cpp:4)"
 
 [answers.same_signature]
 wrong = "the function takes the name of another with the same parameters, a redefinition, and the rename only warns"
@@ -44,7 +44,7 @@ wrong = "the function takes the name of another with the same parameters, a rede
 [answers.same_signature.rename]
 notice = '''
 Renaming `compute`:
-  `twin` already names a function in the same scope (${WS}/main.cpp:9): the renamed function overloads it, which fails to build in C or when their parameters are the same
+  `twin` already names a function in the same scope (${WS}/main.cpp:10): the renamed function overloads it, which fails to build in C or when their parameters are the same
 '''
 compiles = false
 errors = ["redefinition of 'twin'"]
@@ -57,6 +57,12 @@ errors = ["redefinition of 'twin'"]
 +int twin(int v) { return v; }
  int twin(int v) { return v + 1; }
 
+…
+ }
+
 -int main() { return scale(1, 2) + compute(3) + twin(4); }
 +int main() { return scale(1, 2) + twin(3) + twin(4); }
 '''
+
+[answers.label_to_label.rename]
+error = "cannot rename `again`: `done` already names a label of the same function (${WS}/main.cpp:14)"

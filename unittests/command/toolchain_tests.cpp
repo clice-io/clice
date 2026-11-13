@@ -3,6 +3,7 @@ module clice;
 import :command.table;
 import :command.toolchain;
 import :unittests.utils;
+import :unittests.utils.platform;
 import :unittests.utils.toolchain_fixture;
 import :vfs.file_system;
 import :vfs.path;
@@ -14,10 +15,6 @@ namespace {
 using namespace std::literals;
 
 ZEST_SUITE(ToolchainTests, ToolchainFixture) {
-
-ZEST_CASE(InitiallyEmpty) {
-    ZEXPECT(!f.toolchain.has_cache());
-}
 
 ZEST_CASE(KeyIgnoresUserContent) {
     auto base = f.add("/fake", "/tmp/a.cpp", {"clang++", "-std=c++23", "/tmp/a.cpp"});
@@ -160,10 +157,41 @@ ZEST_CASE(FailedQueryCooldown) {
     auto ref = add("a.cpp", {driver.c_str()});
 
     auto first = f.failure(ref);
-    ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
-
     ZASSERT(fs::remove(driver));
     ZEXPECT(f.failure(ref) == first);
+}
+
+ZEST_CASE(HungQueryStopped) {
+    // A compiler that never exits is stopped at the bound with the program
+    // it waits on, and its command read by clang's own driver. The bound
+    // leaves the driver the time to start that program and name it.
+    ScopedEnv bound("CLICE_TEST_QUERY_BOUND_MS", "2000");
+#ifdef _WIN32
+    // What Git for Windows' sh starts leaves the job the query runs in, as
+    // a native driver's programs do not: the sh the driver started stands
+    // for them, and spins rather than start one.
+    constexpr auto script = "cat /proc/$$/winpid > '{}'\nwhile :; do :; done\n";
+#else
+    constexpr auto script = "sleep 600 &\necho $! > '{}'\nwait\n";
+#endif
+    auto driver = fake_driver("clang", std::format(script, tmp.path("child")));
+    auto ref = add("a.cpp", {driver.c_str(), "--target=x86_64-unknown-linux-gnu"});
+    ZEXPECT(llvm::StringRef(f.failure(ref))
+                .ends_with(" did not finish within 2000 ms and was stopped"));
+    auto child = vfs::read_text(tmp.path("child"));
+    ZASSERT(child);
+    int id = 0;
+    ZASSERT(!llvm::StringRef(*child).trim().getAsInteger(10, id));
+    auto ended = [](int id) -> async::task<bool> {
+        // Hang detection: the program left running holds the wait for 600 s.
+        auto waited = co_await async::with_timeout(async::wait_exit(id), chrono::seconds(30));
+        co_return !waited.is_cancelled() &&
+            (!waited.has_error() || waited.error() == async::error::no_such_process);
+    };
+    auto [stopped] = async::run(ended(id));
+    ZEXPECT(*stopped);
+    auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
+    ZEXPECT(adjacent(rendered.argv, "-triple", "x86_64-unknown-linux-gnu"));
 }
 
 ZEST_CASE(FailedQueryRetries) {
@@ -174,14 +202,19 @@ ZEST_CASE(FailedQueryRetries) {
     auto b = add("b.cpp", {tmp.c_path("clang"), "-std=c++20"});
     llvm::SmallVector<CommandRef> refs = {a, b};
     f.toolchain.warm(refs);
-    ZEXPECT(f.toolchain.failed_count() == std::size_t(2));
+    ZEXPECT(llvm::StringRef(f.failure(b)).contains("not found"));
 
-    fake_clang(clang_job);
-    ZEXPECT(f.toolchain.resolve(a.command, a.language).has_value());
-    ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
+    auto driver = fake_clang(clang_job);
+    auto retried = f.toolchain.resolve(a.command, a.language);
+    ZASSERT(retried);
+    ZEXPECT(retried->query_failure == "");
     f.toolchain.warm(refs);
-    ZEXPECT(f.toolchain.failed_count() == std::size_t(0));
-    ZEXPECT(f.toolchain.query_count() == std::size_t(2));
+
+    // With the driver gone, only the query warm() ran again resolves b.
+    ZASSERT(fs::remove(driver));
+    auto resolution = f.toolchain.resolve(b.command, b.language);
+    ZASSERT(resolution);
+    ZEXPECT(resolution->query_failure == "");
 }
 
 ZEST_CASE(FailedQueryUnqueried) {
@@ -232,7 +265,7 @@ ZEST_CASE(ReadAsClangSpellings) {
     ZEXPECT(adjacent(f.read_as_clang(arm), "-target-cpu", "cortex-a72"));
 }
 
-ZEST_CASE(ReadAsClangUnknownNames) {
+ZEST_CASE(UnknownTargetNamesDropped) {
     // Only the option naming what clang's target does not know goes: an
     // architecture x86 knows that it knows as no tuning CPU stays for
     // -march; one -mabi overriding another goes, and then so does that.
@@ -257,25 +290,32 @@ ZEST_CASE(WarmPartialFailure) {
     llvm::SmallVector<CommandRef> refs = {good, bad};
     f.toolchain.warm(refs);
 
-    // The successful query is cached; the failed one is negatively cached
-    // so later resolve() calls read the command unqueried without
-    // re-querying the driver.
-    ZEXPECT(f.toolchain.query_count() == std::size_t(1));
-    ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
-    ZEXPECT(f.toolchain.resolve(good.command, good.language).has_value());
+    // The successful query is cached: with the driver gone it still
+    // resolves. The failed one leaves its command read unqueried.
+    ZASSERT(fs::remove(driver));
+    auto resolution = f.toolchain.resolve(good.command, good.language);
+    ZASSERT(resolution);
+    ZEXPECT(resolution->query_failure == "");
     ZEXPECT(llvm::StringRef(f.failure(bad)).contains("clice-nonexistent-driver"));
-    ZEXPECT(f.toolchain.failed_count() == std::size_t(1));
 }
 
 ZEST_CASE(WarmDedupesQueries) {
-    auto driver = fake_clang(clang_job);
+    // The driver records each run.
+    auto driver = fake_driver("clang",
+                              std::format(R"(echo run >> '{}'
+echo '{}' >&2
+)",
+                                          tmp.path("runs"),
+                                          clang_job));
     auto a = add("a.cpp", {driver.c_str(), "-std=c++23"});
     auto b = add("b.cpp", {driver.c_str(), "-std=c++23"});
     auto c = add("c.cpp", {driver.c_str(), "-std=c++17"});
 
     llvm::SmallVector<CommandRef> refs = {a, b, c};
     f.toolchain.warm(refs);
-    ZEXPECT(f.toolchain.query_count() == std::size_t(2));
+    auto runs = vfs::read_text(tmp.path("runs"));
+    ZASSERT(runs);
+    ZEXPECT(*runs == "run\nrun\n");
 
     // With the driver gone, only the query cache can still resolve.
     ZASSERT(fs::remove(driver));
@@ -284,38 +324,45 @@ ZEST_CASE(WarmDedupesQueries) {
 
 ZEST_CASE(WarmBoundsDrivers) {
     // Each driver records how many drivers run beside it: twice as many
-    // queries as the process has CPUs never run more drivers than CPUs.
+    // queries as the process has CPUs run as many drivers as CPUs at once,
+    // never more. The first drivers wait until that many run, then let
+    // every later one through.
     tmp.mkdir("running");
+    auto cores = sys::parallelism();
     auto driver = fake_driver("clang",
-                              std::format(R"(touch '{0}/'$$
-ls '{0}' | wc -l >> '{1}'
-sleep 0.2
+                              std::format(R"sh(touch '{0}/'$$
+until [ -e '{1}' ] || [ "$(ls '{0}' | wc -l)" -ge {2} ]; do :; done
+touch '{1}'
+ls '{0}' | wc -l >> '{3}'
 rm '{0}/'$$
-echo '{2}' >&2
-)",
+echo '{4}' >&2
+)sh",
                                           tmp.path("running"),
+                                          tmp.path("open"),
+                                          cores,
                                           tmp.path("counts"),
                                           clang_job));
 
-    auto cores = sys::parallelism();
     llvm::SmallVector<CommandRef> refs;
     for(unsigned i = 0; i < 2 * cores; i += 1) {
         auto depth = std::format("-ftemplate-depth={}", 100 + i);
         refs.push_back(add(std::format("{}.cpp", i), {driver.c_str(), depth.c_str()}));
     }
     f.toolchain.warm(refs);
-    ZEXPECT(f.toolchain.query_count() == std::size_t(2 * cores));
 
     auto counts = vfs::read_text(tmp.path("counts"));
     ZASSERT(counts);
     llvm::SmallVector<llvm::StringRef> lines;
     llvm::StringRef(*counts).split(lines, '\n', -1, false);
     ZEXPECT(lines.size() == std::size_t(2 * cores));
+    unsigned most = 0;
     for(auto line: lines) {
         unsigned running = 0;
         ZASSERT(!line.trim().getAsInteger(10, running));
         ZEXPECT(running <= cores);
+        most = std::max(most, running);
     }
+    ZEXPECT(most == cores);
 }
 
 ZEST_CASE(ClangJobCleaned) {

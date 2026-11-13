@@ -21,3 +21,17 @@ void update()
 ```
 '''
 range = "void ⟦update⟧();"
+
+[answers.property_struct.hover]
+markdown = '''
+**struct** `Gauge` · namespace `ms`
+
+```cpp
+struct Gauge {
+  int level;
+}
+```
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "struct ⟦Gauge⟧ {"

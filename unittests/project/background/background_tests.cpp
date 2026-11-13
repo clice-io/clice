@@ -426,7 +426,7 @@ ZEST_CASE(RetireReportsIndexChanged) {
     ZASSERT(ranges::contains(f.changed, header_id));
 }
 
-ZEST_CASE(IndexFirstRearmsIdleTimer) {
+ZEST_CASE(IndexFirstRearmsTimer) {
     // s#9: an index_first colliding with an already-armed idle timer must re-arm
     // it to fire now. Un-fixed, this test waits out the full idle window
     // below instead of finishing promptly.
@@ -477,22 +477,6 @@ ZEST_CASE(SaveStartsOwedPass) {
     // A save outside any pass that finds the database corrupt owes every
     // unit a reindex: their pass starts, rather than waiting for the next
     // edit or checkpoint.
-    struct CorruptOnWrite final : ForwardingDatabase {
-        using ForwardingDatabase::ForwardingDatabase;
-
-        bool poisoned = false;
-
-        std::expected<void, std::string> write(llvm::ArrayRef<Blob>,
-                                               llvm::ArrayRef<index::BlobKey>) override {
-            poisoned = true;
-            return std::unexpected("damaged");
-        }
-
-        bool corrupted() const override {
-            return poisoned;
-        }
-    };
-
     TempDir tmp;
     tmp.touch("main.cpp", "int use() { return 0; }\n");
     IndexerFixture f;
@@ -501,7 +485,7 @@ ZEST_CASE(SaveStartsOwedPass) {
     // The index started long before: its first pass is over.
     f.background.start();
     f.loop.run();
-    f.project.database = std::make_unique<CorruptOnWrite>(std::move(f.project.database));
+    f.project.database = std::make_unique<FailingDatabase>(std::move(f.project.database), true);
     f.list_units(tmp, {{"main.cpp"}});
     ZASSERT(f.merge(index_file(tmp, tmp.path("main.cpp")).data));
 
@@ -533,7 +517,7 @@ ZEST_CASE(SaveKeepsQueuedSchedule) {
     ZEXPECT(f.failures() == 0u);
 }
 
-ZEST_CASE(IndexFirstSparesRunningPass) {
+ZEST_CASE(IndexFirstSparesPass) {
     // A file put first once the running pass took it — in flight, or done
     // as here — is queued past the pass and leads the next one. Moved into
     // the running pass, it would run there a second time and push the

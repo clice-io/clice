@@ -8,3 +8,6 @@ items = [
 items = [
     { label = "app.compat", kind = "Module", insert = "app.compat", replace = "module ⟦comp⟧;" },
 ]
+
+[answers.interface.completion]
+items = []

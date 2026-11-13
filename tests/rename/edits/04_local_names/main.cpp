@@ -9,4 +9,9 @@ int other(int factor) {
     return result;
 }
 
-int main() { return scale(1) + other(2); }
+int combine(int first, int second);
+int combine(int §(defined)value, int second) {
+    return value + second;
+}
+
+int main() { return scale(1) + other(2) + combine(3, 4); }

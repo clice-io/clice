@@ -4,20 +4,23 @@ import { test } from "@clice/tools/testing";
 
 // Each edit changes the preamble while its build runs, so each build is
 // superseded mid-way under a fresh content key: none leaves a temporary
-// blob behind.
+// blob behind. The build a park holds cannot take its cancel, so the next
+// one runs on a second stateless worker, started with the first.
+
+const ROUNDS = 3;
 
 test(async (t) => {
-    const s = await t.start();
+    const s = await t.start({ config: { project: { stateless_worker_count: 2 } } });
     await s.diagnostics("main.cpp");
     let previous: Awaited<ReturnType<typeof s.park>> | undefined;
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < ROUNDS; i++) {
         const park = await s.park("buildPch", "main.cpp", { at: "worker" });
         s.edit("main.cpp", { text: `#define STORM ${String(i)}\n${t.disk.read("main.cpp")}` });
         const diagnostics = s.diagnostics("main.cpp");
         await park.reached();
         await previous?.release();
         previous = park;
-        if (i === 14) {
+        if (i === ROUNDS - 1) {
             await park.release();
             await t.show("diagnostics", diagnostics);
         } else {

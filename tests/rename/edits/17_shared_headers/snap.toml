@@ -1,0 +1,22 @@
+[answers.helper.rename]
+compiles = true
+
+[answers.helper.rename.edits]
+"a.cpp" = '''
+ #include "config"
+
+-int a() { return helper(); }
++int a() { return assist(); }
+'''
+"b.cpp" = '''
+ #include "config"
+
+-int b() { return helper(); }
++int b() { return assist(); }
+'''
+config = '''
+ #pragma once
+
+-static int helper() { return 1; }
++static int assist() { return 1; }
+'''

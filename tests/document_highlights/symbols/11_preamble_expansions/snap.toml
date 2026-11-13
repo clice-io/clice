@@ -11,7 +11,7 @@ highlights = [
 ]
 
 [open.server]
-wrong = "the #define body names tab_lp at its expansion in templ.inc, as inspect and the indexed server show"
+wrong = "tab_lp in the macro's body names the struct where templ.inc expands the macro, so both places should highlight together, as they do once the project is indexed"
 
 [open.server.in_body]
 highlights = []

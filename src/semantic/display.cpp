@@ -2021,16 +2021,22 @@ struct DeclarationPrinter {
         return text;
     }
 
-    /// The field of the template an instantiation's field is made from.
+    /// The field of the template an instantiation's field is made from:
+    /// the pattern's field at its index, when it has that name. The pattern
+    /// clang reports can be another than the one instantiated (a
+    /// specialization merged across modules names its primary template).
     static auto pattern_field(const clang::FieldDecl& field) -> const clang::FieldDecl* {
         const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(field.getParent());
         const auto* pattern = record ? record->getTemplateInstantiationPattern() : nullptr;
         if(!pattern) {
             return nullptr;
         }
-        auto fields = pattern->fields();
-        auto it = std::next(fields.begin(), field.getFieldIndex());
-        return it != fields.end() ? *it : nullptr;
+        for(const auto* candidate: pattern->fields()) {
+            if(candidate->getFieldIndex() == field.getFieldIndex()) {
+                return candidate->getDeclName() == field.getDeclName() ? candidate : nullptr;
+            }
+        }
+        return nullptr;
     }
 
     /// The type a member type of an instantiation names, through the

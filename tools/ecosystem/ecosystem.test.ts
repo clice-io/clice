@@ -19,74 +19,79 @@ import { parsed, residentNow, watchTree } from "./memory.ts";
 import type { Order, PerfResults, RunResult } from "./perf/results.ts";
 import { prepare, withoutOrderOnly } from "./prepare.ts";
 import {
+    loadProjects,
+    platformsOf,
     validated,
     type Configuration,
     type Platform,
     type Project,
     type Step,
 } from "./project.ts";
+import { perfResults, regressionResults } from "./fixtures.ts";
 import type { Results } from "./regression/regression.ts";
 import { regressionReport } from "./report.ts";
 import { historyOf, roundReport, type Earlier } from "./round.ts";
-import { allJobs, findJob, knownIssue, positionOf, sortKnown, type Job } from "./script.ts";
+import {
+    allJobs,
+    artifactName,
+    findJob,
+    knownIssues,
+    positionOf,
+    sortKnown,
+    type Job,
+} from "./script.ts";
 
 function scratch(): string {
     return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "clice-ecosystem-")));
 }
 
 describe("projects", () => {
-    test("every project's script registers its jobs, a regression job per part", async () => {
+    test("every project registers jobs over what it builds, a regression job per part", async () => {
         const jobs = await allJobs();
-        const named = (kind: Job["kind"]) =>
-            jobs.filter((job) => job.kind === kind).map((job) => job.name);
-        expect(named("regression")).toEqual([
-            "abseil/clang",
-            "abseil/gcc",
-            "abseil/msvc",
-            "clice",
-            "cpython",
-            "cuda",
-            "curl",
-            "eigen",
-            "flameshot",
-            "fmt/clang",
-            "fmt/msvc",
-            "libobjc2",
-            "linux",
-            "llvm/all/llvm",
-            "llvm/all/clang",
-            "llvm/all/mlir",
-            "llvm/all/flang",
-            "llvm/all/lldb",
-            "mp-units",
-            "sdl",
-            "wxwidgets",
-        ]);
-        expect(named("perf")).toEqual([
-            "abseil/editing",
-            "abseil/sessions",
-            "abseil/endurance",
-            "abseil/index-load",
-            "abseil/limited",
-            "abseil/msvc",
-            "cuda/sessions",
-            "curl/sessions",
-            "eigen/sessions",
-            "flameshot/sessions",
-            "fmt/editing",
-            "fmt/sessions",
-            "fmt/msvc",
-            "linux/startup",
-            "llvm/index",
-            "llvm/cold",
-            "llvm/sessions",
-            "llvm/all",
-            "mp-units/editing",
-            "sqlite/amalgamation",
-        ]);
-        const gcc = jobs.find((job) => job.name === "abseil/gcc");
-        expect(gcc?.platforms).toEqual(["linux"]);
-        expect(gcc?.config.packages).toEqual(["g++-13"]);
+        const unregistered = loadProjects().filter(
+            (project) => !jobs.some((job) => job.project.name === project.name),
+        );
+        expect(unregistered.map((project) => project.name)).toEqual([]);
+        expect(jobs.filter((job) => !job.name.startsWith(job.project.name))).toEqual([]);
+        const elsewhere = jobs.filter((job) =>
+            job.platforms.some((platform) => !platformsOf(job.config).includes(platform)),
+        );
+        expect(elsewhere.map((job) => job.name)).toEqual([]);
+        // A configuration that splits its database is regressed a part a
+        // job; one that does not, in one job.
+        const regressed = jobs.flatMap((job) => (job.kind === "regression" ? [job] : []));
+        const configurations = new Set(
+            regressed.map((job) => `${job.project.name} ${job.configuration}`),
+        );
+        for (const configuration of configurations) {
+            const ofIt = regressed.filter(
+                (job) => `${job.project.name} ${job.configuration}` === configuration,
+            );
+            const parts = Object.keys(ofIt[0]?.config.parts ?? { "": [] });
+            expect(
+                ofIt.map((job) => job.part ?? ""),
+                configuration,
+            ).toEqual(parts);
+        }
+        const artifacts = jobs.flatMap((job) =>
+            job.platforms.map((platform) => artifactName(job.kind, job.name, platform)),
+        );
+        expect(artifacts.filter((name, i) => artifacts.indexOf(name) !== i)).toEqual([]);
+    });
+
+    test("a known issue names a configuration, part and platform its job has", async () => {
+        const stray = (await allJobs()).flatMap((job) =>
+            job.known
+                .filter(
+                    (known) =>
+                        (known.configuration !== undefined &&
+                            !(known.configuration in job.project.configurations)) ||
+                        (known.part !== undefined && !(known.part in (job.config.parts ?? {}))) ||
+                        (known.platform !== undefined && !job.platforms.includes(known.platform)),
+                )
+                .map((known) => `${job.kind} ${job.name}: ${known.issue}`),
+        );
+        expect(stray).toEqual([]);
     });
 
     test("a project.toml that cannot be what it says is an error", () => {
@@ -181,23 +186,27 @@ describe("known issues", () => {
     test("a failure is the known issue whose every field it matches", () => {
         const disagree = { kind: "disagree", detail: "", repro: "" };
         expect(
-            knownIssue(job, "linux", { ...disagree, file: "a.cpp", request: "signatureHelp" })
+            knownIssues(job, "linux", { ...disagree, file: "a.cpp", request: "signatureHelp" })[0]
                 ?.issue,
         ).toBe("10-22#6");
-        expect(knownIssue(job, "linux", { ...disagree, request: "hover" })).toBeUndefined();
+        expect(knownIssues(job, "linux", { ...disagree, request: "hover" })).toEqual([]);
         const memory = { kind: "memory", detail: "", repro: "" };
-        expect(knownIssue(job, "macos", { ...memory, file: "big/x.cpp" })?.issue).toBe("10-22#7");
-        expect(knownIssue(job, "linux", { ...memory, file: "big/x.cpp" })).toBeUndefined();
-        expect(knownIssue(job, "macos", { ...memory, file: "small/x.cpp" })).toBeUndefined();
+        expect(knownIssues(job, "macos", { ...memory, file: "big/x.cpp" })[0]?.issue).toBe(
+            "10-22#7",
+        );
+        expect(knownIssues(job, "linux", { ...memory, file: "big/x.cpp" })).toEqual([]);
+        expect(knownIssues(job, "macos", { ...memory, file: "small/x.cpp" })).toEqual([]);
     });
 
     test("a known issue of one configuration or part matches no other", () => {
         const disagree = { kind: "disagree", request: "signatureHelp", detail: "", repro: "" };
-        expect(knownIssue({ ...job, configuration: "clang" }, "linux", disagree)).toBeUndefined();
+        expect(knownIssues({ ...job, configuration: "clang" }, "linux", disagree)).toEqual([]);
         const hang = { kind: "hang", detail: "", repro: "" };
-        expect(knownIssue({ ...job, part: "flang" } as Job, "linux", hang)?.issue).toBe("10-22#8");
-        expect(knownIssue({ ...job, part: "mlir" } as Job, "linux", hang)).toBeUndefined();
-        expect(knownIssue(job, "linux", hang)).toBeUndefined();
+        expect(knownIssues({ ...job, part: "flang" } as Job, "linux", hang)[0]?.issue).toBe(
+            "10-22#8",
+        );
+        expect(knownIssues({ ...job, part: "mlir" } as Job, "linux", hang)).toEqual([]);
+        expect(knownIssues(job, "linux", hang)).toEqual([]);
     });
 
     test("a known issue naming what the failure says matches no other text", async () => {
@@ -209,9 +218,49 @@ describe("known issues", () => {
             repro: "",
         });
         const more = diff([" highlights = [", '+    { at = "⟦a⟧", kind = "text" },', " ]"]);
-        expect(knownIssue(abseil, "linux", more)?.issue).toBe("10-24#7");
+        expect(knownIssues(abseil, "linux", more)[0]?.issue).toBe("10-24#7");
         const fewer = diff([" highlights = [", '-    { at = "⟦a⟧", kind = "text" },', " ]"]);
-        expect(knownIssue(abseil, "linux", fewer)).toBeUndefined();
+        expect(knownIssues(abseil, "linux", fewer)).toEqual([]);
+        const some = diff([
+            "-highlights = []",
+            "+highlights = [",
+            '+    { at = "⟦a⟧", kind = "text" },',
+            "+]",
+        ]);
+        expect(knownIssues(abseil, "linux", some)[0]?.issue).toBe("10-24#7");
+        const none = diff([
+            "-highlights = [",
+            '-    { at = "⟦a⟧", kind = "text" },',
+            "-]",
+            "+highlights = []",
+        ]);
+        expect(knownIssues(abseil, "linux", none)).toEqual([]);
+    });
+
+    test("a known issue removes the lines of a diff it names, and the rest still fails", () => {
+        const tokens = {
+            ...job,
+            known: [
+                { issue: "11-01#1", why: "a", kind: "disagree", detail: /^-.*"comment".*$/m },
+                { issue: "11-01#2", why: "b", kind: "disagree", detail: /^\+.*"macro".*$/m },
+            ],
+        } as Job;
+        const diff = (lines: string[]) => ({
+            kind: "disagree",
+            request: "semanticTokens",
+            detail: ["--- inspect", "+++ server", "@@ -1,3 +1,3 @@", ...lines].join("\n"),
+            repro: "",
+        });
+        const comment = '-    { at = "⟦/* a */⟧", type = "comment" },';
+        const macro = '+    { at = "⟦A⟧", type = "macro" },';
+        const other = '+    { at = "⟦b⟧", type = "variable" },';
+        expect(knownIssues(tokens, "linux", diff([comment])).map((k) => k.issue)).toEqual([
+            "11-01#1",
+        ]);
+        expect(
+            knownIssues(tokens, "linux", diff([comment, " kept", macro])).map((k) => k.issue),
+        ).toEqual(["11-01#1", "11-01#2"]);
+        expect(knownIssues(tokens, "linux", diff([comment, other]))).toEqual([]);
     });
 
     test("known failures move apart, the issues not seen listed", () => {
@@ -533,20 +582,7 @@ describe("memory", () => {
 });
 
 describe("report", () => {
-    const base: Results = {
-        job: "p",
-        platform: "linux",
-        about: "v1",
-        commit: "c",
-        clice: "k",
-        seed: "s",
-        compilerRejects: [],
-        logErrors: [],
-        failures: [],
-        known: [],
-        unseen: [],
-        accepted: [],
-    };
+    const base = regressionResults();
 
     test("failures with their reproduction, numbers beside the previous round's", () => {
         const index = {
@@ -693,28 +729,18 @@ describe("round", () => {
         files: unknown,
         failures: Results["failures"] = [],
         serverSeconds = 60,
-    ): Results => ({
-        job: "p",
-        platform: "linux",
-        about: "v1",
-        commit: "c",
-        clice: "k",
-        seed: "s",
-        compilerRejects: [],
-        logErrors: [],
-        failures,
-        known: [],
-        unseen: [],
-        accepted: [],
-        sweep: {
-            files: files as string[],
-            serverOnly: [],
-            requests: 1,
-            inspectSeconds: 60,
-            serverSeconds,
-            slow: [],
-        },
-    });
+    ): Results =>
+        regressionResults({
+            failures,
+            sweep: {
+                files: files as string[],
+                serverOnly: [],
+                requests: 1,
+                inspectSeconds: 60,
+                serverSeconds,
+                slow: [],
+            },
+        });
     const hang = { kind: "hang", file: "a.cpp", request: "hover", detail: "timed out", repro: "r" };
     const earlier = (date: string, results: Results): Earlier => ({ run: 1, date, results });
 
@@ -755,30 +781,13 @@ describe("round", () => {
         platform,
         artifact: `perf-q-sessions-${platform}`,
         conclusion: "success",
-        perf: {
+        perf: perfResults({
             job: "q/sessions",
             platform,
-            about: "",
-            commit: "",
-            clice: "k",
-            env: {
-                platform,
-                release: "",
-                arch: "",
-                cpus: 4,
-                cpuModel: "",
-                memoryMB: 0,
-                node: "",
-                date: "",
-            },
             binaries: { clice: "c", baseline: "/t/baseline/v0.1.7/clice/bin/clice" },
-            clangdArgs: [],
             runs,
-            failures: [],
-            known: [],
-            unseen: [],
             slower,
-        },
+        }),
     });
     const row = (
         measure: string,
@@ -816,7 +825,9 @@ describe("round", () => {
     });
 
     test("perf rows another platform or the night before confirms, by ratio", () => {
-        const memory = row("peak memory MB", "553", "32.0", 15, 1, "clice first");
+        const memory = row("peak memory MB", "553", "32.0", 15, 30, "clice first");
+        // One cold sample a side, slower on both platforms all the same.
+        const initialize = row("initialize", "90", "30", 3, 1);
         const { text, data } = roundReport({
             run: 7,
             jobs: [
@@ -824,17 +835,21 @@ describe("round", () => {
                     "linux",
                     [
                         memory,
+                        initialize,
                         row("open", "120", "100", 1.2),
                         row("open_edit", "40", "20", 2, 30, "clice first"),
                         row("switch_edit", "30", "20", 1.5, 30, "clice first"),
+                        row("index", "50", "25", 2),
                     ],
                     [memoryRun("clice", 520), memoryRun("baseline", 4)],
                 ),
                 perf("macos", [
+                    initialize,
                     row("open", "130", "100", 1.3),
                     row("open_edit", "36", "20", 1.8, 30, "clice first"),
                     row("switch_edit", "28", "20", 1.4, 30, "both"),
                     row("settle s", "-7.0", "20", 1.6, 1, "clice first"),
+                    row("index", "52", "25", 2.1, 1),
                 ]),
             ],
             earlier: new Map(),
@@ -858,7 +873,6 @@ describe("round", () => {
                     "linux only",
                     "≥3×: likely different work on the two sides",
                     "the night before too",
-                    "one sample a side",
                     "SL-0 520 vs 4 MB",
                 ],
             ],
@@ -868,11 +882,14 @@ describe("round", () => {
             ["linux", "open", ["every platform"]],
         ]);
         // open_edit ran with clice first on both platforms and both nights,
-        // the settle once.
-        expect(data.unconfirmed).toBe(3);
+        // the settle once; initialize rests on one pair on each, and so does
+        // index on macos, which confirms linux's none.
+        expect(data.unconfirmed).toBe(7);
         expect(data.flagged).toEqual(["perf-q-sessions-linux", "perf-q-sessions-macos"]);
         expect(text).toContain("## Perf slower than the baseline, confirmed (5), by ratio");
-        expect(text).toContain("3 more that nothing confirms are in the jobs' reports.");
+        expect(text).toContain(
+            "7 more, on fewer pairs or that nothing confirms, are in the jobs' reports.",
+        );
         expect(text).toContain(
             "| q/sessions | linux | sample 2 files | peak memory MB | 553 | 32.0 | 15.00× |",
         );

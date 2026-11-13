@@ -18,3 +18,27 @@ items = [
     { label = "operator=(…) +1 overload", kind = "Method" },
     { label = "~Widget()", kind = "Method", detail = "void" },
 ]
+
+[answers.digit_name.completion]
+items = [
+    { label = "member", kind = "Field", detail = "int" },
+    { label = "count", kind = "Variable", detail = "int" },
+]
+
+[answers.non_ascii_name.completion]
+items = [
+    { label = "member", kind = "Field", detail = "int" },
+    { label = "count", kind = "Variable", detail = "int" },
+]
+
+[answers.call_result.completion]
+items = [
+    { label = "member", kind = "Field", detail = "int" },
+    { label = "count", kind = "Variable", detail = "int" },
+]
+
+[answers.module_name.completion]
+items = [
+    { label = "member", kind = "Field", detail = "int" },
+    { label = "count", kind = "Variable", detail = "int" },
+]

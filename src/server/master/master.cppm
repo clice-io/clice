@@ -30,9 +30,6 @@ struct ServerOptions {
     KANNOTATE(&port, description = "Socket mode TCP port")
     int port = 0;
 
-    KANNOTATE(&record, description = "Record LSP input to file for replay testing")
-    std::string record;
-
     KANNOTATE(&workspace, description = "Workspace root directory (optional, skips LSP initialize)")
     std::string workspace;
 };
@@ -575,6 +572,11 @@ private:
     async::task_group<> stop_run;
     bool stop_started = false;
     async::event stopped{false};
+
+    /// Ends the process when stop() has not finished in time, naming the
+    /// step it is stuck at (stop_step).
+    async::task_group<> stop_watchdog;
+    std::string stop_step;
 
     /// Removed projects, shutting down or kept alive after by the requests
     /// still running in them.

@@ -16,6 +16,7 @@ import :project.project;
 import :unittests.utils;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.platform;
+import :unittests.utils.project_fixture;
 import :unittests.utils.temp_dir;
 
 namespace clice::testing {
@@ -32,8 +33,7 @@ struct TreeProject {
         project.settings.rules.push_back(
             Rule{.patterns = {"**/*.cpp"}, .default_command = std::string("clang++")});
         project.root = CanonicalPath(Spelling::absolute(tmp.root));
-        project.settings.finalize(project.root);
-        project.rules = Rules(project.settings, project.root, "");
+        skip_toolchain_query(project);
     }
 
     /// Write the file and name it.
@@ -96,8 +96,7 @@ ZEST_CASE(SourcePriorityBeatsProximity) {
         Rule{.patterns = {"lib/**"}, .compile_commands = {"lib/cmake"}});
     project.settings.rules.push_back(Rule{.compile_commands = {"cmake"}});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
     for(auto source: project.rules.declared_databases()) {
         project.cdb.load(source);
     }
@@ -132,8 +131,7 @@ ZEST_CASE(ProximityWithinSource) {
         .default_command = std::string("clang++")
     });
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/x.h")));
     auto same_stem = project.file_table.intern(Spelling::absolute(tmp.path("other/x.cpp")));
@@ -174,8 +172,7 @@ ZEST_CASE(ProximityByDirectories) {
     project.settings.rules.push_back(
         Rule{.patterns = {"a/**"}, .default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("a/b/x.h")));
     auto parent = project.file_table.intern(Spelling::absolute(tmp.path("a/zz.cpp")));
@@ -205,8 +202,7 @@ ZEST_CASE(HostsMatchLanguage) {
     project.settings.rules.push_back(
         Rule{.patterns = {"gpu/**"}, .default_command = std::string("clang++ -x cuda")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
     /// A unit created later joins the build at the next workspace poll.
     auto create = [&](llvm::StringRef path) {
         tmp.touch(path, "");
@@ -283,8 +279,7 @@ ZEST_CASE(BorrowSibling) {
     project.settings.rules.push_back(
         Rule{.patterns = {"src/*.cpp"}, .default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/x.h")));
     auto same_stem = project.file_table.intern(Spelling::absolute(tmp.path("src/x.cpp")));
@@ -305,8 +300,7 @@ ZEST_CASE(BorrowCxxDriverC) {
     project.settings.rules.push_back(
         Rule{.patterns = {"lib/*.c"}, .default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
 
     auto borrower = project.file_table.intern(Spelling::absolute(tmp.path("lib/new.c")));
     auto unit = project.file_table.intern(Spelling::absolute(tmp.path("lib/a.c")));
@@ -324,8 +318,7 @@ ZEST_CASE(BorrowByDirectories) {
     project.settings.rules.push_back(
         Rule{.patterns = {"a/**"}, .default_command = std::string("clang++")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
 
     auto borrower = project.file_table.intern(Spelling::absolute(tmp.path("a/b/new.cpp")));
     auto parent = project.file_table.intern(Spelling::absolute(tmp.path("a/zz.cpp")));
@@ -341,8 +334,7 @@ ZEST_CASE(BorrowSearchDir) {
     FileTable files;
     Project project{files};
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
     auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
         tmp.touch(file, "");
         auto command = std::format("clang++ {} {}", flags, tmp.path(file));
@@ -373,8 +365,7 @@ ZEST_CASE(BorrowSearchDirSymlink) {
     FileTable files;
     Project project{files};
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
     auto add = [&](llvm::StringRef file, llvm::StringRef flags) {
         tmp.touch(file, "");
         auto command = std::format("clang++ {} {}", flags, tmp.path(file));
@@ -400,8 +391,7 @@ ZEST_CASE(CommandlessRuleCoversNothing) {
     Project project{files};
     project.settings.rules.push_back(Rule{.default_command = std::string("ccache")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
     ZEXPECT(project.members().empty());
     ZEXPECT(!project.is_unit(project.file_table.intern(Spelling::absolute(tmp.path("src/a.cpp")))));
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/new.h")));
@@ -422,8 +412,7 @@ ZEST_CASE(BorrowAcrossModules) {
     project.settings.rules.push_back(
         Rule{.patterns = {"mods/*.cppm"}, .default_command = std::string("clang++ -std=c++20")});
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
 
     auto intern = [&](llvm::StringRef file) {
         return project.file_table.intern(Spelling::absolute(tmp.path(file)));
@@ -441,8 +430,7 @@ ZEST_CASE(NestedProjectRecordsNothing) {
     FileTable files;
     Project project{files};
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
     tmp.touch("sub/clice.toml", "");
     tmp.touch("sub/new.cpp", "");
     tmp.touch("plain/new.cpp", "");
@@ -463,8 +451,7 @@ ZEST_CASE(ProvisionalMembers) {
     FileTable files;
     Project project{files};
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
     auto add = [&](llvm::StringRef driver, llvm::StringRef file) {
         tmp.touch(file, "");
         auto command = std::format("{} {}", driver, tmp.path(file));
@@ -545,8 +532,7 @@ ZEST_CASE(MembersBorrowDeclaredUnits) {
     FileTable files;
     Project project{files};
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    skip_toolchain_query(project);
     tmp.touch("src/a.cpp", "");
     tmp.touch("other/z.cpp", "");
     auto entries = [&](llvm::ArrayRef<CDBEntry> units) {
@@ -594,8 +580,7 @@ ZEST_CASE(BuiltinHostStaysFallback) {
     FileTable files;
     Project project{files};
     project.root = CanonicalPath(Spelling::absolute(tmp.root));
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
     // Before any query runs: the toolchain keeps what its queries found.
     ScopedEnv no_compilers("PATH", tmp.path("nowhere"));
     auto host = project.file_table.intern(Spelling::absolute(tmp.path("lib/main.cpp")));
@@ -1040,7 +1025,7 @@ ZEST_CASE(RepeatedHeaderChangeStales) {
     ZEXPECT(once->size() == 1u);
 };
 
-ZEST_CASE(HeaderTextKeepsTakenTree) {
+ZEST_CASE(HeaderTextKeepsTree) {
     /// A preprocess run's tree holds for a header whatever the header's own
     /// text, as the index's does: it moves nothing above the header.
     TreeProject p;
@@ -1135,7 +1120,7 @@ ZEST_CASE(FailedTreeHostsNothing) {
     ZEXPECT(!p.chains(a, t).has_value());
 };
 
-ZEST_CASE(SelfContainmentFollowsItsInputs) {
+ZEST_CASE(SelfContainmentFollowsInputs) {
     /// A self-containment check's result holds while what its compile read
     /// holds, and the header's text: for an open header, whose buffer moves
     /// with every keystroke, its disk content.

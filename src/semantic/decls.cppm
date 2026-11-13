@@ -15,6 +15,18 @@ bool is_templated(const clang::Decl* decl);
 /// none for any other declaration.
 auto own_template_parameters(const clang::Decl* decl) -> const clang::TemplateParameterList*;
 
+/// The template parameter a substitution names by its associated
+/// declaration and index, as clang's `getReplacedParameter()` and
+/// `getParameterPack()` find it, or null when that declaration's list has
+/// no parameter of the kind at the index. clang trusts the index, but a
+/// specialization merged across modules can report its primary template
+/// while the index came from the partial specialization it was
+/// instantiated from (`function_ref<Ret(Params...)>`'s `Params`).
+auto replaced_parameter(const clang::SubstTemplateTypeParmType& type)
+    -> const clang::TemplateTypeParmDecl*;
+auto replaced_parameter(const clang::SubstNonTypeTemplateParmPackExpr& expr)
+    -> const clang::NonTypeTemplateParmDecl*;
+
 /// The parameter lists an out-of-line definition repeats for the class
 /// templates enclosing it.
 auto outer_template_parameters(const clang::Decl* decl)

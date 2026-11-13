@@ -350,6 +350,14 @@ feature::SemanticTokensOptions MasterServer::startup_token_options() const {
 async::task<> MasterServer::stop() {
     if(!stop_started) {
         stop_started = true;
+        stop_watchdog.spawn([](MasterServer& server) -> async::task<> {
+            // Hang detection: a drain that never ends would keep the server,
+            // and its index's write lock, alive for good: the next session
+            // could not open the index.
+            co_await async::sleep(chrono::seconds(60));
+            LOG_ERROR("Shutting down is stuck {} after 60 s; exiting", server.stop_step);
+            std::_Exit(1);
+        }(*this));
         stop_run.spawn([](MasterServer& server) -> async::task<> {
             // A client that went away skipped the shutdown request; no
             // project may start from here on (a project stop finishing below
@@ -358,13 +366,29 @@ async::task<> MasterServer::stop() {
             // A parked reply would hold its attempt, and the stop behind it,
             // forever.
             server.hooks.release_all();
+            server.stop_step = "stopping the background indexes";
+            for(auto& project: server.projects) {
+                co_await project->project.stop_feeding();
+            }
+            // A removed project still shutting down feeds the pool too; one
+            // that ends meanwhile leaves the list.
+            for(auto weak: std::vector(server.removed_projects)) {
+                if(auto project = weak.lock()) {
+                    co_await project->project.stop_feeding();
+                }
+            }
+            server.stop_step = "stopping the workers";
             co_await server.pool.stop();
+            server.stop_step = "stopping the looks at files";
             server.polling.cancel();
             co_await server.polling.join();
+            server.stop_step = "shutting down the removed projects";
             co_await server.bg_tasks.join();
             for(auto& project: server.projects) {
+                server.stop_step = std::format("saving the project at {}", project->project.root);
                 co_await project->shutdown();
             }
+            server.stop_watchdog.cancel();
             server.stopped.set();
         }(*this));
     }
@@ -374,6 +398,7 @@ async::task<> MasterServer::stop() {
 async::task<> MasterServer::close() {
     co_await stop();
     co_await stop_run.join();
+    co_await stop_watchdog.join();
     client_watch.cancel();
     co_await client_watch.join();
     lifecycle = ServerLifecycle::Exited;

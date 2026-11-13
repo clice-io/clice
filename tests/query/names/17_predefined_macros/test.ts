@@ -5,9 +5,9 @@ import { test } from "@clice/tools/testing";
 // from.
 test(async (t) => {
     await t.cli("index");
-    await t.cli("query references main.cpp:2:13");
+    await t.cli(`query references ${t.place(t.at("main.cpp", "= |FOO"))}`);
     await t.cli("query definition FOO");
     await t.cli("query symbol-search FOO");
     await t.cli("query definition __cplusplus");
-    await t.cli(["query", "definition", "main.cpp:2:13 kind:function"]);
+    await t.cli(["query", "definition", `${t.place(t.at("main.cpp", "= |FOO"))} kind:function`]);
 });

@@ -85,4 +85,19 @@ compiles = true
 -static_assert(12 DIV/**/3 == 4);
 +static_assert(12 / /**/3 == 4);
  static_assert(six == 6);
+ static_assert(5 -\
+'''
+
+[[answers.spliced.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'NEG'"
+compiles = true
+
+[answers.spliced.code_actions.edits]
+"main.cpp" = '''
+ static_assert(12 DIV/**/3 == 4);
+ static_assert(six == 6);
+-static_assert(5 -\
+-NEG 1 == 6);
++static_assert(5 - - 1 == 6);
 '''

@@ -1,0 +1,2 @@
+# One command names no standard, which a generated database cannot leave out.
+databases = {}

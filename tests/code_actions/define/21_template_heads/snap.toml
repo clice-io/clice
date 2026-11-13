@@ -1,0 +1,511 @@
+[[answers.constrained_pack.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.constrained_pack.code_actions.edits]
+"constrained.cpp" = '''
+ template <Small T, Small... Ts>
+ struct Box {
+-    void f();
++    void f() {}
+ };
+'''
+
+[[answers.constrained_pack.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Box<T, Ts...>::f' out of line"
+compiles = true
+
+[answers.constrained_pack.code_actions.edits]
+"constrained.cpp" = '''
+ };
+
++template <Small T, Small... Ts>
++void Box<T, Ts...>::f() {
++}
++
+ namespace limits {
+ template <class T>
+'''
+
+[[answers.qualified_constraint.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.qualified_constraint.code_actions.edits]
+"constrained.cpp" = '''
+ template <limits::Small auto V, limits::Small auto... Vs>
+ struct Value {
+-    void f();
++    void f() {}
+ };
+'''
+
+[[answers.qualified_constraint.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Value<V, Vs...>::f' out of line"
+compiles = true
+
+[answers.qualified_constraint.code_actions.edits]
+"constrained.cpp" = '''
+ };
+
++template <limits::Small auto V, limits::Small auto... Vs>
++void Value<V, Vs...>::f() {
++}
++
+ struct Config;
+'''
+
+[[answers.constraint_outside_namespace.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'cfg::Holder<T, U>::f' out of line"
+compiles = true
+
+[answers.constraint_outside_namespace.code_actions.edits]
+"constrained.cpp" = '''
+
+ struct Config {};
++
++template <cfg::Tiny T, cfg::Same<int> U>
++void cfg::Holder<T, U>::f(Config config) {
++}
+'''
+
+[[answers.namespace_type.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.namespace_type.code_actions.edits]
+"shadowed.cpp" = '''
+ template <class T>
+ struct Shadow {
+-    ::app::T f();
++    ::app::T f() {}
+     template <class G>
+     ::G g();
+'''
+
+[[answers.namespace_type.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Shadow<T>::f' out of line"
+compiles = true
+
+[answers.namespace_type.code_actions.edits]
+"shadowed.cpp" = '''
+     ::G g();
+ };
++
++template <class T>
++app::T Shadow<T>::f() {
+ }
+
++}
++
+ struct T {};
+ struct Ω {};
+'''
+
+[[answers.member_template_parameter.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'g' inline"
+compiles = true
+
+[answers.member_template_parameter.code_actions.edits]
+"shadowed.cpp" = '''
+     ::app::T f();
+     template <class G>
+-    ::G g();
++    ::G g() {}
+ };
+ }
+'''
+
+[[answers.member_template_parameter.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Shadow<T>::g' out of line"
+compiles = true
+
+[answers.member_template_parameter.code_actions.edits]
+"shadowed.cpp" = '''
+     ::G g();
+ };
++
++template <class T>
++template <class G>
++::G Shadow<T>::g() {
+ }
+
++}
++
+ struct T {};
+ struct Ω {};
+'''
+
+[[answers.global_type.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.global_type.code_actions.edits]
+"shadowed.cpp" = '''
+ template <class T, class Ω>
+ struct Global {
+-    ::T f();
++    ::T f() {}
+     Tag<'T'> tag();
+     ::Ω omega();
+'''
+
+[[answers.global_type.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Global<T, Ω>::f' out of line"
+compiles = true
+
+[answers.global_type.code_actions.edits]
+"shadowed.cpp" = '''
+ };
+
++template <class T, class Ω>
++::T Global<T, Ω>::f() {
++}
++
+ struct C {};
+'''
+
+[[answers.character_literal.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'tag' inline"
+compiles = true
+
+[answers.character_literal.code_actions.edits]
+"shadowed.cpp" = '''
+ struct Global {
+     ::T f();
+-    Tag<'T'> tag();
++    Tag<'T'> tag() {}
+     ::Ω omega();
+ };
+'''
+
+[[answers.character_literal.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Global<T, Ω>::tag' out of line"
+compiles = true
+
+[answers.character_literal.code_actions.edits]
+"shadowed.cpp" = '''
+ };
+
++template <class T, class Ω>
++Tag<'T'> Global<T, Ω>::tag() {
++}
++
+ struct C {};
+'''
+
+[[answers.non_ascii_name.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'omega' inline"
+compiles = true
+
+[answers.non_ascii_name.code_actions.edits]
+"shadowed.cpp" = '''
+     ::T f();
+     Tag<'T'> tag();
+-    ::Ω omega();
++    ::Ω omega() {}
+ };
+'''
+
+[[answers.non_ascii_name.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Global<T, Ω>::omega' out of line"
+compiles = true
+
+[answers.non_ascii_name.code_actions.edits]
+"shadowed.cpp" = '''
+ };
+
++template <class T, class Ω>
++::Ω Global<T, Ω>::omega() {
++}
++
+ struct C {};
+'''
+
+[[answers.member_pointer_class.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.member_pointer_class.code_actions.edits]
+"shadowed.cpp" = '''
+ template <class C>
+ struct Pointer {
+-    int (::C::*f())();
++    int (::C::*f())() {}
+ };
+'''
+
+[[answers.member_pointer_class.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Pointer<C>::f' out of line"
+compiles = true
+
+[answers.member_pointer_class.code_actions.edits]
+"shadowed.cpp" = '''
+     int (::C::*f())();
+ };
++
++template <class C>
++int (::C::*Pointer<C>::f())() {
++}
+'''
+
+[[answers.concept_named_like_parameter.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.concept_named_like_parameter.code_actions.edits]
+"shadowed_constraints.cpp" = '''
+ template <class C, ::C U>
+ struct Box {
+-    void f();
++    void f() {}
+ };
+'''
+
+[[answers.concept_named_like_parameter.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Box<C, U>::f' out of line"
+compiles = true
+
+[answers.concept_named_like_parameter.code_actions.edits]
+"shadowed_constraints.cpp" = '''
+ };
+
++template <class C, ::C U>
++void Box<C, U>::f() {
++}
++
+ struct G {};
+'''
+
+[[answers.concept_argument.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.concept_argument.code_actions.edits]
+"shadowed_constraints.cpp" = '''
+ template <class G, Related<::G> T>
+ struct Link {
+-    void f();
++    void f() {}
+ };
+'''
+
+[[answers.concept_argument.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Link<G, T>::f' out of line"
+compiles = true
+
+[answers.concept_argument.code_actions.edits]
+"shadowed_constraints.cpp" = '''
+ };
+
++template <class G, Related<::G> T>
++void Link<G, T>::f() {
++}
++
+ namespace app {
+ struct C;
+'''
+
+[[answers.concept_hidden_in_namespace.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.concept_hidden_in_namespace.code_actions.edits]
+"shadowed_constraints.cpp" = '''
+ template <::C T>
+ struct Shape {
+-    void f();
++    void f() {}
+ };
+ }
+'''
+
+[[answers.concept_hidden_in_namespace.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Shape<T>::f' out of line"
+compiles = true
+
+[answers.concept_hidden_in_namespace.code_actions.edits]
+"shadowed_constraints.cpp" = '''
+     void f();
+ };
++
++template <::C T>
++void Shape<T>::f() {
+ }
++
++}
+'''
+
+[[answers.unnamed_after_named.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.unnamed_after_named.code_actions.edits]
+"unnamed.cpp" = '''
+ template <typename T, typename = void>
+ struct Unnamed {
+-    void f();
++    void f() {}
+ };
+'''
+
+[[answers.unnamed_after_named.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Unnamed<T, T1>::f' out of line"
+compiles = true
+
+[answers.unnamed_after_named.code_actions.edits]
+"unnamed.cpp" = '''
+ };
+
++template <typename T, typename T1>
++void Unnamed<T, T1>::f() {
++}
++
+ template <class>
+ struct Outer {
+'''
+
+[[answers.unnamed_nested.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.unnamed_nested.code_actions.edits]
+"unnamed.cpp" = '''
+     template <class>
+     struct Inner {
+-        void f();
++        void f() {}
+     };
+ };
+'''
+
+[[answers.unnamed_nested.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Outer<T0>::Inner<T0_>::f' out of line"
+compiles = true
+
+[answers.unnamed_nested.code_actions.edits]
+"unnamed.cpp" = '''
+     };
+ };
++
++template <class T0>
++template <class T0_>
++void Outer<T0>::Inner<T0_>::f() {
++}
+'''
+
+[[answers.name_taken_by_macro.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.name_taken_by_macro.code_actions.edits]
+"unnamed_macro.cpp" = '''
+ template <class>
+ struct Macro {
+-    void f();
++    void f() {}
+ };
+'''
+
+[[answers.name_taken_by_macro.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Macro<T0_>::f' out of line"
+compiles = true
+
+[answers.name_taken_by_macro.code_actions.edits]
+"unnamed_macro.cpp" = '''
+ };
+
++template <class T0_>
++void Macro<T0_>::f() {
++}
++
+ #undef T0
+'''
+
+[[answers.name_taken_by_type.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.name_taken_by_type.code_actions.edits]
+"unnamed_taken.cpp" = '''
+ template <class T, class = void>
+ struct Taken {
+-    T1 f();
++    T1 f() {}
+ };
+'''
+
+[[answers.name_taken_by_type.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Taken<T, T1_>::f' out of line"
+compiles = true
+
+[answers.name_taken_by_type.code_actions.edits]
+"unnamed_taken.cpp" = '''
+ };
+
++template <class T, class T1_>
++T1 Taken<T, T1_>::f() {
++}
++
+ struct T0 {};
+'''
+
+[[answers.name_taken_in_member_class.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.name_taken_in_member_class.code_actions.edits]
+"unnamed_taken.cpp" = '''
+ template <class>
+ struct Scope::Inner {
+-    void f(T0 value);
++    void f(T0 value) {}
+ };
+'''
+
+[[answers.name_taken_in_member_class.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Scope::Inner<T0_>::f' out of line"
+compiles = true
+
+[answers.name_taken_in_member_class.code_actions.edits]
+"unnamed_taken.cpp" = '''
+     void f(T0 value);
+ };
++
++template <class T0_>
++void Scope::Inner<T0_>::f(T0 value) {
++}
+'''

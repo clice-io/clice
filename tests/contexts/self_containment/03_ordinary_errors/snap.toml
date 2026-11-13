@@ -1,4 +1,4 @@
-[test."typo.h"]
+["syntax errors are the header's own"."typo.h"]
 diagnostics = [
     {
         at = "inline int broken() { return ⟦}⟧",
@@ -9,7 +9,7 @@ diagnostics = [
     },
 ]
 
-[test."semicolon.h"]
+["syntax errors are the header's own"."semicolon.h"]
 diagnostics = [
     {
         at = "⟦}⟧",
@@ -21,7 +21,7 @@ diagnostics = [
     { at = "}⟦⟧", severity = "error", message = "expected '}'", source = "clang", code = "err_expected" },
 ]
 
-[test."last.h"]
+["syntax errors are the header's own"."last.h"]
 diagnostics = [
     {
         at = "void g()⟦⟧",
@@ -32,7 +32,7 @@ diagnostics = [
     },
 ]
 
-[test."keyword.h"]
+["syntax errors are the header's own"."keyword.h"]
 diagnostics = [
     {
         at = "⟦template⟧ <class T> void g(T);",
@@ -40,5 +40,16 @@ diagnostics = [
         message = "expected function body after function declarator",
         source = "clang",
         code = "err_expected_fn_body",
+    },
+]
+
+["an edit cuts the comparison short".edited]
+diagnostics = [
+    {
+        at = "inline int broken() { return  ⟦}⟧",
+        severity = "error",
+        message = "expected expression",
+        source = "clang",
+        code = "err_expected_expression",
     },
 ]

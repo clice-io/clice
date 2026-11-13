@@ -218,6 +218,9 @@ public:
     bool is_dirty(NodeId id) const;
     bool is_compiling(NodeId id) const;
 
+    /// Returns once the attempt of the node in flight now, if any, finished.
+    async::task<> attempt_finished(NodeId id);
+
     /// How many invalidations reached the node: what an attempt started at
     /// one generation produced describes the node's inputs while it is still
     /// the node's. 0 for a node that does not exist.

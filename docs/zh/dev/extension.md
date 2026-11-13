@@ -53,7 +53,7 @@ Neovim 集成位于 `editors/nvim`：
 
 - `lsp/clice.lua` 是 LSP 配置。nvim-lspconfig 自己的 `lsp/clice.lua` 就是同一份文件，因此这里的改动也要向那边提交 pull request；`lsp/.stylua.toml` 是 nvim-lspconfig 的格式化配置，确保两份文件完全一致。
 - `plugin/clice.lua` 淡化显示非活动预处理分支。
-- `tests/e2e.lua` 是以 headless 模式运行的冒烟测试：`pixi run -e editor nvim-e2e`。
+- `tests/e2e.lua` 是以 headless 模式运行的端到端测试，运行在 `tests/editors/` 的 fixture 上：`pixi run -e editor nvim-e2e`。
 
 试用改动时，把该目录追加到 `runtimepath`（`set rtp+=/path/to/clice/editors/nvim`），排在 nvim-lspconfig 之后，从而覆盖它的副本，并调用 `vim.lsp.enable('clice')`；`:checkhealth vim.lsp` 会显示客户端及其日志的位置。
 

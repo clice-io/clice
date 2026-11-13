@@ -2,6 +2,8 @@
 // at each line's end, the carriage return left out.
 /* a block
    comment */
+/* a café
+   au lait */
 int read() {
     return 1;
 }

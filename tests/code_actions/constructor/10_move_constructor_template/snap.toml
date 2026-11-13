@@ -10,3 +10,9 @@ compiles = true
 +    Templated(Unique<int> unique, int count) : unique(std::move(unique)), count(count) {}
  };
 '''
+
+[answers.constrained_move]
+code_actions = []
+
+[answers.undeducible_move]
+code_actions = []

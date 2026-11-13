@@ -1,6 +1,7 @@
 // A function's card at its uses: through a pointer, a call, a call before
 // the definition, a call taking a default template argument, a call leaving
-// default arguments out, and a member defined out of line.
+// default arguments out, a member defined out of line, a deprecated consteval
+// function in nested anonymous namespaces and a static constexpr member.
 
 namespace address_use {
 void schedule(long) {}
@@ -46,4 +47,19 @@ struct Buffer {
 Buffer::size_type Buffer::§(out_of_line_definition)size() const {
     return 0;
 }
+}
+
+namespace specifiers {
+namespace {
+namespace {
+[[deprecated("use a seed of your own")]] consteval int seed() { return 1; }
+}
+}
+
+struct Factory {
+    constexpr static Factory make(int left, double right) { return Factory(); }
+};
+
+int first = §(consteval_use)seed();
+Factory made = Factory::§(static_member_use)make(1, 2.0);
 }

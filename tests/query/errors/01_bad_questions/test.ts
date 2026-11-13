@@ -2,7 +2,7 @@ import { test } from "@clice/tools/testing";
 
 // Questions clice cannot answer as asked: each says what is wrong and
 // exits 1, or 2 for arguments the question does not take.
-test(async (t) => {
+test({ errors: ["No index cache at"] }, async (t) => {
     await t.cli("query symbol-search add");
     // An argument the question does not take is reported before the index
     // is opened.
@@ -26,6 +26,10 @@ test(async (t) => {
         await t.cli(`query ${question}`);
     }
     // A place is held to the kinds asked for; a kind must be one clice knows.
-    await t.cli(["query", "definition", "main.cpp:4:5 kind:variable"]);
+    await t.cli([
+        "query",
+        "definition",
+        `${t.place(t.at("main.cpp", "int |compute"))} kind:variable`,
+    ]);
     await t.cli(["query", "symbol-search", "add kind:Fnction"]);
 });

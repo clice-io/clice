@@ -26,5 +26,5 @@ workspace_symbols = [
 
 [test.told]
 value = [
-    "clice's background workers keep crashing and are stopped for 30 seconds: completion, signature help, formatting and indexing wait until then. The server log has the crash reports",
+    "clice's background workers keep crashing and are stopped for 3 seconds: completion, signature help, formatting and indexing wait until then. The server log has the crash reports",
 ]

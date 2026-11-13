@@ -52,7 +52,6 @@ struct Rename {
 
     ProjectOptions where;
     FreshOption fresh;
-    LogLevelOption log;
 };
 
 /// The renames a list asks for: `<locator> => <new name>` a line, blank

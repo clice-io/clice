@@ -82,20 +82,6 @@ inline void println() {
     write_output(stdout, "\n");
 }
 
-/// The --log-level option every subcommand's options hold: what reaches
-/// stderr. A session log keeps info whatever stderr shows, as an
-/// info-level session log is what tells what a run did.
-struct LogLevelOption {
-    KANNOTATE(&log_level, description = "Log level of stderr")
-    logging::Level log_level = logging::Level::Warn;
-
-    /// Set the global levels: stderr's as given, the logs' info at least.
-    void apply() const {
-        logging::options.stderr_level = log_level;
-        logging::options.level = std::min(log_level, logging::Level::Info);
-    }
-};
-
 /// --configuration: the build configuration a subcommand works in.
 struct ConfigurationOption {
     /// The tag given, empty for none.
@@ -262,7 +248,7 @@ int run_operation(std::variant<Operations...>& operation) {
 /// Run what `options` ask for: the operation they name (`operation`, a
 /// std::variant of them or a cli::Commands), which one without a job of its
 /// own requires; else its own job, the overload of `run` its file declares,
-/// its --log-level applied and its log on stderr.
+/// its log on stderr.
 template <typename T>
 int dispatch(T& options) {
     if constexpr(!requires { run(options); }) {
@@ -273,7 +259,6 @@ int dispatch(T& options) {
                 return run_operation(*options.operation);
             }
         }
-        options.log.apply();
         logging::stderr_logger("clice");
         return run(options);
     }

@@ -1,3 +1,14 @@
+[answers.exported_bare.completion]
+items = [
+    { label = ":part", kind = "Module", insert = ":part", replace = "export import ⟦⟧;" },
+    { label = "app", kind = "Module", insert = "app", replace = "export import ⟦⟧;" },
+]
+
+[answers.exported.completion]
+items = [
+    { label = "app", kind = "Module", insert = "app;", replace = "export import ⟦a⟧" },
+]
+
 [answers.names.completion]
 items = [
     { label = ":core", kind = "Module", insert = ":core", replace = "import ⟦⟧;" },

@@ -7,4 +7,5 @@ answers({ paths: { server: "clice inspect does not rename" }, indexing: true }, 
     await a.show("local_to_parameter", rename("local", "factor"));
     await a.show("parameter_to_parameter", rename("second", "factor"));
     await a.show("same_signature", rename("compute", "twin"));
+    await a.show("label_to_label", rename("again", "done"));
 });

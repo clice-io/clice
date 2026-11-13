@@ -41,9 +41,6 @@ int run_worker(Worker& worker) {
         // other thread starts and before any async::queue call.
         async::set_thread_pool_size(1);
     }
-    // The pool relays each line of a worker's stderr as a warning: one
-    // with no log file to write keeps its lower levels out of it.
-    logging::options.stderr_level = logging::Level::Warn;
     logging::stderr_logger(worker.worker_name, logging::StderrReader::Pool);
     if(!worker.session_dir.empty()) {
         logging::file_logger(worker.session_dir);

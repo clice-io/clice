@@ -11,6 +11,9 @@ inlay_hints = [
     { line = "}⟨// align⟩" },
     { line = "alignas(align(⟨value:⟩2, ⟨factor:⟩4))" },
     { line = "__attribute__((aligned(align(⟨value:⟩4, ⟨factor:⟩2))));" },
+    { line = "sink(⟨value:⟩1);" },
+    { line = "sink(⟨value:⟩1);" },
+    { line = "}⟨// boundaries⟩" },
 ]
 
 [answers.struct_end]
@@ -36,4 +39,12 @@ inlay_hints = [
 [answers.trailing_attribute]
 inlay_hints = [
     { line = "__attribute__((aligned(align(⟨value:⟩4, ⟨factor:⟩2))));" },
+]
+
+[answers.ends_at_argument]
+inlay_hints = []
+
+[answers.starts_at_argument]
+inlay_hints = [
+    { line = "sink(⟨value:⟩1);" },
 ]

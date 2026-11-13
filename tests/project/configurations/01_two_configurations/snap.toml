@@ -4,6 +4,9 @@ active = "debug"
 selected = ""
 default = "debug"
 
+["menu and selection"."a name no rule declares"]
+value = "no rule declares the configuration nope"
+
 ["menu and selection".state]
 value = '{"configuration":"release"}'
 
@@ -104,6 +107,9 @@ menu = ["debug", "release"]
 active = "debug"
 selected = "release"
 default = "debug"
+
+["command line overrides the selection"."pinned switch"]
+value = "the server runs with --configuration debug, which pins it"
 
 ["command line overrides the selection".unknown.configurations]
 menu = ["debug", "release"]

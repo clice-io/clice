@@ -33,15 +33,20 @@ struct IndexQueryTester : Tester {
         return index::search(query(), *index::Locator::parse(text), limit);
     }
 
-    /// Compile the added sources as the background index does and merge the
-    /// unit's index.
-    void index_workspace() {
-        kind = CompilationKind::Whole;
-        ZASSERT(compile());
-        merge_unit(project, *unit, focus_id);
+    /// Compile the sources of `unit` as the background index does and merge
+    /// its index.
+    void index_workspace(Tester& unit) {
+        unit.kind = CompilationKind::Whole;
+        ZASSERT(unit.compile());
+        merge_unit(project, *unit.unit, focus_id);
         if(auto header = project.file_table.find(Spelling::absolute(TestVFS::path("header.h")))) {
             header_id = *header;
         }
+    }
+
+    /// index_workspace of the sources added to the fixture.
+    void index_workspace() {
+        index_workspace(*this);
     }
 };
 

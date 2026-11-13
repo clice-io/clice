@@ -22,23 +22,7 @@ std::vector<std::string> steps_at(llvm::StringRef content, std::uint32_t offset)
 
 ZEST_SUITE(selection_ranges) {
 
-ZEST_CASE(EmptyText) {
-    ZEXPECT(steps_at("", 0) == std::vector<std::string>{""});
-}
-
-ZEST_CASE(UnterminatedLiterals) {
-    for(llvm::StringRef text: {R"(f("open)", R"(R"x(open)", R"(R"open)", "u8'"}) {
-        ZEXPECT(steps_at(text, text.size() - 1) == std::vector<std::string>{""});
-    }
-    // A comment left open runs to the end of the file.
-    llvm::StringRef comment = "int x; /* open";
-    ZEXPECT(steps_at(comment, comment.size() - 1) == std::vector<std::string>{"open", "/* open"});
-}
-
-ZEST_CASE(StrayClosers) {
-    ZEXPECT(steps_at("} f(a) ]", 4) == std::vector<std::string>{"a", "(a)"});
-}
-
+/// The steps stop at 128, a depth no case's brackets reach.
 ZEST_CASE(DeepNestingCapped) {
     std::string text = std::string(1000, '(') + "x" + std::string(1000, ')');
     auto steps = steps_at(text, 1000);

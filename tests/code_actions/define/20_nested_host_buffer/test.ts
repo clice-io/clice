@@ -15,15 +15,13 @@ test(async (t) => {
     await s.diagnostics("repo/sub/widget.cpp");
     s.open("repo/widget.h");
     await s.diagnostics("repo/widget.h");
-    const at = { line: 4, character: 8 };
-    const actions = await s.client.codeActions(s.uri("repo/widget.h"), { start: at, end: at });
+    const { uri, position } = s.position(t.marker("size"));
+    const actions = await s.client.codeActions(uri, { start: position, end: position });
     const versions = (actions ?? []).flatMap((action) =>
         "edit" in action
             ? (action.edit.documentChanges ?? []).flatMap((change) =>
                   "textDocument" in change &&
-                  decodeURIComponent(new URL(change.textDocument.uri).pathname).endsWith(
-                      "/repo/sub/widget.cpp",
-                  )
+                  s.spelling(change.textDocument.uri) === "repo/sub/widget.cpp"
                       ? [change.textDocument.version]
                       : [],
               )

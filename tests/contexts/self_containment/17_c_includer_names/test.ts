@@ -2,11 +2,12 @@ import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
 // Each header leans on what its includer defines first in a way C compiles
-// alone without a missing-name error: a struct named in a prototype (a
-// warning), an enum as a field's type, a struct as an array's elements, a
-// macro after a declarator, a macro declaring at file scope, a list of
-// enumerators two braces deep in an initializer; C++ reads names.h's list
-// as declarations without a type.
+// alone without a missing-name error: a struct named in a prototype, an
+// enum as a field's type, a struct as an array's elements, a macro after a
+// declarator, a macro declaring at file scope, a list of enumerators two
+// braces deep in an initializer; C++ reads names.h's list as declarations
+// without a type. Each compiles in the includer's context: proto.h's
+// struct, only a warning in C, counts as an error.
 test(async (t) => {
     const s = await t.start();
     const headers = ["proto.h", "fields.h", "entries.h", "api.h", "docs.h", "kinds.h", "names.h"];

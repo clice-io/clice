@@ -206,7 +206,8 @@ Deduction PseudoInstantiator::deduce_template_arguments(clang::ClassTemplateDecl
     /// redeclaration (libstdc++ redeclares `map` after defining it) has
     /// parameters of its own.
     const clang::ClassTemplateDecl* defined = CTD;
-    if(auto* definition = CTD->getTemplatedDecl()->getDefinition()) {
+    if(auto* definition = CTD->getTemplatedDecl()->getDefinition();
+       definition && definition->getDescribedClassTemplate()) {
         defined = definition->getDescribedClassTemplate();
     }
     auto* list = defined->getTemplateParameters();
@@ -624,10 +625,12 @@ const clang::TemplateArgument*
     }
     auto* instantiation = llvm::dyn_cast_or_null<clang::FunctionDecl>(
         decls::only_instantiation(const_cast<clang::FunctionDecl*>(function)));
-    if(!instantiation) {
+    const auto* arguments =
+        instantiation ? instantiation->getTemplateSpecializationArgs() : nullptr;
+    if(!arguments || index >= arguments->size()) {
         return nullptr;
     }
-    return &instantiation->getTemplateSpecializationArgs()->get(index);
+    return &arguments->get(index);
 }
 
 void PseudoInstantiator::assume(clang::ClassTemplateDecl* owner,

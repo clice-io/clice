@@ -11,12 +11,6 @@ constexpr inline bool Windows = true;
 constexpr inline bool Windows = false;
 #endif
 
-#ifdef __linux__
-constexpr inline bool Linux = true;
-#else
-constexpr inline bool Linux = false;
-#endif
-
 /// The environment variable `name` as a test sets it, `value` or unset,
 /// until the guard ends.
 struct ScopedEnv {

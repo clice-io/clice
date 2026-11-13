@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, test } from "vitest";
-import { missingInputs } from "./confirm.ts";
+import { compilerErrors, confirms, missingInputs } from "./confirm.ts";
 import { unitsInFlight } from "./index.ts";
 import { acceptedDifference, placesOf, shownPlace } from "./sweep.ts";
 
@@ -24,6 +24,66 @@ describe("confirm", () => {
         } finally {
             fs.rmSync(root, { recursive: true });
         }
+    });
+});
+
+describe("compiler errors", () => {
+    const dir = path.resolve("/build");
+    const at = (file: string) => path.resolve(dir, file);
+
+    test("the errors a compiler locates, in each compiler's form", () => {
+        const gcc = [
+            "../src/a.cpp: In function 'int main()':",
+            "../src/a.cpp:3:5: error: 'foo' was not declared in this scope",
+            "    3 |     foo();",
+            "../src/b.h:7:10: fatal error: c.h: No such file or directory",
+            "compilation terminated.",
+        ].join("\n");
+        expect(compilerErrors(gcc, dir)).toEqual([
+            { file: at("../src/a.cpp"), line: 3, message: "'foo' was not declared in this scope" },
+            { file: at("../src/b.h"), line: 7, message: "c.h: No such file or directory" },
+        ]);
+        const cl = [
+            "a.cpp",
+            "C:\\src\\a.cpp(3): error C3861: 'foo': identifier not found",
+            "src/b.cpp(12,5): error: use of undeclared identifier 'bar'",
+        ].join("\n");
+        expect(compilerErrors(cl, dir).map(({ line, message }) => [line, message])).toEqual([
+            [3, "'foo': identifier not found"],
+            [12, "use of undeclared identifier 'bar'"],
+        ]);
+    });
+
+    test("errors in color, as -fdiagnostics-color writes them", () => {
+        const clang =
+            "\x1b[1m../src/a.cpp:1:14: \x1b[0m\x1b[0;1;31merror: \x1b[0m\x1b[1munknown type name 'foo'\x1b[0m";
+        expect(compilerErrors(clang, dir)).toEqual([
+            { file: at("../src/a.cpp"), line: 1, message: "unknown type name 'foo'" },
+        ]);
+    });
+
+    test("a driver's own errors locate none", () => {
+        const driver = [
+            "g++: error: unrecognized command-line option '-fno-such-thing'",
+            "clang++: error: no such file or directory: 'missing.cpp'",
+            "cl : Command line error D8021 : invalid numeric argument '/Wfoo'",
+        ].join("\n");
+        expect(compilerErrors(driver, dir)).toEqual([]);
+    });
+
+    test("the compiler confirms clice's first error by its line or its words", () => {
+        const found = compilerErrors(
+            "../src/a.cpp:3:5: error: 'foo' was not declared in this scope\n../src/a.cpp:9:1: error: expected ‘;’ before ‘}’ token",
+            dir,
+        );
+        const clice = (line: number, message: string) => [
+            { file: at("../src/a.cpp"), line, column: 5, message },
+        ];
+        expect(confirms(clice(3, "use of undeclared identifier 'foo'"), found)).toBe(true);
+        expect(confirms(clice(5, "expected ';' before '}' token"), found)).toBe(true);
+        expect(confirms(clice(5, "use of undeclared identifier 'foo'"), found)).toBe(false);
+        expect(confirms([{ message: "expected ';' before '}' token" }], found)).toBe(true);
+        expect(confirms([], found)).toBe(true);
     });
 });
 

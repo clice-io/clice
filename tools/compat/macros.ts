@@ -17,7 +17,8 @@ import {
     withoutOutputs,
     type DatabaseEntry,
 } from "./database.ts";
-import { run } from "./scenario.ts";
+import { ending, runProcess } from "../client/process.ts";
+import { STEP_MS } from "./scenario.ts";
 
 /// Macros whose values follow from the compiler, its target and the
 /// command's flags: language mode, target, data model, the semantic
@@ -179,15 +180,16 @@ export async function compilerAnswers(
     // path, without `.exe`, or a Cygwin symlink (/usr/bin/cc).
     const probed =
         posix === undefined
-            ? await run(driver, args, { cwd: entry.directory, env })
-            : await run(path.join(posix, "env.exe"), [driver, ...args], {
+            ? await runProcess(driver, args, { cwd: entry.directory, env, timeout: STEP_MS })
+            : await runProcess(path.join(posix, "env.exe"), [driver, ...args], {
                   cwd: entry.directory,
                   env,
+                  timeout: STEP_MS,
               });
     if (probed.status !== 0) {
         throw new Error(
             `${source}: preprocessing the probe with the entry's compiler failed ` +
-                `(${probed.error ?? `exit ${probed.status}`}): ${driver} ${args.join(" ")}\n${probed.stderr}`,
+                `(${ending(probed)}): ${driver} ${args.join(" ")}\n${probed.stderr}`,
         );
     }
     const answers: CompilerAnswers = { macros: new Map(), headers: new Map() };

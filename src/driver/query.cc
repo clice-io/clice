@@ -194,7 +194,6 @@ struct ProjectFiles {
     FileFilter filter = FileFilter::All;
 
     Options query;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct FileDeps,
@@ -209,7 +208,6 @@ struct FileDeps {
     int depth = 1;
 
     Options query;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(
@@ -218,7 +216,6 @@ KANNOTATE_TYPE(
 struct ImpactAnalysis {
     FileTarget target;
     Options query;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Counterparts,
@@ -226,7 +223,6 @@ KANNOTATE_TYPE(struct Counterparts,
 struct Counterparts {
     FileTarget target;
     Options query;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct SymbolSearch, description = "The symbols a locator matches, best first");
@@ -241,7 +237,6 @@ struct SymbolSearch {
     int limit = 100;
 
     Options query;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct ReadSymbol,
@@ -249,14 +244,12 @@ KANNOTATE_TYPE(struct ReadSymbol,
 struct ReadSymbol {
     SymbolTarget target;
     Options query;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct DocumentSymbols, description = "A file's outline");
 struct DocumentSymbols {
     FileTarget target;
     Options query;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Definition,
@@ -264,7 +257,6 @@ KANNOTATE_TYPE(struct Definition,
 struct Definition {
     SymbolTarget target;
     Options query;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct References, description = "Every place naming a symbol");
@@ -275,7 +267,6 @@ struct References {
     bool include_declaration = false;
 
     Options query;
-    LogLevelOption log;
 };
 
 /// Which sides of a call graph `clice query call-graph` walks.
@@ -289,7 +280,6 @@ struct CallGraph {
     CallDirection direction = CallDirection::Both;
 
     Options query;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Implementation,
@@ -297,7 +287,6 @@ KANNOTATE_TYPE(struct Implementation,
 struct Implementation {
     SymbolTarget target;
     Options query;
-    LogLevelOption log;
 };
 
 /// Which sides of a type hierarchy `clice query type-hierarchy` walks.
@@ -311,7 +300,6 @@ struct TypeHierarchy {
     TypeDirection direction = TypeDirection::Both;
 
     Options query;
-    LogLevelOption log;
 };
 
 KANNOTATE_TYPE(struct Query, description = "Ask the persisted index about the project");

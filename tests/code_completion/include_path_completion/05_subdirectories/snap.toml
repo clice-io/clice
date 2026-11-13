@@ -8,3 +8,8 @@ items = [
 items = [
     { label = "nested.h", kind = "File", insert = "nested.h>", replace = "#include <snap_dir/⟦ne>⟧" },
 ]
+
+[answers.spaced.completion]
+items = [
+    { label = "nested.h", kind = "File", insert = "nested.h>", replace = "#  include  <snap_dir/⟦ne>⟧" },
+]

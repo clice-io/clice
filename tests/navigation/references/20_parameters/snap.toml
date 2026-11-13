@@ -1,0 +1,10 @@
+[answers.value]
+references = [
+    "int clamp(int ⟦value⟧, int limit) {",
+    "if (⟦value⟧ > limit) {",
+    "return ⟦value⟧ < 0 ? 0 : value;",
+    "return value < 0 ? 0 : ⟦value⟧;",
+]
+
+[answers.limit]
+references = ["int clamp(int value, int ⟦limit⟧) {", "if (value > ⟦limit⟧) {", "return ⟦limit⟧;"]

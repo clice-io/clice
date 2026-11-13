@@ -1,0 +1,19 @@
+[compiled."main.cpp"]
+document_links = [
+    { at = '#include ⟦"plain.h"⟧ @1', target = "plain.h" },
+    { at = '#include ⟦"plain.h"⟧ @2', target = "plain.h" },
+    { at = '#include ⟦"once.h"⟧ @3', target = "once.h" },
+    { at = '#include ⟦"once.h"⟧ @4', target = "once.h" },
+    { at = "#include ⟦<guarded.h>⟧ @5", target = "guarded.h" },
+    { at = "#include ⟦<guarded.h>⟧ @6", target = "guarded.h" },
+]
+
+[index."main.cpp"]
+document_links = [
+    { at = '#include ⟦"plain.h"⟧ @1', target = "plain.h" },
+    { at = '#include ⟦"plain.h"⟧ @2', target = "plain.h" },
+    { at = '#include ⟦"once.h"⟧ @3', target = "once.h" },
+    { at = '#include ⟦"once.h"⟧ @4', target = "once.h" },
+    { at = "#include ⟦<guarded.h>⟧ @5", target = "guarded.h" },
+    { at = "#include ⟦<guarded.h>⟧ @6", target = "guarded.h" },
+]

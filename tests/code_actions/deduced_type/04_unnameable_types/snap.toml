@@ -15,3 +15,6 @@ code_actions = []
 
 [answers.binding]
 code_actions = []
+
+[answers.private_argument]
+code_actions = []

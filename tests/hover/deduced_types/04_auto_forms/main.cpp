@@ -1,7 +1,8 @@
 // auto in the places the documented case leaves out: constrained, of a
 // specialization, const reference, initializer list, conversion function,
 // trailing decltype, reference and pointer results, function pointer, through
-// aliases, template parameter, abbreviated function parameter, new-expression.
+// aliases, template parameter, abbreviated function parameter, new-expression,
+// and the cursor right after the keyword.
 
 namespace std {
 template <typename T> class initializer_list {
@@ -110,4 +111,8 @@ void use() {
 
 namespace expression_placeholder {
 long* allocated = new au§(new_auto)to(35L);
+}
+
+namespace keyword_end {
+auto§(auto_keyword_end) ending = 36L;
 }

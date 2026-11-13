@@ -4,23 +4,18 @@ import { test } from "@clice/tools/testing";
 // worker is killed and the file stopped like a crash, so the hang does not
 // come back on the next request.
 
-test(
-    {
-        errors: [String.raw`\[anomaly:WorkerCrash\] | logged before it died`],
-    },
-    async (t) => {
-        const s = await t.start({
-            config: { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } },
-            env: { CLICE_TEST_REQUEST_DEADLINE_MS: "2000" },
-            // The deadline's kill names its request without a crash of the
-            // worker's own: the note below is how it shows.
-            anomalies: true,
-        });
-        const x = t.marker("x");
-        s.open("main.cpp");
-        await t.show("hover", s.hover(x));
-        await t.show("pushes", s.pushes("main.cpp"));
-        await t.show("hover asked again", s.hover(x));
-        await t.show("pushes after", s.pushes("main.cpp"));
-    },
-);
+test(async (t) => {
+    const s = await t.start({
+        config: { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } },
+        env: { CLICE_TEST_REQUEST_DEADLINE_MS: "2000" },
+        // The deadline's kill names its request without a crash of the
+        // worker's own: the note below is how it shows.
+        crash: { request: "compile", file: "main.cpp", input: true },
+    });
+    const x = t.marker("x");
+    s.open("main.cpp");
+    await t.show("hover", s.hover(x));
+    await t.show("pushes", s.pushes("main.cpp"));
+    await t.show("hover asked again", s.hover(x));
+    await t.show("pushes after", s.pushes("main.cpp"));
+});

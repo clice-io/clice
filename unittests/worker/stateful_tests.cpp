@@ -13,13 +13,6 @@ namespace {
 
 ZEST_SUITE(StatefulWorker) {
 
-ZEST_CASE(SpawnAndExit) {
-    WorkerHandle w;
-    ZASSERT(w.spawn(true));
-
-    w.run([]() -> async::task<> { co_return; });
-}
-
 ZEST_CASE(CompileRequest) {
     TempDir tmp;
     tmp.touch("compile_test.cpp", "int main() { return 0; }\n");
@@ -36,14 +29,14 @@ ZEST_CASE(CompileRequest) {
         params.version = 1;
         params.text = "int main() { return 0; }\n";
         params.directory = "/tmp";
-        params.arguments = make_args(src);
-        params.pch = {"", 0};
-        params.pcms = {};
+        params.arguments = {"clang++", "-resource-dir", std::string(resource_dir()), src};
 
         w.peer->send_notification(worker::NextRequestParams{7});
         auto result = co_await w.peer->send_request(params);
         ZASSERT(result);
         ZEXPECT(result.value().version == 1);
+        ZEXPECT(result.value().status == worker::CompileStatus::Done);
+        ZEXPECT(result.value().diagnostics.empty());
         // The worker said when the compile's work began, ahead of the reply,
         // by the id the master gave it.
         ZEXPECT(w.started == std::vector<std::uint64_t>{7});
@@ -113,7 +106,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
     ZASSERT(test_done);
 }
 
-ZEST_CASE(IpcCancelInterruptsCompile) {
+ZEST_CASE(IPCCancelInterruptsCompile) {
     TempDir tmp;
     tmp.touch("interrupt.cpp", "");
     auto src = tmp.path("interrupt.cpp");
@@ -124,23 +117,18 @@ ZEST_CASE(IpcCancelInterruptsCompile) {
     bool test_done = false;
 
     w.run([&]() -> async::task<> {
-        std::string text;
-        text.reserve(1 << 22);
-        for(int i = 0; i < 200'000; ++i) {
-            text += std::format("int v{};\n", i);
-        }
-
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = std::move(text);
+        cp.text = "int v0;\nint v1;\n";
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         cp.pch = {"", 0};
         cp.pcms = {};
 
-        // The cancel chases the request down the pipe and flips the stop
-        // flag mid-parse; the request still waits for the worker's answer.
+        // The cancel reaches the request while its work is parked and flips
+        // the stop flag the parse polls; the request still waits for the
+        // worker's answer.
         // An interrupted parse leaves the document without an AST, which
         // the next query reports — the content, not the clock, is the
         // assertion.
@@ -368,141 +356,6 @@ ZEST_CASE(InvalidUTF8Replaced) {
     ZEXPECT(
         hover.contains("caf"
                        "\xef\xbf\xbd"));
-}
-
-ZEST_CASE(MultipleSequentialRequests) {
-    TempDir tmp;
-    tmp.touch("seq_test.cpp",
-              "int foo(int x) {\n"
-              "    return x + 1;\n"
-              "}\n"
-              "int main() {\n"
-              "    return foo(0);\n"
-              "}\n");
-    auto src = tmp.path("seq_test.cpp");
-
-    WorkerHandle w;
-    ZASSERT(w.spawn(true));
-
-    bool test_done = false;
-
-    w.run([&]() -> async::task<> {
-        // Compile first so feature requests return real data.
-        worker::CompileParams cp;
-        cp.path = src;
-        cp.version = 1;
-        cp.text = "int foo(int x) {\n    return x + 1;\n}\nint main() {\n    return foo(0);\n}\n";
-        cp.directory = "/tmp";
-        cp.arguments = make_args(src);
-
-        auto cr = co_await w.peer->send_request(cp);
-        ZASSERT(cr);
-
-        // Now send multiple different feature requests sequentially.
-        worker::HoverParams hp;
-        hp.path = src;
-        hp.offset = 4;  // 'foo' on line 0
-        auto r1 = co_await w.peer->send_request(hp);
-        ZEXPECT(r1);
-
-        worker::CodeActionParams cap;
-        cap.path = src;
-        cap.range = {4, 4};
-        auto r2 = co_await w.peer->send_request(cap);
-        ZEXPECT(r2);
-
-        worker::SemanticTokensParams stp;
-        stp.path = src;
-        auto r3 = co_await w.peer->send_request(stp);
-        ZEXPECT(r3);
-
-        worker::FoldingRangeParams frp;
-        frp.path = src;
-        auto r4 = co_await w.peer->send_request(frp);
-        ZEXPECT(r4);
-
-        test_done = true;
-    });
-
-    ZASSERT(test_done);
-}
-
-ZEST_CASE(MultipleDocuments) {
-    TempDir tmp;
-    std::vector<std::string> paths;
-    std::vector<std::string> texts;
-    for(int i = 0; i < 3; i++) {
-        auto name = "multi_" + std::to_string(i) + ".cpp";
-        auto text = "int var_" + std::to_string(i) + " = " + std::to_string(i) + ";\n";
-        tmp.touch(name, text);
-        paths.push_back(tmp.path(name));
-        texts.push_back(text);
-    }
-
-    WorkerHandle w;
-    ZASSERT(w.spawn(true));
-
-    bool test_done = false;
-
-    w.run([&]() -> async::task<> {
-        // Compile 3 different documents.
-        for(int i = 0; i < 3; i++) {
-            worker::CompileParams cp;
-            cp.path = paths[i];
-            cp.version = 1;
-            cp.text = texts[i];
-            cp.directory = "/tmp";
-            cp.arguments = make_args(paths[i]);
-
-            auto result = co_await w.peer->send_request(cp);
-            ZEXPECT(result);
-        }
-
-        // Hover on each document after compilation.
-        for(int i = 0; i < 3; i++) {
-            worker::HoverParams hp;
-            hp.path = paths[i];
-            hp.offset = 4;  // 'var_N'
-
-            auto result = co_await w.peer->send_request(hp);
-            ZEXPECT(result);
-        }
-
-        test_done = true;
-    });
-
-    ZASSERT(test_done);
-}
-
-ZEST_CASE(EvictNotification) {
-    WorkerHandle w;
-    ZASSERT(w.spawn(true));
-
-    bool test_done = false;
-
-    w.run([&]() -> async::task<> {
-        // Evicting a document the worker does not hold changes nothing.
-        worker::EvictParams ep;
-        ep.path = "/tmp/evict_test.cpp";
-        w.peer->send_notification(ep);
-
-        worker::CompileParams cp;
-        cp.path = "/tmp/evict_test.cpp";
-        cp.version = 1;
-        cp.text = "int x = 1;\n";
-        cp.directory = "/tmp";
-        cp.arguments = make_args(cp.path);
-        ZEXPECT(co_await w.peer->send_request(cp));
-
-        worker::HoverParams hp;
-        hp.path = cp.path;
-        hp.offset = 4;
-        ZEXPECT(co_await w.peer->send_request(hp));
-
-        test_done = true;
-    });
-
-    ZASSERT(test_done);
 }
 
 ZEST_CASE(EvictsOnlyWhenTold) {

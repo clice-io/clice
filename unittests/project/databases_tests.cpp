@@ -163,7 +163,7 @@ ZEST_CASE(CDBTickNewSubdirectory) {
     /// directory moves.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
-    ZASSERT(set_file_mtime(tmp.root, file_mtime_ns(tmp.root) - 10'000'000'000));
+    age_file(tmp.root);
     Fixture fixture(tmp.root);
     fixture.project.watch_databases();
     ZASSERT(tick(fixture).empty());
@@ -184,7 +184,7 @@ ZEST_CASE(CDBTickDanglingSymlink) {
     TempDir elsewhere;
     tmp.touch("main.cpp", R"(int main() {})");
     ZASSERT(::symlink(elsewhere.path("target").c_str(), tmp.path("build").c_str()) == 0);
-    ZASSERT(set_file_mtime(tmp.root, file_mtime_ns(tmp.root) - 10'000'000'000));
+    age_file(tmp.root);
     Fixture fixture(tmp.root);
     fixture.project.watch_databases();
     ZASSERT(tick(fixture).empty());
@@ -198,7 +198,7 @@ ZEST_CASE(CDBTickDanglingSymlink) {
 }
 #endif
 
-ZEST_CASE(CDBTickAboveOpenFile) {
+ZEST_CASE(CDBTickAboveDocument) {
     /// A database generated above an open file still without a command is
     /// found where the tick watches for it.
     TempDir tmp;
@@ -243,7 +243,7 @@ ZEST_CASE(CDBTickDeleteRecreate) {
     ZASSERT(delta.changed == llvm::SmallVector<Fid>{main_id});
 }
 
-ZEST_CASE(CDBTickRetriesFailedLoad) {
+ZEST_CASE(CDBTickRetriesLoad) {
     /// A declared database unreadable at startup loads on a later tick even
     /// when its stat is unchanged by then.
     TempDir tmp;
@@ -412,8 +412,7 @@ ZEST_CASE(CDBDiscoverRetriesRegistered) {
     tmp.touch("a/main.cpp", R"(int main() {})");
     Fixture fixture(tmp.root);
     auto& project = fixture.project;
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
     auto id = project.cdb.add_source(Spelling::absolute(tmp.path("a/compile_commands.json")));
     project.watch_databases();
     auto main = fixture.intern(tmp.path("a/main.cpp"));
@@ -478,8 +477,7 @@ ZEST_CASE(CDBTickDiscoversAround) {
     tmp.touch("a/other.cpp", R"(int other() {})");
     Fixture fixture(tmp.root);
     auto& project = fixture.project;
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
     tmp.touch("a/b/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/b/main.cpp"), {}}
@@ -558,8 +556,7 @@ ZEST_CASE(CDBTickCoalescesSources) {
     tmp.touch("b/other.cpp", R"(int other() {})");
     Fixture fixture(tmp.root);
     auto& project = fixture.project;
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
     auto a = project.cdb.add_source(Spelling::absolute(tmp.path("a/compile_commands.json")));
     auto b = project.cdb.add_source(Spelling::absolute(tmp.path("b/compile_commands.json")));
     project.watch_databases();
@@ -710,7 +707,7 @@ ZEST_CASE(WorkspaceTickStateMachine) {
     ZASSERT(!disk.seen_missing(reborn.changes.front()));
 }
 
-ZEST_CASE(WorkspaceTickKeepsListedMember) {
+ZEST_CASE(WorkspaceTickKeepsListed) {
     /// A unit a database lists and a default command also covers keeps
     /// its command when deleted: the tick reports the removal, not a lost
     /// command.
@@ -720,8 +717,7 @@ ZEST_CASE(WorkspaceTickKeepsListedMember) {
     auto& project = fixture.project;
     project.settings.rules.push_back(
         Rule{.patterns = {"src/**"}, .default_command = std::string("clang++")});
-    project.settings.finalize(project.root);
-    project.rules = Rules(project.settings, project.root, "");
+    finish_settings(project);
     write_cdb(tmp,
               project.cdb,
               build_cdb_json({

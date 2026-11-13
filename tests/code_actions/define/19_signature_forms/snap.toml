@@ -159,12 +159,13 @@ compiles = true
 
 [answers.nested_in_template.code_actions.edits]
 "main.cpp" = '''
-     void compact() requires(sizeof(T) > 1);
  };
-+
+
 +template <class T>
 +void Tree<T>::Node::visit() {
 +}
++
+ using Handler = void(int);
 '''
 
 [[answers.requires_clause.code_actions]]
@@ -188,10 +189,28 @@ compiles = true
 
 [answers.requires_clause.code_actions.edits]
 "main.cpp" = '''
-     void compact() requires(sizeof(T) > 1);
  };
-+
+
 +template <class T>
 +void Tree<T>::compact() requires(sizeof(T) > 1) {
 +}
++
+ using Handler = void(int);
 '''
+
+[[answers.events.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Events'"
+compiles = true
+
+[answers.events.code_actions.edits]
+"main.cpp" = '''
+     void fire();
+ };
++
++void Events::fire() {
++}
+'''
+
+[answers.handler_member]
+code_actions = []

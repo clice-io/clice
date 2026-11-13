@@ -109,6 +109,11 @@ def release_packages():
     # The GSYM, and the dSYM it comes from on macOS. --merged-functions keeps
     # the names of the functions ICF folded; one thread makes the file the
     # same bytes every time.
+    # LIMITATION: on Windows the GSYM holds only functions with debug info:
+    # frames in libc++abi (std::terminate, __abort_message) come out as
+    # "not in GSYM", where Linux and macOS fill them in from the symbol
+    # table. Clice's own frames resolve; a crash report that needs the
+    # others gets them from clice.exe's symbol table with llvm-symbolizer.
     xclang_debug_symbols(
         name = "debug_symbols",
         binary = ":bin/clice",

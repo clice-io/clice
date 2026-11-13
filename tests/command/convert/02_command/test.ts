@@ -29,7 +29,7 @@ test("one source a command", { errors: ["convert takes a command compiling one"]
     await t.cli("command convert -- missing-cc -c");
 });
 
-test("a database or a command", async (t) => {
+test("a database or a command", { errors: ["names no C-family source"] }, async (t) => {
     await t.cli("command convert");
     await t.cli("command convert compile_commands.json -- missing-cc -c main.cpp");
     await t.cli("command convert compile_commands.json --json");

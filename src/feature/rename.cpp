@@ -572,6 +572,15 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     };
 
     llvm::StringSet<> stale;
+    llvm::DenseSet<Fid> outside;
+    auto refuse_outside = [&](Fid file, llvm::StringRef path) {
+        if(outside.insert(file).second) {
+            plan.conflicts.push_back(
+                std::format("the rename would change {}, which is not a source of the project "
+                            "(a system header, a dependency or a generated file)",
+                            path));
+        }
+    };
     std::map<std::pair<Fid, std::uint32_t>, RenameEdit> edits;
     std::set<std::pair<Fid, std::uint32_t>> held;
     auto note = [&](const index::Site& site, std::uint32_t offset, std::string reason) {
@@ -630,7 +639,11 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     auto spelled_at = [&](const index::Site& site) -> llvm::SmallVector<std::uint32_t, 1> {
         auto& text = text_of(site.file);
         if(!text.text) {
-            stale.insert(site.path);
+            if(scope.editable(files.resolve(site.file))) {
+                stale.insert(site.path);
+            } else {
+                refuse_outside(site.file, site.path);
+            }
             return {};
         }
         auto offsets = spellings(*text.text, site.range.begin, site.range.end, old_name);
@@ -718,10 +731,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         }
         auto path = files.resolve(file);
         if(!scope.editable(path)) {
-            plan.conflicts.push_back(
-                std::format("the rename would change {}, which is not a source of the project "
-                            "(a system header, a dependency or a generated file)",
-                            edit.site.path));
+            refuse_outside(file, edit.site.path);
             continue;
         }
         // The edits are offsets into the text the index was built from.

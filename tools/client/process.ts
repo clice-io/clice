@@ -16,6 +16,8 @@ export interface ProcessOptions {
 /// The fields of a `spawnSync(..., { encoding: "utf8" })` result; the
 /// output is captured whole, with no buffer cap.
 export interface ProcessResult {
+    /// The child's pid; none when it could not be spawned.
+    pid?: number;
     status: number | null;
     signal: NodeJS.Signals | null;
     stdout: string;
@@ -44,7 +46,14 @@ export function runProcess(
             }
             finished = true;
             clearTimeout(timer);
-            resolve({ status, signal, stdout, stderr, ...(error && { error }) });
+            resolve({
+                ...(child.pid === undefined ? {} : { pid: child.pid }),
+                status,
+                signal,
+                stdout,
+                stderr,
+                ...(error && { error }),
+            });
         };
 
         child.stdout.setEncoding("utf8").on("data", (chunk: string) => {

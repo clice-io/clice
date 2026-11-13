@@ -40,3 +40,6 @@ struct §(flexible)Message {
     int length;
     char §(flexible_member)text[];
 };
+
+// C records: a struct's card lists its members, anonymous unions and
+// structs included, and tags first declared inside other declarations.

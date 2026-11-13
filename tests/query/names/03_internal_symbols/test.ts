@@ -6,9 +6,13 @@ import { test } from "@clice/tools/testing";
 // entries, any file seeing them, workspace-relative or absolute.
 test(async (t) => {
     await t.cli("index");
-    await t.cli("query references util.h:2:12 --include-declaration");
-    await t.cli("query references a.cpp:2:18 --include-declaration");
-    await t.cli("query references b.cpp:2:15 --include-declaration");
+    await t.cli(
+        `query references ${t.place(t.at("util.h", "static int |helper"))} --include-declaration`,
+    );
+    await t.cli(
+        `query references ${t.place(t.at("a.cpp", "return |helper"))} --include-declaration`,
+    );
+    await t.cli(`query references ${t.place(t.at("b.cpp", "int |local"))} --include-declaration`);
     const outline = await t.cli("query document-symbols util.h");
     await t.cli("query document-symbols b.cpp");
     const [listed] = (outline.json as { result: { symbols: { symbol: string }[] } }).result.symbols;

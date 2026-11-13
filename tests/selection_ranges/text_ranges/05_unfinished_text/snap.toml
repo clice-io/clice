@@ -1,0 +1,20 @@
+[answers.comment]
+selection_ranges = ["int x; /* ⟦open⟧", "int x; ⟦/* open … ⟧ (2 lines)", "⟦int x; /* open … ⟧ (2 lines)"]
+
+[answers.raw_delimiter]
+selection_ranges = ['const char* bad = R"ope⟦⟧n']
+
+[answers.empty]
+selection_ranges = ["⟦⟧"]
+
+[answers.string]
+selection_ranges = ['const char* text = "ope⟦⟧n']
+
+[answers.character]
+selection_ranges = ["char letter = u8⟦⟧'"]
+
+[answers.raw]
+selection_ranges = ['const char* raw = R"x(ope⟦⟧n']
+
+[answers.stray]
+selection_ranges = ["} f(⟦a⟧) ]", "} f⟦(a)⟧ ]", "} ⟦f(a)⟧ ]"]

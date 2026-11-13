@@ -1,2 +1,30 @@
+[[answers.clone.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'clone' inline"
+compiles = false
+errors = ["expected ';' after struct", "expected '}'"]
+
+[answers.clone.code_actions.edits]
+"copy.cpp" = '''
+ struct Point {
+     int x;
+-    Point clone() const;
++    Point clone() const {}
+'''
+
 [answers.open]
 code_actions = []
+
+[[answers.area.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'area' inline"
+compiles = false
+errors = ["expected ';' after struct", "expected '}'"]
+
+[answers.area.code_actions.edits]
+"main.cpp" = '''
+ struct Square : Shape {
+     decltype(sizeof(int)) side;
+-    int area() const;
++    int area() const {}
+'''

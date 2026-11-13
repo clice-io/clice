@@ -31,3 +31,10 @@ int storage;
 
 int padded
 §(trailing_attribute)⟦    __attribute__((aligned(align(4, 2))));⟧
+
+void sink(int value);
+
+void boundaries() {
+    §(ends_at_argument)⟦sink(⟧1);
+    sink(§(starts_at_argument)⟦1⟧);
+}

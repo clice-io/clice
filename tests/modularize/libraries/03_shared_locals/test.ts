@@ -1,4 +1,4 @@
-import { test } from "@clice/tools/testing";
+import { modularize, test } from "@clice/tools/testing";
 
 // Static as <emmintrin.h>'s intrinsics, which simdjson and CRoaring both
 // call from their inline code. alpha reaches fake_simd through fake_simd2
@@ -15,5 +15,7 @@ test(async (t) => {
     await t.cli(`analyze modules interface alpha ${ARGS}`);
     await t.cli(`analyze modules interface beta ${ARGS}`);
     await t.cli(`analyze modules interface ${ARGS}`);
-    await t.cli(`modularize ${ARGS} --out wrap`);
+    const run = await t.cli(`modularize ${ARGS} --out wrap`);
+    // The program as the plan builds it compiles cleanly.
+    await modularize.compiles(t, run, "wrap");
 });

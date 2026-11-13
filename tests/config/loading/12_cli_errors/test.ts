@@ -3,7 +3,7 @@ import { test } from "@clice/tools/testing";
 // A clice.toml that does not parse stops every command working on the
 // project, with exit 2 and the place of the error; one answering in JSON
 // says so as its failure.
-test("malformed", async (t) => {
+test("malformed", { errors: ["TOML parse error"] }, async (t) => {
     t.disk.write("clice.toml", "[project\nclang_tidy = true\n");
     for (const command of [
         "lint",

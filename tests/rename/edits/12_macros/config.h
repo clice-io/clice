@@ -4,6 +4,12 @@
 #define BUFFER_SIZE 64
 #endif
 
+#define SPARE_BYTES (BUFFER_SIZE * 2)
+
+#define HAS_LIMIT defined(LIMIT)
+#if HAS_LIMIT
+#endif
+
 #ifdef SMALL_BUFFERS
 #define LIMIT 16
 #else

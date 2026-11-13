@@ -1,5 +1,5 @@
 ---
-issues: [clangd#2242]
+issues: [clangd#716]
 ---
 
 # Constructor calls through forwarding functions

@@ -80,7 +80,7 @@ test("a completion is outdated", async (t) => {
         method: proto.CompletionRequest.method,
         params: {
             textDocument: { uri: s.uri("outer/inner/main.cpp") },
-            position: { line: 3, character: 0 },
+            position: s.position(t.at("outer/inner/main.cpp", "|int inner_fn")).position,
         },
     });
     await t.show("reply", { code: reply?.error?.code ?? 0, message: reply?.error?.message ?? "" });

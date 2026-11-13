@@ -20,9 +20,39 @@ compiles = true
 
 [answers.run.code_actions.edits]
 "main.cpp" = '''
-     int x;
+ };
+
++void Outer::Inner::run() {
++}
++
+ struct Holder {
+     struct Part;
+'''
+
+[[answers.defined_apart.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'attach' inline"
+compiles = true
+
+[answers.defined_apart.code_actions.edits]
+"main.cpp" = '''
+
+ struct Holder::Part {
+-    void attach();
++    void attach() {}
+ };
+'''
+
+[[answers.defined_apart.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Holder::Part::attach' out of line"
+compiles = true
+
+[answers.defined_apart.code_actions.edits]
+"main.cpp" = '''
+     void attach();
  };
 +
-+void Outer::Inner::run() {
++void Holder::Part::attach() {
 +}
 '''

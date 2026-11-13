@@ -79,6 +79,27 @@ pushes = [
 ["a fix retries after a pause"."crashes after the fix"]
 value = 1
 
+["no retry inside the spacing".hover]
+hover = {}
+
+["no retry inside the spacing".crashes]
+value = 1
+
+["no retry inside the spacing"."hover after the fix"]
+hover = {}
+
+["no retry inside the spacing".pushes]
+pushes = [
+    [
+        {
+            at = "⟦⟧int add(int a, int b) {",
+            severity = "warning",
+            message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.",
+            source = "clice",
+        },
+    ],
+]
+
 ["an open resent with other text retries".hover]
 hover = {}
 

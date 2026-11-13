@@ -1,2 +1,3 @@
-# No database: a guessed command that works raises no note.
+# No database: a guessed command raises no note when it works, nor when its
+# errors are ones no include path would fix.
 databases = {}

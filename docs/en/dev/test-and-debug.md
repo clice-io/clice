@@ -16,7 +16,7 @@ pixi run unit-test Debug    # debug build
 Equivalent to:
 
 ```bash
-./build/RelWithDebInfo/bin/bin/unittests --verbose
+./build/RelWithDebInfo/bin/bin/unittests --verbose --jobs 1
 ```
 
 ### Cases
@@ -47,17 +47,19 @@ pixi run test Debug          # all tests with debug build
 
 ## Editor E2E Tests
 
-Smoke tests that run real editors (headless Neovim and VSCode) against a locally built clice binary, covering startup, first diagnostics, hover, definition and completion, and on a header the commands that show and switch its compilation context. They run on copies of three cases — a single file, a C++20 modules project and a header with two hosts — that `editor-prepare` writes under `.cache/editors`. CI runs them on Linux x64, macOS arm64 and Windows x64 (VS Code alone there) with the latest stable editor releases, on purpose unpinned: the job exists to catch breakage caused by new editor versions.
+End-to-end tests that run real editors (headless Neovim, VS Code and Zed) against a locally built clice binary. Neovim and VS Code run on the fixtures under `tests/editors/`, each a small project and a `scenario.json` saying what to check there: startup, a clean compile, the index, hover, definition and completion, where the file's command comes from, a header's compilation contexts (switching, resetting, paging through more than one page of them), switching between source and header, a refactoring, the build configurations, and restarts. They run on copies that `editor-prepare` writes under `.cache/editors/<editor>`; afterwards the logs of the servers they started must hold no crash, anomaly or error-level line. The Zed test installs the extension in a real Zed, which downloads the latest release, then installs this build in its place and starts it with the network cut off. CI runs them on Linux x64, macOS arm64 and Windows x64 (VS Code and Zed alone there; Zed not on macOS) with the latest stable editor releases, on purpose unpinned: the job exists to catch breakage caused by new editor versions.
 
 ```bash
-$ pixi run build                  # build/RelWithDebInfo/bin/bin/clice
-$ pixi run -e editor editor-test  # nvim + vscode, all three projects
+$ pixi run build                          # build/RelWithDebInfo/bin/bin/clice
+$ pixi run -e editor editor-test          # nvim + vscode, every fixture
+$ xvfb-run -a pixi run -e editor zed-e2e  # Zed
 ```
 
 Prerequisites outside the pixi env:
 
 - `nvim` (stable) on `PATH` for `nvim-e2e`.
 - A display (or `xvfb-run`) plus the usual Electron system libraries for `vscode-e2e`.
+- For `zed-e2e`, `ZED_EXECUTABLE` naming the Zed app, a display, and cargo with the `wasm32-wasip2` target.
 
 ## Compatibility Tests
 

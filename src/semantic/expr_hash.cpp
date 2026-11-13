@@ -4,6 +4,7 @@
 
 module clice;
 
+import :semantic.decls;
 import :semantic.expr_hash;
 
 namespace clice {
@@ -1017,7 +1018,7 @@ void ExprHasher::VisitPackIndexingExpr(const PackIndexingExpr* expr) {
 void ExprHasher::VisitSubstNonTypeTemplateParmPackExpr(
     const SubstNonTypeTemplateParmPackExpr* node) {
     VisitExpr(node);
-    visit_decl(node->getParameterPack());
+    visit_decl(decls::replaced_parameter(*node));
     VisitTemplateArgument(node->getArgumentPack());
 }
 

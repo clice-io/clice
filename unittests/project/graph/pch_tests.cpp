@@ -4,6 +4,8 @@ import :project.graph.pch;
 import :project.graph.task_graph;
 import :project.project;
 import :support.logging;
+import :unittests.utils.anomaly_capture;
+import :unittests.utils.project_fixture;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :unittests.worker.helpers;
@@ -30,11 +32,7 @@ PCHAcquisitionTEST() {
     tmp.touch("a.cpp", "");
     src = tmp.path("a.cpp");
 
-    auto store = CacheStore::open(tmp.path("root"), 1);
-    ZASSERT(store);
-    store->register_namespace(
-        {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx", .max_bytes = 1ull << 30});
-    project.store.emplace(std::move(*store));
+    open_cache(tmp, project);
 }
 
 PCHRequest request(llvm::StringRef text) {
@@ -64,11 +62,7 @@ async::task<Result> acquire(PCHRequest request) {
 template <typename F>
 void execute(F&& fn) {
     auto body = [&]() -> async::task<> {
-        WorkerPoolOptions opts;
-        opts.program = clice_binary();
-        opts.stateless_count = 1;
-        opts.stateful_count = 0;
-        ZASSERT(pool.start(opts));
+        ZASSERT(pool.start(worker_options(tmp, 1, 0)));
 
         co_await fn();
 
@@ -83,8 +77,7 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
     // Two acquires of one poisoned key observe the same Failed attempt; the
     // worker names the build, so its one death is attributed to it at once — no
     // resend — and recorded on the key.
-    std::size_t deaths = 0;
-    count_crashes(deaths);
+    AnomalyCapture anomalies;
     std::optional<Result> a, b;
 
     execute([&]() -> async::task<> {
@@ -100,12 +93,10 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
 
     ZEXPECT(a == Result::Failed);
     ZEXPECT(b == Result::Failed);
-    ZEXPECT(deaths == 1u);
     auto* crash = project.pch_build_crash("shared-key");
     ZASSERT(crash != nullptr);
     ZEXPECT(!crash->cause.empty());
-
-    logging::reset_anomaly_for_testing();
+    ZEXPECT(anomalies.trapped == std::vector{logging::AnomalyId::WorkerCrash});
 }
 
 ZEST_CASE(OwnerGoneStillRecords) {
@@ -113,7 +104,7 @@ ZEST_CASE(OwnerGoneStillRecords) {
     // attempt runs to its real reply, so the death is still recorded on the key —
     // a crash is never dropped because the requester went away (a stale
     // attempt's crashes still count).
-    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+    AnomalyCapture anomalies;
 
     std::optional<Result> joined;
     async::cancellation_source owner_scope;
@@ -136,13 +127,11 @@ ZEST_CASE(OwnerGoneStillRecords) {
 
     ZEXPECT(joined == Result::Failed);
     ZEXPECT(project.pch_build_crash("shared-key") != nullptr);
-
-    logging::reset_anomaly_for_testing();
+    ZEXPECT(anomalies.trapped == std::vector{logging::AnomalyId::WorkerCrash});
 }
 
 ZEST_CASE(ForgetLiftsRefusal) {
-    std::size_t deaths = 0;
-    count_crashes(deaths);
+    AnomalyCapture anomalies;
     std::optional<Result> refused, retried;
 
     execute([&]() -> async::task<> {
@@ -150,7 +139,7 @@ ZEST_CASE(ForgetLiftsRefusal) {
         co_await acquire(request(poison));
         // Refused before any dispatch: no second death.
         refused = co_await acquire(request(poison));
-        ZASSERT(deaths == 1u);
+        ZASSERT(anomalies.count(logging::AnomalyId::WorkerCrash) == 1u);
 
         project.forget_pch_failure("shared-key");
         retried = co_await acquire(request(poison));
@@ -158,17 +147,14 @@ ZEST_CASE(ForgetLiftsRefusal) {
 
     ZEXPECT(refused == Result::Failed);
     ZEXPECT(retried == Result::Failed);
-    ZEXPECT(deaths == 2u);
-
-    logging::reset_anomaly_for_testing();
+    ZEXPECT(anomalies.trapped == std::vector(2, logging::AnomalyId::WorkerCrash));
 }
 
 ZEST_CASE(DeclaredCrashLifts) {
     // A precompiled header the build declares is keyed by its command, not
     // by the header's text: its crash is known to have read the header,
     // and a fix there builds it again.
-    std::size_t deaths = 0;
-    count_crashes(deaths);
+    AnomalyCapture anomalies;
     tmp.touch("a.h", "#pragma clang __debug crash\n");
     auto header = tmp.path("a.h");
     auto whole = [&] {
@@ -188,7 +174,7 @@ ZEST_CASE(DeclaredCrashLifts) {
     execute([&]() -> async::task<> {
         co_await acquire(whole());
         refused = co_await acquire(whole());
-        ZASSERT(deaths == 1u);
+        ZASSERT(anomalies.count(logging::AnomalyId::WorkerCrash) == 1u);
 
         tmp.touch("a.h", "#define FIXED 1\n");
         fixed = co_await acquire(whole());
@@ -196,9 +182,7 @@ ZEST_CASE(DeclaredCrashLifts) {
 
     ZEXPECT(refused == Result::Failed);
     ZEXPECT(fixed == Result::Success);
-    ZEXPECT(deaths == 1u);
-
-    logging::reset_anomaly_for_testing();
+    ZEXPECT(anomalies.trapped == std::vector{logging::AnomalyId::WorkerCrash});
 }
 
 ZEST_CASE(SharedBuildBothReady) {

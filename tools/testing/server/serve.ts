@@ -14,9 +14,16 @@ import { URI } from "vscode-uri";
 import { CliceClient, type InitializeOptions } from "../../client/client.ts";
 import { cliceExecutable } from "../../client/session.ts";
 import { namesFile, Workspace } from "../../client/workspace.ts";
-import { anomaliesInLogFiles, serverEnv } from "../../process_gate.ts";
+import {
+    logFaults,
+    readLogLines,
+    serverEnv,
+    sessionLogs,
+    sessionsUnder,
+} from "../../process_gate.ts";
 import { withTimeout } from "../../promise.ts";
 import {
+    RestartServerRequest,
     WatchRequest,
     type BuildKind,
     type ContextItem,
@@ -30,7 +37,7 @@ import {
 } from "../../protocol/protocol.ts";
 import { portable } from "../cli/run.ts";
 import { record, recordConfig, recordInvocation, recordToml } from "../coverage/record.ts";
-import { failureExcerpt, readLogs, undeclaredErrors } from "../logs/logs.ts";
+import type { Faults, Started } from "../logs/logs.ts";
 import {
     place,
     renderDiagnostics,
@@ -98,8 +105,9 @@ export interface WorkerFault {
     /// stack overflow, or a trap on a thread the request started.
     kind?: "segv" | "abort" | "fatal" | "overflow" | "thread";
     /// A crash the copy's files provoke on their own, as a damaged cache
-    /// blob does: the crash is declared, and a PCH `t.disk.corrupt` damaged
-    /// in its middle crashes the compile reading it (CLICE_TEST_DAMAGE).
+    /// blob or a compile the pool kills past its deadline does: the crash
+    /// is declared, and a PCH `t.disk.corrupt` damaged in its middle
+    /// crashes the compile reading it (CLICE_TEST_DAMAGE).
     input?: true;
 }
 
@@ -252,6 +260,15 @@ export class Serve extends Client {
         this.steps = owner.steps;
         this.options = options;
         this.folders = options.folders;
+    }
+
+    /// Each process this server ran, its restarts' too, for the log gate.
+    started(): Started[] {
+        return this.servers.map((client, index) => ({
+            label: `server ${String(index + 1)}`,
+            pid: client.child.pid,
+            stderr: client.drainedStderr().toString("utf8"),
+        }));
     }
 
     /// The faults this server was told to cause, and whether its kill was
@@ -421,7 +438,16 @@ export class Serve extends Client {
         }
         return this.steps.run(`crashes in ${fault.request} ${fault.file}`, async () => {
             await this.sync();
-            return this.workspace.workerCrashes(fault.request, fault.file);
+            const sessions = sessionsUnder(this.workspace.root);
+            const own = this.servers.flatMap(({ child }) =>
+                child.pid === undefined ? [] : (sessions.get(child.pid) ?? []),
+            );
+            return logFaults(readLogLines(sessionLogs(own))).filter(
+                (logged) =>
+                    logged.kind === "crash" &&
+                    logged.request === fault.request &&
+                    namesFile(fault.file, logged.file ?? ""),
+            ).length;
         });
     }
 
@@ -1119,8 +1145,8 @@ export class Serve extends Client {
         });
     }
 
-    /// Start a server that waits for the client to speak first: a replay
-    /// sends the initialize it recorded, a test `initialize()` or its own.
+    /// Start a server that waits for the client to speak first: a test's
+    /// `initialize()` or its own.
     spawn(): Promise<void> {
         return this.steps.run("spawn the server", () => {
             this.launch();
@@ -1389,7 +1415,16 @@ export class Serve extends Client {
                 }
             }
         }
-        for (const server of this.servers.reverse()) {
+        for (const server of this.servers) {
+            // What the server asked its client was exchanged too.
+            for (const method of server.serverRequests) {
+                record("method", method);
+            }
+            if (server.restartRequests.length > 0) {
+                record("method", RestartServerRequest.method);
+            }
+        }
+        for (const server of [...this.servers].reverse()) {
             try {
                 if (!server.disposed) {
                     await server.shutdown(
@@ -1498,102 +1533,4 @@ async function refusable<T>(body: () => Promise<T>): Promise<T | Refused> {
         }
         throw error;
     }
-}
-
-/// What a server of the test was told to cause.
-export interface Faults {
-    crash?: WorkerFault;
-    kill?: WorkerFault & { taken: boolean };
-    anomalies?: true;
-    /// Workers the test killed from outside.
-    killed?: number;
-}
-
-/// What a test declared about the copy's logs: the error lines it provokes
-/// and the faults of each server it started.
-export interface Declared {
-    errors?: readonly RegExp[];
-    servers?: readonly Faults[];
-    /// The crashes the test's batch commands provoke, `t.cli(…, { crash })`.
-    commands?: readonly Faults[];
-}
-
-export const CRASHED_IN = /\] clice worker crashed in: clice\/worker\/(\S+) (.*)$/;
-
-/// The logs a worker's crash is told in: a server's, and a batch command's
-/// that runs workers of its own.
-const SUPERVISOR_LOGS = new Set(["master.log", "index.log", "lint.log"]);
-
-/// The error-level log lines, crashes, kills and anomalies a copy's servers
-/// left, against what the test declared: each declared fault happened, and
-/// nothing else did. On failure, the servers' warnings and errors.
-export function gateLogs(workspace: Workspace, declared: Declared, failed: boolean): unknown[] {
-    const errors: unknown[] = [];
-    const servers = [...(declared.servers ?? []), ...(declared.commands ?? [])];
-    const crashes = servers.flatMap(({ crash }) => (crash === undefined ? [] : [crash]));
-    const kills = servers.flatMap(({ kill }) => (kill === undefined ? [] : [kill]));
-    const killed = servers.reduce((sum, server) => sum + (server.killed ?? 0), 0);
-    const expected = [...(declared.errors ?? [])];
-    if (crashes.length + kills.length + killed > 0) {
-        expected.push(
-            /\[anomaly:WorkerCrash\] |Worker \S+ lost|The last lines \S+ logged before it died\b|\[fatal\] clice crashed$/,
-        );
-    }
-    const logs = readLogs(workspace.root);
-    const undeclared = undeclaredErrors(logs, expected);
-    if (undeclared.length > 0) {
-        errors.push(
-            new Error(
-                `error-level log lines the test did not declare:\n${undeclared.map((l) => `${l.file}: ${l.text}`).join("\n")}`,
-            ),
-        );
-    }
-    const crashedIn = logs
-        .filter((line) => SUPERVISOR_LOGS.has(line.file))
-        .flatMap((line) => {
-            const match = CRASHED_IN.exec(line.text);
-            return match === null ? [] : [{ request: match[1] ?? "", path: match[2] ?? "" }];
-        });
-    const declares = (crash: (typeof crashes)[number], logged: (typeof crashedIn)[number]) =>
-        crash.request === logged.request && namesFile(crash.file, logged.path);
-    const stray = crashedIn.filter((logged) => !crashes.some((crash) => declares(crash, logged)));
-    if (stray.length > 0) {
-        errors.push(
-            new Error(
-                `worker crashes nothing declared:\n${stray.map((c) => `${c.request} ${c.path}`).join("\n")}`,
-            ),
-        );
-    }
-    const missed = crashes.filter((crash) => !crashedIn.some((logged) => declares(crash, logged)));
-    if (missed.length > 0) {
-        errors.push(
-            new Error(
-                `declared crashes that never happened:\n${missed.map((c) => `${c.request} ${c.file}`).join("\n")}`,
-            ),
-        );
-    }
-    const untaken = kills.filter((kill) => !kill.taken);
-    if (untaken.length > 0) {
-        errors.push(
-            new Error(
-                `declared kills no worker ran into:\n${untaken.map((kill) => `${kill.request} ${kill.file}`).join("\n")}`,
-            ),
-        );
-    }
-    if (!servers.some(({ anomalies }) => anomalies === true)) {
-        const anomalies = anomaliesInLogFiles(workspace.root);
-        const explained = crashedIn.length + kills.length - untaken.length + killed;
-        const crashed = anomalies.filter((anomaly) => anomaly.startsWith("WorkerCrash "));
-        if (crashed.length !== anomalies.length || crashed.length !== explained) {
-            errors.push(
-                new Error(
-                    `the declared faults explain ${String(explained)} worker crashes and no other anomaly; the logs have:\n${anomalies.join("\n") || "(none)"}`,
-                ),
-            );
-        }
-    }
-    if (failed || errors.length > 0) {
-        console.log(`server warnings and errors:\n${failureExcerpt(logs)}`);
-    }
-    return errors;
 }

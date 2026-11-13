@@ -20,19 +20,9 @@ constexpr std::uint32_t version = 1;
 /// pids are multiples of 4), so its directories always look dead.
 constexpr const char* dead_pid = "999999999";
 
-/// Helper precondition check that survives NDEBUG builds (the unit tests
-/// run under RelWithDebInfo); failures abort with a location instead of
-/// becoming UB on a bad expected/optional access.
-void require(bool condition, const char* what) {
-    if(!condition) {
-        std::println(stderr, "cache_store_tests: requirement failed: {}", what);
-        std::abort();
-    }
-}
-
 CacheStore open_store(const TempDir& tmp, std::uint32_t ver = version) {
     auto store = CacheStore::open(tmp.path("root"), ver);
-    require(store.has_value(), "CacheStore::open failed");
+    ZASSERT(store.has_value());
     return std::move(*store);
 }
 
@@ -49,9 +39,9 @@ void register_paired(CacheStore& store, std::uint64_t max_bytes = 0) {
 std::string
     put_aux(CacheStore& store, llvm::StringRef ns, llvm::StringRef key, llvm::StringRef content) {
     auto pending = store.begin_store_aux(ns, key);
-    require(!fs::write_file(pending.tmp_path, content), "tmp write failed");
+    ZASSERT(!fs::write_file(pending.tmp_path, content));
     auto committed = store.commit(std::move(pending));
-    require(committed.has_value(), "aux commit failed");
+    ZASSERT(committed.has_value());
     return *committed;
 }
 
@@ -59,9 +49,9 @@ std::string
 std::string
     put(CacheStore& store, llvm::StringRef ns, llvm::StringRef key, llvm::StringRef content) {
     auto pending = store.begin_store(ns, key);
-    require(!fs::write_file(pending.tmp_path, content), "tmp write failed");
+    ZASSERT(!fs::write_file(pending.tmp_path, content));
     auto committed = store.commit(std::move(pending));
-    require(committed.has_value(), "commit failed");
+    ZASSERT(committed.has_value());
     return *committed;
 }
 
@@ -115,7 +105,7 @@ ZEST_CASE(MarkersCreateRoot) {
 ZEST_CASE(IgnoreMarkersPreserved) {
     TempDir tmp;
     { auto store = open_store(tmp); }
-    require(!fs::write_file(tmp.path("root/.gitignore"), "custom\n"), "rewrite failed");
+    ZASSERT(!fs::write_file(tmp.path("root/.gitignore"), "custom\n"));
 
     CacheStore::write_ignore_markers(tmp.path("root"));
     ZASSERT(read_file(tmp.path("root/.gitignore")).value_or("") == "custom\n");
@@ -306,18 +296,6 @@ ZEST_CASE(FreshCommitNotEvicted) {
     ZASSERT(store.lookup("pch", "big"));
 }
 
-ZEST_CASE(RewriteWins) {
-    TempDir tmp;
-    auto store = open_store(tmp);
-    register_lru(store);
-
-    // Keys are mutable (not fully content-addressed): a rewrite of the
-    // same key must serve the new content, never the old blob.
-    put(store, "pch", "k1", "first snapshot");
-    auto path = put(store, "pch", "k1", "second");
-    ZASSERT(read_file(path).value_or("") == "second");
-}
-
 ZEST_CASE(LruStaleBlobReplaced) {
     TempDir tmp;
     auto store = open_store(tmp);
@@ -453,6 +431,8 @@ ZEST_CASE(CommitOverwriteSameKey) {
     auto store = open_store(tmp);
     register_lru(store, 20);
 
+    // Keys are mutable (not fully content-addressed): a rewrite of the
+    // same key serves the new content, never the old blob.
     put(store, "pch", "k1", "first");
     auto path = put(store, "pch", "k1", "second");
     ZASSERT(read_file(path).value_or("") == "second");
@@ -525,7 +505,7 @@ ZEST_CASE(AuxWithoutPrimaryFails) {
     register_paired(store);
 
     auto pending = store.begin_store_aux("pch", "ghost");
-    require(!fs::write_file(pending.tmp_path, "orphan"), "tmp write failed");
+    ZASSERT(!fs::write_file(pending.tmp_path, "orphan"));
     ZASSERT(!store.commit(std::move(pending)).has_value());
     ZASSERT(!store.lookup_aux("pch", "ghost").has_value());
 }
@@ -642,7 +622,7 @@ ZEST_CASE(InvalidateRemovesPair) {
     ZASSERT(!read_file(aux_path).has_value());
 }
 
-ZEST_CASE(ReadOnlyOpenRequiresStore) {
+ZEST_CASE(ReadOnlyRequiresStore) {
     TempDir tmp;
     // The parent directory alone (config resolution creates it eagerly)
     // must not pass for an existing store.
@@ -652,7 +632,7 @@ ZEST_CASE(ReadOnlyOpenRequiresStore) {
     ZASSERT(store.error() == std::errc::no_such_file_or_directory);
 }
 
-ZEST_CASE(ReadOnlyOpenTouchesNothing) {
+ZEST_CASE(ReadOnlyTouchesNothing) {
     TempDir tmp;
     {
         auto store = open_store(tmp);

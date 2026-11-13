@@ -1,3 +1,6 @@
+// Copyright the demo authors.
+// SPDX-License-Identifier: MIT
+
 module;
 
 export module demo.core;

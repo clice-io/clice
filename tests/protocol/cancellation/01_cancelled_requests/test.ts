@@ -9,7 +9,8 @@ import { test, type Anchor, type Park, type Serve } from "@clice/tools/testing";
 // the next one.
 
 const WHERE = { path: "main.cpp", anchor: "int |value" };
-const HEAD = { start: { line: 0, character: 0 }, end: { line: 4, character: 0 } };
+/// The lines above use().
+const HEAD = { path: "main.cpp", anchor: "void take(int a, int b);\n\nint value = 42;\n\n" };
 
 /// Send `method`, cancel it once its work is parked and the server took
 /// it up, release the work, and say how the request ended.
@@ -52,14 +53,15 @@ for (const [request, method, at] of [
 test("waiting on the compile", async (t) => {
     const s = await t.start();
     await s.diagnostics("main.cpp");
+    const head = s.range(HEAD);
     const requests: [string, string | typeof WHERE, object][] = [
         ["textDocument/hover", WHERE, {}],
         ["textDocument/definition", WHERE, {}],
         ["textDocument/documentSymbol", "main.cpp", {}],
         ["textDocument/semanticTokens/full", "main.cpp", {}],
         ["textDocument/foldingRange", "main.cpp", {}],
-        ["textDocument/inlayHint", "main.cpp", { range: HEAD }],
-        ["textDocument/codeAction", "main.cpp", { range: HEAD, context: { diagnostics: [] } }],
+        ["textDocument/inlayHint", "main.cpp", { range: head }],
+        ["textDocument/codeAction", "main.cpp", { range: head, context: { diagnostics: [] } }],
         ["textDocument/documentLink", "main.cpp", {}],
     ];
     const outcomes: Record<string, { code: number; message: string }> = {};
@@ -82,7 +84,7 @@ test("formatting", async (t) => {
     const outcomes: Record<string, { code: number; message: string }> = {};
     for (const [method, extra] of [
         ["textDocument/formatting", options],
-        ["textDocument/rangeFormatting", { ...options, range: HEAD }],
+        ["textDocument/rangeFormatting", { ...options, range: s.range(HEAD) }],
     ] as const) {
         const park = await s.park("format", "main.cpp", { at: "worker" });
         outcomes[method] = await cancelled(s, park, method, "main.cpp", extra);

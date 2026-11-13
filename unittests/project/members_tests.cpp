@@ -184,7 +184,7 @@ ZEST_CASE(WalkResolvesLinks) {
 };
 #endif
 
-ZEST_CASE(DefaultSourcesLeaveNestedProjects) {
+ZEST_CASE(DefaultSourcesSkipNested) {
     /// A rule without patterns covers the whole tree but the projects
     /// nested in it.
     TempDir tmp;
@@ -211,7 +211,7 @@ ZEST_CASE(DefaultSourcesLeaveNestedProjects) {
     ZEXPECT(!ranges::contains(members, fid("tool/c.cpp")));
 };
 
-ZEST_CASE(PatternRootInNestedProject) {
+ZEST_CASE(PatternRootSkipsNested) {
     /// A pattern pointing into a project nested in this one covers none of
     /// its sources: the walk starts below the nested configuration.
     TempDir tmp;
@@ -306,7 +306,7 @@ ZEST_CASE(ForcedLanguageMembers) {
         ranges::contains(members, files.intern(Spelling::absolute(tmp.path("src/iface.cppm")))));
 };
 
-ZEST_CASE(WorkspaceRuleCoversKnownSources) {
+ZEST_CASE(WorkspaceRuleSkipsUnknown) {
     /// A rule without patterns applies to every file, so its forced language
     /// covers only what clang recognizes as a source: the configuration file
     /// and an extensionless script stay out until a pattern names the script.
@@ -366,7 +366,7 @@ ZEST_CASE(UnitsDeduplicated) {
     ZEXPECT(project.scan_commands(members).size() == 2U);
 };
 
-ZEST_CASE(CudaHeaderNotDefaultSource) {
+ZEST_CASE(CUDAHeaderStaysHeader) {
     /// A `.cuh` under a rule forcing CUDA stays a header: clang's extension
     /// table does not know the suffix, but it names no unit.
     TempDir tmp;
@@ -458,7 +458,7 @@ ZEST_CASE(DiscoveredSourceOrder) {
 };
 
 #ifndef _WIN32
-ZEST_CASE(LinkedBuildKeyedByLink) {
+ZEST_CASE(LinkedBuildFollowsLink) {
     /// A build directory symlinked elsewhere stays one database however it
     /// is retargeted: switching the link switches the commands.
     TempDir tmp;
@@ -739,7 +739,7 @@ ZEST_CASE(BorrowMergesRules) {
     ZEXPECT(at("UNIT") < at("BOTH"));
 };
 
-ZEST_CASE(MemberHostKeepsItsRules) {
+ZEST_CASE(MemberHostKeepsRules) {
     /// A header compiling in a provisional member's context compiles as the
     /// member does: under the rules of the unit it borrows from and its own,
     /// and the header's.
@@ -771,7 +771,7 @@ ZEST_CASE(MemberHostKeepsItsRules) {
     ZEXPECT(has_arg(argv, "HEADER"));
 };
 
-ZEST_CASE(DeclaredPCHTakesBorrowedRules) {
+ZEST_CASE(PCHTakesBorrowedRules) {
     /// The precompiled header a borrowed command reads builds under the
     /// rules that edited the command: the unit's as well as the
     /// borrower's.

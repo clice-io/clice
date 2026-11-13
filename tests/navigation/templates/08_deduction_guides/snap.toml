@@ -6,6 +6,3 @@ definition = ["⟦Box⟧(T) -> Box<T>;"]
 
 [answers.ctad_use]
 definition = ["struct ⟦Box⟧ {"]
-
-[answers.ctad_invoke]
-definition = ["⟦Box⟧(T input) : value(input) {}"]

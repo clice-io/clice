@@ -649,10 +649,12 @@ void Builder::project_placeholder(const Semantics& semantics, std::uint32_t inde
                           : clang::SourceRange(auto_loc.getNameLoc());
         } else if(auto decltype_loc = loc->getAs<clang::DecltypeTypeLoc>()) {
             keyword = decltype_loc.getDecltypeLoc();
-        } else if(auto subst_loc = loc->getAs<clang::SubstTemplateTypeParmTypeLoc>();
-                  subst_loc && subst_loc.getTypePtr()->getReplacedParameter()->isImplicit()) {
-            keyword = subst_loc.getNameLoc();
-            substituted = subst_loc.getTypePtr()->getReplacementType();
+        } else if(auto subst_loc = loc->getAs<clang::SubstTemplateTypeParmTypeLoc>()) {
+            const auto* param = decls::replaced_parameter(*subst_loc.getTypePtr());
+            if(param && param->isImplicit()) {
+                keyword = subst_loc.getNameLoc();
+                substituted = subst_loc.getTypePtr()->getReplacementType();
+            }
         }
     } else if(const auto* function = entry.node.get<clang::FunctionDecl>()) {
         if(const auto* proto = function->getType()->getAs<clang::FunctionProtoType>();

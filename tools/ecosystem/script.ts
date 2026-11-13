@@ -37,7 +37,9 @@ export interface Known {
     request?: string;
     /// A checkout-relative path, or a pattern over one.
     file?: string | RegExp;
-    /// A pattern over what the failure says.
+    /// A pattern over what the failure says. Over a diff (two answers that
+    /// differ), the lines its matches touch: the failure is known once the
+    /// known issues name every line the diff changes.
     detail?: RegExp;
 }
 
@@ -264,24 +266,69 @@ function applies(known: Known, job: Job, platform: Platform): boolean {
     );
 }
 
-/// The known issue a failure is, if any.
-export function knownIssue(job: Job, platform: Platform, failure: Failure): Known | undefined {
-    return job.known.find(
+/// Where each line a diff changes is in it, as offsets; none in what is no
+/// diff.
+function changedLines(detail: string): { start: number; end: number }[] {
+    const lines: { start: number; end: number }[] = [];
+    let hunks = false;
+    let start = 0;
+    for (const line of detail.split("\n")) {
+        hunks ||= line.startsWith("@@ ");
+        if (hunks && (line.startsWith("+") || line.startsWith("-"))) {
+            lines.push({ start, end: start + line.length });
+        }
+        start += line.length + 1;
+    }
+    return lines;
+}
+
+/// The known issues a failure is: one whose every field it matches, or of
+/// a diff those whose details together name every line it changes; none
+/// when it is no known issue.
+export function knownIssues(job: Job, platform: Platform, failure: Failure): Known[] {
+    const matching = job.known.filter(
         (known) =>
             applies(known, job, platform) &&
             (known.kind === undefined || known.kind === failure.kind) &&
             (known.request === undefined || known.request === failure.request) &&
-            (known.detail === undefined || known.detail.test(failure.detail)) &&
             (known.file === undefined ||
                 (failure.file !== undefined &&
                     (typeof known.file === "string"
                         ? known.file === failure.file
                         : known.file.test(failure.file)))),
     );
+    const changed = changedLines(failure.detail);
+    const whole = matching.find(
+        (known) =>
+            known.detail === undefined ||
+            (changed.length === 0 && failure.detail.search(known.detail) >= 0),
+    );
+    if (whole !== undefined || changed.length === 0) {
+        return whole === undefined ? [] : [whole];
+    }
+    const named = new Set<number>();
+    const naming = matching.filter((known) => {
+        const pattern = known.detail;
+        if (pattern === undefined) {
+            return false;
+        }
+        const global = new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`);
+        const touched = [...failure.detail.matchAll(global)].flatMap((match) => {
+            const end = match.index + match[0].length;
+            return changed.flatMap((line, index) =>
+                match.index < line.end && end > line.start ? [index] : [],
+            );
+        });
+        for (const index of touched) {
+            named.add(index);
+        }
+        return touched.length > 0;
+    });
+    return named.size === changed.length ? naming : [];
 }
 
 /// The failures of a job the project knows moved apart, each with its
-/// issue, and the known issues the job did not see.
+/// issues, and the known issues the job did not see.
 export function sortKnown(
     job: Job,
     platform: Platform,
@@ -290,12 +337,17 @@ export function sortKnown(
     const fresh: Failure[] = [];
     const seen = new Set<Known>();
     for (const failure of results.failures) {
-        const known = knownIssue(job, platform, failure);
-        if (known === undefined) {
+        const known = knownIssues(job, platform, failure);
+        if (known.length === 0) {
             fresh.push(failure);
         } else {
-            seen.add(known);
-            results.known.push({ ...failure, issue: known.issue });
+            for (const each of known) {
+                seen.add(each);
+            }
+            results.known.push({
+                ...failure,
+                issue: [...new Set(known.map((each) => each.issue))].join(", "),
+            });
         }
     }
     results.failures = fresh;

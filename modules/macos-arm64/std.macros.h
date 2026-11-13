@@ -4,7 +4,7 @@
 #define _LIBCPP_HAS_MUSL_LIBC 0
 #define _LIBCPP_HAS_WIDE_CHARACTERS 1
 #define _LIBCPP_LIBC_LLVM_LIBC 0
-#  define _LIBCPP_VERSION 230103
+#  define _LIBCPP_VERSION 230105
 #    define _NOEXCEPT noexcept
 #  define _LIBCPP_PREFERRED_OVERLOAD __attribute__((__enable_if__(true, "")))
 #    define _LIBCPP_VISIBILITY(vis) __attribute__((__visibility__(vis)))

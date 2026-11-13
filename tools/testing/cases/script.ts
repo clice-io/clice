@@ -12,7 +12,8 @@ export type Except = Partial<Record<NodeJS.Platform, string>>;
 
 export interface TestOptions {
     except?: Except;
-    /// Error-level log lines the test provokes, as regular expressions.
+    /// The error-level log lines the test provokes, as regular expressions:
+    /// any other fails the test, and so does a pattern no line matches.
     errors?: string[];
 }
 

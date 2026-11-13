@@ -3,6 +3,16 @@ import * as path from "node:path";
 import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
+/// The log's lines about the files' commands, each line's time, level and
+/// source cut off; sorted, as the files open at once.
+function commands(text: string): string[] {
+    return text
+        .split(/\r?\n/)
+        .map((line) => line.replace(/^\[[^\]]*\] \[\w+\] (?:\[thread \d+\] )?\[[\w.-]+:\d+\] /, ""))
+        .filter((message) => message.startsWith("Command of "))
+        .sort();
+}
+
 // One server serves both folders and writes one log, in the logging
 // directory of the project it opened first; the other project's logging
 // directory links to it. Its lines name a file by its folder and its path
@@ -23,8 +33,5 @@ test(async (t) => {
             .realpathSync(path.join(t.root, dir, session))
             .replace(/^[A-Z]:/, (drive) => drive.toLowerCase());
     expect(real("beta/.clice/logs")).toBe(real(".clice/logs"));
-    const text = t.disk.read(logs[0] ?? "");
-    for (const file of ["alpha/main.cpp", "beta/main.cpp"]) {
-        expect(text).toContain(`Command of ${file}: `);
-    }
+    await t.show("commands", commands(t.disk.read(logs[0] ?? "")));
 });

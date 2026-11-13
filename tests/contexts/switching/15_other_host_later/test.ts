@@ -19,7 +19,8 @@ test("a host indexed later", async (t) => {
     expect(await s.errors("shared.h")).toEqual([]);
     await t.show("before", s.hover(t.marker("slow")));
     // Counted without waiting for the server to go idle, which the parked
-    // index keeps it from.
+    // index keeps it from: a refresh fast_host.cpp's index sends may come
+    // before or after the count, so only the growth is certain.
     const refreshes = s.client.serverRequests.filter((sent) => sent === REFRESH).length;
     await slow.release();
     await s.indexed();
@@ -37,7 +38,7 @@ test("an edit until saved", async (t) => {
     const refreshes = await s.serverRequests(REFRESH);
     s.save("shared.h");
     await s.indexed();
-    expect(await s.serverRequests(REFRESH)).toBeGreaterThan(refreshes);
+    expect(await s.serverRequests(REFRESH)).toBe(refreshes + 1);
     await t.show("saved", s.hover(slow));
 });
 

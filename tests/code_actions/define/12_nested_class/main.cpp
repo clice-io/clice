@@ -7,3 +7,11 @@ struct Outer {
     };
     int x;
 };
+
+struct Holder {
+    struct Part;
+};
+
+struct Holder::Part {
+    void §(defined_apart)attach();
+};

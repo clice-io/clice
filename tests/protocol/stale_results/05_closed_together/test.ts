@@ -1,23 +1,25 @@
 import * as proto from "vscode-languageserver-protocol";
-import { test } from "@clice/tools/testing";
+import { test, type Serve } from "@clice/tools/testing";
 
 // A close read with a request takes the document away before the
 // request's work starts: the request belongs to a buffer that no longer
 // exists, and answers ContentModified.
 
+const VALUE = { path: "main.cpp", anchor: "int |value" };
+
 for (const [method, params] of [
     [
         "textDocument/inlayHint",
-        { range: { start: { line: 0, character: 0 }, end: { line: 1, character: 0 } } },
+        (s: Serve) => ({ range: s.range({ path: "main.cpp", anchor: "int value = 1;\n" }) }),
     ],
     [
         "textDocument/codeAction",
-        {
-            range: { start: { line: 0, character: 4 }, end: { line: 0, character: 4 } },
-            context: { diagnostics: [] },
+        (s: Serve) => {
+            const { position } = s.position(VALUE);
+            return { range: { start: position, end: position }, context: { diagnostics: [] } };
         },
     ],
-    ["textDocument/signatureHelp", { position: { line: 0, character: 4 } }],
+    ["textDocument/signatureHelp", (s: Serve) => ({ position: s.position(VALUE).position })],
 ] as const) {
     test(method, async (t) => {
         const s = await t.start();
@@ -25,7 +27,7 @@ for (const [method, params] of [
         const uri = s.uri("main.cpp");
         // Raw messages: their arrival in one read is the point.
         const replies = await s.client.sendTogether([
-            { jsonrpc: "2.0", id: method, method, params: { textDocument: { uri }, ...params } },
+            { jsonrpc: "2.0", id: method, method, params: { textDocument: { uri }, ...params(s) } },
             {
                 jsonrpc: "2.0",
                 method: proto.DidCloseTextDocumentNotification.method,

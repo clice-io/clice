@@ -6,6 +6,7 @@ import :semantic.symbol;
 import :server.served_project;
 import :unittests.server.served_project_fixture;
 import :unittests.utils.index_query_tester;
+import :unittests.utils.tester;
 import :vfs.file_system;
 import :vfs.ids;
 
@@ -198,25 +199,25 @@ ZEST_CASE(DeletedDefinitionFallsBack) {
     )");
     index_workspace();
 
-    clear();
-    add_file("header.h", header);
-    add_focus("use.cpp", R"(
+    Tester user;
+    user.add_file("header.h", header);
+    user.add_focus("use.cpp", R"(
         #include "header.h"
         int use() { return removed(); }
     )");
-    index_workspace();
+    index_workspace(user);
     auto use_id = focus_id;
 
     // The table keeps the definition the first unit reported; the shards
     // no longer hold it, so the declaration places the symbol — a file
     // that only used it moving on changes nothing.
-    clear();
-    add_file("header.h", header);
-    add_focus("main.cpp", R"(
+    Tester edited;
+    edited.add_file("header.h", header);
+    edited.add_focus("main.cpp", R"(
         #include "header.h"
         int kept() { return removed(); }
     )");
-    index_workspace();
+    index_workspace(edited);
     project.file_table.disk.observe(use_id, DiskObservation{.hash = 1});
 
     auto results = search("removed");

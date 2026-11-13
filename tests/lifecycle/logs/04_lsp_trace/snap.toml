@@ -1,0 +1,13 @@
+["a server its editor starts"."the client's messages"]
+value = ["initialize", "initialized", "textDocument/didOpen", "textDocument/diagnostic", "shutdown", "exit"]
+
+["a server ready before its client".hover.hover]
+plaintext = '''
+function add
+
+int add(int a, int b)
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+["a server ready before its client"."the client's messages"]
+value = ["textDocument/didOpen", "textDocument/hover", "shutdown", "exit"]

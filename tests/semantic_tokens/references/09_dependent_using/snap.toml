@@ -7,3 +7,13 @@ modifiers = ["declaration", "member", "dependent"]
 text = "value"
 type = "unknown"
 modifiers = ["member", "dependent"]
+
+[answers.member.semantic_token]
+text = "f"
+type = "method"
+modifiers = ["member", "dependent"]
+
+[answers.qualified.semantic_token]
+text = "f"
+type = "method"
+modifiers = ["member", "dependent"]

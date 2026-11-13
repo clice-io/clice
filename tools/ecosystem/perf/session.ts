@@ -7,12 +7,12 @@ import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
 import { CliceClient } from "../../client/client.ts";
 import { Workspace } from "../../client/workspace.ts";
-import { ANOMALY_PATTERN, logFiles } from "../../process_gate.ts";
-import { withTimeout } from "../../promise.ts";
-import { CRASHED_IN } from "../../testing/server/serve.ts";
+import { logFaults, readLogLines, sessionLogs, sessionsIn, textLines } from "../../process_gate.ts";
+import { TimeoutError, withTimeout } from "../../promise.ts";
 import { watchTree, type TreeWatch } from "../memory.ts";
+import { loggingDir } from "../prepare.ts";
 import { computeStats, parsePerfLines, summarize } from "./logs.ts";
-import type { RunResult, ServerName } from "./results.ts";
+import type { PerfFailure, RunResult, ServerName } from "./results.ts";
 import { CAPABILITIES, cliceDir, indexToken, isClice } from "./servers.ts";
 
 /// What every run of a job shares: the checkout, the database's directory,
@@ -95,14 +95,37 @@ export const VISIBLE: proto.Range = {
     end: { line: 100, character: 0 },
 };
 
+/// A failure whose kind the place that found it knows.
+export class RunFailure extends Error {
+    readonly kind: PerfFailure;
+    constructor(kind: PerfFailure, message: string) {
+        super(message);
+        this.kind = kind;
+    }
+}
+
+/// The kinds a run fails by, the worst first: a crash takes the requests
+/// it was asked down with it, a hang's server the run killed.
+const WORST_FIRST: readonly PerfFailure[] = ["crash", "hang", "anomaly", "server"];
+
+/// The kind of a failure thrown at a run: a bound reached is a hang, what
+/// nothing else names an error answer.
+function kindOf(error: unknown): PerfFailure {
+    return error instanceof RunFailure
+        ? error.kind
+        : error instanceof TimeoutError
+          ? "hang"
+          : "server";
+}
+
 export class Session {
     readonly result: RunResult;
     readonly context: PerfContext;
     private connected: CliceClient | null = null;
     private watch: TreeWatch | null = null;
-    /// Log files that existed before this run's server started; the files
-    /// beyond them are exactly this run's session logs.
-    private priorLogs = new Set<string>();
+    /// The sessions in the logging directory before this run's server
+    /// started; those beyond them are this run's.
+    private priorSessions = new Set<string>();
     /// When set (epoch ms), server-side perf events timestamped before this
     /// point are dropped: they belong to warmup work the client series
     /// deliberately exclude.
@@ -130,11 +153,15 @@ export class Session {
 
     /// Another reason the run failed, after those before it: a request that
     /// timed out under a server that then turns out to have crashed is told
-    /// as both.
-    fail(error: unknown): void {
+    /// as both, and fails as the worse.
+    fail(error: unknown, kind = kindOf(error)): void {
         const message = error instanceof Error ? error.message : String(error);
         this.result.error =
             this.result.error === undefined ? message : `${this.result.error}; ${message}`;
+        const failure = this.result.failure;
+        if (failure === undefined || WORST_FIRST.indexOf(kind) < WORST_FIRST.indexOf(failure)) {
+            this.result.failure = kind;
+        }
     }
 
     record(name: string, ms: number): void {
@@ -157,7 +184,7 @@ export class Session {
             throw new Error(`no ${this.server} to start`);
         }
         if (isClice(this.server)) {
-            this.priorLogs = new Set(logFiles(workspace));
+            this.priorSessions = new Set(sessionsIn(loggingDir(workspace)));
         }
         const args = isClice(this.server)
             ? ["serve"]
@@ -195,9 +222,8 @@ export class Session {
                 // none of its flag edits apply either.
                 rules: [{ compile_commands: [database] }],
                 project: {
-                    // Logs where finish() reads them (logFiles searches
-                    // <workspace>/.clice/logs).
-                    logging_dir: path.join(workspace, ".clice", "logs"),
+                    // Logs where finish() reads them.
+                    logging_dir: loggingDir(workspace),
                 },
             },
             cacheDir: cliceDir(workspace, this.server),
@@ -315,7 +341,10 @@ export class Session {
         let files = 0;
         while (nowMs() - began < bound) {
             if (client.child.exitCode !== null || client.child.signalCode !== null) {
-                throw new Error(`${this.server} exited while it was awaited to go idle`);
+                throw new RunFailure(
+                    "crash",
+                    `${this.server} exited while it was awaited to go idle`,
+                );
             }
             const events = client.progressEvents;
             for (; seen < events.length; seen += 1) {
@@ -345,7 +374,7 @@ export class Session {
                 }
             }
             if (round && !announced && nowMs() - this.started > ANNOUNCE_BOUND) {
-                throw new Error(`${this.server} announced no background index round`);
+                throw new RunFailure("hang", `${this.server} announced no background index round`);
             }
             await pause(1000);
         }
@@ -412,17 +441,23 @@ export class Session {
     /// that crashed, or an anomaly, fails the run even when the master
     /// recovered.
     private collectPerf(client: CliceClient): void {
-        const fresh = logFiles(this.context.workspace).filter((f) => !this.priorLogs.has(f));
-        this.result.logs = [...new Set(fresh.map((f) => path.basename(path.dirname(f))))];
+        const sessions = sessionsIn(loggingDir(this.context.workspace)).filter(
+            (session) => !this.priorSessions.has(session),
+        );
+        this.result.logs = sessions.map((session) => path.basename(session));
+        const files = sessionLogs(sessions);
         const texts =
-            fresh.length > 0
-                ? fresh.map((f) => fs.readFileSync(f, "utf8"))
+            files.length > 0
+                ? files.map((f) => fs.readFileSync(f, "utf8"))
                 : [client.drainedStderr().toString("utf8")];
-        const failed = texts
-            .flatMap((text) => text.split(/\r?\n/))
-            .find((line) => CRASHED_IN.test(line) || ANOMALY_PATTERN.test(line));
-        if (failed !== undefined) {
-            this.fail(`clice logged: ${failed}`);
+        const faults = logFaults(
+            files.length > 0 ? readLogLines(files) : textLines(texts[0] ?? "", "stderr"),
+        );
+        const fault =
+            faults.find((each) => each.kind === "crash") ??
+            faults.find((each) => each.kind === "anomaly");
+        if (fault !== undefined) {
+            this.fail(`clice logged: ${fault.line.text}`, fault.kind);
         }
         // One pid per log file: master and workers are separate processes
         // and keep separate trace lanes.
@@ -490,6 +525,11 @@ async function shutdown(client: CliceClient, server: ServerName): Promise<void> 
     }
     const { exitCode, signalCode } = client.child;
     if (exitCode !== 0) {
-        throw new Error(`${server} exited with ${signalCode ?? `code ${String(exitCode)}`}`);
+        // SIGKILL ends a server the hard kill above, or a memory limit,
+        // stopped.
+        throw new RunFailure(
+            signalCode === "SIGKILL" ? "hang" : "crash",
+            `${server} exited with ${signalCode ?? `code ${String(exitCode)}`}`,
+        );
     }
 }

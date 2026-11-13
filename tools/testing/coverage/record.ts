@@ -3,12 +3,17 @@
 /// appends to its own file under CLICE_COVERAGE_DIR; the coverage check
 /// reads them all after the run. Without the variable nothing is recorded.
 
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
 export type Surface = "method" | "invocation" | "config";
 
 const recorded = new Set<string>();
+
+/// This process's file: its name unique across machines, so that the
+/// records of several shards merge into one directory.
+const file = `${randomUUID()}.txt`;
 
 export function record(surface: Surface, item: string): void {
     const dir = process.env["CLICE_COVERAGE_DIR"];
@@ -21,7 +26,7 @@ export function record(surface: Surface, item: string): void {
     }
     recorded.add(entry);
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, `${process.pid}.txt`), `${entry}\n`);
+    fs.appendFileSync(path.join(dir, file), `${entry}\n`);
 }
 
 /// A command line run: the words leading it — its subcommand, its
@@ -81,12 +86,17 @@ export function recordConfig(config: unknown, prefix = ""): void {
     }
 }
 
+/// The records under `dir`, each shard's in a directory of its own or all
+/// in one.
 export function readRecords(dir: string): Map<Surface, Set<string>> {
     const out = new Map<Surface, Set<string>>();
     if (!fs.existsSync(dir)) {
         return out;
     }
-    for (const name of fs.readdirSync(dir)) {
+    const files = fs
+        .readdirSync(dir, { recursive: true, encoding: "utf8" })
+        .filter((name) => name.endsWith(".txt"));
+    for (const name of files) {
         for (const line of fs.readFileSync(path.join(dir, name), "utf8").split("\n")) {
             const space = line.indexOf(" ");
             if (space < 0) {

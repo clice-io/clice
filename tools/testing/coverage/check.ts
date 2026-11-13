@@ -13,8 +13,8 @@ import * as protocol from "../../protocol/protocol.ts";
 import { readRecords } from "./record.ts";
 import { commandsAndFlags, configKeys, methods } from "./surface.ts";
 
-/// The public clice requests a client may send; `clice/internal/*` are
-/// test hooks, not surface.
+/// The public clice requests a client and the server exchange;
+/// `clice/internal/*` are test hooks, not surface.
 function extensionMethods(): string[] {
     return Object.values(protocol)
         .map((value) => (value as { method?: unknown }).method)
@@ -37,18 +37,25 @@ async function capabilities(clice: string): Promise<proto.ServerCapabilities> {
 export async function surface(clice: string): Promise<string[]> {
     const { commands, flags } = commandsAndFlags(clice);
     const byFlag = new Map<string, string[]>();
+    const byCommand = new Map<string, string[]>();
     for (const entry of flags) {
         const at = entry.lastIndexOf(" --");
-        const flag = entry.slice(at + 1);
-        byFlag.set(flag, [...(byFlag.get(flag) ?? []), entry.slice(0, at)]);
+        const [owner, flag] = [entry.slice(0, at), entry.slice(at + 1)];
+        byFlag.set(flag, [...(byFlag.get(flag) ?? []), owner]);
+        byCommand.set(owner, [...(byCommand.get(owner) ?? []), flag]);
     }
+    const everywhere = new Set(
+        [...byFlag].flatMap(([flag, owners]) => (owners.length === commands.length ? [flag] : [])),
+    );
     const flagItems: string[] = [];
     for (const [flag, owners] of byFlag) {
-        if (owners.length === commands.length) {
+        if (everywhere.has(flag)) {
             flagItems.push(`flag * ${flag}`);
             continue;
         }
-        // A flag every operation of a subcommand takes is the subcommand's.
+        // A flag every operation of a subcommand takes is the subcommand's;
+        // an operation taking no flag of its own (`inspect config-schema`)
+        // has no say.
         const bySubcommand = new Map<string, string[]>();
         for (const owner of owners) {
             const subcommand = owner.split(" ")[0] ?? owner;
@@ -56,7 +63,9 @@ export async function surface(clice: string): Promise<string[]> {
         }
         for (const [subcommand, held] of bySubcommand) {
             const operations = commands.filter(
-                (command) => command === subcommand || command.startsWith(`${subcommand} `),
+                (command) =>
+                    (command === subcommand || command.startsWith(`${subcommand} `)) &&
+                    (byCommand.get(command) ?? []).some((each) => !everywhere.has(each)),
             );
             if (held.length === operations.length) {
                 flagItems.push(`flag ${subcommand} ${flag}`);

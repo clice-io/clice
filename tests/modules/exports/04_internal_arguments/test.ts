@@ -6,8 +6,14 @@ import { test } from "@clice/tools/testing";
 // the member of a class a module function declares and returns.
 test(async (t) => {
     await t.cli("index");
-    await t.cli("query references main.cpp:5:12 --include-declaration");
-    await t.cli("query references main.cpp:15:16 --include-declaration");
-    await t.cli("query definition main.cpp:21:19");
-    await t.cli("query references main.cpp:21:19 --include-declaration");
+    await t.cli(
+        `query references ${t.place(t.at("main.cpp", "double |radius;"))} --include-declaration`,
+    );
+    await t.cli(
+        `query references ${t.place(t.at("main.cpp", "double |radius = 0"))} --include-declaration`,
+    );
+    await t.cli(`query definition ${t.place(t.at("main.cpp", "make().|radius"))}`);
+    await t.cli(
+        `query references ${t.place(t.at("main.cpp", "make().|radius"))} --include-declaration`,
+    );
 });

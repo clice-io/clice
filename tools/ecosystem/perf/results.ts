@@ -53,6 +53,8 @@ export interface RunResult {
     timeline?: Sample[];
     /// Why the run failed; its series hold what it measured before.
     error?: string;
+    /// The kind of the worst of those reasons.
+    failure?: PerfFailure;
     /// Whether the OS file cache was dropped before the run.
     dropped?: boolean;
     /// Server-side breakdown from the session's `[perf:*]` log lines
@@ -114,3 +116,7 @@ export interface Slower {
 }
 
 export type Order = "clice first" | "baseline first" | "both";
+
+/// How a run fails: a crash, a hang, an anomaly clice logged, an error
+/// answer.
+export type PerfFailure = "crash" | "hang" | "anomaly" | "server";

@@ -13,11 +13,11 @@ test("an unknown section", async (t) => {
 });
 
 // One that is no JSON, or gives a value of the wrong type, stops the run.
-test("not JSON", async (t) => {
+test("not JSON", { errors: ["invalid --config-overlay"] }, async (t) => {
     await t.cli(["inspect", "semantic-tokens", "main.cpp", "--config-overlay", "{not json"]);
 });
 
-test("a wrong type", async (t) => {
+test("a wrong type", { errors: ["--config-overlay: invalid type"] }, async (t) => {
     await t.cli([
         "inspect",
         "semantic-tokens",

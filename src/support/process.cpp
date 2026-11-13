@@ -21,12 +21,14 @@ async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::
     if(!path.empty()) {
         env_changes.push_back({.name = "PATH", .value = std::move(path)});
     }
+    // LIMITATION: on Windows, what a program of the Cygwin or MSYS2 runtime
+    // starts leaves the program's job, and outlives a cancel.
     auto captured = co_await async::process::capture({
         .program = file,
         .args = std::move(arguments),
         .env_changes = std::move(env_changes),
         .cwd = std::move(cwd),
-        .creation = {.exit_with_parent = can_exit_with_parent},
+        .creation = {.process_group = true, .exit_with_parent = can_exit_with_parent},
     });
     if(!captured) {
         co_return std::unexpected(

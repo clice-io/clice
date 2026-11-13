@@ -40,6 +40,7 @@ defaults:
 jobs:
   jobs:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     outputs:
       commit: ${{ steps.commit.outputs.commit }}
       baseline: ${{ steps.baseline.outputs.tag }}

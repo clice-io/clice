@@ -33,6 +33,22 @@ items = [
     { label = "error", kind = "Keyword", insert = "error" },
 ]
 
+[default.after_endif.completion]
+items = []
+
+[default.after_comment.completion]
+items = []
+
+[default.nested.completion]
+items = [
+    { label = "elif", kind = "Keyword", insert = "elif" },
+    { label = "elifdef", kind = "Keyword", insert = "elifdef" },
+    { label = "elifndef", kind = "Keyword", insert = "elifndef" },
+    { label = "else", kind = "Keyword", insert = "else" },
+    { label = "endif", kind = "Keyword", insert = "endif" },
+    { label = "error", kind = "Keyword", insert = "error" },
+]
+
 [configured.empty.completion]
 items = [
     { label = "define macro", kind = "Snippet", insert = "define ${1:macro}", snippet = true },
@@ -66,6 +82,22 @@ items = [
 
 [configured.after_else.completion]
 items = [
+    { label = "endif", kind = "Snippet", insert = "endif" },
+    { label = "error message", kind = "Snippet", insert = "error ${1:message}", snippet = true },
+]
+
+[configured.after_endif.completion]
+items = []
+
+[configured.after_comment.completion]
+items = []
+
+[configured.nested.completion]
+items = [
+    { label = "elif condition", kind = "Snippet", insert = "elif ${1:condition}", snippet = true },
+    { label = "elifdef macro", kind = "Snippet", insert = "elifdef ${1:macro}", snippet = true },
+    { label = "elifndef macro", kind = "Snippet", insert = "elifndef ${1:macro}", snippet = true },
+    { label = "else", kind = "Snippet", insert = "else" },
     { label = "endif", kind = "Snippet", insert = "endif" },
     { label = "error message", kind = "Snippet", insert = "error ${1:message}", snippet = true },
 ]

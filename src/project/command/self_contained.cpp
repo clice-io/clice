@@ -45,17 +45,26 @@ void Project::commit_self_containment(const SelfContainmentKey& key,
             .disk = disk && disk->version.valid() ? disk->version : text,
         },
         std::move(inputs));
+    // The context a comparison synthesized serves nothing any more.
+    if(self_contained) {
+        hosting.contexts.forget(key.first);
+    }
     mark_precompiled_dirty();
 }
 
-bool Project::header_saved(const SelfContainmentKey& key, VersionID text, bool leans) {
+void Project::forget_self_containment(const SelfContainmentKey& key) {
+    hosting.self_containment.forget(key);
+    mark_precompiled_dirty();
+}
+
+bool Project::header_saved(const SelfContainmentKey& key, VersionID text, bool errs) {
     auto* entry = hosting.self_containment.find(key);
     if(!entry) {
         return false;
     }
     mark_precompiled_dirty();
-    if(entry->result.self_contained && leans) {
-        hosting.self_containment.forget(key);
+    if(entry->result.self_contained && errs) {
+        forget_self_containment(key);
         return true;
     }
     entry->result.text = text;

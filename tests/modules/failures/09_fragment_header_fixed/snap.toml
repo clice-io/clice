@@ -1,2 +1,24 @@
+[asked.broken]
+errors = [
+    {
+        at = "import ⟦A;⟧",
+        severity = "error",
+        message = "could not build module 'A': use of undeclared identifier 'missing_name'",
+        source = "clang",
+        code = "err_module_not_built",
+    },
+]
+
+["seen by the tick".broken]
+errors = [
+    {
+        at = "import ⟦A;⟧",
+        severity = "error",
+        message = "could not build module 'A': use of undeclared identifier 'missing_name'",
+        source = "clang",
+        code = "err_module_not_built",
+    },
+]
+
 ["seen by the tick".references]
 references = ["export int ⟦a⟧() {", "closed.cpp │ return ⟦a⟧();", "main.cpp │ return ⟦a⟧();"]

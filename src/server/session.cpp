@@ -2,8 +2,23 @@ module clice;
 
 import :server.session;
 import :support.logging;
+import :support.process;
 
 namespace clice {
+
+const FailurePolicy Session::policy = [] {
+    FailurePolicy policy{
+        .change_limit = 3,
+        .spacing = chrono::seconds(2),
+        .editing_window = chrono::seconds(10),
+    };
+    // Let integration tests retry a crashed request without waiting out the
+    // real spacing.
+    if(auto ms = env_integer("CLICE_TEST_CRASH_SPACING_MS")) {
+        policy.spacing = chrono::milliseconds(*ms);
+    }
+    return policy;
+}();
 
 Session::Session(Fid path_id, std::string text, int version) : path_id(path_id), version(version) {
     set_text(std::move(text));

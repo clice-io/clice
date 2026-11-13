@@ -184,8 +184,8 @@ ZEST_CASE(ScopedBindingStaysLocal) {
     /// `Inner<U>::type` is `int` under `Holder<int>`'s binding and stays
     /// dependent without it, whichever the resolver meets first.
     for(bool deduce_first: {true, false}) {
-        clear();
-        add_focus("main.cpp", R"code(
+        Tester tester;
+        tester.add_focus("main.cpp", R"code(
             template <typename T>
             struct Holder {
                 template <typename U>
@@ -202,19 +202,19 @@ ZEST_CASE(ScopedBindingStaysLocal) {
 
             template struct Holder<int>;
         )code");
-        ZASSERT(compile());
+        ZASSERT(tester.compile());
 
-        Nodes nodes(unit->context());
+        Nodes nodes(tester.unit->context());
         auto* first = nodes.named<clang::VarDecl>("first");
         ZASSERT(first);
         auto* input = nodes.named<clang::TypedefNameDecl>("input");
         ZASSERT(input);
 
-        auto& resolver = unit->get<types::TemplateResolver>();
+        auto& resolver = tester.unit->get<types::TemplateResolver>();
         auto check_deduced = [&] {
             auto deduced = resolver.deduce(first);
             ZASSERT(!deduced.isNull());
-            ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);
+            ZEXPECT(deduced.getCanonicalType() == tester.unit->context().IntTy);
         };
         auto check_resolved = [&] {
             auto resolved = resolver.resolve(input->getUnderlyingType());
@@ -231,7 +231,7 @@ ZEST_CASE(ScopedBindingStaysLocal) {
     }
 }
 
-ZEST_CASE(ProbeBindingsStayInProbe) {
+ZEST_CASE(ProbeBindingsStayLocal) {
     /// Choosing `has_inner`'s pattern resolves `T::inner` once with `T`
     /// bound to `box<U>`, once to `bare<U>`, whose `inner` has no `type`.
     add_focus("main.cpp", R"code(
@@ -263,7 +263,7 @@ ZEST_CASE(ProbeBindingsStayInProbe) {
     ZEXPECT(primary.getCanonicalType() == unit->context().LongTy);
 }
 
-ZEST_CASE(QualifiedBindingIsNoParameter) {
+ZEST_CASE(QualifiedBindingNotParameter) {
     /// Inside `iter<N>`, `other` binds `N` to `const N`: what its `node`
     /// reads under that binding is no answer for `iter<N>`'s own.
     add_focus("main.cpp", R"code(
@@ -596,7 +596,7 @@ ZEST_CASE(ViewsBetweenIncludes) {
     }
 }
 
-ZEST_CASE(CanonicalNamesKeepTheirBindings) {
+ZEST_CASE(CanonicalNamesKeepBindings) {
     /// `C::value_type` and `T::value_type` share their canonical form; the
     /// only instantiation binds `C` alone.
     add_focus("main.cpp", R"code(
@@ -937,7 +937,7 @@ ZEST_CASE(StandardConditionalBaseDiffers) {
     ZEXPECT(resolver.lookup(nodes.members.back()).empty());
 }
 
-ZEST_CASE(OperatorCallFoldsAsBuiltin) {
+ZEST_CASE(OperatorCallFoldsBuiltin) {
     /// With an `operator&&` in scope, clang leaves `&&` on dependent operands
     /// a call; its operands' values fold it as the builtin one.
     add_focus("main.cpp", R"code(

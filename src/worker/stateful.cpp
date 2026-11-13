@@ -319,6 +319,7 @@ RequestResult<worker::CompileParams>
                          counted(diags.size(), "diagnostic", "diagnostics"),
                          unit->fatal_error() ? ", a fatal error among them" : "");
                 result.diagnostics = std::move(diags);
+                result.errors = feature::count_errors(*unit);
                 doc->unit = std::move(unit);
                 doc->pch_mapping = std::move(pch_mapping);
                 doc->pch_bound = params.pch.second;

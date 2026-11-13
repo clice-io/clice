@@ -1,0 +1,103 @@
+[compiled."cxx17.cpp"]
+semantic_tokens = [
+    { at = "⟦int⟧ concept = 0;", type = "primitive" },
+    { at = "int ⟦concept⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int concept ⟦=⟧ 0;", type = "operator" },
+    { at = "int concept = ⟦0⟧;", type = "number" },
+    { at = "⟦struct⟧ module {};", type = "keyword" },
+    { at = "struct ⟦module⟧ {};", type = "struct", modifiers = ["definition", "global"] },
+    { at = "⟦module⟧ m;", type = "struct", modifiers = ["global"] },
+    { at = "module ⟦m⟧;", type = "variable", modifiers = ["definition", "global"] },
+]
+
+[compiled."gnu.cpp"]
+semantic_tokens = [
+    { at = "⟦char8_t⟧ letter = 0;", type = "primitive" },
+    { at = "char8_t ⟦letter⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "char8_t letter ⟦=⟧ 0;", type = "operator" },
+    { at = "char8_t letter = ⟦0⟧;", type = "number" },
+    { at = "⟦typeof⟧(letter) copy = letter;", type = "keyword" },
+    { at = "typeof(⟦letter⟧) copy = letter;", type = "variable", modifiers = ["global"] },
+    { at = "typeof(letter) ⟦copy⟧ = letter;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "typeof(letter) copy ⟦=⟧ letter;", type = "operator" },
+    { at = "typeof(letter) copy = ⟦letter⟧;", type = "variable", modifiers = ["global"] },
+]
+
+[compiled."default.cpp"]
+semantic_tokens = [
+    { at = "⟦int⟧ concept = 0;", type = "primitive" },
+    { at = "int ⟦concept⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int concept ⟦=⟧ 0;", type = "operator" },
+    { at = "int concept = ⟦0⟧;", type = "number" },
+    { at = "⟦typeof⟧(concept) copy = concept;", type = "keyword" },
+    { at = "typeof(⟦concept⟧) copy = concept;", type = "variable", modifiers = ["global"] },
+    { at = "typeof(concept) ⟦copy⟧ = concept;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "typeof(concept) copy ⟦=⟧ concept;", type = "operator" },
+    { at = "typeof(concept) copy = ⟦concept⟧;", type = "variable", modifiers = ["global"] },
+]
+
+[compiled."c17.c"]
+semantic_tokens = [
+    { at = "⟦int⟧ class = 0;", type = "primitive" },
+    { at = "int ⟦class⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int class ⟦=⟧ 0;", type = "operator" },
+    { at = "int class = ⟦0⟧;", type = "number" },
+    { at = "⟦int⟧* new = &class;", type = "primitive" },
+    { at = "int⟦*⟧ new = &class;", type = "operator", modifiers = ["declarator"] },
+    { at = "int* ⟦new⟧ = &class;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int* new ⟦=⟧ &class;", type = "operator" },
+    { at = "int* new = ⟦&⟧class;", type = "operator" },
+    { at = "int* new = &⟦class⟧;", type = "variable", modifiers = ["global"] },
+]
+
+[index."cxx17.cpp"]
+semantic_tokens = [
+    { at = "⟦int⟧ concept = 0;", type = "primitive" },
+    { at = "int ⟦concept⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int concept ⟦=⟧ 0;", type = "operator" },
+    { at = "int concept = ⟦0⟧;", type = "number" },
+    { at = "⟦struct⟧ module {};", type = "keyword" },
+    { at = "struct ⟦module⟧ {};", type = "struct", modifiers = ["definition", "global"] },
+    { at = "⟦module⟧ m;", type = "struct", modifiers = ["global"] },
+    { at = "module ⟦m⟧;", type = "variable", modifiers = ["definition", "global"] },
+]
+
+[index."gnu.cpp"]
+semantic_tokens = [
+    { at = "⟦char8_t⟧ letter = 0;", type = "primitive" },
+    { at = "char8_t ⟦letter⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "char8_t letter ⟦=⟧ 0;", type = "operator" },
+    { at = "char8_t letter = ⟦0⟧;", type = "number" },
+    { at = "⟦typeof⟧(letter) copy = letter;", type = "keyword" },
+    { at = "typeof(⟦letter⟧) copy = letter;", type = "variable", modifiers = ["global"] },
+    { at = "typeof(letter) ⟦copy⟧ = letter;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "typeof(letter) copy ⟦=⟧ letter;", type = "operator" },
+    { at = "typeof(letter) copy = ⟦letter⟧;", type = "variable", modifiers = ["global"] },
+]
+
+[index."default.cpp"]
+semantic_tokens = [
+    { at = "⟦int⟧ concept = 0;", type = "primitive" },
+    { at = "int ⟦concept⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int concept ⟦=⟧ 0;", type = "operator" },
+    { at = "int concept = ⟦0⟧;", type = "number" },
+    { at = "⟦typeof⟧(concept) copy = concept;", type = "keyword" },
+    { at = "typeof(⟦concept⟧) copy = concept;", type = "variable", modifiers = ["global"] },
+    { at = "typeof(concept) ⟦copy⟧ = concept;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "typeof(concept) copy ⟦=⟧ concept;", type = "operator" },
+    { at = "typeof(concept) copy = ⟦concept⟧;", type = "variable", modifiers = ["global"] },
+]
+
+[index."c17.c"]
+semantic_tokens = [
+    { at = "⟦int⟧ class = 0;", type = "primitive" },
+    { at = "int ⟦class⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int class ⟦=⟧ 0;", type = "operator" },
+    { at = "int class = ⟦0⟧;", type = "number" },
+    { at = "⟦int⟧* new = &class;", type = "primitive" },
+    { at = "int⟦*⟧ new = &class;", type = "operator" },
+    { at = "int* ⟦new⟧ = &class;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int* new ⟦=⟧ &class;", type = "operator" },
+    { at = "int* new = ⟦&⟧class;", type = "operator" },
+    { at = "int* new = &⟦class⟧;", type = "variable", modifiers = ["global"] },
+]

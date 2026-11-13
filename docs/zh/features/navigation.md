@@ -436,7 +436,7 @@ tests/navigation/references/03_implicit_construction
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#716 clangd#1872 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#716 -->
 
 **通过转发函数产生的引用**
 
@@ -1308,7 +1308,7 @@ tests/navigation/call_hierarchy/08_lambda_bodies
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2242 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#716 -->
 
 **通过转发函数调用构造函数**
 

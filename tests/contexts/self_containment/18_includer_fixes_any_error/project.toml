@@ -1,0 +1,2 @@
+[units]
+"main.c" = ["-std=c17"]

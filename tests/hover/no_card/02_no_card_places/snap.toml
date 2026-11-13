@@ -4,6 +4,9 @@ hover = {}
 [answers.empty_braces]
 hover = {}
 
+[answers.empty_line]
+hover = {}
+
 [answers.lambda_auto_param]
 hover = {}
 

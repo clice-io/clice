@@ -3,7 +3,6 @@ module clice;
 import :project.graph.task_graph;
 import :support.signal;
 import :unittests.utils;
-import :unittests.utils.async;
 
 namespace clice::testing {
 namespace {
@@ -203,7 +202,7 @@ async::task<> run_join(NodeId id, Work work, Probe& probe, JoinOptions options =
 ///                          Basic attempts & joins
 /// ============================================================================
 
-ZEST_CASE(join_no_deps) {
+ZEST_CASE(JoinWithoutDependencies) {
     // A node without dependencies runs one attempt and becomes clean.
     Adjacency adj;
 
@@ -215,7 +214,7 @@ ZEST_CASE(join_no_deps) {
     });
 }
 
-ZEST_CASE(join_dep_chain) {
+ZEST_CASE(JoinDependencyChain) {
     // 1 -> 2 -> 3: attempts commit bottom-up along their waits, and each
     // node's edges are the waits of its successful attempt.
     Adjacency adj;
@@ -233,7 +232,7 @@ ZEST_CASE(join_dep_chain) {
     });
 }
 
-ZEST_CASE(diamond_dedup) {
+ZEST_CASE(DiamondDeduplicates) {
     // Diamond 1 -> {2, 3} -> 4: the shared dependency is reached through
     // two branches but runs exactly once.
     Adjacency adj;
@@ -249,7 +248,7 @@ ZEST_CASE(diamond_dedup) {
     });
 }
 
-ZEST_CASE(second_join_skips) {
+ZEST_CASE(SecondJoinSkips) {
     // A clean node is not re-run by a later join.
     Adjacency adj;
 
@@ -261,7 +260,7 @@ ZEST_CASE(second_join_skips) {
     });
 }
 
-ZEST_CASE(declared_survives_commit) {
+ZEST_CASE(DeclaredSurvivesCommit) {
     // An edge set_edges() declares to a node that never runs survives a
     // successful attempt that waits on nothing, so a later invalidate() on
     // that node re-dirties this one.
@@ -279,7 +278,7 @@ ZEST_CASE(declared_survives_commit) {
     });
 }
 
-ZEST_CASE(concurrent_joins_share) {
+ZEST_CASE(ConcurrentJoinsShareAttempt) {
     // Two concurrent joins of the same node share one attempt: a single
     // dispatch serves both.
     ManualRunner manual;
@@ -303,7 +302,7 @@ ZEST_CASE(concurrent_joins_share) {
     });
 }
 
-ZEST_CASE(waiter_work_runs_once) {
+ZEST_CASE(WaiterWorkRunsOnce) {
     // A second waiter of a node mid-attempt waits on that attempt: its own
     // work never runs, and it gets the attempt's result.
     ManualRunner manual;
@@ -333,7 +332,7 @@ ZEST_CASE(waiter_work_runs_once) {
     });
 }
 
-ZEST_CASE(cross_kind_edge) {
+ZEST_CASE(CrossKindEdge) {
     // A KindA node depending on a KindB node: the edge crosses kinds and
     // invalidate() cascades across it.
     Adjacency adj;
@@ -355,7 +354,7 @@ ZEST_CASE(cross_kind_edge) {
 ///                             Product checks
 /// ============================================================================
 
-ZEST_CASE(check_holds_skips_attempt) {
+ZEST_CASE(CheckHoldsSkipsAttempt) {
     // The check is asked only of a clean node, and Holds answers Success
     // without an attempt.
     Adjacency adj;
@@ -378,7 +377,7 @@ ZEST_CASE(check_holds_skips_attempt) {
     });
 }
 
-ZEST_CASE(product_gone_no_cascade) {
+ZEST_CASE(ProductGoneNoCascade) {
     // 1 -> 2: a waiter of 2 finding its product gone rebuilds 2 alone. Node
     // 1 consumed content that did not change: it stays clean, and a later
     // join of it runs nothing.
@@ -406,7 +405,7 @@ ZEST_CASE(product_gone_no_cascade) {
     });
 }
 
-ZEST_CASE(generation_counts_invalidations) {
+ZEST_CASE(GenerationCountsInvalidations) {
     // 1 -> 2: every invalidation that reaches a node moves its generation
     // on, through a cascade too; a product found gone rebuilds it at the
     // generation it had.
@@ -436,7 +435,7 @@ ZEST_CASE(generation_counts_invalidations) {
     });
 }
 
-ZEST_CASE(added_node_counts_invalidations) {
+ZEST_CASE(AddedNodeCountsInvalidations) {
     // A node added before any attempt counts the invalidations that reach
     // it, as one that never existed does not, and an attempt records the
     // generation it started at.
@@ -457,7 +456,7 @@ ZEST_CASE(added_node_counts_invalidations) {
     });
 }
 
-ZEST_CASE(check_inputs_changed_propagates) {
+ZEST_CASE(CheckInputsChangedPropagates) {
     // 1 -> 2: a waiter of 2 finding its inputs changed invalidates 2 with its
     // dependents — 2 rebuilds at once, 1 on its next join.
     Adjacency adj;
@@ -485,7 +484,7 @@ ZEST_CASE(check_inputs_changed_propagates) {
     });
 }
 
-ZEST_CASE(check_spares_finder) {
+ZEST_CASE(CheckSparesFinder) {
     // An attempt whose wait finds its dependency's inputs changed waits for
     // the fresh product: the invalidation overtakes what was built from the
     // old one, not that attempt.
@@ -506,7 +505,7 @@ ZEST_CASE(check_spares_finder) {
     });
 }
 
-ZEST_CASE(invalidation_judges_every_path) {
+ZEST_CASE(InvalidationJudgesEveryPath) {
     // An invalidation reaching an attempt first through a product it still
     // waits for, then through one it read, overtakes it.
     ManualRunner manual;
@@ -528,7 +527,7 @@ ZEST_CASE(invalidation_judges_every_path) {
     });
 }
 
-ZEST_CASE(failure_read_overtaken) {
+ZEST_CASE(FailureReadOvertaken) {
     // A waiter read a failure as it reads a product: an invalidation of the
     // failed node overtakes it.
     ManualRunner manual;
@@ -550,7 +549,7 @@ ZEST_CASE(failure_read_overtaken) {
     });
 }
 
-ZEST_CASE(absent_node_overtakes) {
+ZEST_CASE(AbsentNodeOvertakes) {
     // An attempt that declared an edge to a node no attempt built read its
     // absence: an invalidation of that node overtakes it.
     ManualRunner manual;
@@ -570,7 +569,7 @@ ZEST_CASE(absent_node_overtakes) {
     });
 }
 
-ZEST_CASE(inflight_skips_check) {
+ZEST_CASE(InflightSkipsCheck) {
     // A waiter reaching a node mid-attempt joins that attempt: it is already
     // producing a fresh product, so the waiter's check is never asked and
     // nothing re-runs.
@@ -612,7 +611,7 @@ ZEST_CASE(inflight_skips_check) {
 /// set_edges() declares edges beside them without an attempt, and
 /// invalidation follows both.
 
-ZEST_CASE(edge_live_before_commit) {
+ZEST_CASE(EdgeLiveBeforeCommit) {
     // The dependent's attempt is still in flight when its dependency is
     // invalidated: the cascade must reach the dependent through the live
     // wait — the attempt never committed, so no waited edge exists yet.
@@ -643,7 +642,7 @@ ZEST_CASE(edge_live_before_commit) {
     });
 }
 
-ZEST_CASE(success_replaces_edges) {
+ZEST_CASE(SuccessReplacesEdges) {
     // A re-resolve that drops a dependency detaches its reverse edge once
     // the new attempt commits: invalidating the ex-dependency no longer
     // cascades.
@@ -664,7 +663,7 @@ ZEST_CASE(success_replaces_edges) {
     });
 }
 
-ZEST_CASE(overtaken_waits_discarded) {
+ZEST_CASE(OvertakenWaitsDiscarded) {
     // An overtaken attempt's waits are discarded at commit: the edges still
     // reflect the last successful attempt, not the waits of the attempt
     // invalidate() overtook.
@@ -715,7 +714,7 @@ ZEST_CASE(overtaken_waits_discarded) {
     });
 }
 
-ZEST_CASE(set_edges_no_attempt) {
+ZEST_CASE(SetEdgesNoAttempt) {
     // set_edges() records edges without attempts or interest: the nodes
     // exist, the cascade reaches the declaring node, and nothing ever
     // compiles.
@@ -734,7 +733,7 @@ ZEST_CASE(set_edges_no_attempt) {
     });
 }
 
-ZEST_CASE(set_edges_replaces) {
+ZEST_CASE(SetEdgesReplaces) {
     // A later set_edges() replaces the declared edges. An empty replacement
     // clears them but keeps the node: a consumer whose last import was
     // removed stops cascading yet stays tracked.
@@ -751,7 +750,7 @@ ZEST_CASE(set_edges_replaces) {
     });
 }
 
-ZEST_CASE(set_edges_dedup_and_self) {
+ZEST_CASE(SetEdgesDropsDuplicates) {
     // Broken input can name a dependency twice or the node itself: the
     // declared edges keep each dependency once and never the node.
     execute([&]() -> async::task<> {
@@ -761,7 +760,7 @@ ZEST_CASE(set_edges_dedup_and_self) {
     });
 }
 
-ZEST_CASE(success_keeps_declared) {
+ZEST_CASE(SuccessKeepsDeclared) {
     // A node with declared edges that then runs a successful attempt keeps
     // them: its waits stand beside the declaration, and invalidation
     // follows both.
@@ -778,7 +777,7 @@ ZEST_CASE(success_keeps_declared) {
     });
 }
 
-ZEST_CASE(failed_keeps_declared) {
+ZEST_CASE(FailedKeepsDeclared) {
     // A failed attempt discards its waits and leaves the declared edges
     // standing: a unit whose build breaks must stay cascade-reachable from
     // its declared imports, or fixing an import could never re-dirty it.
@@ -797,7 +796,7 @@ ZEST_CASE(failed_keeps_declared) {
     });
 }
 
-ZEST_CASE(set_edges_mid_attempt) {
+ZEST_CASE(SetEdgesMidAttempt) {
     // set_edges() against an in-flight attempt stands through its commit: a
     // current Success adds its waits beside the declaration instead of
     // replacing it.
@@ -822,7 +821,7 @@ ZEST_CASE(set_edges_mid_attempt) {
     });
 }
 
-ZEST_CASE(dependencies_union) {
+ZEST_CASE(DependenciesUnion) {
     // A node's edges are its declared ones plus the waits of its last
     // successful attempt, each once: a failed attempt leaves the waited set
     // alone, a later success replaces it.
@@ -857,7 +856,7 @@ ZEST_CASE(dependencies_union) {
 /// The graph never destroys a running attempt; an overtaken attempt runs to
 /// its real reply, and whatever it reports arrives as Stale.
 
-ZEST_CASE(stale_success_discarded) {
+ZEST_CASE(StaleSuccessDiscarded) {
     // The work ignores its token and reports Success after invalidate()
     // overtook the attempt: the result must not count — the node stays
     // dirty and the waiter drives a fresh attempt.
@@ -889,7 +888,7 @@ ZEST_CASE(stale_success_discarded) {
     });
 }
 
-ZEST_CASE(stale_failure_retries) {
+ZEST_CASE(StaleFailureRetries) {
     // A Failed reply from an overtaken attempt is no decision about the new
     // content: waiters retry instead of propagating the failure.
     ManualRunner manual;
@@ -918,7 +917,7 @@ ZEST_CASE(stale_failure_retries) {
     });
 }
 
-ZEST_CASE(salvage_before_stale) {
+ZEST_CASE(SalvageBeforeStale) {
     // An attempt may publish side effects and then report Stale (bounded-
     // stale publication): the graph has no say over what happened before
     // the report — the side effect stands, and the join retries.
@@ -945,7 +944,7 @@ ZEST_CASE(salvage_before_stale) {
 ///                               Join retry
 /// ============================================================================
 
-ZEST_CASE(one_attempt_stale) {
+ZEST_CASE(OneAttemptStale) {
     // A join without retry observes exactly one attempt: an overtaken
     // attempt returns Stale to the caller instead of retrying.
     ManualRunner manual;
@@ -966,7 +965,7 @@ ZEST_CASE(one_attempt_stale) {
     });
 }
 
-ZEST_CASE(one_attempt_clean) {
+ZEST_CASE(OneAttemptClean) {
     // A join without retry on a clean node succeeds without an attempt.
     Adjacency adj;
 
@@ -980,7 +979,7 @@ ZEST_CASE(one_attempt_clean) {
     });
 }
 
-ZEST_CASE(retry_predicate) {
+ZEST_CASE(RetryPredicate) {
     // The predicate is asked after each Stale attempt, not when the join
     // starts: one that turned false while its join waited ends it Stale,
     // while a join whose predicate holds drives a second attempt.
@@ -1015,7 +1014,7 @@ ZEST_CASE(retry_predicate) {
 ///                            Failure semantics
 /// ============================================================================
 
-ZEST_CASE(failed_propagates) {
+ZEST_CASE(FailedPropagates) {
     // A failing dependency fails the depender without dispatching it; both
     // stay dirty.
     ManualRunner manual;
@@ -1033,7 +1032,7 @@ ZEST_CASE(failed_propagates) {
     });
 }
 
-ZEST_CASE(failure_not_sticky) {
+ZEST_CASE(FailureNotSticky) {
     // Failure propagates without retry, but a new join tries again and
     // succeeds once the dependency compiles.
     ManualRunner manual;
@@ -1057,7 +1056,7 @@ ZEST_CASE(failure_not_sticky) {
 ///                        Interest & cancellation
 /// ============================================================================
 
-ZEST_CASE(waiter_cancel_releases) {
+ZEST_CASE(WaiterCancelReleases) {
     // The waiter's frame unwinds mid-attempt: interest drops to zero, the
     // advisory token fires after one tick, the work winds down and the
     // graph quiesces with the node still dirty.
@@ -1068,7 +1067,7 @@ ZEST_CASE(waiter_cancel_releases) {
         auto driver = [&]() -> async::task<> {
             co_await manual.gate(a(1)).started.wait();
             probe.source.cancel();
-            co_await wait_until([&] { return !graph.is_compiling(a(1)); });
+            co_await graph.attempt_finished(a(1));
 
             ZEXPECT(probe.done);
             ZEXPECT(probe.result == std::nullopt);
@@ -1082,7 +1081,7 @@ ZEST_CASE(waiter_cancel_releases) {
     });
 }
 
-ZEST_CASE(shared_dep_survives_cancel) {
+ZEST_CASE(SharedDependencySurvivesCancel) {
     // Two chains share one dependency; cancelling one waiter must only wind
     // down its own chain — the shared dependency keeps compiling for the
     // survivor.
@@ -1098,7 +1097,7 @@ ZEST_CASE(shared_dep_survives_cancel) {
             ZEXPECT(graph.refcount(b(5)) == 2u);
 
             p1.source.cancel();
-            co_await wait_until([&] { return !graph.is_compiling(a(1)); });
+            co_await graph.attempt_finished(a(1));
 
             ZEXPECT(graph.is_compiling(b(5)));
             ZEXPECT(manual.gate(b(5)).calls == 1);
@@ -1118,7 +1117,7 @@ ZEST_CASE(shared_dep_survives_cancel) {
     });
 }
 
-ZEST_CASE(transient_drop_handover) {
+ZEST_CASE(TransientDropHandover) {
     // The depender is invalidated while waiting on its unchanged dependency:
     // the retry re-acquires the dependency within the same drain cycle, so
     // its in-flight attempt is handed over — neither cancelled nor
@@ -1159,7 +1158,7 @@ ZEST_CASE(transient_drop_handover) {
 ///                               Foreground
 /// ============================================================================
 
-ZEST_CASE(foreground_late_join) {
+ZEST_CASE(ForegroundLateJoin) {
     // A foreground waiter joins a Low attempt that then reports Stale: the
     // retry re-reads the interest class, so it dispatches foreground instead
     // of staying cancellable Low.
@@ -1200,7 +1199,7 @@ ZEST_CASE(foreground_late_join) {
     });
 }
 
-ZEST_CASE(foreground_raises_running) {
+ZEST_CASE(ForegroundRaisesRunning) {
     // Foreground interest joining an attempt already running at Low tells
     // it once, however many join: its request is raised where it is.
     async::event started;
@@ -1232,7 +1231,7 @@ ZEST_CASE(foreground_raises_running) {
     });
 }
 
-ZEST_CASE(foreground_spreads_edges) {
+ZEST_CASE(ForegroundSpreadsEdges) {
     // Foreground must travel the live waits: a foreground join at the root
     // upgrades a deep dependency already parked in a Low attempt, so its
     // preempted retry dispatches foreground.
@@ -1279,7 +1278,7 @@ ZEST_CASE(foreground_spreads_edges) {
     });
 }
 
-ZEST_CASE(foreground_skips_clean_deps) {
+ZEST_CASE(ForegroundSkipsCleanDependencies) {
     // A foreground join answered by a clean cached chain must not tag the
     // chain's settled edges: no join ever acquires a clean dependency, so
     // nothing would reset the mark, and an unrelated background rebuild
@@ -1311,7 +1310,7 @@ ZEST_CASE(foreground_skips_clean_deps) {
     });
 }
 
-ZEST_CASE(foreground_resets_zero) {
+ZEST_CASE(ForegroundResetsZero) {
     // The foreground flag is sticky while any interest remains and reset
     // when the count returns to zero: a later background join runs Low.
     ManualRunner manual;
@@ -1332,7 +1331,7 @@ ZEST_CASE(foreground_resets_zero) {
 ///                             Cycle handling
 /// ============================================================================
 
-ZEST_CASE(self_depend_fails) {
+ZEST_CASE(SelfDependFails) {
     // A node depending on itself fails immediately.
     Adjacency adj;
     adj[a(1)] = {a(1)};
@@ -1343,7 +1342,7 @@ ZEST_CASE(self_depend_fails) {
     });
 }
 
-ZEST_CASE(depend_cycle_fails) {
+ZEST_CASE(DependCycleFails) {
     // 1 -> 2 -> 1: the depend that would close the wait loop detects it and
     // fails the attempt instead of deadlocking.
     Adjacency adj;
@@ -1356,7 +1355,7 @@ ZEST_CASE(depend_cycle_fails) {
     });
 }
 
-ZEST_CASE(invalidate_introduces_cycle) {
+ZEST_CASE(InvalidateIntroducesCycle) {
     // The cycle only appears after an invalidate() follows a change of the
     // imports; the retry detects it and fails instead of hanging.
     Adjacency adj;
@@ -1378,7 +1377,7 @@ ZEST_CASE(invalidate_introduces_cycle) {
 ///                                Shutdown
 /// ============================================================================
 
-ZEST_CASE(shutdown_with_inflight) {
+ZEST_CASE(ShutdownWithInflight) {
     // shutdown() with attempts in flight: every advisory token fires, the
     // work winds down with real replies, pending joins end Stale even when
     // they would retry, and the graph quiesces.
@@ -1403,11 +1402,11 @@ ZEST_CASE(shutdown_with_inflight) {
 ///                            Randomized stress
 /// ============================================================================
 
-ZEST_CASE(randomized_stress) {
+ZEST_CASE(RandomizedStress) {
     // A fixed-seed, single-threaded interleaving of joins, cancellations,
     // invalidations and dispatch completions. Every dispatch races a
-    // semaphore against its advisory token — the run-to-reply discipline —
-    // and the graph's own assertions hold at every step.
+    // semaphore against its advisory token — the run-to-reply discipline.
+    // The graph's own assertions, built into Debug, hold at every step.
     async::semaphore permits{0};
     Adjacency adj;
     adj[a(1)] = {a(2), a(3)};
@@ -1461,6 +1460,13 @@ ZEST_CASE(randomized_stress) {
             probe->source.cancel();
         }
         co_await inflight.join();
+
+        // With no interest left, every attempt winds down on its own, before
+        // the shutdown would make it.
+        for(auto id: graph.compiling()) {
+            co_await graph.attempt_finished(id);
+        }
+        ZEXPECT(graph.idle());
     });
 }
 

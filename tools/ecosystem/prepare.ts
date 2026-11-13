@@ -48,6 +48,13 @@ export function checkoutOf(project: Project, configuration: string, dir: string)
         : path.join(dir, project.name, configuration);
 }
 
+/// Where the clice processes of a job log: the checkout's own logging
+/// directory, which a server the job starts is told whichever of the
+/// checkout's projects it opens first.
+export function loggingDir(checkout: string): string {
+    return path.join(checkout, ".clice", "logs");
+}
+
 /// Fetch the pinned commit alone into a fresh checkout; a checkout already
 /// at it is kept, with what an earlier preparation built in it.
 async function checkout(project: Project, target: string): Promise<boolean> {

@@ -5,12 +5,14 @@
 ///   from GitHub, and the download replaces older versions;
 /// - that clice resolves its builtin headers from the `lib/clang` shipped
 ///   next to it;
-/// - a C file and a CUDA file, each opened alone with the network cut off,
-///   start the same installation.
+/// - with this build of clice installed beside an older version, a C file
+///   and a CUDA file, each opened alone with the network cut off, start this
+///   build.
 ///
-/// ZED_EXECUTABLE names the Zed app and ZED_EXTENSION_WASM the extension
-/// built for wasm32-wasip2. `clice` must not be on PATH, or the extension
-/// uses it instead of downloading; on Linux, run under `xvfb-run`.
+/// ZED_EXECUTABLE names the Zed app, ZED_EXTENSION_WASM the extension built
+/// for wasm32-wasip2 and CLICE_EXECUTABLE this build of clice, with its
+/// `lib` beside its `bin`. `clice` must not be on PATH, or the extension uses
+/// it instead of downloading; on Linux, run under `xvfb-run`.
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
@@ -18,7 +20,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CliceClient } from "@clice/tools/client";
-import { afterAll, expect, test } from "vitest";
+import { sessionLogs, sessionsIn } from "@clice/tools/process_gate";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 const STARTUP_TIMEOUT = 300_000;
 /// Debug logs of how Zed loads the worktree environment and starts language
@@ -40,6 +43,7 @@ function required(name: string): string {
 
 const zedExecutable = required("ZED_EXECUTABLE");
 const extensionWasm = required("ZED_EXTENSION_WASM");
+const cliceExecutable = required("CLICE_EXECUTABLE");
 const extensionDir = path.resolve(import.meta.dirname, "../../../editors/zed");
 const binaryName = process.platform === "win32" ? "clice.exe" : "clice";
 
@@ -47,6 +51,9 @@ const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "clice
 const data = path.join(root, "zed");
 const work = path.join(data, "extensions", "work", "clice");
 const log = path.join(data, "logs", "Zed.log");
+/// Where an extension's own messages go: the extension says there why it
+/// starts an installed clice instead of a download.
+const stderr = path.join(root, "zed-stderr.log");
 
 afterAll(() => {
     fs.rmSync(root, { recursive: true, force: true });
@@ -93,13 +100,16 @@ function project(file: string, text: string): string {
     return dir;
 }
 
-function readLog(): string {
-    return fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
+function readLog(file = log): string {
+    return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
 }
 
-/// The end of Zed's log, for a failure to show where Zed stopped.
+/// The end of Zed's log and its stderr, for a failure to show where Zed
+/// stopped.
 function logTail(): string {
-    return `--- end of ${log}:\n${readLog().split("\n").slice(-80).join("\n")}`;
+    const tail = (file: string, lines: number) =>
+        `--- end of ${file}:\n${readLog(file).split("\n").slice(-lines).join("\n")}`;
+    return `${tail(log, 80)}\n${tail(stderr, 20)}`;
 }
 
 /// What `found` returns once it returns something; a `found` that throws
@@ -127,12 +137,8 @@ async function until<T>(zed: ChildProcess, found: () => T | undefined, what: str
 /// Whether a clice server started for `dir` is ready: past the handshake,
 /// it writes its session log.
 function cliceReady(dir: string): boolean {
-    const logs = path.join(dir, ".clice", "logs");
-    return (
-        fs.existsSync(logs) &&
-        fs
-            .readdirSync(logs, { recursive: true, encoding: "utf8" })
-            .some((name) => path.basename(name) === "master.log")
+    return sessionLogs(sessionsIn(path.join(dir, ".clice", "logs"))).some(
+        (log) => path.basename(log) === "master.log",
     );
 }
 
@@ -168,11 +174,16 @@ async function stop(zed: ChildProcess): Promise<void> {
 
 function launch(paths: string[], env: Record<string, string> = {}): ChildProcess {
     fs.rmSync(log, { force: true });
-    return spawn(zedExecutable, ["--user-data-dir", data, ...paths], {
-        env: { ...process.env, ZED_ALLOW_EMULATED_GPU: "1", ZED_LOG, ...env },
-        stdio: "ignore",
-        detached: process.platform !== "win32",
-    });
+    const errors = fs.openSync(stderr, "w");
+    try {
+        return spawn(zedExecutable, ["--user-data-dir", data, ...paths], {
+            env: { ...process.env, ZED_ALLOW_EMULATED_GPU: "1", ZED_LOG, ...env },
+            stdio: ["ignore", "ignore", errors],
+            detached: process.platform !== "win32",
+        });
+    } finally {
+        fs.closeSync(errors);
+    }
 }
 
 /// Without an index, Zed indexes the installed extensions only after it has
@@ -233,8 +244,20 @@ async function startServer(dir: string, file: string, env: Record<string, string
     }
 }
 
-let binary = "";
-let marker = "";
+beforeAll(async () => {
+    install();
+    await indexExtensions();
+}, STARTUP_TIMEOUT);
+
+let downloaded: string | undefined;
+
+/// The clice the first test downloaded.
+function download(): string {
+    if (downloaded === undefined) {
+        throw new Error("the first test downloaded no clice: see its failure");
+    }
+    return downloaded;
+}
 
 test("a C++ file downloads and starts clice", async () => {
     const onPath = (process.env["PATH"] ?? "")
@@ -242,12 +265,10 @@ test("a C++ file downloads and starts clice", async () => {
         .find((dir) => dir && fs.existsSync(path.join(dir, binaryName)));
     expect(onPath, "clice on PATH would stop the extension from downloading").toBeUndefined();
 
-    install();
-    await indexExtensions();
     const outdated = path.join(work, "clice-0.0.0");
     write(path.join(outdated, "clice", "bin", binaryName), "");
 
-    binary = await startServer(
+    const binary = await startServer(
         project("main.cpp", "#include <stddef.h>\nsize_t size;\n"),
         "main.cpp",
     );
@@ -256,15 +277,12 @@ test("a C++ file downloads and starts clice", async () => {
     expect(path.basename(versionDir)).toMatch(/^clice-\d/);
     expect(fs.existsSync(outdated), "an outdated version is removed").toBe(false);
     expect(fs.existsSync(path.join(work, "download")), "no staging leftovers").toBe(false);
-
-    // A reinstall replaces the whole version directory, marker included.
-    marker = path.join(versionDir, "e2e-marker");
-    fs.writeFileSync(marker, "");
+    downloaded = binary;
 });
 
 test("the download resolves builtin headers from its lib/clang", async () => {
     const dir = path.join(root, "cpp");
-    const client = CliceClient.start(binary, { cwd: dir });
+    const client = CliceClient.start(download(), { cwd: dir });
     try {
         await client.initialize(dir);
         const [uri] = await client.openAndWait("main.cpp");
@@ -275,10 +293,42 @@ test("the download resolves builtin headers from its lib/clang", async () => {
     }
 });
 
-test.each([
-    ["util.c", "int twice(int x) { return 2 * x; }\n"],
-    ["kernel.cu", "__global__ void kernel() {}\n"],
-])("%s starts the installed clice offline", async (file, text) => {
-    expect(await startServer(project(file, text), file, OFFLINE)).toBe(binary);
-    expect(fs.existsSync(marker), "the installation was not replaced").toBe(true);
+describe("this build installed", () => {
+    // This build replaces what the extension installed, as version 0.10.0
+    // beside an empty 0.9.0: comparing the versions as text would start
+    // the empty one.
+    const installed = path.join(work, "clice-0.10.0");
+    const marker = path.join(installed, "e2e-marker");
+    let binary = "";
+
+    beforeAll(() => {
+        fs.mkdirSync(work, { recursive: true });
+        for (const dir of fs.readdirSync(work)) {
+            if (dir.startsWith("clice-")) {
+                fs.rmSync(path.join(work, dir), { recursive: true, force: true });
+            }
+        }
+        const bin = path.join(installed, "clice", "bin");
+        fs.mkdirSync(bin, { recursive: true });
+        fs.copyFileSync(cliceExecutable, path.join(bin, binaryName));
+        fs.chmodSync(path.join(bin, binaryName), 0o755);
+        fs.cpSync(
+            path.resolve(path.dirname(cliceExecutable), "..", "lib"),
+            path.join(installed, "clice", "lib"),
+            { recursive: true, dereference: true },
+        );
+        write(path.join(work, "clice-0.9.0", "clice", "bin", binaryName), "");
+        // A reinstall would replace the whole version directory, marker
+        // included.
+        write(marker, "");
+        binary = fs.realpathSync.native(path.join(bin, binaryName));
+    });
+
+    test.each([
+        ["util.c", "int twice(int x) { return 2 * x; }\n"],
+        ["kernel.cu", "__global__ void kernel() {}\n"],
+    ])("%s starts the installed clice offline", async (file, text) => {
+        expect(await startServer(project(file, text), file, OFFLINE)).toBe(binary);
+        expect(fs.existsSync(marker), "the installation was not replaced").toBe(true);
+    });
 });

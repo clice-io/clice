@@ -85,7 +85,7 @@ A symbol that cannot be renamed, or a new name that does not fit, is refused wit
 
 **Names a rename refuses**
 
-Pressing rename on an operator, a symbol or a macro of the system headers, a macro the compile command defines or a name its instantiations resolve to several symbols says why it cannot be renamed; off any name, nothing happens
+Pressing rename on an operator, a symbol or a macro of the system headers, a macro the compile command defines, a name its instantiations resolve to several symbols or the parenthesis of a constructor call says why it cannot be renamed; off any name, nothing happens
 
 ```case
 tests/rename/refusals/01_unrenamable_symbols
@@ -97,7 +97,7 @@ tests/rename/refusals/01_unrenamable_symbols
 
 **New names refused**
 
-A new name that is no identifier, a keyword, taken in the same scope or a macro is refused with the reason; overloading a function or taking a reserved name is done with a warning
+A new name that is no identifier, a keyword, taken in the same scope or a macro is refused with the reason; overloading a function or taking a reserved name is done with a warning, and a member may take the name of a sibling class's member
 
 ```case
 tests/rename/refusals/02_rejected_names

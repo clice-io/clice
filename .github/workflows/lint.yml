@@ -17,12 +17,13 @@ jobs:
   conventional-commit:
     if: ${{ github.event_name != 'workflow_dispatch' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check conventional commit format
         env:
           IS_PR: ${{ github.event_name == 'pull_request' }}
           PR_TITLE: ${{ github.event.pull_request.title }}
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          COMMIT_MSG: ${{ github.event.head_commit.message || github.event.merge_group.head_commit.message }}
         run: |
           pattern='^(feat|fix|refactor|chore|build|ci|docs|test|perf|style|revert)(\(.+\))?: .+'
           if [[ "$IS_PR" == "true" ]]; then
@@ -41,6 +42,7 @@ jobs:
 
   layering:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -51,6 +53,7 @@ jobs:
 
   timers:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -61,6 +64,7 @@ jobs:
 
   docs:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -75,6 +79,7 @@ jobs:
 
   typescript:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -95,6 +100,7 @@ jobs:
   format:
     if: ${{ inputs.format }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -125,8 +131,9 @@ jobs:
           fi
 
   sync-labels:
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       issues: write

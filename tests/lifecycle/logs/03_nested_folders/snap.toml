@@ -1,0 +1,6 @@
+[test.commands]
+value = [
+    "Command of app/main.cpp: from its database entry, run in ${WS}",
+    "Command of app/sub/main.cpp: from its database entry, run in ${WS}",
+    "Command of app/sub/main.cpp: from its database entry, run in ${WS}",
+]

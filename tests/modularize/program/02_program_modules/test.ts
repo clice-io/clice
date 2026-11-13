@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { test } from "@clice/tools/testing";
+import { modularize, test } from "@clice/tools/testing";
 
 // core's text.h forward-declares sink.h's Sink and declares hook(), which
 // tool's hook.cpp defines, and includes cfg's config.h, which stays a
@@ -13,7 +13,9 @@ const ARGS = "--scope app/** --scope third/** --std stdmod --out wrap";
 // units are indexed in (analyze/dependencies/06_unit_order).
 test("rewrites program modules", async (t) => {
     await t.cli("index --jobs 1");
-    await t.cli(`modularize ${ARGS} --partition partitions/program.json`);
+    const run = await t.cli(`modularize ${ARGS} --partition partitions/program.json`);
+    // The program as the plan builds it compiles cleanly.
+    await modularize.compiles(t, run, "wrap");
 });
 
 // Nothing is written when a partition would be rejected.

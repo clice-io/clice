@@ -22,3 +22,6 @@ class SelfConversion {
     operator §(conversion_target)SelfConversion();
 };
 }
+
+// A name spelled in several tokens has one card on each of them:
+// destructors, operators, conversion functions, literal operators.

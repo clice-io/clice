@@ -32,13 +32,29 @@ static std::optional<llvm::StringRef> before_body(const std::string& text) {
     return written.take_front(body->begin).rtrim();
 }
 
-/// The head of an Objective-C container, which closes with `@end`:
+/// An Objective-C container's text from its keyword on, past the
+/// attributes written before it: `@interface Shape : Object ... @end`.
+static llvm::StringRef objc_container(const std::string& text) {
+    Lexer lexer(text, dialect_of());
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        if(token.text(text) == "@") {
+            return llvm::StringRef(text).substr(token.range.begin);
+        }
+    }
+    return {};
+}
+
+/// The head of an Objective-C container, which closes with `@end`: the
+/// attributes before its keyword, and the keyword's line up to its ivars,
 /// `@interface Shape : Object <Drawable>`.
-static std::optional<llvm::StringRef> objc_head(llvm::StringRef text) {
-    if(!text.rtrim().ends_with("@end")) {
+static std::optional<std::string> objc_head(const std::string& text) {
+    if(!llvm::StringRef(text).rtrim().ends_with("@end")) {
         return std::nullopt;
     }
-    return text.take_until([](char c) { return c == '{' || c == '\n'; }).rtrim();
+    auto container = objc_container(text);
+    auto attributes = llvm::StringRef(text).drop_back(container.size()).rtrim();
+    auto head = container.take_until([](char c) { return c == '{' || c == '\n'; }).rtrim();
+    return attributes.empty() ? head.str() : std::format("{}\n{}", attributes, head);
 }
 
 auto hover_info(const index::SymbolInfo& info,
@@ -107,7 +123,7 @@ auto hover_info(const index::SymbolInfo& info,
         case SymbolKind::Union:
         case SymbolKind::Enum: {
             if(auto head = objc_head(hover.definition)) {
-                hover.definition = head->str() + " ... @end";
+                hover.definition = *head + " ... @end";
             } else if(auto head = before_body(hover.definition)) {
                 hover.definition = head->str() + " { ... }";
             }
@@ -142,6 +158,20 @@ auto hover_info(const index::IndexQuery& query,
     // worker paused or crashed, read-only, or just opened.
     std::string definition;
     auto text = index::declared_text(query, symbol, cursor.site.file, RelationKind::Definition);
+    // The card of an Objective-C class or category shows its @interface,
+    // as the AST's does, not the @implementation defining it.
+    if(text && objc_container(text->text).starts_with("@implementation")) {
+        if(auto interface = index::declared_text(
+               query,
+               symbol,
+               cursor.site.file,
+               RelationKind::Declaration,
+               [](llvm::StringRef declared) {
+                   return objc_container(declared.str()).starts_with("@interface");
+               })) {
+            text = std::move(interface);
+        }
+    }
     if(!text) {
         text = index::declared_text(query, symbol, cursor.site.file, RelationKind::Declaration);
     }

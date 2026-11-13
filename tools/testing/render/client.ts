@@ -185,6 +185,14 @@ export abstract class Client {
     /// The code actions over `at`, a range marker's range or the cursor;
     /// `only` filters them by kind as an editor asks, and `compile` checks
     /// what each one's edits compile to.
+    // LIMITATION: the check reads what each client says of the requested
+    // file. An edit landing in another file (define-in-host on a header)
+    // is judged by the header's diagnostics alone on the server, which
+    // leaves the host's other errors out; inspect and the server word the
+    // errors of headers and templates differently, so such an edit fails
+    // the answers test rather than passing it; and another request of the
+    // same show reads the edited files while a check runs. No case does
+    // any of these yet: a case that needs one checks on a copy of its own.
     codeActions(at: Anchor, options: { only?: string[]; compile?: true } = {}): Promise<Action[]> {
         const context = this.context();
         const source = context.file(at.path);

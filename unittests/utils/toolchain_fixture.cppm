@@ -5,6 +5,7 @@ import :command.edit;
 import :command.table;
 import :command.toolchain;
 import :support.prelude;
+import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :vfs.file_system;
 import :vfs.file_table;
@@ -27,11 +28,7 @@ struct ToolchainEntries {
                    llvm::StringRef file,
                    llvm::ArrayRef<const char*> arguments) {
         db.add_command(directory, file, arguments);
-        auto& entry = db.candidate_entries(file).front();
-        return {entry.file,
-                entry.command,
-                commands.input_kind(entry.command, file),
-                CommandSource::Database};
+        return database_command(db, db.candidate_entries(file).front());
     }
 
     std::string key(const CommandRef& ref) {

@@ -89,6 +89,13 @@ inline std::int64_t file_mtime_ns(llvm::StringRef path) {
     return status ? vfs::Stamp::of(*status).mtime_ns : -1;
 }
 
+/// Move the mtime of a file or a directory out of the window in which its
+/// stat cannot confirm it (vfs::read_observed), as real project files
+/// predate a server start.
+inline void age_file(llvm::StringRef path) {
+    ZASSERT(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
+}
+
 /// A file's bytes, or nullopt when it cannot be read.
 inline std::optional<std::string> read_file(llvm::StringRef path) {
     std::string bytes;

@@ -1,7 +1,6 @@
 module clice;
 
 import :command.file_kind;
-import :feature.diagnostics;
 import :index.database;
 import :index.format;
 import :index.project_index;
@@ -117,8 +116,8 @@ struct Records {
     KANNOTATE(&trials, presence = optional)
     std::vector<SavedSelfContainment> trials;
 
-    /// The missing_context_scoring the trials were judged under; absent
-    /// from the records of a binary before it.
+    /// The self_containment_rule the trials were judged under; absent from
+    /// the records of a binary before it.
     KANNOTATE(&trials_scoring, presence = optional)
     std::uint32_t trials_scoring = 0;
 };
@@ -375,10 +374,19 @@ chrono::milliseconds checkpoint_interval() {
     return chrono::minutes(5);
 }
 
-async::task<> Project::shutdown() {
+async::task<> Project::stop_feeding() {
+    if(std::exchange(feeding_stopping, true)) {
+        co_await feeding_stopped.wait();
+        co_return;
+    }
     tree_tasks.cancel();
-    co_await tree_tasks.join();
     co_await background_index.stop();
+    feeding_stopped.set();
+}
+
+async::task<> Project::shutdown() {
+    co_await stop_feeding();
+    co_await tree_tasks.join();
     co_await graph.shutdown();
     // Editors kill a server that is slow to exit, and building the search
     // index dominates a cold pass's save: the index commits with no more
@@ -712,7 +720,7 @@ std::optional<Fid> PathTable::file(std::uint32_t at) const {
 std::string Project::serialize_precompiled_records() {
     Records data;
     data.pch_index_format = index::index_format_version;
-    data.trials_scoring = feature::missing_context_scoring;
+    data.trials_scoring = self_containment_rule;
     PathTable table(index, file_table, data.paths);
 
     // Deps persist as (spelling, hash) pairs so they self-heal against any
@@ -860,7 +868,7 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
         st.inputs = load_deps(entry.deps);
     }
 
-    if(data.trials_scoring != feature::missing_context_scoring) {
+    if(data.trials_scoring != self_containment_rule) {
         data.trials.clear();
     }
     for(auto& saved: data.trials) {

@@ -100,7 +100,7 @@ ZEST_CASE(FormatSet) {
     ZEXPECT(!layout.rules.formattable(CanonicalPath(Spelling::absolute("/usr/include/stdio.h"))));
 };
 
-ZEST_CASE(EditsAcrossHostAndHeader) {
+ZEST_CASE(HeaderCarriesHostEdits) {
     /// A header borrowing a host command carries both files' edits, each
     /// rule once, in declaration order.
     TempDir tmp;

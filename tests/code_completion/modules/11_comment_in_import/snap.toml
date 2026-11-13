@@ -1,4 +1,17 @@
+[answers.after_semicolon.completion]
+items = []
+
 [answers.after_comment.completion]
 items = [
     { label = "math", kind = "Module", insert = "math;", replace = "import /* the math module; see math.cppm */ ⟦ma⟧" },
+]
+
+[answers.closed_past_comment.completion]
+items = [
+    { label = "math", kind = "Module", insert = "math", replace = "import ⟦ma⟧ /* the math module */ [[deprecated]];" },
+]
+
+[answers.semicolon_in_comment.completion]
+items = [
+    { label = "math", kind = "Module", insert = "math;", replace = "import ⟦ma⟧ // see math.cppm; for its names" },
 ]

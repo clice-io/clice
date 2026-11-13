@@ -17,3 +17,9 @@ pushes = [
 
 ["nothing is served".diagnostics]
 diagnostics = []
+
+["nothing is served".log]
+value = [
+    "warning: clice.toml clice.toml:1:10: TOML parse error: Error while parsing table header: expected ']', saw 'e'",
+    "warning: Configuration problem in clice.toml:1:10: TOML parse error: Error while parsing table header: expected ']', saw 'e'. Nothing under ${WS} is served until it is fixed and saved",
+]

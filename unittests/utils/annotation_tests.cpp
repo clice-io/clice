@@ -11,7 +11,7 @@ namespace {
 // `§(name)` markers contribute no bytes to `content`.
 ZEST_SUITE(annotation) {
 
-ZEST_CASE(single_named_point) {
+ZEST_CASE(SingleNamedPoint) {
     auto src = AnnotatedSource::from("int §(a)x;");
     ZEXPECT(src.content == "int x;");
     ZEXPECT(src.offsets.count("a") == 1u);
@@ -20,7 +20,7 @@ ZEST_CASE(single_named_point) {
     ZEXPECT(src.nameless_offsets.empty());
 }
 
-ZEST_CASE(single_nameless_point) {
+ZEST_CASE(SingleNamelessPoint) {
     auto src = AnnotatedSource::from("int §x;");
     ZEXPECT(src.content == "int x;");
     ZEXPECT(src.nameless_offsets == (std::vector<std::uint32_t>{4}));
@@ -28,13 +28,13 @@ ZEST_CASE(single_nameless_point) {
     ZEXPECT(src.ranges.empty());
 }
 
-ZEST_CASE(multiple_points) {
+ZEST_CASE(MultiplePoints) {
     auto src = AnnotatedSource::from("x§y§z");
     ZEXPECT(src.content == "xyz");
     ZEXPECT(src.nameless_offsets == (std::vector<std::uint32_t>{1, 2}));
 }
 
-ZEST_CASE(named_range) {
+ZEST_CASE(NamedRange) {
     auto src = AnnotatedSource::from("int §(r)⟦x⟧;");
     ZEXPECT(src.content == "int x;");
     ZEXPECT(src.ranges.count("r") == 1u);
@@ -44,7 +44,7 @@ ZEST_CASE(named_range) {
     ZEXPECT(src.offsets.empty());
 }
 
-ZEST_CASE(nameless_range) {
+ZEST_CASE(NamelessRange) {
     auto src = AnnotatedSource::from("int §⟦x⟧;");
     ZEXPECT(src.content == "int x;");
     ZEXPECT(src.ranges.count("") == 1u);
@@ -53,7 +53,7 @@ ZEST_CASE(nameless_range) {
     ZEXPECT(r.end == 5u);
 }
 
-ZEST_CASE(nested_ranges) {
+ZEST_CASE(NestedRanges) {
     auto src = AnnotatedSource::from("§(out)⟦ab§(in)⟦cd⟧ef⟧");
     ZEXPECT(src.content == "abcdef");
     auto out = src.ranges.lookup("out");
@@ -64,7 +64,7 @@ ZEST_CASE(nested_ranges) {
     ZEXPECT(in.end == 4u);
 }
 
-ZEST_CASE(point_inside_range) {
+ZEST_CASE(PointInsideRange) {
     auto src = AnnotatedSource::from("§(r)⟦ab§(p)cd⟧");
     ZEXPECT(src.content == "abcd");
     ZEXPECT(src.offsets.lookup("p") == 2u);
@@ -73,7 +73,7 @@ ZEST_CASE(point_inside_range) {
     ZEXPECT(r.end == 4u);
 }
 
-ZEST_CASE(explicit_nameless_parens) {
+ZEST_CASE(ExplicitNamelessParentheses) {
     // `§()` is the explicit nameless point; the real `()` that follows stays
     // in the stripped source.
     auto src = AnnotatedSource::from("foo§()();");
@@ -81,7 +81,7 @@ ZEST_CASE(explicit_nameless_parens) {
     ZEXPECT(src.nameless_offsets == (std::vector<std::uint32_t>{3}));
 }
 
-ZEST_CASE(adjacent_annotations) {
+ZEST_CASE(AdjacentAnnotations) {
     auto src = AnnotatedSource::from("§(a)§(b)⟦x⟧");
     ZEXPECT(src.content == "x");
     ZEXPECT(src.offsets.lookup("a") == 0u);
@@ -90,21 +90,21 @@ ZEST_CASE(adjacent_annotations) {
     ZEXPECT(b.end == 1u);
 }
 
-ZEST_CASE(start_and_end) {
+ZEST_CASE(StartAndEnd) {
     auto src = AnnotatedSource::from("§(s)ab§(e)");
     ZEXPECT(src.content == "ab");
     ZEXPECT(src.offsets.lookup("s") == 0u);
     ZEXPECT(src.offsets.lookup("e") == 2u);
 }
 
-ZEST_CASE(utf8_passthrough) {
+ZEST_CASE(UTF8Passthrough) {
     // Box-drawing chars are 3 bytes each; the point lands at byte offset 9.
     auto src = AnnotatedSource::from("┌─┐§(m)x");
     ZEXPECT(src.content == "┌─┐x");
     ZEXPECT(src.offsets.lookup("m") == 9u);
 }
 
-ZEST_CASE(doxygen_passthrough) {
+ZEST_CASE(DoxygenPassthrough) {
     llvm::StringRef input = R"(/// @param[in] x
 /// @brief ${1:placeholder} $/cancelRequest
 )";
@@ -115,7 +115,7 @@ ZEST_CASE(doxygen_passthrough) {
     ZEXPECT(src.nameless_offsets.empty());
 }
 
-ZEST_CASE(digit_names) {
+ZEST_CASE(DigitNames) {
     // The migration leans on numeric names heavily (§(0), §(1)⟦...⟧).
     auto src = AnnotatedSource::from("f(§(0)42);\n§(1)⟦int⟧ x;");
     ZEXPECT(src.content == "f(42);\nint x;");
@@ -125,13 +125,13 @@ ZEST_CASE(digit_names) {
     ZEXPECT(r.end == 10u);
 }
 
-ZEST_CASE(point_at_eof) {
+ZEST_CASE(PointAtEOF) {
     auto src = AnnotatedSource::from("x§");
     ZEXPECT(src.content == "x");
     ZEXPECT(src.nameless_offsets == (std::vector<std::uint32_t>{1}));
 }
 
-ZEST_CASE(empty_range_body) {
+ZEST_CASE(EmptyRangeBody) {
     // `§⟦⟧` is a zero-width nameless range, distinct from the `§` point.
     auto src = AnnotatedSource::from("a§⟦⟧b");
     ZEXPECT(src.content == "ab");
@@ -141,7 +141,7 @@ ZEST_CASE(empty_range_body) {
     ZEXPECT(src.nameless_offsets.empty());
 }
 
-ZEST_CASE(empty_input) {
+ZEST_CASE(EmptyInput) {
     auto src = AnnotatedSource::from("");
     ZEXPECT(src.content.empty());
     ZEXPECT(src.offsets.empty());
@@ -149,7 +149,7 @@ ZEST_CASE(empty_input) {
     ZEXPECT(src.nameless_offsets.empty());
 }
 
-ZEST_CASE(no_annotations) {
+ZEST_CASE(NoAnnotations) {
     llvm::StringRef input = "int main() { return 0; }";
     auto src = AnnotatedSource::from(input);
     ZEXPECT(src.content == input);

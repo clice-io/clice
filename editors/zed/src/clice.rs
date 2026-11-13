@@ -129,10 +129,27 @@ fn version_dirs() -> impl Iterator<Item = String> {
         .filter(|name| name.starts_with("clice-"))
 }
 
+/// The version a `clice-<version>` directory holds, as numbers.
+fn dir_version(dir: &str) -> Option<Vec<u64>> {
+    dir.strip_prefix("clice-")?
+        .split('.')
+        .map(|part| part.parse().ok())
+        .collect()
+}
+
+/// Of `dirs`, the one holding the highest version: 0.10.0 is above 0.9.0.
+fn newest_dir(dirs: impl IntoIterator<Item = String>) -> Option<String> {
+    dirs.into_iter()
+        .filter_map(|dir| Some((dir_version(&dir)?, dir)))
+        .max()
+        .map(|(_, dir)| dir)
+}
+
 /// Installs the newest release of the selected channel. Updating is best
 /// effort: when it fails (offline, rate limited), the installation an earlier
 /// session left behind keeps serving, the highest version if a removal left
-/// several.
+/// several, and the failure goes to Zed's stderr, where `zed --foreground`
+/// shows it.
 fn install(language_server_id: &LanguageServerId, worktree: &Worktree) -> Result<String> {
     let settings = LspSettings::for_worktree(SERVER_NAME, worktree)
         .ok()
@@ -149,13 +166,19 @@ fn install(language_server_id: &LanguageServerId, worktree: &Worktree) -> Result
         &LanguageServerInstallationStatus::CheckingForUpdate,
     );
 
-    let path = install_latest(language_server_id, pre_release, &package).or_else(|error| {
-        version_dirs()
-            .map(|dir| format!("{dir}/{}", package.binary))
-            .filter(|path| is_file(path))
-            .max()
-            .ok_or(error)
-    })?;
+    let path = match install_latest(language_server_id, pre_release, &package) {
+        Ok(path) => path,
+        Err(error) => {
+            let installed = newest_dir(
+                version_dirs().filter(|dir| is_file(&format!("{dir}/{}", package.binary))),
+            );
+            let Some(dir) = installed else {
+                return Err(error);
+            };
+            eprintln!("clice: {error}; starting the installed {dir}");
+            format!("{dir}/{}", package.binary)
+        }
+    };
 
     zed::set_language_server_installation_status(
         language_server_id,
@@ -350,6 +373,24 @@ mod tests {
             ))
         );
         assert!(release_asset(&release, "aarch64-w64-mingw32.zip").is_err());
+    }
+
+    #[test]
+    fn newest_dir_compares_versions_as_numbers() {
+        let newest = |dirs: &[&str]| newest_dir(dirs.iter().map(|dir| dir.to_string()));
+        assert_eq!(
+            newest(&["clice-0.9.0", "clice-0.10.0", "clice-0.2.0"]),
+            Some("clice-0.10.0".into())
+        );
+        assert_eq!(
+            newest(&["clice-0.1.2026100509", "clice-0.1.2026093012"]),
+            Some("clice-0.1.2026100509".into())
+        );
+        assert_eq!(
+            newest(&["clice-latest", "clice-0.1.0"]),
+            Some("clice-0.1.0".into())
+        );
+        assert_eq!(newest(&["clice-x"]), None);
     }
 
     #[test]

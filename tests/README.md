@@ -1,10 +1,5 @@
 # tests
 
-The test system clice ships its first release with. The old suites under
-`tests/` (`integration/`, `snap/`, `smoke/`) migrated into it and are gone;
-this directory takes the name `tests/` next. Until then the coverage check
-(below) runs only by hand.
-
 This file is the contract: how tests are organized, what a case is made of, how
 it asserts, how the docs come out of it, and what tests never do.
 
@@ -31,8 +26,10 @@ tests/<topic>/<subtopic>/NN_name/
   between cases; a structure two cases need is in both.
 - **The entry is `main.*`** (`main.cpp`, `main.c`, `main.cppm`) when a case has
   one file the check is about; other files keep the names their content needs.
-- Source files carry only code and `§` markers (below). Documentation goes to
-  `README.md`, maintainer notes to `//` comments in `test.ts` or the sources.
+- Source files carry only code and `§` markers (below), and the notes of a
+  case no page shows. Documentation goes to `README.md`; a documented case's
+  sources are what its card shows, so its maintainer notes go to `//`
+  comments in `test.ts`.
 
 ### Topics
 
@@ -49,7 +46,7 @@ tests/<topic>/<subtopic>/NN_name/
   (background, staleness, transfer, freshness, read only, interruption,
   delegation, batch), `modules`, `config`, `protocol` (basics, initialize,
   edges, positions, cancellation, stale results), `lifecycle` (crashes,
-  workers, termination, memory, stderr, test hooks, editor sessions).
+  workers, termination, memory, stderr, test hooks, logs).
 - **Commands**, what a command prints, writes and exits with: `query`,
   `refactor`, `format`, `lint`, `index`, `analyze`, `modularize`, `inspect`,
   `command`, `scan`, and `cli` for process behavior every command shares.
@@ -178,9 +175,12 @@ A script registers tests of two kinds, each `(fn)`, `(name, fn)`,
 - **`test`**: everything else, on servers, the command line, or both.
   `t.start(options?)` starts a server on the copy; `t.cli(...)` runs a command
   there (with `interrupt: { units, signals }` it signals the run once that many
-  units are indexed); `t.disk` reads and changes the copy (`write`, `edit`,
-  `rm`, `symlink`, `touch`, `list`, `corrupt`, `database`); `t.replay()` plays
-  the case's `trace.jsonl` to a server; `t.gone(pids)` waits until processes
+  units are indexed); `modularize.compiles(t, run, out, options?)` fails unless
+  the program compiles cleanly as the plan a `clice modularize` run printed
+  builds it, its outputs under `out` (a merged plan's for one configuration:
+  `configuration`, that configuration's own run, and `args`, the defines its
+  condition holds under); `t.disk` reads and changes the copy (`write`, `edit`,
+  `rm`, `symlink`, `touch`, `list`, `corrupt`, `database`); `t.gone(pids)` waits until processes
   the test did not start have ended; `t.elapse(ms, why)` lets time pass
   where time is the claim. A test may start several servers and run several
   commands; each is shut down and gated at the end.
@@ -222,20 +222,12 @@ declared fails the test, and so does a declared one that never happened.
 | Option                     | Means                                                                                             |
 | -------------------------- | ------------------------------------------------------------------------------------------------- |
 | `except: { win32: "…" }`   | platforms the test has no meaning on, each with the reason; there it is listed as not applicable  |
-| `errors: ["…"]`            | the error-level log lines the test provokes; any other fails                                      |
+| `errors: ["…"]`            | the error-level log lines the test provokes; any other fails, and so does one no line matches     |
 | `paths: { server: "…" }`   | (answers) one client alone, where the other cannot answer; `inspect` likewise                     |
 | `paths: { separate: "…" }` | (answers) both clients pinned apart where they answer differently on purpose; agreeing then fails |
 | `config: { … }`            | (answers) options in clice.toml's shape, taken by both clients                                    |
 | `indexing: true`           | (answers) both clients index first: the server in the background, inspect by `clice index`        |
 | `positionEncoding: "…"`    | (answers) the server's client offers that encoding, as above                                      |
-
-**Recorded sessions.** A `trace.jsonl` is what a real editor sent a server,
-recorded by `tools/testing/server/record.ts` standing in for the server it
-launches. `t.replay()` plays it at the recorded pace on the copy, the recorded
-root moved there, against the server's real defaults: every request must be
-answered, an error only to one the editor cancelled or whose document changed
-under it; teardown gates the exit. Traces are re-recorded, never edited; they
-live in `lifecycle/editor_sessions/`.
 
 Tests in one script share nothing but the case's inputs. Names are short and
 unique in the script; one unnamed test is allowed when it is the only one.
@@ -243,8 +235,7 @@ unique in the script; one unnamed test is allowed when it is the only one.
 **Inherited scripts.** A case without `test.ts` takes its subtopic's, then its
 topic's. A script sits at the lowest directory every case running it shares: a scenario unique to a case is its own `test.ts`; one a
 subtopic's cases all run on their different projects is written once, as
-`compile/cache/test.ts` restarts a server over each case's project and
-`lifecycle/editor_sessions/test.ts` replays each case's trace. A case with no
+`compile/cache/test.ts` restarts a server over each case's project. A case with no
 script anywhere fails, and so does a script above the cases that none of them
 runs.
 
@@ -295,7 +286,8 @@ exit = 0
 - **Commands** are a block under the command line, `$ clice …`: `stdout`
   (JSON pretty-printed), `stderr` (a log line only at warning and above, as
   `warning: …`), `exit` (or `killed` and the signal), and `files`, each file
-  the command wrote as a diff. A command run again in one test is `#2`.
+  the command wrote as a diff. A command killed by a signal the test did not
+  send (`interrupt`) fails, a reader that left (`SIGPIPE`) apart. A command run again in one test is `#2`.
   Paths read `${WS}/…`, a session's log directory `${SESSION}`, the
   toolchain query's temporary input `${QUERY_INPUT}`, a worker's cause of
   death `${CRASH}`, durations and sizes `#ms`, `# KB`, and in
@@ -404,8 +396,8 @@ written by hand that a case can show.
   reading `snap.toml`. Every run writes the cards of the documented cases it
   ran as `docs/cards/<id>.json`, which git ignores: CI hands those of its
   linux-x64 run to the docs site, and a pull request's docs check builds the
-  site with them. A case's sources are what the card shows: maintainer notes
-  go in its `test.ts`.
+  site with them. A case's sources are what the card shows: its maintainer
+  notes go in its `test.ts`.
 - **Checks.** `pixi run docs-check` fails where pages and cases disagree: a
   stale region, a documented subtopic on no page; `pixi run docs-update`
   rewrites the regions.
@@ -430,8 +422,10 @@ written by hand that a case can show.
   loops (`clice/internal/watch`, `s.watch`); the batch commands' pause point
   (`CLICE_TEST_PAUSE`), which parks a run after a given unit so a test can
   signal it at a known place. A hook the tests need is added to the product.
-- **At teardown**, every test: every server exits cleanly, and the logs hold
-  no anomaly, worker crash or error-level line the test did not declare.
+- **At teardown**, every test: every server exits cleanly, and the logs of
+  every process the test started — its session found by pid anywhere under
+  the copy, its stderr for one that logged no session — hold no anomaly,
+  worker crash or error-level line the test did not declare.
 - **On failure** a test prints its step tree, what `sync` reports still
   running, and the warning and error lines of every server it started.
 - **Time.** `sync` gives up after 4 minutes and says what is left; a script
@@ -440,8 +434,9 @@ written by hand that a case can show.
 
 ## Coverage
 
-Tests record what they exercise: every method a client sends, every command
-line run, every configuration key set. `npm run coverage`, after the other
+Tests record what they exercise: every method a client sends and the server
+sends, every command line run, every configuration key set; CI merges the
+shards' records and runs the check after them. `pixi run coverage-test`, after the other
 runs with the same `CLICE_COVERAGE_DIR`, lists every item of the product
 surface nothing exercised and fails. The surface comes from the product: the
 configuration schema, each command's `--help`, the server's capabilities, the
@@ -452,18 +447,16 @@ public `clice/*` requests. An item is `method <name>`, `command <words>`,
 
 ## Outside the topics
 
-- **`editors/zed/`**: the Zed extension in a real Zed (`pixi run zed-e2e`): it
-  downloads clice, which starts with its builtin headers, for C, C++ and CUDA
-  files alike.
-- **`editors/NN_name/`**: a project and the scenario every editor client runs on
-  it (`scenario.json`: the file, the symbol, where it is defined, the header
-  context); each client's harness reads it. Until then the editors'
-  end-to-end tests (`pixi run -e editor editor-test`) run on copies of three
-  cases, `lifecycle/editor_sessions/01_hello_world`,
-  `modules/imports/01_imported_symbol` and `contexts/switching/01_two_hosts`
-  (`tools/testing/cases/copy.ts`), each harness naming the file and symbol
-  in a scenario table of its own: changing one of these cases changes those
-  tests.
+- **`editors/zed/`**: the Zed extension in a real Zed (`pixi run zed-e2e`): this
+  build installed as the extension's newest version, beside an older empty one,
+  for C, C++ and CUDA files alike.
+- **`editors/NN_name/`**: a project and the scenario every editor client runs
+  on it (`scenario.json`, its fields in `tools/testing/editors/scenario.ts`).
+  `pixi run -e editor editor-prepare <editor>` copies each under
+  `.cache/editors/<editor>/` with its database and the test hooks on;
+  `nvim-e2e` and `vscode-e2e` run the client on every copy, then fail on a
+  crash, an anomaly or an error-level line in the servers' logs
+  (`tools/testing/editors/gate.ts`).
 - **`compat/`**: real build systems and compilers build a small project; clice
   must read their databases and agree with the compiler.
 
@@ -484,8 +477,9 @@ boundary observes cheaply, built with the sources. Names of at most four words.
 
 ## Budgets
 
-- Pull-request CI under 20 minutes wall clock; no job over 10 minutes on the
-  slowest platform.
+- Every test job of a pull request's CI (a unit suite, a shard of the
+  cases, an editor's or the compat run) under 10 minutes on the slowest
+  platform; the builds are left out, as their time is the cache's.
 - A test under 30 seconds in Debug on four cores.
 
 ## Never
@@ -495,7 +489,6 @@ boundary observes cheaply, built with the sources. Names of at most four words.
 - Wait on, or assert about, wall-clock time.
 - Retry, skip or weaken a failing test.
 - Share inputs between cases.
-- Hand-write or edit LSP traces.
 - Put agent-driven editor sessions in CI.
 - Gate on a coverage percentage.
 
@@ -512,7 +505,8 @@ CLICE_TEST_JITTER=50 …             random delays up to 50 ms where the server'
                                    an order unpinned
 CLICE_KEEP_LOGS=/abs/dir …         keep the server logs of the cases that fail under
                                    /abs/dir/<case>/<copy>, as CI uploads them
-npm run coverage -w tests     after a full run
+CLICE_COVERAGE_DIR=/abs/dir …      record what the run exercises; then
+  pixi run coverage-test           list the surface nothing exercised
 npm test -w tools                  the tools' own tests, the framework's among them
 ```
 

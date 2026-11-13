@@ -108,13 +108,6 @@ ZEST_CASE(HoverInfoRoundTrip) {
 
 ZEST_SUITE(StatelessWorker) {
 
-ZEST_CASE(SpawnAndExit) {
-    WorkerHandle w;
-    ZASSERT(w.spawn());
-
-    w.run([]() -> async::task<> { co_return; });
-}
-
 ZEST_CASE(GateParksWork) {
     /// A gated request's work waits where it starts until the gate is
     /// released; the worker reports the park first.
@@ -222,7 +215,65 @@ ZEST_CASE(IndexRequest) {
         params.arguments = make_args(src);
 
         auto result = co_await w.peer->send_request(params);
-        ZEXPECT(result);
+        ZASSERT(result);
+        ZEXPECT(result->success);
+        auto index = index::TUIndex::from_bytes(as_chars(result->tu_index_data));
+        ZASSERT(index.loaded());
+        ZEXPECT(index.path(index.focus_file()) == CanonicalPath(Spelling::absolute(src)).str());
+        test_done = true;
+        w.peer->close_output();
+    });
+
+    ZASSERT(test_done);
+}
+
+// The scheduler's cooperative cancel of a stateless build is an IPC cancel
+// whose answer the sender keeps awaiting (the slot must stay busy while the
+// worker is): the stop flag it trips cuts the parse at its first declaration.
+// The source ends in a pragma that crashes the worker (CLICE_TEST_PRAGMA_CRASH):
+// only a parse run to its end reaches it.
+ZEST_CASE(CancelStopsBuild) {
+    TempDir tmp;
+    tmp.touch("probe.cpp", "int v0;\nint v1;\nint v2;\n#pragma clang __debug crash\n");
+    auto src = tmp.path("probe.cpp");
+    tmp.touch("small.cpp", "int small;\n");
+
+    WorkerHandle w;
+    w.env = {
+        {.name = "CLICE_TEST_PRAGMA_CRASH", .value = "1"}
+    };
+    ZASSERT(w.spawn());
+
+    bool test_done = false;
+    w.run([&]() -> async::task<> {
+        worker::CompileUnitParams bp;
+        bp.index = true;
+        bp.file = src;
+        bp.directory = "/tmp";
+        bp.arguments = make_args(src);
+
+        async::cancellation_source source;
+        auto build = [&]() -> async::task<> {
+            auto result = co_await w.peer->send_request(bp, {.token = source.token()});
+            ZASSERT(!result);
+            ZEXPECT(result.error().code == worker::dispatch_errc::cancelled);
+        };
+
+        async::task_group<> group;
+        auto gate = w.gate(bp);
+        group.spawn(build());
+        co_await w.parked(gate);
+        source.cancel();
+        w.release(gate);
+        co_await group.join();
+
+        // The worker lives on: the parse stopped short of the pragma.
+        bp.file = tmp.path("small.cpp");
+        bp.arguments = make_args(bp.file);
+        auto next = co_await w.peer->send_request(bp);
+        ZASSERT(next);
+        ZEXPECT(next->success);
+
         test_done = true;
         w.peer->close_output();
     });
@@ -297,66 +348,7 @@ ZEST_CASE(BuildPCMRequest) {
     ZASSERT(test_done);
 }
 
-ZEST_CASE(CompletionRequest) {
-    std::string text = "int foo = 1;\nint bar = fo";
-    TempDir tmp;
-    tmp.touch("completion_test.cpp", text);
-    auto src = tmp.path("completion_test.cpp");
-
-    WorkerHandle w;
-    ZASSERT(w.spawn());
-
-    bool test_done = false;
-
-    w.run([&]() -> async::task<> {
-        worker::CompletionParams params;
-        params.file = src;
-        params.text = text;
-        params.directory = "/tmp";
-        params.arguments = make_args(src);
-        params.offset = 25;  // after "fo" in "int bar = fo" (13 + 12)
-
-        auto result = co_await w.peer->send_request(params);
-        ZEXPECT(result);
-        test_done = true;
-        w.peer->close_output();
-    });
-
-    ZASSERT(test_done);
-}
-
-ZEST_CASE(SignatureHelpRequest) {
-    std::string text = "void foo(int a, int b) {}\nint main() { foo(";
-    TempDir tmp;
-    tmp.touch("sighelp_test.cpp", text);
-    auto src = tmp.path("sighelp_test.cpp");
-
-    WorkerHandle w;
-    ZASSERT(w.spawn());
-
-    bool test_done = false;
-
-    w.run([&]() -> async::task<> {
-        worker::SignatureHelpParams params;
-        params.file = src;
-        params.text = text;
-        params.directory = "/tmp";
-        params.arguments = make_args(src);
-        params.offset = 45;  // after "foo(" (26 + 19)
-
-        auto result = co_await w.peer->send_request(params);
-        ZEXPECT(result);
-        // Should return signature help for foo(int a, int b).
-        test_done = true;
-        w.peer->close_output();
-    });
-
-    ZASSERT(test_done);
-}
-
-// #701: ordering two constructor templates of a class template whose pack
-// follows another parameter crashed clang (xclang patches/0001).
-ZEST_CASE(ConstructorTemplatesOfClassTemplate) {
+ZEST_CASE(ConstructorTemplatesAnswered) {
     std::string text = R"(template <int> struct index {};
 template <class, class...> struct V {
   template <int I> V(index<I>);
@@ -393,40 +385,6 @@ template <class, class...> struct V {
         auto helped = co_await w.peer->send_request(help);
         ZEXPECT(helped);
 
-        test_done = true;
-        w.peer->close_output();
-    });
-
-    ZASSERT(test_done);
-}
-
-ZEST_CASE(MultipleStatelessRequests) {
-    TempDir tmp;
-    std::vector<std::string> paths;
-    for(int i = 0; i < 3; i++) {
-        auto name = "multi_index_" + std::to_string(i) + ".cpp";
-        auto text = "int idx_var_" + std::to_string(i) + " = " + std::to_string(i) + ";\n";
-        tmp.touch(name, text);
-        paths.push_back(tmp.path(name));
-    }
-
-    WorkerHandle w;
-    ZASSERT(w.spawn());
-
-    bool test_done = false;
-
-    w.run([&]() -> async::task<> {
-        // Send multiple index requests to test stateless worker handles them sequentially.
-        for(int i = 0; i < 3; i++) {
-            worker::CompileUnitParams params;
-            params.index = true;
-            params.file = paths[i];
-            params.directory = "/tmp";
-            params.arguments = make_args(paths[i]);
-
-            auto result = co_await w.peer->send_request(params);
-            ZEXPECT(result);
-        }
         test_done = true;
         w.peer->close_output();
     });

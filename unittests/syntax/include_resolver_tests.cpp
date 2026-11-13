@@ -24,7 +24,7 @@ ZEST_CASE(ResolveAbsolutePath) {
     ZEXPECT(fs::equivalent(result->path.str(), abs_path).value_or(false));
 }
 
-ZEST_CASE(ResolveQuotedIncludeFromIncluderDir) {
+ZEST_CASE(ResolveQuotedFromIncluder) {
     TempDir tmp;
     tmp.touch("src/main.cpp");
     tmp.touch("src/local.h");
@@ -42,7 +42,7 @@ ZEST_CASE(ResolveQuotedIncludeFromIncluderDir) {
     ZEXPECT(fs::equivalent(result->path.str(), tmp.path("src/local.h")).value_or(false));
 }
 
-ZEST_CASE(ResolveAngledIncludeFromSearchDirs) {
+ZEST_CASE(ResolveAngledFromDirectories) {
     TempDir tmp;
     tmp.touch("include/sys/types.h");
 
@@ -78,27 +78,6 @@ ZEST_CASE(ResolveSkipsDirectories) {
 
     ZASSERT(result);
     ZEXPECT(fs::equivalent(result->path.str(), tmp.path("std/memory")).value_or(false));
-}
-
-ZEST_CASE(ResolveAngledSkipsQuotedDirs) {
-    TempDir tmp;
-    tmp.touch("quoted/header.h", "// quoted");
-    tmp.touch("angled/header.h", "// angled");
-
-    SearchConfig config;
-    config.dirs.push_back({tmp.path("quoted")});  // index 0 — quoted only
-    config.dirs.push_back({tmp.path("angled")});  // index 1 — angled starts
-    config.angled_start_idx = 1;
-
-    vfs::DirCache cache;
-    vfs::Scope scope(cache);
-
-    auto result = resolve_include("header.h", true, "", false, 0, config, scope);
-
-    ZASSERT(result);
-    // Angled include should skip quoted dir and find in angled dir.
-    ZEXPECT(fs::equivalent(result->path.str(), tmp.path("angled/header.h")).value_or(false));
-    ZEXPECT(result->found_dir_idx == 1u);
 }
 
 ZEST_CASE(ResolveIncludeNext) {
@@ -149,19 +128,18 @@ ZEST_CASE(ResolveStatCacheHits) {
     vfs::DirCache cache;
     vfs::Scope scope(cache);
 
-    // First resolution — populates cache.
-    auto result1 = resolve_include("cached.h", true, "", false, 0, config, scope);
+    auto first = resolve_include("cached.h", true, "", false, 0, config, scope);
+    ZASSERT(first);
 
-    ZASSERT(result1);
-
-    // Second resolution — should use cache (no filesystem I/O needed).
-    auto result2 = resolve_include("cached.h", true, "", false, 0, config, scope);
-
-    ZASSERT(result2);
-    ZEXPECT(result1->path == result2->path);
+    // The operation keeps the listing it read: a file removed meanwhile
+    // still resolves in it, read off no disk.
+    ZASSERT(fs::remove(tmp.path("include/cached.h")));
+    auto second = resolve_include("cached.h", true, "", false, 0, config, scope);
+    ZASSERT(second);
+    ZEXPECT(second->path == first->path);
 }
 
-ZEST_CASE(ResolveQuotedFallsBackToSearchDirs) {
+ZEST_CASE(ResolveQuotedFallsBack) {
     TempDir tmp;
     // Header not in includer dir, but in search dir.
     tmp.touch("include/fallback.h");

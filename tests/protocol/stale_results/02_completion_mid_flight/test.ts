@@ -48,14 +48,14 @@ test("an edit before the cursor", async (t) => {
 test("read with an edit", async (t) => {
     const s = await t.start();
     await s.diagnostics("main.cpp");
-    const uri = s.uri("main.cpp");
+    const { uri, position } = s.position(t.marker("complete"));
     // Raw messages: their arrival in one read is the point.
     const replies = await s.client.sendTogether([
         {
             jsonrpc: "2.0",
             id: "completion",
             method: "textDocument/completion",
-            params: { textDocument: { uri }, position: { line: 1, character: 18 } },
+            params: { textDocument: { uri }, position },
         },
         {
             jsonrpc: "2.0",
@@ -80,13 +80,13 @@ test("read with an edit", async (t) => {
 test("read with a reopen", async (t) => {
     const s = await t.start();
     await s.diagnostics("main.cpp");
-    const uri = s.uri("main.cpp");
+    const { uri, position } = s.position(t.marker("complete"));
     const replies = await s.client.sendTogether([
         {
             jsonrpc: "2.0",
             id: "completion",
             method: "textDocument/completion",
-            params: { textDocument: { uri }, position: { line: 1, character: 18 } },
+            params: { textDocument: { uri }, position },
         },
         {
             jsonrpc: "2.0",

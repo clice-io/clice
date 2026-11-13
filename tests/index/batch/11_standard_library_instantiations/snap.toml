@@ -1,0 +1,51 @@
+["left out"."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["left out"."$ clice query references Task::go"]
+stdout = '''
+{
+  "result": {
+    "name": "go",
+    "kind": "Method",
+    "symbol": "#01d38165a6c6a83e",
+    "references": [],
+    "total": 0
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["asked for"."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["asked for"."$ clice query references Task::go"]
+stdout = '''
+{
+  "result": {
+    "name": "go",
+    "kind": "Method",
+    "symbol": "#01d38165a6c6a83e",
+    "references": [
+      {
+        "file": "${WS}/system/algo",
+        "line": 5,
+        "context": "    t.go();",
+        "function": "std::call",
+        "via": "instantiation"
+      }
+    ],
+    "total": 1
+  },
+  "stale": []
+}
+'''
+exit = 0

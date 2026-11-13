@@ -9,6 +9,7 @@ import :index.indexing.tu_index;
 import :semantic.symbol;
 import :support.text;
 import :unittests.utils.index_query_tester;
+import :unittests.utils.tester;
 import :vfs.ids;
 import :vfs.path;
 
@@ -271,16 +272,16 @@ ZEST_CASE(OverloadsPastLimit) {
 std::vector<index::OpenBuffer> open_buffers(int buffers) {
     std::vector<index::OpenBuffer> open;
     for(int buffer = 0; buffer < buffers; buffer += 1) {
-        clear();
         std::string text = "namespace app { namespace shared {\n";
         for(int i = 0; i < 40; i += 1) {
             text += std::format("int fn{}_{}();\n", buffer, i);
         }
         text += "} }\n";
-        add_focus(std::format("main{}.cpp", buffer), text);
-        ZASSERT(compile());
+        Tester document;
+        document.add_focus(std::format("main{}.cpp", buffer), text);
+        ZASSERT(document.compile());
         auto table = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
-            llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit)))));
+            llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*document.unit)))));
         open.push_back({
             .file = project.file_table.intern(Spelling::absolute(table->path(table->focus_file()))),
             .text = {},
@@ -292,7 +293,7 @@ std::vector<index::OpenBuffer> open_buffers(int buffers) {
     return open;
 }
 
-ZEST_CASE(ScopedSearchReadsOpenBuffers) {
+ZEST_CASE(ScopedSearchReadsBuffers) {
     auto open = open_buffers(8);
     auto query = project.index_query.reading(std::move(open));
     for(auto name: {"fn0_1", "fn7_1"}) {

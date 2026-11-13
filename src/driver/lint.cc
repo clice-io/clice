@@ -20,7 +20,6 @@ struct Lint {
     ProjectOptions where;
     JobsOption jobs;
     JsonReportOption report;
-    LogLevelOption log;
 };
 
 void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {

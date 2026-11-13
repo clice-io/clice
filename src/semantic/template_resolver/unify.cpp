@@ -606,6 +606,9 @@ clang::QualType injected_specialization(clang::ASTContext& context,
             /*CanonicalArgs=*/{});
     }
     auto* CTD = record->getDescribedClassTemplate();
+    if(!CTD) {
+        return context.getCanonicalTagType(record);
+    }
     return context.getTemplateSpecializationType(
         clang::ElaboratedTypeKeyword::None,
         clang::TemplateName(CTD),

@@ -64,6 +64,14 @@ inline std::string build_cdb_json(llvm::ArrayRef<CDBEntry> entries) {
     return json;
 }
 
+/// The command the database lists for `entry`, its language read off it.
+inline CommandRef database_command(CompilationDatabase& cdb, const CompilationEntry& entry) {
+    return {entry.file,
+            entry.command,
+            cdb.commands().input_kind(entry.command, cdb.files().resolve(entry.file)),
+            CommandSource::Database};
+}
+
 /// Write a compile_commands.json into the temp dir and load it into the given CDB.
 inline void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef json_content) {
     tmp.touch("compile_commands.json", json_content);
@@ -120,13 +128,8 @@ inline std::vector<const char*> render_entry(CompilationDatabase& cdb,
 /// Scan every entry of the database under its own command: the shape of a
 /// test that owns no configuration.
 inline ScanReport scan_all(CompilationDatabase& cdb, Toolchain& toolchain, DependencyGraph& graph) {
-    llvm::SmallVector<CommandRef> units;
-    for(auto& entry: cdb.entries()) {
-        units.push_back({entry.file,
-                         entry.command,
-                         cdb.commands().input_kind(entry.command, cdb.files().resolve(entry.file)),
-                         CommandSource::Database});
-    }
+    auto units = ranges::to<llvm::SmallVector<CommandRef>>(
+        views::transform(cdb.entries(), [&](auto& entry) { return database_command(cdb, entry); }));
     return scan_dependency_graph(cdb, toolchain, graph, units);
 }
 

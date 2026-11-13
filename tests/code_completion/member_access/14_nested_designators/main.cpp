@@ -14,3 +14,6 @@ struct Shape {
 
 Shape first = { .origin.x = 1, .§(after_part) };
 Shape second = { .origin = {}, .§(after_whole) };
+Shape third = { .origin = { .x = 1, .§(inner) } };
+Shape fourth = { .origin = { .x = 1 }, .§(after_inner) };
+Shape fifth = { .id = 1, .origin.§(continued) };

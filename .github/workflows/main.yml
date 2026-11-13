@@ -6,6 +6,9 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+  # The merge queue: main with the PRs queued before this one and this one,
+  # which main moves to once its run is green. Everything runs there.
+  merge_group:
 
 # Every main commit runs in a group of its own: a group holds one pending
 # run, which a newer one cancels even without cancel-in-progress, leaving
@@ -19,20 +22,23 @@ jobs:
   changes:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       pull-requests: read
     outputs:
-      format: ${{ steps.filter.outputs.format }}
-      docs: ${{ steps.filter.outputs.docs }}
-      vscode: ${{ steps.filter.outputs.vscode }}
-      zed: ${{ steps.filter.outputs.zed }}
-      build: ${{ steps.filter.outputs.build }}
+      format: ${{ github.event_name == 'merge_group' || steps.filter.outputs.format == 'true' }}
+      docs: ${{ github.event_name == 'merge_group' || steps.filter.outputs.docs == 'true' }}
+      vscode: ${{ github.event_name == 'merge_group' || steps.filter.outputs.vscode == 'true' }}
+      zed: ${{ github.event_name == 'merge_group' || steps.filter.outputs.zed == 'true' }}
+      build: ${{ github.event_name == 'merge_group' || steps.filter.outputs.build == 'true' }}
 
     steps:
       - uses: actions/checkout@v7
+        if: ${{ github.event_name != 'merge_group' }}
         with:
           persist-credentials: false
       - uses: dorny/paths-filter@v4
+        if: ${{ github.event_name != 'merge_group' }}
         id: filter
         with:
           filters: |
@@ -53,7 +59,6 @@ jobs:
               - 'tools/**'
             zed:
               - 'editors/zed/**'
-              - 'tests/editors/zed/**'
               - '.github/workflows/main.yml'
             build:
               - 'BUILD.bazel'
@@ -78,6 +83,7 @@ jobs:
               - 'scripts/**'
               - 'editors/nvim/**'
               - 'editors/vscode/**'
+              - 'editors/zed/**'
               - 'pixi.toml'
               - 'pixi.lock'
               - 'package.json'
@@ -106,11 +112,12 @@ jobs:
   # since the action switches node.
   docs-site:
     needs: [changes, test]
-    if: ${{ always() && github.event_name == 'pull_request' && needs.changes.outputs.docs == 'true' && contains(fromJSON('["success", "skipped"]'), needs.test.result) }}
+    if: ${{ always() && github.event_name != 'push' && needs.changes.outputs.docs == 'true' && contains(fromJSON('["success", "skipped"]'), needs.test.result) }}
     permissions:
       contents: read
       actions: read
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -134,6 +141,8 @@ jobs:
     if: ${{ needs.changes.outputs.vscode == 'true' }}
     uses: ./.github/workflows/publish-vscode.yml
 
+  # The extension's unit tests; editor-test.yml runs it in a real Zed on
+  # this run's clice.
   zed:
     needs: changes
     if: ${{ needs.changes.outputs.zed == 'true' }}
@@ -142,6 +151,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-2025]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     defaults:
       run:
         shell: bash
@@ -155,40 +165,6 @@ jobs:
       - name: Unit tests
         working-directory: editors/zed
         run: cargo test
-      # wasm32-wasip2 is the target Zed and its extension registry build with.
-      - name: Add the wasm target
-        run: rustup target add wasm32-wasip2
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: node
-          activate-environment: node
-
-      # Always the latest stable Zed on purpose, like the other editor tests.
-      - name: Install Zed (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mesa-vulkan-drivers libvulkan1 libxkbcommon-x11-0
-          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/zed.tar.gz" \
-            "https://cloud.zed.dev/releases/stable/latest/download?asset=zed&arch=x86_64&os=linux"
-          tar -xzf "$RUNNER_TEMP/zed.tar.gz" -C "$RUNNER_TEMP"
-          echo "ZED_EXECUTABLE=$RUNNER_TEMP/zed.app/libexec/zed-editor" >> "$GITHUB_ENV"
-      - name: Install Zed (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/zed-setup.exe" \
-            https://zed.dev/api/releases/stable/latest/Zed-x86_64.exe
-          "$RUNNER_TEMP/zed-setup.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART //SP- //CURRENTUSER
-          echo "ZED_EXECUTABLE=$LOCALAPPDATA/Programs/Zed/Zed.exe" >> "$GITHUB_ENV"
-
-      - name: E2E test (Linux)
-        if: runner.os == 'Linux'
-        timeout-minutes: 20
-        run: xvfb-run -a pixi run -e node zed-e2e
-      - name: E2E test (Windows)
-        if: runner.os == 'Windows'
-        timeout-minutes: 20
-        run: pixi run -e node zed-e2e
 
   test:
     needs: changes
@@ -223,6 +199,37 @@ jobs:
       source: package
     secrets: inherit
 
+  # Every cache keeps only its newest entry of main: each merge saves one per
+  # Bazel target and build type and a VS Code download per OS, and the older
+  # ones would fill the repository's quota long before they expire.
+  prune-caches:
+    needs: test
+    if: ${{ always() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Two at once would delete the same entries, the second failing on them.
+    concurrency:
+      group: prune-caches
+    permissions:
+      actions: write
+    steps:
+      - name: Delete the older entries of each cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          declare -A kept
+          gh cache list --ref refs/heads/main --sort created_at --order desc --limit 1000 \
+            --json id,key --jq '.[] | "\(.id) \(.key)"' > "$RUNNER_TEMP/caches"
+          while read -r id key; do
+            prefix=${key%-*}
+            if [[ -n ${kept[$prefix]:-} ]]; then
+              gh cache delete "$id"
+            else
+              kept[$prefix]=1
+            fi
+          done < "$RUNNER_TEMP/caches"
+
   checks-passed:
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     needs:
@@ -235,6 +242,7 @@ jobs:
       - instant-vscode
 
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Check results
         uses: re-actors/alls-green@v1.2.2

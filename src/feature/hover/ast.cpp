@@ -617,12 +617,16 @@ struct CardStyle {
 };
 
 /// Lay out code a card shows, a printed declaration or an expansion: it is
-/// printed as one line, not as anyone wrote it.
-void reformat(CompilationUnit& unit, std::string& code) {
+/// printed as one line, not as anyone wrote it. Without `search`, the lines
+/// stay as they are, past the style's column limit.
+void reformat(CompilationUnit& unit, std::string& code, bool search = true) {
     if(code.empty()) {
         return;
     }
-    auto& style = unit.get<CardStyle>().style;
+    auto style = unit.get<CardStyle>().style;
+    if(!search) {
+        style.ColumnLimit = 0;
+    }
     auto replacements =
         clang::format::reformat(style, code, {clang::tooling::Range(0, code.size())});
     auto formatted = clang::tooling::applyAllReplacements(code, replacements);
@@ -720,7 +724,7 @@ void add_bindings(std::vector<HoverInfo::Binding>& bindings,
                   llvm::ArrayRef<clang::TemplateArgument> arguments,
                   clang::ASTContext& context,
                   const display::Options& options) {
-    for(const auto& [index, argument]: views::enumerate(arguments)) {
+    for(const auto& [index, argument]: views::enumerate(arguments.take_front(params.size()))) {
         auto position = static_cast<unsigned>(index);
         const auto* param = params.getParam(position);
         if(param->getName().empty() || param->isImplicit() || argument.getIsDefaulted() ||
@@ -1475,16 +1479,29 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
         return {};
     };
 
-    /// Joined until it holds `joined_limit` bytes, laid out, and shown up to
-    /// `shown_lines` lines and `shown_characters` characters. Cut while joining, the
-    /// text has its open brackets closed past a mark for the layout to reach
-    /// its end, and is shown up to the mark.
-    constexpr std::size_t joined_limit = 16 * 1024;
+    /// Joined until it holds `joined_limit` bytes, laid out, and shown up
+    /// to `shown_lines` lines and `shown_characters` characters. Cut while
+    /// joining, the text has its open brackets closed past a mark for the
+    /// layout to reach its end, and is shown up to the mark. clang-format's
+    /// search for the best line breaks takes seconds to minutes on a deeply
+    /// nested expansion, and on a block inside an expression (a statement
+    /// expression, a struct in a sizeof), which it lays out again for every
+    /// way of breaking the line around it. Past `search_depth` brackets, or
+    /// with such a block, each statement goes on a line of its own and the
+    /// layout keeps the lines as they are.
     constexpr std::size_t shown_lines = 40;
     constexpr std::size_t shown_characters = 4096;
+    constexpr std::size_t joined_limit = 2 * shown_characters;
+    constexpr std::size_t search_depth = 8;
     constexpr llvm::StringLiteral cut_mark = "/*...*/";
     std::string text;
+    /// The separators where a statement ends, before the next token.
+    std::vector<std::size_t> statement_ends;
+    bool statement_ended = false;
+    /// What closes each bracket open where the text ends.
     std::string closers;
+    std::size_t deepest = 0;
+    bool block_in_expression = false;
     bool cut = false;
     llvm::DenseSet<clang::SourceLocation> seen;
     auto& tokens = unit.focus_file().tokens();
@@ -1494,19 +1511,27 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
             if(at.isInvalid() || !seen.insert(at).second) {
                 continue;
             }
-            auto spelling = unit.token_spelling(token.location());
             if(text.size() >= joined_limit) {
                 cut = true;
                 break;
             }
+            auto kind = token.kind();
             if(!text.empty()) {
+                if(statement_ended || kind == clang::tok::r_brace) {
+                    statement_ends.push_back(text.size());
+                }
                 text += ' ';
             }
-            text += spelling;
-            switch(token.kind()) {
+            text += unit.token_spelling(token.location());
+            statement_ended = kind == clang::tok::semi || kind == clang::tok::l_brace;
+            switch(kind) {
                 case clang::tok::l_paren: closers.push_back(')'); break;
                 case clang::tok::l_square: closers.push_back(']'); break;
-                case clang::tok::l_brace: closers.push_back('}'); break;
+                case clang::tok::l_brace:
+                    block_in_expression =
+                        block_in_expression || closers.find_first_of(")]") != std::string::npos;
+                    closers.push_back('}');
+                    break;
                 case clang::tok::r_paren:
                 case clang::tok::r_square:
                 case clang::tok::r_brace:
@@ -1516,9 +1541,16 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
                     break;
                 default: break;
             }
+            deepest = std::max(deepest, closers.size());
         }
         if(cut) {
             break;
+        }
+    }
+    bool search = deepest <= search_depth && !block_in_expression;
+    if(!search) {
+        for(auto at: statement_ends) {
+            text[at] = '\n';
         }
     }
     if(cut) {
@@ -1529,7 +1561,7 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
             text += closer;
         }
     }
-    reformat(unit, text);
+    reformat(unit, text, search);
     llvm::StringRef laid = text;
     if(cut) {
         laid = laid.take_front(laid.rfind(cut_mark)).rtrim();

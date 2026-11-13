@@ -1,0 +1,8 @@
+[test."rows.h"]
+diagnostics = []
+
+[test."targets.h"]
+diagnostics = []
+
+[test."smooth.h"]
+diagnostics = []

@@ -73,8 +73,8 @@ compiles = true
 …
      Box<int> b{1};
      Box<bool> f{true};
--    return s.area() + q.area() + b.value + f.flag;
-+    return s.surface() + q.surface() + b.value + f.flag;
+-    return s.area() + q.area() + b.value + f.flag + pick(1) + pick<long>(2);
++    return s.surface() + q.surface() + b.value + f.flag + pick(1) + pick<long>(2);
  }
 '''
 
@@ -87,16 +87,74 @@ compiles = true
 
 -template <typename T> struct Box { T value; };
 -template <> struct Box<bool> { bool flag; };
+-Box(const char*) -> Box<bool>;
+-template <typename T> Box(T*, int) -> Box<T*>;
 +template <typename T> struct Holder { T value; };
 +template <> struct Holder<bool> { bool flag; };
++Holder(const char*) -> Holder<bool>;
++template <typename T> Holder(T*, int) -> Holder<T*>;
 
- int main() {
+ template <typename T> T pick(T value) { return value; }
+…
      Shape s(3);
      Square q;
 -    Box<int> b{1};
 -    Box<bool> f{true};
 +    Holder<int> b{1};
 +    Holder<bool> f{true};
-     return s.area() + q.area() + b.value + f.flag;
+     return s.area() + q.area() + b.value + f.flag + pick(1) + pick<long>(2);
  }
 '''
+
+[answers.guide.rename]
+compiles = true
+
+[answers.guide.rename.edits]
+"main.cpp" = '''
+ };
+
+-template <typename T> struct Box { T value; };
+-template <> struct Box<bool> { bool flag; };
+-Box(const char*) -> Box<bool>;
+-template <typename T> Box(T*, int) -> Box<T*>;
++template <typename T> struct Holder { T value; };
++template <> struct Holder<bool> { bool flag; };
++Holder(const char*) -> Holder<bool>;
++template <typename T> Holder(T*, int) -> Holder<T*>;
+
+ template <typename T> T pick(T value) { return value; }
+…
+     Shape s(3);
+     Square q;
+-    Box<int> b{1};
+-    Box<bool> f{true};
++    Holder<int> b{1};
++    Holder<bool> f{true};
+     return s.area() + q.area() + b.value + f.flag + pick(1) + pick<long>(2);
+ }
+'''
+
+[answers.function_template.rename]
+compiles = true
+
+[answers.function_template.rename.edits]
+"main.cpp" = '''
+ template <typename T> Box(T*, int) -> Box<T*>;
+
+-template <typename T> T pick(T value) { return value; }
+-template <> int pick<int>(int value) { return value + 1; }
++template <typename T> T choose(T value) { return value; }
++template <> int choose<int>(int value) { return value + 1; }
+
+ int main() {
+…
+     Box<int> b{1};
+     Box<bool> f{true};
+-    return s.area() + q.area() + b.value + f.flag + pick(1) + pick<long>(2);
++    return s.area() + q.area() + b.value + f.flag + choose(1) + choose<long>(2);
+ }
+'''
+
+[answers.destructor.prepare_rename]
+at = "~⟦Shape⟧() {}"
+placeholder = "Shape"

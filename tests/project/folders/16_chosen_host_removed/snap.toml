@@ -1,3 +1,14 @@
+[test."own folder"]
+errors = [
+    {
+        at = "#⟦error⟧ missing IN_APP",
+        severity = "error",
+        message = "missing IN_APP",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
+]
+
 [test."host removed"]
 errors = [
     {

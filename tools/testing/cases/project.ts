@@ -27,13 +27,7 @@ export interface Project {
 }
 
 /// Files of a case directory that are not its inputs.
-export const RESERVED = new Set([
-    "project.toml",
-    "test.ts",
-    "README.md",
-    "snap.toml",
-    "trace.jsonl",
-]);
+export const RESERVED = new Set(["project.toml", "test.ts", "README.md", "snap.toml"]);
 
 export const SOURCE = /\.(c|cc|cpp|cxx|cppm|ixx|m|mm|cl|clcpp|hip)$/;
 export const HEADER = /\.(h|hh|hpp|hxx)$/;
@@ -177,7 +171,7 @@ export function copyName(rel: string): string {
     return rel.endsWith(".in") ? rel.slice(0, -".in".length) : rel;
 }
 
-interface Entry {
+export interface Entry {
     directory: string;
     file: string;
     arguments: string[];

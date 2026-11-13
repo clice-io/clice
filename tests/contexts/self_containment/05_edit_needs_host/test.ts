@@ -35,8 +35,22 @@ test("the save switches without the includer's index", async (t) => {
     expect(await s.errors("main.cpp")).toEqual([]);
     expect(await s.errors("h.h")).toEqual([]);
     s.edit("h.h", { replace: "return 1;", with: "return Host{2}.v;" });
-    expect(await s.errors("h.h")).toHaveLength(1);
+    await t.show("edited", s.errors("h.h"));
     s.save("h.h");
     expect(await s.errors("h.h")).toEqual([]);
+    expect((await s.stats()).synthesizedContexts).toBe(1);
+});
+
+// In C a struct a prototype names first is visible in the prototype alone,
+// a warning that counts as an error: the save compiles the header in the
+// includer's context, which declares the struct.
+test("a prototype names the includer's struct", async (t) => {
+    const s = await t.start();
+    expect(await s.errors("main.c")).toEqual([]);
+    expect(await s.errors("c.h")).toEqual([]);
+    s.edit("c.h", { replace: "int w, int h", with: "const struct shape *s" });
+    await t.show("edited", s.diagnostics("c.h"));
+    s.save("c.h");
+    await t.show("saved", s.diagnostics("c.h"));
     expect((await s.stats()).synthesizedContexts).toBe(1);
 });

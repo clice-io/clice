@@ -1,0 +1,13 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "}⟨// answer⟩" },
+    { line = "}⟨// constant⟩" },
+    { line = "}⟨// operator==⟩" },
+    { line = "}⟨// ~Test⟩" },
+    { line = "}⟨// method1⟩" },
+    { line = "}⟨// method3⟩" },
+    { line = "}⟨// operator+⟩" },
+    { line = "}⟨// operator bool⟩" },
+    { line = "}⟨// Test::method2⟩" },
+    { line = "}⟨// Test::method4⟩" },
+]

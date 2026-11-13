@@ -17,3 +17,6 @@ compiles = true
 
 [answers.continued]
 code_actions = []
+
+[answers.commented]
+code_actions = []

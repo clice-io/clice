@@ -33,4 +33,6 @@ test(async (t) => {
     commit(t.root);
     await t.cli("analyze modules impact");
     await t.cli("analyze modules impact --churn-since=");
+    await t.cli("analyze modules file core/str.h");
+    await t.cli("analyze modules file core/str.h --churn-since=");
 });

@@ -4,6 +4,18 @@ error = "cannot rename `compute`: `1abc` is not an identifier"
 [answers.class.rename]
 error = "cannot rename `compute`: `class` is a keyword"
 
+[answers._Bool.rename]
+error = "cannot rename `compute`: `_Bool` is a keyword"
+
+[answers.char8_t.rename]
+error = "cannot rename `compute`: `char8_t` is a keyword"
+
+[answers.co_await.rename]
+error = "cannot rename `compute`: `co_await` is a keyword"
+
+[answers.requires.rename]
+error = "cannot rename `compute`: `requires` is a keyword"
+
 [answers.Point.rename]
 error = "cannot rename `compute`: `Point` is already declared in the same scope (${WS}/main.cpp:3)"
 
@@ -13,12 +25,12 @@ error = "cannot rename `compute`: `TWICE` is a macro (${WS}/main.cpp:1): it woul
 [answers.other.rename]
 notice = '''
 Renaming `compute`:
-  `other` already names a function in the same scope (${WS}/main.cpp:6): the renamed function overloads it, which fails to build in C or when their parameters are the same
+  `other` already names a function in the same scope (${WS}/main.cpp:10): the renamed function overloads it, which fails to build in C or when their parameters are the same
 '''
 
 [answers.other.rename.edits]
 "main.cpp" = '''
- struct Point { int x; };
+ struct Sibling : Base { int apart; };
 
 -int compute(int v) { return TWICE(v); }
 +int other(int v) { return TWICE(v); }
@@ -36,7 +48,7 @@ Renaming `compute`:
 
 [answers._Compute.rename.edits]
 "main.cpp" = '''
- struct Point { int x; };
+ struct Sibling : Base { int apart; };
 
 -int compute(int v) { return TWICE(v); }
 +int _Compute(int v) { return TWICE(v); }
@@ -44,4 +56,62 @@ Renaming `compute`:
 
 -int main() { return compute(1) + other(2.0); }
 +int main() { return _Compute(1) + other(2.0); }
+'''
+
+[answers._lower.rename]
+notice = '''
+Renaming `compute`:
+  `_lower` is reserved for the implementation
+'''
+
+[answers._lower.rename.edits]
+"main.cpp" = '''
+ struct Sibling : Base { int apart; };
+
+-int compute(int v) { return TWICE(v); }
++int _lower(int v) { return TWICE(v); }
+ double other(double v) { return v; }
+
+-int main() { return compute(1) + other(2.0); }
++int main() { return _lower(1) + other(2.0); }
+'''
+
+[answers.two__parts.rename]
+notice = '''
+Renaming `compute`:
+  `two__parts` is reserved for the implementation
+'''
+
+[answers.two__parts.rename.edits]
+"main.cpp" = '''
+ struct Sibling : Base { int apart; };
+
+-int compute(int v) { return TWICE(v); }
++int two__parts(int v) { return TWICE(v); }
+ double other(double v) { return v; }
+
+-int main() { return compute(1) + other(2.0); }
++int main() { return two__parts(1) + other(2.0); }
+'''
+
+[answers."café".rename.edits]
+"main.cpp" = '''
+ struct Sibling : Base { int apart; };
+
+-int compute(int v) { return TWICE(v); }
++int café(int v) { return TWICE(v); }
+ double other(double v) { return v; }
+
+-int main() { return compute(1) + other(2.0); }
++int main() { return café(1) + other(2.0); }
+'''
+
+[answers.sibling_member.rename.edits]
+"main.cpp" = '''
+ struct Base { int own; };
+ struct Derived : Base { int extra; };
+-struct Sibling : Base { int apart; };
++struct Sibling : Base { int extra; };
+
+ int compute(int v) { return TWICE(v); }
 '''

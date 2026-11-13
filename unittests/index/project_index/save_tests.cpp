@@ -399,7 +399,7 @@ ZEST_CASE(RebuildThroughUnnamedScopes) {
     ZEXPECT(hits("::kSize") == 0u);
 }
 
-ZEST_CASE(RebuildKeepsMidBuildChanges) {
+ZEST_CASE(RebuildKeepsConcurrentChanges) {
     TempDir tmp;
     tmp.touch("a.cpp", "int first_value() { return 1; }\n");
     tmp.touch("b.cpp", "int second_value() { return 2; }\n");
@@ -795,25 +795,10 @@ ZEST_CASE(FailedWriteNotCounted) {
     tmp.touch("main.cpp", "int uncommitted() { return 1; }\n");
     auto src = tmp.path("main.cpp");
 
-    // A storage whose commits never succeed (disk full, permissions): the
-    // gauge must report what was durably committed, not what the save
+    // The gauge reports what was durably committed, not what the save
     // attempted.
-    struct FailingStorage final : ForwardingDatabase {
-        using ForwardingDatabase::ForwardingDatabase;
-
-        bool fail = true;
-
-        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
-                                               llvm::ArrayRef<index::BlobKey> removes) override {
-            if(fail) {
-                return std::unexpected("refused");
-            }
-            return real->write(puts, removes);
-        }
-    };
-
     open_store(tmp, project);
-    auto failing = std::make_unique<FailingStorage>(std::move(project.database));
+    auto failing = std::make_unique<FailingDatabase>(std::move(project.database), false);
     auto* probe = failing.get();
     project.database = std::move(failing);
 
@@ -822,15 +807,7 @@ ZEST_CASE(FailedWriteNotCounted) {
     merge(indexed.data);
     ZASSERT(project.index.pending_shard_writes() == 1u);
 
-    auto save = [&] {
-        auto body = [&]() -> async::task<> {
-            co_await async_save();
-        };
-        auto task = body();
-        loop.schedule(task);
-        loop.run();
-    };
-    save();
+    fx.save();
     ZASSERT(project.index.last_save_shards() == 0u);
     // The failed batch is re-dirtied rather than discarded, so a later
     // save has it to retry and the cache converges once the storage
@@ -838,7 +815,7 @@ ZEST_CASE(FailedWriteNotCounted) {
     ZASSERT(project.index.pending_shard_writes() == 1u);
 
     probe->fail = false;
-    save();
+    fx.save();
     ZASSERT(project.index.last_save_shards() == 1u);
     ZASSERT(project.index.pending_shard_writes() == 0u);
 
@@ -870,38 +847,12 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
         project.cdb.add_command(tmp.root, tmp.path(name), llvm::StringRef(command));
     }
 
-    // Corruption showing up at write time (a damaged page only the write's
-    // tree descent reaches): the save condemns the environment and the
-    // project starts over on a fresh one, every unit indexed again.
-    struct CorruptOnWrite final : ForwardingDatabase {
-        using ForwardingDatabase::ForwardingDatabase;
-
-        bool* condemned;
-        bool fail = false;
-        bool poisoned = false;
-
-        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
-                                               llvm::ArrayRef<index::BlobKey> removes) override {
-            if(fail) {
-                poisoned = true;
-                return std::unexpected("damaged");
-            }
-            return real->write(puts, removes);
-        }
-
-        bool corrupted() const override {
-            return poisoned;
-        }
-
-        void condemn() override {
-            *condemned = true;
-            real->condemn();
-        }
-    };
-
-    bool condemned = false;
-    auto spy = std::make_unique<CorruptOnWrite>(std::move(project.database));
-    spy->condemned = &condemned;
+    // Corruption showing up at write time: the save condemns the
+    // environment and the project starts over on a fresh one, every unit
+    // indexed again.
+    auto spy = std::make_unique<FailingDatabase>(std::move(project.database), true);
+    spy->fail = false;
+    auto condemned = spy->condemned;
     auto* probe = spy.get();
     project.database = std::move(spy);
 
@@ -916,7 +867,7 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
     probe->fail = true;
     fx.save();
 
-    ZASSERT(condemned);
+    ZASSERT(*condemned);
     ZASSERT(project.database != nullptr);
     auto clean_id = project.file_table.intern(Spelling::absolute(indexed_clean.tu_path));
     auto dirty_id = project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path));

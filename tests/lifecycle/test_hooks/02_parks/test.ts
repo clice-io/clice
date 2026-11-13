@@ -34,7 +34,7 @@ for (const at of ["reply", "worker"] as const) {
         // The editor's view of the pushes: s.pushes would wait for the
         // parked work.
         expect(s.client.publishCount(s.uri("main.cpp"))).toBe(0);
-        await t.show("pending", (await s.client.sync({ deadlineMs: 1_000 })).pending);
+        await t.show("pending", (await s.client.sync({ deadlineMs: 0 })).pending);
         await park.release();
         await t.show("diagnostics", pulled);
         await t.show("compiles", (await s.counts()).files["main.cpp"]?.compile ?? 0);

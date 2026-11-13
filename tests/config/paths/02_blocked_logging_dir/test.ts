@@ -9,7 +9,7 @@ test("index", { errors: ["Cannot create the log directory"] }, async (t) => {
 });
 
 // An editor's server the same: its workers relay nothing to its stderr.
-test("server", async (t) => {
+test("server", { errors: ["Cannot create the log directory"] }, async (t) => {
     const s = await t.start();
     const client = s.client;
     await t.show("errors", s.errors("main.cpp"));

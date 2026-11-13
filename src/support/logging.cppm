@@ -97,6 +97,7 @@ enum class Level : std::uint8_t {
     Off,
 };
 
+/// The levels stderr_logger sets.
 struct Options {
     /// Lines below it are written nowhere.
     Level level = Level::Info;
@@ -225,8 +226,10 @@ struct FileOutput {
 void write(FileOutput& output, std::string_view text);
 
 /// Log the process's lines to stderr, under `name`, which its log file
-/// takes (file_logger); lines no log file takes yet are kept for it. Called
-/// from main, before any other thread starts.
+/// takes (file_logger); lines no log file takes yet are kept for it. The
+/// levels are CLICE_LOG_LEVEL's, an editor's server's info and every other
+/// process's warnings without it. Called from main, before any other thread
+/// starts.
 void stderr_logger(std::string_view name, StderrReader reader = StderrReader::Terminal);
 
 /// The lines the calling thread logs write paths under these project roots
@@ -348,6 +351,19 @@ void reset_anomaly_for_testing();
 
 /// Whether perf lines (LOG_PERF) are written: CLICE_PERF set.
 bool perf_lines();
+
+/// Whether the server traces its editor's LSP messages: CLICE_LSP_TRACE
+/// set.
+bool lsp_trace_enabled();
+
+/// This process traces LSP messages (trace_lsp): the session's `trace.log`
+/// opens with its log.
+void begin_lsp_trace();
+
+/// An LSP message the server received (`incoming`) or sent, with the time,
+/// into the session's `trace.log`, which grows and moves aside as the log
+/// does.
+void trace_lsp(bool incoming, std::string_view message);
 
 }  // namespace clice::logging
 
