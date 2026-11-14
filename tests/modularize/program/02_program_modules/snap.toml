@@ -266,7 +266,7 @@ exit = 0
 '''
 "app/tool/hook.cpp" = '''
 -﻿#include "core/text.h"
-+module app.core;
++﻿module app.core;
 +
  int core::hook() { return 7; }
 '''

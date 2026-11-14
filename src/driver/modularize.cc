@@ -281,7 +281,7 @@ int run(Modularize& opts) {
             if(auto made = vfs::create_directories(path::parent(path)); !made) {
                 return fail(std::format("{}", made.error()));
             }
-            if(auto written = vfs::write_file(path, file.content); !written) {
+            if(auto written = vfs::write_text(path, file.content, file.bom); !written) {
                 return fail(std::format("{}", written.error()));
             }
         }

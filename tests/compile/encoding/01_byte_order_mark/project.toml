@@ -3,3 +3,5 @@
 "c.cpp" = []
 # #embed comes with C++26.
 "embed.cpp" = ["-std=c++26"]
+"checked.cpp" = ["-std=c++26"]
+"entered.cpp" = ["-std=c++26"]

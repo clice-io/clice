@@ -1,0 +1,3 @@
+struct Count {
+    int value;
+};

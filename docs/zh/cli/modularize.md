@@ -169,7 +169,7 @@ tests/modularize/libraries/01_one_library
 
 ### 改写程序模块
 
-程序中标记为待改写的模块会变成具名模块，其文件会就地改写。
+程序中标记为待改写的模块会变成具名模块，其文件会就地改写，各文件的字节顺序标记（byte order mark）保持原样。
 
 <!-- BEGIN GENERATED ITEMS: modularize/program -->
 
