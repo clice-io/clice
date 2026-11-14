@@ -11,9 +11,10 @@ test(async (t) => {
     const s = await t.start({ folders: ["ws"], capabilities: RELATED });
     await t.show("main.cpp", s.diagnostics("ws/main.cpp"), { parts: ["related"] });
     // Rendering resolves links: the spelling is compared raw.
-    const notes = [...s.client.diagnostics]
-        .filter(([uri]) => s.spelling(uri) === "ws/main.cpp")
-        .flatMap(([, diagnostics]) => diagnostics)
+    const pushed = s.client.publishedDiagnostics.filter(
+        (params) => s.spelling(params.uri) === "ws/main.cpp",
+    );
+    const notes = (pushed.at(-1)?.diagnostics ?? [])
         .flatMap((diagnostic) => diagnostic.relatedInformation ?? [])
         .map((info) => s.spelling(info.location.uri));
     expect(notes).toEqual(["ws/inc/a.h"]);
