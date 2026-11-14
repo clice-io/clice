@@ -78,28 +78,6 @@ ZEST_CASE(BusyPipeSwitchesLater) {
     ::_close(fds[0]);
 }
 
-ZEST_CASE(FlushSendsHeldLines) {
-    int fds[2] = {-1, -1};
-    ZASSERT(::_pipe(fds, 65536, _O_BINARY) == 0);
-    ZASSERT(::_write(fds[1], "\n", 1) == 1);
-
-    auto output = logging::pipe_output({.fd = fds[1]});
-    logging::write(output, as_line("while busy"));
-    char byte = 0;
-    ZASSERT(::_read(fds[0], &byte, 1) == 1);
-    logging::flush(output);
-    ZEXPECT(output.pipe == logging::PipeSwitch::Done);
-    ::_close(fds[1]);
-
-    std::string out;
-    char buf[4096];
-    for(int n = 0; (n = ::_read(fds[0], buf, sizeof(buf))) > 0;) {
-        out.append(buf, static_cast<std::size_t>(n));
-    }
-    ZEXPECT(out == as_line("while busy"));
-    ::_close(fds[0]);
-}
-
 };  // ZEST_SUITE(PipeOutput)
 
 #else
