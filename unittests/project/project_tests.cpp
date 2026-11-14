@@ -142,8 +142,10 @@ ZEST_CASE(SecondWriterWaits) {
     project.writer_lock.reset();
     auto lock = index::WriterLock::acquire(second.settings.cache_dir);
     ZASSERT(lock.has_value());
-    second.open_index(std::move(*lock));
+    Project::Opened opened;
+    second.open_index(std::move(*lock), opened);
     ZEXPECT(!second.index_waits);
+    ZEXPECT(opened.unwritable.empty());
     ZASSERT(second.database != nullptr);
     ZEXPECT(!second.database->read_only());
     ZEXPECT(second.writer_lock.has_value());
