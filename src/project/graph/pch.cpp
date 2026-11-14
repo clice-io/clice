@@ -452,7 +452,7 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     auto own_path = preamble_uses_macros(text, bound) || preamble_declares(text, bound)
                         ? llvm::StringRef(path)
                         : llvm::StringRef();
-    bool skip_bodies = settings.project.skip_header_bodies;
+    bool skip_bodies = skips_header_bodies(imports);
     bool modular = imports.modular();
     auto pch_key = cache_key({clang::getClangFullVersion(),
                               pch_build_rule(skip_bodies, modular),

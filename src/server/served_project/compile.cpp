@@ -609,7 +609,6 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::command(bool f
     params.indexing.known_instantiations = known_instantiations;
     params.indexing.standard_library_instantiations =
         project.settings.project.standard_library_instantiations;
-    params.skip_bodies = project.settings.project.skip_header_bodies;
     params.path = file_path;
     params.version = session->version;
     params.text = session->text().str();
@@ -713,6 +712,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::pch() {
     }
     params.pch = built.pch;
     params.pcms = project.imported_pcms(imports.imports.resolved());
+    params.skip_bodies = project.skips_header_bodies(imports.imports);
 
     if(!ticket.fresh()) {
         LOG_DEBUG("The compile of {} is outdated before it is sent; dropped", file_path);

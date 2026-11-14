@@ -895,6 +895,14 @@ struct Project {
     /// same one.
     PCHRequest declared_pch_request(const CommandRef& unit);
 
+    /// Whether a compile with `imports` skips the bodies of the functions
+    /// its headers define (`skip_header_bodies`): not one meeting a module,
+    /// whose global module fragments keep the bodies of the headers they
+    /// include, which clang then finds defined differently.
+    bool skips_header_bodies(const Imports& imports) const {
+        return settings.project.skip_header_bodies && !imports.modular();
+    }
+
     /// The PCH of the preamble of `text`, the buffer of `file` compiled under
     /// `arguments` from `directory` as `resolution` resolved them, with
     /// `imports` its imports: keyed by the preamble text and the
