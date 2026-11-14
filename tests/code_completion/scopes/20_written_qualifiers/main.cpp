@@ -16,4 +16,5 @@ void use() {
     NS::vec§(macro_qualifier);
     outer::Gad§(undeclared_namespace);
     Local::ves§(class_scope);
+    store::§(nothing_typed);
 }

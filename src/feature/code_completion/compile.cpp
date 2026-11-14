@@ -2499,8 +2499,12 @@ public:
         auto qualifying = unqualified
                               ? std::nullopt
                               : qualifying_namespace(sema, context, content, prefix.typed.begin);
-        if(options.all_scopes && !prefix.spelling.empty() && !resolving &&
-           (unqualified || qualifying)) {
+        bool offers_names = options.all_scopes && !resolving && (unqualified || qualifying);
+        // The index is asked once a letter is typed (`std::` alone would
+        // match all of it): until then the client must ask again.
+        if(offers_names && prefix.spelling.empty()) {
+            more_names = true;
+        } else if(offers_names) {
             more_names = more_names || names.more_candidates;
             auto& ast = sema.getASTContext();
             // The namespaces around the completion point, outermost first: a

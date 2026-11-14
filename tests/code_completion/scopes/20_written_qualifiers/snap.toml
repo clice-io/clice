@@ -58,3 +58,9 @@ items = [
 items = [
     { label = "vessel_count", kind = "Variable", detail = "int", insert = "vessel_count" },
 ]
+
+[answers.nothing_typed.completion]
+items = [
+    { label = "ostream", kind = "Class", insert = "ostream" },
+]
+incomplete = true
