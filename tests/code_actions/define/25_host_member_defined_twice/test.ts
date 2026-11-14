@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // after the host's own definitions of Db's members; mock_db.cpp is open, so
 // its index answers first.
 test("host member defined twice", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: true } } });
+    const s = await t.start();
     await s.diagnostics("mock_db.cpp");
     await s.diagnostics("db.h");
     await s.indexed();
