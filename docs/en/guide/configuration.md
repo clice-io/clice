@@ -157,7 +157,7 @@ Number of foreground workers: they keep the open files compiled and answer the r
 | ------------ | -------------------- | -------- |
 | `background` | `"auto"` or `uint32` | `"auto"` |
 
-The most compiles the background index runs at once: "auto", half the machine's physical cores and at least 2, or a number, at least 1. Raising it speeds a first index up on a big machine.
+The most compiles the background index runs at once, never more than `max`: "auto", half the machine's physical cores and at least 2, or a number, at least 1. Raising it speeds a first index up on a big machine.
 
 </div>
 
