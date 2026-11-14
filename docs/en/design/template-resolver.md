@@ -63,7 +63,7 @@ The substitute policy breaks such cycles -- it only performs argument substituti
 
 Template parameters may exist at different depth levels in nested templates. The instantiation stack (InstantiationStack) maintains a stack of parameter mappings, with each frame recording one level of template parameter bindings.
 
-When a `TemplateTypeParmType` (a template parameter identified by depth and index) is encountered, the resolver searches linearly from the top of the stack (innermost level) to the bottom (outermost level), matching parameter bindings at the corresponding depth. If a match is found, the parameter is substituted with the bound type; if not found, the parameter's default value is tried. When the stack is empty (a standalone dependent type), the resolver walks up through enclosing template declarations and pushes their injected template parameters as context.
+When a `TemplateTypeParmType` (a template parameter identified by depth and index) is encountered, the resolver searches from the top of the stack (innermost level) to the bottom (outermost level) for the frame whose template declares the parameter — a canonical parameter, which names no declaration, by its depth — so two templates whose parameters share a depth never capture each other's. If a match is found, the parameter is substituted with the bound type; if not found, the parameter's default value is tried. When the stack is empty (a standalone dependent type), the resolver walks up through enclosing template declarations and pushes their injected template parameters as context.
 
 This allows the resolver to handle multi-level nested templates:
 
@@ -87,13 +87,13 @@ Using `typename A<T>::type` as an example:
 2. **Cycle detection**: If this node is currently being resolved, abort to prevent infinite recursion
 3. **Qualifier transform**: Transform the `A<T>` part -- substitute parameters, match partial specializations
 4. **Member lookup**: Look up `type` in the transformed type. Try each partial specialization and its bases, then the primary template and its bases
-5. **Argument deduction**: Use Clang's template argument deduction mechanism to establish a mapping from formal to actual parameters
-6. **Substitution**: Expand typedefs in the found member type via SubstituteOnly, substituting with the caller's parameters
+5. **Argument deduction**: Unify the actual arguments with the pattern of the template the member was found in — the resolver's own unification, not Sema's deduction — to map its parameters to the caller's arguments
+6. **Substitution**: Expand typedefs in the found member type under the substitute policy, substituting with the caller's parameters
 7. **Recursion**: If the result still contains dependent names, resolve recursively
 
-The entire process has a recursion depth limit (16 levels) to prevent infinite recursion in extreme cases.
+A query nests at most 32 resolving rewrites and takes at most 2048 rewrite steps, which bounds extreme cases.
 
-The resolver also maintains two layers of cycle detection: one prevents re-entrant resolution of the same DependentNameType node, and another prevents recursive lookup on the same ClassTemplateDecl (handling CRTP and other self-referential patterns).
+The resolver also keeps three kinds of cycle detection: one prevents re-entrant resolution of the same dependent name or specialization, another a recursive lookup of the same name in the same class template (CRTP and other self-referential patterns), and a third the deduction of an `auto` variable whose initializer needs its own type.
 
 ### Partial Specialization Matching
 
@@ -113,18 +113,11 @@ When resolving `allocator_traits<allocator<int>>::value_type`, clangd fails beca
 
 ### Standard Library Special Handling
 
-The standard library's allocator rebinding chain is a particularly deep typedef chain:
-
-```text
-vector<T> -> __alloc_traits<allocator<T>> -> allocator_traits<allocator<T>>
-  -> allocator_traits<Alloc>::rebind_alloc<U>
-```
-
-This chain may exceed the depth limit. The resolver short-circuits the `allocator_traits::rebind_alloc` pattern: upon detecting it, the resolver directly tries `Alloc::rebind<T>::other` (the standard allocator protocol), or falls back to substituting the first template parameter.
+The `type` of the standard library's type traits — `conditional`, `enable_if`, `type_identity`, the `remove_*` and `add_*` traits and `decay` — and the `value` of `conjunction`, `disjunction` and `negation` are answered by the rule the standard gives them, without reading their definitions: each library writes them through partial specializations of its own, which a deduction would walk on every query, and the answer is the same in all of them.
 
 ### Type Resugaring
 
-Internally, Clang represents template parameters as canonical `TemplateTypeParmType` values (depth + index). Users should see parameter names (e.g., `T`), not `parameter 0 of depth 0`. The ResugarOnly transform maps canonical parameter types back to their original declarations, producing user-friendly type information.
+Internally, Clang represents template parameters as canonical `TemplateTypeParmType` values (depth + index). Users should see parameter names (e.g., `T`), not `parameter 0 of depth 0`. Resugaring maps canonical parameter types back to their original declarations, producing user-friendly type information.
 
 ### Graceful Degradation
 
@@ -136,7 +129,7 @@ If any step in the resolution process fails (lookup failure, cycle detection tri
 
 **Why a two-phase design?** In a single-phase design, typedef expansion would trigger new heuristic lookups, and lookup results might in turn require typedef expansion -- forming a cycle. The two-phase design breaks this cycle through separation of concerns: heuristic lookups are performed only in Phase 1, and typedef expansion is delegated to Phase 2, which does not perform lookups.
 
-**Why special-case standard library patterns?** The standard library's allocator rebinding is the most common deep typedef chain encountered in real-world code. Generic recursive resolution would exceed the depth limit here. While not elegant, the special-case handling covers the highest-frequency user scenarios. Future plans include replacing these special cases with a general mechanism.
+**Why answer standard library traits by rule?** The traits are the most common dependent types in real code, and each library writes them differently; deducing through their partial specializations costs every query, while the standard fixes the answer.
 
 **Why graceful degradation instead of error reporting?** Template resolution is inherently heuristic -- it is impossible to cover every edge case in C++ templates. Graceful degradation ensures that resolution failure is never worse than "not resolving at all," while providing a significant experience improvement in the cases where resolution succeeds.
 
@@ -146,7 +139,7 @@ Pseudo-instantiation works from the written side of a template: it reasons about
 
 clice deliberately treats a template like a duck-typed interface and each of its instantiations like an implementation of that interface, analogous to how virtual functions relate to their overrides. This is a long-term direction, and it already shapes today's behavior:
 
-- Semantic classification does not skip instantiated code. An instantiation reuses the pattern's source locations, so the resolution of a dependent name inside an instantiated body lands on the very token the user wrote in the template. With one instantiation the dependent name is classified as its actual resolution; when instantiations agree on the kind, only the modifiers they all share survive; when they disagree (one resolves a name to a function, another to a variable), the token is classified as a conflict -- disagreement between implementations is information, not noise. Today the unit records only the instantiations an explicit instantiation definition delivers; recording implicit instantiations at their points of use is a planned extension of the same direction.
+- Semantic classification does not skip instantiated code. An instantiation reuses the pattern's source locations, so the resolution of a dependent name inside an instantiated body lands on the very token the user wrote in the template. With one instantiation the dependent name is classified as its actual resolution; when instantiations agree on the kind, only the modifiers they all share survive; when they disagree (one resolves a name to a function, another to a variable), the token is classified as a conflict -- disagreement between implementations is information, not noise.
 - A function template the translation unit instantiates exactly once -- a generic lambda called with one type among them -- has its template parameters stand for that instantiation's arguments in hover and inlay hints inside its body. Several instantiations leave the parameters as they are. Resolution reads a class template's pattern with its parameters unbound, with one exception: an `auto` variable inside a class template the unit instantiates once deduces as in that instantiation, so its inlay hint and hover show the instantiation's type.
 - Navigation reads every instantiation instead. Beside a template's own entries, the symbol index keeps what each instantiation of each indexed unit resolves in the template's text (see the symbol index design), so go-to-definition, references, call hierarchy and go-to-implementation on a dependent name list what it resolves to in each instantiation, the same way go-to-implementation on a virtual function lists its overrides -- in open and closed files alike. A template's own entries leave its parameters unbound: a header's index, which every unit including the header shares, would otherwise differ with what each unit instantiates.
 - Code completion parses only up to the cursor, before the code that calls a template, so a member access inside a function template that resolves no other way compiles the whole buffer once more and takes the arguments of the template's instantiations from there: of several, at most eight, it offers the names every one of them has, and in a branch of an `if constexpr` only the instantiations taking it count.

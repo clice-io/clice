@@ -1652,7 +1652,7 @@ tests/document_highlights/modules/01_module_units
 
 ## Workspace Symbol
 
-Search the whole project for a symbol by name (`workspace/symbol`), the names of internal linkage at namespace scope (`static`, an anonymous namespace) included. Each result has the kind the outline gives it, and a function its parameters.
+Search every project the editor has open for a symbol by name (`workspace/symbol`), the names of internal linkage at namespace scope (`static`, an anonymous namespace) included. Each result has the kind the outline gives it, and a function its parameters.
 
 ### Queries
 

@@ -135,9 +135,13 @@ The language server's core runtime, assembling all the layers above into a runni
 
 See [Multi-process Architecture](multi-process.md).
 
+### `src/analysis/` — Analyses Behind `analyze` and `modularize`
+
+The module graph of a program read from the index, and the rewriting and wrapping that turn it into C++20 modules.
+
 ### `src/driver/` — Subcommands
 
-Entry points for the `clice` binary: `serve` (the LSP server), `worker`, `index` (batch indexing), `lint` (batch clang-tidy), `inspect`, `format`, `query`, `refactor`, and `analyze`. `index` and `lint` run a project of their own with a worker pool of their own, headless.
+Entry points for the `clice` binary: `serve` (the LSP server), `worker`, `index` (batch indexing), `lint` (batch clang-tidy), `inspect`, `format`, `command`, `scan`, `query`, `refactor`, `analyze` and `modularize`. `index` and `lint` run a project of their own with a worker pool of their own, headless.
 
 ## Inter-module Relationships
 
@@ -158,4 +162,4 @@ The server layer assembles all of the above via sessions, routing,
 invalidation, and transports into a runnable service.
 ```
 
-`support`, `vfs`, `config`, and `syntax` are cross-cutting layers shared by multiple modules.
+`support`, `vfs`, `settings`, and `syntax` are cross-cutting layers shared by multiple modules.

@@ -44,20 +44,20 @@ A unity build lists only the generated files including the sources, so clangd fi
 
 ## `.clangd` Settings in `clice.toml`
 
-| `.clangd` or clangd's option                  | `clice.toml`                                                   |
-| --------------------------------------------- | -------------------------------------------------------------- |
-| `If: PathMatch`                               | a rule's `patterns`                                            |
-| `CompileFlags: Add`                           | a rule's `append`                                              |
-| `CompileFlags: Remove`                        | a rule's `remove`                                              |
-| `CompileFlags: CompilationDatabase`           | a rule's `compile_commands`                                    |
-| `Index: Background: Skip`                     | a rule's `background_index = false`                            |
-| `--background-index=false`                    | `background_index = false` on a last rule without `patterns`   |
-| `Diagnostics: Suppress`                       | `[diagnostics] suppress`                                       |
-| `Diagnostics: ClangTidy`, `--clang-tidy`      | the project's `.clang-tidy`; `[diagnostics] clang_tidy`        |
-| `InlayHints`                                  | `[inlay_hints]`                                                |
-| `Hover: ShowAKA`                              | `[hover] show_aka`                                             |
-| `Completion: AllScopes`                       | `[code_completion] all_scopes`                                 |
-| `--function-arg-placeholders=0`               | `[code_completion] arguments = "delimiters"`                   |
-| `--limit-results`                             | `[code_completion] limit`                                      |
-| `--limit-references`                          | `[references] limit`                                           |
-| `-j`                                          | `[workers] background`                                         |
+| `.clangd` or clangd's option             | `clice.toml`                                                 |
+| ---------------------------------------- | ------------------------------------------------------------ |
+| `If: PathMatch`                          | a rule's `patterns`                                          |
+| `CompileFlags: Add`                      | a rule's `append`                                            |
+| `CompileFlags: Remove`                   | a rule's `remove`                                            |
+| `CompileFlags: CompilationDatabase`      | a rule's `compile_commands`                                  |
+| `Index: Background: Skip`                | a rule's `background_index = false`                          |
+| `--background-index=false`               | `background_index = false` on a last rule without `patterns` |
+| `Diagnostics: Suppress`                  | `[diagnostics] suppress`                                     |
+| `Diagnostics: ClangTidy`, `--clang-tidy` | the project's `.clang-tidy`; `[diagnostics] clang_tidy`      |
+| `InlayHints`                             | `[inlay_hints]`                                              |
+| `Hover: ShowAKA`                         | `[hover] show_aka`                                           |
+| `Completion: AllScopes`                  | `[code_completion] all_scopes`                               |
+| `--function-arg-placeholders=0`          | `[code_completion] arguments = "delimiters"`                 |
+| `--limit-results`                        | `[code_completion] limit`                                    |
+| `--limit-references`                     | `[references] limit`                                         |
+| `-j`                                     | `[workers] background`                                       |

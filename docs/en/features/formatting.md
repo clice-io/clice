@@ -76,4 +76,4 @@ A file with no `.clang-format` above it takes the LLVM style.
 
 ## Project-wide Format
 
-Beyond the LSP `textDocument/formatting` request (which formats a single open file), clice provides project-wide formatting via CLI: [`clice format`](../cli/format.md) formats every file of the build, several at a time, and `--check` reports what it would change.
+Beyond the LSP `textDocument/formatting` request (which formats a single open file), clice provides project-wide formatting via CLI: [`clice format`](../cli/format.md) formats the build's files, several at a time, and `--check` reports what it would change.

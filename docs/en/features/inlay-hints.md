@@ -611,7 +611,7 @@ tests/inlay_hints/other_kinds/02_ctad_arguments
 
 ## Configuration
 
-The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializationOptions`) holds a switch for every kind of hint, the height from which a block's end gets a hint, and the length limits under `[inlay_hints.max_length]`. See the [configuration guide](../guide/configuration.md#inlay-hints) for details. Configuration changes take effect after a server restart — a recompile is never involved.
+The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializationOptions`) holds a switch for every kind of hint, the height from which a block's end gets a hint, and the length limits under `[inlay_hints.max_length]`. See the [configuration guide](../guide/configuration.md#inlay-hints) for details. Configuration changes take effect after a server restart.
 
 ## Interactive Behavior
 

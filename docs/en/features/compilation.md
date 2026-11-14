@@ -151,7 +151,7 @@ tests/compile/staleness/01_header_edits
 
 ## Cache
 
-What clice compiles for headers is kept on disk, so a restart starts warm.
+What clice compiles for headers and modules is kept on disk, with the index, so a restart starts warm.
 
 <!-- BEGIN GENERATED ITEMS: compile/cache -->
 

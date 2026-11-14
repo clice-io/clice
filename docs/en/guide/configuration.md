@@ -6,9 +6,9 @@ outline: 2
 
 clice reads configuration from `clice.toml` in the project root, or from `.clice/config.toml` if the former does not exist. Configuration can also be passed via LSP `initializationOptions` (JSON format); values from `initializationOptions` override the config file, and defaults fill in whatever remains unset after the merge.
 
-Configuration is read once, when the server starts; there is no hot reload. When a project's configuration file is saved, created or deleted, the server asks the editor to restart it: VS Code (unless it connects to a server over a socket) and Neovim 0.12 or later restart it on their own; other editors show a diagnostic on the file saying the change applies once clice restarts.
+Configuration is read once, when the server starts; there is no hot reload. When a project's configuration file is saved, created or deleted, the server asks the editor to restart it: VS Code (unless it connects to a server over a socket) and Neovim 0.12 or later restart it on their own; other editors show a diagnostic on the file, or a message for a deleted one, saying the change applies once clice restarts.
 
-A configuration clice cannot honor is an error: a file that does not parse, a value of the wrong type, a value outside an option's choices, a worker count of zero, a pattern that does not compile or holds a backslash, a variable that is not set, a `default_configuration` no rule's tag names, a key of the layout before clice 1.0 (the error names where it went). The server shows each problem as an error diagnostic on the file and serves nothing of that project until the fixed file is saved; a command-line run names each problem with its place and exits with code 2. A key clice does not know is a warning on the file, and the rest applies. Settings from `initializationOptions` with an error are left out whole, with the error naming them.
+A configuration clice cannot honor is an error: a file that does not parse, a value of the wrong type, a value outside an option's choices, a worker count or a limit of zero, a pattern that does not compile or holds a backslash, a variable that is not set, a `default_configuration` no rule's tag names, a key of the layout before clice 1.0 (the error names where it went). The server shows each problem as an error diagnostic on the file and serves nothing of that project until the fixed file is saved; a command-line run names each problem with its place and exits with code 2. A key clice does not know is a warning on the file, and the rest applies. An error in the settings from `initializationOptions` is shown as a message, and nothing of the project is served until they are fixed and clice restarts.
 
 A JSON schema of the whole configuration is published at [`clice-config.schema.json`](/clice-config.schema.json); editors that validate TOML or JSON against a schema can point at it. The VS Code extension associates it with both files for [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml), which then completes and checks them; elsewhere a first line `#:schema https://docs.clice.io/clice-config.schema.json` points taplo, the TOML language server of Zed and Neovim setups alike, at it.
 
@@ -87,7 +87,7 @@ In a pattern a variable's value matches literally, never as glob syntax; in a `d
 
 Top-level options, written before any section.
 
-clice looks at files on disk in the background to notice changes made outside the editor (a `git checkout`, a regenerated `compile_commands.json`, an agent or a code generator writing files), so the server picks them up without a restart. A workspace file is also looked at before every request that depends on it; headers the toolchain installed are looked at every few minutes, whenever their environment is updated, and at every save. Setting `poll_seconds` to `0` turns the background polling off.
+clice looks at files on disk in the background to notice changes made outside the editor (a `git checkout`, a regenerated `compile_commands.json`, an agent or a code generator writing files), so the server picks them up without a restart. A project file is also looked at before every request that depends on it; headers the toolchain installed are looked at every few minutes, whenever their environment is updated, and at every save. Setting `poll_seconds` to `0` turns the background polling off.
 
 The index lives in the cache directory, so it must be on a local disk: on a network filesystem (NFS, SMB, a Windows drive under WSL) clice keeps the index in memory only and says so; point `cache_dir` at a local directory. On macOS, Time Machine and iCloud back up and sync a cache directory inside the project; a `cache_dir` under `~/Library/Caches` keeps them away.
 
@@ -137,7 +137,7 @@ Longest interval in seconds between two background looks at a project file: the 
 
 ## `[workers]`
 
-clice compiles in worker processes. The foreground workers keep the open files compiled and answer the requests about them; the others compile on demand — the background index, completion, signature help, precompiled headers and modules — and start as work needs them: one waits at all times, the background index starts as many as it can use when its work queues, and those idle for 30 seconds stop. How many open files keep their compiled state follows the machine's memory. A worker the system kills for lack of memory is replaced; a systemd unit running clice needs `OOMPolicy=continue`, as the default stops the whole unit, the server included, when one of its processes is killed.
+clice compiles in worker processes. The foreground workers keep the open files compiled and answer the requests about them; the others take one-off work — the background index, completion, signature help, formatting, precompiled headers and modules — and start as work needs them: one waits at all times, the background index starts as many as it can use when its work queues, and those idle for 30 seconds stop. How many open files keep their compiled state follows the machine's memory. A worker the system kills for lack of memory is replaced; a systemd unit running clice needs `OOMPolicy=continue`, as the default stops the whole unit, the server included, when one of its processes is killed.
 
 <!-- BEGIN GENERATED CONFIG: workers -->
 
@@ -317,7 +317,7 @@ List what a function's body declares: its variables, types and lambdas, under th
 
 ## `[inlay_hints]`
 
-The `[inlay_hints]` section controls which inlay hints the server produces and how long they may grow. Changes take effect after a server restart; no recompile is involved.
+The `[inlay_hints]` section controls which inlay hints the server produces and how long they may grow. Changes take effect after a server restart.
 
 <!-- BEGIN GENERATED CONFIG: inlay_hints -->
 
@@ -677,7 +677,7 @@ Maximum number of locations a references request answers with, or `"unlimited"`.
 
 ## `[[rules]]`
 
-A rule names files by pattern and says where they take their compile commands from, how those commands are edited, and how the files are indexed, served, linted and formatted. Every rule matching a file applies, in declaration order: an earlier rule's databases rank first among the file's candidates, `append` and `remove` accumulate with a later `remove` cancelling an earlier `append`, and every other field — `default_command`, `background_index`, `readonly`, `lint`, … — is decided by the first matching rule that sets it, the default deciding when none does. A rule for some files therefore goes before a rule for all of them: a rule without `patterns` that is not last and sets a field a later rule sets too is a warning, as that later value never applies. A rule carrying a `configuration` tag applies only while that configuration is active; the distinct tags form the configuration menu. `clice command <file>` shows the value of each of these fields for a file, and the rule deciding it.
+A rule names files by pattern and says where they take their compile commands from, how those commands are edited, and how the files are indexed, served, linted and formatted. Every rule matching a file applies, in declaration order: an earlier rule's databases rank first among the file's candidates, `append` and `remove` accumulate with a later `remove` cancelling an earlier `append`, and every other field — `default_command`, `background_index`, `readonly`, `lint`, … — is decided by the first matching rule that sets it, the default deciding when none does. A rule for some files therefore goes before a rule for all of them: a rule without `patterns` that is not last and sets a field a later rule sets too is a warning, as that later value never applies. A rule carrying a `configuration` tag applies only while that configuration is active; the distinct tags form the configuration menu. `clice command <file>` shows, for a file, the value of each field below from `query_toolchain` on, and the rule deciding it.
 
 <!-- BEGIN GENERATED CONFIG: rules -->
 
@@ -928,9 +928,9 @@ tests/project/rules/03_database_order
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Patterns start at `clice.toml`**
+**Patterns start at the root**
 
-A relative pattern matches paths under the directory of the `clice.toml` that declares it
+A relative pattern matches paths under the project root, where `clice.toml` sits
 
 The rule appends `-DFEATURE` to the files under `src/`: `src/main.cpp` compiles, while `other.cpp`, beside `clice.toml`, misses the macro.
 
@@ -958,9 +958,9 @@ tests/project/rules/09_remove_flags
 
 ## Switching Configurations
 
-The `configuration` tags on rules form a menu, and one tag is active per project; untagged rules always apply. The active one is, in priority order, the `--configuration <tag>` argument (accepted by `clice serve`, `clice index`, `clice lint` and `clice inspect`), the persisted selection, or `default_configuration`. A selection is made from the editor — in VS Code **Switch Build Configuration** in the context menu of a C or C++ editor, which lists the configurations and marks the active one, other clients call `clice/switchConfiguration` — and is stored in `state.json` under `cache_dir`, never in `clice.toml`; it takes effect when the server is started again, which the server asks the editor to do, as for an edited configuration file. Each configuration keeps its own index under `cache_dir`, so switching back and forth never reindexes what a configuration already indexed. The tags are also how the batch commands choose an index: `clice index --configuration release` builds the release index, and `clice index stats` reports the index of the configuration it resolves the same way.
+The `configuration` tags on rules form a menu, and one tag is active per project; untagged rules always apply. The active one is, in priority order, the `--configuration <tag>` argument, which `clice serve` and every command working on a project take, the persisted selection, or `default_configuration`. A selection is made from the editor — in VS Code **Switch Build Configuration** in an editor's context menu or the Command Palette, which lists the configurations and marks the active one, other clients call `clice/switchConfiguration` — and is stored in `state.json` under `cache_dir`, never in `clice.toml`; it takes effect when the server is started again, which the server asks the editor to do, as for an edited configuration file. Each configuration keeps its own index under `cache_dir`, so switching back and forth never reindexes what a configuration already indexed. The tags are also how the batch commands choose an index: `clice index --configuration release` builds the release index, and `clice index stats` reports the index of the configuration it resolves the same way.
 
-Some build systems choose a build by pointing a symlink at its directory instead. A rule with `resolve_symlinks = true` tells builds apart by the real path its `compile_commands` resolve to, through symlinks and Windows junctions: each build the link points to keeps an index of its own, the running server asks to be restarted on that build's index when the link is pointed elsewhere, and a build pointed at again finds its index where it left it. A configuration whose rules differ only in naming that build's databases directly shares its index. In VS Code, Switch Build Configuration says which build the active configuration's links resolve to, and marks the configuration sharing its index. An index is kept until deleted: each is a directory under the `index` directory in `cache_dir`, named after the configuration and the last directories of the build's path.
+Some build systems choose a build by pointing a symlink at its directory instead. A rule with `resolve_symlinks = true` tells builds apart by the real path its `compile_commands` resolve to, through symlinks and Windows junctions: each build the link points to keeps an index of its own, the running server asks to be restarted on that build's index when the link is pointed elsewhere, and a build pointed at again finds its index where it left it. A configuration whose rules differ only in naming that build's databases directly shares its index. In VS Code, Switch Build Configuration says which build the active configuration's links resolve to, and marks the configuration sharing its index. An index is kept until deleted: each is a directory under `cache/v<N>/index` in `cache_dir`, named after the configuration and the last directories of the build's path.
 
 <!-- BEGIN GENERATED ITEMS: project/configurations -->
 

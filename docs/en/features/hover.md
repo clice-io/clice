@@ -207,7 +207,7 @@ tests/hover/variables/06_predefined_identifiers
 
 ## Members of Types
 
-A class lists its members and an enum its enumerators.
+A class lists its data members and member types, and an enum its enumerators.
 
 <!-- BEGIN GENERATED ITEMS: hover/members -->
 

@@ -1,6 +1,6 @@
 # C++20 Modules
 
-clice builds the modules a file imports when the file opens, so module units and their importers work like any other source: hover, navigation and completion reach across `import`. The feature pages show what each feature does in module units; this page shows the modules themselves.
+clice builds the modules a file imports when it compiles the file, so module units and their importers work like any other source: hover, navigation and completion reach across `import`. The feature pages show what each feature does in module units; this page shows the modules themselves.
 
 <!-- The cards in the sections below are generated from the documented cases
      in tests/modules/. Do not edit the regions between the

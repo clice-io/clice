@@ -30,7 +30,7 @@ settings:  background_index = false (/home/me/project/clice.toml:6)
 
 After the entries, `settings` lists what the [rules](../guide/configuration.md#rules) decide for the file — `background_index`, `skip_function_body`, `readonly`, `lint` and the other per-file fields — each with the rule deciding it, the file and the line where the rule starts; a field no rule sets takes its default. `--json` lists every field under `settings`, with its `value` and, where a rule decides it, that `rule`.
 
-The exit code is 0 when the file's entries are listed, 1 when the file does not exist or no database lists it, 2 when a database changes while it is read or the arguments do not parse.
+The exit code is 0 when the file's entries are listed, 1 when the file does not exist or no database lists it, 2 when a database changes while it is read, the arguments do not parse, or the project or its configuration cannot be loaded.
 
 ## Converting commands
 

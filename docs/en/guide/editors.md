@@ -4,7 +4,7 @@ clice implements the [Language Server Protocol](https://microsoft.github.io/lang
 
 All setups assume:
 
-- The `clice` executable is on your `PATH` (or use an absolute path in the snippets below).
+- The `clice` executable is on your `PATH` (or use an absolute path in the snippets below); the VS Code extension ships its own, and the Zed extension downloads one when there is none.
 - Your project provides a `compile_commands.json` (by default clice searches the project's root directory, then each of its immediate subdirectories without a `clice.toml` of its own).
 
 ## Compiler Environment
@@ -31,7 +31,7 @@ clice asks the compiler of each command how it compiles (its target, its system 
 
 Install the [clice extension](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) from the marketplace; Cursor, VSCodium, Windsurf and other VS Code forks install the same extension from [Open VSX](https://open-vsx.org/extension/clice-io/clice). Published builds are platform-specific and ship the clice server inside the extension, so no download or network access is needed after installation; set `clice.executable` to use your own build instead.
 
-The context menu of a C or C++ editor holds clice's commands, below Go to Definition and its kin: **Switch Header and Source (Module Interface and Implementation)**; **Switch Compilation Context** when the file has more than one context, which the Explorer's Compilation Contexts view lists too; **Switch Build Configuration** when the rules declare configurations, which restarts the server under the one picked; and **Show Compile Command**, which opens the file's whole compile command and says where it comes from — a compilation database, the source including a header, a rule's `default_command`, a unit nearby, or clice's own. A compile that runs long shows its progress in the status bar, as it does in every editor that shows progress.
+The context menu of an editor clice serves holds clice's commands, below Go to Definition and its kin: **Switch Header and Source (Module Interface and Implementation)**; **Switch Compilation Context** when the file has more than one context, which the Explorer's Compilation Contexts view lists too; **Switch Build Configuration** when the rules declare configurations, which restarts the server under the one picked; and **Show Compile Command**, which opens the file's whole compile command and says where it comes from — a compilation database, the source including a header, a rule's `default_command`, a unit nearby, or clice's own. A compile that runs long shows its progress in the status bar, as it does in every editor that shows progress.
 
 ### Neovim
 
@@ -45,7 +45,7 @@ nvim-lspconfig carries a copy of the config in [`editors/nvim`](https://github.c
 
 ### Zed
 
-The Zed extension lives in [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed). It runs `clice` from `PATH`, else downloads the newest release; `lsp.clice.settings.release_channel` set to `"pre-release"` follows the nightly builds instead.
+The Zed extension lives in [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed). It runs `lsp.clice.binary.path` when set, else `clice` from `PATH`, else downloads the newest release; `lsp.clice.settings.release_channel` set to `"pre-release"` follows the nightly builds instead.
 
 Zed runs its built-in clangd for C and C++ as well, which duplicates completion and diagnostics; to use clice alone:
 

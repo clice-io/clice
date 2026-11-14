@@ -22,12 +22,12 @@ clice is `build/RelWithDebInfo/bin/bin/clice`, beside the resource directory it 
 
 The build types are configurations, each with a directory of its own, `build/<type>`:
 
-| Configuration             | Effect                                                                              |
-| ------------------------- | ----------------------------------------------------------------------------------- |
-| `--config=RelWithDebInfo` | The default: optimized, with debug info                                             |
+| Configuration             | Effect                                                                             |
+| ------------------------- | ---------------------------------------------------------------------------------- |
+| `--config=RelWithDebInfo` | The default: optimized, with debug info                                            |
 | `--config=Debug`          | Light optimization (`-O1`) with Address Sanitizer, on x86_64 Linux and arm64 macOS |
 
-`--platforms=@xclang//platforms:<triple>` builds for another architecture of the host's operating system, for example `--platforms=@xclang//platforms:aarch64-unknown-linux-gnu` on x86_64 Linux.
+`--platforms=@xclang//platforms:<triple>` builds for another target: x86_64 Linux builds every other one, for example `--platforms=@xclang//platforms:aarch64-apple-darwin`.
 
 The LLVM/Clang libraries hold ThinLTO bitcode, so every link of a program redoes their code generation, minutes per program. lld keeps what it generated in a cache, `/var/tmp/xclang-thinlto` (`C:/xclang-thinlto` on Windows), and later links take seconds.
 

@@ -265,7 +265,7 @@ tests/diagnostics/clang_tidy/20_slow_checks
 
 <!-- END GENERATED ITEMS -->
 
-- Checks too slow for an editor run on open files only when `slow_clang_tidy_checks` asks for them, and clice names the ones it leaves out; those unreliable on code being edited are always left out; `clice lint` runs them all.
+- Checks too slow for an editor run on open files only when `[diagnostics] slow_clang_tidy_checks` asks for them, and unless it says `false` clice names the ones it leaves out; those unreliable on code being edited are always left out; `clice lint` runs them all.
 - `performance-use-std-move` is left out of both the editor and `clice lint`: in the LLVM clice is built on, it crashes on classes read from a PCH or a module.
 - `.clang-tidy` edits apply to open files at their next compile.
 - A crash of a clang-tidy check pauses clang-tidy on that file, not its other features.
