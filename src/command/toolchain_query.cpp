@@ -197,16 +197,17 @@ async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
         co_return std::move(read_as_clang(std::move(args), option_family(command), spec.cwd).job);
     }
     // Lets tests stand in a hung compiler without waiting out the bound.
-    chrono::milliseconds bound = chrono::seconds(5);
+    chrono::milliseconds bound = chrono::seconds(20);
     if(auto ms = env_integer("CLICE_TEST_QUERY_BOUND_MS")) {
         bound = chrono::milliseconds(*ms);
     }
     auto compiler = args[0];
     std::size_t driver_tokens = command.family == CompilerFamily::Zig ? 2 : 1;
     // Hang detection: a query answers in well under a second, a cold
-    // Windows start in a few; a compiler or wrapper that never exits (one
-    // reading its input, a hung network mount) would block the query's
-    // caller for good. The cancel kills it with what it started.
+    // Windows start in a few, more while the scanner reads the driver beside
+    // other starting work (over 5 on CI runners); a compiler or wrapper that
+    // never exits (one reading its input, a hung network mount) would block
+    // the query's caller for good. The cancel kills it with what it started.
     auto asked = co_await async::with_timeout(ask_compiler(std::move(args),
                                                            command,
                                                            std::string(input->path()),
