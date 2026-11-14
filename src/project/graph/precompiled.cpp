@@ -55,9 +55,8 @@ void Project::merge_build_index(Fid unit,
                                 const Inputs& before,
                                 std::uint64_t command) {
     // One the build stopped compiling while it ran left the index with its
-    // entries. An index not open yet takes none: its saved state, read once
-    // it opens, holds the unit as its last run indexed it.
-    if(!is_unit(unit) || index_waits) {
+    // entries.
+    if(!is_unit(unit)) {
         return;
     }
     auto path = file_table.resolve(unit);

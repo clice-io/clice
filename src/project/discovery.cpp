@@ -71,6 +71,16 @@ void watch_inputs(Project& project, WatchedDatabase& database) {
     }
 }
 
+/// Watch the database from its last load.
+void watch_database(Project& project, SourceID id) {
+    auto& database = project.disk_watch.databases.emplace_back(WatchedDatabase{
+        .id = id,
+        .applied = loaded_hashes(project, id),
+        .inputs = {project.file_table.disk.watch(project.cdb.source_path(id).str())},
+    });
+    watch_inputs(project, database);
+}
+
 /// The files the database and another one both list: the ones whose
 /// default entry may move with the database's presence.
 llvm::SmallVector<Fid> shared_files(const Project& project, SourceID id) {
@@ -446,18 +456,9 @@ bool Project::databases_moved() const {
     return rules.resolved_databases() != resolved_databases;
 }
 
-void Project::watch_database(SourceID id) {
-    auto& database = disk_watch.databases.emplace_back(WatchedDatabase{
-        .id = id,
-        .applied = loaded_hashes(*this, id),
-        .inputs = {file_table.disk.watch(cdb.source_path(id).str())},
-    });
-    watch_inputs(*this, database);
-}
-
 void Project::watch_databases() {
     for(std::size_t i = 0; i < cdb.source_count(); i += 1) {
-        watch_database(SourceID(i));
+        watch_database(*this, SourceID(i));
     }
     auto git = git_dir(root);
     if(!git) {
@@ -565,7 +566,7 @@ CDBDiff Project::discover_databases(llvm::ArrayRef<Fid> files, DiscoverOptions o
         }
         if(!registered) {
             LOG_INFO("Found the compilation database {}", place);
-            watch_database(id);
+            watch_database(*this, id);
         }
     }
     return found;

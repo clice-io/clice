@@ -358,7 +358,7 @@ Project::Opened Project::open(const OpenOptions& options) {
 }
 
 async::task<std::optional<index::WriterLock>> Project::wait_for_writer() {
-    auto wait = chrono::milliseconds(env_integer("CLICE_TEST_WRITER_WAIT_MS").value_or(10'000));
+    auto wait = chrono::milliseconds(env_integer("CLICE_TEST_WRITER_WAIT_MS").value_or(5'000));
     auto deadline = chrono::steady_clock::now() + wait;
     while(true) {
         auto lock = index::WriterLock::acquire(settings.cache_dir);
@@ -374,19 +374,10 @@ async::task<std::optional<index::WriterLock>> Project::wait_for_writer() {
     }
 }
 
-CDBDiff Project::open_index(std::optional<index::WriterLock> lock) {
+CDBDiff Project::open_index(index::WriterLock lock) {
     index_waits = false;
     CDBDiff joined;
-    if(lock) {
-        open_writer(*this, std::move(*lock));
-    } else {
-        // LIMITATION: a run that waited in vain reads the index for the
-        // rest of its session and saves nothing it indexes: a second
-        // editor window on the project, a server started while `clice
-        // index` runs. Taking the lock over once it is free would need the
-        // index reloaded from what its holder saved last.
-        database = index::open_database(*store, database_key, /*read_only=*/true);
-    }
+    open_writer(*this, std::move(lock));
     if(!database) {
         return joined;
     }
@@ -394,11 +385,9 @@ CDBDiff Project::open_index(std::optional<index::WriterLock> lock) {
     if(!rules.declares_sources()) {
         for(auto& source: nearby_sources(*this, saved_members.databases(index))) {
             if(!cdb.find_source(source) && !cdb.find_same_file(source)) {
-                auto id = cdb.add_source(source);
-                if(auto diff = cdb.reload_and_diff(id)) {
+                if(auto diff = cdb.reload_and_diff(cdb.add_source(source))) {
                     joined.append(*diff);
                 }
-                watch_database(id);
             }
         }
     }
@@ -411,7 +400,7 @@ CDBDiff Project::open_index(std::optional<index::WriterLock> lock) {
     if(!joined.empty() || recorded) {
         joined.append(rebuild_dependency_graph().provisional);
     }
-    if(auto why = load_saved_state(*this, true, !writer_lock); !why.empty()) {
+    if(auto why = load_saved_state(*this, true, false); !why.empty()) {
         LOG_WARN("{}", why);
         index.clear();
         database.reset();

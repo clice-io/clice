@@ -169,12 +169,8 @@ void ServedProject::start() {
 
 void ServedProject::open() {
     waiting = false;
-    started = true;
     server.log_into(*this);
-    if(broken()) {
-        return;
-    }
-    if(!project.root.empty()) {
+    if(!broken() && !project.root.empty()) {
         llvm::SmallVector<CanonicalPath> open_files;
         for(auto& [path_id, document]: documents) {
             open_files.emplace_back(project.file_table.resolve(path_id));
@@ -190,21 +186,33 @@ void ServedProject::open() {
         if(project.store) {
             bg_tasks.spawn(checkpoint_task());
         }
-        if(project.index_waits) {
-            bg_tasks.spawn(open_index_task());
-        } else if(project.database && !project.database->read_only()) {
-            start_control_listener();
-        }
         commands_missing =
             ranges::none_of(opened.members, [&](Fid member) { return project.declared(member); }) &&
             !project.rules.declares_sources() && !project.found_unreadable_database();
         // What the load read the databases and the saved index with.
         server.return_freed_memory();
+        if(project.index_waits) {
+            // The documents wait for their compiles until the index is this
+            // project's, or another process keeps it.
+            loaded.reset();
+            bg_tasks.spawn(open_index_task());
+            return;
+        }
     }
-    if(!project.index_waits) {
-        project.background_index.start({.skipped_diagnostics = !project.rules.parses_every_body()});
-        server.load_choices(*this);
+    serve();
+}
+
+void ServedProject::serve() {
+    started = true;
+    if(broken()) {
+        loaded.set();
+        return;
     }
+    if(project.database && !project.database->read_only()) {
+        start_control_listener();
+    }
+    project.background_index.start({.skipped_diagnostics = !project.rules.parses_every_body()});
+    server.load_choices(*this);
 
     // Documents adopted before the project started — held while its root's
     // previous project shut down — have it decided now whether they
@@ -246,30 +254,18 @@ void ServedProject::open() {
 async::task<> ServedProject::open_index_task() {
     auto lock = co_await project.wait_for_writer();
     if(!lock) {
+        index_kept_elsewhere = true;
         auto holder = index::WriterLock::holder(project.settings.cache_dir);
         LOG_GUIDANCE(
-            "Another clice process{} keeps writing the index in {}: {} answers from what it "
-            "saved, and saves nothing it indexes itself",
+            "Another clice process{} keeps the index in {}: nothing under {} is served until it "
+            "lets go and clice restarts",
             holder.empty() ? "" : std::format(" ({})", holder),
             std::string_view(project.settings.cache_dir),
             project.file_table.display(project.root));
+    } else {
+        follow({.commands = project.open_index(std::move(*lock))});
     }
-    follow({.commands = project.open_index(std::move(lock))});
-    if(project.database && !project.database->read_only()) {
-        start_control_listener();
-    }
-    project.background_index.start({.skipped_diagnostics = !project.rules.parses_every_body()});
-    server.load_choices(*this);
-    // The documents opened meanwhile compiled without the context choices
-    // the index kept, and found no index to answer from.
-    for(auto& [file, entry]: server.choices) {
-        if(entry.project == this && entry.active && find_document(file)) {
-            choice_changed(*server.find_session(file));
-        }
-    }
-    if(server.client) {
-        server.client->refresh();
-    }
+    serve();
 }
 
 async::task<> ServedProject::shutdown() {

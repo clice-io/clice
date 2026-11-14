@@ -372,10 +372,11 @@ public:
     /// index stops, the final state is persisted and the store closes.
     async::task<> shutdown();
 
-    /// The settings have errors: the project starts nothing, and the
-    /// files under its root answer every request at once with nothing.
+    /// The settings have errors, or another process keeps the project's
+    /// index: the project starts nothing, and the files under its root
+    /// answer every request at once with nothing.
     bool broken() const {
-        return has_error(settings_issues);
+        return has_error(settings_issues) || index_kept_elsewhere;
     }
 
     /// Whether the project's root holds `path`; the rootless project's
@@ -791,11 +792,16 @@ private:
     /// (readers holding the old shared_ptr are unaffected).
     void update_latest(Fid path_id, llvm::function_ref<void(DocumentCompile&)> edit);
 
-    /// Open the project (Project::open), queue what its index lacks, load
-    /// the context choices it saved, and start its store-lifetime services;
-    /// then watch its databases and files. Documents adopted before have
-    /// it decided now whether they compile. A broken project starts nothing.
+    /// Open the project (Project::open), then serve it — once its index is
+    /// this project's (open_index_task) when another process holds the
+    /// writer lock. A broken project starts nothing.
     void open();
+
+    /// Queue what the opened project's index lacks, load the context
+    /// choices it saved, and start its store-lifetime services; then watch
+    /// its databases and files. Documents adopted before have it decided
+    /// now whether they compile.
+    void serve();
 
     /// open() opened the project from disk and watches its build: never
     /// the rootless project, nor a broken one, nor before it starts.
@@ -827,9 +833,9 @@ private:
     async::task<> checkpoint_task();
 
     /// What open() leaves while another process holds the writer lock: the
-    /// index, opened once the lock comes free or the wait ends
-    /// (Project::wait_for_writer), then the background index and the
-    /// context choices saved with it. Documents compile meanwhile.
+    /// index, opened once the lock comes free (Project::wait_for_writer),
+    /// then serve(). The documents wait meanwhile; a lock still held when
+    /// the wait ends leaves the project unserved (index_kept_elsewhere).
     async::task<> open_index_task();
 
     /// The default-sources loop, poll_sources on the workspace poll's pace.
@@ -953,9 +959,13 @@ private:
     /// The open documents that belong here.
     llvm::DenseMap<Fid, ServedDocument> documents;
 
-    /// open() ran: documents adopted from now on have it decided at once
+    /// serve() ran: documents adopted from now on have it decided at once
     /// whether they compile.
     bool started = false;
+
+    /// Another process kept the writer lock of the project's index through
+    /// the wait (open_index_task): the project serves nothing (broken).
+    bool index_kept_elsewhere = false;
 
     /// start() found nothing to open the project for: no database and no
     /// document.

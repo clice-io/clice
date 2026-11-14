@@ -401,14 +401,12 @@ struct Project {
     /// still holds it then.
     async::task<std::optional<index::WriterLock>> wait_for_writer();
 
-    /// The index open() left closed (index_waits): as its
-    /// writer under `lock`, else read-only, the database another process
-    /// writes answering while nothing this run indexes is saved. What the
-    /// index remembers of the build joins first — the databases of earlier
-    /// sessions, the provisional members — then the saved state loads as
-    /// open() loads it; returns what the joined members changed, for the
-    /// owner to follow.
-    CDBDiff open_index(std::optional<index::WriterLock> lock);
+    /// The index open() left closed (index_waits), as its writer under
+    /// `lock`. What the index remembers of the build joins first — the
+    /// databases of earlier sessions, the provisional members — then the
+    /// saved state loads as open() loads it; returns what the joined
+    /// members changed, for the owner to follow.
+    CDBDiff open_index(index::WriterLock lock);
 
     /// The rules of `configuration` over the settings, and the databases
     /// they resolve to: what a project waiting to open already answers by.
@@ -608,9 +606,6 @@ struct Project {
     /// Watch the databases registered so far, from their last loads, and
     /// the HEAD and index of the git checkout the project lies in.
     void watch_databases();
-
-    /// Watch the database `id`, registered since, from its last load.
-    void watch_database(SourceID id);
 
     /// Look at the databases (`force` skips the content gate and the
     /// two-tick debounce, the half-written-file guard): register the ones

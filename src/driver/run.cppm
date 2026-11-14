@@ -339,7 +339,7 @@ inline async::task<std::string> writes_index(Project& project, Project::Opened& 
                                                   .holder = index::WriterLock::holder(cache_dir)},
                                                  cache_dir);
         }
-        project.open_index(std::move(lock));
+        project.open_index(std::move(*lock));
         // The saved index brings the files it recorded as members.
         opened.members = project.members();
     }
