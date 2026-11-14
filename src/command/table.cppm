@@ -189,12 +189,13 @@ public:
     /// The precompiled header the command writes: its output, when it
     /// compiles its input as a header (`-x c++-header`) or emits a PCH —
     /// as CMake builds a target's precompiled headers from
-    /// `cmake_pch.hxx.cxx`.
+    /// `cmake_pch.hxx.cxx` — and for cl's `/Yc`, the one `/Fp` names.
     std::optional<Spelling> pch_output(CommandID id) const;
 
     /// The precompiled headers the command may read: its `-include-pch`
-    /// file, and beside each header it forces in, the `.pch` and the `.gch`
-    /// that clang and GCC load in the header's place.
+    /// file, the one cl's `/Yu` reads, and beside each header it forces in,
+    /// the `.pch` and the `.gch` that clang and GCC load in the header's
+    /// place.
     llvm::SmallVector<Spelling, 2> pch_inputs(CommandID id) const;
 
     /// Identity hash of a command (every argument it keeps, the slot's

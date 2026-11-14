@@ -1,11 +1,11 @@
 [test."$ clice index stats"]
 stderr = "error: No index cache at .clice; run `clice index` first"
-exit = 1
+exit = 2
 
 [test."$ clice index stats --limit 1"]
 stderr = "error: No index cache at .clice; run `clice index` first"
-exit = 1
+exit = 2
 
 [test."$ clice index stats --variants"]
 stderr = "error: No index cache at .clice; run `clice index` first"
-exit = 1
+exit = 2

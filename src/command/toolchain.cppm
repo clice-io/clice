@@ -11,6 +11,12 @@ import :vfs.file_table;
 
 namespace clice {
 
+/// How Toolchain::warm runs its queries.
+struct WarmOptions {
+    /// They retry failed ones, whose failures were reported then.
+    bool retry = false;
+};
+
 /// Resolves driver-level commands into full cc1-level configurations by
 /// querying the compiler driver, in two layers:
 ///
@@ -26,22 +32,6 @@ namespace clice {
 class Toolchain {
 public:
     using ResolvedID = std::uint32_t;
-
-    /// A synthesized full compile configuration, self-contained: rendering
-    /// it needs no trip back to the source command.
-    struct Resolved {
-        /// The compiler binary the query resolved.
-        const char* driver = nullptr;
-
-        /// Frontend-level args (cc1): render as `driver -cc1 <args>`.
-        llvm::ArrayRef<Arg> args;
-
-        /// The files its compiles do not see (Frontend::hidden).
-        std::shared_ptr<const vfs::HiddenFiles> hidden;
-
-        /// Frontend::shadowed.
-        std::vector<llvm::StringRef> shadowed;
-    };
 
     /// `failed_retry` bounds the negative cache: a failed key is retried
     /// once the cooldown passes, so a transient driver failure — an upgrade
@@ -68,14 +58,10 @@ public:
     /// either.
     std::expected<ResolvedCommand, std::string> resolve(CommandID id, InputKind input);
 
-    const Resolved& resolved(ResolvedID id) const {
-        return resolved_configs[id];
-    }
-
     /// Pre-query in parallel, deduplicated by query key, running as many
     /// drivers at once as the process has CPUs. Blocks until all unique
     /// queries complete.
-    void warm(llvm::ArrayRef<CommandRef> refs);
+    void warm(llvm::ArrayRef<CommandRef> refs, WarmOptions options = {});
 
     /// A compile argv and how the command came to it.
     struct RenderedCommand {
@@ -116,6 +102,16 @@ public:
     void set_failed_retry(chrono::steady_clock::duration retry) {
         query_policy.cooldown = retry;
     }
+
+    /// Whether the compiler's last query for the command failed, which
+    /// leaves it read by clang's own driver.
+    bool query_failed(CommandID id, InputKind input);
+
+    /// Ask again every compiler whose driver was missing and whose cooldown
+    /// has passed: whether a compiler that had failed answered since the
+    /// last call, here or on a resolve. A driver that ran and failed is asked
+    /// again only when a command needs it: a hung one would stall the caller.
+    bool retry_failed();
 
 private:
     struct QueryKey {
@@ -162,6 +158,21 @@ private:
         std::shared_ptr<const vfs::HiddenFiles> hidden;
     };
 
+    /// A synthesized full compile configuration, self-contained: rendering
+    /// it needs no trip back to the source command.
+    struct Resolved {
+        /// The query's frontend, whose driver, hidden files and shadowed
+        /// directories it keeps; `queries` never moves or drops one.
+        const Frontend* frontend = nullptr;
+
+        /// Frontend-level args (cc1): render as `driver -cc1 <args>`.
+        llvm::ArrayRef<Arg> args;
+    };
+
+    const Resolved& resolved(ResolvedID id) const {
+        return resolved_configs[id];
+    }
+
     /// The frontend of a query's job (the program, -cc1, its arguments),
     /// queried for `command` or another command of its key: what only the
     /// query asked for goes (its action, input and outputs),
@@ -182,16 +193,18 @@ private:
 
     /// What the query caches say about a (command, input) key: a live
     /// query, a failure still cooling down, or the query to run. A
-    /// cooled-down failure is dropped on the way, so the query retries.
+    /// cooled-down failure stays until the query commits.
     struct QueryAdmission;
     QueryAdmission admit_query(CommandID id, InputKind input);
 
     /// Commits the result of the query for the command `id`: the job's
     /// frontend into the query cache, a failure into the negative cache with
-    /// its time.
+    /// its time and whether its driver was missing.
     void commit_query(llvm::StringRef key,
                       CommandID id,
-                      const std::expected<Job, std::string>& job);
+                      InputKind input,
+                      const std::expected<Job, std::string>& job,
+                      bool missing);
 
 private:
     CommandTable& commands;
@@ -205,8 +218,24 @@ private:
     /// record's cause. Avoids re-spawning the same failing driver query for
     /// every file that shares the key (see clangd's SystemIncludeExtractor
     /// for precedent); a key is queried again once query_policy's cooldown
-    /// passes.
-    llvm::StringMap<FailureRecord> failed;
+    /// passes, by the command and language it failed for (retry_failed).
+    struct FailedQuery {
+        FailureRecord record;
+
+        CommandID command = invalid_command;
+
+        InputKind input;
+
+        /// Its driver was not found: a compiler installed later answers.
+        bool missing = false;
+    };
+
+    llvm::StringMap<FailedQuery> failed;
+
+    /// The failed keys that answered since, and how many of them
+    /// retry_failed reported.
+    std::size_t answered_late = 0;
+    std::size_t reported_late = 0;
 
     FailurePolicy query_policy;
 

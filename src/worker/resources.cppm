@@ -9,14 +9,17 @@ struct MemoryState {
     /// What is left: sys::Memory::available.
     std::uint64_t headroom = 0;
 
-    /// The headroom kept free: 5% of the limit, at least 512 MiB; on macOS
-    /// 10%, at least 1.5 GiB, as decompression starts near 20% of a 7 GB
-    /// Mac.
+    /// The headroom kept free (memory_reserve).
     std::uint64_t reserve = 0;
 
     /// The physical memory, or the tightest limit clice runs under.
     std::uint64_t limit = 0;
 };
+
+/// The headroom kept free under `limit`: 5% of it, at least 512 MiB; on
+/// macOS 1.5 GiB, as decompression starts near 20% of a 7 GB Mac, whose
+/// headroom already leaves out what the compressor holds.
+std::uint64_t memory_reserve(std::uint64_t limit, bool macos);
 
 /// Read the machine's memory. macOS's figures need the workers' usage:
 /// the system counts their compressed pages without telling whose.

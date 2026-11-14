@@ -67,6 +67,13 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
             return {};
         }
     }
+    auto links = root.link_files.size();
+    if(root.link_lines.size() != links || root.link_columns.size() != links ||
+       root.link_targets.size() != links ||
+       ranges::any_of(root.link_files, [&](std::uint32_t file) { return file >= count; })) {
+        LOG_DEBUG("Rejecting TU index: malformed link columns");
+        return {};
+    }
     auto& hashes = root.symbol_hashes;
     auto& parents = root.symbol_parents;
     auto& files = root.symbol_files;
@@ -184,6 +191,20 @@ std::uint64_t TUIndex::content_hash(std::uint32_t id) const {
     // blob; an absent hash reads as 0, "unavailable".
     auto& hashes = view_of(data).content_hashes;
     return id < hashes.size() ? hashes[id] : 0;
+}
+
+std::uint32_t TUIndex::link_count() const {
+    return loaded() ? static_cast<std::uint32_t>(view_of(data).link_files.size()) : 0;
+}
+
+TUIndex::Link TUIndex::link(std::uint32_t i) const {
+    auto& root = view_of(data);
+    return {
+        .file = root.link_files[i],
+        .line = root.link_lines[i],
+        .column = root.link_columns[i],
+        .target = llvm::StringRef(root.link_targets[i]),
+    };
 }
 
 std::uint32_t TUIndex::node_count() const {

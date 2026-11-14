@@ -27,17 +27,17 @@ struct DocumentLink {
 /// reply edge converts them with the session's line map.
 auto document_links(CompilationUnit& unit) -> std::vector<feature::DocumentLink>;
 
-/// Document links from the includes manifests resolved: each one's argument
-/// span is located with find_directive_argument on its directive line. Lines
-/// no manifest resolved (guard-skipped includes, __has_include, #embed)
-/// produce no link.
-auto document_links(SourceText& source, llvm::ArrayRef<index::ResolvedInclude> includes)
+/// Document links from the places the manifests resolved: each one's
+/// argument span is located with find_directive_argument from its line and
+/// column. Places no manifest resolved (guard-skipped includes) produce no
+/// link.
+auto document_links(SourceText& source, llvm::ArrayRef<index::ResolvedLink> resolved)
     -> std::vector<feature::DocumentLink>;
 
-/// The links of `file` from the includes manifests resolved, read in
+/// The links of `file` from the places the manifests resolved, read in
 /// `source`; none unless `source` is the text the file's shard indexed.
 /// Unlike the entries the other results computed from the index serve,
-/// the includes are disk truth: a buffer edited since (its compile stopped by
+/// the links are disk truth: a buffer edited since (its compile stopped by
 /// a crash, its own index current) must not get them — an edited
 /// directive would get the old target, confidently wrong.
 auto document_links(SourceText& source, const index::IndexQuery& query, Fid file)

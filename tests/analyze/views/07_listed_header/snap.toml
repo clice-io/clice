@@ -41,7 +41,7 @@ stdout = '''
   "to": "core",
   "entities": [
     {
-      "id": "#478ec97a46ae1c6f",
+      "id": "#420db0ed7345959b",
       "entity": "Str",
       "owner": "core/str.h",
       "users": [
@@ -51,7 +51,7 @@ stdout = '''
       "interface": false
     },
     {
-      "id": "#4e67905093bba55a",
+      "id": "#9a723d6c85472dea",
       "entity": "length",
       "owner": "core/str.h",
       "users": [

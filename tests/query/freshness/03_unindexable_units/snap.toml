@@ -15,3 +15,19 @@ indexing 0/2 units, 0 failed
 indexing 2/2 units, 1 failed
 '''
 exit = 0
+
+[test."$ clice query definition ghost --fresh"]
+stdout = '''
+{
+  "error": "symbol not found; 1 unit failed to index",
+  "stale": [
+    "${WS}/ghost.cpp"
+  ]
+}
+'''
+stderr = '''
+warning: 1 file the compile commands name does not exist (ghost.cpp): the database is older than the tree, or the build writes it later
+indexing 0/1 units, 0 failed
+indexing 1/1 units, 1 failed
+'''
+exit = 1

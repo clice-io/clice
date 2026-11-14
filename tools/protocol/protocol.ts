@@ -398,8 +398,9 @@ export const GateRequest = new RequestType<GateParams, HoldResult, void>("clice/
 
 /// What the server's background loops do that a test waits for: the
 /// database loop applied a changed compilation database, the disk loop's
-/// looks found files changed, a checkpoint committed index shards.
-export type LoopEvent = "databaseChange" | "diskChange" | "checkpoint";
+/// looks found files changed, a checkpoint committed index shards, the
+/// sources loop found a compiler that could not be asked answer.
+export type LoopEvent = "databaseChange" | "diskChange" | "checkpoint" | "compilersAnswered";
 
 /// clice/internal/watch — TEST-ONLY, present while project.test_hooks is on.
 /// Watches for the next `event` after it is placed. The reply is a hold id:

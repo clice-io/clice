@@ -30,7 +30,7 @@ exit = 1
 ["a root whose only database is sub's"."$ clice index --jobs 1"]
 stdout = "Session log: ${WS}/.clice/logs/${SESSION}"
 stderr = "error: Nothing to index: no compile_commands.json found in ${WS} or its direct subdirectories. sub has its own configuration file and is a project of its own."
-exit = 1
+exit = 2
 
 ["clice format leaves sub alone"."$ clice format"]
 stdout = "Formatted 1 file in #s."

@@ -6,7 +6,19 @@ import :syntax.preamble;
 
 namespace clice {
 
-std::uint32_t preamble_bound(llvm::StringRef content, std::uint32_t limit) {
+namespace {
+
+/// Where directive_bound ends the preamble.
+struct Cut {
+    std::uint32_t bound = 0;
+
+    /// The global module fragment includes a header past `limit`, ahead of
+    /// its module declaration.
+    bool include_past_limit = false;
+};
+
+/// preamble_bound, the pragma stacks aside.
+Cut directive_bound(llvm::StringRef content, std::uint32_t limit) {
     Lexer lexer(content, dialect_of());
     auto spelled = [&](const Token& token, llvm::StringRef word) {
         return token.is_identifier() && token.text(content) == word;
@@ -23,6 +35,7 @@ std::uint32_t preamble_bound(llvm::StringRef content, std::uint32_t limit) {
     bool fragment = false;
     bool code = false;
     bool code_past_limit = false;
+    bool include_past_limit = false;
     for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
         if(!token.is_at_start_of_line) {
             continue;
@@ -32,8 +45,12 @@ std::uint32_t preamble_bound(llvm::StringRef content, std::uint32_t limit) {
             break;
         }
         bool line_code = false;
+        bool includes = false;
         std::uint32_t end = 0;
         if(token.kind == clang::tok::hash) {
+            auto name = lexer.next();
+            includes = spelled(name, "include") || spelled(name, "include_next") ||
+                       spelled(name, "import");
             /// For preprocessor directive, consume the whole directive: the
             /// bound is the end of the token before the eod.
             lexer.advance_until(clang::tok::eod);
@@ -45,7 +62,8 @@ std::uint32_t preamble_bound(llvm::StringRef content, std::uint32_t limit) {
             break;
         } else if(spelled(token, "export") ? spelled(lexer.next(), "module")
                                            : spelled(token, "module")) {
-            return code_past_limit ? 0 : before_limit;
+            return {.bound = code_past_limit ? 0 : before_limit,
+                    .include_past_limit = include_past_limit};
         } else {
             line_code = true;
             end = token.range.end;
@@ -61,6 +79,7 @@ std::uint32_t preamble_bound(llvm::StringRef content, std::uint32_t limit) {
         }
         if(past_limit) {
             code_past_limit |= line_code;
+            include_past_limit |= includes;
             continue;
         }
         code |= line_code;
@@ -69,7 +88,102 @@ std::uint32_t preamble_bound(llvm::StringRef content, std::uint32_t limit) {
             directives = end;
         }
     }
-    return directives;
+    return {.bound = directives};
+}
+
+/// The stack a `#pragma` directive's tokens push to or pop from, among
+/// those a PCH does not keep, and whether it pushes.
+std::optional<std::pair<std::string, bool>> pragma_stack(llvm::ArrayRef<Token> directive,
+                                                         llvm::StringRef content) {
+    auto word = [&](std::size_t i) {
+        return i < directive.size() ? directive[i].text(content) : llvm::StringRef();
+    };
+    auto push_or_pop = [&](std::string stack, llvm::StringRef action, llvm::StringRef push) {
+        return std::optional(std::pair{std::move(stack), action == push});
+    };
+    if(word(0) != "pragma") {
+        return std::nullopt;
+    }
+    auto name = word(1);
+    if(name == "push_macro" || name == "pop_macro") {
+        return push_or_pop("macro " + word(3).str(), name, "push_macro");
+    }
+    if(name == "pack" && (word(3) == "push" || word(3) == "pop")) {
+        return push_or_pop("pack", word(3), "push");
+    }
+    if(name == "GCC" && word(2) == "visibility" && (word(3) == "push" || word(3) == "pop")) {
+        return push_or_pop("visibility", word(3), "push");
+    }
+    if(name == "clang" && word(2) == "assume_nonnull" && (word(3) == "begin" || word(3) == "end")) {
+        return push_or_pop("assume_nonnull", word(3), "begin");
+    }
+    if(name == "clang" && word(2) == "attribute") {
+        // `push`, or `<namespace>.push`, whose pop names the namespace too.
+        if(word(3) == "push" || word(3) == "pop") {
+            return push_or_pop("attribute", word(3), "push");
+        }
+        if(word(4) == "." && (word(5) == "push" || word(5) == "pop")) {
+            return push_or_pop("attribute " + word(3).str(), word(5), "push");
+        }
+    }
+    return std::nullopt;
+}
+
+/// Where the earliest pragma push before `bound` starts that no pop
+/// before `bound` matches.
+std::optional<std::uint32_t> open_push(llvm::StringRef content, std::uint32_t bound) {
+    struct Push {
+        std::uint32_t offset;
+        std::string stack;
+    };
+
+    llvm::SmallVector<Push> open;
+    llvm::SmallVector<Token, 8> directive;
+    Lexer lexer(content, dialect_of());
+    for(auto token = lexer.advance(); !token.is_eof() && token.range.begin < bound;
+        token = lexer.advance()) {
+        if(!token.is_directive_hash()) {
+            continue;
+        }
+        directive.clear();
+        while(!lexer.next().is_eof() && !lexer.next().is_eod()) {
+            directive.push_back(lexer.advance());
+        }
+        auto stack = pragma_stack(directive, content);
+        if(!stack) {
+            continue;
+        }
+        if(stack->second) {
+            open.push_back({token.range.begin, std::move(stack->first)});
+            continue;
+        }
+        auto pushed = views::reverse(open);
+        if(auto last = ranges::find(pushed, stack->first, &Push::stack); last != pushed.end()) {
+            open.erase(std::next(last).base());
+        }
+    }
+    if(open.empty()) {
+        return std::nullopt;
+    }
+    return open.front().offset;
+}
+
+}  // namespace
+
+std::uint32_t preamble_bound(llvm::StringRef content, std::uint32_t limit) {
+    // clang keeps none of these stacks in a PCH: a push the preamble ends
+    // with is lost to the body, whose pop then finds nothing (the min/max
+    // macros Windows code pushes around its includes). The preamble ends
+    // before it; in a global module fragment, before an include of its own,
+    // not at all: the include would declare ahead of the module declaration.
+    // LIMITATION: a push in a header the preamble includes, popped in the
+    // file (pshpack1.h included directly), is not seen: the pop warns.
+    auto bound = directive_bound(content, limit).bound;
+    while(auto push = open_push(content, bound)) {
+        auto cut = directive_bound(content, *push);
+        bound = cut.include_past_limit ? 0 : cut.bound;
+    }
+    return bound;
 }
 
 std::uint32_t finished_preamble_bound(llvm::StringRef content, std::uint32_t bound) {

@@ -76,14 +76,14 @@ stdout = '''
         "kind": "Function",
         "startLine": 3,
         "endLine": 5,
-        "symbol": "#05c39c5ff22bd9de path:${WS}/头文件/工具.h"
+        "symbol": "#ebc3fc40b8bed07a path:${WS}/头文件/工具.h"
       },
       {
         "name": "helper",
         "kind": "Function",
         "startLine": 7,
         "endLine": 9,
-        "symbol": "#e0a9e5cbcaeac7ae"
+        "symbol": "#29c887fa32fe43be"
       }
     ]
   },
@@ -92,13 +92,13 @@ stdout = '''
 '''
 exit = 0
 
-[commands."$ clice query references \"#05c39c5ff22bd9de path:${WS}/头文件/工具.h\""]
+[commands."$ clice query references \"#ebc3fc40b8bed07a path:${WS}/头文件/工具.h\""]
 stdout = '''
 {
   "result": {
     "name": "offset",
     "kind": "Function",
-    "symbol": "#05c39c5ff22bd9de path:${WS}/头文件/工具.h",
+    "symbol": "#ebc3fc40b8bed07a path:${WS}/头文件/工具.h",
     "references": [
       {
         "file": "${WS}/头文件/工具.h",

@@ -58,7 +58,9 @@ async::task<UnitResult>
     if(params.tidy) {
         extras = tidy::command_extra_args(params.tidy->extra_args, params.tidy->extra_args_before);
     }
-    CommandRequest extra{.extra_prepend = extras.prepend, .extra_append = extras.append};
+    CommandRequest extra{.extra_prepend = extras.prepend,
+                         .extra_append = extras.append,
+                         .choice = request.entry ? &*request.entry : nullptr};
     auto resolved = project.resolve_command(path_id, extra);
     params.directory = resolved.directory;
     params.arguments = resolved.arguments;
@@ -174,11 +176,17 @@ async::task<UnitResult>
     }
     std::uint64_t measured = 0;
     Timer timer;
+    auto reached_worker = [&] {
+        project.compiling[path_id] = chrono::steady_clock::now();
+        return true;
+    };
     auto reply = co_await project.pool->send_stateless(params,
                                                        {.priority = worker::Priority::Low,
                                                         .cancel = attempt.token(),
                                                         .cost = cost,
-                                                        .reached = &measured});
+                                                        .reached = &measured,
+                                                        .admitted = reached_worker});
+    project.compiling.erase(path_id);
     // clang reports an import of a module whose build failed as not found:
     // the run's report says why it did not build, as the editor does.
     if(reply.has_value()) {

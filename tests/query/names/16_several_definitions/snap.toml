@@ -17,7 +17,7 @@ stdout = '''
         "file": "${WS}/main.c",
         "line": 1,
         "container": null,
-        "symbol": "#ec7471bd7aa66b7a"
+        "symbol": "#70c97f3ec06398b1"
       },
       {
         "name": "father",
@@ -26,7 +26,7 @@ stdout = '''
         "file": "${WS}/weak.c",
         "line": 1,
         "container": null,
-        "symbol": "#ec7471bd7aa66b7a"
+        "symbol": "#70c97f3ec06398b1"
       }
     ]
   },
@@ -41,7 +41,7 @@ stdout = '''
   "result": {
     "name": "father",
     "kind": "Function",
-    "symbol": "#ec7471bd7aa66b7a",
+    "symbol": "#70c97f3ec06398b1",
     "documentation": null,
     "definition": {
       "file": "${WS}/main.c",

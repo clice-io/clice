@@ -6,7 +6,7 @@ import { lmdb, test } from "@clice/tools/testing";
 // A database another version of clice wrote, its schema in the record that
 // describes the file: a reader says the database is of another version and
 // must be rebuilt, which the next `clice index` does.
-test({ errors: ["cannot be opened"] }, async (t) => {
+test(async (t) => {
     await t.cli("index");
     const databases = t.disk.list(".clice/cache/*/index/*/index.mdb");
     expect(databases).toHaveLength(1);

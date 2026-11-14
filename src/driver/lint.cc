@@ -3,6 +3,7 @@ module clice;
 import :compile.tidy;
 import :driver.driver;
 import :driver.run;
+import :project.command;
 import :project.graph.unit;
 import :project.project;
 import :support.logging;
@@ -24,11 +25,13 @@ struct Lint {
 
 void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
     for(auto& d: diagnostics) {
-        driver::println("{}{}: {} [{}]",
+        driver::println("{}{}: {} [{}]{}",
                         location(d.file, d.line, d.column),
                         d.error ? "error" : "warning",
                         d.message,
-                        d.check);
+                        d.check,
+                        d.entry ? std::format(" (entry {} of {})", d.entry->index, d.entry->file)
+                                : std::string());
         for(auto& note: d.notes) {
             driver::println("{}note: {}",
                             location(note.file, note.line, note.column),
@@ -48,17 +51,25 @@ struct Report {
     /// The run reached its final summary (early failures skip it).
     bool completed = false;
 
+    /// Why the run stopped before linting: the workers did not start, there
+    /// was nothing to lint, or --index found no database to take the index.
+    protocol::optional<std::string> error;
+
     std::size_t checked_tus = 0;
     std::size_t failed_tus = 0;
 
     /// The findings of the run, merged: a finding several TUs produced
-    /// identically, notes included (a header's), appears once; sorted by
-    /// file, line, column, check.
+    /// identically, notes included (a header's), appears once, naming an
+    /// entry only when no file's first command produced it; sorted by file,
+    /// line, column, check.
     std::vector<worker::TidyDiagnostic> findings;
 
     /// --index only: index state remained that the final save could not
     /// commit; a rerun cannot resume from it.
     bool unsaved = false;
+
+    /// Why the database refused the last save, when it did.
+    protocol::optional<std::string> save_error;
 
     double seconds = 0;
 };
@@ -81,47 +92,53 @@ auto finding_key(const worker::TidyDiagnostic& d) {
     return std::tie(d.file, d.line, d.column, d.check, d.error, d.message, d.notes);
 }
 
+/// The entry a merged finding keeps: none before any, then the smallest.
+auto entry_key(const worker::TidyDiagnostic& d) {
+    return d.entry ? std::pair(llvm::StringRef(d.entry->file), d.entry->index)
+                   : std::pair(llvm::StringRef(), 0U);
+}
+
 /// Sort and merge findings: one per (file, line, column, check, severity,
 /// message, notes). The notes stay in the key: a redeclaration check
 /// reports the same line from two units with notes pointing at different
 /// declarations, and each is a mismatch of its own.
 void merge_findings(std::vector<worker::TidyDiagnostic>& findings) {
-    ranges::stable_sort(findings, [](auto& a, auto& b) { return finding_key(a) < finding_key(b); });
+    ranges::stable_sort(findings, [](auto& a, auto& b) {
+        return std::pair(finding_key(a), entry_key(a)) < std::pair(finding_key(b), entry_key(b));
+    });
     auto duplicates =
         ranges::unique(findings, [](auto& a, auto& b) { return finding_key(a) == finding_key(b); });
     findings.erase(duplicates.begin(), duplicates.end());
 }
 
-async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pass) {
+/// A file of a lint run: compiled under the command resolve_command picks,
+/// its first, which alone the index takes, then under each other distinct
+/// command of its database entries, one after another: a consumer compiles
+/// a file once at a time (Project::compile_unit).
+struct LintJob {
+    struct Entry {
+        /// The first entry with the command (worker::UnitEntry::index).
+        std::uint32_t index = 0;
+
+        ContextChoice choice;
+    };
+
+    Fid file;
+
+    std::vector<Entry> entries;
+};
+
+/// Compile the unit `request` asks for, under the file's entry `entry` when
+/// it is not the first command, and add what it found to the pass; whether
+/// it failed.
+async::task<bool> lint_compile(BatchRun& run,
+                               Fid path_id,
+                               UnitRequest request,
+                               std::optional<std::uint32_t> entry,
+                               LintPass& pass) {
     using enum UnitResult::Status;
     auto& project = run.project;
     auto file = project.file_table.resolve(path_id);
-    // A TU outside the lint set is here for the index only.
-    UnitRequest request;
-    request.index = with_index && project.rules.indexable(file);
-    bool failed = false;
-    if(project.rules.lintable(file)) {
-        auto resolution = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
-        // Checked under a configuration it does not have, the unit would
-        // report what was not asked for and miss what was.
-        if(!resolution.error.empty()) {
-            if(pass.config_errors.insert(resolution.error).second) {
-                LOG_ERROR("{}", resolution.error);
-            }
-            failed = true;
-        } else {
-            request.tidy = std::move(resolution.params);
-        }
-    }
-    if(!request.tidy && !request.index) {
-        if(failed) {
-            pass.failed.insert(path_id);
-        }
-        pass.inflight -= 1;
-        pass.task_done.set();
-        co_return;
-    }
-
     // One retry: a lost compile or a preemption says nothing about the TU,
     // and a one-shot pass has no later pass to requeue into. A compile
     // that crashed its worker would crash the retry too. One whose memory
@@ -142,14 +159,13 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
         co_await run.pool.await_capacity(false);
         result = co_await project.compile_unit(path_id, request);
     }
-
     if(!result) {
-        if(failed) {
-            pass.failed.insert(path_id);
+        co_return false;
+    }
+    if(entry) {
+        for(auto& d: result->tidy_diagnostics) {
+            d.entry = worker::UnitEntry{.file = file.str(), .index = *entry};
         }
-        pass.inflight -= 1;
-        pass.task_done.set();
-        co_return;
     }
 
     switch(result->status) {
@@ -169,7 +185,7 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
                                        project.rules.lintable(
                                            files.resolve(files.intern(Spelling::absolute(d.file))));
                             });
-            break;
+            co_return false;
         }
         case Skipped:
         case Failed: {
@@ -177,31 +193,61 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
             // the last-known index then; lint has nothing to keep) — either way
             // the TU went unchecked. A command clang rejected says why.
             ranges::move(result->tidy_diagnostics, std::back_inserter(pass.findings));
-            failed = true;
             LOG_WARN("Lint failed for {}: {}",
                      file,
                      result->error.empty() ? "no compile command found" : result->error);
-            break;
+            co_return true;
         }
         case Crashed: {
-            failed = true;
             LOG_WARN("Lint gave up on {}: {}", file, result->error);
-            break;
+            co_return true;
         }
         case TooBig: {
-            failed = true;
             LOG_WARN(
                 "Lint gave up on {}: it does not fit in memory, its worker reached {} MiB alone",
                 file,
                 result->memory >> 20);
-            break;
+            co_return true;
         }
         case Lost:
         case Preempted:
         case OutOfMemory: {
-            failed = true;
             LOG_WARN("Lint gave up on {} after a retry: {}", file, result->error);
-            break;
+            co_return true;
+        }
+    }
+    std::unreachable();
+}
+
+async::task<> lint_one(BatchRun& run, bool with_index, LintJob job, LintPass& pass) {
+    auto& project = run.project;
+    auto path_id = job.file;
+    auto file = project.file_table.resolve(path_id);
+    // A TU outside the lint set is here for the index only.
+    UnitRequest request;
+    request.index = with_index && project.rules.indexable(file);
+    bool failed = false;
+    if(project.rules.lintable(file)) {
+        auto resolution = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
+        // Checked under a configuration it does not have, the unit would
+        // report what was not asked for and miss what was.
+        if(!resolution.error.empty()) {
+            if(pass.config_errors.insert(resolution.error).second) {
+                LOG_ERROR("{}", resolution.error);
+            }
+            failed = true;
+        } else {
+            request.tidy = std::move(resolution.params);
+        }
+    }
+    if(request.tidy || request.index) {
+        failed = co_await lint_compile(run, path_id, request, std::nullopt, pass) || failed;
+    }
+    if(request.tidy) {
+        request.index = false;
+        for(auto& [index, choice]: job.entries) {
+            request.entry = std::move(choice);
+            failed = co_await lint_compile(run, path_id, request, index, pass) || failed;
         }
     }
     if(failed) {
@@ -212,7 +258,7 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
 }
 
 async::task<>
-    run_lint_pass(BatchRun& run, bool with_index, llvm::ArrayRef<Fid> tus, LintPass& pass) {
+    run_lint_pass(BatchRun& run, bool with_index, llvm::ArrayRef<LintJob> jobs, LintPass& pass) {
     async::task_group<> workers;
 
     // The dispatch loop runs as a child of `workers`, like the background
@@ -220,10 +266,10 @@ async::task<>
     // in-flight task unwinds before the group is destroyed.
     auto feeder = [](BatchRun& run,
                      bool with_index,
-                     llvm::ArrayRef<Fid> tus,
+                     llvm::ArrayRef<LintJob> jobs,
                      LintPass& pass,
                      async::task_group<>& workers) -> async::task<> {
-        for(auto path_id: tus) {
+        for(auto& job: jobs) {
             // The background index feeder's window: deep enough that
             // workers never idle, shallow enough that a wind-down drains
             // fast.
@@ -232,10 +278,10 @@ async::task<>
                 co_await pass.task_done.wait();
             }
             pass.inflight += 1;
-            workers.spawn(lint_one(run, with_index, path_id, pass));
+            workers.spawn(lint_one(run, with_index, job, pass));
         }
     };
-    workers.spawn(feeder(run, with_index, tus, pass, workers));
+    workers.spawn(feeder(run, with_index, jobs, pass, workers));
     co_await workers.join();
 }
 
@@ -250,6 +296,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     auto& project = run.project;
 
     if(!start_batch(run, batch, batch.workers, "lint")) {
+        result.error = "the worker processes did not start";
         result.exit_code = 2;
         // See index_batch: stop the partially started pool or the loop
         // never drains.
@@ -268,39 +315,54 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
 
     auto& members = opened.members;
     if(members.empty()) {
-        LOG_ERROR("Nothing to lint: {}", project.why_no_members(batch.root));
-        result.exit_code = 2;
-        co_await shutdown(run);
-        co_return;
+        result.error = std::format("Nothing to lint: {}", project.why_no_members(batch.root));
+    } else if(with_index && !project.database) {
+        result.error = std::format("Cannot persist the index at {}: {}",
+                                   std::string_view(project.settings.project.cache_dir),
+                                   opened.unwritable);
     }
-    if(with_index && !project.database) {
-        LOG_ERROR("Cannot persist the index at {}; see the log for the cause and rerun",
-                  std::string_view(project.settings.project.cache_dir));
+    if(result.error) {
         result.exit_code = 2;
         co_await shutdown(run);
         co_return;
     }
 
-    // One run per file: a file with several CDB entries lints once, under
-    // the command resolve_command picks — same as the indexing pass. A TU
-    // the rules keep out of the lint set is not even parsed, unless the
-    // index wants it.
-    llvm::SmallVector<Fid> tus;
+    // One run per command a file compiles under: a file several database
+    // entries list lints under each distinct command, as clang-tidy runs
+    // each, the index taking the first. A TU the rules keep out of the lint
+    // set is not even parsed, unless the index wants it.
+    std::vector<LintJob> jobs;
     for(auto member: members) {
         auto file = project.file_table.resolve(member);
-        if(project.rules.lintable(file) || (with_index && project.rules.indexable(file))) {
-            tus.push_back(member);
+        bool lintable = project.rules.lintable(file);
+        if(!lintable && !(with_index && project.rules.indexable(file))) {
+            continue;
+        }
+        auto& job = jobs.emplace_back(LintJob{.file = member});
+        if(!lintable) {
+            continue;
+        }
+        llvm::StringSet<> commands;
+        for(auto [i, candidate]: views::enumerate(project.candidates(member))) {
+            auto base = project.commands.command_hash_hex(candidate.base);
+            if(commands.insert(base).second && commands.size() > 1) {
+                job.entries.push_back({.index = static_cast<std::uint32_t>(i + 1),
+                                       .choice = ContextChoice{.base = std::move(base)}});
+            }
         }
     }
 
     Lifetime lifetime(run);
     LintPass pass;
-    co_await async::with_token(run_lint_pass(run, with_index, tus, pass), lifetime.stop.token());
+    co_await async::with_token(run_lint_pass(run, with_index, jobs, pass), lifetime.stop.token());
     // What arrived is the report, whole or cut short by an interruption.
     for(auto& finding: pass.findings) {
         show_path(project.file_table, finding.file);
         for(auto& note: finding.notes) {
             show_path(project.file_table, note.file);
+        }
+        if(finding.entry) {
+            show_path(project.file_table, finding.entry->file);
         }
     }
     merge_findings(pass.findings);
@@ -336,6 +398,9 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     // index is part of the product, so unsaved state must fail the run
     // like the index-only batch does.
     result.unsaved = with_index && project.has_unsaved_state();
+    if(!project.save_error.empty()) {
+        result.save_error = project.save_error;
+    }
     if(!result.findings.empty()) {
         result.exit_code = 1;
     }
@@ -375,6 +440,9 @@ int run_lint(const ProjectOptions& where, std::uint32_t jobs, bool with_index, b
         return result.exit_code;
     }
     if(!result.completed) {
+        if(result.error) {
+            LOG_ERROR("{}", *result.error);
+        }
         return result.exit_code;
     }
     driver::println("Linted {} in {:.1f}s: {}.",
@@ -386,7 +454,9 @@ int run_lint(const ProjectOptions& where, std::uint32_t jobs, bool with_index, b
                         counted(result.failed_tus, "translation unit", "translation units"));
     }
     if(result.unsaved) {
-        driver::println("Part of the index could not be persisted (see the log).");
+        driver::println("Part of the index could not be persisted{}.",
+                        result.save_error ? std::format(": {}", *result.save_error)
+                                          : std::string());
     }
     return result.exit_code;
 }

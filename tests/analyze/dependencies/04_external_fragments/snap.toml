@@ -12,7 +12,7 @@ stdout = '''
   "to": "core",
   "entities": [
     {
-      "id": "#8170fc722b1f9ae1",
+      "id": "#22d4ba389e4e54ff",
       "entity": "Color",
       "owner": "core/color.h",
       "users": [
@@ -21,7 +21,7 @@ stdout = '''
       "interface": false
     },
     {
-      "id": "#0cb6ff8f8a18a882",
+      "id": "#7ba1deb5895e7db5",
       "entity": "Color::green",
       "owner": "core/color.h",
       "users": [
@@ -30,7 +30,7 @@ stdout = '''
       "interface": false
     },
     {
-      "id": "#cfe0f122bed7103e",
+      "id": "#32e2e12e0f62dc9c",
       "entity": "Color::red",
       "owner": "core/color.h",
       "users": [
@@ -39,7 +39,7 @@ stdout = '''
       "interface": false
     },
     {
-      "id": "#9d5f92609c78f7d1",
+      "id": "#4f3d459b421102b8",
       "entity": "ExtNames::gamma",
       "owner": "core/names.h",
       "users": [

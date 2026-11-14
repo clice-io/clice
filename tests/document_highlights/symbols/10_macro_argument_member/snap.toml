@@ -1,0 +1,5 @@
+[answers.get]
+highlights = [
+    { at = "double ⟦get_d⟧() const& {", kind = "text" },
+    { at = "CALL_TRAITS(d, ⟦get_d⟧);", kind = "text" },
+]

@@ -1,0 +1,4 @@
+# CMake's database for a target with precompiled headers and module units,
+# as it writes it for MSVC, spelled `clang++ --driver-mode=cl` so that every
+# platform has the driver.
+databases = {}

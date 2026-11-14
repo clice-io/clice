@@ -8,16 +8,15 @@ import :vfs.path;
 
 namespace clice {
 
-const static BorrowableCommands& borrowable_commands(Project& project) {
+static BorrowableCommands& borrowable_commands(Project& project) {
     auto& index = project.hosting.borrowable;
     if(index.epoch == project.commands_epoch) {
         return index;
     }
     index.commands.clear();
-    index.search_dirs.clear();
+    index.search_dirs.reset();
     auto members = project.members();
     ranges::sort(members, {}, [&](Fid unit) { return project.file_table.resolve(unit); });
-    llvm::StringMap<CanonicalPath> identities;
     for(auto member: members) {
         // A provisional member with no command to borrow compiles under the
         // builtin one; giving that would only name a guess borrowed.
@@ -25,24 +24,35 @@ const static BorrowableCommands& borrowable_commands(Project& project) {
             if(candidate.source == CommandSource::Fallback) {
                 continue;
             }
-            auto ref = project.tree_request(member, candidate).command;
-            auto position = static_cast<std::uint32_t>(index.commands.size());
             index.commands.push_back({
                 .member = member,
                 .command = candidate,
-                .language = language_of(ref),
+                .language = language_of(project.tree_request(member, candidate).command),
             });
-            for(auto& search_dir: project.toolchain.search_config(ref).dirs) {
-                auto [it, inserted] = identities.try_emplace(search_dir.path);
-                if(inserted) {
-                    it->second = CanonicalPath(Spelling::absolute(search_dir.path));
-                }
-                index.search_dirs[it->second].push_back(position);
-            }
         }
     }
     index.epoch = project.commands_epoch;
     return index;
+}
+
+const static llvm::StringMap<llvm::SmallVector<std::uint32_t>>&
+    search_dirs(Project& project, BorrowableCommands& index) {
+    if(index.search_dirs) {
+        return *index.search_dirs;
+    }
+    auto& dirs = index.search_dirs.emplace();
+    llvm::StringMap<CanonicalPath> identities;
+    for(auto [position, command]: views::enumerate(index.commands)) {
+        auto ref = project.tree_request(command.member, command.command).command;
+        for(auto& search_dir: project.toolchain.search_config(ref).dirs) {
+            auto [it, inserted] = identities.try_emplace(search_dir.path);
+            if(inserted) {
+                it->second = CanonicalPath(Spelling::absolute(search_dir.path));
+            }
+            dirs[it->second].push_back(static_cast<std::uint32_t>(position));
+        }
+    }
+    return dirs;
 }
 
 std::optional<Candidate> Project::borrowed_command(Fid file, bool provisional) {
@@ -90,9 +100,10 @@ std::optional<Candidate> Project::borrowed_command(Fid file, bool provisional) {
     // finds it by that path, so the command is the one the header is
     // written for. Nearest directory first, by path and command within.
     if(header) {
+        auto& dirs = search_dirs(*this, index);
         for(auto ancestor: path::ancestors(dir)) {
-            auto it = index.search_dirs.find(ancestor);
-            if(it == index.search_dirs.end()) {
+            auto it = dirs.find(ancestor);
+            if(it == dirs.end()) {
                 continue;
             }
             for(auto position: it->second) {
@@ -104,6 +115,10 @@ std::optional<Candidate> Project::borrowed_command(Fid file, bool provisional) {
     }
 
     // The closest unit in the directory tree, then by name.
+    // LIMITATION: among units equally near, the first by path wins, not the
+    // one whose command suits the file best: a file in a new directory can
+    // borrow an unrelated directory's command; a rule's default command
+    // picks one explicitly.
     return borrowed(**ranges::min_element(units, {}, [&](const Command* command) {
         return std::tuple(path::tree_distance(path, unit_path(command)), unit_path(command));
     }));

@@ -154,6 +154,17 @@ Before waiting for a dependency's compilation to complete, the graph checks for 
 
 All attempts run as tasks inside a task group owned by the graph, providing structured concurrency guarantees: shutdown stops intake, cancels cooperatively, and waits for frames to unwind, ensuring no dangling build tasks remain. Completed attempt frames are reclaimed eagerly as they finish.
 
+### Ordering Contracts
+
+The graph's users rely on a few orderings that no type enforces; the code names each where it relies on it, as `contract N`.
+
+1. **An attempt observes the real reply.** A cancelled request's sender still awaits its worker's answer: the cancellation travels to the worker, which stops early, while the frame keeps waiting. What the request did, a crash included, is known and accounted for.
+2. **Shutdown order.** A project stops feeding work — its compiles and its background index quiesce — before its last save, and both before its pool and its store stop: a stopped pool fails every dispatch at once, and the background index would walk its whole queue through it. An interrupted batch run resumes from what that save kept.
+3. **A crash is recorded whatever became of the request.** An outdated attempt's crash still records the death and the failure of the document or the build that crashed: skipping it would let a file that crashes its worker escape its stop by being edited between the dispatch and the crash. An outdated attempt's success clears no record.
+4. **Edge publication.** An edge takes effect for invalidation and interest the moment the attempt records it; only a current successful attempt replaces the node's edges, an overtaken or failed attempt's are discarded, and the replacement leaves no moment where neither set is visible.
+5. **Results apply before waiters wake.** An index attempt's outcome — the file indexed, failed or refused — is applied by its owner before the attempt's waiters wake: an open document waiting on the index decides how to answer from what its owner made of the result.
+6. **A compile's products are visible before its result.** A document compile installs what it produced — its index, what it read, its diagnostics, the AST it serves — with no suspension before its result becomes visible: a joiner never sees a success before the document's latest compile describes the text it compiled. An attempt invalidated meanwhile installs its products the same way, as stale ones, and reports itself stale.
+
 ### PCM Caching
 
 Each module keeps one record of its last build under each command it is built under, failed or not: its key, what it read, and what came of it. The key names the build by configuration, not by content: the module name plus a hash of the compiler version, working directory, source path, frontend-relevant flags and the keys of the modules it imports — so a command change anywhere below a module changes its key too. Content changes are caught by the dependency snapshots described next, not by the key. Each build stores its PCM under the key and a nonce, in a dedicated cache directory: a rebuild never overwrites a PCM a compile may still be reading, and a record names exactly the file it describes. This is fully isolated from build system artifacts, avoiding file-locking conflicts.

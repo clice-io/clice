@@ -281,12 +281,6 @@ Result format_project(const Request& options) {
     }
     if(whole) {
         // A database that cannot be loaded makes the file set incomplete.
-        if(project.cdb.source_count() == 0) {
-            result.exit_code = 2;
-            result.error =
-                std::format("Nothing to format: {}", project.why_no_members(options.root));
-            return result;
-        }
         for(std::size_t i = 0; i < project.cdb.source_count(); i += 1) {
             if(!project.cdb.loaded(SourceID(i))) {
                 result.exit_code = 2;
@@ -294,6 +288,12 @@ Result format_project(const Request& options) {
                                            project.cdb.source_path(SourceID(i)));
                 return result;
             }
+        }
+        if(opened.members.empty()) {
+            result.exit_code = 2;
+            result.error =
+                std::format("Nothing to format: {}", project.why_no_members(options.root));
+            return result;
         }
         for(auto& file: project_files(project, opened.members)) {
             if(!directories.empty() && ranges::none_of(directories, [&](auto& directory) {

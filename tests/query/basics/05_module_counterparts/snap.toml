@@ -57,14 +57,14 @@ stdout = '''
         "kind": "Module",
         "startLine": 1,
         "endLine": 1,
-        "symbol": "#f11fe5b9d3ccb36d"
+        "symbol": "#be91f074e1826b9f"
       },
       {
         "name": "fetch",
         "kind": "Function",
         "startLine": 2,
         "endLine": 2,
-        "symbol": "#f93f3d235f7796d6"
+        "symbol": "#032e26af1ee50475"
       }
     ]
   },

@@ -367,6 +367,8 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
             }
         }
     }
+    // clang bug: clang mangles internal linkage alike across modules
+    // (Interface::shared_locals, clice-io/clice#1057 item 10).
     std::map<std::pair<std::string, std::string>, std::map<std::string, std::set<std::string>>>
         shared;
     for(auto& entry: generated) {

@@ -42,14 +42,14 @@ struct ToolchainEntries {
         auto resolution = toolchain.resolve(ref.command, ref.language);
         ZASSERT(resolution);
         ZEXPECT(resolution->query_failure == "");
-        return toolchain.render(ref, db.spelling(ref.file)).argv;
+        return toolchain.render(ref, db.files().spelling(ref.file)).argv;
     }
 
     /// The command clice compiles `ref` with when its compiler could not be
     /// queried: clang's own driver read it.
     std::vector<const char*> read_as_clang(const CommandRef& ref) {
         failure(ref);
-        return toolchain.render(ref, db.spelling(ref.file)).argv;
+        return toolchain.render(ref, db.files().spelling(ref.file)).argv;
     }
 
     /// Why the compiler of `ref` could not be queried, which leaves clang's

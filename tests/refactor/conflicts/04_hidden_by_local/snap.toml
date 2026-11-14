@@ -17,7 +17,7 @@ stdout = '''
         "locator": "compute",
         "name": "compute",
         "kind": "Function",
-        "symbol": "#0129094638d1b328",
+        "symbol": "#5ed96e37759646ef",
         "newName": "evaluate",
         "edits": 2,
         "conflicts": [],

@@ -8,6 +8,6 @@ exit = 1
 ["beside a server"."$ clice lint --index --jobs 2"]
 stderr = '''
 warning: Another clice process (pid #) is writing the index cache at .clice; index persistence is disabled for this process
-error: Cannot persist the index at .clice; see the log for the cause and rerun
+error: Cannot persist the index at .clice: Another clice process writes the index under .clice
 '''
 exit = 2

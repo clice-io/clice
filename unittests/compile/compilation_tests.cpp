@@ -50,7 +50,7 @@ std::vector<std::string> cxx20_command(CompilationDatabase& cdb,
     cdb.add_command(tmp.root, path, std::format("clang++ -std=c++20 {}", path));
     auto ref = database_command(cdb, cdb.candidate_entries(path).front());
     ZEXPECT(toolchain.resolve(ref.command, ref.language));
-    auto argv = toolchain.render(ref, cdb.spelling(ref.file)).argv;
+    auto argv = toolchain.render(ref, cdb.files().spelling(ref.file)).argv;
     return std::vector<std::string>(argv.begin(), argv.end());
 }
 

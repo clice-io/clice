@@ -49,8 +49,8 @@ stdout = '''
       "interfaceEntities": 0,
       "implementationEntities": 2,
       "sample": [
-        "Left::l",
-        "Left"
+        "Left",
+        "Left::l"
       ]
     },
     {

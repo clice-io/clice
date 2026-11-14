@@ -51,7 +51,7 @@ The answer is one JSON object, `{"result": ..., "stale": [...]}`, like a query's
 - `conflicts` stop all the renames together: a token two of them would change to different names, or a file that could not be rewritten.
 - `stale` lists the files the renames edit, or that spell an old or a new name, whose text changed since they were indexed. They stop the renames as well; `--fresh` reindexes them first.
 
-The exit code is 0 when the renames were written, or planned under `--dry-run`, and 1 when an error, a conflict or a stale file stopped them. Options and a list that do not parse answer `{"error": "..."}` — the list's error names its line — with exit code 1, or 2 when the arguments themselves do not parse.
+The exit code is 0 when the renames were written, or planned under `--dry-run`, and 1 when an error, a conflict or a stale file stopped them. Options and a list that do not parse answer `{"error": "..."}` — the list's error names its line — with exit code 1, or 2 when the arguments themselves do not parse or the project or its index cannot be read.
 
 ## Writing
 

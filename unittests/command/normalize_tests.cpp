@@ -147,7 +147,7 @@ ZEST_CASE(InternedCommand) {
                    spelled,
                    commands.input_kind(spelled, "/ws/src/a.cpp"),
                    CommandSource::Default};
-    auto rendered = commands.render_driver(ref, database.spelling(ref.file));
+    auto rendered = commands.render_driver(ref, database.files().spelling(ref.file));
     ZEXPECT(ranges::contains(rendered, "-std=c++20"sv));
     ZEXPECT(has_arg(rendered, "/ws/include"));
     ZEXPECT(std::string_view(rendered.back()) == file_table.resolve(ref.file).str());

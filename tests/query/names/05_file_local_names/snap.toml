@@ -17,7 +17,7 @@ stdout = '''
         "file": "${WS}/b.cpp",
         "line": 1,
         "container": null,
-        "symbol": "#91b81847324836ae path:${WS}/b.cpp"
+        "symbol": "#6c62b808c327f9b9 path:${WS}/b.cpp"
       }
     ]
   },
@@ -34,20 +34,20 @@ stdout = '''
       {
         "name": "rows",
         "signature": null,
-        "kind": "Variable",
-        "file": "${WS}/a.cpp",
-        "line": 4,
-        "container": "a",
-        "symbol": "#62144b44c2d7e570 path:${WS}/a.cpp"
-      },
-      {
-        "name": "rows",
-        "signature": null,
         "kind": "Parameter",
         "file": "${WS}/a.cpp",
         "line": 2,
         "container": "helper",
-        "symbol": "#c779df7ea50d8026 path:${WS}/a.cpp"
+        "symbol": "#5a9a02ac580fd19c path:${WS}/a.cpp"
+      },
+      {
+        "name": "rows",
+        "signature": null,
+        "kind": "Variable",
+        "file": "${WS}/a.cpp",
+        "line": 4,
+        "container": "a",
+        "symbol": "#d52822e2f6939fba path:${WS}/a.cpp"
       }
     ]
   },
@@ -68,7 +68,7 @@ stdout = '''
         "file": "${WS}/b.cpp",
         "line": 1,
         "container": null,
-        "symbol": "#91b81847324836ae path:${WS}/b.cpp"
+        "symbol": "#6c62b808c327f9b9 path:${WS}/b.cpp"
       }
     ]
   },
@@ -89,7 +89,7 @@ stdout = '''
         "file": "${WS}/a.cpp",
         "line": 2,
         "container": "helper",
-        "symbol": "#c779df7ea50d8026 path:${WS}/a.cpp"
+        "symbol": "#5a9a02ac580fd19c path:${WS}/a.cpp"
       }
     ]
   },
@@ -104,7 +104,7 @@ stdout = '''
   "result": {
     "name": "rows",
     "kind": "Variable",
-    "symbol": "#62144b44c2d7e570 path:${WS}/a.cpp",
+    "symbol": "#d52822e2f6939fba path:${WS}/a.cpp",
     "documentation": null,
     "definition": {
       "file": "${WS}/a.cpp",
@@ -126,20 +126,20 @@ stdout = '''
     {
       "name": "rows",
       "signature": null,
-      "kind": "Variable",
-      "file": "${WS}/a.cpp",
-      "line": 4,
-      "container": "a",
-      "symbol": "#62144b44c2d7e570 path:${WS}/a.cpp"
-    },
-    {
-      "name": "rows",
-      "signature": null,
       "kind": "Parameter",
       "file": "${WS}/a.cpp",
       "line": 2,
       "container": "helper",
-      "symbol": "#c779df7ea50d8026 path:${WS}/a.cpp"
+      "symbol": "#5a9a02ac580fd19c path:${WS}/a.cpp"
+    },
+    {
+      "name": "rows",
+      "signature": null,
+      "kind": "Variable",
+      "file": "${WS}/a.cpp",
+      "line": 4,
+      "container": "a",
+      "symbol": "#d52822e2f6939fba path:${WS}/a.cpp"
     }
   ],
   "stale": []
@@ -147,19 +147,19 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice query definition \"#62144b44c2d7e570 path:${WS}/a.cpp\""]
+[test."$ clice query definition \"#5a9a02ac580fd19c path:${WS}/a.cpp\""]
 stdout = '''
 {
   "result": {
     "name": "rows",
-    "kind": "Variable",
-    "symbol": "#62144b44c2d7e570 path:${WS}/a.cpp",
+    "kind": "Parameter",
+    "symbol": "#5a9a02ac580fd19c path:${WS}/a.cpp",
     "documentation": null,
     "definition": {
       "file": "${WS}/a.cpp",
-      "startLine": 4,
-      "endLine": 4,
-      "text": "int rows = 1"
+      "startLine": 2,
+      "endLine": 2,
+      "text": "int rows"
     }
   },
   "stale": []
@@ -167,19 +167,19 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query definition \"#c779df7ea50d8026 path:${WS}/a.cpp\""]
+[test."$ clice query definition \"#d52822e2f6939fba path:${WS}/a.cpp\""]
 stdout = '''
 {
   "result": {
     "name": "rows",
-    "kind": "Parameter",
-    "symbol": "#c779df7ea50d8026 path:${WS}/a.cpp",
+    "kind": "Variable",
+    "symbol": "#d52822e2f6939fba path:${WS}/a.cpp",
     "documentation": null,
     "definition": {
       "file": "${WS}/a.cpp",
-      "startLine": 2,
-      "endLine": 2,
-      "text": "int rows"
+      "startLine": 4,
+      "endLine": 4,
+      "text": "int rows = 1"
     }
   },
   "stale": []

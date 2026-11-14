@@ -2,7 +2,7 @@ import { test } from "@clice/tools/testing";
 
 // Each configuration has an index of its own: a query reads the one it
 // names, else the default's.
-test({ errors: ["No index cache at"] }, async (t) => {
+test(async (t) => {
     await t.cli("index --configuration release");
     await t.cli("query symbol-search release_only --configuration release");
     await t.cli("query symbol-search debug_only");

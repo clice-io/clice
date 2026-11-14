@@ -97,7 +97,8 @@ bool holds_argument(CompilationUnit& unit, clang::SourceLocation open_paren) {
 }
 
 /// Whether the argument list `open` opens is still open at the completion
-/// point. Once the parse stopped there, clang still offers a call whose
+/// point.
+/// clang bug: once the parse stopped there, clang still offers a call whose
 /// arguments fail to parse, as in a member function body it parses after
 /// the class, which names a member the stopped parse never declared. A
 /// directive between them may leave out what the lexer reads: the call is
@@ -480,9 +481,9 @@ clang::QualType built_from_pack(clang::Sema& sema,
     if(!pattern || !pattern->hasBody(definition)) {
         return {};
     }
-    /// The pattern clang reports can be another than the one instantiated
-    /// (a specialization merged across modules): its parameters must be
-    /// the ones the specialization's arguments bind.
+    // clang bug: the pattern clang reports can be another than the one
+    // instantiated (a specialization merged across modules): its parameters
+    // must be the ones the specialization's arguments bind.
     if(const auto* described = pattern->getDescribedFunctionTemplate()) {
         const auto* arguments = specialization.getTemplateSpecializationArgs();
         if(!arguments || arguments->size() != described->getTemplateParameters()->size()) {

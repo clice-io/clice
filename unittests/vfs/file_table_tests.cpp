@@ -365,6 +365,30 @@ ZEST_CASE(LookupSpellingNotShown) {
     ZASSERT(pool.display(fid) == pool.resolve(fid).str());
 }
 
+ZEST_CASE(EntrySpellingWins) {
+    // A database entry's name for a file holds over the lookups that
+    // reached it, whichever came first, until a reload names it anew.
+    TempDir tmp;
+    tmp.touch("include/lib.h", "");
+    tmp.mkdir("build");
+    tmp.mkdir("other");
+    auto looked_up = Spelling::absolute(tmp.path("other/../include/lib.h"));
+    auto entry = Spelling::absolute(tmp.path("build/../include/lib.h"));
+
+    FileTable pool;
+    auto fid = pool.intern_spelled(looked_up);
+    ZEXPECT(pool.spelling(fid).str() == looked_up.str());
+    ZEXPECT(pool.intern_entry(entry) == fid);
+    ZEXPECT(pool.spelling(fid).str() == entry.str());
+    pool.intern_spelled(looked_up);
+    ZEXPECT(pool.spelling(fid).str() == entry.str());
+
+    pool.intern_entry(Spelling(pool.resolve(fid)));
+    ZEXPECT(pool.spelling(fid).str() == pool.resolve(fid).str());
+    pool.intern_spelled(looked_up);
+    ZEXPECT(pool.spelling(fid).str() == pool.resolve(fid).str());
+}
+
 ZEST_CASE(RootDotDotFolded) {
     // `--workspace ..` run in the build directory names its parent.
     TempDir tmp;

@@ -217,9 +217,10 @@ std::vector<std::byte> encode_record(const Dependents& dependents) {
     for(auto& resolution: dependents.resolutions) {
         auto& out = blob.resolutions.emplace_back();
         out.content = resolution.content;
-        for(auto [line, target]: resolution.edges) {
-            out.lines.push_back(line);
-            out.targets.push_back(target);
+        for(auto edge: resolution.edges) {
+            out.lines.push_back(edge.line);
+            out.columns.push_back(edge.column);
+            out.targets.push_back(edge.target);
         }
         out.units = file_set(resolution.units);
     }
@@ -255,13 +256,18 @@ std::optional<Dependents> decode_dependents(llvm::StringRef data) {
     dependents.absent = std::move(*absent);
     for(auto& resolution: root->resolutions) {
         auto units = file_set_of(resolution.units);
-        if(!units || units->isEmpty() || resolution.lines.size() != resolution.targets.size()) {
+        if(!units || units->isEmpty() || resolution.lines.size() != resolution.targets.size() ||
+           resolution.columns.size() != resolution.targets.size()) {
             return std::nullopt;
         }
         auto& decoded = dependents.resolutions.emplace_back();
         decoded.content = resolution.content;
         for(std::uint32_t i = 0; i < resolution.lines.size(); i += 1) {
-            decoded.edges.emplace_back(resolution.lines[i], resolution.targets[i]);
+            decoded.edges.push_back({
+                .line = resolution.lines[i],
+                .column = resolution.columns[i],
+                .target = resolution.targets[i],
+            });
         }
         decoded.units = std::move(*units);
     }

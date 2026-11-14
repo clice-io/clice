@@ -17,7 +17,7 @@ stdout = '''
       "file": "${WS}/main.cpp",
       "line": 2,
       "container": "Shape",
-      "symbol": "#2e497a8424b18403"
+      "symbol": "#e884af62b4c0af6c"
     }
   ],
   "stale": []
@@ -37,7 +37,7 @@ stdout = '''
       "file": "${WS}/main.cpp",
       "line": 7,
       "container": null,
-      "symbol": "#ca4cfb002f4ef965"
+      "symbol": "#defa002d31813309"
     }
   ],
   "stale": []
@@ -51,7 +51,7 @@ stdout = '''
   "result": {
     "name": "width",
     "kind": "Field",
-    "symbol": "#5c8f14bfb3f2f707",
+    "symbol": "#51f2402c1aeb8dc3",
     "documentation": null,
     "definition": {
       "file": "${WS}/main.cpp",
@@ -77,7 +77,7 @@ stdout = '''
       "file": "${WS}/main.cpp",
       "line": 3,
       "container": "Shape",
-      "symbol": "#abf57cc1d04d760e"
+      "symbol": "#29895d7beda85d7d"
     },
     {
       "name": "width",
@@ -86,7 +86,7 @@ stdout = '''
       "file": "${WS}/main.cpp",
       "line": 4,
       "container": "Shape",
-      "symbol": "#5c8f14bfb3f2f707"
+      "symbol": "#51f2402c1aeb8dc3"
     }
   ],
   "stale": []
@@ -100,7 +100,7 @@ stdout = '''
   "result": {
     "name": "area",
     "kind": "Function",
-    "symbol": "#ca4cfb002f4ef965",
+    "symbol": "#defa002d31813309",
     "documentation": null,
     "definition": {
       "file": "${WS}/main.cpp",

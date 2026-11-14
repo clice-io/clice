@@ -7,7 +7,7 @@ exit = 0
 
 [test."$ clice index symbol alpha"]
 stdout = '''
-symbol #1631ac4f1048cdac  kind=Function  name=alpha  args=  qualified=alpha  flags=HasDefinition,Completable  form=Identifier
+symbol #c48b0aac187ddc9f  kind=Function  name=alpha  args=  qualified=alpha  flags=HasDefinition,Completable  form=Identifier
   scope=External  file=${WS}/a.cpp  reference files=2
   ${WS}/a.cpp: definitions=1 declarations=0 references=0
   ${WS}/b.cpp: definitions=0 declarations=1 references=1
