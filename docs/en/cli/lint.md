@@ -49,6 +49,12 @@ finding several units report identically, notes included, appears once in
 the report, which is sorted by file and position and keeps the notes
 clang-tidy attaches.
 
+A file the compilation database lists under several commands, as a build
+compiling it for two targets does, is checked under each distinct one. A
+finding only a later command reports names that command's entry, numbered as
+`clice command <file>` lists the file's entries: `(entry 2 of main.cpp)`, and
+in the JSON report an `entry` with the unit's `file` and the `index`.
+
 ## Examples
 
 ### Compiler Warnings

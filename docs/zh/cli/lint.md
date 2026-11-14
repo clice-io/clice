@@ -32,6 +32,8 @@ lint = false
 
 每个翻译单元从最近的 `.clang-tidy` 读取配置，继承方式与 clang-tidy 一致。与 clang-tidy 相同，只有 `Checks` 启用了某条编译器警告对应的 `clang-diagnostic-<flag>` 名称时，这条警告才算作检查结果。所有文件中的 `NOLINT`、`NOLINTNEXTLINE` 以及 `NOLINTBEGIN`/`NOLINTEND` 注释都会生效。头文件会在每个包含它的翻译单元中被检查，这与 clang-tidy 的行为一致；若多个翻译单元报出完全相同的结果，连 note 也一样，该结果在报告中只出现一次；报告按文件和位置排序，并保留 clang-tidy 附加的 note。
 
+如果编译数据库以多条命令列出同一个文件（例如构建为两个目标各编译一次），该文件会在每条不同的命令下各检查一次。只在后面的命令下报出的结果会注明该命令所属的条目，编号与 `clice command <file>` 列出该文件条目的顺序一致：`(entry 2 of main.cpp)`；JSON 报告中则是一个 `entry`，含翻译单元的 `file` 和 `index`。
+
 ## 示例
 
 ### 编译器警告

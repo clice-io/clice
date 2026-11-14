@@ -25,11 +25,13 @@ struct Lint {
 
 void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
     for(auto& d: diagnostics) {
-        driver::println("{}{}: {} [{}]",
+        driver::println("{}{}: {} [{}]{}",
                         location(d.file, d.line, d.column),
                         d.error ? "error" : "warning",
                         d.message,
-                        d.check);
+                        d.check,
+                        d.entry ? std::format(" (entry {} of {})", d.entry->index, d.entry->file)
+                                : std::string());
         for(auto& note: d.notes) {
             driver::println("{}note: {}",
                             location(note.file, note.line, note.column),
@@ -57,8 +59,9 @@ struct Report {
     std::size_t failed_tus = 0;
 
     /// The findings of the run, merged: a finding several TUs produced
-    /// identically, notes included (a header's), appears once; sorted by
-    /// file, line, column, check.
+    /// identically, notes included (a header's), appears once, naming an
+    /// entry only when no file's first command produced it; sorted by file,
+    /// line, column, check.
     std::vector<worker::TidyDiagnostic> findings;
 
     /// --index only: index state remained that the final save could not
@@ -89,30 +92,50 @@ auto finding_key(const worker::TidyDiagnostic& d) {
     return std::tie(d.file, d.line, d.column, d.check, d.error, d.message, d.notes);
 }
 
+/// The entry a merged finding keeps: none before any, then the smallest.
+auto entry_key(const worker::TidyDiagnostic& d) {
+    return d.entry ? std::pair(llvm::StringRef(d.entry->file), d.entry->index)
+                   : std::pair(llvm::StringRef(), 0U);
+}
+
 /// Sort and merge findings: one per (file, line, column, check, severity,
 /// message, notes). The notes stay in the key: a redeclaration check
 /// reports the same line from two units with notes pointing at different
 /// declarations, and each is a mismatch of its own.
 void merge_findings(std::vector<worker::TidyDiagnostic>& findings) {
-    ranges::stable_sort(findings, [](auto& a, auto& b) { return finding_key(a) < finding_key(b); });
+    ranges::stable_sort(findings, [](auto& a, auto& b) {
+        return std::pair(finding_key(a), entry_key(a)) < std::pair(finding_key(b), entry_key(b));
+    });
     auto duplicates =
         ranges::unique(findings, [](auto& a, auto& b) { return finding_key(a) == finding_key(b); });
     findings.erase(duplicates.begin(), duplicates.end());
 }
 
 /// A file of a lint run: compiled under the command resolve_command picks,
-/// which alone the index takes, then under each other distinct command of
-/// its database entries, one after another: a consumer compiles a file
-/// once at a time (Project::compile_unit).
+/// its first, which alone the index takes, then under each other distinct
+/// command of its database entries, one after another: a consumer compiles
+/// a file once at a time (Project::compile_unit).
 struct LintJob {
+    struct Entry {
+        /// The first entry with the command (worker::UnitEntry::index).
+        std::uint32_t index = 0;
+
+        ContextChoice choice;
+    };
+
     Fid file;
 
-    std::vector<ContextChoice> entries;
+    std::vector<Entry> entries;
 };
 
-/// Compile the unit `request` asks for and add what it found to the pass;
-/// whether it failed.
-async::task<bool> lint_compile(BatchRun& run, Fid path_id, UnitRequest request, LintPass& pass) {
+/// Compile the unit `request` asks for, under the file's entry `entry` when
+/// it is not the first command, and add what it found to the pass; whether
+/// it failed.
+async::task<bool> lint_compile(BatchRun& run,
+                               Fid path_id,
+                               UnitRequest request,
+                               std::optional<std::uint32_t> entry,
+                               LintPass& pass) {
     using enum UnitResult::Status;
     auto& project = run.project;
     auto file = project.file_table.resolve(path_id);
@@ -138,6 +161,11 @@ async::task<bool> lint_compile(BatchRun& run, Fid path_id, UnitRequest request, 
     }
     if(!result) {
         co_return false;
+    }
+    if(entry) {
+        for(auto& d: result->tidy_diagnostics) {
+            d.entry = worker::UnitEntry{.file = file.str(), .index = *entry};
+        }
     }
 
     switch(result->status) {
@@ -213,13 +241,13 @@ async::task<> lint_one(BatchRun& run, bool with_index, LintJob job, LintPass& pa
         }
     }
     if(request.tidy || request.index) {
-        failed = co_await lint_compile(run, path_id, request, pass) || failed;
+        failed = co_await lint_compile(run, path_id, request, std::nullopt, pass) || failed;
     }
     if(request.tidy) {
         request.index = false;
-        for(auto& entry: job.entries) {
-            request.entry = std::move(entry);
-            failed = co_await lint_compile(run, path_id, request, pass) || failed;
+        for(auto& [index, choice]: job.entries) {
+            request.entry = std::move(choice);
+            failed = co_await lint_compile(run, path_id, request, index, pass) || failed;
         }
     }
     if(failed) {
@@ -315,10 +343,11 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
             continue;
         }
         llvm::StringSet<> commands;
-        for(auto& candidate: project.candidates(member)) {
+        for(auto [i, candidate]: views::enumerate(project.candidates(member))) {
             auto base = project.commands.command_hash_hex(candidate.base);
             if(commands.insert(base).second && commands.size() > 1) {
-                job.entries.push_back(ContextChoice{.base = std::move(base)});
+                job.entries.push_back({.index = static_cast<std::uint32_t>(i + 1),
+                                       .choice = ContextChoice{.base = std::move(base)}});
             }
         }
     }
@@ -331,6 +360,9 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         show_path(project.file_table, finding.file);
         for(auto& note: finding.notes) {
             show_path(project.file_table, note.file);
+        }
+        if(finding.entry) {
+            show_path(project.file_table, finding.entry->file);
         }
     }
     merge_findings(pass.findings);

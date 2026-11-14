@@ -83,11 +83,42 @@ std::uint32_t FactsBuilder::owner_of(index::SymbolHash hash,
     if(owner == none) {
         owner = pick([&](const Site& site) { return header(site) && site.definition; });
     }
-    // Defined in no header, it belongs to the header declaring it first by
+    // Defined in no header, it belongs to the header declaring it that the
+    // most files naming it include, those declaring it apart: a header
+    // redeclaring the function of another it calls (toml++ declaring the
+    // Windows functions) provides it to none of them. Then the first by
     // path: which unit the index met first decides nothing.
     if(owner == none) {
-        owner = pick(
-            [&](const Site& site) { return header(site) && !site.definition && !befriends(site); });
+        auto declares = [&](const Site& site) {
+            return header(site) && !site.definition && !befriends(site);
+        };
+        llvm::DenseMap<std::uint32_t, std::uint32_t> includers;
+        for(auto& site: scoped) {
+            if(declares(site)) {
+                includers.try_emplace(site.file, 0);
+            }
+        }
+        if(includers.size() > 1) {
+            for(std::uint32_t file = 0; file < raw.size(); file += 1) {
+                if(includers.contains(file) || !raw[file].contains(hash)) {
+                    continue;
+                }
+                auto closure = include_closure(file);
+                for(auto& [declaring, count]: includers) {
+                    count += closure.contains(fids[declaring]) ? 1 : 0;
+                }
+            }
+        }
+        auto before = [&](std::uint32_t lhs, std::uint32_t rhs) {
+            auto left = includers.lookup(lhs);
+            auto right = includers.lookup(rhs);
+            return left != right ? left > right : facts.files[lhs].path < facts.files[rhs].path;
+        };
+        for(auto& site: scoped) {
+            if(declares(site) && (owner == none || before(site.file, owner))) {
+                owner = site.file;
+            }
+        }
     }
     if(owner == none) {
         owner = pick([&](const Site& site) { return header(site) && befriends(site); });
