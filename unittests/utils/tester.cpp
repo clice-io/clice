@@ -300,7 +300,7 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     auto entry = database.add_command(TestVFS::root(), src_path, command);
     ZASSERT(entry);
     auto ref = database_command(database, *entry);
-    auto rendered = toolchain.render(ref, database.spelling(ref.file));
+    auto rendered = toolchain.render(ref, database.files().spelling(ref.file));
     params.input.arguments.assign(rendered.argv.begin(), rendered.argv.end());
 
     auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(

@@ -436,6 +436,7 @@ inline SimResult simulate(const SimSpec& spec) {
             auto bytes = used();
             sample.headroom = bytes < machine.memory ? machine.memory - bytes : 0;
             sample.reserve = sim::reserve(machine);
+            std::vector<WorkerSample> workers;
             for(std::size_t slot = 0; slot < procs.size(); slot += 1) {
                 auto& proc = procs[slot];
                 if(proc.alive || proc.ready_at || proc.exit_at) {
@@ -443,7 +444,7 @@ inline SimResult simulate(const SimSpec& spec) {
                 }
                 // The pool samples the workers in service.
                 if(proc.alive && !proc.kill) {
-                    sample.workers.push_back({
+                    workers.push_back({
                         .slot = slot,
                         .memory = proc.job ? sim::memory_at(proc.job->peak, proc.job->progress)
                                            : sim::base,
@@ -451,7 +452,7 @@ inline SimResult simulate(const SimSpec& spec) {
                     });
                 }
             }
-            core.sample(std::move(sample), now);
+            core.sample(sample, workers, now);
             run();
             next_sample = t + duration<double>(core.sample_interval()).count();
         }

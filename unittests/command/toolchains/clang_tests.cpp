@@ -144,7 +144,7 @@ ZEST_CASE(BothFailuresNamed) {
     ZASSERT(!resolved);
     ZEXPECT(llvm::StringRef(resolved.error()).contains("not found"));
     ZEXPECT(llvm::StringRef(resolved.error()).contains("language not recognized: 'bogus'"));
-    auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
+    auto rendered = f.toolchain.render(ref, f.db.files().spelling(ref.file));
     ZEXPECT(rendered.query_failure.empty());
     ZEXPECT(!contains(rendered.argv, "-cc1"));
 }

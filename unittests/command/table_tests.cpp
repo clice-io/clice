@@ -294,7 +294,7 @@ ZEST_CASE(ResourceDir) {
 
     auto& entry = database.candidate_entries(fake("main.cpp")).front();
     auto ref = database_command(database, entry);
-    auto argv = commands.render_driver(ref, database.spelling(ref.file));
+    auto argv = commands.render_driver(ref, database.files().spelling(ref.file));
 
     bool has_resource_dir = false;
     for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
@@ -313,7 +313,7 @@ ZEST_CASE(ResourceDir) {
     database2.add_command("/fake", "main.cpp", "clang++ -resource-dir /custom main.cpp"sv);
     auto& entry2 = database2.candidate_entries(fake("main.cpp")).front();
     auto ref2 = database_command(database2, entry2);
-    auto argv2 = commands2.render_driver(ref2, database2.spelling(ref2.file));
+    auto argv2 = commands2.render_driver(ref2, database2.files().spelling(ref2.file));
     int count = 0;
     for(auto* arg: argv2) {
         if(arg == "-resource-dir"sv) {

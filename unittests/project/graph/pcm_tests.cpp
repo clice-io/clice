@@ -110,7 +110,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
         CompilationParams cp;
         cp.kind = CompilationKind::ModuleInterface;
         cp.input.directory = cdb.commands().get(entry.command).directory;
-        auto arguments = toolchain.render(ref, cdb.spelling(ref.file)).argv;
+        auto arguments = toolchain.render(ref, cdb.files().spelling(ref.file)).argv;
         cp.input.arguments.assign(arguments.begin(), arguments.end());
 
         // Fill ALL available PCM paths (clang needs transitive deps too).
@@ -148,7 +148,7 @@ ResolveFn make_resolver(CompilationDatabase& cdb, Toolchain& toolchain, Dependen
         auto& entry = candidates.front();
         auto ref = database_command(cdb, entry);
 
-        auto scan_result = scan_precise(toolchain.render(ref, cdb.spelling(ref.file)).argv,
+        auto scan_result = scan_precise(toolchain.render(ref, cdb.files().spelling(ref.file)).argv,
                                         cdb.commands().get(entry.command).directory);
 
         llvm::SmallVector<std::uint32_t> deps;

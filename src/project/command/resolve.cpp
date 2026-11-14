@@ -229,7 +229,7 @@ SelectedCommand Project::select_command(Fid path_id, const CommandRequest& reque
 
 Rendered Project::render(const CommandRef& ref, const RenderOptions& options) {
     Rendered result{.directory = commands.get(ref.command).directory};
-    auto rendered = toolchain.render(ref, cdb.spelling(ref.file), options);
+    auto rendered = toolchain.render(ref, file_table.spelling(ref.file), options);
     result.arguments.assign(rendered.argv.begin(), rendered.argv.end());
     result.hidden = std::move(rendered.hidden);
     // The builtin command names a compiler no build chose: clang's own

@@ -187,7 +187,7 @@ struct ShownCommand {
 ShownCommand shown_command(Project& project,
                            const CommandRef& ref,
                            const RenderOptions& opts = {}) {
-    auto path = project.cdb.spelling(ref.file);
+    auto path = project.file_table.spelling(ref.file);
     auto resolution = project.toolchain.resolve(ref.command, ref.language);
     if(resolution && resolution->query_failure.empty()) {
         // The resolution is cached: rendering resolves it the same.

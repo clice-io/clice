@@ -411,10 +411,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         bool c_family = is_c_family_file(file_ref);
 
         auto file = spelled(file_ref, directory, normalizer.mounts);
-        auto path_id = file_table.intern_spelled(file);
-        llvm::StringRef spelling = file.str() != llvm::StringRef(file_table.resolve(path_id))
-                                       ? command_table.intern(file)
-                                       : llvm::StringRef();
+        auto path_id = file_table.intern_entry(file);
 
         kotatsu::string_list_ref tokens =
             command ? normalizer.split(*command, views, args) : kotatsu::string_list_ref(args);
@@ -437,8 +434,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         new_entries.push_back({.file = path_id,
                                .command = *normalized,
                                .source = id,
-                               .ordinal = index,
-                               .spelling = spelling});
+                               .ordinal = index});
     }
 
     if(skipped != 0) {
@@ -525,15 +521,6 @@ llvm::ArrayRef<CompilationEntry> CompilationDatabase::pch_writers(Fid pch) const
                                : llvm::ArrayRef<CompilationEntry>();
 }
 
-llvm::StringRef CompilationDatabase::spelling(Fid file) const {
-    for(auto& entry: candidate_entries(file)) {
-        if(!entry.spelling.empty()) {
-            return entry.spelling;
-        }
-    }
-    return file_table.resolve(file);
-}
-
 std::optional<CompilationEntry>
     CompilationDatabase::append_test_command(Fid file, std::optional<CommandID> normalized) {
     if(!normalized) {
@@ -565,7 +552,7 @@ std::optional<CompilationEntry>
                                      llvm::StringRef file,
                                      kotatsu::string_list_ref arguments) {
     auto base = Spelling::absolute(directory);
-    auto fid = file_table.intern(Spelling(file, base));
+    auto fid = file_table.intern_entry(Spelling(file, base));
     Normalizer normalizer{.commands = command_table, .files = file_table};
     return append_test_command(fid, normalizer.normalize(base, fid, arguments));
 }
@@ -574,7 +561,7 @@ std::optional<CompilationEntry> CompilationDatabase::add_command(llvm::StringRef
                                                                  llvm::StringRef file,
                                                                  llvm::StringRef command) {
     auto base = Spelling::absolute(directory);
-    auto fid = file_table.intern(Spelling(file, base));
+    auto fid = file_table.intern_entry(Spelling(file, base));
     Normalizer normalizer{.commands = command_table, .files = file_table};
     return append_test_command(fid, normalizer.normalize(base, fid, command));
 }

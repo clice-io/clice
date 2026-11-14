@@ -27,22 +27,6 @@ class Toolchain {
 public:
     using ResolvedID = std::uint32_t;
 
-    /// A synthesized full compile configuration, self-contained: rendering
-    /// it needs no trip back to the source command.
-    struct Resolved {
-        /// The compiler binary the query resolved.
-        const char* driver = nullptr;
-
-        /// Frontend-level args (cc1): render as `driver -cc1 <args>`.
-        llvm::ArrayRef<Arg> args;
-
-        /// The files its compiles do not see (Frontend::hidden).
-        std::shared_ptr<const vfs::HiddenFiles> hidden;
-
-        /// Frontend::shadowed.
-        std::vector<llvm::StringRef> shadowed;
-    };
-
     /// `failed_retry` bounds the negative cache: a failed key is retried
     /// once the cooldown passes, so a transient driver failure — an upgrade
     /// replacing the binary mid-stat, a full tmpfs — cannot poison the key
@@ -67,10 +51,6 @@ public:
     /// driver; an error only when that driver cannot read the command
     /// either.
     std::expected<ResolvedCommand, std::string> resolve(CommandID id, InputKind input);
-
-    const Resolved& resolved(ResolvedID id) const {
-        return resolved_configs[id];
-    }
 
     /// Pre-query in parallel, deduplicated by query key, running as many
     /// drivers at once as the process has CPUs. Blocks until all unique
@@ -161,6 +141,21 @@ private:
         /// reaches. Null when the job keeps none.
         std::shared_ptr<const vfs::HiddenFiles> hidden;
     };
+
+    /// A synthesized full compile configuration, self-contained: rendering
+    /// it needs no trip back to the source command.
+    struct Resolved {
+        /// The query's frontend, whose driver, hidden files and shadowed
+        /// directories it keeps; `queries` never moves or drops one.
+        const Frontend* frontend = nullptr;
+
+        /// Frontend-level args (cc1): render as `driver -cc1 <args>`.
+        llvm::ArrayRef<Arg> args;
+    };
+
+    const Resolved& resolved(ResolvedID id) const {
+        return resolved_configs[id];
+    }
 
     /// The frontend of a query's job (the program, -cc1, its arguments),
     /// queried for `command` or another command of its key: what only the

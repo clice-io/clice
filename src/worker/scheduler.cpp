@@ -156,8 +156,10 @@ void WorkerScheduler::user_activity(SchedulerTime now) {
     decide(now);
 }
 
-void WorkerScheduler::sample(SchedulerSample sample, SchedulerTime now) {
-    for(auto& worker: sample.workers) {
+void WorkerScheduler::sample(SchedulerSample sample,
+                             llvm::ArrayRef<WorkerSample> workers,
+                             SchedulerTime now) {
+    for(auto& worker: workers) {
         auto& slot = slots.at(worker.slot);
         slot.memory = worker.memory;
         if(!slot.request) {
@@ -178,7 +180,7 @@ void WorkerScheduler::sample(SchedulerSample sample, SchedulerTime now) {
             request.cpu_moved = now;
         }
     }
-    last_sample = std::move(sample);
+    last_sample = sample;
     if(busy()) {
         last_busy = now;
     }

@@ -518,10 +518,7 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& query)
     }
     stage(query.args.drop_front(query.forwarded));
 
-    resolved_configs.push_back({.driver = query.driver,
-                                .args = commands.persist(staged),
-                                .hidden = query.hidden,
-                                .shadowed = query.shadowed});
+    resolved_configs.push_back({.frontend = &query, .args = commands.persist(staged)});
     return static_cast<ResolvedID>(resolved_configs.size() - 1);
 }
 
@@ -733,7 +730,7 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
 
     std::vector<const char*> argv;
     argv.reserve(rc.args.size() + 8);
-    argv.push_back(rc.driver);
+    argv.push_back(rc.frontend->driver);
     argv.push_back("-cc1");
     argv.push_back("-main-file-name");
     // path::filename returns a suffix of the interned path (a pointer
@@ -748,7 +745,7 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
     auto left_out = opts.left_out(rc.args);
     for(auto [i, arg]: views::enumerate(rc.args)) {
         if(left_out[i] || (!opts.shadowed_dirs && names_search_dir(arg.opt_id) &&
-                           ranges::contains(rc.shadowed, llvm::StringRef(arg.values[0])))) {
+                           ranges::contains(rc.frontend->shadowed, llvm::StringRef(arg.values[0])))) {
             continue;
         }
         render_arg(arg, emit);
@@ -764,7 +761,7 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
     argv.push_back(source.data());
     return {.argv = std::move(argv),
             .query_failure = std::move(resolution->query_failure),
-            .hidden = rc.hidden ? *rc.hidden : vfs::HiddenFiles{}};
+            .hidden = rc.frontend->hidden ? *rc.frontend->hidden : vfs::HiddenFiles{}};
 }
 
 std::vector<const char*> Toolchain::render_for_clang(const CommandRef& ref,
@@ -795,7 +792,7 @@ SearchConfig Toolchain::search_config(const CommandRef& ref) {
     auto [it, inserted] = search_configs.try_emplace(resolution->id);
     if(inserted) {
         it->second = extract_search_config(resolved(resolution->id).args, directory);
-        it->second.hidden = resolved(resolution->id).hidden;
+        it->second.hidden = resolved(resolution->id).frontend->hidden;
         // A directory the command names is the user's, however the driver
         // passes it on: clang-cl's /imsvc reaches cc1 as -internal-isystem.
         llvm::StringSet<> named;

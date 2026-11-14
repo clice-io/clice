@@ -55,7 +55,7 @@ struct SchedulerOptions {
     chrono::milliseconds stall_deadline{chrono::minutes(5)};
 };
 
-/// One look at memory and at the workers, taken by the pool.
+/// One look at memory and at the pool's processes, taken by the pool.
 struct SchedulerSample {
     /// The bytes the machine, or the tightest memory cgroup clice runs in,
     /// can still give before reclaim starts to hurt (worker/resources).
@@ -75,21 +75,19 @@ struct SchedulerSample {
     /// service, starting, dead and about to respawn, or given up until
     /// their cooldown ends.
     std::size_t stateless_processes = 0;
+};
 
-    struct Worker {
-        std::size_t slot = 0;
+/// One look at a stateless worker in service, taken with a SchedulerSample.
+struct WorkerSample {
+    std::size_t slot = 0;
 
-        /// The process's own memory: anonymous on Linux, its footprint on
-        /// macOS, private bytes on Windows. Shared mappings (PCHs, the
-        /// binary) are left out: every worker maps the same ones.
-        std::uint64_t memory = 0;
+    /// The process's own memory: anonymous on Linux, its footprint on
+    /// macOS, private bytes on Windows. Shared mappings (PCHs, the binary)
+    /// are left out: every worker maps the same ones.
+    std::uint64_t memory = 0;
 
-        /// The process's CPU time so far.
-        chrono::milliseconds cpu{0};
-    };
-
-    /// The stateless workers in service.
-    std::vector<Worker> workers;
+    /// The process's CPU time so far.
+    chrono::milliseconds cpu{0};
 };
 
 namespace scheduler {
@@ -228,7 +226,7 @@ public:
     /// The user did something: an edit, a request.
     void user_activity(SchedulerTime now);
 
-    void sample(SchedulerSample sample, SchedulerTime now);
+    void sample(SchedulerSample sample, llvm::ArrayRef<WorkerSample> workers, SchedulerTime now);
 
     /// The actions decided since the last call, in order.
     std::vector<SchedulerAction> take_actions() {
