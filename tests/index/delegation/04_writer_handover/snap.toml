@@ -1,8 +1,5 @@
 ["a restart takes the index over"."$ clice index"]
-stdout = '''
-Indexed 0 translation units in #s: 2 file shards (# KB), 6 symbols.
-Session log: ${WS}/.clice/logs/${SESSION}
-'''
+stdout = "Indexed through the running clice server (pid #)."
 exit = 0
 
 ["a second window reads the index"."$ clice index"]
@@ -13,7 +10,9 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 ["a second window reads the index".guidance]
-value = []
+value = [
+    "Another clice process (pid #) keeps writing the index in ${WS}/.clice: ${WS} answers from what it saved, and saves nothing it indexes itself",
+]
 
 ["a second window reads the index".symbols]
 workspace_symbols = [

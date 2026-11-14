@@ -156,6 +156,9 @@ void MasterServer::update_owners() {
 }
 
 void MasterServer::update_owners_later() {
+    if(lifecycle != ServerLifecycle::Ready) {
+        return;
+    }
     bg_tasks.spawn([](MasterServer& server) -> async::task<> {
         co_await async::yield();
         server.update_owners();

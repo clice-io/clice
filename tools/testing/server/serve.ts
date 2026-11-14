@@ -451,12 +451,12 @@ export class Serve extends Client {
     }
 
     /// What the server showed the user (window/showMessage): what it tells
-    /// about the setup, once idle.
+    /// about the setup, once idle, another process's pid elided.
     guidance(): Promise<string[]> {
         return this.steps.run("guidance", async () => {
             await this.sync();
             return this.live().shownMessages.map((message) =>
-                portable(message, this.workspace.root),
+                portable(message, this.workspace.root).replace(/\(pid \d+\)/g, "(pid #)"),
             );
         });
     }

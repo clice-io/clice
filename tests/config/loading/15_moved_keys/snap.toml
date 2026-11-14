@@ -44,10 +44,10 @@ pushes = [
 stderr = '''
 error: clice.toml:2:13: moved to the top-level `cache_dir` in clice 1.0 at project.cache_dir
 clice.toml:3:19: moved to a last pattern-less rule's `background_index = false` in clice 1.0 at project.enable_indexing
-clice.toml:5:22: moved to the rules' `skip_function_body` in clice 1.0 at project.skip_header_bodies
 clice.toml:4:26: moved to `workers.background` in clice 1.0 at project.stateless_worker_count
-clice.toml:12:9: moved to `background_index` in clice 1.0 at rules[0].index
+clice.toml:5:22: moved to the rules' `skip_function_body` in clice 1.0 at project.skip_header_bodies
 clice.toml:8:26: moved to the top-level `poll_seconds` in clice 1.0 at tracker.workspace_poll_seconds
+clice.toml:12:9: moved to `background_index` in clice 1.0 at rules[0].index
 '''
 exit = 2
 
