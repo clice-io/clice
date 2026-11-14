@@ -1,10 +1,10 @@
 import * as assert from "assert";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
+import { scratchFolder } from "./scratch";
 // Shared protocol shapes — type-only, mirrors feature/context.ts.
 import type {
     ContextItem,
@@ -295,21 +295,13 @@ suite("clice E2E", function () {
         if (path.basename(root) !== "01_hello_world") {
             this.skip();
         }
-        const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "clice-headers-"));
-        try {
-            const firsts = [
-                "// <vector> -*- C++ -*-",
-                "// -*- C++ -*-",
-                "// vector standard header",
-            ];
-            for (const [index, first] of firsts.entries()) {
-                const file = path.join(scratch, `header${String(index)}`);
-                fs.writeFileSync(file, `${first}\n#pragma once\n`);
-                const header = await vscode.workspace.openTextDocument(file);
-                assert.strictEqual(header.languageId, "cpp", first);
-            }
-        } finally {
-            fs.rmSync(scratch, { recursive: true, force: true });
+        const scratch = scratchFolder("clice-headers-");
+        const firsts = ["// <vector> -*- C++ -*-", "// -*- C++ -*-", "// vector standard header"];
+        for (const [index, first] of firsts.entries()) {
+            const file = path.join(scratch, `header${String(index)}`);
+            fs.writeFileSync(file, `${first}\n#pragma once\n`);
+            const header = await vscode.workspace.openTextDocument(file);
+            assert.strictEqual(header.languageId, "cpp", first);
         }
     });
 
@@ -318,9 +310,7 @@ suite("clice E2E", function () {
         if (path.basename(root) !== "01_hello_world") {
             this.skip();
         }
-        const scratch = fs.realpathSync.native(
-            fs.mkdtempSync(path.join(os.tmpdir(), "clice-includes-")),
-        );
+        const scratch = fs.realpathSync.native(scratchFolder("clice-includes-"));
         // A file without an extension is taken for a header in a directory
         // named `include`, as a library's are.
         const include = path.join(scratch, "include");
@@ -415,7 +405,6 @@ suite("clice E2E", function () {
             middleware.provideCompletionItem = provide;
             answered.dispose();
             await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
-            fs.rmSync(scratch, { recursive: true, force: true });
         }
     });
 
