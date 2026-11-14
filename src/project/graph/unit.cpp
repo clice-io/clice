@@ -58,7 +58,9 @@ async::task<UnitResult>
     if(params.tidy) {
         extras = tidy::command_extra_args(params.tidy->extra_args, params.tidy->extra_args_before);
     }
-    CommandRequest extra{.extra_prepend = extras.prepend, .extra_append = extras.append};
+    CommandRequest extra{.extra_prepend = extras.prepend,
+                         .extra_append = extras.append,
+                         .choice = request.entry ? &*request.entry : nullptr};
     auto resolved = project.resolve_command(path_id, extra);
     params.directory = resolved.directory;
     params.arguments = resolved.arguments;

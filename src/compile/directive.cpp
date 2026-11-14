@@ -114,11 +114,28 @@ private:
     /// with their arguments (`__has_include(<x>)`). Of a condition the
     /// preprocessor `evaluated`, those it found defined are left out, their
     /// expansions recorded them, as is `defined`'s operand, which Defined
-    /// sees.
-    void add_unresolved(clang::FileID fid, llvm::ArrayRef<Token> condition, bool evaluated) {
+    /// sees. Of one it did not, a name defined there references that
+    /// definition, unless the condition lies in a block it skips.
+    void add_unresolved(clang::FileID fid,
+                        llvm::ArrayRef<Token> condition,
+                        bool evaluated,
+                        bool skipped_block = false) {
         auto& pp = unit.instance->getPreprocessor();
         auto& identifiers = pp.getIdentifierTable();
         auto content = unit.file_content(fid);
+        auto definition = [&](llvm::StringRef name) -> clang::MacroInfo* {
+            auto known = identifiers.find(name);
+            return known == identifiers.end() ? nullptr : pp.getMacroInfo(known->getValue());
+        };
+        // A name the condition tests without the preprocessor resolving it.
+        auto unresolved = [&](const Token& token) {
+            auto location = unit.create_location(fid, token.range.begin);
+            if(auto* macro = skipped_block ? nullptr : definition(token.text(content))) {
+                add_macro(macro, MacroRef::Ref, location);
+            } else {
+                add_unresolved(location);
+            }
+        };
         for(std::size_t i = 0; i < condition.size(); i += 1) {
             auto& token = condition[i];
             if(!token.is_identifier() ||
@@ -131,13 +148,12 @@ private:
                     i += 1;
                 }
                 if(!evaluated && i + 1 < condition.size() && condition[i + 1].is_identifier()) {
-                    add_unresolved(unit.create_location(fid, condition[i + 1].range.begin));
+                    unresolved(condition[i + 1]);
                 }
                 i += 1;
                 continue;
             }
-            auto known = identifiers.find(name);
-            auto* macro = known == identifiers.end() ? nullptr : pp.getMacroInfo(known->getValue());
+            auto* macro = definition(name);
             if(macro && macro->isBuiltinMacro()) {
                 if(i + 1 < condition.size() && condition[i + 1].kind == clang::tok::l_paren) {
                     std::uint32_t depth = 0;
@@ -154,7 +170,9 @@ private:
                 }
                 continue;
             }
-            if(!evaluated || !macro) {
+            if(!evaluated) {
+                unresolved(token);
+            } else if(!macro) {
                 add_unresolved(unit.create_location(fid, token.range.begin));
             }
         }
@@ -450,7 +468,7 @@ public:
             auto spelled = llvm::ArrayRef(tokens).slice(line, i + 1 - line);
             auto name = keyword.text(content);
             if(name == "if" || name == "elif") {
-                add_unresolved(fid, spelled, /*evaluated=*/false);
+                add_unresolved(fid, spelled, /*evaluated=*/false, /*skipped_block=*/true);
             } else if(ranges::contains(
                           std::array{"define", "undef", "ifdef", "ifndef", "elifdef", "elifndef"},
                           name) &&

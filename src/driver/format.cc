@@ -281,7 +281,7 @@ Result format_project(const Request& options) {
     }
     if(whole) {
         // A database that cannot be loaded makes the file set incomplete.
-        if(project.cdb.source_count() == 0) {
+        if(opened.members.empty()) {
             result.exit_code = 2;
             result.error =
                 std::format("Nothing to format: {}", project.why_no_members(options.root));

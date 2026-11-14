@@ -99,9 +99,23 @@ UnknownNames unknown_names(const Job& job) {
 
 /// Whether a driver option names one of `unknown`: the CPU of -mcpu,
 /// -march and AVR's -mmcu (`-mcpu=cortex-a72+crc` names cortex-a72,
-/// `native` this machine's), the tuning CPU of -mtune, the ABI of -mabi.
+/// `native` this machine's), the tuning CPU of -mtune, the ABI of -mabi,
+/// passed as is or through clang-cl's `/clang:` or `-Xarch_<arch>`.
 bool names_unknown(const cli::ParsedArg& arg,
                    const std::set<std::pair<unsigned, std::string>>& unknown) {
+    std::string_view passed;
+    if(arg.id == clang_options::OPT__SLASH_clang) {
+        passed = arg.values[0];
+    } else if(arg.id == clang_options::OPT_Xarch__ && arg.values.size() == 2) {
+        passed = arg.values[1];
+    }
+    if(!passed.empty()) {
+        std::array argv = {passed};
+        auto inner = *clang_options::table()
+                          .parse(argv, {.visibility = family_visibility(CompilerFamily::Clang)})
+                          .begin();
+        return inner && names_unknown(*inner, unknown);
+    }
     unsigned given = 0;
     switch(arg.id) {
         case clang_options::OPT_mcpu_EQ:
@@ -259,7 +273,7 @@ ClangReading read_as_clang(std::vector<std::string> args,
                         flags[parsed->index]);
                 }
                 argv.insert(argv.end(), flags.begin() + next, flags.begin() + parsed->index);
-                next = parsed->index + 1;
+                next = parsed->next_index;
                 dropped = true;
             }
         }

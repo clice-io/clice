@@ -280,6 +280,16 @@ ZEST_CASE(UnknownTargetNamesDropped) {
     argv = f.toolchain.render_for_clang(abi, f.db.spelling(abi.file));
     ZEXPECT(!contains(argv, "-mabi=lp64"));
     ZEXPECT(!contains(argv, "-mabi=ilp64x"));
+
+    // Passed through to clang, it goes all the same, with what passes it.
+    auto xarch = add("c.c",
+                     {tmp.c_path("x86_64-linux-gnu-gcc"), "-Xarch_x86_64", "-mtune=x86-64-v3"});
+    argv = f.toolchain.render_for_clang(xarch, f.db.spelling(xarch.file));
+    ZEXPECT(!contains(argv, "-Xarch_x86_64"));
+    ZEXPECT(!contains(argv, "-mtune=x86-64-v3"));
+    auto cl = add("d.c", {tmp.c_path("clang-cl"), "/clang:-mtune=x86-64-v3"});
+    argv = f.toolchain.render_for_clang(cl, f.db.spelling(cl.file));
+    ZEXPECT(!contains(argv, "/clang:-mtune=x86-64-v3"));
 }
 
 ZEST_CASE(WarmPartialFailure) {

@@ -255,6 +255,8 @@ ZEST_CASE(UnresolvedMacros) {
 #ifdef GUARD
 #elif §(unevaluated)UNEVALUATED
 #elifdef §(skipped_elifdef)SKIPPED_ELIFDEF
+#elif §(known_elif)GUARD > 0
+#elifdef §(known)GUARD
 #endif
 #if 0
 #define §(skipped)SKIPPED 1
@@ -294,6 +296,14 @@ ZEST_CASE(UnresolvedMacros) {
     }
     ranges::sort(expected);
     ZEXPECT(offsets == expected);
+
+    // A skipped condition names the definition it tests when there is one.
+    for(auto name: {"known_elif", "known"}) {
+        ZEXPECT(ranges::any_of(macros, [&](const MacroRef& macro) {
+            return macro.kind == MacroRef::Ref &&
+                   unit->written_at(macro.loc).offset == point(name);
+        }));
+    }
 };
 
 ZEST_CASE(DiagnosticPragma) {

@@ -3,6 +3,7 @@ module clice;
 import :compile.tidy;
 import :driver.driver;
 import :driver.run;
+import :project.command;
 import :project.graph.unit;
 import :project.project;
 import :support.logging;
@@ -99,13 +100,23 @@ void merge_findings(std::vector<worker::TidyDiagnostic>& findings) {
     findings.erase(duplicates.begin(), duplicates.end());
 }
 
-async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pass) {
+/// One compile of a lint run: a unit under one of its database entries,
+/// none for the one resolve_command picks, which alone the index takes.
+struct LintJob {
+    Fid file;
+
+    std::optional<ContextChoice> entry;
+};
+
+async::task<> lint_one(BatchRun& run, bool with_index, LintJob job, LintPass& pass) {
     using enum UnitResult::Status;
     auto& project = run.project;
+    auto path_id = job.file;
     auto file = project.file_table.resolve(path_id);
     // A TU outside the lint set is here for the index only.
     UnitRequest request;
-    request.index = with_index && project.rules.indexable(file);
+    request.index = with_index && !job.entry && project.rules.indexable(file);
+    request.entry = std::move(job.entry);
     bool failed = false;
     if(project.rules.lintable(file)) {
         auto resolution = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
@@ -219,7 +230,7 @@ async::task<> lint_one(BatchRun& run, bool with_index, Fid path_id, LintPass& pa
 }
 
 async::task<>
-    run_lint_pass(BatchRun& run, bool with_index, llvm::ArrayRef<Fid> tus, LintPass& pass) {
+    run_lint_pass(BatchRun& run, bool with_index, llvm::ArrayRef<LintJob> jobs, LintPass& pass) {
     async::task_group<> workers;
 
     // The dispatch loop runs as a child of `workers`, like the background
@@ -227,10 +238,10 @@ async::task<>
     // in-flight task unwinds before the group is destroyed.
     auto feeder = [](BatchRun& run,
                      bool with_index,
-                     llvm::ArrayRef<Fid> tus,
+                     llvm::ArrayRef<LintJob> jobs,
                      LintPass& pass,
                      async::task_group<>& workers) -> async::task<> {
-        for(auto path_id: tus) {
+        for(auto& job: jobs) {
             // The background index feeder's window: deep enough that
             // workers never idle, shallow enough that a wind-down drains
             // fast.
@@ -239,10 +250,10 @@ async::task<>
                 co_await pass.task_done.wait();
             }
             pass.inflight += 1;
-            workers.spawn(lint_one(run, with_index, path_id, pass));
+            workers.spawn(lint_one(run, with_index, job, pass));
         }
     };
-    workers.spawn(feeder(run, with_index, tus, pass, workers));
+    workers.spawn(feeder(run, with_index, jobs, pass, workers));
     co_await workers.join();
 }
 
@@ -290,21 +301,33 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         co_return;
     }
 
-    // One run per file: a file with several CDB entries lints once, under
-    // the command resolve_command picks — same as the indexing pass. A TU
-    // the rules keep out of the lint set is not even parsed, unless the
-    // index wants it.
-    llvm::SmallVector<Fid> tus;
+    // One run per command a file compiles under: a file several database
+    // entries list lints under each distinct command, as clang-tidy runs
+    // each, the index taking the first. A TU the rules keep out of the lint
+    // set is not even parsed, unless the index wants it.
+    std::vector<LintJob> jobs;
     for(auto member: members) {
         auto file = project.file_table.resolve(member);
-        if(project.rules.lintable(file) || (with_index && project.rules.indexable(file))) {
-            tus.push_back(member);
+        bool lintable = project.rules.lintable(file);
+        if(!lintable && !(with_index && project.rules.indexable(file))) {
+            continue;
+        }
+        jobs.push_back({.file = member});
+        if(!lintable) {
+            continue;
+        }
+        llvm::StringSet<> commands;
+        for(auto& candidate: project.candidates(member)) {
+            auto base = project.commands.command_hash_hex(candidate.base);
+            if(commands.insert(base).second && commands.size() > 1) {
+                jobs.push_back({.file = member, .entry = ContextChoice{.base = std::move(base)}});
+            }
         }
     }
 
     Lifetime lifetime(run);
     LintPass pass;
-    co_await async::with_token(run_lint_pass(run, with_index, tus, pass), lifetime.stop.token());
+    co_await async::with_token(run_lint_pass(run, with_index, jobs, pass), lifetime.stop.token());
     // What arrived is the report, whole or cut short by an interruption.
     for(auto& finding: pass.findings) {
         show_path(project.file_table, finding.file);
