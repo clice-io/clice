@@ -1071,11 +1071,16 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
     return unit;
 }
 
+bool reported_error(CompilationUnit& unit, const Diagnostic& diagnostic) {
+    return diagnostic.id.level >= DiagnosticLevel::Error &&
+           !(unit.skips_bodies() &&
+             ranges::contains(unused_declaration_warnings, diagnostic.id.value));
+}
+
 std::vector<std::string> collect_errors(CompilationUnit& unit) {
     std::vector<std::string> errors;
     for(auto& diag: unit.diagnostics()) {
-        if(diag.id.level >= DiagnosticLevel::Error &&
-           !(unit.skips_bodies() && ranges::contains(unused_declaration_warnings, diag.id.value))) {
+        if(reported_error(unit, diag)) {
             errors.push_back(diag.message);
         }
     }

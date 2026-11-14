@@ -11,3 +11,14 @@ test("editor", async (t) => {
     await s.diagnostics("a.cpp");
     await t.show("guidance", await s.guidance());
 });
+
+// One a generator stopped writing ends early.
+test("truncated", async (t) => {
+    t.disk.write(
+        "compile_commands.json",
+        '[\n  {"file": "a.cpp", "arguments": ["clang++", "a.cpp"]',
+    );
+    const s = await t.start();
+    await s.diagnostics("a.cpp");
+    await t.show("guidance", await s.guidance());
+});

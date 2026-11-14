@@ -239,6 +239,17 @@ struct Cascade {
     }
 };
 
+/// The first five of `files` by path, joined for a message, `...` after
+/// when there are more.
+std::string first_paths(const FileTable& table, llvm::ArrayRef<Fid> files) {
+    constexpr std::size_t named = 5;
+    auto paths = files | views::transform([&](Fid file) { return table.display(file); }) |
+                 ranges::to<std::vector>();
+    ranges::sort(paths);
+    auto shown = llvm::join(views::take(paths, named), ", ");
+    return paths.size() > named ? shown + ", ..." : shown;
+}
+
 }  // namespace
 
 llvm::SmallVector<Fid> Project::readers(Fid file) const {
@@ -340,17 +351,13 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
              includes,
              counted(modules, "module", "modules"));
     if(!report.missing.empty()) {
-        constexpr std::size_t named = 5;
-        auto paths = report.missing | views::take(named) |
-                     views::transform([&](Fid file) { return file_table.display(file); });
         bool one = report.missing.size() == 1;
         LOG_WARN(
-            "{} the compile commands name {} not exist ({}{}): the database is older than "
-            "the tree, or the build writes {} later",
+            "{} the compile commands name {} not exist ({}): the database is older than the "
+            "tree, or the build writes {} later",
             counted(report.missing.size(), "file", "files"),
             one ? "does" : "do",
-            llvm::join(paths, ", "),
-            report.missing.size() > named ? ", ..." : "",
+            first_paths(file_table, report.missing),
             one ? "it" : "them");
     }
     auto not_utf8 = report.not_utf8 | views::filter([&](Fid file) {
@@ -358,19 +365,13 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
                     }) |
                     ranges::to<std::vector>();
     if(!not_utf8.empty()) {
-        constexpr std::size_t named = 5;
-        auto paths = not_utf8 | views::take(named) |
-                     views::transform([&](Fid file) { return file_table.display(file); });
         bool one = not_utf8.size() == 1;
         LOG_GUIDANCE(
-            "{} of the project {} not UTF-8 ({}{}): clice reads source as UTF-8, so "
-            "positions in {} land off and {} non-ASCII text shows garbled; save {} as "
-            "UTF-8",
+            "{} of the project {} not UTF-8 ({}): clice reads source as UTF-8, so {} non-ASCII "
+            "text shows garbled and positions after it can be off; save {} as UTF-8",
             counted(not_utf8.size(), "file", "files"),
             one ? "is" : "are",
-            llvm::join(paths, ", "),
-            not_utf8.size() > named ? ", ..." : "",
-            one ? "it" : "them",
+            first_paths(file_table, not_utf8),
             one ? "its" : "their",
             one ? "it" : "them");
     }

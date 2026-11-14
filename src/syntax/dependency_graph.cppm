@@ -275,10 +275,10 @@ struct ScanReport {
 
     std::size_t waves = 0;
 
-    /// The files to scan that do not exist on disk, in scan order.
+    /// The files to scan that do not exist on disk, in no order.
     std::vector<Fid> missing;
 
-    /// The files scanned whose text is not UTF-8, in scan order.
+    /// The files scanned whose text is not UTF-8, in no order.
     std::vector<Fid> not_utf8;
 };
 

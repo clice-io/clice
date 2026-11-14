@@ -29,7 +29,7 @@ test("a pull shows the note", async (t) => {
         crash: CRASH,
         capabilities: { textDocument: { diagnostic: {} } },
     });
-    await t.show("pulled", s.diagnostics("main.cpp"));
+    await t.show("pulled", s.diagnostics("main.cpp"), { parts: ["link"] });
     await t.show("crashes", await s.crashes());
     await t.show("pushes", s.pushes("main.cpp"));
 });

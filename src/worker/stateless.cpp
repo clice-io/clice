@@ -119,14 +119,13 @@ static std::expected<std::string, std::string> precompiled_output(llvm::StringRe
     return path;
 }
 
-/// The errors a unit compiled with, each at the start of the range clang
-/// marks, as collect_errors takes them. One no file on disk holds (the
-/// command line's, the built-in buffer's) has no place.
+/// The errors a unit reports, each at the start of the range clang marks.
+/// One no file on disk holds (the command line's, the built-in buffer's)
+/// has no place.
 static std::vector<worker::LocatedMessage> located_errors(CompilationUnit& unit) {
     std::vector<worker::LocatedMessage> errors;
     for(auto& diag: unit.diagnostics()) {
-        if(diag.id.level < DiagnosticLevel::Error ||
-           (unit.skips_bodies() && ranges::contains(unused_declaration_warnings, diag.id.value))) {
+        if(!reported_error(unit, diag)) {
             continue;
         }
         auto& error = errors.emplace_back(worker::LocatedMessage{.message = diag.message});
@@ -406,6 +405,7 @@ static void collect_tidy_diagnostics(CompilationUnit& unit,
         located.file = unit.file_path(fid).str();
         located.line = position->line + 1;
         located.column = position->character + 1;
+        located.offset = message.FileOffset;
         return located;
     };
 

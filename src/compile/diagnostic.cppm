@@ -16,7 +16,9 @@ enum class DiagnosticLevel : std::uint8_t {
 enum class DiagnosticSource : std::uint8_t {
     Clang,
     ClangTidy,
-    /// clice's own, about a file as a whole; no compile reports one.
+    /// clice's own words: about a file as a whole, or about what clice does
+    /// not do for a compile (a header unit it does not build, a module that
+    /// did not build); `DiagnosticID::name` is its code.
     Clice,
 };
 

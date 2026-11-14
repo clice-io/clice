@@ -327,7 +327,7 @@ suite("clice E2E", function () {
         fs.mkdirSync(include);
         fs.writeFileSync(path.join(include, "zebra.h"), "#pragma once\n");
         fs.writeFileSync(path.join(include, "zebra"), "#pragma once\n");
-        fs.writeFileSync(path.join(include, "notes.txt"), "notes\n");
+        fs.mkdirSync(path.join(include, "detail"));
         const uri = vscode.Uri.file(path.join(include, "main.cpp"));
         fs.writeFileSync(uri.fsPath, "\n");
         const middleware = client().current.middleware;
@@ -390,12 +390,13 @@ suite("clice E2E", function () {
             const listed = (items: { label: string }[]) => items.map((item) => item.label);
             const all = await type('"');
             // A header without an extension is marked one for its icon; a
-            // file the server takes for no header is not.
+            // directory, which the server takes for no header, is not.
             const detail = (label: string) => all.find((item) => item.label === label)?.detail;
             assert.ok(listed(all).includes("zebra"));
+            assert.ok(listed(all).includes("detail/"));
             assert.strictEqual(detail("zebra"), ".h");
             assert.strictEqual(detail("zebra.h"), undefined);
-            assert.strictEqual(detail("notes.txt"), undefined);
+            assert.strictEqual(detail("detail/"), undefined);
             assert.ok(listed(await type("z")).includes("zebra.h"));
             assert.deepStrictEqual(await type("q"), [], "no header name holds `zq`");
 

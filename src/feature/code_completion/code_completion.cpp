@@ -151,9 +151,9 @@ auto code_complete(const CompletionInputs& inputs)
 
     // A number names nothing.
     // LIMITATION: the index is asked for the scope as written, before the
-    // compile resolves it: after a namespace alias (`fs::pa`), a name of the
-    // aliased namespace that a header the file does not include declares is
-    // not offered.
+    // compile resolves it: after a namespace alias (`fs::pa`) or a macro
+    // naming the namespace, a name a header the file does not include
+    // declares there is not offered.
     if(auto prefix = offset ? std::optional(Prefix::from(text, *offset)) : std::nullopt;
        prefix && inputs.options.all_scopes && completing.directive.empty() &&
        !prefix->spelling.empty() && !clang::isDigit(prefix->spelling.front())) {

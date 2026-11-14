@@ -1,4 +1,4 @@
 [
   {"directory": "${WS}", "file": "a.cpp", "arguments": ["clang++", "-c", "a.cpp"]},
-  {"directory": "${WS}", "file": "b.cpp" "arguments": ["clang++", "-c", "b.cpp"]}
+  {"file": "b.cpp" "arguments": ["clang++", "-c", "b.cpp"], "directory": "${WS}"}
 ]

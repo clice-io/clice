@@ -1,4 +1,4 @@
-[test."main.cpp"]
+[editor."main.cpp"]
 errors = [
     {
         at = 'import ⟦"local.h"⟧;',
@@ -29,3 +29,13 @@ errors = [
         code = "err_undeclared_var_use",
     },
 ]
+
+[lint."$ clice lint --jobs 1"]
+stdout = '''
+${WS}/main.cpp:1:8: error: clice does not build header units, so "local.h" is not imported; #include it instead [clang-diagnostic-error]
+${WS}/main.cpp:2:8: error: clice does not build header units, so <util.h> is not imported; #include it instead [clang-diagnostic-error]
+${WS}/main.cpp:5:12: error: use of undeclared identifier 'local' [clang-diagnostic-error]
+${WS}/main.cpp:5:22: error: use of undeclared identifier 'util' [clang-diagnostic-error]
+Linted 1 translation unit in #s: 4 findings.
+'''
+exit = 1

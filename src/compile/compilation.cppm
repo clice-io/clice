@@ -923,9 +923,13 @@ constexpr inline std::array<unsigned, 6> unused_declaration_warnings = {
     clang::diag::warn_unneeded_member_function,
 };
 
-/// The messages of a finished compilation's error-level diagnostics, in
-/// the order clang raised them, but for the unused declarations a compile
-/// skipping bodies raises, which -Werror may have made errors.
+/// Whether `diagnostic` is an error the compilation reports: one of error
+/// level, but for the unused declarations a compile skipping bodies raises,
+/// which -Werror may have made errors.
+bool reported_error(CompilationUnit& unit, const Diagnostic& diagnostic);
+
+/// The messages of a finished compilation's reported errors, in the order
+/// clang raised them.
 std::vector<std::string> collect_errors(CompilationUnit& unit);
 
 }  // namespace clice

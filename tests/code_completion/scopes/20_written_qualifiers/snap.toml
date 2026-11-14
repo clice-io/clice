@@ -40,17 +40,7 @@ items = [
 items = []
 
 [answers.macro_qualifier.completion]
-items = [
-    {
-        label = "vector",
-        kind = "Class",
-        insert = "vector<$0>",
-        snippet = true,
-        edits = [
-            { at = "⟦⟧ @-14", text = '#include "containers.h"' },
-        ],
-    },
-]
+items = []
 
 [answers.undeclared_namespace.completion]
 items = [

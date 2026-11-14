@@ -1648,9 +1648,6 @@ public:
                     return;
                 }
             }
-            // LIMITATION: any other completion a tentative parse keeps lists
-            // no name of the loaded files when nothing is typed; none is
-            // known to.
         }
 
         if(resolving) {
@@ -2982,6 +2979,7 @@ private:
             return options;
         }
 
+    private:
         Builder& builder;
     };
 

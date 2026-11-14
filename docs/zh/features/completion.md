@@ -149,7 +149,7 @@ tests/code_completion/scopes/03_import_insertion
 
 名称前写出了命名空间时（`std::vec`），声明在当前文件尚未包含的头文件里的名称也会补全
 
-补全时会一并插入引入它的 `#include`，无论当前文件是否已经知道这个命名空间；作用域也可以由宏写出。在命名空间别名之后，以及在类之后，只提供当前文件已经能看到的名称。
+补全时会一并插入引入它的 `#include`，无论当前文件是否已经知道这个命名空间。在命名空间别名、宏或类之后，只提供当前文件已经能看到的名称。
 
 ```case
 tests/code_completion/scopes/20_written_qualifiers
@@ -447,7 +447,7 @@ tests/code_completion/templates/29_library_specialization_members
 
 代码以多种类型调用的模板，会补全这些类型共有的名称
 
-每个名称只列出每种类型都为它声明了的重载。在 `if constexpr` 的某个分支内，只计入会进入该分支的类型。写在模板之前的调用与写在其后的调用同样计入；类型超过八种时，由前八种决定。只要其中一种类型不是类，就没有共有的名称，因此不提供任何补全。
+每个名称都会列出各个类型为它声明的重载。在 `if constexpr` 的某个分支内，只计入会进入该分支的类型。写在模板之前的调用与写在其后的调用同样计入；类型超过八种时，由前八种决定。只要其中一种类型不是类，就没有共有的名称，因此不提供任何补全。
 
 ```case
 tests/code_completion/templates/36_several_instantiations

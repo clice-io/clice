@@ -10,6 +10,7 @@ const QUIET = { diagnostics: { clang_tidy: false }, project: { enable_indexing: 
 const PULL = { textDocument: { diagnostic: {} } };
 const ENCODINGS = [undefined, "utf-8", "utf-32"] as const;
 const EDIT = { replace: `"宽𝄞"`, with: `"宽𝄞宽𝄞宽𝄞"` };
+const AGAIN = { replace: "int total = value;", with: "int total = value + 0;" };
 
 /// Where the compiler's diagnostics start, as line:character.
 function at(diagnostics: readonly Diagnostic[]): string[] {
@@ -22,21 +23,23 @@ for (const positionEncoding of ENCODINGS) {
     const name = positionEncoding ?? "utf-16";
     const options = positionEncoding ? { positionEncoding } : {};
 
-    // A crash completing code republishes what the file shows: the push
-    // names the version it compiled and places the error in that text. A
-    // first crash after an unsaved edit stays silent, so the edit is saved,
-    // which compiles it for a client that only takes pushes.
+    // A crash completing code republishes what the file shows, after edits
+    // no compile has caught up with: the push names the version it compiled
+    // and places the error in that text. A first crash while the file is
+    // being edited stays silent; the next, after another edit, shows.
     test(`push ${name}`, async (t) => {
         const s = await t.start({
             config: QUIET,
             crash: { request: "completion", file: "main.cpp" },
+            env: { CLICE_TEST_CRASH_SPACING_MS: "0" },
             ...options,
         });
         s.open("main.cpp");
         await s.pushes("main.cpp");
         s.edit("main.cpp", EDIT);
-        s.save("main.cpp");
-        await s.completion(t.at("main.cpp", "int total = val|ue;"));
+        await s.completion(t.at("main.cpp", "int total = val|ue"));
+        s.edit("main.cpp", AGAIN);
+        await s.completion(t.at("main.cpp", "int total = val|ue"));
         await s.pushes("main.cpp");
         const uri = s.client.normalizeUri(s.uri("main.cpp"));
         await t.show(

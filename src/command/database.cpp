@@ -65,15 +65,15 @@ CDBDiff diff_snapshots(const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 
     return diff;
 }
 
-/// What simdjson says is wrong, without its error code in front and its
+/// What simdjson says is wrong, without the error code in front and the
 /// note that the error is fatal after.
 std::string json_problem(simdjson::error_code error) {
     llvm::StringRef message = simdjson::error_message(error);
-    if(auto [code, rest] = message.split(": "); !rest.empty() && code.ends_with("_ERROR")) {
+    if(auto [code, rest] = message.split(": ");
+       !rest.empty() && ranges::all_of(code, [](char c) { return llvm::isUpper(c) || c == '_'; })) {
         message = rest;
     }
-    message = message.split("  ").first.rtrim('.');
-    return message.take_front(1).lower() + message.drop_front(1).str();
+    return message.take_front(message.find("This is a fatal")).trim().rtrim('.').str();
 }
 
 }  // namespace

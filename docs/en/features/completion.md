@@ -150,8 +150,8 @@ tests/code_completion/scopes/03_import_insertion
 A name a header the file does not include yet declares completes after the namespace written before it (`std::vec`)
 
 It comes with the `#include` that brings it, whether the file already knows
-the namespace or not, and a macro may write the scope. After a namespace
-alias, and after a class, only what the file reaches is offered.
+the namespace or not. After a namespace alias, a macro or a class, only what
+the file reaches is offered.
 
 ```case
 tests/code_completion/scopes/20_written_qualifiers
@@ -451,7 +451,7 @@ tests/code_completion/templates/29_library_specialization_members
 
 A template the code calls with several types completes the names every one of them has
 
-Each name is listed with the overloads every type declares for it. Inside a
+Each name is listed with the overloads each type declares for it. Inside a
 branch of an `if constexpr`, only the types that take the branch count. A
 call written before the template counts as well as one after it; past eight
 types, the first eight decide. When one of the types is not a class, no
