@@ -71,6 +71,22 @@ public:
 
     llvm::StringRef absent(std::uint32_t i) const;
 
+    /// A line naming a file the parse does not enter (IncludeTree::Link),
+    /// its file a path id of this TU index.
+    struct Link {
+        std::uint32_t file = 0;
+
+        std::uint32_t line = 0;
+
+        std::uint32_t column = 0;
+
+        llvm::StringRef target;
+    };
+
+    std::uint32_t link_count() const;
+
+    Link link(std::uint32_t i) const;
+
     std::uint32_t node_count() const;
 
     /// One node of the include tree, its file a path id of this TU index.

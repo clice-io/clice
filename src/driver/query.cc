@@ -45,7 +45,7 @@ struct ImpactAnalysisResult {
 
 /// The files reachable from `root` along `adjacent`, breadth first and
 /// each once: direct neighbours at depth 1, `max_depth` levels at most,
-/// 0 meaning unbounded.
+/// 0 meaning unbounded. Listed by depth, then path.
 std::vector<DepEntry> collect_deps(Project& project,
                                    Fid root,
                                    int max_depth,
@@ -68,6 +68,9 @@ std::vector<DepEntry> collect_deps(Project& project,
             entries.push_back({.path = project.file_table.display(next), .depth = depth + 1});
         }
     }
+    ranges::sort(entries, {}, [](const DepEntry& entry) {
+        return std::tie(entry.depth, entry.path);
+    });
     return entries;
 }
 
@@ -107,6 +110,7 @@ ProjectFilesResult project_files(Project& project, FileFilter filter) {
             }
         });
     }
+    ranges::sort(result.files, {}, &FileInfo::path);
     result.total = static_cast<int>(result.files.size());
     return result;
 }
@@ -144,7 +148,7 @@ std::expected<FileDepsResult, std::string>
 }
 
 /// What a change to `path` reaches: its direct includers, the sources
-/// hosting it, and the modules among them.
+/// hosting it, and the modules among them, each list sorted.
 std::expected<ImpactAnalysisResult, std::string> impact_analysis(Project& project,
                                                                  const Spelling& path) {
     if(!fs::is_file(path)) {
@@ -163,21 +167,23 @@ std::expected<ImpactAnalysisResult, std::string> impact_analysis(Project& projec
         }
     }
     auto readers = project.readers(*file);
-    ranges::sort(readers, {}, [&](Fid reader) { return project.file_table.resolve(reader); });
     for(auto reader: readers) {
         if(seen.insert(reader).second) {
             result.transitive_dependents.push_back(project.file_table.display(reader));
         }
     }
+    readers.push_back(*file);
     for(auto reader: readers) {
         auto module_name = project.dep_graph.module_of(reader);
         if(!module_name.empty()) {
             result.affected_modules.push_back(module_name.str());
         }
     }
-    auto module_name = project.dep_graph.module_of(*file);
-    if(!module_name.empty()) {
-        result.affected_modules.push_back(module_name.str());
+    for(auto* list: {&result.direct_dependents,
+                     &result.transitive_dependents,
+                     &result.affected_modules}) {
+        ranges::sort(*list);
+        list->erase(ranges::unique(*list).begin(), list->end());
     }
     return result;
 }
@@ -343,14 +349,15 @@ int run_query(const Options& opts, bool with_build, Ask ask) {
         return fail(project.damaged_index_error());
     }
 
-    auto listed = std::move(ctx.unindexed);
-    listed.append_range((*opened)->failed);
-    auto stale = stale_files(project, std::move(listed));
+    auto stale = stale_files(project, {}, std::move(ctx.unindexed), (*opened)->failed);
     if(result) {
-        print_json(Answer{.result = std::move(*result), .stale = std::move(stale)});
+        print_json(Answer{.result = std::move(*result), .stale = stale.all()});
         return 0;
     }
-    Failure failure{.error = std::move(result.error()), .stale = std::move(stale)};
+    Failure failure{.error = std::move(result.error()), .stale = stale.all()};
+    if(auto note = stale.note(); !note.empty()) {
+        failure.error = std::format("{}; {}", failure.error, note);
+    }
     if(!ctx.candidates.empty()) {
         failure.candidates = std::move(ctx.candidates);
     }

@@ -158,9 +158,9 @@ ZEST_CASE(DependentsRoundTrip) {
     dependents.absent = ids({5});
     index::add_unit(dependents.importers, 30, 8);
     index::add_unit(dependents.uses, 0xbeef, 7);
-    index::IncludeResolution resolution{
+    index::LinkResolution resolution{
         .content = 10,
-        .edges = {{1, 4}, {6, 5}}
+        .edges = {{.line = 1, .target = 4}, {.line = 6, .column = 4, .target = 5}},
     };
     resolution.units = ids({3, 9});
     dependents.resolutions.push_back(std::move(resolution));

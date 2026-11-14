@@ -225,11 +225,15 @@ int run(Rename& opts) {
             result.applied = true;
         }
     }
-    auto listed = result.stale;
-    listed.append_range(ctx.unindexed);
-    listed.append_range(failed);
-    auto stale = stale_files(project, std::move(listed));
-    print_json(Answer{.result = std::move(result), .stale = std::move(stale)});
+    auto stale = stale_files(project, result.stale, std::move(ctx.unindexed), failed);
+    if(auto note = stale.note(); !note.empty()) {
+        for(auto& rename: result.renames) {
+            if(rename.error) {
+                rename.error = std::format("{}; {}", *rename.error, note);
+            }
+        }
+    }
+    print_json(Answer{.result = std::move(result), .stale = stale.all()});
     return blocked ? 1 : 0;
 }
 

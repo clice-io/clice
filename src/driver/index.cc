@@ -134,7 +134,8 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
         start_batch(run, batch, batch.workers != 0 ? batch.workers : sys::parallelism(), "index");
     result.session_dir = run.session_dir;
     if(!started) {
-        result.exit_code = 1;
+        result.error = "the worker processes did not start";
+        result.exit_code = 2;
         // A failed later spawn leaves earlier workers and their I/O tasks
         // live; unstopped they keep the batch event loop spinning and the
         // command hangs instead of exiting.
@@ -152,15 +153,16 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     // only warm this process's memory and a rerun would start from
     // nothing — fail instead of pretending.
     if(!project.database) {
-        LOG_ERROR("Cannot persist the index at {}: the warning above says why; fix that and rerun",
-                  std::string_view(project.settings.project.cache_dir));
-        result.exit_code = 1;
-        co_await shutdown(run);
-        co_return;
+        result.error = std::format("Cannot persist the index at {}: {}",
+                                   std::string_view(project.settings.project.cache_dir),
+                                   opened.unwritable.empty()
+                                       ? "its database could not be loaded; the log says why"
+                                       : opened.unwritable);
+    } else if(opened.members.empty()) {
+        result.error = std::format("Nothing to index: {}", project.why_no_members(batch.root));
     }
-    if(opened.members.empty()) {
-        LOG_ERROR("Nothing to index: {}", project.why_no_members(batch.root));
-        result.exit_code = 1;
+    if(!result.error.empty()) {
+        result.exit_code = 2;
         co_await shutdown(run);
         co_return;
     }
@@ -198,6 +200,7 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
     result.unsaved = project.has_unsaved_state();
+    result.save_error = project.save_error;
     if(interrupted) {
         result.interrupted = true;
         result.exit_code = 130;
@@ -285,17 +288,23 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
         print_json(result);
         return result.exit_code;
     }
+    // What a save refused, when one did.
+    auto refused = result.save_error.empty() ? std::string()
+                                             : std::format(": {}", result.save_error);
     if(result.interrupted) {
         if(result.unsaved) {
-            driver::println(
-                "Indexing interrupted; part of the progress could not be persisted "
-                "(see the log). Rerun `clice index` to resume.");
+            driver::println("Indexing interrupted; part of the progress could not be persisted{}. "
+                            "Rerun `clice index` to resume.",
+                            refused);
         } else {
             driver::println("Indexing interrupted; progress saved. Rerun `clice index` to resume.");
         }
         return result.exit_code;
     }
     if(!result.completed) {
+        if(!result.error.empty()) {
+            LOG_ERROR("{}", result.error);
+        }
         if(!result.session_dir.empty()) {
             driver::println("Session log: {}", result.session_dir);
         }
@@ -346,7 +355,7 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
         }
     }
     if(result.unsaved) {
-        driver::println("Part of the index could not be persisted (see the log).");
+        driver::println("Part of the index could not be persisted{}.", refused);
     }
     if(!result.session_dir.empty()) {
         driver::println("Session log: {}", result.session_dir);
@@ -1044,10 +1053,9 @@ int read_index(const ProjectOptions& where, Run run) {
     auto opened = open_index(root,
                              std::move(loaded),
                              Project::OpenOptions::Load::Rules,
-                             {},
                              /*check_disk=*/false);
     if(!opened) {
-        return 1;
+        return print_error(opened.error());
     }
     auto& project = (*opened)->project;
     auto rc = run(project);

@@ -48,6 +48,10 @@ struct Report {
     /// The run reached its final summary (early failures skip it).
     bool completed = false;
 
+    /// Why the run stopped before linting: the workers did not start, there
+    /// was nothing to lint, or --index found no database to take the index.
+    std::string error;
+
     std::size_t checked_tus = 0;
     std::size_t failed_tus = 0;
 
@@ -59,6 +63,9 @@ struct Report {
     /// --index only: index state remained that the final save could not
     /// commit; a rerun cannot resume from it.
     bool unsaved = false;
+
+    /// Why the database refused the last save, when it did.
+    std::string save_error;
 
     double seconds = 0;
 };
@@ -250,6 +257,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     auto& project = run.project;
 
     if(!start_batch(run, batch, batch.workers, "lint")) {
+        result.error = "the worker processes did not start";
         result.exit_code = 2;
         // See index_batch: stop the partially started pool or the loop
         // never drains.
@@ -268,14 +276,15 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
 
     auto& members = opened.members;
     if(members.empty()) {
-        LOG_ERROR("Nothing to lint: {}", project.why_no_members(batch.root));
-        result.exit_code = 2;
-        co_await shutdown(run);
-        co_return;
+        result.error = std::format("Nothing to lint: {}", project.why_no_members(batch.root));
+    } else if(with_index && !project.database) {
+        result.error = std::format("Cannot persist the index at {}: {}",
+                                   std::string_view(project.settings.project.cache_dir),
+                                   opened.unwritable.empty()
+                                       ? "its database could not be loaded; the log says why"
+                                       : opened.unwritable);
     }
-    if(with_index && !project.database) {
-        LOG_ERROR("Cannot persist the index at {}; see the log for the cause and rerun",
-                  std::string_view(project.settings.project.cache_dir));
+    if(!result.error.empty()) {
         result.exit_code = 2;
         co_await shutdown(run);
         co_return;
@@ -336,6 +345,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     // index is part of the product, so unsaved state must fail the run
     // like the index-only batch does.
     result.unsaved = with_index && project.has_unsaved_state();
+    result.save_error = project.save_error;
     if(!result.findings.empty()) {
         result.exit_code = 1;
     }
@@ -375,6 +385,9 @@ int run_lint(const ProjectOptions& where, std::uint32_t jobs, bool with_index, b
         return result.exit_code;
     }
     if(!result.completed) {
+        if(!result.error.empty()) {
+            LOG_ERROR("{}", result.error);
+        }
         return result.exit_code;
     }
     driver::println("Linted {} in {:.1f}s: {}.",
@@ -386,7 +399,9 @@ int run_lint(const ProjectOptions& where, std::uint32_t jobs, bool with_index, b
                         counted(result.failed_tus, "translation unit", "translation units"));
     }
     if(result.unsaved) {
-        driver::println("Part of the index could not be persisted (see the log).");
+        driver::println("Part of the index could not be persisted{}.",
+                        result.save_error.empty() ? std::string()
+                                                  : std::format(": {}", result.save_error));
     }
     return result.exit_code;
 }

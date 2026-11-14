@@ -13,7 +13,7 @@ namespace {
 
 /// Seeds every hash; bump it whenever a rule below changes so old hashes
 /// can never collide with new ones by accident.
-constexpr std::uint8_t identity_scheme = 2;
+constexpr std::uint8_t identity_scheme = 3;
 
 /// Segment markers. Their numeric values are part of the hash, so append
 /// only.
@@ -90,16 +90,14 @@ bool in_source_file(clang::SourceLocation location, CompilationUnit& unit) {
 }
 
 /// Internal and unique-external linkage are per translation unit by the
-/// language; so is everything an anonymous namespace encloses. An
-/// unnamed type is defined once, and a typedef name has no linkage of
-/// its own: two source files may each declare a private `State`, so
-/// both carry their file. System headers are exempt for typedef names:
-/// they declare a name consistently, and several of them declare the
-/// same one (size_t), whichever is included first. A namespace alias
-/// only renames a namespace and stays shared. A C tag has no linkage
-/// either, though clang reports one: `struct state` defined in two
-/// source files is two types. One first declared in a header stays one
-/// entity per name, whichever header forward-declares it first.
+/// language; so is everything an anonymous namespace encloses, and an
+/// unnamed type is defined once. A declaration of no linkage — a typedef
+/// name, which has none of its own, or a C tag, though clang reports one —
+/// carries its file only in a source file: two source files may each
+/// declare a private `State`, while a header's is one entity in every unit
+/// including it, whichever header declares it first and whether a unit
+/// reaches the header as a system one or not. A namespace alias only
+/// renames a namespace and stays shared.
 ///
 /// Every compile reading a declaration must reach the same answer, or its
 /// uses in one file miss its definition in another: what decides is the
@@ -107,10 +105,6 @@ bool in_source_file(clang::SourceLocation location, CompilationUnit& unit) {
 bool needs_path(const clang::NamedDecl* decl, CompilationUnit& unit) {
     if(!decl->getDeclContext()->getRedeclContext()->isFileContext()) {
         return false;
-    }
-    if(llvm::isa<clang::TagDecl>(decl) && !unit.context().getLangOpts().CPlusPlus &&
-       in_source_file(decl->getLocation(), unit)) {
-        return true;
     }
     auto linkage = decl->getLinkageInternal();
     if(linkage == clang::Linkage::Internal || linkage == clang::Linkage::UniqueExternal) {
@@ -128,8 +122,10 @@ bool needs_path(const clang::NamedDecl* decl, CompilationUnit& unit) {
     if(llvm::isa<clang::NamespaceAliasDecl>(decl)) {
         return false;
     }
-    return (linkage == clang::Linkage::None || llvm::isa<clang::TypedefNameDecl>(decl)) &&
-           !unit.in_system_header(decl->getLocation());
+    bool no_linkage =
+        linkage == clang::Linkage::None || llvm::isa<clang::TypedefNameDecl>(decl) ||
+        (llvm::isa<clang::TagDecl>(decl) && !unit.context().getLangOpts().CPlusPlus);
+    return no_linkage && in_source_file(decl->getLocation(), unit);
 }
 
 bool is_template_parameter(const clang::Decl* decl) {
@@ -853,6 +849,11 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
             if(auto* described = type_alias->getDescribedAliasTemplate()) {
                 add_template_head(hasher, described->getTemplateParameters());
             }
+        }
+        /// A header's typedef carries no file (needs_path): two unrelated
+        /// headers declaring one name in one namespace differ by the type.
+        if(alias->getDeclContext()->getRedeclContext()->isFileContext()) {
+            add_type(hasher, alias->getUnderlyingType());
         }
     } else if(isa<EnumConstantDecl>(decl)) {
         hasher.add(Tag::Enumerator);

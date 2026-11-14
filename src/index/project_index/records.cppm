@@ -78,12 +78,27 @@ void add_unit(KeyedUnits& sets, std::uint64_t key, std::uint32_t unit);
 
 void remove_unit(KeyedUnits& sets, std::uint64_t key, std::uint32_t unit);
 
-/// How some units resolved a file's own `#include` lines at one content.
-struct IncludeResolution {
+/// Where a file names another — an `#include`, a `__has_include`, an
+/// `#embed`, a `__has_embed` — and the file it named: the 1-based line,
+/// the byte column the directive's argument is searched from (0 for an
+/// `#include`, read from its line's start) and the target's path id.
+struct LinkEdge {
+    std::uint32_t line = 0;
+
+    std::uint32_t column = 0;
+
+    std::uint32_t target = 0;
+
+    friend auto operator<=>(const LinkEdge&, const LinkEdge&) = default;
+};
+
+/// How some units resolved the lines of a file naming another, at one
+/// content: what the document links computed from the index serve.
+struct LinkResolution {
     std::uint64_t content = 0;
 
-    /// (line, target path id), in line order.
-    std::vector<std::pair<std::uint32_t, std::uint32_t>> edges;
+    /// In line order.
+    std::vector<LinkEdge> edges;
 
     Bitmap units;
 };
@@ -112,7 +127,7 @@ struct Dependents {
 
     KeyedUnits uses;
 
-    std::vector<IncludeResolution> resolutions;
+    std::vector<LinkResolution> resolutions;
 
     /// Ascending by content hash.
     std::vector<NamedVersion> versions;

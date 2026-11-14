@@ -227,6 +227,9 @@ struct Project {
     /// they are too many (ServedProject::checkpoint_task).
     std::uint64_t unsaved_bytes = 0;
 
+    /// Why the database refused the last save; empty once a save commits.
+    std::string save_error;
+
     /// The generation of context-affecting project state: the include graph,
     /// the include trees — a tree moves its host's contexts — and the
     /// self-containment results — a header found self-contained lists the
@@ -375,6 +378,11 @@ struct Project {
         /// Why the index could not be read, for a run reading it: it opens
         /// with none then. Empty when it was read.
         std::string unreadable;
+
+        /// Why the index is not persisted, for the run writing it: no
+        /// database could be opened or owned, and it keeps the index in
+        /// memory. Empty when it persists.
+        std::string unwritable;
     };
 
     /// Open the project over its final settings (load_settings), once,

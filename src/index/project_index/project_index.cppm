@@ -230,10 +230,11 @@ public:
     /// precompiled header (TUManifest::imports).
     void for_each_importer(Fid input, llvm::function_ref<void(Fid)> visit) const;
 
-    /// The includes of a document as units resolved them, the input of the
-    /// document links computed from the index: every way a unit resolved its `#include` lines at
-    /// its shard's content generation. Empty when the file was never indexed.
-    std::vector<ResolvedInclude> resolved_includes(Fid file) const;
+    /// The places a document names another file as units resolved them, the
+    /// input of the document links computed from the index: every way a unit
+    /// resolved them at its shard's content generation. Empty when the file
+    /// was never indexed.
+    std::vector<ResolvedLink> resolved_links(Fid file) const;
 
     /// The file's shard, read from the database on first use. Null when the
     /// file has no index. Pointers stay valid until the next save or clear,

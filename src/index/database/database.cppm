@@ -310,28 +310,27 @@ bool database_exists(const CacheStore& store, const DatabaseKey& key);
 /// database directory, created on demand. A writable open
 /// presumes the caller holds the cache directory's writer lock
 /// (index/writer_lock.cppm) — the records form one mutable lineage that
-/// tolerates no second writer. Nullptr when the
+/// tolerates no second writer. The error says why when the
 /// environment cannot be opened safely — only confirmed corruption
 /// (or a meta mismatch) is repaired by deleting and rebuilding the
-/// database; transient errors disable index persistence for the session
-/// and touch nothing. A read-only open of a database without an
-/// `index.mdb` yet is nullptr too; an existing one opens with MDB_RDONLY, which
+/// database; transient errors touch nothing, and the caller keeps the
+/// session's index in memory. A read-only open of a database without an
+/// `index.mdb` yet fails too; an existing one opens with MDB_RDONLY, which
 /// still registers a reader slot in the `-lock` file — the one deviation
 /// from the cache store's read-only-touches-nothing contract.
 /// `initial_mapsize` overrides the default virtual map reservation
 /// (tests exercise the growth path with a tiny map); 0 keeps the default.
-std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
-                                                 const DatabaseKey& key,
-                                                 std::size_t initial_mapsize = 0,
-                                                 bool read_only = false);
+std::expected<std::unique_ptr<BlobDatabase>, std::string>
+    open_lmdb_database(CacheStore& store,
+                       const DatabaseKey& key,
+                       std::size_t initial_mapsize = 0,
+                       bool read_only = false);
 
 /// The production entry: open_lmdb_database gated on the store living on
 /// a local filesystem. On a remote filesystem (NFS/SMB/9p — where LMDB is
-/// documented to break) index persistence is disabled with a warning; a
-/// FUSE mount gets the warning but proceeds, since FUSE fronts anything
-/// from a local overlay to sshfs.
-std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
-                                            const DatabaseKey& key,
-                                            bool read_only = false);
+/// documented to break) it fails; a FUSE mount gets a warning but
+/// proceeds, since FUSE fronts anything from a local overlay to sshfs.
+std::expected<std::unique_ptr<BlobDatabase>, std::string>
+    open_database(CacheStore& store, const DatabaseKey& key, bool read_only = false);
 
 }  // namespace clice::index

@@ -265,10 +265,10 @@ int dispatch(T& options) {
 }
 
 /// Why a subcommand cannot work on its project, and the exit code it ends
-/// with: 2 for arguments or a configuration it cannot take, 1 otherwise.
+/// with: 2, the work not done (docs/en/cli/overview.md).
 struct ProjectError {
     std::string message;
-    int exit_code = 1;
+    int exit_code = 2;
 };
 
 /// Answer that a subcommand answering in JSON cannot work on its project;

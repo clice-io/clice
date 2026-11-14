@@ -51,6 +51,10 @@ ZEST_CASE(ManifestRoundTrip) {
         {VersionID{0}, 0xdeadbeefdeadbeefull},
         {VersionID{2}, 42                   },
     };
+    manifest.links = {
+        {.file = VersionID{0}, .line = 4, .column = 13, .target = VersionID{6}},
+        {.file = VersionID{2}, .line = 9, .target = VersionID{7}},
+    };
     manifest.absent = {VersionID{3}};
     manifest.imports = {VersionID{4}, VersionID{5}};
     std::vector<std::uint32_t> versions = {3, 10, 11, 200, 201, 202, 300, 301, 70000};

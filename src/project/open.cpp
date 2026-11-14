@@ -148,7 +148,8 @@ std::string unreadable_index(index::LoadResult result, std::string_view where) {
 }
 
 /// Open the cache store and the index database as `options` say; why the
-/// index cannot be read, for a run that reads it, else empty.
+/// index cannot be read, for a run that reads it, or kept, for its writer
+/// (Opened), else empty.
 std::string open_store(Project& project, const Project::OpenOptions& options) {
     using Cache = Project::OpenOptions::Cache;
     auto& cache_dir = project.settings.project.cache_dir;
@@ -175,7 +176,7 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
             return why;
         }
         LOG_GUIDANCE("{}; no preamble or module is precompiled, and the index is not saved", why);
-        return {};
+        return options.cache == Cache::Write ? why : std::string();
     }
     // Only a run loading the build's members compiles them; registering
     // scans the whole namespace, which a run reading the index alone
@@ -199,37 +200,46 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
         // No writer lock: a concurrent server or index run keeps owning it,
         // while the persisted versions and precompiled records still seed this
         // run. What it changes stays in memory and exits with it.
-        project.database = index::open_database(*project.store, key, /*read_only=*/true);
-        if(project.database || !read_only) {
+        auto database = index::open_database(*project.store, key, /*read_only=*/true);
+        if(database) {
+            project.database = std::move(*database);
             return {};
         }
         if(!index::database_exists(*project.store, key)) {
-            return unreadable_index(index::LoadResult::Empty,
-                                    index::database_directory(*project.store, key));
+            return read_only ? unreadable_index(index::LoadResult::Empty,
+                                                index::database_directory(*project.store, key))
+                             : std::string();
         }
-        return std::format("The index database at {} cannot be opened; the log above says why",
-                           index::database_directory(*project.store, key));
+        if(!read_only) {
+            LOG_WARN("{}; this run reads no index", database.error());
+            return {};
+        }
+        return std::move(database.error());
     }
     if(!(project.writer_lock = index::WriterLock::acquire(cache_dir))) {
-        return {};
+        return std::format("Another clice process writes the index under {}",
+                           std::string_view(cache_dir));
     }
     // The owner is recorded, and checked again, under the lock: another
     // project may have become the directory's owner since the settings
     // chose it.
     CanonicalRef root = project.root;
     if(owned_elsewhere(cache_dir, root)) {
-        LOG_GUIDANCE("Cache directory {} serves the project at {}; {} keeps no index",
-                     std::string_view(cache_dir),
-                     cache_dir_owner(cache_dir),
-                     root);
+        auto why = std::format("Cache directory {} serves the project at {}",
+                               std::string_view(cache_dir),
+                               cache_dir_owner(cache_dir));
+        LOG_GUIDANCE("{}; {} keeps no index", why, root);
         project.writer_lock.reset();
-        return {};
+        return why;
     }
     set_cache_dir_owner(cache_dir, root);
-    project.database = index::open_database(*project.store, key);
-    if(!project.database) {
+    auto database = index::open_database(*project.store, key);
+    if(!database) {
+        LOG_WARN("{}; index persistence is disabled for this session", database.error());
         project.writer_lock.reset();
+        return std::move(database.error());
     }
+    project.database = std::move(*database);
     return {};
 }
 
@@ -266,7 +276,9 @@ Project::Opened Project::open(const OpenOptions& options) {
                  llvm::join(llvm::split(database_key.resolved, '\n'), ", "));
     }
 
-    opened.unreadable = open_store(*this, options);
+    auto unavailable = open_store(*this, options);
+    (options.cache == Cache::Write ? opened.unwritable : opened.unreadable) =
+        std::move(unavailable);
 
     if(database) {
         saved_members.read(*database);

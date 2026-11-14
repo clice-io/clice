@@ -71,6 +71,13 @@ std::vector<std::byte> serialize_manifest(const TUManifest& manifest,
         blob.contributions.insert(blob.contributions.end(), bytes, bytes + sizeof(bytes));
     }
 
+    for(auto& link: manifest.links) {
+        blob.link_files.push_back(link.file.raw);
+        blob.link_lines.push_back(link.line);
+        blob.link_columns.push_back(link.column);
+        blob.link_targets.push_back(link.target.raw);
+    }
+
     auto version_count = static_cast<std::uint32_t>(versions.size());
     blob.absent = version_set(manifest.absent, version_count);
     blob.imports = version_set(manifest.imports, version_count);
@@ -175,6 +182,20 @@ std::optional<PersistedManifest> deserialize_manifest(llvm::StringRef data) {
     }
     if(pos != contributions.size()) {
         return std::nullopt;
+    }
+
+    auto links = root.link_files.size();
+    if(root.link_lines.size() != links || root.link_columns.size() != links ||
+       root.link_targets.size() != links) {
+        return std::nullopt;
+    }
+    for(std::uint32_t i = 0; i < links; i += 1) {
+        manifest.links.push_back({
+            .file = VersionID{root.link_files[i]},
+            .line = root.link_lines[i],
+            .column = root.link_columns[i],
+            .target = VersionID{root.link_targets[i]},
+        });
     }
 
     auto absent = version_set_of(root.absent, version_count);

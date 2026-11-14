@@ -26,6 +26,22 @@ struct IncludeTree {
     /// included file.
     std::vector<IncludeNode> nodes;
 
+    /// A line naming a file the parse does not enter — a `__has_include`,
+    /// an `#embed`, a `__has_embed` — by the path id of the file holding it,
+    /// its 1-based line, the byte column of the directive's token and the
+    /// target's absolute path (TUManifest::Link).
+    struct Link {
+        std::uint32_t file = 0;
+
+        std::uint32_t line = 0;
+
+        std::uint32_t column = 0;
+
+        std::string target;
+    };
+
+    std::vector<Link> links;
+
     /// Build-time only: each FileID (one header context) to the node that
     /// entered it, no_node for a file entered without an include directive.
     /// FileIDs mean nothing outside the compilation.

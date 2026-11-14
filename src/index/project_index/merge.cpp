@@ -293,6 +293,15 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
                                   .line = node.line,
                                   .skipped = node.skipped});
     }
+    for(std::uint32_t i = 0; i < view.link_count(); i += 1) {
+        auto link = view.link(i);
+        manifest.links.push_back({
+            .file = version_of[link.file],
+            .line = link.line,
+            .column = link.column,
+            .target = files.intern_version(files.intern(Spelling::absolute(link.target)), 0),
+        });
+    }
     for(auto [local_id, variant]: section_contributions) {
         manifest.contributions.emplace_back(version_of[local_id], variant);
     }

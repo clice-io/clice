@@ -754,6 +754,12 @@ std::vector<std::byte> Builder::build() {
     blob.paths = std::move(tree.paths);
     blob.content_hashes = std::move(tree.content_hashes);
     blob.nodes = std::move(tree.nodes);
+    for(auto& link: tree.links) {
+        blob.link_files.push_back(link.file);
+        blob.link_lines.push_back(link.line);
+        blob.link_columns.push_back(link.column);
+        blob.link_targets.push_back(std::move(link.target));
+    }
     blob.absent = unit.absent();
     llvm::SmallVector<SymbolHash> table;
     for(auto& [hash, symbol]: symbols) {
