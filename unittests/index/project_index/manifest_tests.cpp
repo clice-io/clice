@@ -34,8 +34,8 @@ ZEST_CASE(ManifestRoundTrip) {
     // root.
     manifest.nodes = {
         {0, ~0u, 1,     false},
-        {1, 2,   70000, false},
-        {2, 0,   12,    false},
+        {1, 2,   70000, false, 1},
+        {2, 0,   12,    false, -2},
         {3, 0,   14,    true },
         {4, 0,   14,    true },
         {5, 0,   3,     true },
@@ -132,13 +132,20 @@ ZEST_CASE(ManifestNodeCodesRejected) {
     auto decodes = [&] {
         return index::deserialize_manifest(as_chars(index::encode(layout))).has_value();
     };
-    layout.nodes = {7, 1, 5 << 2};
+    layout.nodes = {7, 1, 5 << 3};
     ZASSERT(decodes());
-    layout.nodes = {7, 0, 5 << 2};
+    layout.nodes = {7, 0, 5 << 3};
     ZEXPECT(!decodes());
-    layout.nodes = {7, 1, (5 << 2) | 1};
+    layout.nodes = {7, 1, (5 << 3) | 1};
     ZEXPECT(!decodes());
-    layout.nodes = {7, 3, 5 << 2};
+    layout.nodes = {7, 3, 5 << 3};
+    ZEXPECT(!decodes());
+    // Macro braces follow their flag, and are never zero.
+    layout.nodes = {7, 1, (5 << 3) | 4, 3};
+    ZASSERT(decodes());
+    layout.nodes = {7, 1, (5 << 3) | 4, 0};
+    ZEXPECT(!decodes());
+    layout.nodes = {7, 1, (5 << 3) | 4};
     ZEXPECT(!decodes());
 }
 

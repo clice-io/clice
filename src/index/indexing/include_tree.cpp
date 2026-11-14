@@ -68,8 +68,9 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
     for(auto fid: directive_fids) {
         for(auto& include: directives.find(fid)->second.includes) {
             if(!include.skipped && include.fid.isValid() && !unit.from_context(include.fid)) {
-                tree.file_nodes[include.fid] =
-                    add_include_chain(unit, include.fid, tree, path_table);
+                auto node = add_include_chain(unit, include.fid, tree, path_table);
+                tree.file_nodes[include.fid] = node;
+                tree.nodes[node].macro_braces = include.macro_braces;
             }
         }
     }

@@ -88,6 +88,7 @@ std::optional<llvm::SmallVector<Host>> tree_chains(Project& project,
             chain.host.chain.push_back(file_of(node));
             if(!forced || node != root) {
                 chain.host.lines.push_back(nodes[node].line);
+                chain.host.macro_braces.push_back(nodes[node].macro_braces);
             }
         }
         chain.order.append(chain.host.lines.begin(), chain.host.lines.end());

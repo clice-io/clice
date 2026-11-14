@@ -1210,7 +1210,8 @@ ZEST_CASE(FailedContextRemembered) {
     Host host{
         .file = main,
         .chain = {main, t},
-        .lines = {1}
+        .lines = {1},
+        .macro_braces = {0},
     };
     auto command = p.tree(main).command;
     auto failed = p.project.synthesize(t, host, command);

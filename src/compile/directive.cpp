@@ -250,6 +250,7 @@ public:
         unit.collected_directives[prev_fid].includes.emplace_back(Include{
             .fid = {},
             .location = include_tok.getLocation(),
+            .macro_braces = macro_braces.lookup(prev_fid),
         });
     }
 
@@ -499,8 +500,17 @@ public:
                       const clang::MacroDefinition& definition,
                       clang::SourceRange range,
                       const clang::MacroArgs* args) override {
-        if(auto def = definition.getMacroInfo()) {
-            add_macro(def, MacroRef::Ref, name.getLocation());
+        auto def = definition.getMacroInfo();
+        if(!def) {
+            return;
+        }
+        add_macro(def, MacroRef::Ref, name.getLocation());
+        std::int32_t braces = 0;
+        for(auto& token: def->tokens()) {
+            braces += token.is(clang::tok::l_brace) ? 1 : token.is(clang::tok::r_brace) ? -1 : 0;
+        }
+        if(braces != 0) {
+            macro_braces[unit.file_id(unit.SM().getExpansionLoc(name.getLocation()))] += braces;
         }
     }
 
@@ -531,6 +541,9 @@ private:
 
     /// The macro names recorded where an argument spells them.
     llvm::DenseSet<std::pair<const clang::MacroInfo*, clang::SourceLocation>> written_arguments;
+
+    /// Each file's braces the macros it expanded so far open, net.
+    llvm::DenseMap<clang::FileID, std::int32_t> macro_braces;
 };
 
 std::unique_ptr<clang::PPCallbacks> CompilationUnit::directive_recorder() {

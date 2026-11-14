@@ -866,6 +866,54 @@ struct S {
 )");
 }
 
+ZEST_CASE(MacroOpenedScope) {
+    // A namespace a macro opens, which no brace of the text shows: the
+    // host is open up to the cut, and the rest of it, where END_API closes
+    // the namespace, is the suffix.
+    llvm::StringMap<std::string> mapping = {
+        {"decls.h", "/proj/decls.h"},
+    };
+
+    ChainEntry host{"/proj/main.cpp",
+                    R"(#define BEGIN_API namespace api {
+#define END_API }
+struct Handle {};
+BEGIN_API
+#include "decls.h"
+END_API
+int main() {}
+)",
+                    5,
+                    1};
+
+    auto result = synthesize_context({host}, "/proj/decls.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, result->prefix) == "#line 1 \"/proj/main.cpp\"\n");
+    ZEXPECT(flatten(*result, result->open) == R"(#line 1 "/proj/main.cpp"
+#define BEGIN_API namespace api {
+#define END_API }
+struct Handle {};
+BEGIN_API
+)");
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 6 "/proj/main.cpp"
+END_API
+int main() {}
+#endif
+)");
+
+    // The text closing the scope a macro opened leaves none open.
+    host.content = R"(#define BEGIN_API namespace api {
+BEGIN_API
+}
+#include "decls.h"
+)";
+    host.line = 4;
+    result = synthesize_context({host}, "/proj/decls.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(result->open.empty());
+}
+
 ZEST_CASE(SplitInIncluder) {
     // The first chain file cut inside braces splits; the files after it
     // nest in the part entered after the prefix.

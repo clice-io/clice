@@ -6,8 +6,9 @@ namespace clice {
 
 /// The end of the preamble: the directives that open the file, and in a
 /// module unit its whole global module fragment, the lines starting before
-/// `limit`; none when `limit` cuts the fragment before a declaration of its
-/// own, which the body cannot parse ahead of the module declaration.
+/// `limit` and before a pragma push (`push_macro`, `pack`, ...) they do not
+/// pop; none when that cuts the fragment before a declaration of its own,
+/// which the body cannot parse ahead of the module declaration.
 std::uint32_t preamble_bound(llvm::StringRef content,
                              std::uint32_t limit = std::numeric_limits<std::uint32_t>::max());
 

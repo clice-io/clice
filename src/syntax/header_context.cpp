@@ -449,7 +449,16 @@ std::optional<SynthesizedContext>
                                               snapshot_path);
         };
         auto cut = place_cut(lexical, entry.content, matched.offset);
-        bool splits = !open && cut.braces > 0;
+        // Outside every brace of the text, inside a scope a macro opened:
+        // where the scope opens and where its closing macro lies, the text
+        // does not tell, so all of it before the cut is open and all after
+        // it the suffix.
+        bool macro_scope = cut.braces <= 0 && cut.braces + entry.macro_braces > 0;
+        if(macro_scope) {
+            cut.top = 0;
+            cut.top_conditionals = 0;
+        }
+        bool splits = !open && (cut.braces > 0 || macro_scope);
         auto& head = before.emplace_back();
         append_line_marker(head.text, entry.path, 1);
         emit(head, 0, splits ? cut.top : cut.offset);
@@ -487,9 +496,9 @@ std::optional<SynthesizedContext>
             continue;
         }
         auto resume = line_end(entry.content, cut.offset);
-        auto end = splits ? braces_close(lexical, entry.content, cut, resume)
-                   : open ? static_cast<std::uint32_t>(entry.content.size())
-                          : resume;
+        auto end = splits && !macro_scope ? braces_close(lexical, entry.content, cut, resume)
+                   : open                     ? static_cast<std::uint32_t>(entry.content.size())
+                                              : resume;
         auto& tail = after.emplace_back(i, Fragment{}).second;
         if(is_last) {
             tail.text += "#if __INCLUDE_LEVEL__ == 1\n";

@@ -82,8 +82,10 @@ struct Host {
     std::vector<Fid> chain;
 
     /// The line of the directive each chain file but the header enters the
-    /// next one with.
+    /// next one with, and the braces the macros it expanded before that
+    /// directive open (IncludeNode::macro_braces).
     llvm::SmallVector<std::uint32_t> lines;
+    llvm::SmallVector<std::int32_t> macro_braces;
 };
 
 /// A unit and one of its own commands (CommandTable::command_hash of it,
@@ -141,6 +143,8 @@ struct HeaderContext {
     std::vector<Fid> chain;
 
     llvm::SmallVector<std::uint32_t> lines;
+
+    llvm::SmallVector<std::int32_t> macro_braces;
 
     /// Null when the synthesis could not follow the chain under the host's
     /// command.

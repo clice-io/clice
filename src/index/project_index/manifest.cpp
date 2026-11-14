@@ -57,8 +57,15 @@ std::vector<std::byte> serialize_manifest(const TUManifest& manifest,
         write_varint(blob.nodes, sibling ? 0 : node.parent == no_node ? 1 : node.parent + 2);
         bool delta = sibling && node.line >= previous->line;
         auto line = delta ? node.line - previous->line : node.line;
+        bool braces = node.macro_braces != 0;
         write_varint(blob.nodes,
-                     (std::uint64_t(line) << 2) | (node.skipped ? 2 : 0) | (delta ? 1 : 0));
+                     (std::uint64_t(line) << 3) | (braces ? 4 : 0) | (node.skipped ? 2 : 0) |
+                         (delta ? 1 : 0));
+        // Zigzag: a macro that closes more than it opens counts down.
+        if(braces) {
+            auto value = std::int64_t(node.macro_braces);
+            write_varint(blob.nodes, (std::uint64_t(value) << 1) ^ std::uint64_t(value >> 63));
+        }
         previous = &node;
     }
 
@@ -147,9 +154,21 @@ std::optional<PersistedManifest> deserialize_manifest(llvm::StringRef data) {
            (parent == 0 && !previous) || (delta && parent != 0)) {
             return std::nullopt;
         }
-        auto line = (code >> 2) + (delta ? previous->line : 0);
+        auto line = (code >> 3) + (delta ? previous->line : 0);
         if(line > id_max) {
             return std::nullopt;
+        }
+        std::int64_t braces = 0;
+        if((code & 4) != 0) {
+            auto zigzag = read_varint(nodes, pos);
+            if(!zigzag) {
+                return std::nullopt;
+            }
+            braces = std::int64_t(*zigzag >> 1) ^ -std::int64_t(*zigzag & 1);
+            if(braces == 0 || braces < std::numeric_limits<std::int32_t>::min() ||
+               braces > std::numeric_limits<std::int32_t>::max()) {
+                return std::nullopt;
+            }
         }
         manifest.nodes.push_back({
             .file = static_cast<std::uint32_t>(version),
@@ -158,6 +177,7 @@ std::optional<PersistedManifest> deserialize_manifest(llvm::StringRef data) {
                                     : static_cast<std::uint32_t>(parent - 2),
             .line = static_cast<std::uint32_t>(line),
             .skipped = (code & 2) != 0,
+            .macro_braces = static_cast<std::int32_t>(braces),
         });
     }
     if(pos != nodes.size()) {

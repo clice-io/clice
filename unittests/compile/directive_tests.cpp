@@ -116,6 +116,27 @@ ZEST_CASE(Include) {
     EXPECT_INCLUDE(5, "5", "");
 };
 
+ZEST_CASE(IncludeMacroBraces) {
+    // The braces the macros expanded before an include open, net: the scope
+    // BEGIN_API opens, closed again by END_API.
+    run(R"cpp(
+#[decls.h]
+int open();
+
+#[main.cpp]
+#define BEGIN_API namespace api {
+#define END_API }
+BEGIN_API
+#include "decls.h"
+END_API
+#include "decls.h"
+)cpp");
+
+    ZASSERT(includes.size() == 2U);
+    ZEXPECT(includes[0].macro_braces == 1);
+    ZEXPECT(includes[1].macro_braces == 0);
+};
+
 ZEST_CASE(HasInclude) {
     run(R"cpp(
 #[test.h]
