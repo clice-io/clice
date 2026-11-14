@@ -10,7 +10,8 @@ test("two servers share the cache", async (t) => {
     // Two editor windows on one project: one cache, two servers.
     const first = await t.start();
     expect(await first.errors("main.cpp")).toEqual([]);
-    const second = await t.start();
+    // The second waits for the index writer lock the first keeps: briefly.
+    const second = await t.start({ env: { CLICE_TEST_WRITER_WAIT_MS: "100" } });
     expect(await second.errors("main.cpp")).toEqual([]);
     t.disk.write("header.h", "#pragma once\n\nstruct Shared {\n    int y;\n};\n");
     await t.show("changed", first.errors("main.cpp"));
