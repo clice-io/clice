@@ -21,7 +21,7 @@ MemoryState memory_state(std::span<const sys::ProcessStats> workers) {
 
 std::uint64_t memory_reserve(std::uint64_t limit, bool macos) {
     constexpr std::uint64_t MiB = 1ull << 20;
-    return macos ? std::max(1536 * MiB, limit / 10) : std::max(512 * MiB, limit / 20);
+    return macos ? 1536 * MiB : std::max(512 * MiB, limit / 20);
 }
 
 std::size_t default_max_resident(std::uint64_t limit) {

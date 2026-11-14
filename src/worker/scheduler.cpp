@@ -253,7 +253,8 @@ std::uint64_t WorkerScheduler::estimate(const Request& request) const {
     auto peak = request.peak;
     if(peak == 0) {
         peak = unknown_peak();
-        if(peak < default_peak && unknown_ahead(request) >= learned_runs) {
+        if(peak < default_peak && peaks.size() < learned_peaks &&
+           unknown_ahead(request) >= learned_runs) {
             peak = default_peak;
         }
     }
