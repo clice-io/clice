@@ -83,16 +83,8 @@ std::uint32_t FactsBuilder::owner_of(index::SymbolHash hash,
     if(owner == none) {
         owner = pick([&](const Site& site) { return header(site) && site.definition; });
     }
-    // Defined in no header, it belongs to the header of its first
-    // declaration, not to whichever forward declaration sorts first.
-    if(owner == none && canonical.valid()) {
-        if(auto id = id_of(canonical);
-           id != none && !facts.files[id].source && ranges::any_of(scoped, [&](const Site& site) {
-               return site.file == id && !befriends(site);
-           })) {
-            owner = id;
-        }
-    }
+    // Defined in no header, it belongs to the header declaring it first by
+    // path: which unit the index met first decides nothing.
     if(owner == none) {
         owner = pick(
             [&](const Site& site) { return header(site) && !site.definition && !befriends(site); });

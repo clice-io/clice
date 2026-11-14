@@ -82,9 +82,20 @@ void report_progress(BatchRun& run, const BatchOptions& options) {
     }
     auto failed = ranges::count_if(background.last_attempts(),
                                    [](const auto& entry) { return entry.second.failed; });
-    options.on_progress({.completed = pass.completed,
-                         .total = pass.total,
-                         .failed = static_cast<std::size_t>(failed)});
+    BatchProgress progress{.completed = pass.completed,
+                           .total = pass.total,
+                           .failed = static_cast<std::size_t>(failed)};
+    auto now = chrono::steady_clock::now();
+    for(auto [unit, since]: run.project.compiling) {
+        if(now - since > BatchProgress::slow_after) {
+            progress.slow.push_back({
+                .unit = run.project.file_table.display(unit),
+                .seconds = chrono::duration_cast<chrono::seconds>(now - since).count(),
+            });
+        }
+    }
+    ranges::sort(progress.slow, ranges::greater{}, &BatchProgress::Slow::seconds);
+    options.on_progress(progress);
 }
 
 /// A paced report on top of the pass boundaries: one unit can take
@@ -250,11 +261,12 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
     auto started = chrono::steady_clock::now();
     auto report_progress = [&](const BatchProgress& progress) {
         driver::println(stderr,
-                        "progress {}/{} units, {} failed, {:.0f}s elapsed",
+                        "progress {}/{} units, {} failed, {:.0f}s elapsed{}",
                         progress.completed,
                         progress.total,
                         progress.failed,
-                        chrono::duration<double>(chrono::steady_clock::now() - started).count());
+                        chrono::duration<double>(chrono::steady_clock::now() - started).count(),
+                        progress.slow_units());
     };
     auto indexed =
         index_project({.root = std::move(root), .loaded = std::move(loaded), .workers = workers},

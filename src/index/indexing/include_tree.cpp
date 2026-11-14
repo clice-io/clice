@@ -116,7 +116,7 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
         auto add = [&](clang::SourceLocation location, clang::OptionalFileEntryRef target) {
             auto seen = unit.seen_at(location);
             auto position = target && seen.file == fid
-                                ? unit.positions(fid).to_position(seen.offset,
+                                ? unit.positions(fid).position(seen.offset,
                                                                   PositionEncoding::UTF8)
                                 : std::nullopt;
             if(!position) {

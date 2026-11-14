@@ -230,6 +230,10 @@ struct Project {
     /// Why the database refused the last save; empty once a save commits.
     std::string save_error;
 
+    /// The units a worker compiles now (compile_unit), each since it reached
+    /// the worker: what a batch run names when one takes long.
+    llvm::DenseMap<Fid, chrono::steady_clock::time_point> compiling;
+
     /// The generation of context-affecting project state: the include graph,
     /// the include trees — a tree moves its host's contexts — and the
     /// self-containment results — a header found self-contained lists the

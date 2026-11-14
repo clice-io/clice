@@ -186,6 +186,34 @@ struct BatchProgress {
     std::size_t completed = 0;
     std::size_t total = 0;
     std::size_t failed = 0;
+
+    /// A unit compiling for long, and for how many seconds.
+    struct Slow {
+        std::string unit;
+
+        std::int64_t seconds = 0;
+    };
+
+    /// The units compiling for more than `slow_after`, longest first.
+    std::vector<Slow> slow;
+
+    constexpr static auto slow_after = chrono::seconds(30);
+
+    /// The slow units for a progress line to end with: `; compiling 41s:
+    /// a.cpp, 35s: b.cpp`; empty when there are none.
+    std::string slow_units() const {
+        if(slow.empty()) {
+            return {};
+        }
+        constexpr std::size_t shown = 3;
+        llvm::SmallVector<std::string, shown> listed;
+        for(auto& unit: views::take(slow, shown)) {
+            listed.push_back(std::format("{}s: {}", unit.seconds, unit.unit));
+        }
+        auto more = slow.size() > shown ? std::format(" and {} more", slow.size() - shown)
+                                         : std::string();
+        return std::format("; compiling {}{}", llvm::join(listed, ", "), more);
+    }
 };
 
 /// The project a batch run works on, as the command read it.
@@ -450,10 +478,11 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
                                                                     const LoadedSettings& loaded) {
     auto report_progress = [](const BatchProgress& progress) {
         driver::println(stderr,
-                        "indexing {}/{} units, {} failed",
+                        "indexing {}/{} units, {} failed{}",
                         progress.completed,
                         progress.total,
-                        progress.failed);
+                        progress.failed,
+                        progress.slow_units());
     };
     auto indexed = index_project({.root = root, .loaded = loaded}, report_progress);
     if(!indexed) {
